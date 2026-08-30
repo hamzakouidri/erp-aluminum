@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({Key? key}) : super(key: key);
@@ -10,6 +13,11 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
 
   @override
   void initState() {
@@ -28,7 +36,7 @@ class _InventoryPageState extends State<InventoryPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('مخزون الورشة'),
+        title: Text(_t('مخزون الورشة')),
         backgroundColor: Colors.teal,
         bottom: TabBar(
           controller: _tabController,

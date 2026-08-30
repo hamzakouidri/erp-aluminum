@@ -879,6 +879,7 @@ class DevisBuilder {
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
           .toList(growable: false);
+      exactDetails = _removeRedundantGlassSummaryLines(exactDetails);
       if (_isFixedOnlyWindow(_zonesFromMap(map))) {
         exactDetails = exactDetails
             .where((line) => !_isOpeningDetailForFixedOnly(line))
@@ -1061,14 +1062,21 @@ class DevisBuilder {
 
     final hasPartitions = map.isNotEmpty && map['zones'] != null;
     if (!hasPartitions && manualDesc != null && manualDesc.trim().isNotEmpty) {
-      final overrideLines = manualDesc.trim().split('\n');
+      final overrideLines = _removeRedundantGlassSummaryLines(
+        manualDesc
+            .trim()
+            .split('\n')
+            .map((line) => line.trim())
+            .where((line) => line.isNotEmpty)
+            .toList(growable: false),
+      );
       for (final line in overrideLines) {
         details.add(line);
       }
       return DevisLineItem(
         imagePath: item['drawing_image_path']?.toString(),
         title: title,
-        details: details,
+        details: _removeRedundantGlassSummaryLines(details),
         unitPrice: unitPrice,
         quantity: (item['quantity'] as num?)?.toInt() ?? 1,
         isReplaced: isReplaced,
@@ -1793,7 +1801,7 @@ class DevisBuilder {
     return DevisLineItem(
       imagePath: item['drawing_image_path']?.toString(),
       title: title,
-      details: details,
+      details: _removeRedundantGlassSummaryLines(details),
       unitPrice: unitPrice,
       quantity: (item['quantity'] as num?)?.toInt() ?? 1,
       isReplaced: isReplaced,
@@ -1943,7 +1951,7 @@ class DevisBuilder {
       });
     }
 
-    return _dedupeDetails(details);
+    return _removeRedundantGlassSummaryLines(details);
   }
 
   static List<Map<String, dynamic>> _zonesFromMap(Map<String, dynamic> map) {
@@ -2197,7 +2205,7 @@ class DevisBuilder {
         final gas = g['hasGas'] == true ? _gasSuffix() : '';
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
-            '${useFillingLabel ? "Remplissage" : "Remplacement"}: Vitrage double ($tStr)$gas',
+            '${useFillingLabel ? "Remplissage" : "Vitrage"}: Vitrage double ($tStr)$gas',
           AppLanguage.english => 'Glass: Double glazing ($tStr)$gas',
           AppLanguage.arabic =>
             '${useFillingLabel ? "التعبئة" : "الزجاج"}: زجاج مزدوج ($tStr)$gas',
@@ -2224,7 +2232,7 @@ class DevisBuilder {
       } else {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
-            '${useFillingLabel ? "Remplissage" : "Remplacement"}: Vitrage simple ${tOut.toStringAsFixed(0)} mm - $outF',
+            '${useFillingLabel ? "Remplissage" : "Vitrage"}: Vitrage simple ${tOut.toStringAsFixed(0)} mm - $outF',
           AppLanguage.english =>
             'Glass: Simple glazing ${tOut.toStringAsFixed(0)} mm - $outF',
           AppLanguage.arabic =>
@@ -2238,7 +2246,7 @@ class DevisBuilder {
       if (glass != null && glass.trim().isNotEmpty) {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
-            '${useFillingLabel ? "Remplissage" : "Remplacement"}: ${_glassLabel(glass)}',
+            '${useFillingLabel ? "Remplissage" : "Vitrage"}: ${_glassLabel(glass)}',
           AppLanguage.english => 'Glass: ${_glassLabel(glass)}',
           AppLanguage.arabic =>
             '${useFillingLabel ? "التعبئة" : "الزجاج"}: ${_glassLabel(glass)}',
@@ -2288,7 +2296,7 @@ class DevisBuilder {
     final thicknessText = '${thickness.toStringAsFixed(0)} mm';
     return switch (_currentLang) {
       AppLanguage.french =>
-        '${useFillingLabel ? "Remplissage panneau" : "Remplacement panneau"}: $panelName - $panelColor - $thicknessText',
+        '${useFillingLabel ? "Remplissage panneau" : "Panneau vitrage"}: $panelName - $panelColor - $thicknessText',
       AppLanguage.english =>
         'Panel replacement: $panelName - $panelColor - $thicknessText',
       AppLanguage.arabic =>
@@ -2616,6 +2624,66 @@ class DevisBuilder {
       if (seen.add(clean.toLowerCase())) result.add(clean);
     }
     return result;
+  }
+
+  /// Old edited order descriptions could contain both a generic glass summary
+  /// (for example, "Vitrage: Clair 5 mm") and the precise glass line built
+  /// from the drawing. Keep the precise line only when both are present.
+  /// Also normalize the old French "Remplacement" label to "Vitrage".
+  static List<String> _removeRedundantGlassSummaryLines(
+    List<String> details,
+  ) {
+    final normalized = details.map((line) {
+      final trimmed = line.trim();
+      final lower = trimmed.toLowerCase();
+      if (_currentLang == AppLanguage.french &&
+          lower.startsWith('remplacement panneau:')) {
+        return 'Panneau vitrage:${trimmed.substring('Remplacement panneau:'.length)}';
+      }
+      if (_currentLang == AppLanguage.french &&
+          lower.startsWith('remplacement:')) {
+        return 'Vitrage:${trimmed.substring('Remplacement:'.length)}';
+      }
+      return trimmed;
+    }).toList(growable: false);
+
+    bool isGlassLine(String line) {
+      final lower = line.trim().toLowerCase();
+      return lower.startsWith('vitrage:') ||
+          lower.startsWith('remplacement:') ||
+          lower.startsWith('remplissage:') ||
+          lower.startsWith('glass:') ||
+          lower.startsWith('الزجاج:');
+    }
+
+    String glassValue(String line) {
+      final separator = line.indexOf(':');
+      return separator >= 0
+          ? line.substring(separator + 1).trim().toLowerCase()
+          : line.trim().toLowerCase();
+    }
+
+    bool isGenericSummary(String line) {
+      final value = glassValue(line);
+      return value == 'simple' ||
+          value == 'single' ||
+          value == 'double' ||
+          value == 'clair' ||
+          value == 'clear' ||
+          value.startsWith('vitrage clair ') ||
+          value.startsWith('glass clear ') ||
+          value.startsWith('clair ') ||
+          value.startsWith('clear ') ||
+          value.startsWith('شفاف ') ||
+          value.startsWith('زجاج شفاف');
+    }
+
+    final glassLines = normalized.where(isGlassLine).toList(growable: false);
+    final hasPreciseLine = glassLines.any((line) => !isGenericSummary(line));
+    final filtered = normalized.where((line) {
+      return !(hasPreciseLine && isGlassLine(line) && isGenericSummary(line));
+    }).toList(growable: false);
+    return _dedupeDetails(filtered);
   }
 
   static String _windowTitle(String? type) {

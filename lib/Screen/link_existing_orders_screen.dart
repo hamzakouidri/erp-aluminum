@@ -25,6 +25,17 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
   final Set<int> _selectedOrderIds = {};
   final TextEditingController _searchController = TextEditingController();
 
+  String _tr(String ar, String fr, String en, AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.arabic:
+        return ar;
+      case AppLanguage.french:
+        return fr;
+      case AppLanguage.english:
+        return en;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,8 +65,17 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        final lang = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).language;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ أثناء جلب الطلبيات: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(
+              '${_tr('خطأ أثناء جلب الطلبيات', 'Erreur lors du chargement des commandes', 'Error loading orders', lang)}: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -95,8 +115,17 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        final lang = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).language;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ أثناء ربط الطلبيات: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(
+              '${_tr('خطأ أثناء ربط الطلبيات', 'Erreur lors de la liaison des commandes', 'Error linking orders', lang)}: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -132,7 +161,10 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
                       controller: _searchController,
                       onChanged: (val) => setState(() => _searchQuery = val),
                       decoration: InputDecoration(
-                        hintText: 'البحث برقم الطلبية أو اسم الزبون...',
+                        hintText: Localization.translate(
+                          'البحث برقم الطلبية أو اسم الزبون...',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
                         hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _searchQuery.isNotEmpty

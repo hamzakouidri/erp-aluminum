@@ -28,6 +28,7 @@ class SettingsScreen extends StatelessWidget {
 
   Future<bool> _ensureSupabaseCatalogLogin(BuildContext context) async {
     final service = SupabaseCatalogSyncService();
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     if (service.isSignedIn) return true;
 
     final emailController = TextEditingController();
@@ -37,8 +38,8 @@ class SettingsScreen extends StatelessWidget {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text(
-              'تسجيل دخول Supabase',
+            title: Text(
+              Localization.translate('تسجيل دخول Supabase', lang),
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontWeight: FontWeight.bold,
@@ -50,20 +51,24 @@ class SettingsScreen extends StatelessWidget {
                 TextField(
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'البريد'),
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('البريد', lang),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'كلمة المرور'),
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('كلمة المرور', lang),
+                  ),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('إلغاء'),
+                child: Text(Localization.translate('إلغاء', lang)),
               ),
               TextButton(
                 onPressed: () {
@@ -76,7 +81,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Text('إنشاء حساب'),
+                child: Text(Localization.translate('إنشاء حساب', lang)),
               ),
               ElevatedButton(
                 onPressed: () {
@@ -89,7 +94,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Text('دخول'),
+                child: Text(Localization.translate('دخول', lang)),
               ),
             ],
           );

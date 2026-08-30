@@ -529,16 +529,27 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                 children: [
                   TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم العائلة',
-                      hintText: 'مثال: Embout + Support Roulement',
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('اسم العائلة', lang),
+                      hintText: Localization.translate(
+                        'مثال: Embout + Support Roulement',
+                        lang,
+                      ),
                       border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text('فلترة اختيارية حسب الميكانيزم:'),
-                  const Text(
-                    'اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.',
+                  Text(
+                    Localization.translate(
+                      'فلترة اختيارية حسب الميكانيزم:',
+                      lang,
+                    ),
+                  ),
+                  Text(
+                    Localization.translate(
+                      'اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.',
+                      lang,
+                    ),
                     style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                   for (final option in _mechanismOptions)
@@ -558,19 +569,26 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
                     initialValue: bladeScope,
-                    decoration: const InputDecoration(
-                      labelText: 'نوع الشفرة',
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('نوع الشفرة', lang),
                       border: OutlineInputBorder(),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'all', child: Text('كل الشفرات')),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text(Localization.translate('كل الشفرات', lang)),
+                      ),
                       DropdownMenuItem(
                         value: 'normal',
-                        child: Text('الشفرة العادية فقط'),
+                        child: Text(
+                          Localization.translate('الشفرة العادية فقط', lang),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'extruded',
-                        child: Text('شفرة Extrudé فقط'),
+                        child: Text(
+                          Localization.translate('شفرة Extrudé فقط', lang),
+                        ),
                       ),
                     ],
                     onChanged: (value) =>
@@ -579,9 +597,14 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                   const SizedBox(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('تتكرر لكل ضلفة'),
-                    subtitle: const Text(
-                      'اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.',
+                    title: Text(
+                      Localization.translate('تتكرر لكل ضلفة', lang),
+                    ),
+                    subtitle: Text(
+                      Localization.translate(
+                        'اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.',
+                        lang,
+                      ),
                     ),
                     value: perLeaf,
                     onChanged: (value) => setDialogState(() => perLeaf = value),
@@ -938,7 +961,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
             ),
           if (isAdmin && widget.family == null)
             IconButton(
-              tooltip: 'إضافة عائلة داخل الكيت',
+              tooltip: Localization.translate('إضافة عائلة داخل الكيت', lang),
               icon: const Icon(Icons.account_tree_outlined),
               onPressed: () => _showAddEditFamilyDialog(),
             ),

@@ -2792,4 +2792,14 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Vertical :',
     AppLanguage.english: 'Vertical:',
   },
+  'اسم المستخدم': {
+    AppLanguage.arabic: 'اسم المستخدم',
+    AppLanguage.french: 'Nom de l’utilisateur',
+    AppLanguage.english: 'User name',
+  },
+  'عدد مستخدمي الورشة': {
+    AppLanguage.arabic: 'عدد مستخدمي الورشة',
+    AppLanguage.french: 'Nombre d’utilisateurs de l’atelier',
+    AppLanguage.english: 'Number of workshop users',
+  },
 };

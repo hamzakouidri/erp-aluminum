@@ -1615,14 +1615,17 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  if (profileType == 'PVC' &&
-                      (selectedType == 'frame' ||
-                          selectedType.startsWith('sash') ||
-                          selectedType == 'mullion')) ...[
+                  // Every PVC profile may have its own reinforcement.  The
+                  // reinforcement is configured on the actual piece (frame,
+                  // sash, mullion, batmo, plinthe, side cover, etc.), while a
+                  // reinforcement profile cannot point to itself.
+                  if (profileType == 'PVC' && selectedType != 'renfort') ...[
                     SizedBox(height: 10),
                     DropdownButtonFormField<int>(
                       decoration: InputDecoration(
-                        labelText: _tr('حديد الدعم المرتبط (Renfort)'),
+                        labelText: _tr(
+                          'حديد الدعم الخاص بهذا المقطع (Renfort)',
+                        ),
                       ),
                       initialValue:
                           renforts.any((r) => r['id'] == selectedRenfortId)
@@ -2566,6 +2569,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                   child: ListTile(
                                     leading: SectionImageWidget(
                                       code: sec['code']?.toString(),
+                                      name: sec['name']?.toString(),
                                       imagePath: sec['image_path']?.toString(),
                                       size: 40.0,
                                       fallbackIcon: typeIcon,

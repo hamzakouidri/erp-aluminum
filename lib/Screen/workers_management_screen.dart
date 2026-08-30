@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import '../sql_database.dart';
 
 String _tr(String ar, String fr, String en, AppLanguage lang) {
@@ -28,6 +29,11 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
   List<Map<String, dynamic>> _workers = [];
   bool _isLoading = false;
   String _joinCode = 'جاري التحميل...';
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
 
   /// هل المستخدم الحالي نائب مدير (عامل بصلاحية manage_workers) وليس المدير الأصلي؟
   bool get _isDeputyManager {
@@ -269,8 +275,8 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
             _workers = workers;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تم تحديث العمال من Supabase بنجاح'),
+            SnackBar(
+              content: Text(_t('تم تحديث العمال من Supabase بنجاح')),
               backgroundColor: Colors.green,
             ),
           );
@@ -396,14 +402,14 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       await _loadWorkers();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم مزامنة العمال بنجاح'),
+          content: Text(_t('تم مزامنة العمال بنجاح')),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خطأ في الاتصال بالسحابة: $e'),
+          content: Text('${_t('خطأ في الاتصال بالسحابة')}: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -437,7 +443,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
           IconButton(
             icon: const Icon(Icons.cloud_download),
             onPressed: _fetchWorkersFromCloud,
-            tooltip: 'تحديث من السحابة',
+            tooltip: _t('تحديث من السحابة'),
           ),
         ],
       ),
@@ -470,7 +476,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
             child: _isLoading
                 ? Center(child: CircularProgressIndicator())
                 : _workers.isEmpty
-                ? Center(child: Text('لا يوجد عمال مسجلين في ورشتك حالياً'))
+                ? Center(child: Text(_t('لا يوجد عمال مسجلين في ورشتك حالياً')))
                 : ListView.builder(
                     itemCount: _workers.length,
                     itemBuilder: (context, index) {
@@ -495,7 +501,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
                                 TextButton(
                                   onPressed: () =>
                                       Navigator.pop(context, false),
-                                  child: const Text('إلغاء'),
+                                  child: Text(_t('إلغاء')),
                                 ),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
@@ -573,6 +579,11 @@ class _WorkerCardState extends State<WorkerCard> {
   static const _fullManagerJobRole = 'نائب مدير (صلاحيات كاملة)';
 
   late Map<String, dynamic> perms;
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
 
   @override
   void initState() {
@@ -800,8 +811,10 @@ class _WorkerCardState extends State<WorkerCard> {
           perms = previousPerms;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.'),
+          SnackBar(
+            content: Text(
+              _t('تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.'),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -909,8 +922,8 @@ class _WorkerCardState extends State<WorkerCard> {
           perms = previousPerms;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.'),
+          SnackBar(
+            content: Text(_t('تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.')),
             backgroundColor: Colors.red,
           ),
         );
@@ -981,8 +994,8 @@ class _WorkerCardState extends State<WorkerCard> {
           perms = previousPerms;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.'),
+          SnackBar(
+            content: Text(_t('تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.')),
             backgroundColor: Colors.red,
           ),
         );
@@ -1212,8 +1225,8 @@ class _WorkerCardState extends State<WorkerCard> {
               child: Icon(Icons.edit, color: Colors.white, size: 18),
             ),
             const SizedBox(width: 10),
-            const Text(
-              'تعديل بيانات العامل',
+            Text(
+              _t('تعديل بيانات العامل'),
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontWeight: FontWeight.bold,
@@ -1232,7 +1245,7 @@ class _WorkerCardState extends State<WorkerCard> {
                 TextFormField(
                   controller: nameCtrl,
                   decoration: InputDecoration(
-                    labelText: 'الاسم الكامل',
+                    labelText: _t('الاسم الكامل'),
                     prefixIcon: const Icon(Icons.person_outline),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -1248,7 +1261,7 @@ class _WorkerCardState extends State<WorkerCard> {
                 TextFormField(
                   controller: emailCtrl,
                   decoration: InputDecoration(
-                    labelText: 'البريد الإلكتروني',
+                    labelText: _t('البريد الإلكتروني'),
                     prefixIcon: const Icon(Icons.email_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -1262,9 +1275,9 @@ class _WorkerCardState extends State<WorkerCard> {
                 TextFormField(
                   controller: phoneCtrl,
                   decoration: InputDecoration(
-                    labelText: 'رقم الهاتف (واتساب)',
+                    labelText: _t('رقم الهاتف (واتساب)'),
                     prefixIcon: const Icon(Icons.phone_outlined),
-                    hintText: '0555 123 456 أو +213555123456',
+                    hintText: _t('0555 123 456 أو +213555123456'),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1277,9 +1290,9 @@ class _WorkerCardState extends State<WorkerCard> {
                 TextFormField(
                   controller: roleCtrl,
                   decoration: InputDecoration(
-                    labelText: 'المنصب / الدور',
+                    labelText: _t('المنصب / الدور'),
                     prefixIcon: const Icon(Icons.work_outline),
-                    hintText: 'مثال: نجار، مركّب، مندوب...',
+                    hintText: _t('مثال: نجار، مركّب، مندوب...'),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1292,7 +1305,7 @@ class _WorkerCardState extends State<WorkerCard> {
                 TextFormField(
                   controller: addressCtrl,
                   decoration: InputDecoration(
-                    labelText: 'العنوان',
+                    labelText: _t('العنوان'),
                     prefixIcon: const Icon(Icons.location_on_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -1308,11 +1321,14 @@ class _WorkerCardState extends State<WorkerCard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+            child: Text(
+              _t('إلغاء'),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
           ),
           ElevatedButton.icon(
             icon: const Icon(Icons.save_rounded, size: 18),
-            label: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
+            label: Text(_t('حفظ'), style: const TextStyle(fontFamily: 'Cairo')),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,

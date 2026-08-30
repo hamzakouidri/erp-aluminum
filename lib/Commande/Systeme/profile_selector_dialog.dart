@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../widgets/section_image.dart';
 import '../../sql_database.dart';
+import '../../settings/app_settings.dart';
+import '../../settings/localization.dart';
 import 'model.dart';
 
 /// The component row that opened the selector belongs either to an opening
@@ -207,6 +210,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'handle',
     'hinge',
     'tasso',
+    'ekar',
     'roulette',
     'entrematique',
   };
@@ -296,6 +300,13 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   }
   if (tLower == 'tasso' || tLower.contains('الطاسو')) {
     return const ['tasso'];
+  }
+  if (tLower == 'ekar' ||
+      tLower.contains('ekar') ||
+      tLower.contains('ikar') ||
+      tLower.contains('إيكار') ||
+      tLower.contains('ايكار')) {
+    return const ['ekar'];
   }
   if (tLower == 'roulette' || tLower.contains('عجلات')) {
     return const ['roulette'];
@@ -962,6 +973,12 @@ class CatalogCandidateResolver {
       roles.add('hinge');
     }
     if (type.contains('tasso') || type.contains('طاسو')) roles.add('tasso');
+    if (text.contains('ekar') ||
+        text.contains('ikar') ||
+        text.contains('إيكار') ||
+        text.contains('ايكار')) {
+      roles.add('ekar');
+    }
     if (type.contains('roulette') || type.contains('عجلات')) {
       roles.add('roulette');
     }
@@ -2037,6 +2054,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     final filtered = profiles.where((item) {
       if (searchQuery.isEmpty) return true;
       final q = searchQuery.toLowerCase().trim();
@@ -2048,7 +2066,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      title: Text('اختر ${widget.profileType}'),
+      title: Text(
+        '${Localization.translate('اختر', lang)} '
+        '${Localization.translate(widget.profileType, lang)}',
+      ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480, maxHeight: 380),
         child: SizedBox(
@@ -2065,7 +2086,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                         : Colors.black87,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'بحث...',
+                    hintText: Localization.translate('بحث...', lang),
                     hintStyle: TextStyle(
                       color: Theme.of(context).brightness == Brightness.dark
                           ? Colors.white54
@@ -2122,9 +2143,16 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                         child: Center(child: CircularProgressIndicator()),
                       )
                     : filtered.isEmpty
-                    ? const SizedBox(
+                    ? SizedBox(
                         height: 100,
-                        child: Center(child: Text('لا توجد نتائج مطابقة')),
+                        child: Center(
+                          child: Text(
+                            Localization.translate(
+                              'لا توجد نتائج مطابقة',
+                              lang,
+                            ),
+                          ),
+                        ),
                       )
                     : ListView.builder(
                         shrinkWrap: true,
@@ -2146,6 +2174,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                           return ListTile(
                             leading: SectionImageWidget(
                               code: item['code']?.toString(),
+                              name: item['name']?.toString(),
                               imagePath: item['image_path']?.toString(),
                               // The profile cross-section is the key part of
                               // this dialog; 40 px made plinths practically
@@ -2165,7 +2194,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('إلغاء'),
+          child: Text(Localization.translate('إلغاء', lang)),
         ),
       ],
     );

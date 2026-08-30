@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/subscription_service.dart';
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import 'subscription_review_dialog.dart';
 
 class SubscriptionOverviewCard extends StatelessWidget {
@@ -250,7 +251,10 @@ class SubscriptionOverviewCard extends StatelessWidget {
                         Expanded(
                           child: _buildDateItem(
                             icon: Icons.calendar_today_rounded,
-                            label: 'تاريخ الاشتراك:',
+                            label: Localization.translate(
+                              'تاريخ الاشتراك:',
+                              lang,
+                            ),
                             date: details.formattedStartDate,
                             isDark: isDark,
                           ),
@@ -264,7 +268,10 @@ class SubscriptionOverviewCard extends StatelessWidget {
                         Expanded(
                           child: _buildDateItem(
                             icon: Icons.event_busy_rounded,
-                            label: 'نهاية الاشتراك:',
+                            label: Localization.translate(
+                              'نهاية الاشتراك:',
+                              lang,
+                            ),
                             date: details.formattedEndDate,
                             isDark: isDark,
                             dateColor: details.isLifetime

@@ -531,21 +531,23 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     try {
       final kits = await widget.db.readKitBundles();
-      await Future.wait(kits.map((kit) async {
-        final kitName = kit['name']?.toString() ?? '';
-        if (kitName.isEmpty) return;
-        final kitId = _safeInt(kit['id']);
-        if (kitId == null) return;
-        final details = await widget.db.readKitBundleItemsWithDetails(
-          kitId,
-          topLevelOnly: true,
-        );
-        kitBundleData[kitName] = details
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
-        kitBundleMetadata[kitName] = Map<String, dynamic>.from(kit);
-      }));
+      await Future.wait(
+        kits.map((kit) async {
+          final kitName = kit['name']?.toString() ?? '';
+          if (kitName.isEmpty) return;
+          final kitId = _safeInt(kit['id']);
+          if (kitId == null) return;
+          final details = await widget.db.readKitBundleItemsWithDetails(
+            kitId,
+            topLevelOnly: true,
+          );
+          kitBundleData[kitName] = details
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
+          kitBundleMetadata[kitName] = Map<String, dynamic>.from(kit);
+        }),
+      );
     } catch (e) {
       debugPrint('Required goods kit cache load warning: $e');
     }
@@ -1356,12 +1358,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         widget.db.readSawKerfMm(),
       ]);
       final rawItems = loaded[0] as List<Map<String, dynamic>>;
-      final kitCache = loaded[1]
-          as ({
-            Map<String, List<Map<String, dynamic>>> data,
-            Map<String, bool> perLeaf,
-            Map<String, Map<String, dynamic>> metadata,
-          });
+      final kitCache =
+          loaded[1]
+              as ({
+                Map<String, List<Map<String, dynamic>>> data,
+                Map<String, bool> perLeaf,
+                Map<String, Map<String, dynamic>> metadata,
+              });
       final sawKerfMm = loaded[2] as double?;
       if (sawKerfMm != null) CuttingSettings.setSawKerfMm(sawKerfMm);
       final catalogCache = <String, WindowModel>{};
@@ -1385,7 +1388,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             ? 'المنتج رقم $itemNumber'
             : fallbackName;
         if (jsonRaw == null || jsonRaw.toString().trim().isEmpty) {
-          warnings.add('$productLabel: بيانات الرسم غير محفوظة.');
+          warnings.add('$productLabel: ${_t('بيانات الرسم غير محفوظة.')}');
           continue;
         }
 
@@ -1405,7 +1408,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             }
           }
           if (modelMap.isEmpty) {
-            warnings.add('$productLabel: بيانات الرسم فارغة.');
+            warnings.add('$productLabel: ${_t('بيانات الرسم فارغة.')}');
             continue;
           }
 
@@ -1660,7 +1663,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
           successCount++;
         } catch (e, stackTrace) {
-          warnings.add('$productLabel: تعذر حسابه (${e.toString()}).');
+          warnings.add('$productLabel: ${_t('تعذر حسابه')} (${e.toString()}).');
           debugPrint('Error processing product "$productLabel": $e');
           debugPrintStack(stackTrace: stackTrace);
         }
@@ -2785,84 +2788,82 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
-      child: SingleChildScrollView(
-        child: ResizableColumnsTable(
-          key: ValueKey('required-goods-${_aggregatedItems.length}'),
-          headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
-          borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-          rowColor: isDark ? const Color(0xFF171721) : Colors.white,
-          headerMinHeight: 42,
-          rowMinHeight: 54,
-          cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          columns: [
-            ResizableTableColumn(
-              id: 'image',
-              label: Text(_t('الصورة'), style: headerStyle),
-              initialWidth: 72,
-              minWidth: 58,
-              maxWidth: 110,
-              alignment: Alignment.center,
-            ),
-            ResizableTableColumn(
-              id: 'category',
-              label: Text(_t('الفئة'), style: headerStyle),
-              initialWidth: 160,
-              minWidth: 120,
-              maxWidth: 240,
-            ),
-            ResizableTableColumn(
-              id: 'name',
-              label: Text(_t('Libellé / Description'), style: headerStyle),
-              initialWidth: 330,
-              minWidth: 220,
-              maxWidth: 620,
-            ),
-            ResizableTableColumn(
-              id: 'details',
-              label: Text(_t('التفاصيل'), style: headerStyle),
-              initialWidth: 300,
-              minWidth: 180,
-              maxWidth: 520,
-            ),
-            ResizableTableColumn(
-              id: 'actual',
-              label: Text(_t('المطلوب الفعلي'), style: headerStyle),
-              initialWidth: 140,
-              minWidth: 110,
-              maxWidth: 220,
-            ),
-            ResizableTableColumn(
-              id: 'purchase',
-              label: Text(_t('كمية الشراء'), style: headerStyle),
-              initialWidth: 140,
-              minWidth: 110,
-              maxWidth: 220,
-            ),
-            ResizableTableColumn(
-              id: 'unit_price',
-              label: Text(_t('سعر الوحدة'), style: headerStyle),
-              initialWidth: 130,
-              minWidth: 105,
-              maxWidth: 210,
-            ),
-            ResizableTableColumn(
-              id: 'estimated',
-              label: Text(_t('السعر التقديري'), style: headerStyle),
-              initialWidth: 150,
-              minWidth: 120,
-              maxWidth: 240,
-            ),
-            ResizableTableColumn(
-              id: 'actions',
-              label: Text(_t('إجراء'), style: headerStyle),
-              initialWidth: 110,
-              minWidth: 90,
-              maxWidth: 180,
-              alignment: Alignment.center,
-            ),
-          ],
-          rows: rows,
-        ),
+      child: ResizableColumnsTable(
+        key: ValueKey('required-goods-${_aggregatedItems.length}'),
+        headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+        borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+        rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+        headerMinHeight: 42,
+        rowMinHeight: 54,
+        cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        columns: [
+          ResizableTableColumn(
+            id: 'image',
+            label: Text(_t('الصورة'), style: headerStyle),
+            initialWidth: 72,
+            minWidth: 58,
+            maxWidth: 110,
+            alignment: Alignment.center,
+          ),
+          ResizableTableColumn(
+            id: 'category',
+            label: Text(_t('الفئة'), style: headerStyle),
+            initialWidth: 160,
+            minWidth: 120,
+            maxWidth: 240,
+          ),
+          ResizableTableColumn(
+            id: 'name',
+            label: Text(_t('Libellé / Description'), style: headerStyle),
+            initialWidth: 330,
+            minWidth: 220,
+            maxWidth: 620,
+          ),
+          ResizableTableColumn(
+            id: 'details',
+            label: Text(_t('التفاصيل'), style: headerStyle),
+            initialWidth: 300,
+            minWidth: 180,
+            maxWidth: 520,
+          ),
+          ResizableTableColumn(
+            id: 'actual',
+            label: Text(_t('المطلوب الفعلي'), style: headerStyle),
+            initialWidth: 140,
+            minWidth: 110,
+            maxWidth: 220,
+          ),
+          ResizableTableColumn(
+            id: 'purchase',
+            label: Text(_t('كمية الشراء'), style: headerStyle),
+            initialWidth: 140,
+            minWidth: 110,
+            maxWidth: 220,
+          ),
+          ResizableTableColumn(
+            id: 'unit_price',
+            label: Text(_t('سعر الوحدة'), style: headerStyle),
+            initialWidth: 130,
+            minWidth: 105,
+            maxWidth: 210,
+          ),
+          ResizableTableColumn(
+            id: 'estimated',
+            label: Text(_t('السعر التقديري'), style: headerStyle),
+            initialWidth: 150,
+            minWidth: 120,
+            maxWidth: 240,
+          ),
+          ResizableTableColumn(
+            id: 'actions',
+            label: Text(_t('إجراء'), style: headerStyle),
+            initialWidth: 110,
+            minWidth: 90,
+            maxWidth: 180,
+            alignment: Alignment.center,
+          ),
+        ],
+        rows: rows,
       ),
     );
   }
@@ -2893,8 +2894,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               ? Icon(Icons.inventory, color: color)
               : SectionImageWidget(
                   code: item.profileCode,
+                  name: item.name,
                   imagePath: item.imagePath,
-                  size: 34,
+                  size: _isPlintheItem(item.name, item.originalName) ? 40 : 34,
                   fallbackIcon: _categoryIcon(category),
                   fallbackColor: color,
                 ),
@@ -3207,7 +3209,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final text = '${item.category} ${item.originalName} ${item.name}'
         .toLowerCase()
         .replaceAll('ـ', ' ');
-    final hasSideCover = text.contains('غطاء جانبي') ||
+    final hasSideCover =
+        text.contains('غطاء جانبي') ||
         text.contains('الغطاء الجانبي') ||
         text.contains('side cover') ||
         text.contains('couvre-joint') ||
@@ -3215,7 +3218,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         text.contains('couvre');
     if (hasSideCover) return 'frame_side_cover';
 
-    final isProfile = item.category == 'profile' ||
+    final isProfile =
+        item.category == 'profile' ||
         item.category == 'frame' ||
         item.category == 'mullion' ||
         item.category == 'sash';
@@ -3850,6 +3854,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         height: 36,
                         child: SectionImageWidget(
                           code: secCode.toString(),
+                          name: secName.toString(),
                           imagePath: imagePath,
                           size: 32,
                         ),
@@ -4175,6 +4180,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     borderRadius: BorderRadius.circular(8),
                     child: SectionImageWidget(
                       code: item.profileCode,
+                      name: item.name,
                       imagePath: item.imagePath,
                       size: 32.0,
                       fallbackIcon: _categoryIcon(category),
@@ -4765,8 +4771,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 children: [
                   SectionImageWidget(
                     code: bom.profileCode,
+                    name: bom.name,
                     imagePath: bom.imagePath,
-                    size: 18,
+                    size: _isPlintheItem(bom.name, bom.originalName) ? 30 : 18,
                     fallbackIcon: _categoryIcon(bom.category),
                     fallbackColor: Colors.grey,
                   ),
@@ -4839,8 +4846,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   children: [
                     SectionImageWidget(
                       code: bom.profileCode,
+                      name: bom.name,
                       imagePath: bom.imagePath,
-                      size: 18,
+                      size: _isPlintheItem(bom.name, bom.originalName) ? 30 : 18,
                       fallbackIcon: _categoryIcon(bom.category),
                       fallbackColor: Colors.grey,
                     ),
@@ -4876,6 +4884,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       padding: const EdgeInsets.all(6),
       child: Text(text, style: TextStyle(fontSize: 12, color: color)),
     );
+  }
+
+  bool _isPlintheItem(String name, String originalName) {
+    final value = '$name $originalName'.toLowerCase();
+    return value.contains('بلانت') ||
+        value.contains('plinthe') ||
+        value.contains('plant');
   }
 }
 

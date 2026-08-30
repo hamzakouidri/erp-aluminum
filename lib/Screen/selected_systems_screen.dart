@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../sql_database.dart';
@@ -65,6 +67,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
 
   List<SystemModeItem> _systemModes = [];
   List<ProfileSystemItem> _profileSystems = [];
+  int? _maxSystemModes;
+  int? _maxProfiles;
 
   @override
   void didChangeDependencies() {
@@ -82,70 +86,117 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   final List<Map<String, dynamic>> _presetModes = [
     {
       'id': 'sliding',
-      'title': 'System Sliding (نظام الجرار)',
-      'subtitle': 'نظام النوافذ والأبواب الجرارة 2/3/4 سكة',
+      'titleAr': 'نظام الجرار',
+      'titleFr': 'Système coulissant',
+      'titleEn': 'Sliding system',
+      'subtitleAr': 'نظام النوافذ والأبواب الجرارة 2/3/4 سكة',
+      'subtitleFr': 'Système de fenêtres et portes coulissantes à 2/3/4 rails',
+      'subtitleEn': '2/3/4-track sliding windows and doors system',
       'iconPath': 'Icon/sli.png',
       'defaultIcon': Icons.view_sidebar_rounded,
-      'category': 'جرار',
+      'categoryAr': 'جرار',
+      'categoryFr': 'Coulissant',
+      'categoryEn': 'Sliding',
     },
     {
       'id': 'french',
-      'title': 'System Beating (النظام الفرنسي)',
-      'subtitle': 'نظام الفتح الداخلي والخارجي والقلاب',
+      'titleAr': 'النظام الفرنسي',
+      'titleFr': 'Système à frappe',
+      'titleEn': 'Casement system',
+      'subtitleAr': 'نظام الفتح الداخلي والخارجي والقلاب',
+      'subtitleFr': 'Système à ouverture intérieure, extérieure et oscillo-battante',
+      'subtitleEn': 'Inward, outward and tilt-turn opening system',
       'iconPath': 'Icon/french.png',
       'defaultIcon': Icons.door_front_door_rounded,
-      'category': 'فرنسي',
+      'categoryAr': 'فرنسي',
+      'categoryFr': 'À frappe',
+      'categoryEn': 'Casement',
     },
     {
       'id': 'mixed',
       // Keep the internal id for compatibility with saved drawings. The
       // user-facing name is Conception (design), not "mixed system".
-      'title': 'Conception (التصميم)',
-      'subtitle': 'صفحة الرسم والتصميم للنوافذ والأبواب',
+      'titleAr': 'التصميم',
+      'titleFr': 'Conception',
+      'titleEn': 'Design',
+      'subtitleAr': 'صفحة الرسم والتصميم للنوافذ والأبواب',
+      'subtitleFr': 'Page de dessin et de conception des fenêtres et portes',
+      'subtitleEn': 'Window and door drawing and design page',
       'iconPath': 'Icon/french.png',
       'defaultIcon': Icons.dashboard_customize_rounded,
-      'category': 'تصميم',
+      'categoryAr': 'تصميم',
+      'categoryFr': 'Conception',
+      'categoryEn': 'Design',
     },
     {
       'id': 'rolling',
-      'title': 'System Rolling (الستار / Volet)',
-      'subtitle': 'أنظمة الستائر المتحركة والمحركات',
+      'titleAr': 'الستار',
+      'titleFr': 'Volet roulant',
+      'titleEn': 'Roller shutter',
+      'subtitleAr': 'أنظمة الستائر المتحركة والمحركات',
+      'subtitleFr': 'Systèmes de volets roulants et motorisations',
+      'subtitleEn': 'Roller shutter and motor systems',
       'iconPath': 'Icon/roling.png',
       'defaultIcon': Icons.blinds_rounded,
-      'category': 'ستار',
+      'categoryAr': 'ستار',
+      'categoryFr': 'Volet',
+      'categoryEn': 'Shutter',
     },
     {
       'id': 'caisson_tunnel',
-      'title': 'Caisson Tunnel (صندوق التونيل)',
-      'subtitle': 'صناديق الستار المدمجة في الجدار',
+      'titleAr': 'صندوق التونيل',
+      'titleFr': 'Caisson Tunnel',
+      'titleEn': 'Tunnel box',
+      'subtitleAr': 'صناديق الستار المدمجة في الجدار',
+      'subtitleFr': 'Caissons de volet intégrés dans le mur',
+      'subtitleEn': 'Roller shutter boxes built into the wall',
       'iconPath': 'Icon/caisson_tunnel.jpg',
       'defaultIcon': Icons.square_rounded,
-      'category': 'تونيل',
+      'categoryAr': 'تونيل',
+      'categoryFr': 'Tunnel',
+      'categoryEn': 'Tunnel',
     },
     {
       'id': 'moustiquaire',
-      'title': 'Moustiquaire (موستيكير / الناموسية)',
-      'subtitle':
-          'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
+      'titleAr': 'الناموسية',
+      'titleFr': 'Moustiquaire',
+      'titleEn': 'Insect screen',
+      'subtitleAr': 'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
+      'subtitleFr': 'Systèmes moustiquaires (enroulables, plissés, fixes et coulissants)',
+      'subtitleEn': 'Insect screen systems (roller, pleated, fixed and sliding)',
       'iconPath': 'Icon/media.webp',
       'defaultIcon': Icons.grid_4x4_rounded,
-      'category': 'ناموسية',
+      'categoryAr': 'ناموسية',
+      'categoryFr': 'Moustiquaire',
+      'categoryEn': 'Screen',
     },
     {
       'id': 'precadre',
-      'title': 'Pre-cadre (إطار التثبيت الأولي)',
-      'subtitle': 'إطارات الإخفاء والتجهيز قبل التركيب',
+      'titleAr': 'إطار التثبيت الأولي',
+      'titleFr': 'Pré-cadre',
+      'titleEn': 'Pre-frame',
+      'subtitleAr': 'إطارات الإخفاء والتجهيز قبل التركيب',
+      'subtitleFr': 'Cadres de masquage et de préparation avant la pose',
+      'subtitleEn': 'Concealment and preparation frames before installation',
       'iconPath': 'Icon/french.png',
       'defaultIcon': Icons.crop_square_rounded,
-      'category': 'إطار أولي',
+      'categoryAr': 'إطار أولي',
+      'categoryFr': 'Pré-cadre',
+      'categoryEn': 'Pre-frame',
     },
     {
       'id': 'verre',
-      'title': 'Verre Trempé (الزجاج المعالج)',
-      'subtitle': 'أنظمة الزجاج المقوى والواجهات',
+      'titleAr': 'الزجاج المعالج',
+      'titleFr': 'Verre trempé',
+      'titleEn': 'Tempered glass',
+      'subtitleAr': 'أنظمة الزجاج المقوى والواجهات',
+      'subtitleFr': 'Systèmes de verre trempé et façades',
+      'subtitleEn': 'Tempered glass and façade systems',
       'iconPath': 'Icon/verre.png',
       'defaultIcon': Icons.window_rounded,
-      'category': 'زجاج',
+      'categoryAr': 'زجاج',
+      'categoryFr': 'Vitrage',
+      'categoryEn': 'Glass',
     },
   ];
 
@@ -169,9 +220,80 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     super.dispose();
   }
 
+  int? _readSelectionLimit(dynamic value) {
+    final parsed = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '');
+    if (parsed == null || parsed >= 999) return null;
+    return parsed.clamp(0, 999).toInt();
+  }
+
+  Future<void> _loadSubscriptionLimits() async {
+    _maxSystemModes = null;
+    _maxProfiles = null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || isApplicationAdminEmail(user.email)) return;
+
+    try {
+      final userSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final userData = userSnapshot.data() ?? <String, dynamic>{};
+      final role = userData['role']?.toString().toLowerCase();
+      final workshopId = userData['workshopId']?.toString().trim();
+      final targetId = workshopId != null && workshopId.isNotEmpty
+          ? workshopId
+          : user.uid;
+      final workshopSnapshot = await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(targetId)
+          .get();
+      final workshopData = <String, dynamic>{
+        ...userData,
+        ...?workshopSnapshot.data(),
+      };
+
+      _maxSystemModes = _readSelectionLimit(workshopData['maxSystems']);
+      _maxProfiles = _readSelectionLimit(workshopData['maxProfiles']);
+      debugPrint(
+        'SelectedSystems limits loaded for $role/$targetId: '
+        'systems=$_maxSystemModes profiles=$_maxProfiles',
+      );
+    } catch (error) {
+      // Missing limits keep the old unrestricted behaviour.
+      debugPrint('Could not load subscription system limits: $error');
+    }
+  }
+
+  void _showSelectionLimitMessage(String label, int limit) {
+    if (!mounted) return;
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final message = limit == 0
+        ? 'لا توجد $label مفعلة في اشتراك هذه الورشة.'
+        : 'يسمح اشتراك هذه الورشة بحد أقصى $limit من $label.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(message, lang),
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
+      );
+  }
+
   Future<void> _loadData({bool showLoading = true}) async {
     if (showLoading && mounted) setState(() => _isLoading = true);
     final prefs = await SharedPreferences.getInstance();
+    await _loadSubscriptionLimits();
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final suffix = switch (lang) {
+      AppLanguage.french => 'Fr',
+      AppLanguage.english => 'En',
+      AppLanguage.arabic => 'Ar',
+    };
 
     // 1. Load System Modes preferences
     final List<SystemModeItem> loadedModes = [];
@@ -181,11 +303,11 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
       loadedModes.add(
         SystemModeItem(
           id: id,
-          title: preset['title'],
-          subtitle: preset['subtitle'],
+          title: preset['title$suffix'],
+          subtitle: preset['subtitle$suffix'],
           iconPath: preset['iconPath'],
           defaultIcon: preset['defaultIcon'],
-          category: preset['category'],
+          category: preset['category$suffix'],
           isActive: isActive,
         ),
       );
@@ -237,6 +359,43 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
       debugPrint('Error loading Profile/Series table: $e');
     }
 
+    // If the administrator reduced a subscription limit, disable only the
+    // excess selections locally before publishing the corrected selection.
+    if (_maxSystemModes != null) {
+      final overflowModes = loadedModes
+          .where((mode) => mode.isActive)
+          .skip(_maxSystemModes!)
+          .toList();
+      for (final mode in overflowModes) {
+        mode.isActive = false;
+        await prefs.setBool('system_active_${mode.id}', false);
+      }
+    }
+    if (_maxProfiles != null) {
+      final overflowProfiles = loadedProfiles
+          .where((profile) => profile.isActive)
+          .skip(_maxProfiles!)
+          .toList();
+      if (overflowProfiles.isNotEmpty) {
+        final dbInstance = await _db.db;
+        for (final profile in overflowProfiles) {
+          profile.isActive = false;
+          await dbInstance?.update(
+            'Profile',
+            {'is_active': 0},
+            where: 'id = ?',
+            whereArgs: [profile.id],
+          );
+          await dbInstance?.update(
+            'Series',
+            {'is_active': 0},
+            where: 'profile_id = ? OR id = ?',
+            whereArgs: [profile.id, profile.id],
+          );
+        }
+      }
+    }
+
     if (mounted) {
       setState(() {
         _systemModes = loadedModes;
@@ -247,6 +406,13 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   }
 
   Future<void> _toggleSystemMode(SystemModeItem item, bool newValue) async {
+    if (newValue &&
+        _maxSystemModes != null &&
+        _systemModes.where((mode) => mode.isActive).length >=
+            _maxSystemModes!) {
+      _showSelectionLimitMessage('أنظمة العمل', _maxSystemModes!);
+      return;
+    }
     setState(() => item.isActive = newValue);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('system_active_${item.id}', newValue);
@@ -276,6 +442,13 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   }
 
   Future<void> _toggleProfileItem(ProfileSystemItem item, bool newValue) async {
+    if (newValue &&
+        _maxProfiles != null &&
+        _profileSystems.where((profile) => profile.isActive).length >=
+            _maxProfiles!) {
+      _showSelectionLimitMessage('البروفيلات', _maxProfiles!);
+      return;
+    }
     setState(() => item.isActive = newValue);
     try {
       final dbInstance = await _db.db;
@@ -326,9 +499,13 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   Future<void> _setAllModes(bool enable) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
+      var enabledCount = 0;
       for (var mode in _systemModes) {
-        mode.isActive = enable;
-        prefs.setBool('system_active_${mode.id}', enable);
+        final canEnable = _maxSystemModes == null ||
+            enabledCount < _maxSystemModes!;
+        mode.isActive = enable && canEnable;
+        if (mode.isActive) enabledCount++;
+        prefs.setBool('system_active_${mode.id}', mode.isActive);
       }
     });
     await _syncToCloud();
@@ -337,9 +514,16 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   // ✅ مساعد: يجمع الحالة الحالية ويرسلها للسحابة
   Future<void> _syncToCloud() async {
     final systemModes = {for (var m in _systemModes) m.id: m.isActive};
+    if (_maxSystemModes != null) {
+      final activeModes = _systemModes.where((mode) => mode.isActive).toList();
+      for (final mode in activeModes.skip(_maxSystemModes!)) {
+        systemModes[mode.id] = false;
+      }
+    }
     final activeProfileIds = _profileSystems
         .where((p) => p.isActive)
         .map((p) => p.id)
+        .take(_maxProfiles ?? _profileSystems.length)
         .toList();
     await _cloudSync.saveWorkshopSystems(
       systemModes: systemModes,
@@ -355,10 +539,13 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     if (!mounted) return;
     setState(() => _isSyncing = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text(
-          'تم تحديث الأنظمة من السحابة',
-          style: TextStyle(fontFamily: 'Cairo'),
+          Localization.translate(
+            'تم تحديث الأنظمة من السحابة',
+            Provider.of<AppSettingsProvider>(context, listen: false).language,
+          ),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
         backgroundColor: Colors.teal,
         behavior: SnackBarBehavior.floating,
@@ -367,16 +554,36 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   }
 
   Future<void> _setAllProfiles(bool enable) async {
+    var enabledCount = 0;
     setState(() {
       for (var p in _profileSystems) {
-        p.isActive = enable;
+        final canEnable = _maxProfiles == null ||
+            enabledCount < _maxProfiles!;
+        p.isActive = enable && canEnable;
+        if (p.isActive) enabledCount++;
       }
     });
     try {
       final dbInstance = await _db.db;
       if (dbInstance != null) {
-        await dbInstance.update('Profile', {'is_active': enable ? 1 : 0});
-        await dbInstance.update('Series', {'is_active': enable ? 1 : 0});
+        await dbInstance.update('Profile', {'is_active': 0});
+        await dbInstance.update('Series', {'is_active': 0});
+        if (enable) {
+          for (final profile in _profileSystems.where((p) => p.isActive)) {
+            await dbInstance.update(
+              'Profile',
+              {'is_active': 1},
+              where: 'id = ?',
+              whereArgs: [profile.id],
+            );
+            await dbInstance.update(
+              'Series',
+              {'is_active': 1},
+              where: 'profile_id = ? OR id = ?',
+              whereArgs: [profile.id, profile.id],
+            );
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error bulk updating Profiles/Series: $e');
@@ -443,7 +650,7 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                 )
               : IconButton(
                   icon: const Icon(Icons.cloud_download_rounded),
-                  tooltip: 'مزامنة من السحابة',
+                  tooltip: Localization.translate('مزامنة من السحابة', lang),
                   onPressed: _pullFromCloud,
                 ),
         ],
@@ -541,6 +748,26 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                         ),
                       ),
                       const SizedBox(height: 10),
+
+                      if (_maxSystemModes != null || _maxProfiles != null)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            'حد الاشتراك: '
+                            'أنظمة العمل ${_maxSystemModes ?? "بلا حدود"}، '
+                            'بروفيلات ${_maxProfiles ?? "بلا حدود"}',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? Colors.amber.shade300
+                                  : Colors.indigo.shade700,
+                            ),
+                          ),
+                        ),
+                      if (_maxSystemModes != null || _maxProfiles != null)
+                        const SizedBox(height: 10),
 
                       // Quick Control Action Buttons
                       Row(

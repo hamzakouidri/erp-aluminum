@@ -62,15 +62,28 @@ class _InventoryScreenState extends State<InventoryScreen> {
     super.dispose();
   }
 
-  Future<void> _loadLocations() async {
+  Future<void> _loadLocations({int? preferredLocationId}) async {
     final locs = await widget.db.readLocations();
     if (mounted) {
       setState(() {
         _locations = locs;
         if (_locations.isNotEmpty) {
-          _selectedLocationId = _locations.first['id'] as int;
+          final preferredExists =
+              preferredLocationId != null &&
+              _locations.any(
+                (location) =>
+                    (location['id'] as num?)?.toInt() == preferredLocationId,
+              );
+          _selectedLocationId = preferredExists
+              ? preferredLocationId
+              : (_locations.first['id'] as num).toInt();
+          final selectedLocation = _locations.firstWhere(
+            (location) =>
+                (location['id'] as num?)?.toInt() == _selectedLocationId,
+            orElse: () => _locations.first,
+          );
           final firstLocName =
-              _locations.first['name']?.toString() ?? 'المستودع الرئيسي';
+              selectedLocation['name']?.toString() ?? 'المستودع الرئيسي';
           _selectedLocationName = firstLocName == 'المستودع الرئيسي'
               ? Localization.translate(
                   'المستودع الرئيسي',
@@ -86,6 +99,50 @@ class _InventoryScreenState extends State<InventoryScreen> {
         }
       });
     }
+  }
+
+  Future<void> _showAddLocationDialog() async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+    if (!settings.canAdjustInventory()) return;
+
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(Localization.translate('إضافة مستودع', lang)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            labelText: Localization.translate('اسم المستودع', lang),
+            hintText: Localization.translate(
+              'مثال: مستودع المواد الجاهزة',
+              lang,
+            ),
+          ),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(Localization.translate('إلغاء', lang)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: Text(Localization.translate('إضافة', lang)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    final cleanName = name?.trim() ?? '';
+    if (!mounted || cleanName.isEmpty) return;
+    final locationId = await widget.db.insertLocation(cleanName);
+    if (!mounted || locationId == 0) return;
+    await _loadLocations(preferredLocationId: locationId);
   }
 
   Future<void> _loadStockData() async {
@@ -193,7 +250,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final canAddLocation = settings.canAdjustInventory();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -208,7 +267,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildLocationDropdown(),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _buildLocationDropdown()),
+                        if (canAddLocation) ...[
+                          const SizedBox(width: 8),
+                          IconButton.filled(
+                            onPressed: _showAddLocationDialog,
+                            icon: const Icon(Icons.add_business_rounded),
+                            tooltip: Localization.translate(
+                              'إضافة مستودع',
+                              lang,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -531,7 +606,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   )
                 : locName;
             return DropdownMenuItem<int>(
-              value: loc['id'] as int,
+              value: (loc['id'] as num).toInt(),
               child: Row(
                 children: [
                   const Icon(Icons.storefront_rounded, color: _blue, size: 20),

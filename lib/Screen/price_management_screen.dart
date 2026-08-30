@@ -3726,7 +3726,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       items: boxSizes.map((size) {
                         return DropdownMenuItem<int>(
                           value: size,
-                          child: Text('$size ملم'),
+                          child: Text(
+                            '${Localization.translate('ملم', lang)} $size',
+                          ),
                         );
                       }).toList(),
                       onChanged: (val) {

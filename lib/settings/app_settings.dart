@@ -171,11 +171,10 @@ class AppSettingsProvider extends ChangeNotifier {
         .listen((payload) {
           final role = payload['role']?.toString() ?? '';
           final rawPermissions = payload['permissions'];
-          // Firebase owns permissions for accounts that have a Firebase user
-          // document. Supabase refreshes can be briefly behind a manager's
-          // latest save, so never let them overwrite that authoritative value.
-          if (_firestorePermissionsAvailable) return;
-          if (!isAdmin && role.isNotEmpty && !_firestorePermissionsAvailable) {
+          // Once the Supabase session is open, Supabase is authoritative for
+          // workshop roles and permissions. Firebase remains only the login
+          // provider and must not overwrite this live workshop state.
+          if (!isAdmin && role.isNotEmpty) {
             _userRole = role;
           }
           if (rawPermissions is Map) {
@@ -234,7 +233,15 @@ class AppSettingsProvider extends ChangeNotifier {
       }
 
       try {
-        _startPermissionListener(user, prefs);
+        if (SupabaseWorkshopSyncService().isSignedIn) {
+          _permSubscription?.cancel();
+          _permSubscription = null;
+          _permissionListenerUid = null;
+          _firestoreRoleLoaded = false;
+          _firestorePermissionsAvailable = false;
+        } else {
+          _startPermissionListener(user, prefs);
+        }
       } catch (_) {}
       _startSupabasePermissionListener();
     }

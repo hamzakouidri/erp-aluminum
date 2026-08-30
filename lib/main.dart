@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' show PointerDeviceKind;
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -224,6 +225,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       title: Localization.translate('ورشتي', settings.language),
       themeMode: settings.themeMode,
+      // Desktop scroll views should respond naturally to the mouse and
+      // trackpad wherever the pointer is positioned.  Individual widgets
+      // can still provide their own axis-specific controllers when a card
+      // contains both vertical rows and horizontal columns.
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        dragDevices: {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.trackpad,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.invertedStylus,
+          PointerDeviceKind.unknown,
+        },
+      ),
       theme: AppTheme.lightTheme(
         settings.fontSizeScale,
         fontFamily: uiFontFamily,

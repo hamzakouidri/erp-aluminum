@@ -265,7 +265,10 @@ class _AchatScreenState extends State<AchatScreen>
       actions: [
         IconButton(
           icon: Icon(Icons.document_scanner_rounded),
-          tooltip: 'مسح الفاتورة بالذكاء الاصطناعي',
+          tooltip: Localization.translate(
+            'مسح الفاتورة بالذكاء الاصطناعي',
+            Provider.of<AppSettingsProvider>(context, listen: false).language,
+          ),
           onPressed: _openAiScanner,
         ),
         SizedBox(width: 8),

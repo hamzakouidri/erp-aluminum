@@ -8,6 +8,13 @@ import 'locales/caisson_tunnel_keys.dart';
 import 'locales/measurement_keys.dart';
 import 'locales/recent_development_keys.dart';
 import 'locales/app_wide_keys.dart';
+import 'locales/translation_phase1_keys.dart';
+import 'locales/translation_phase2_keys.dart';
+import 'locales/translation_phase3_keys.dart';
+import 'locales/translation_phase4_keys.dart';
+import 'locales/translation_phase5_keys.dart';
+import 'locales/translation_phase6_keys.dart';
+import 'locales/translation_phase7_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -20,6 +27,13 @@ class Localization {
     ...measurementKeys,
     ...recentDevelopmentKeys,
     ...appWideKeys,
+    ...translationPhase1Keys,
+    ...translationPhase2Keys,
+    ...translationPhase3Keys,
+    ...translationPhase4Keys,
+    ...translationPhase5Keys,
+    ...translationPhase6Keys,
+    ...translationPhase7Keys,
   };
 
   static String translate(String key, AppLanguage lang) {

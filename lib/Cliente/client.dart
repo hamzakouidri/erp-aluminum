@@ -1232,7 +1232,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'بحث بالاسم...',
+          hintText: Localization.translate('بحث بالاسم...', lang),
           controller: _clientColumnControllers['name'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1249,7 +1249,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'بحث بالهاتف...',
+          hintText: Localization.translate('بحث بالهاتف...', lang),
           controller: _clientColumnControllers['phone'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1266,7 +1266,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'بحث بالعنوان...',
+          hintText: Localization.translate('بحث بالعنوان...', lang),
           controller: _clientColumnControllers['address'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1283,7 +1283,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'بحث بالبريد...',
+          hintText: Localization.translate('بحث بالبريد...', lang),
           controller: _clientColumnControllers['email'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1300,7 +1300,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'NIF / NIS...',
+          hintText: Localization.translate('NIF / NIS...', lang),
           controller: _clientColumnControllers['fiscal'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1317,7 +1317,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'سنة-شهر...',
+          hintText: Localization.translate('سنة-شهر...', lang),
           controller: _clientColumnControllers['date'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1334,7 +1334,7 @@ class _CustomersState extends State<Customers> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'المُضيف...',
+          hintText: Localization.translate('المُضيف...', lang),
           controller: _clientColumnControllers['creator'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -1588,18 +1588,16 @@ class _CustomersState extends State<Customers> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: SingleChildScrollView(
-                        child: ResizableColumnsTable(
-                          columns: columns,
-                          rows: rows,
-                          headerColor: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
-                          filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-                          borderColor: borderColor,
-                          rowColor: cardColor,
-                          headerMinHeight: 38,
-                          filterRowMinHeight: 34,
-                          rowMinHeight: 46,
-                        ),
+                      child: ResizableColumnsTable(
+                        columns: columns,
+                        rows: rows,
+                        headerColor: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
+                        filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                        borderColor: borderColor,
+                        rowColor: cardColor,
+                        headerMinHeight: 38,
+                        filterRowMinHeight: 34,
+                        rowMinHeight: 46,
                       ),
                     ),
                   ),
@@ -1839,7 +1837,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   TextFormField(
                     controller: _nifController,
                     decoration: InputDecoration(
-                      labelText: 'الرقم التعريفي الجبائي / NIF',
+                      labelText: Localization.translate(
+                        'الرقم التعريفي الجبائي / NIF',
+                        lang,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1849,7 +1850,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   TextFormField(
                     controller: _nisController,
                     decoration: InputDecoration(
-                      labelText: 'الرقم التعريفي الإحصائي / NIS',
+                      labelText: Localization.translate(
+                        'الرقم التعريفي الإحصائي / NIS',
+                        lang,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1859,7 +1863,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   TextFormField(
                     controller: _rcController,
                     decoration: InputDecoration(
-                      labelText: 'السجل التجاري / RC',
+                      labelText: Localization.translate(
+                        'السجل التجاري / RC',
+                        lang,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1869,7 +1876,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   TextFormField(
                     controller: _aiController,
                     decoration: InputDecoration(
-                      labelText: 'رقم المادة / AI',
+                      labelText: Localization.translate('رقم المادة / AI', lang),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),

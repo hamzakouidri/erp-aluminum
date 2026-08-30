@@ -396,6 +396,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       }
       final normalizedPosition = position == 'frame_gasket'
           ? 'frame_inner'
+          : position == 'porte_joint_bronze'
+          ? 'porte_joint_brosse'
           : position;
       _gasketTypeBySectionPosition.putIfAbsent(sectionId, () => {});
       _gasketTypeBySectionPosition[sectionId]![normalizedPosition] = gasketType;
@@ -568,7 +570,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       if (!_isSlidingSeries) 'frame': const ['frame_inner', 'frame_outer'],
       'sash': const ['sash_inner', 'sash_outer'],
       'glazing_bead': const ['parclose_gasket'],
-      'porte_joint': const ['porte_joint_bronze'],
+      'porte_joint': const ['porte_joint_brosse'],
     };
     for (final entry in jointPositionsByRole.entries) {
       for (final sectionId in _sectionIdsByRole[entry.key] ?? const <int>{}) {
@@ -1136,8 +1138,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           ),
                           subtitle: Text(
                             _t(
-                              'جوان البرونز يحسب بطول ضعفي حامل الجوان.',
-                              'Le joint bronze est calculé à deux fois la longueur du porte-joint.',
+                              'جوان البروس يحسب بطول ضعفي حامل الجوان.',
+                              'Le joint brosse est calculé à deux fois la longueur du porte-joint.',
                             ),
                           ),
                         ),
@@ -1420,6 +1422,55 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     return null;
   }
 
+  String _localizedGasketType(String type) {
+    final text = type.trim().toLowerCase();
+    final language = context.read<AppSettingsProvider>().language;
+
+    String localized(String ar, String fr, String en) {
+      switch (language) {
+        case AppLanguage.arabic:
+          return ar;
+        case AppLanguage.french:
+          return fr;
+        case AppLanguage.english:
+          return en;
+      }
+    }
+
+    if (text.contains('فيتراج') ||
+        text.contains('vitrage') ||
+        text.contains('glass') ||
+        text.contains('زجاج')) {
+      return localized('جوان فيتراج', 'Joint vitrage', 'Glass gasket');
+    }
+    if (text.contains('فراب') ||
+        text.contains('frappe') ||
+        text.contains('strike') ||
+        text.contains('ضرب')) {
+      return localized('جوان فراب', 'Joint frappe', 'Strike gasket');
+    }
+    if (text.contains('سنترال') ||
+        text.contains('central') ||
+        text.contains('وسط')) {
+      return localized('جوان سنترال', 'Joint central', 'Central gasket');
+    }
+    if (text.contains('براش') ||
+        text.contains('بروش') ||
+        text.contains('بروس') ||
+        text.contains('brosse') ||
+        text.contains('brush') ||
+        text.contains('bros')) {
+      return localized('جوان بروس', 'Joint brosse', 'Brush gasket');
+    }
+    if (text.contains('بوراج') ||
+        text.contains('bourrage') ||
+        text.contains('bouraj') ||
+        text.contains('filler')) {
+      return localized('جوان بوراج', 'Joint bourrage', 'Filler gasket');
+    }
+    return type;
+  }
+
   void _setGasketTypeLink(int sectionId, String position, String? gasketType) {
     setState(() {
       final links = _gasketTypeBySectionPosition.putIfAbsent(
@@ -1495,9 +1546,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               porteJointSections,
               const [
                 (
-                  'porte_joint_bronze',
-                  'جوان برونز حامل الجوان',
-                  'Joint bronze porte-joint',
+                  'porte_joint_brosse',
+                  'جوان بروس حامل الجوان',
+                  'Joint brosse porte-joint',
                 ),
               ],
               gasketTypes,
@@ -1567,7 +1618,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             child: Text(_t('بدون ربط', 'Sans liaison')),
           ),
           ...gasketTypes.map(
-            (type) => DropdownMenuItem<String?>(value: type, child: Text(type)),
+            (type) => DropdownMenuItem<String?>(
+              value: type,
+              child: Text(_localizedGasketType(type)),
+            ),
           ),
         ],
         onChanged: (type) => _setGasketTypeLink(sectionId, position, type),

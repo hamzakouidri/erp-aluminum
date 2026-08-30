@@ -81,6 +81,14 @@ class _CommandeState extends State<Commande> {
     return Localization.translate(status, lang);
   }
 
+  String _t(String key) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    return Localization.translate(key, lang);
+  }
+
   Color _getStatusColor(String status) {
     switch (status) {
       case 'Confirmed':
@@ -1352,7 +1360,9 @@ class _CommandeState extends State<Commande> {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                            content: Text(
+                              '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                            ),
                             backgroundColor: Colors.red,
                           ),
                         );
@@ -1441,7 +1451,9 @@ class _CommandeState extends State<Commande> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              content: Text(
+                                '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -1494,7 +1506,9 @@ class _CommandeState extends State<Commande> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              content: Text(
+                                '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -1547,7 +1561,9 @@ class _CommandeState extends State<Commande> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('خطأ أثناء توليد المستند: $e'),
+                              content: Text(
+                                '${_t('خطأ أثناء توليد المستند')}: $e',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -1650,7 +1666,9 @@ class _CommandeState extends State<Commande> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              content: Text(
+                                '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -1759,7 +1777,9 @@ class _CommandeState extends State<Commande> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              content: Text(
+                                '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -2213,7 +2233,9 @@ class _CommandeState extends State<Commande> {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                                  content: Text(
+                                    '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                                  ),
                                   backgroundColor: Colors.red,
                                 ),
                               );
@@ -2309,7 +2331,9 @@ class _CommandeState extends State<Commande> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              content: Text(
+                                '${_t('خطأ أثناء توليد الفاتورة')}: $e',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -2347,8 +2371,7 @@ class _CommandeState extends State<Commande> {
                         final items = await db.readCommandeDetails(
                           orderData['id'],
                         );
-                        final workshop =
-                            await DevisBuilder.loadWorkshopInfo();
+                        final workshop = await DevisBuilder.loadWorkshopInfo();
                         await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
                           order: orderData,
                           items: items,
@@ -2919,7 +2942,7 @@ class _CommandeState extends State<Commande> {
             children: [
               const Icon(Icons.block, color: Colors.red),
               const SizedBox(width: 8),
-              const Text('لا يمكن الحذف'),
+              Text(_t('لا يمكن الحذف')),
             ],
           ),
           content: const Text(
@@ -2929,7 +2952,7 @@ class _CommandeState extends State<Commande> {
           actions: [
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('موافق'),
+              child: Text(_t('موافق')),
             ),
           ],
         ),
@@ -2947,7 +2970,7 @@ class _CommandeState extends State<Commande> {
             children: [
               const Icon(Icons.lock, color: Colors.orange),
               const SizedBox(width: 8),
-              const Text('غير مصرح'),
+              Text(_t('غير مصرح')),
             ],
           ),
           content: const Text(
@@ -2957,7 +2980,7 @@ class _CommandeState extends State<Commande> {
           actions: [
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('موافق'),
+              child: Text(_t('موافق')),
             ),
           ],
         ),
@@ -2969,18 +2992,18 @@ class _CommandeState extends State<Commande> {
     bool? confirm = await showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
+        title: Text(_t('تأكيد الحذف')),
         content: const Text(
           'هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('إلغاء'),
+            child: Text(_t('إلغاء')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+            child: Text(_t('حذف'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -2997,8 +3020,8 @@ class _CommandeState extends State<Commande> {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(
-              const SnackBar(
-                content: Text('الطلبية لم تعد موجودة في قاعدة البيانات.'),
+              SnackBar(
+                content: Text(_t('الطلبية لم تعد موجودة في قاعدة البيانات.')),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -3009,8 +3032,8 @@ class _CommandeState extends State<Commande> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(
-              content: Text('تم حذف الطلبية بنجاح.'),
+            SnackBar(
+              content: Text(_t('تم حذف الطلبية بنجاح.')),
               backgroundColor: Colors.green,
             ),
           );
@@ -3020,7 +3043,7 @@ class _CommandeState extends State<Commande> {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
-              content: Text('تعذر حذف الطلبية: $error'),
+              content: Text('${_t('تعذر حذف الطلبية:')} $error'),
               backgroundColor: Colors.red,
             ),
           );
@@ -3552,6 +3575,7 @@ class _CommandeState extends State<Commande> {
     final borderColor = isDark ? Colors.grey.shade800 : Colors.blue.shade100;
 
     final data = _applyOrderFiltersAndSort(rawData, lang);
+    final statusFilterOptions = _buildOrderStatusFilterOptions(rawData, lang);
 
     final columns = [
       ResizableTableColumn(
@@ -3582,7 +3606,7 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'زبون / مشروع...',
+          hintText: Localization.translate('زبون / مشروع...', lang),
           controller: _orderColumnControllers['client_project'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -3599,7 +3623,7 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'سنة-شهر...',
+          hintText: Localization.translate('سنة-شهر...', lang),
           controller: _orderColumnControllers['date'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -3616,7 +3640,7 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'المجموع...',
+          hintText: Localization.translate('المجموع...', lang),
           isNumeric: true,
           lang: lang,
           initialNumericState:
@@ -3636,7 +3660,7 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'المدفوع...',
+          hintText: Localization.translate('المدفوع...', lang),
           isNumeric: true,
           lang: lang,
           initialNumericState:
@@ -3656,7 +3680,7 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'المتبقي...',
+          hintText: Localization.translate('المتبقي...', lang),
           isNumeric: true,
           lang: lang,
           initialNumericState:
@@ -3676,9 +3700,11 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'حالة الورشة...',
+          hintText: Localization.translate('حالة الورشة...', lang),
           controller: _orderColumnControllers['status'],
           lang: lang,
+          options: statusFilterOptions,
+          optionsTooltip: Localization.translate('اختيار حالة الطلبية', lang),
           onTextChanged: (_) => setState(() {}),
         ),
         initialWidth: 130,
@@ -3693,7 +3719,7 @@ class _CommandeState extends State<Commande> {
           mutedColor: mutedColor,
         ),
         filter: CompactTableFilterField(
-          hintText: 'المُدخل...',
+          hintText: Localization.translate('المُدخل...', lang),
           controller: _orderColumnControllers['creator'],
           lang: lang,
           onTextChanged: (_) => setState(() {}),
@@ -3954,23 +3980,21 @@ class _CommandeState extends State<Commande> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: SingleChildScrollView(
-                        controller: _scrollController,
-                        child: ResizableColumnsTable(
-                          columns: columns,
-                          rows: rows,
-                          headerColor: const Color(
-                            0xFF2563EB,
-                          ).withValues(alpha: 0.08),
-                          filterRowColor: isDark
-                              ? const Color(0xFF1E293B)
-                              : const Color(0xFFF8FAFC),
-                          borderColor: borderColor,
-                          rowColor: cardColor,
-                          headerMinHeight: 38,
-                          filterRowMinHeight: 34,
-                          rowMinHeight: 46,
-                        ),
+                      child: ResizableColumnsTable(
+                        columns: columns,
+                        rows: rows,
+                        headerColor: const Color(
+                          0xFF2563EB,
+                        ).withValues(alpha: 0.08),
+                        filterRowColor: isDark
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFF8FAFC),
+                        borderColor: borderColor,
+                        rowColor: cardColor,
+                        verticalController: _scrollController,
+                        headerMinHeight: 38,
+                        filterRowMinHeight: 34,
+                        rowMinHeight: 46,
                       ),
                     ),
                   ),
@@ -3978,6 +4002,39 @@ class _CommandeState extends State<Commande> {
         ],
       ),
     );
+  }
+
+  List<TableFilterOption> _buildOrderStatusFilterOptions(
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
+    final statuses = <String>{};
+    for (final order in rawData) {
+      statuses.add((order['status'] ?? 'Pending').toString());
+    }
+
+    final sortedStatuses = statuses.toList()
+      ..sort((a, b) {
+        final translatedA = _translateStatus(a, lang);
+        final translatedB = _translateStatus(b, lang);
+        return translatedA.compareTo(translatedB);
+      });
+
+    return [
+      TableFilterOption(
+        value: '',
+        label: Localization.translate('كل الحالات', lang),
+        icon: Icons.clear_all_rounded,
+        color: Colors.grey,
+      ),
+      for (final status in sortedStatuses)
+        TableFilterOption(
+          value: status,
+          label: _translateStatus(status, lang),
+          icon: Icons.circle,
+          color: _getStatusColor(status),
+        ),
+    ];
   }
 
   void _dismissHeavyLoadingDialog() {

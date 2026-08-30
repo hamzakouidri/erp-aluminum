@@ -9,6 +9,7 @@ import 'subscription_expired_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import 'app_workspace_shell.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
@@ -23,6 +24,11 @@ class SubscriptionChecker extends StatefulWidget {
 
 class _SubscriptionCheckerState extends State<SubscriptionChecker> {
   Timer? _subscriptionClock;
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
 
   @override
   void initState() {
@@ -47,7 +53,6 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 
   bool _hasActiveSubscription(Map<String, dynamic> data) {
     final status = data['subscriptionStatus']?.toString().toLowerCase().trim();
-    if (status == 'active') return true;
     if (status == 'expired' ||
         status == 'blocked' ||
         status == 'cancelled' ||
@@ -65,15 +70,21 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
       return DateTime.now().isBefore(expiresAt);
     }
 
-    return status == null || status.isEmpty;
+    // An explicit active status without an expiry is the permanent plan used
+    // by the administrator. An active status with an expiry was handled
+    // above and must stop working as soon as that date is reached.
+    if (status == 'active') return true;
+    // Missing subscription data must not silently grant access. The account
+    // needs an explicit activation or a future end date.
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text('عذراً، يجب تسجيل الدخول.')),
+      return Scaffold(
+        body: Center(child: Text(_t('عذراً، يجب تسجيل الدخول.'))),
       );
     }
 
@@ -94,7 +105,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
         if (snapshot.hasError) {
           return Scaffold(
             body: Center(
-              child: Text('حدث خطأ أثناء فحص الاشتراك: ${snapshot.error}'),
+              child: Text(
+                '${_t('حدث خطأ أثناء فحص الاشتراك:')} ${snapshot.error}',
+              ),
             ),
           );
         }
@@ -320,7 +333,7 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                           debugPrint('Sign out error: $e');
                         }
                       },
-                      child: const Text('تسجيل الخروج'),
+                      child: Text(_t('تسجيل الخروج')),
                     ),
                   ],
                 ),
@@ -336,9 +349,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
           final managerId = data['workshopId']?.toString();
 
           if (managerId == null || managerId.isEmpty) {
-            return const Scaffold(
+            return Scaffold(
               body: Center(
-                child: Text('خطأ: لم يتم العثور على بيانات الورشة.'),
+                child: Text(_t('خطأ: لم يتم العثور على بيانات الورشة.')),
               ),
             );
           }
@@ -490,7 +503,7 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                                 debugPrint('Sign out error: $e');
                               }
                             },
-                            child: const Text('تسجيل الخروج'),
+                            child: Text(_t('تسجيل الخروج')),
                           ),
                         ],
                       ),

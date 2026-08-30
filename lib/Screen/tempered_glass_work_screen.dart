@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/settings/localization.dart';
 
 enum GlassWorkType {
   vitrine,
@@ -19,6 +20,94 @@ enum GlassWorkType {
 enum GlassWorkFinish { clear, frosted, smoked, laminated, decorative }
 
 enum GlassStickerType { none, motif, full }
+
+/// The first glass-drawing vocabulary is intentionally independent from the
+/// aluminium/PVC series model.  It can therefore evolve without changing the
+/// existing window calculations.
+enum GlassPanelShape { straight, l, u }
+
+enum GlassOperation { sliding, hinged }
+
+class GlassHoleDefinition {
+  GlassHoleDefinition({
+    required this.id,
+    this.diameterMm = 10,
+    this.fromTopMm = 0,
+    this.fromBottomMm = 0,
+    this.fromLeftMm = 0,
+    this.fromRightMm = 0,
+  });
+
+  final String id;
+  double diameterMm;
+  double fromTopMm;
+  double fromBottomMm;
+  double fromLeftMm;
+  double fromRightMm;
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'diameterMm': diameterMm,
+    'fromTopMm': fromTopMm,
+    'fromBottomMm': fromBottomMm,
+    'fromLeftMm': fromLeftMm,
+    'fromRightMm': fromRightMm,
+  };
+
+  factory GlassHoleDefinition.fromMap(Map<String, dynamic> map) {
+    double read(String key, [double fallback = 0]) =>
+        (map[key] as num?)?.toDouble() ?? fallback;
+
+    return GlassHoleDefinition(
+      id:
+          map['id']?.toString() ??
+          'hole_${DateTime.now().microsecondsSinceEpoch}',
+      diameterMm: read('diameterMm', 10),
+      fromTopMm: read('fromTopMm'),
+      fromBottomMm: read('fromBottomMm'),
+      fromLeftMm: read('fromLeftMm'),
+      fromRightMm: read('fromRightMm'),
+    );
+  }
+}
+
+class GlassKitDefinition {
+  GlassKitDefinition({
+    required this.id,
+    required this.name,
+    List<GlassHoleDefinition>? holes,
+  }) : holes = holes ?? <GlassHoleDefinition>[];
+
+  final String id;
+  String name;
+  final List<GlassHoleDefinition> holes;
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'holes': holes.map((hole) => hole.toMap()).toList(),
+  };
+
+  factory GlassKitDefinition.fromMap(Map<String, dynamic> map) {
+    final rawHoles = map['holes'];
+    return GlassKitDefinition(
+      id:
+          map['id']?.toString() ??
+          'kit_${DateTime.now().microsecondsSinceEpoch}',
+      name: map['name']?.toString() ?? '',
+      holes: rawHoles is List
+          ? rawHoles
+                .whereType<Map>()
+                .map(
+                  (hole) => GlassHoleDefinition.fromMap(
+                    Map<String, dynamic>.from(hole),
+                  ),
+                )
+                .toList()
+          : <GlassHoleDefinition>[],
+    );
+  }
+}
 
 class GlassWorkMeasurement {
   GlassWorkMeasurement({
@@ -73,6 +162,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   GlassWorkType _workType = GlassWorkType.vitrine;
   GlassWorkFinish _glassFinish = GlassWorkFinish.clear;
   GlassStickerType _stickerType = GlassStickerType.none;
+  GlassPanelShape _panelShape = GlassPanelShape.straight;
+  GlassOperation _operation = GlassOperation.sliding;
+  int _doorCount = 1;
+  String? _selectedKitId;
+  final List<GlassKitDefinition> _slidingKits = [];
   double _thicknessMm = 10;
   String? _imagePath;
   final List<GlassWorkMeasurement> _measurements = [];
@@ -85,7 +179,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   void _restoreInitialPayload() {
     final payload = widget.initialPayload;
-    if (payload == null) return;
+    if (payload == null) {
+      _ensureDefaultSlidingKits();
+      return;
+    }
 
     _workType = GlassWorkType.values.firstWhere(
       (value) => value.name == payload['workType']?.toString(),
@@ -99,6 +196,31 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       (value) => value.name == payload['stickerType']?.toString(),
       orElse: () => GlassStickerType.none,
     );
+    _panelShape = GlassPanelShape.values.firstWhere(
+      (value) => value.name == payload['panelShape']?.toString(),
+      orElse: () => GlassPanelShape.straight,
+    );
+    _operation = GlassOperation.values.firstWhere(
+      (value) => value.name == payload['operation']?.toString(),
+      orElse: () => GlassOperation.sliding,
+    );
+    _doorCount = (((payload['doorCount'] as num?)?.toInt() ?? 1).clamp(1, 2))
+        .toInt();
+    _selectedKitId = payload['selectedKitId']?.toString();
+    final rawKits = payload['kits'];
+    if (rawKits is List) {
+      _slidingKits.addAll(
+        rawKits
+            .whereType<Map>()
+            .map(
+              (kit) => GlassKitDefinition.fromMap(
+                Map<String, dynamic>.from(kit),
+              ),
+            )
+            .where((kit) => kit.id.isNotEmpty),
+      );
+    }
+    _ensureDefaultSlidingKits();
     _thicknessMm = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
     _imagePath = payload['imagePath']?.toString();
     _notesController.text = payload['notes']?.toString() ?? '';
@@ -129,6 +251,20 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     }
   }
 
+  void _ensureDefaultSlidingKits() {
+    if (_slidingKits.isEmpty) {
+      _slidingKits.addAll([
+        GlassKitDefinition(id: 'sliding_kit_1', name: 'Kit 1'),
+        GlassKitDefinition(id: 'sliding_kit_2', name: 'Kit 2'),
+        GlassKitDefinition(id: 'sliding_kit_3', name: 'Kit 3'),
+      ]);
+    }
+    _selectedKitId ??= _slidingKits.first.id;
+    if (!_slidingKits.any((kit) => kit.id == _selectedKitId)) {
+      _selectedKitId = _slidingKits.first.id;
+    }
+  }
+
   @override
   void dispose() {
     _widthController.dispose();
@@ -144,6 +280,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       context,
       listen: false,
     ).language;
+    final dictionaryValue = Localization.translate(ar, language);
+    if (language == AppLanguage.arabic || dictionaryValue != ar) {
+      return dictionaryValue;
+    }
     switch (language) {
       case AppLanguage.french:
         return fr;
@@ -152,6 +292,169 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       case AppLanguage.arabic:
         return ar;
     }
+  }
+
+  String _shapeLabel(GlassPanelShape shape) {
+    switch (shape) {
+      case GlassPanelShape.straight:
+        return _tr('مستقيم (I)', 'Droit (I)', 'Straight (I)');
+      case GlassPanelShape.l:
+        return _tr('زاوية (L)', 'Angle (L)', 'L shape');
+      case GlassPanelShape.u:
+        return _tr('حرف U', 'En U', 'U shape');
+    }
+  }
+
+  String _operationLabel(GlassOperation operation) {
+    switch (operation) {
+      case GlassOperation.sliding:
+        return _tr('منزلق', 'Coulissant', 'Sliding');
+      case GlassOperation.hinged:
+        return _tr('فتح عادي', 'Ouverture battante', 'Hinged opening');
+    }
+  }
+
+  GlassKitDefinition? get _selectedKit {
+    for (final kit in _slidingKits) {
+      if (kit.id == _selectedKitId) return kit;
+    }
+    return _slidingKits.isEmpty ? null : _slidingKits.first;
+  }
+
+  Widget _buildKitEditor(BuildContext context) {
+    final kit = _selectedKit;
+    if (kit == null) return const SizedBox.shrink();
+
+    TextFormField numberField({
+      required String label,
+      required double value,
+      required ValueChanged<double> onChanged,
+    }) {
+      return TextFormField(
+        initialValue: value == 0 ? '' : value.toStringAsFixed(0),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: label,
+          suffixText: 'mm',
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (text) {
+          final parsed = double.tryParse(text.trim());
+          if (parsed != null && parsed >= 0) onChanged(parsed);
+        },
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _tr('خصائص الكيت والثقوب', 'Propriétés du kit et perçages', 'Kit and hole properties'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              key: ValueKey(kit.id),
+              initialValue: kit.name,
+              decoration: InputDecoration(
+                labelText: _tr('اسم الكيت', 'Nom du kit', 'Kit name'),
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (value) => kit.name = value.trim().isEmpty ? kit.name : value,
+            ),
+            const SizedBox(height: 10),
+            if (kit.holes.isEmpty)
+              Text(
+                _tr(
+                  'لم تتم إضافة ثقوب لهذا الكيت بعد.',
+                  'Aucun perçage n’est encore ajouté à ce kit.',
+                  'No holes have been added to this kit yet.',
+                ),
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+            for (var index = 0; index < kit.holes.length; index++)
+              Card(
+                key: ValueKey(kit.holes[index].id),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${_tr('الثقب', 'Perçage', 'Hole')} ${index + 1}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: _tr('حذف الثقب', 'Supprimer le perçage', 'Delete hole'),
+                            onPressed: () => setState(() => kit.holes.removeAt(index)),
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          ),
+                        ],
+                      ),
+                      numberField(
+                        label: _tr('قطر الثقب', 'Diamètre du perçage', 'Hole diameter'),
+                        value: kit.holes[index].diameterMm,
+                        onChanged: (value) => kit.holes[index].diameterMm = value,
+                      ),
+                      const SizedBox(height: 8),
+                      numberField(
+                        label: _tr('من أعلى الزجاج', 'Depuis le haut du verre', 'From glass top'),
+                        value: kit.holes[index].fromTopMm,
+                        onChanged: (value) => kit.holes[index].fromTopMm = value,
+                      ),
+                      const SizedBox(height: 8),
+                      numberField(
+                        label: _tr('من أسفل الزجاج', 'Depuis le bas du verre', 'From glass bottom'),
+                        value: kit.holes[index].fromBottomMm,
+                        onChanged: (value) => kit.holes[index].fromBottomMm = value,
+                      ),
+                      const SizedBox(height: 8),
+                      numberField(
+                        label: _tr('من اليمين', 'Depuis la droite', 'From right'),
+                        value: kit.holes[index].fromRightMm,
+                        onChanged: (value) => kit.holes[index].fromRightMm = value,
+                      ),
+                      const SizedBox(height: 8),
+                      numberField(
+                        label: _tr('من اليسار', 'Depuis la gauche', 'From left'),
+                        value: kit.holes[index].fromLeftMm,
+                        onChanged: (value) => kit.holes[index].fromLeftMm = value,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() {
+                  kit.holes.add(
+                    GlassHoleDefinition(
+                      id: 'hole_${DateTime.now().microsecondsSinceEpoch}',
+                    ),
+                  );
+                });
+              },
+              icon: const Icon(Icons.add_circle_outline),
+              label: Text(_tr('إضافة ثقب للكيت', 'Ajouter un perçage au kit', 'Add hole to kit')),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _workTypeLabel(GlassWorkType type) {
@@ -312,6 +615,14 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       'workTypeLabel': _workTypeLabel(_workType),
       'glassFinish': _glassFinish.name,
       'glassFinishLabel': _finishLabel(_glassFinish),
+      'panelShape': _panelShape.name,
+      'panelShapeLabel': _shapeLabel(_panelShape),
+      'operation': _operation.name,
+      'operationLabel': _operationLabel(_operation),
+      'doorCount': _doorCount,
+      'selectedKitId': _selectedKitId,
+      'selectedKitLabel': _selectedKit?.name,
+      'kits': _slidingKits.map((kit) => kit.toMap()).toList(),
       'thicknessMm': _thicknessMm,
       'stickerType': _stickerType.name,
       'stickerLabel': _stickerLabel(_stickerType),
@@ -365,6 +676,167 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     'Choose the work, glass and image once, then add measurements. Each measurement becomes a separate order line with the same image.',
                   ),
                   style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _tr(
+                        'تهيئة رسم الألواح الزجاجية',
+                        'Préparation du dessin des panneaux vitrés',
+                        'Glass panel drawing setup',
+                      ),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _tr(
+                        'الرسم مستقل عن سلاسل الألمنيوم ويعرض اللوح كزجاج، وليس كإطار.',
+                        'Le dessin est indépendant des gammes aluminium et affiche un panneau vitré, pas un cadre.',
+                        'The drawing is independent from aluminium series and displays a glass panel, not a frame.',
+                      ),
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      height: 230,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.blueGrey.shade900 : Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? Colors.cyan.shade700 : Colors.blue.shade200,
+                        ),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: CustomPaint(
+                        painter: _GlassPanelPainter(
+                          shape: _panelShape,
+                          operation: _operation,
+                          doorCount: _doorCount,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<GlassPanelShape>(
+                            initialValue: _panelShape,
+                            decoration: InputDecoration(
+                              labelText: _tr('شكل الرسم', 'Forme du dessin', 'Drawing shape'),
+                              border: const OutlineInputBorder(),
+                            ),
+                            items: GlassPanelShape.values
+                                .map(
+                                  (shape) => DropdownMenuItem(
+                                    value: shape,
+                                    child: Text(_shapeLabel(shape)),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) setState(() => _panelShape = value);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: DropdownButtonFormField<GlassOperation>(
+                            initialValue: _operation,
+                            decoration: InputDecoration(
+                              labelText: _tr('نظام التشغيل', 'Mode d’ouverture', 'Opening system'),
+                              border: const OutlineInputBorder(),
+                            ),
+                            items: GlassOperation.values
+                                .map(
+                                  (operation) => DropdownMenuItem(
+                                    value: operation,
+                                    child: Text(_operationLabel(operation)),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) setState(() => _operation = value);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_workType == GlassWorkType.vitrine) ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        initialValue: _doorCount,
+                        decoration: InputDecoration(
+                          labelText: _tr('عدد أبواب الواجهة', 'Nombre de portes de la vitrine', 'Storefront door count'),
+                          border: const OutlineInputBorder(),
+                        ),
+                        items: const [1, 2]
+                            .map(
+                              (count) => DropdownMenuItem(
+                                value: count,
+                                child: Text('$count'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) setState(() => _doorCount = value);
+                        },
+                      ),
+                    ],
+                    if (_operation == GlassOperation.sliding) ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedKitId,
+                        decoration: InputDecoration(
+                          labelText: _tr('كيت النظام المنزلق', 'Kit du système coulissant', 'Sliding system kit'),
+                          border: const OutlineInputBorder(),
+                        ),
+                        items: _slidingKits
+                            .map(
+                              (kit) => DropdownMenuItem(
+                                value: kit.id,
+                                child: Text(kit.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) setState(() => _selectedKitId = value);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildKitEditor(context),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final id =
+                              'sliding_kit_${DateTime.now().microsecondsSinceEpoch}';
+                          setState(() {
+                            _slidingKits.add(
+                              GlassKitDefinition(
+                                id: id,
+                                name: 'Kit ${_slidingKits.length + 1}',
+                              ),
+                            );
+                            _selectedKitId = id;
+                          });
+                        },
+                        icon: const Icon(Icons.library_add_outlined),
+                        label: Text(
+                          _tr('إضافة كيت جديد', 'Ajouter un nouveau kit', 'Add new kit'),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -446,8 +918,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                 )
                                 .toList(),
                             onChanged: (value) {
-                              if (value != null)
+                              if (value != null) {
                                 setState(() => _glassFinish = value);
+                              }
                             },
                           ),
                         ),
@@ -741,4 +1214,107 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       ),
     );
   }
+}
+
+class _GlassPanelPainter extends CustomPainter {
+  const _GlassPanelPainter({
+    required this.shape,
+    required this.operation,
+    required this.doorCount,
+  });
+
+  final GlassPanelShape shape;
+  final GlassOperation operation;
+  final int doorCount;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final borderColor = Colors.cyan.shade800;
+    final fillPaint = Paint()
+      ..color = const Color(0xFFB9E5F8).withValues(alpha: 0.78)
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final reflectionPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.62)
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round;
+
+    final maxWidth = size.width * 0.78;
+    final maxHeight = size.height * 0.78;
+    final left = (size.width - maxWidth) / 2;
+    final top = (size.height - maxHeight) / 2;
+    final panelCount = switch (shape) {
+      GlassPanelShape.straight => 1,
+      GlassPanelShape.l => 2,
+      GlassPanelShape.u => 3,
+    };
+    final panelWidth = maxWidth / panelCount;
+    final panelHeight = maxHeight;
+
+    final panels = <Rect>[];
+    switch (shape) {
+      case GlassPanelShape.straight:
+        panels.add(Rect.fromLTWH(left, top, maxWidth, maxHeight));
+      case GlassPanelShape.l:
+        panels.add(Rect.fromLTWH(left, top, panelWidth, panelHeight));
+        panels.add(
+          Rect.fromLTWH(left + panelWidth, top + panelHeight / 2, panelWidth, panelHeight / 2),
+        );
+      case GlassPanelShape.u:
+        panels.add(Rect.fromLTWH(left, top, panelWidth, panelHeight));
+        panels.add(
+          Rect.fromLTWH(left + panelWidth, top + panelHeight / 2, panelWidth, panelHeight / 2),
+        );
+        panels.add(
+          Rect.fromLTWH(left + panelWidth * 2, top, panelWidth, panelHeight),
+        );
+    }
+
+    for (final panel in panels) {
+      canvas.drawRect(panel, fillPaint);
+      canvas.drawRect(panel, borderPaint);
+      canvas.drawLine(
+        Offset(panel.left + panel.width * 0.22, panel.top + panel.height * 0.2),
+        Offset(panel.left + panel.width * 0.38, panel.top + panel.height * 0.44),
+        reflectionPaint,
+      );
+    }
+
+    if (shape == GlassPanelShape.straight && doorCount == 2) {
+      final dividerX = left + maxWidth / 2;
+      canvas.drawLine(Offset(dividerX, top), Offset(dividerX, top + maxHeight), borderPaint);
+    }
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final motionPaint = Paint()
+      ..color = Colors.indigo.shade700
+      ..strokeWidth = 2.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    if (operation == GlassOperation.sliding) {
+      final y = size.height - 18;
+      canvas.drawLine(Offset(center.dx - 28, y), Offset(center.dx + 28, y), motionPaint);
+      canvas.drawLine(Offset(center.dx - 28, y), Offset(center.dx - 20, y - 6), motionPaint);
+      canvas.drawLine(Offset(center.dx - 28, y), Offset(center.dx - 20, y + 6), motionPaint);
+      canvas.drawLine(Offset(center.dx + 28, y), Offset(center.dx + 20, y - 6), motionPaint);
+      canvas.drawLine(Offset(center.dx + 28, y), Offset(center.dx + 20, y + 6), motionPaint);
+    } else {
+      final arcRect = Rect.fromCenter(center: center, width: 44, height: 44);
+      canvas.drawArc(arcRect, -1.1, 1.5, false, motionPaint);
+      canvas.drawLine(
+        Offset(center.dx + 17, center.dy - 17),
+        Offset(center.dx + 25, center.dy - 15),
+        motionPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlassPanelPainter oldDelegate) =>
+      oldDelegate.shape != shape ||
+      oldDelegate.operation != operation ||
+      oldDelegate.doorCount != doorCount;
 }

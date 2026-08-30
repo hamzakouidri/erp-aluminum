@@ -7,6 +7,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class GlobalConsumptionReportScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -21,6 +24,11 @@ class GlobalConsumptionReportScreen extends StatefulWidget {
 class _GlobalConsumptionReportScreenState
     extends State<GlobalConsumptionReportScreen> {
   late Future<ConsumptionReport> _reportFuture;
+
+  String _t(String key) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    return Localization.translate(key, lang);
+  }
 
   @override
   void initState() {
@@ -90,7 +98,7 @@ class _GlobalConsumptionReportScreenState
 
   Future<void> _generatePurchasePdf(ConsumptionReport report) async {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('جاري إنشاء قائمة الشراء PDF الشاملة...')),
+      SnackBar(content: Text(_t('جاري إنشاء قائمة الشراء PDF الشاملة...'))),
     );
 
     final pdf = pw.Document();
@@ -104,7 +112,7 @@ class _GlobalConsumptionReportScreenState
     if (missingAlum.isEmpty && missingGlass.isEmpty && missingAcc.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد نواقص لشرائها! جميع المواد متوفرة.')),
+          SnackBar(content: Text(_t('لا توجد نواقص لشرائها! جميع المواد متوفرة.'))),
         );
       }
       return;
@@ -123,20 +131,23 @@ class _GlobalConsumptionReportScreenState
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('قائمة شراء النواقص الشاملة', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, font: ttf)),
-                  pw.Text('لكل الطلبيات النشطة', style: pw.TextStyle(fontSize: 16, font: ttf)),
+                  pw.Text(_t('قائمة شراء النواقص الشاملة'), style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, font: ttf)),
+                  pw.Text(_t('لكل الطلبيات النشطة'), style: pw.TextStyle(fontSize: 16, font: ttf)),
                 ]
               ),
             ),
             pw.SizedBox(height: 20),
             
-            if (missingAlum.isNotEmpty) _buildPdfSection('قطاعات الألمنيوم (Aluminium)', missingAlum, ttf),
-            if (missingGlass.isNotEmpty) _buildPdfSection('الزجاج (Verre)', missingGlass, ttf),
-            if (missingAcc.isNotEmpty) _buildPdfSection('الإكسسوارات (Accessoires)', missingAcc, ttf),
+            if (missingAlum.isNotEmpty) _buildPdfSection(_t('قطاعات الألمنيوم (Aluminium)'), missingAlum, ttf),
+            if (missingGlass.isNotEmpty) _buildPdfSection(_t('الزجاج (Verre)'), missingGlass, ttf),
+            if (missingAcc.isNotEmpty) _buildPdfSection(_t('الإكسسوارات (Accessoires)'), missingAcc, ttf),
             
             pw.SizedBox(height: 30),
             pw.Divider(),
-            pw.Text('تاريخ الإنشاء: ${DateTime.now().toString().substring(0, 16)}', style: pw.TextStyle(fontSize: 12, font: ttf)),
+             pw.Text(
+               '${_t('تاريخ الإنشاء:')} ${DateTime.now().toString().substring(0, 16)}',
+               style: pw.TextStyle(fontSize: 12, font: ttf),
+             ),
           ];
         },
       ),
@@ -160,7 +171,7 @@ class _GlobalConsumptionReportScreenState
           headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, font: ttf),
           cellStyle: pw.TextStyle(font: ttf),
-          headers: ['الاسم', 'الطول', 'العرض', 'الكمية الإجمالية'],
+          headers: [_t('الاسم'), _t('الطول'), _t('العرض'), _t('الكمية الإجمالية')],
           data: items.map((item) {
             return [
               item.name,
@@ -180,12 +191,12 @@ class _GlobalConsumptionReportScreenState
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('تقرير النواقص الشامل', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(_t('تقرير النواقص الشامل'), style: const TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
           ElevatedButton.icon(
             icon: const Icon(Icons.shopping_cart, color: Colors.white),
-            label: const Text("شراء كل النواقص", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            label: Text(_t('شراء كل النواقص'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -205,26 +216,31 @@ class _GlobalConsumptionReportScreenState
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('حدث خطأ: ${snapshot.error}'));
+            return Center(child: Text('${_t('حدث خطأ')}: ${snapshot.error}'));
           }
 
           final report = snapshot.data!;
           
           if (report.aluminumItems.isEmpty && report.glassItems.isEmpty && report.accessoryItems.isEmpty) {
-            return const Center(child: Text('لا توجد نواقص في أي طلبية نشطة!', style: TextStyle(fontSize: 18, color: Colors.green)));
+            return Center(
+              child: Text(
+                _t('لا توجد نواقص في أي طلبية نشطة!'),
+                style: const TextStyle(fontSize: 18, color: Colors.green),
+              ),
+            );
           }
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               if (report.aluminumItems.isNotEmpty)
-                _buildSectionCard('قطاعات الألمنيوم (Aluminium)', Icons.straighten, Colors.blue, report.aluminumItems),
+                _buildSectionCard(_t('قطاعات الألمنيوم (Aluminium)'), Icons.straighten, Colors.blue, report.aluminumItems),
               const SizedBox(height: 16),
               if (report.glassItems.isNotEmpty)
-                _buildSectionCard('الزجاج (Verre)', Icons.window, Colors.teal, report.glassItems),
+                _buildSectionCard(_t('الزجاج (Verre)'), Icons.window, Colors.teal, report.glassItems),
               const SizedBox(height: 16),
               if (report.accessoryItems.isNotEmpty)
-                _buildSectionCard('الإكسسوارات (Accessoires)', Icons.build, Colors.orange, report.accessoryItems),
+                _buildSectionCard(_t('الإكسسوارات (Accessoires)'), Icons.build, Colors.orange, report.accessoryItems),
             ],
           );
         },

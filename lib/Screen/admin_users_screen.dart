@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
+import '../services/subscription_service.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -14,63 +18,210 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _baridiMobRipController = TextEditingController();
+  bool _isSavingPaymentSettings = false;
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
+
+  String _tf(String key, Map<String, Object> values) {
+    var result = _t(key);
+    values.forEach((name, value) {
+      result = result.replaceAll('{$name}', value.toString());
+    });
+    return result;
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    if (isApplicationAdminEmail(FirebaseAuth.instance.currentUser?.email)) {
+      _loadPaymentSettings();
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _baridiMobRipController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPaymentSettings() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(SubscriptionPaymentSettings.collectionName)
+          .doc(SubscriptionPaymentSettings.documentName)
+          .get();
+      if (!mounted) return;
+      _baridiMobRipController.text =
+          snapshot.data()?['baridiMobRip']?.toString() ?? '';
+    } catch (error) {
+      debugPrint('Could not load subscription payment settings: $error');
+    }
+  }
+
+  Future<void> _savePaymentSettings() async {
+    if (!isApplicationAdminEmail(FirebaseAuth.instance.currentUser?.email)) {
+      return;
+    }
+    final rip = _baridiMobRipController.text.trim();
+    if (rip.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_t('أدخل رقم CCP/RIP أولاً.'))));
+      return;
+    }
+    setState(() => _isSavingPaymentSettings = true);
+    try {
+      await SubscriptionPaymentSettings().saveBaridiMobRip(rip);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('تم حفظ رقم CCP/RIP. سيظهر للمستخدمين مباشرة.')),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_t('تعذر حفظ رقم CCP/RIP:')} $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingPaymentSettings = false);
+    }
+  }
+
+  Widget _buildPaymentSettingsCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      child: Card(
+        elevation: 1,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _t('بيانات دفع الاشتراك'),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _t(
+                  'ضع رقم الحساب البريدي الجاري الذي سيدفع إليه المشتركون. سيظهر لهم في مراجعة الاشتراك.',
+                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _baridiMobRipController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _t('رقم CCP / RIP لـ BaridiMob'),
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.account_balance_rounded),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: FilledButton.icon(
+                  onPressed: _isSavingPaymentSettings
+                      ? null
+                      : _savePaymentSettings,
+                  icon: _isSavingPaymentSettings
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(_t('حفظ رقم الدفع')),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ──────────────── Subscription helpers ────────────────
 
   /// Returns true if the manager's subscription is currently valid.
   bool _isActive(Map<String, dynamic> data) {
-    if (data['subscriptionStatus'] == 'active') return true;
-    final trialStr = data['trialEndDate'] as String?;
+    final status = data['subscriptionStatus']?.toString().toLowerCase().trim();
+    if (status == 'expired' ||
+        status == 'blocked' ||
+        status == 'cancelled' ||
+        status == 'canceled') {
+      return false;
+    }
+    final trialStr =
+        (data['trialEndDate'] ??
+                data['subscriptionEndDate'] ??
+                data['subscriptionExpiresAt'] ??
+                data['expiresAt'])
+            ?.toString();
     if (trialStr != null) {
       try {
         final end = DateTime.parse(trialStr);
         return DateTime.now().isBefore(end);
       } catch (_) {}
     }
+    if (status == 'active') return true;
     // Old accounts with no fields at all — treat as needing activation
     return false;
   }
 
   /// Human-readable status string + colour
   (String, Color) _statusInfo(Map<String, dynamic> data) {
-    if (data['subscriptionStatus'] == 'active') {
-      return ('اشتراك مدفوع ✅', Colors.green);
-    }
-    final trialStr = data['trialEndDate'] as String?;
+    final status = data['subscriptionStatus']?.toString().toLowerCase().trim();
+    final trialStr =
+        (data['trialEndDate'] ??
+                data['subscriptionEndDate'] ??
+                data['subscriptionExpiresAt'] ??
+                data['expiresAt'])
+            ?.toString();
     if (trialStr != null) {
       try {
         final end = DateTime.parse(trialStr);
         if (DateTime.now().isBefore(end)) {
           final left = end.difference(DateTime.now()).inDays;
-          return ('تجريبي – باقي $left يوم 🟡', Colors.orange);
+          return (
+            _tf('تجريبي – باقي {days} يوم 🟡', {'days': left}),
+            Colors.orange,
+          );
         } else {
           final expiredAgo = DateTime.now().difference(end).inDays;
-          return ('منتهي منذ $expiredAgo يوم ❌', Colors.red);
+          return (
+            _tf('منتهي منذ {days} يوم ❌', {'days': expiredAgo}),
+            Colors.red,
+          );
         }
       } catch (_) {}
     }
-    final status = data['subscriptionStatus'] as String?;
-    if (status == 'trialing') return ('تجريبي منتهٍ (trialing) ❌', Colors.red);
-    if (status == 'expired') return ('منتهي الصلاحية ❌', Colors.red);
-    return ('غير مفعّل ❌', Colors.red);
+    if (status == 'trialing') {
+      return (_t('تجريبي منتهٍ (trialing) ❌'), Colors.red);
+    }
+    if (status == 'expired') return (_t('منتهي الصلاحية ❌'), Colors.red);
+    if (status == 'active') return (_t('اشتراك مدفوع ✅'), Colors.green);
+    return (_t('غير مفعّل ❌'), Colors.red);
   }
 
   // ──────────────── Actions ────────────────
 
-  Future<void> _grantDays(BuildContext ctx, String uid, String email, int days) async {
+  Future<void> _grantDays(
+    BuildContext ctx,
+    String uid,
+    String email,
+    int days,
+  ) async {
     final expiry = DateTime.now().add(Duration(days: days));
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
@@ -79,17 +230,26 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         'subscriptionExpiredDate': FieldValue.delete(),
       });
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('✅ تم تفعيل $email لمدة $days أيام'),
-          backgroundColor: Colors.green,
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              _tf('✅ تم تفعيل {email} لمدة {days} أيام', {
+                'email': email,
+                'days': days,
+              }),
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('خطأ: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text('${_t('خطأ:')} $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -99,25 +259,38 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'subscriptionStatus': 'active',
         'trialEndDate': FieldValue.delete(),
+        'subscriptionEndDate': FieldValue.delete(),
+        'subscriptionExpiresAt': FieldValue.delete(),
+        'expiresAt': FieldValue.delete(),
         'subscriptionExpiredDate': FieldValue.delete(),
       });
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('✅ تم تفعيل $email كاشتراك دائم'),
-          backgroundColor: Colors.green,
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              _tf('✅ تم تفعيل {email} كاشتراك دائم', {'email': email}),
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('خطأ: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text('${_t('خطأ:')} $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
 
-  Future<void> _revokeSubscription(BuildContext ctx, String uid, String email) async {
+  Future<void> _revokeSubscription(
+    BuildContext ctx,
+    String uid,
+    String email,
+  ) async {
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'trialEndDate': FieldValue.delete(),
@@ -125,53 +298,126 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         'subscriptionExpiredDate': DateTime.now().toIso8601String(),
       });
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('تم سحب اشتراك $email'),
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(_tf('تم سحب اشتراك {email}', {'email': email})),
+          ),
+        );
       }
     } catch (e) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+        ScaffoldMessenger.of(
+          ctx,
+        ).showSnackBar(SnackBar(content: Text('${_t('خطأ:')} $e')));
       }
     }
   }
 
-  Future<void> _updateMaxWorkers(BuildContext ctx, String workshopId, String email, int limit) async {
+  Future<void> _updateMaxWorkers(
+    BuildContext ctx,
+    String workshopId,
+    String email,
+    int limit,
+  ) async {
     try {
       await FirebaseFirestore.instance
           .collection('workshops')
           .doc(workshopId)
-          .set({'maxWorkers': limit}, SetOptions(merge: true));
+          .set({'maxUsers': limit}, SetOptions(merge: true));
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text(limit == 999
-              ? 'فُتح الحد الأقصى لورشة $email'
-              : 'الحد الأقصى = $limit عمال لورشة $email'),
-          backgroundColor: Colors.teal,
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              limit == 999
+                  ? _tf('فُتح الحد الأقصى لورشة {email}', {'email': email})
+                  : _tf('الحد الأقصى = {limit} مستخدمين لورشة {email}', {
+                      'limit': limit,
+                      'email': email,
+                    }),
+            ),
+            backgroundColor: Colors.teal,
+          ),
+        );
       }
     } catch (e) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+        ScaffoldMessenger.of(
+          ctx,
+        ).showSnackBar(SnackBar(content: Text('${_t('خطأ:')} $e')));
       }
     }
   }
 
-  Future<void> _deleteWorkshop(BuildContext ctx, String uid, String email) async {
-    final confirm = await showDialog<bool>(
-      context: ctx,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('تأكيد المسح النهائي'),
-        content: Text('مسح ورشة $email وجميع عمالها؟ لا يمكن التراجع.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('إلغاء')),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: const Text('مسح نهائي', style: TextStyle(color: Colors.red)),
+  Future<void> _updateWorkshopLimit(
+    BuildContext ctx,
+    String workshopId,
+    String email,
+    String field,
+    int limit,
+    String label,
+  ) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(workshopId)
+          .set({field: limit}, SetOptions(merge: true));
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              limit == 999
+                  ? _tf('تم إلغاء حد {label} لورشة {email}', {
+                      'label': label,
+                      'email': email,
+                    })
+                  : _tf('حد {label} = {limit} لورشة {email}', {
+                      'label': label,
+                      'limit': limit,
+                      'email': email,
+                    }),
+            ),
+            backgroundColor: Colors.teal,
           ),
-        ],
-      ),
-    ) ?? false;
+        );
+      }
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('${_t('خطأ في حفظ حد')} $label: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteWorkshop(
+    BuildContext ctx,
+    String uid,
+    String email,
+  ) async {
+    final confirm =
+        await showDialog<bool>(
+          context: ctx,
+          builder: (dialogCtx) => AlertDialog(
+            title: Text(_t('تأكيد المسح النهائي')),
+            content: Text(
+              '${_t('مسح ورشة')} $email ${_t('وجميع مستخدميها؟ لا يمكن التراجع.')}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx, false),
+                child: Text(_t('إلغاء')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx, true),
+                child: Text(
+                  _t('مسح نهائي'),
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
     if (!confirm) return;
     try {
       final workers = await FirebaseFirestore.instance
@@ -182,45 +428,72 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         await d.reference.delete();
       }
       await FirebaseFirestore.instance.collection('users').doc(uid).delete();
-      await FirebaseFirestore.instance.collection('workshops').doc(uid).delete();
+      await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(uid)
+          .delete();
       if (ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(content: Text('تم مسح ورشة $email')));
+          SnackBar(content: Text(_tf('تم مسح ورشة {email}', {'email': email}))),
+        );
       }
     } catch (e) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+        ScaffoldMessenger.of(
+          ctx,
+        ).showSnackBar(SnackBar(content: Text('${_t('خطأ:')} $e')));
       }
     }
   }
 
   // ──────────────── Dialogs ────────────────
 
-  void _showManageDialog(BuildContext ctx, String uid, String email, bool isManager) {
+  void _showManageDialog(
+    BuildContext ctx,
+    String uid,
+    String email,
+    bool isManager,
+  ) {
     showDialog(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        title: Text('إدارة: $email', style: const TextStyle(fontSize: 15)),
+        title: Text(
+          '${_t('إدارة:')} $email',
+          style: const TextStyle(fontSize: 15),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('⏱ منح فترة تجريبية:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                _t('⏱ منح فترة تجريبية:'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: [3, 7, 15, 30, 60, 90].map((d) => ElevatedButton(
-                  onPressed: () { Navigator.pop(dialogCtx); _grantDays(ctx, uid, email, d); },
-                  child: Text('$d يوم'),
-                )).toList(),
+                children: [3, 7, 15, 30, 60, 90]
+                    .map(
+                      (d) => ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(dialogCtx);
+                          _grantDays(ctx, uid, email, d);
+                        },
+                        child: Text(_tf('{days} يوم', {'days': d})),
+                      ),
+                    )
+                    .toList(),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
-                onPressed: () { Navigator.pop(dialogCtx); _grantActive(ctx, uid, email); },
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  _grantActive(ctx, uid, email);
+                },
                 icon: const Icon(Icons.verified),
-                label: const Text('اشتراك نشط دائم (مدفوع)'),
+                label: Text(_t('اشتراك نشط دائم (مدفوع)')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
@@ -228,27 +501,160 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
               ),
               const Divider(height: 24),
               if (isManager) ...[
-                const Text('👷 حد عمال الورشة:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  'حد مستخدمي الورشة (يشمل مدير الورشة):',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [3, 5, 10, 20].map((n) => ElevatedButton(
-                    onPressed: () { Navigator.pop(dialogCtx); _updateMaxWorkers(ctx, uid, email, n); },
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-                    child: Text('$n عمال'),
-                  )).toList()
-                    ..add(ElevatedButton(
-                      onPressed: () { Navigator.pop(dialogCtx); _updateMaxWorkers(ctx, uid, email, 999); },
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-                      child: const Text('بلا حدود'),
-                    )),
+                  children:
+                      [3, 4, 5, 6, 10, 20]
+                          .map(
+                            (n) => ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(dialogCtx);
+                                _updateMaxWorkers(ctx, uid, email, n);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.teal,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(
+                                _tf('{count} مستخدمين', {'count': n}),
+                              ),
+                            ),
+                          )
+                          .toList()
+                        ..add(
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(dialogCtx);
+                              _updateMaxWorkers(ctx, uid, email, 999);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: Text(_t('بلا حدود')),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'حد أنظمة العمل:',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children:
+                      [1, 2, 3, 4, 5, 6]
+                          .map(
+                            (n) => ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(dialogCtx);
+                                _updateWorkshopLimit(
+                                  ctx,
+                                  uid,
+                                  email,
+                                  'maxSystems',
+                                  n,
+                                  'أنظمة العمل',
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigo,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text('$n'),
+                            ),
+                          )
+                          .toList()
+                        ..add(
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(dialogCtx);
+                              _updateWorkshopLimit(
+                                ctx,
+                                uid,
+                                email,
+                                'maxSystems',
+                                999,
+                                'أنظمة العمل',
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigo,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: Text(_t('بلا حدود')),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'حد البروفيلات:',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children:
+                      [1, 2, 3, 4, 5, 6, 10]
+                          .map(
+                            (n) => ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(dialogCtx);
+                                _updateWorkshopLimit(
+                                  ctx,
+                                  uid,
+                                  email,
+                                  'maxProfiles',
+                                  n,
+                                  'بروفيلات',
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.deepPurple,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text('$n'),
+                            ),
+                          )
+                          .toList()
+                        ..add(
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(dialogCtx);
+                              _updateWorkshopLimit(
+                                ctx,
+                                uid,
+                                email,
+                                'maxProfiles',
+                                999,
+                                'بروفيلات',
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurple,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: Text(_t('بلا حدود')),
+                          ),
+                        ),
                 ),
                 const Divider(height: 24),
                 ElevatedButton.icon(
-                  onPressed: () { Navigator.pop(dialogCtx); _deleteWorkshop(ctx, uid, email); },
+                  onPressed: () {
+                    Navigator.pop(dialogCtx);
+                    _deleteWorkshop(ctx, uid, email);
+                  },
                   icon: const Icon(Icons.delete_forever),
-                  label: const Text('مسح الورشة نهائياً'),
+                  label: Text(_t('مسح الورشة نهائياً')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
@@ -258,15 +664,27 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
               ],
               const SizedBox(height: 8),
               OutlinedButton.icon(
-                onPressed: () { Navigator.pop(dialogCtx); _revokeSubscription(ctx, uid, email); },
-                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                label: const Text('سحب الاشتراك', style: TextStyle(color: Colors.red)),
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  _revokeSubscription(ctx, uid, email);
+                },
+                icon: const Icon(
+                  Icons.remove_circle_outline,
+                  color: Colors.red,
+                ),
+                label: Text(
+                  _t('سحب الاشتراك'),
+                  style: const TextStyle(color: Colors.red),
+                ),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('إغلاق')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(_t('إغلاق')),
+          ),
         ],
       ),
     );
@@ -282,24 +700,26 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     QueryDocumentSnapshot? managerDoc;
     try {
       managerDoc = wUsers.firstWhere(
-          (u) => (u.data() as Map<String, dynamic>)['role'] == 'manager');
+        (u) => (u.data() as Map<String, dynamic>)['role'] == 'manager',
+      );
     } catch (_) {}
 
     final workers = wUsers
         .where((u) => (u.data() as Map<String, dynamic>)['role'] == 'worker')
         .toList();
-    final others = wUsers
-        .where((u) {
-          final r = (u.data() as Map<String, dynamic>)['role'];
-          return r != 'manager' && r != 'worker';
-        })
-        .toList();
+    final others = wUsers.where((u) {
+      final r = (u.data() as Map<String, dynamic>)['role'];
+      return r != 'manager' && r != 'worker';
+    }).toList();
 
     final mgrData = managerDoc != null
         ? (managerDoc.data() as Map<String, dynamic>)
-        : (wUsers.isNotEmpty ? (wUsers.first.data() as Map<String, dynamic>) : <String, dynamic>{});
+        : (wUsers.isNotEmpty
+              ? (wUsers.first.data() as Map<String, dynamic>)
+              : <String, dynamic>{});
 
-    final workshopName = mgrData['workshopName'] ?? mgrData['name'] ?? 'ورشة بدون اسم';
+    final workshopName =
+        mgrData['workshopName'] ?? mgrData['name'] ?? 'ورشة بدون اسم';
     final mgrEmail = mgrData['email'] ?? 'غير معروف';
     final active = _isActive(mgrData);
     final (statusText, statusColor) = _statusInfo(mgrData);
@@ -338,7 +758,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: statusColor.withAlpha(30),
                     borderRadius: BorderRadius.circular(20),
@@ -355,7 +778,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${workers.length} عمال',
+                  '${wUsers.length} مستخدمين',
                   style: const TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ],
@@ -373,16 +796,18 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   textStyle: const TextStyle(fontSize: 12),
                 ),
-                child: const Text('تفعيل'),
+                child: Text(_t('تفعيل')),
               )
             : null,
         children: [
           // Manager row
-          if (managerDoc != null)
-            _buildUserRow(ctx, managerDoc, true),
+          if (managerDoc != null) _buildUserRow(ctx, managerDoc, true),
           if (workers.isNotEmpty) ...[
             const Divider(height: 1, indent: 16, endIndent: 16),
             ...workers.map((w) => _buildUserRow(ctx, w, false)),
@@ -399,10 +824,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
               children: [
                 const Divider(),
                 if (mgrData['workshopLocation'] != null)
-                  Text('📍 ${mgrData['workshopLocation']}', style: const TextStyle(fontSize: 13)),
+                  Text(
+                    '📍 ${mgrData['workshopLocation']}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 if (mgrData['workshopSpecialties'] != null)
-                  Text('🛠 ${mgrData['workshopSpecialties']}', style: const TextStyle(fontSize: 13)),
-                Text('🆔 UID: $wId', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text(
+                    '🛠 ${mgrData['workshopSpecialties']}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                Text(
+                  '🆔 UID: $wId',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
               ],
             ),
           ),
@@ -411,7 +845,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     );
   }
 
-  Widget _buildUserRow(BuildContext ctx, QueryDocumentSnapshot doc, bool isManager) {
+  Widget _buildUserRow(
+    BuildContext ctx,
+    QueryDocumentSnapshot doc,
+    bool isManager,
+  ) {
     final data = doc.data() as Map<String, dynamic>;
     final email = data['email'] ?? 'بدون بريد';
     final name = data['name'] ?? data['displayName'] ?? 'بدون اسم';
@@ -443,7 +881,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       trailing: IconButton(
         icon: const Icon(Icons.settings),
         color: isManager ? Colors.blue : Colors.grey,
-        tooltip: 'إدارة الحساب',
+        tooltip: _t('إدارة الحساب'),
         onPressed: () => _showManageDialog(ctx, doc.id, email, isManager),
       ),
       isThreeLine: true,
@@ -454,28 +892,35 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isAppAdmin = isApplicationAdminEmail(
+      FirebaseAuth.instance.currentUser?.email,
+    );
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إدارة المشتركين والورشات'),
+        title: Text(_t('إدارة المشتركين والورشات')),
         centerTitle: true,
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'الكل'),
-            Tab(text: 'منتهية / بحاجة تفعيل', icon: Icon(Icons.warning_amber_rounded, size: 16)),
-            Tab(text: 'فعّالة'),
+          tabs: [
+            Tab(text: _t('الكل')),
+            Tab(
+              text: _t('منتهية / بحاجة تفعيل'),
+              icon: Icon(Icons.warning_amber_rounded, size: 16),
+            ),
+            Tab(text: _t('فعّالة')),
           ],
         ),
       ),
       body: Column(
         children: [
+          if (isAppAdmin) _buildPaymentSettingsCard(),
           // Search bar
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'بحث بالاسم أو البريد الإلكتروني...',
+                hintText: _t('بحث بالاسم أو البريد الإلكتروني...'),
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -486,7 +931,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                         },
                       )
                     : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 isDense: true,
               ),
@@ -496,7 +943,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           // Tab content
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .snapshots(),
               builder: (ctx, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -506,10 +955,16 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 48,
+                        ),
                         const SizedBox(height: 12),
-                        Text('خطأ في قراءة البيانات:\n${snapshot.error}',
-                          textAlign: TextAlign.center),
+                        Text(
+                          'خطأ في قراءة البيانات:\n${snapshot.error}',
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: 12),
                         const Text(
                           'تأكد من أن قواعد Firestore تسمح للمسؤول بقراءة جميع المستخدمين.',
@@ -521,7 +976,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                   );
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('لا يوجد مستخدمون في قاعدة البيانات'));
+                  return Center(
+                    child: Text(_t('لا يوجد مستخدمون في قاعدة البيانات')),
+                  );
                 }
 
                 // Filter out admin's own account
@@ -536,12 +993,18 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                     ? allUsers
                     : allUsers.where((doc) {
                         final d = doc.data() as Map<String, dynamic>;
-                        final email = (d['email'] ?? '').toString().toLowerCase();
-                        final name = (d['name'] ?? d['displayName'] ?? '').toString().toLowerCase();
-                        final workshop = (d['workshopName'] ?? '').toString().toLowerCase();
+                        final email = (d['email'] ?? '')
+                            .toString()
+                            .toLowerCase();
+                        final name = (d['name'] ?? d['displayName'] ?? '')
+                            .toString()
+                            .toLowerCase();
+                        final workshop = (d['workshopName'] ?? '')
+                            .toString()
+                            .toLowerCase();
                         return email.contains(_searchQuery) ||
-                               name.contains(_searchQuery) ||
-                               workshop.contains(_searchQuery);
+                            name.contains(_searchQuery) ||
+                            workshop.contains(_searchQuery);
                       }).toList();
 
                 // Group by workshopId
@@ -560,11 +1023,16 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                   QueryDocumentSnapshot? mgr;
                   try {
                     mgr = wUsers.firstWhere(
-                      (u) => (u.data() as Map<String, dynamic>)['role'] == 'manager');
+                      (u) =>
+                          (u.data() as Map<String, dynamic>)['role'] ==
+                          'manager',
+                    );
                   } catch (_) {}
                   final d = mgr != null
                       ? (mgr.data() as Map<String, dynamic>)
-                      : (wUsers.isNotEmpty ? (wUsers.first.data() as Map<String, dynamic>) : <String, dynamic>{});
+                      : (wUsers.isNotEmpty
+                            ? (wUsers.first.data() as Map<String, dynamic>)
+                            : <String, dynamic>{});
                   return _isActive(d);
                 }
 
@@ -577,18 +1045,26 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                     return aActive ? 1 : -1;
                   });
 
-                final expiredIds = allIds.where((id) => !workshopIsActive(id)).toList();
-                final activeIds  = allIds.where((id) =>  workshopIsActive(id)).toList();
+                final expiredIds = allIds
+                    .where((id) => !workshopIsActive(id))
+                    .toList();
+                final activeIds = allIds
+                    .where((id) => workshopIsActive(id))
+                    .toList();
 
                 Widget buildList(List<String> ids) {
                   if (ids.isEmpty) {
-                    return const Center(
+                    return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.check_circle_outline, color: Colors.green, size: 48),
-                          SizedBox(height: 12),
-                          Text('لا توجد ورشات في هذه الفئة'),
+                          const Icon(
+                            Icons.check_circle_outline,
+                            color: Colors.green,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(_t('لا توجد ورشات في هذه الفئة')),
                         ],
                       ),
                     );
@@ -608,17 +1084,27 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                       children: [
                         Container(
                           color: Colors.grey.shade100,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
                           child: Row(
                             children: [
                               Text(
                                 'إجمالي الورشات: ${allIds.length}',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               const SizedBox(width: 16),
                               Text(
                                 'منتهية: ${expiredIds.length}',
-                                style: const TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -632,14 +1118,25 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                         if (expiredIds.isNotEmpty)
                           Container(
                             color: Colors.red.shade50,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             child: Row(
                               children: [
-                                const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange,
+                                  size: 18,
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   '${expiredIds.length} ورشة بحاجة للتفعيل – اضغط "تفعيل" على أي بطاقة',
-                                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                                  style: const TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ],
                             ),

@@ -15,6 +15,26 @@ import 'package:provider/provider.dart';
 import 'settings/app_settings.dart';
 import 'settings/localization.dart';
 
+int _readWorkshopMaxUsers(Map<String, dynamic> workshopData) {
+  final hasNewLimit = workshopData['maxUsers'] != null;
+  final raw = hasNewLimit ? workshopData['maxUsers'] : workshopData['maxWorkers'];
+  if (raw == null) return 4; // Legacy default: 3 workers + the manager.
+  final parsed = raw is num ? raw.toInt() : int.tryParse(raw.toString()) ?? 4;
+  if (parsed == 999) return 999;
+  if (hasNewLimit) return parsed.clamp(0, 999).toInt();
+  // Keep the meaning of old maxWorkers values when reading old workshops.
+  return (parsed + 1).clamp(0, 999).toInt();
+}
+
+bool _isWorkshopUser(Map<String, dynamic> data) {
+  final role = data['role']?.toString().toLowerCase();
+  return role == 'owner' ||
+      role == 'manager' ||
+      role == 'worker' ||
+      role == 'co_manager' ||
+      role == 'admin';
+}
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -426,32 +446,23 @@ class _LoginScreenState extends State<LoginScreen>
         targetWorkshopId = querySnapshot.docs.first.id;
         workshopNameForWorker = workshopData['name'] as String?;
 
-        int maxWorkers = 3;
-        if (workshopData.containsKey('maxWorkers') &&
-            workshopData['maxWorkers'] != null) {
-          final mw = workshopData['maxWorkers'];
-          if (mw is num) {
-            maxWorkers = mw.toInt();
-          } else if (mw is String) {
-            maxWorkers = int.tryParse(mw) ?? 3;
-          }
-        }
+        final maxUsers = _readWorkshopMaxUsers(workshopData);
 
-        if (maxWorkers != 999) {
+        if (maxUsers != 999) {
           final workersSnapshot = await FirebaseFirestore.instance
               .collection('users')
               .where('workshopId', isEqualTo: targetWorkshopId)
               .get();
 
-          int currentWorkers = 0;
+          int currentUsers = 0;
           for (var doc in workersSnapshot.docs) {
             final d = doc.data() as Map<String, dynamic>? ?? {};
-            if (d['role'] == 'worker') {
-              currentWorkers++;
+            if (_isWorkshopUser(d)) {
+              currentUsers++;
             }
           }
 
-          if (currentWorkers >= maxWorkers) {
+          if (currentUsers >= maxUsers) {
             if (isNewAuthUser) {
               await userCredential.user!.delete();
             } else {
@@ -459,7 +470,7 @@ class _LoginScreenState extends State<LoginScreen>
             }
             setState(() {
               _errorMessage =
-                  'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من العمال ($maxWorkers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
+                  'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من المستخدمين ($maxUsers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
               _isLoading = false;
             });
             return;
@@ -492,15 +503,14 @@ class _LoginScreenState extends State<LoginScreen>
       }
 
       if (_isWorkerSignup) {
-        int currentWorkerCount = 0;
+        int currentUserCount = 0;
         try {
           final workersSnapshot = await FirebaseFirestore.instance
               .collection('users')
               .where('workshopId', isEqualTo: targetWorkshopId)
               .get();
-          currentWorkerCount = workersSnapshot.docs.where((doc) {
-            final data = doc.data();
-            return data['role'] == 'worker';
+          currentUserCount = workersSnapshot.docs.where((doc) {
+            return _isWorkshopUser(doc.data());
           }).length;
         } catch (_) {}
 
@@ -524,7 +534,7 @@ class _LoginScreenState extends State<LoginScreen>
           'workshopName': workshopNameForWorker,
           'displayName': _nameController.text.trim().isNotEmpty
               ? _nameController.text.trim()
-              : 'العامل رقم ${currentWorkerCount + 1}',
+              : 'المستخدم رقم ${currentUserCount + 1}',
           'permissions': defaultPerms,
           'permissions_json': jsonEncode(defaultPerms),
           'createdAt': FieldValue.serverTimestamp(),
@@ -539,6 +549,9 @@ class _LoginScreenState extends State<LoginScreen>
               'name': _workshopNameController.text.trim(),
               'managerUid': uid,
               'joinCode': joinCode,
+              'maxUsers': 4,
+              'maxSystems': 999,
+              'maxProfiles': 999,
               'createdAt': FieldValue.serverTimestamp(),
             })
             .timeout(const Duration(seconds: 10));
@@ -788,39 +801,42 @@ class _LoginScreenState extends State<LoginScreen>
           targetWorkshopId = querySnapshot.docs.first.id;
           workshopNameForWorker = workshopData['name'] as String?;
 
-          int maxWorkers = 3;
-          if (workshopData.containsKey('maxWorkers') &&
-              workshopData['maxWorkers'] != null) {
-            final mw = workshopData['maxWorkers'];
-            if (mw is num) {
-              maxWorkers = mw.toInt();
-            } else if (mw is String) {
-              maxWorkers = int.tryParse(mw) ?? 3;
-            }
-          }
+          final maxUsers = _readWorkshopMaxUsers(workshopData);
 
-          int currentWorkers = 0;
+          int currentUsers = 0;
+          var userCountRead = false;
           try {
             final workersSnapshot = await FirebaseFirestore.instance
                 .collection('users')
                 .where('workshopId', isEqualTo: targetWorkshopId)
                 .get();
 
-            currentWorkers = workersSnapshot.docs.where((doc) {
+            currentUsers = workersSnapshot.docs.where((doc) {
               final d = doc.data();
-              return d['role'] == 'worker';
+              return _isWorkshopUser(d);
             }).length;
+            userCountRead = true;
           } catch (e) {
             debugPrint('Failed to count workers: $e');
           }
 
-          if (maxWorkers != 999) {
-            if (currentWorkers >= maxWorkers) {
+          if (maxUsers != 999) {
+            if (!userCountRead) {
               await _auth.signOut();
               await _signOutGoogleProviderIfSupported();
               setState(() {
                 _errorMessage =
-                    'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من العمال ($maxWorkers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
+                    'تعذر التحقق من عدد المستخدمين حالياً. يرجى المحاولة مرة أخرى.';
+                _isLoading = false;
+              });
+              return;
+            }
+            if (currentUsers >= maxUsers) {
+              await _auth.signOut();
+              await _signOutGoogleProviderIfSupported();
+              setState(() {
+                _errorMessage =
+                    'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من المستخدمين ($maxUsers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
                 _isLoading = false;
               });
               return;
@@ -847,7 +863,7 @@ class _LoginScreenState extends State<LoginScreen>
             'workshopId': targetWorkshopId,
             'workshopName': workshopNameForWorker,
             'displayName':
-                user.displayName ?? 'العامل رقم ${currentWorkers + 1}',
+                user.displayName ?? 'المستخدم رقم ${currentUsers + 1}',
             'permissions': defaultPerms,
             'permissions_json': jsonEncode(defaultPerms),
             'createdAt': FieldValue.serverTimestamp(),
@@ -867,6 +883,9 @@ class _LoginScreenState extends State<LoginScreen>
                 'name': workshopName,
                 'managerUid': uid,
                 'joinCode': joinCode,
+                'maxUsers': 4,
+                'maxSystems': 999,
+                'maxProfiles': 999,
                 'createdAt': FieldValue.serverTimestamp(),
               });
 
@@ -948,6 +967,7 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -1081,7 +1101,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                     ChoiceChip(
                                       label: const Text(
-                                        'تسجيل كعامل',
+                                        'تسجيل كمستخدم',
                                         style: TextStyle(fontFamily: 'Cairo'),
                                       ),
                                       selected: _isWorkerSignup,
@@ -1111,7 +1131,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       fontFamily: 'Cairo',
                                     ),
                                     decoration: InputDecoration(
-                                      labelText: 'اسم المصنع / الورشة',
+                                      labelText: Localization.translate('اسم المصنع / الورشة', lang),
                                       labelStyle: const TextStyle(
                                         color: Colors.white70,
                                         fontFamily: 'Cairo',
@@ -1145,7 +1165,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       fontFamily: 'Cairo',
                                     ),
                                     decoration: InputDecoration(
-                                      labelText: 'كود الورشة (ضروري)',
+                                      labelText: Localization.translate('كود الورشة (ضروري)', lang),
                                       labelStyle: const TextStyle(
                                         color: Colors.white70,
                                         fontFamily: 'Cairo',
@@ -1183,7 +1203,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     fontFamily: 'Cairo',
                                   ),
                                   decoration: InputDecoration(
-                                    labelText: 'الاسم الكامل',
+                                    labelText: Localization.translate('الاسم الكامل', lang),
                                     labelStyle: const TextStyle(
                                       color: Colors.white70,
                                       fontFamily: 'Cairo',
@@ -1220,7 +1240,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   fontFamily: 'Cairo',
                                 ),
                                 decoration: InputDecoration(
-                                  labelText: 'البريد الإلكتروني',
+                                  labelText: Localization.translate('البريد الإلكتروني', lang),
                                   labelStyle: const TextStyle(
                                     color: Colors.white70,
                                     fontFamily: 'Cairo',
@@ -1272,7 +1292,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   fontFamily: 'Cairo',
                                 ),
                                 decoration: InputDecoration(
-                                  labelText: 'كلمة المرور',
+                                  labelText: Localization.translate('كلمة المرور', lang),
                                   labelStyle: const TextStyle(
                                     color: Colors.white70,
                                     fontFamily: 'Cairo',
@@ -1344,7 +1364,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     fontFamily: 'Cairo',
                                   ),
                                   decoration: InputDecoration(
-                                    labelText: 'تأكيد كلمة المرور',
+                                    labelText: Localization.translate('تأكيد كلمة المرور', lang),
                                     labelStyle: const TextStyle(
                                       color: Colors.white70,
                                       fontFamily: 'Cairo',

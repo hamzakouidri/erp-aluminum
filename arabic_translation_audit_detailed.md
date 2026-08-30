@@ -1,0 +1,1625 @@
+Warning: truncated output (original token count: 78923)
+Total output lines: 2528
+
+# التقرير التفصيلي للنصوص العربية في واجهة التطبيق
+
+هذا التقرير يعرض السطر البرمجي كاملًا، مع الملف ورقم السطر، لتجنب تقطيع النصوص الديناميكية التي تحتوي على متغيرات أو استدعاءات ترجمة داخلية.
+
+إحصاءات الجرد:
+- ملفات Dart المفحوصة: 157
+- الملفات التي تحتوي عربية: 128
+- أسطر عربية إجمالاً: 15,574
+- أسطر تعليقات مستبعدة: 1,296
+- أسطر واجهة مرشحة في هذا التقرير: 716
+
+مفتاح القراءة: `الملف:رقم السطر — السطر البرمجي الكامل`
+
+- **lib\Cliente\client.dart:1230**` label: Localization.translate('اسم الزبون', lang), `
+- **lib\Cliente\client.dart:1235**` hintText: Localization.translate('بحث بالاسم...', lang), `
+- **lib\Cliente\client.dart:1247**` label: Localization.translate('رقم الهاتف', lang), `
+- **lib\Cliente\client.dart:1252**` hintText: Localization.translate('بحث بالهاتف...', lang), `
+- **lib\Cliente\client.dart:1264**` label: Localization.translate('العنوان', lang), `
+- **lib\Cliente\client.dart:1269**` hintText: Localization.translate('بحث بالعنوان...', lang), `
+- **lib\Cliente\client.dart:1281**` label: Localization.translate('البريد الإلكتروني', lang), `
+- **lib\Cliente\client.dart:1286**` hintText: Localization.translate('بحث بالبريد...', lang), `
+- **lib\Cliente\client.dart:1298**` label: Localization.translate('البيانات الجبائية (NIF/RC)', lang), `
+- **lib\Cliente\client.dart:1315**` label: Localization.translate('تاريخ الإضافة', lang), `
+- **lib\Cliente\client.dart:1320**` hintText: Localization.translate('سنة-شهر...', lang), `
+- **lib\Cliente\client.dart:1332**` label: Localization.translate('العامل المُضيف', lang), `
+- **lib\Cliente\client.dart:1337**` hintText: Localization.translate('المُضيف...', lang), `
+- **lib\Cliente\client.dart:1350**` Localization.translate('إجراءات', lang), `
+- **lib\Cliente\client.dart:1376**` Localization.translate('مسح', lang), `
+- **lib\Cliente\client.dart:1505**` tooltip: Localization.translate('تعديل', lang), `
+- **lib\Cliente\client.dart:1511**` tooltip: Localization.translate('حذف', lang), `
+- **lib\Cliente\client.dart:1879**` labelText: Localization.translate('رقم المادة / AI', lang), `
+- **lib\Cliente\show_client.dart:68**` Localization.translate('تعذر فتح تطبيق الاتصال', lang), `
+- **lib\Cliente\show_client.dart:79**` Localization.translate('تعذر فتح تطبيق الاتصال', lang), `
+- **lib\Cliente\show_client.dart:241**` '${Localization.translate("Remaining:", lang)} ${remaining.toStringAsFixed(2)} د.ج', `
+- **lib\Cliente\show_client.dart:333**` tooltip: Localization.translate('كشف حساب الزبون (Chrono)', lang), `
+- **lib\Cliente\show_client.dart:846**` '${Localization.translate("Total:", lang)} ${orderTotal.toStringAsFixed(2)} دج', `
+- **lib\Cliente\show_client.dart:852**` '${Localization.translate("Amount paid", lang)} ${orderAdvance.toStringAsFixed(2)} دج', `
+- **lib\Cliente\show_client.dart:861**` '· ${Localization.translate("Remaining:", lang)} ${orderRemaining.toStringAsFixed(2)} دج', `
+- **lib\Commande\add_commande.dart:157**` TextEditingController controller = TextEditingController(); // للملاحظات `
+- **lib\Commande\add_commande.dart:932**` content: Text(t('الرجاء إضافة منتجات أولاً لحساب تكلفتها')), `
+- **lib\Commande\add_commande.dart:1392**` content: Text('فشل حفظ الطلبية: $e'), `
+- **lib\Commande\add_commande.dart:1446**` SnackBar(content: Text(t('لا توجد عناصر قابلة لهذا التخصيص.'))), `
+- **lib\Commande\add_commande.dart:1461**` SnackBar(content: Text('حدد عنصرًا واحدًا على الأقل لتطبيق $title.')), `
+- **lib\Commande\add_commande.dart:1478**` content: Text('تعذر تطبيق التخصيص: $error'), `
+- **lib\Commande\add_commande.dart:1495**` title: Text(t('سعر العناصر بعد التغيير')), `
+- **lib\Commande\add_commande.dart:1509**` title: Text(t('إعادة حساب السعر')), `
+- **lib\Commande\add_commande.dart:1510**` subtitle: Text(t('يأخذ اللون أو السلسلة الجديدة بالحسبان.')), `
+- **lib\Commande\add_commande.dart:1517**` title: Text(t('الحفاظ على السعر الحالي')), `
+- **lib\Commande\add_commande.dart:1518**` subtitle: Text(t('يبقى السعر كما هو قبل التغيير.')), `
+- **lib\Commande\add_commande.dart:1525**` child: Text(t('إلغاء')), `
+- **lib\Commande\add_commande.dart:1529**` child: Text(t('متابعة')), `
+- **lib\Commande\add_commande.dart:1803**` title: t('تغيير لون عناصر الطلبية'), `
+- **lib\Commande\add_commande.dart:1861**` title: Text(t('اختيار لون العناصر المحددة')), `
+- **lib\Commande\add_commande.dart:1865**` ? Text(t('لا توجد ألوان متاحة للسلاسل المختارة.')) `
+- **lib\Commande\add_commande.dart:1941**` child: const Text('إلغاء'), `
+- **lib\Commande\add_commande.dart:1949**` final selected = await _selectBulkProducts(title: t('تغيير سلسلة العناصر')); `
+- **lib\Commande\add_commande.dart:1968**` SnackBar(content: Text(t('لا توجد سلاسل متاحة لهذه العناصر.'))), `
+- **lib\Commande\add_commande.dart:1975**` title: Text(t('اختر السلسلة الجديدة')), `
+- **lib\Commande\add_commande.dart:2004**` child: const Text('إلغاء'), `
+- **lib\Commande\add_commande.dart:2054**` content: Text('تم تغيير السلسلة لـ $changed عنصر بنجاح.'), `
+- **lib\Commande\add_commande.dart:2108**` title: Text(t('تغيير زجاج العناصر المحددة')), `
+- **lib\Commande\add_commande.dart:2131**` labelText: t('سمك الزجاج الخارجي (مم)'), `
+- **lib\Commande\add_commande.dart:2142**` labelText: t('سمك الزجاج الداخلي (مم)'), `
+- **lib\Commande\add_commande.dart:2150**` labelText: t('سمك الأنتركال (مم)'), `
+- **lib\Commande\add_commande.dart:2155**` title: Text(t('مع غاز')), `
+- **lib\Commande\add_commande.dart:2230**` child: const Text('إلغاء'), `
+- **lib\Commande\add_commande.dart:2278**` child: Text(t('تطبيق')), `
+- **lib\Commande\add_commande.dart:2290**` content: Text('${t('تعذر فتح إعدادات الزجاج')}: $error'), `
+- **lib\Commande\add_commande.dart:2306**` title: t('تغيير زجاج العناصر'), `
+- **lib\Commande\add_commande.dart:2322**` content: Text(t('لا توجد مناطق زجاجية في العناصر المحددة.')), `
+- **lib\Commande\add_commande.dart:2348**` content: Text('تم تغيير الزجاج لـ $changed عنصر بنجاح.'), `
+- **lib\Commande\add_commande.dart:2357**` content: Text('${t('تعذر تغيير الزجاج')}: $error'), `
+- **lib\Commande\add_commande.dart:2615**` subtitle: Text('تم تحديد ${_bulkSelectedProducts.length}'), `
+- **lib\Commande\add_commande.dart:2621**` label: Text(t('إلغاء التحديد')), `
+- **lib\Commande\add_commande.dart:3472**` ? Localization.translate('إضافة منتج خاص', lang) `
+- **lib\Commande\add_commande.dart:3473**` : Localization.translate('تعديل المنتج الخاص', lang), `
+- **lib\Commande\add_commande.dart:3483**` labelText: Localization.translate('اسم المنتج', lang) + ' *', `
+- **lib\Commande\add_commande.dart:3508**` labelText: Localization.translate('سعر البيع', lang) + ' *', `
+- **lib\Commande\add_commande.dart:3517**` labelText: Localization.translate('الوصف', lang), `
+- **lib\Commande\add_commande.dart:3527**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Commande\add_commande.dart:3536**` Localization.translate('يرجى إدخال اسم المنتج', lang), `
+- **lib\Commande\add_commande.dart:3547**` Localization.translate('يرجى إدخال سعر بيع صحيح', lang), `
+- **lib\Commande\add_commande.dart:3583**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Commande\add_commande.dart:3643**` title: Text(t('حذف المنتج')), `
+- **lib\Commande\add_commande.dart:3650**` child: Text(t('إلغاء')), `
+- **lib\Commande\add_commande.dart:3853**` tooltip: t('تعديل (Amélioration)'), `
+- **lib\Commande\add_commande.dart:3863**` tooltip: t('جدول المقاسات (Edit Table Details)'), `
+- **lib\Commande\add_commande.dart:4064**` tooltip: t('تكرار (Duplicate)'), `
+- **lib\Commande\add_commande.dart:4102**` title: Text(t('حذف النافذة')), `
+- **lib\Commande\add_commande.dart:4111**` child: Text(t('إلغاء')), `
+- **lib\Commande\add_commande.dart:4349**` tooltip: t('تعديل السبب'), `
+- **lib\Commande\add_commande.dart:4413**` labelText: t('سبب التعديل / الإلغاء'), `
+- **lib\Commande\add_commande.dart:4447**` SnackBar(content: Text(t('الرجاء إدخال سبب التعديل'))), `
+- **lib\Commande\add_commande.dart:4534**` labelText: t('سبب التعديل / الإلغاء'), `
+- **lib\Commande\add_commande.dart:4541**` child: Text(t('إلغاء')), `
+- **lib\Commande\add_commande.dart:4552**` SnackBar(content: Text(t('الرجاء إدخال سبب التعديل'))), `
+- **lib\Commande\add_commande.dart:4561**` child: Text('حفظ'), `
+- **lib\Commande\add_commande.dart:4916**` '${Localization.translate('إضافة', Provider.of<AppSettingsProvider>(context).language)} "${search.text}"', `
+- **lib\Commande\add_commande.dart:5215**` Localization.translate("اختيار المشروع", lang), `
+- **lib\Commande\add_commande.dart:5222**` hintText: Localization.translate("البحث...", lang), `
+- **lib\Commande\choose_systems.dart:238**` title: Localization.translate('التصميم', lang), `
+- **lib\Commande\choose_systems.dart:250**` title: 'System Sliding (جرار)', `
+- **lib\Commande\choose_systems.dart:264**` title: 'System Beating (فرنسي)', `
+- **lib\Commande\choose_systems.dart:278**` title: 'Conception (التصميم)', `
+- **lib\Commande\choose_systems.dart:320**` title: Localization.translate('Moustiquaire (موستيكير)', lang), `
+- **lib\Commande\choose_systems.dart:348**` title: Localization.translate('Verre Trempé (أعمال الزجاج)', lang), `
+- **lib\Commande\choose_systems.dart:359**` Localization.translate("نظام الورشة - اختيار النظام", lang), `
+- **lib\Commande\choose_systems.dart:369**` tooltip: Localization.translate('تعديل الأنظمة المفعلة', lang), `
+- **lib\Commande\choose_systems.dart:401**` Localization.translate('اختر نظام العمل', lang), `
+- **lib\Commande\choose_systems.dart:490**` Localization.translate('تعديل الأنظمة المفعلة', lang), `
+- **lib\Commande\choose_systems.dart:687**` widget.title.contains('مختلط')) `
+- **lib\Commande\commande.dart:189**` '${Localization.translate('Remaining:', lang)} ${remaining.toStringAsFixed(2)} د.ج', `
+- **lib\Commande\commande.dart:234**` '${Localization.translate('فشل حفظ الدفعة', lang)}: $error', `
+- **lib\Commande\commande.dart:1355**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:1394**` '${Localization.translate('Remaining:', lang)} ${(_readMoney(orderData['net_payable'] ?? orderData['total']) - _readMoney(orderData['advance_payment'])).clamp(0.0, double.infinity).toStringAsFixed(2)} د.ج', `
+- **lib\Commande\commande.dart:1411**` Localization.translate('فاتورة رسمية / أولية', lang), `
+- **lib\Commande\commande.dart:1444**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:1497**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:1550**` content: Text('خطأ أثناء توليد المستند: $e'), `
+- **lib\Commande\commande.dart:1653**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:1762**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:2216**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:2312**` content: Text('خطأ أثناء توليد الفاتورة: $e'), `
+- **lib\Commande\commande.dart:2362**` '${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e', `
+- **lib\Commande\commande.dart:2380**` Localization.translate('كمية السلع المطلوبة', lang), `
+- **lib\Commande\commande.dart:2739**` Localization.translate('تغيير الحالة المخصص', lang), `
+- **lib\Commande\commande.dart:2768**` Localization.translate('تكرار الطلبية (Duplicate)', lang), `
+- **lib\Commande\commande.dart:2795**` '${Localization.translate('حدث خطأ أثناء التكرار:', lang)} $e', `
+- **lib\Commande\commande.dart:2819**` Localization.translate('مسح الطلبية (Supprimer)', lang), `
+- **lib\Commande\commande.dart:2921**` const Text('لا يمكن الحذف'), `
+- **lib\Commande\commande.dart:2931**` child: const Text('موافق'), `
+- **lib\Commande\commande.dart:2949**` const Text('غير مصرح'), `
+- **lib\Commande\commande.dart:2959**` child: const Text('موافق'), `
+- **lib\Commande\commande.dart:2971**` title: const Text('تأكيد الحذف'), `
+- **lib\Commande\commande.dart:2978**` child: const Text('إلغاء'), `
+- **lib\Commande\commande.dart:2982**` child: const Text('حذف', style: TextStyle(color: Colors.red)), `
+- **lib\Commande\commande.dart:3000**` content: Text('الطلبية لم تعد موجودة في قاعدة البيانات.'), `
+- **lib\Commande\commande.dart:3012**` content: Text('تم حذف الطلبية بنجاح.'), `
+- **lib\Commande\commande.dart:3022**` content: Text('تعذر حذف الطلبية: $error'), `
+- **lib\Commande\commande.dart:3151**` Localization.translate('تغيير حالة الطلبية', lang), `
+- **lib\Commande\commande.dart:3342**` Localization.translate('إلغاء', lang), `
+- **lib\Commande\commande.dart:3580**` label: Localization.translate('الزبون والمشروع', lang), `
+- **lib\Commande\commande.dart:3585**` hintText: Localization.translate('زبون / مشروع...', lang), `
+- **lib\Commande\commande.dart:3597**` label: Localization.translate('تاريخ الإنشاء', lang), `
+- **lib\Commande\commande.dart:3602**` hintText: Localization.translate('سنة-شهر...', lang), `
+- **lib\Commande\commande.dart:3614**` label: Localization.translate('المجموع الكلي (د.ج)', lang), `
+- **lib\Commande\commande.dart:3619**` hintText: Localization.translate('المجموع...', lang), `
+- **lib\Commande\commande.dart:3634**` label: Localization.translate('المدفوع', lang), `
+- **lib\Commande\commande.dart:3639**` hintText: Localization.translate('المدفوع...', lang), `
+- **lib\Commande\commande.dart:3654**` label: Localization.translate('المتبقي', lang), `
+- **lib\Commande\commande.dart:3659**` hintText: Localization.translate('المتبقي...', lang), `
+- **lib\Commande\commande.dart:3674**` label: Localization.translate('حالة الورشة', lang), `
+- **lib\Commande\commande.dart:3679**` hintText: Localization.translate('حالة الورشة...', lang), `
+- **lib\Commande\commande.dart:3683**` optionsTooltip: Localization.translate('اختيار حالة الطلبية', lang), `
+- **lib\Commande\commande.dart:3693**` label: Localization.translate('المُدخل', lang), `
+- **lib\Commande\commande.dart:3698**` hintText: Localization.translate('المُدخل...', lang), `
+- **lib\Commande\commande.dart:3711**` Localization.translate('إجراءات', lang), `
+- **lib\Commande\commande.dart:3744**` Localization.translate('مسح', lang), `
+- **lib\Commande\commande.dart:3881**` tooltip: Localization.translate('خيارات الطلبية', lang), `
+- **lib\Commande\commande.dart:4002**` label: Localization.translate('كل الحالات', lang), `
+- **lib\Commande\commande.dart:4179**` '${Localization.translate('فشل توليد ملف PDF', widget.lang)}: $error', `
+- **lib\Commande\commande.dart:4198**` Localization.translate('تم حفظ ملف الصور بنجاح', widget.lang), `
+- **lib\Commande\commande.dart:4353**` '${Localization.translate('خطأ أثناء توليد ملف الصور: ', widget.lang)}${snapshot.error}', `
+- **lib\Commande\commande.dart:4362**` Localization.translate('إعادة المحاولة', widget.lang), `
+- **lib\Commande\commande.dart:4379**` Localization.translate('جار تجهيز الصور', widget.lang), `
+- **lib\Commande\commande.dart:4390**` Localization.translate('لا توجد صور لهذه الطلبية', widget.lang), `
+- **lib\Commande\commande.dart:4414**` '${Localization.translate('الأبعاد', widget.lang)}: ${item.width} x ${item.height} mm', `
+- **lib\Commande\commande.dart:4415**` '${Localization.translate('الكمية', widget.lang)}: ${item.quantity}', `
+- **lib\Commande\commande.dart:4417**` '${Localization.translate('اللون', widget.lang)}: ${item.color}', `
+- **lib\Commande\devis_builder.dart:832**` title = 'Moustiquaire (موستيكير)'; `
+- **lib\Commande\devis_preview_screen.dart:1428**` item.title.contains('موستيكير') || `
+- **lib\Commande\devis_preview_screen.dart:1811**` labelText: t('ادخل اسم الملف'), `
+- **lib\Commande\devis_preview_screen.dart:1827**` child: Text(t('حفظ'), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Commande\devis_preview_screen.dart:1861**` dialogTitle: t('حفظ PDF'), `
+- **lib\Commande\devis_preview_screen.dart:1952**` dialogTitle: t('مشاركة / حفظ PDF'), `
+- **lib\Commande\order_measurements_confirm_screen.dart:252**` ).showSnackBar(SnackBar(content: Text('خطأ أثناء تحميل البيانات: $e'))); `
+- **lib\Commande\order_measurements_confirm_screen.dart:1017**` Localization.translate('تأكيد و تفصيل القياسات', lang), `
+- **lib\Commande\order_measurements_confirm_screen.dart:1075**` Localization.translate('طباعة ملصقات الباركود', lang), `
+- **lib\Commande\order_measurements_confirm_screen.dart:1188**` '${Localization.translate('القياس', lang)}: ${detail['largeur']} × ${detail['hauteur']} mm', `
+- **lib\Commande\order_measurements_confirm_screen.dart:1193**` '${Localization.translate('الكمية الإجمالية', lang)}: $totalQty', `
+- **lib\Commande\order_picture_pdf_service.dart:94**` Localization.translate('لا توجد صور لهذه الطلبية', lang), `
+- **lib\Commande\order_picture_pdf_service.dart:343**` '${Localization.translate('تاريخ الإنشاء', lang)}: ${data.orderDate}', `
+- **lib\Commande\order_picture_pdf_service.dart:410**` '${Localization.translate('المشروع', lang)}: ${_projectName(data)}', `
+- **lib\Commande\order_picture_pdf_service.dart:412**` '${Localization.translate('الموقع', lang)}: ${_siteLocation(data)}', `
+- **lib\Commande\order_picture_pdf_service.dart:416**` '${Localization.translate('الأبعاد', lang)}: ${item.width} x ${item.height} mm', `
+- **lib\Commande\order_picture_pdf_service.dart:417**` '${Localization.translate('الكمية', lang)}: ${item.quantity}', `
+- **lib\Commande\order_picture_pdf_service.dart:419**` '${Localization.translate('اللون', lang)}: ${item.color}', `
+- **lib\Commande\order_required_goods_screen.dart:1934**` SnackBar(content: Text(_t('ليس لديك صلاحية إنشاء المشتريات'))), `
+- **lib\Commande\order_required_goods_screen.dart:1944**` _t('لا توجد سلع مرتبطة بقاعدة البيانات لتحويلها إلى شراء.'), `
+- **lib\Commande\order_required_goods_screen.dart:1963**` content: Text(_t('أضف مورّدًا ومكان تخزين قبل إنشاء طلب الشراء.')), `
+- **lib\Commande\order_required_goods_screen.dart:1985**` title: Text(_t('تحويل الكميات المطلوبة إلى شراء')), `
+- **lib\Commande\order_required_goods_screen.dart:1998**` title: Text(_t('طلب شراء (مسودة)')), `
+- **lib\Commande\order_required_goods_screen.dart:2000**` _t('يمكن مراجعته وتأكيده لاحقًا دون إدخال المخزون.'), `
+- **lib\Commande\order_required_goods_screen.dart:2008**` title: Text(_t('فاتورة شراء')), `
+- **lib\Commande\order_required_goods_screen.dart:2010**` _t('تُنشأ بالعناصر المحسوبة وقابلة للتعديل.'), `
+- **lib\Commande\order_required_goods_screen.dart:2019**` ? _t('رقم طلب الشراء') `
+- **lib\Commande\order_required_goods_screen.dart:2020**` : _t('رقم فاتورة الشراء'), `
+- **lib\Commande\order_required_goods_screen.dart:2024**` ? _t('أدخل رقم الوثيقة') `
+- **lib\Commande\order_required_goods_screen.dart:2032**` labelText: _t('المورّد'), `
+- **lib\Commande\order_required_goods_screen.dart:2046**` value == null ? _t('اختر المورّد') : null, `
+- **lib\Commande\order_required_goods_screen.dart:2053**` labelText: _t('مكان التخزين'), `
+- **lib\Commande\order_required_goods_screen.dart:2067**` value == null ? _t('اختر مكان التخزين') : null, `
+- **lib\Commande\order_required_goods_screen.dart:2073**` '${purchaseItems.length} ${_t('صنف مرتبط سيُضاف إلى الوثيقة')}', `
+- **lib\Commande\order_required_goods_screen.dart:2094**` '${_t('سيتم فصل الشراء تلقائيًا إلى وثيقتين:')} ' `
+- **lib\Commande\order_required_goods_screen.dart:2095**` '${_t('الزجاج')} (${glassItemsForDialog.length})، ' `
+- **lib\Commande\order_required_goods_screen.dart:2096**` '${_t('وباقي العناصر')} (${otherItemsForDialog.length}). ' `
+- **lib\Commande\order_required_goods_screen.dart:2097**` '${_t('يمكن تعديل كل وثيقة بعد إنشائها.')}', `
+- **lib\Commande\order_required_goods_screen.dart:2113**` child: Text(_t('إلغاء')), `
+- **lib\Commande\order_required_goods_screen.dart:2130**` label: Text(_t('إنشاء')), `
+- **lib\Commande\order_required_goods_screen.dart:2164**` '${_t('المواد')}: ${otherItems.length} ${_t('سطر')}', `
+- **lib\Commande\order_required_goods_screen.dart:2178**` '${_t('الزجاج')}: ${glassItems.length} ${_t('سطر')} / ' `
+- **lib\Commande\order_required_goods_screen.dart:2189**` '${_t('تم إنشاء وثائق الشراء:')} ${createdDescriptions.join('، ')}', `
+- **lib\Commande\order_required_goods_screen.dart:2208**` SnackBar(content: Text('${_t('تعذر إنشاء وثيقة الشراء:')} $error')), `
+- **lib\Commande\order_required_goods_screen.dart:2228**` return '📐 ${_t('البروفيلات')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2230**` return '🪟 ${_t('بروفيل الإطار')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2232**` return '🔲 ${_t('بروفيل الكانة')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2234**` return '📐 ${_t('بروفيل الفاصل')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2236**` return '🔷 ${_t('الزجاج')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2238**` return '🖼️ ${_t('بانو')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2240**` return '🎛️ ${_t('مكونات الستارة')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2244**` return '🔩 ${_t('الإكسسوارات')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2246**` return '🧵 ${_t('الجوانات')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2248**` return '📦 ${_t('أخرى')}'; `
+- **lib\Commande\order_required_goods_screen.dart:2386**` _t('كمية السلع المطلوبة'), `
+- **lib\Commande\order_required_goods_screen.dart:2418**` tooltip: _t('إظهار النواقص'), `
+- **lib\Commande\order_required_goods_screen.dart:2426**` tooltip: _t('اعتماد القص والبقايا'), `
+- **lib\Commande\order_required_goods_screen.dart:2446**` tooltip: _t('تحويل إلى طلب أو فاتورة شراء'), `
+- **lib\Commande\order_required_goods_screen.dart:2457**` _t('تفاصيل كل منتج'), `
+- **lib\Commande\order_required_goods_screen.dart:2469**` tooltip: _t('إعادة الحساب'), `
+- **lib\Commande\order_required_goods_screen.dart:2490**` _t('جاري حساب السلع المطلوبة لجميع المنتجات...'), `
+- **lib\Commande\order_required_goods_screen.dart:2516**` label: Text(_t('إعادة المحاولة')), `
+- **lib\Commande\order_required_goods_screen.dart:2527**` : _t('لا تحتوي الطلبية على منتجات فعالة قابلة للحساب.'); `
+- **lib\Commande\order_required_goods_screen.dart:2541**` _t('لا توجد سلع محسوبة للطلبية'), `
+- **lib\Commande\order_required_goods_screen.dart:2554**` label: Text(_t('إعادة الحساب')), `
+- **lib\Commande\order_required_goods_screen.dart:2628**` '${_t('إجمالي')} ${_aggregatedItems.length} ${_t('نوع سلعة من')} $_productCount ${_t('منتج')}', `
+- **lib\Commande\order_required_goods_screen.dart:2637**` _t('مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة'), `
+- **lib\Commande\order_required_goods_screen.dart:2647**` _t('التكلفة الإجمالية'), `
+- **lib\Commande\order_required_goods_screen.dart:2713**` '(${items.length} ${_t('صنف')})', `
+- **lib\Commande\order_required_goods_screen.dart:2802**` label: Text(_t('الصورة'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2810**` label: Text(_t('الفئة'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2824**` label: Text(_t('التفاصيل'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2831**` label: Text(_t('المطلوب الفعلي'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2838**` label: Text(_t('كمية الشراء'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2845**` label: Text(_t('سعر الوحدة'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2852**` label: Text(_t('السعر التقديري'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2859**` label: Text(_t('إجراء'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:2908**` ? '${_t('المكوّن المطلوب')}: ${_t(item.originalName)}' `
+- **lib\Commande\order_required_goods_screen.dart:2933**` ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}' `
+- **lib\Commande\order_required_goods_screen.dart:2934**` : _t('السعر غير محدد'), `
+- **lib\Commande\order_required_goods_screen.dart:2952**` '${_t('الكود')}: ${child.profileCode}', `
+- **lib\Commande\order_required_goods_screen.dart:2954**` '${_t('اللون')}: ${_t(child.colorName!)}', `
+- **lib\Commande\order_required_goods_screen.dart:2955**` if ((child.length ?? 0) > 0) '${_t('القياس')}: ${child.length}', `
+- **lib\Commande\order_required_goods_screen.dart:2967**` subtitle: _t('مكوّن داخل الكِت'), `
+- **lib\Commande\order_required_goods_screen.dart:2982**` '${child.unitPrice.toStringAsFixed(2)} دج / ${_t(child.unit)}', `
+- **lib\Commande\order_required_goods_screen.dart:3012**` _desktopTextCell(_t('خطة القص'), isDark: isDark), `
+- **lib\Commande\order_required_goods_screen.dart:3014**` title: '${_t('قطاع')} $barNumber', `
+- **lib\Commande\order_required_goods_screen.dart:3019**` '$cutText mm • ${_t('الباقي')}: ${(remainder * 1000).round()} mm', `
+- **lib\Commande\order_required_goods_screen.dart:3126**` tooltip: _t(isExpanded ? 'إخفاء المكونات' : 'عرض المكونات'), `
+- **lib\Commande\order_required_goods_screen.dart:3142**` tooltip: _t('تغيير القطاع'), `
+- **lib\Commande\order_required_goods_screen.dart:3148**` tooltip: _t(isExpanded ? 'إخفاء خطة القص' : 'عرض خطة القص'), `
+- **lib\Commande\order_required_goods_screen.dart:3213**` text.contains('غطاء جانبي') || `
+- **lib\Commande\order_required_goods_screen.dart:3214**` text.contains('الغطاء الجانبي') || `
+- **lib\Commande\order_required_goods_screen.dart:3227**` if (text.contains('تقسيم') || `
+- **lib\Commande\order_required_goods_screen.dart:3228**` text.contains('فاصل') || `
+- **lib\Commande\order_required_goods_screen.dart:3229**` text.contains('عمود') || `
+- **lib\Commande\order_required_goods_screen.dart:3235**` if (text.contains('دلفة') || `
+- **lib\Commande\order_required_goods_screen.dart:3236**` text.contains('ضلفة') || `
+- **lib\Commande\order_required_goods_screen.dart:3237**` text.contains('كانة') || `
+- **lib\Commande\order_required_goods_screen.dart:3242**` if (text.contains('إطار') || `
+- **lib\Commande\order_required_goods_screen.dart:3243**` text.contains('اطار') || `
+- **lib\Commande\order_required_goods_screen.dart:3278**` SnackBar(content: Text(_t('لا توجد قطاعات ذات خطة قص لاعتمادها.'))), `
+- **lib\Commande\order_required_goods_screen.dart:3299**` title: Text(_t('اعتماد القص وتخزين البقايا')), `
+- **lib\Commande\order_required_goods_screen.dart:3316**` labelText: _t('أقل طول نحتفظ به (مم)'), `
+- **lib\Commande\order_required_goods_screen.dart:3325**` labelText: _t('المخزن / الموقع'), `
+- **lib\Commande\order_required_goods_screen.dart:3348**` labelText: _t('رقم الرف'), `
+- **lib\Commande\order_required_goods_screen.dart:3358**` labelText: _t('المستوى'), `
+- **lib\Commande\order_required_goods_screen.dart:3368**` labelText: _t('الصندوق / الخانة'), `
+- **lib\Commande\order_required_goods_screen.dart:3382**` child: Text(_t('إلغاء')), `
+- **lib\Commande\order_required_goods_screen.dart:3393**` _t('أدخل أقل طول محفوظ بقيمة أكبر من صفر.'), `
+- **lib\Commande\order_required_goods_screen.dart:3402**` label: Text(_t('اعتماد وحفظ')), `
+- **lib\Commande\order_required_goods_screen.dart:3449**` _t('تم اعتماد مخطط قص هذه الطلبية سابقًا؛ لم تُكرر الكميات.'), `
+- **lib\Commande\order_required_goods_screen.dart:3465**` title: Text(_t('تم حفظ نتيجة القص')), `
+- **lib\Commande\order_required_goods_screen.dart:3467**` '${_t('تم حفظ نتيجة القص')}: ${savedRemnants.length} ${_t(savedRemnants.length == 1 ? 'قطعة قابلة للاستعمال' : 'قطع قابلة للاستعمال')}، ' `
+- **lib\Commande\order_required_goods_screen.dart:3468**` '${result['scrap_count'] ?? 0} ${_t((result['scrap_count'] as num? ?? 0) == 1 ? 'سجل هالك' : 'سجلات هالك')}. ${_t('هل تريد طباعة تيكيتات القطع الآن؟')}', `
+- **lib\Commande\order_required_goods_screen.dart:3473**` child: Text(_t('لاحقًا')), `
+- **lib\Commande\order_required_goods_screen.dart:3478**` label: Text(_t('طباعة التيكيتات')), `
+- **lib\Commande\order_required_goods_screen.dart:3698**` SnackBar(content: Text(_t('لا توجد قطاعات متوفرة لهذه السلسلة'))), `
+- **lib\Commande\order_required_goods_screen.dart:4214**` '${_t('المكوّن المطلوب')}: ${_t(item.originalName)}', `
+- **lib\Commande\order_required_goods_screen.dart:4244**` ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}' `
+- **lib\Commande\order_required_goods_screen.dart:4246**` ? '📌 ${_t('انقر هنا لاختيار القطاع المناسب')}' `
+- **lib\Commande\order_required_goods_screen.dart:4247**` : _t('السعر غير محدد'), `
+- **lib\Commande\order_required_goods_screen.dart:4367**` 'قطاع $barNumber: $cutText مم — الباقي ' `
+- **lib\Commande\order_required_goods_screen.dart:4409**` '${_aggregatedItems.length} ${_t('صنف من السلع')}', `
+- **lib\Commande\order_required_goods_screen.dart:4429**` label: Text(_t('تحديث')), `
+- **lib\Commande\order_required_goods_screen.dart:4487**` return '$formatted ${_t('قطاع')}'; `
+- **lib\Commande\order_required_goods_screen.dart:4498**` return '${_roundQuantity(actualMeters, 'م')} ${_t('م')}'; `
+- **lib\Commande\order_required_goods_screen.dart:4509**` parts.add('${_t('الكود')}: ${item.profileCode}'); `
+- **lib\Commande\order_required_goods_screen.dart:4515**` parts.add('${_t('اللون')}: ${_t(item.colorName!)}'); `
+- **lib\Commande\order_required_goods_screen.dart:4521**` '${_t('القياس')}: ${item.stockLength!.round()} × ${item.glassHeight!.round()} mm', `
+- **lib\Commande\order_required_goods_screen.dart:4524**` '${_t('المساحة المطلوبة')}: ${_roundQuantity(item.totalQuantity, 'm²')} m²', `
+- **lib\Commande\order_required_goods_screen.dart:4531**` parts.add('${_t('القياس')}: $value ${_t(unit)}'.trim()); `
+- **lib\Commande\order_required_goods_screen.dart:4534**` parts.add(_t('غير مرتبط بقاعدة البيانات')); `
+- **lib\Commande\order_required_goods_screen.dart:4635**` '${_t('المقاس')}: ${pb.width.toStringAsFixed(0)} mm × ${pb.height.toStringAsFixed(0)} mm', `
+- **lib\Commande\order_required_goods_screen.dart:4645**` '${_t('الكمية')}: ${pb.qty} ${_t('حبة')}', `
+- **lib\Commande\order_required_goods_screen.dart:4656**` '${_t('السلسلة')}: ${pb.model.activeSeries?.name ?? pb.model.activeSlidingSeries?.name ?? _t('غير محدد')}', `
+- **lib\Commande\order_required_goods_screen.dart:4672**` _t('العناصر والمواد المحسوبة لهذا المنتج:'), `
+- **lib\Commande\order_required_goods_screen.dart:4738**` label: Text(_t('اسم العنصر'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4745**` label: Text(_t('الكمية'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4752**` label: Text(_t('الوحدة'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4759**` label: Text(_t('التكلفة'), style: headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4831**` _compactBomHeaderCell(_t('اسم العنصر'), headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4832**` _compactBomHeaderCell(_t('الكمية'), headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4833**` _compactBomHeaderCell(_t('الوحدة'), headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4834**` _compactBomHeaderCell(_t('التكلفة'), headerStyle), `
+- **lib\Commande\order_required_goods_screen.dart:4960**` SnackBar(content: Text(t('لا توجد كميات متاحة لاعتماد صرفها.'))), `
+- **lib\Commande\order_required_goods_screen.dart:4967**` title: Text(t('اعتماد صرف المخزون')), `
+- **lib\Commande\order_required_goods_screen.dart:4976**` child: Text(t('إلغاء')), `
+- **lib\Commande\order_required_goods_screen.dart:4981**` label: Text(t('اعتماد')), `
+- **lib\Commande\order_required_goods_screen.dart:5018**` title: Text('${t('تقرير نواقص الطلبية')} #$orderId'), `
+- **lib\Commande\order_required_goods_screen.dart:5105**` Text('${t('اللون')}: ${item.colorName}'), `
+- **lib\Commande\order_table_edit_screen.dart:594**` content: Text(t('تم تطبيق الخصائص الموحدة على جميع العناصر بنجاح')), `
+- **lib\Commande\order_table_edit_screen.dart:1600**` tooltip: t('تطبيق على الكل'), `
+- **lib\Commande\order_table_edit_screen.dart:1663**` tooltip: t('إلغاء التحديد'), `
+- **lib\Commande\order_table_edit_screen.dart:1671**` tooltip: t('تحديد الكل'), `
+- **lib\Commande\order_table_edit_screen.dart:1682**` tooltip: t('إلغاء تحديد الكل'), `
+- **lib\Commande\order_table_edit_screen.dart:1691**` tooltip: t('حفظ التعديلات'), `
+- **lib\Commande\order_table_edit_screen.dart:1877**` labelText: t('العرض (mm)'), `
+- **lib\Commande\order_table_edit_screen.dart:1906**` labelText: t('الارتفاع (mm)'), `
+- **lib\Commande\order_table_edit_screen.dart:1934**` labelText: t('الكمية'), `
+- **lib\Commande\order_table_edit_screen.dart:2003**` labelText: t('سعر الوحدة (دج)'), `
+- **lib\Commande\order_table_edit_screen.dart:2044**` '${((double.tryParse(_priceControllers[itemIndex]!.text) ?? 0.0) * (int.tryParse(_quantityControllers[itemIndex]!.text) ?? 1)).toStringAsFixed(2)} دج', `
+- **lib\Commande\order_workspace_screen.dart:77**` content: Text(_orderWorkspaceText(context, 'الحد الأقصى هو 3 طلبيات مفتوحة.')), `
+- **lib\Commande\order_workspace_screen.dart:83**` var title = editCommandeId == null ? 'طلبية جديدة' : 'طلبية #$editCommandeId'; `
+- **lib\Commande\order_workspace_screen.dart:203**` const SnackBar(content: Text('الحد الأقصى هو 3 طلبيات مفتوحة.')), `
+- **lib\Commande\order_workspace_screen.dart:240**` title: clientName.isEmpty ? 'طلبية #$orderId' : clientName, `
+- **lib\Commande\order_workspace_screen.dart:273**` title: Text(_orderWorkspaceText(context, 'إغلاق الطلبية؟')), `
+- **lib\Commande\order_workspace_screen.dart:275**` _orderWorkspaceText(context, 'أي تعديلات لم تُحفظ في هذه الطلبية ستُفقد.'), `
+- **lib\Commande\order_workspace_screen.dart:280**` child: const Text('إلغاء'), `
+- **lib\Commande\order_workspace_screen.dart:284**` child: const Text('إغلاق'), `
+- **lib\Commande\order_workspace_screen.dart:328**` title: Text(_orderWorkspaceText(context, 'فتح طلبية محفوظة')), `
+- **lib\Commande\order_workspace_screen.dart:346**` subtitle: Text('طلبية #$displayId'), `
+- **lib\Commande\order_workspace_screen.dart:358**` child: const Text('إلغاء'), `
+- **lib\Commande\order_workspace_screen.dart:400**` title: Text(_orderWorkspaceText(context, 'الطلبيات المفتوحة')), `
+- **lib\Commande\order_workspace_screen.dart:403**` tooltip: _orderWorkspaceText(context, 'فتح طلبية محفوظة'), `
+- **lib\Commande\order_workspace_screen.dart:408**` tooltip: _atCapacity ? 'الحد الأقصى: 3' : 'طلبية جديدة', `
+- **lib\Commande\order_workspace_screen.dart:488**` tooltip: 'إغلاق', `
+- **lib\Commande\partial_proforma_screen.dart:146**` _t('تأكيد إعادة التعيين'), `
+- **lib\Commande\partial_proforma_screen.dart:152**` _t('هل أنت متأكد من رغبتك في إعادة تعيين كل كميات التسليم إلى صفر لهذه الطلبية؟ سيتم حذف جميع سجلات التسليم السابقة لمواد هذا الطلب.'), `
+- **lib\Commande\partial_proforma_screen.dart:158**` child: Text(_t('إلغاء'), style: TextStyle(color: Colors.grey.shade600, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:166**` child: Text(_t('تأكيد وإعادة تعيين'), style: const TextStyle(color: Colors.white, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:182**` content: Text(_t('تمت إعادة تعيين كل كميات التسليم بنجاح')), `
+- **lib\Commande\partial_proforma_screen.dart:191**` content: Text('${_t('حدث خطأ أثناء إعادة التعيين:')} $e'), `
+- **lib\Commande\partial_proforma_screen.dart:219**` _t('تعديل الكمية المسلمة سابقاً'), `
+- **lib\Commande\partial_proforma_screen.dart:232**` '${_t('الكمية الإجمالية المطلوبة')}: $total', `
+- **lib\Commande\partial_proforma_screen.dart:241**` labelText: _t('الكمية المسلمة المعدلة'), `
+- **lib\Commande\partial_proforma_screen.dart:251**` child: Text(_t('إلغاء'), style: TextStyle(color: Colors.grey.shade600, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:263**` content: Text('${_t('الكمية يجب أن تكون بين')} 0 و $total'), `
+- **lib\Commande\partial_proforma_screen.dart:271**` child: Text(_t('حفظ'), style: const TextStyle(color: Colors.white, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:287**` content: Text(_t('تم تحديث الكمية المسلمة بنجاح')), `
+- **lib\Commande\partial_proforma_screen.dart:296**` content: Text('${_t('خطأ أثناء التعديل:')} $e'), `
+- **lib\Commande\partial_proforma_screen.dart:316**` content: Text(_t('يرجى تحديد كمية أكبر من صفر لعنصر واحد على الأقل للمعاينة!')), `
+- **lib\Commande\partial_proforma_screen.dart:411**` content: Text('${_t('خطأ أثناء معاينة الفاتورة:')} $e'), `
+- **lib\Commande\partial_proforma_screen.dart:424**` content: Text(_t('يرجى تحديد كمية أكبر من صفر لعنصر واحد على الأقل لتأكيد التسليم!')), `
+- **lib\Commande\partial_proforma_screen.dart:440**` _t('تأكيد وحفظ التسليم'), `
+- **lib\Commande\partial_proforma_screen.dart:446**` '${_t('هل ترغب في تأكيد وحفظ تسليم')} $_totalSelectedCount ${_t('نافذة في قاعدة البيانات؟')} \n\n${_t('سيتم تحديث سجلات الطلب بالكميات المحددة.')}', `
+- **lib\Commande\partial_proforma_screen.dart:452**` child: Text(_t('إلغاء'), style: TextStyle(color: Colors.grey.shade600, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:460**` child: Text(_t('تأكيد وحفظ'), style: const TextStyle(color: Colors.white, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:580**` _t('تم حفظ التسليم بنجاح'), `
+- **lib\Commande\partial_proforma_screen.dart:586**` _t('تم تأكيد وحفظ كميات التسليم في قاعدة البيانات بنجاح. هل ترغب في طباعة الفاتورة التقديرية الجزئية للتسليم الحالي الآن؟'), `
+- **lib\Commande\partial_proforma_screen.dart:599**` child: Text(_t('إغلاق'), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:617**` label: Text(_t('طباعة الفاتورة'), style: const TextStyle(color: Colors.white, fontFamily: 'Cairo')), `
+- **lib\Commande\partial_proforma_screen.dart:631**` content: Text('${_t('خطأ أثناء تأكيد وحفظ التسليم:')} $e'), `
+- **lib\Commande\partial_proforma_screen.dart:675**` _t('سجل الفواتير الجزئية المسلمة'), `
+- **lib\Commande\partial_proforma_screen.dart:693**` _t('لا توجد فواتير جزئية مسلمة سابقاً'), `
+- **lib\Commande\partial_proforma_screen.dart:727**` '$count ${_t('نافذة')} | ${_formatPrice(amount)}', `
+- **lib\Commande\partial_proforma_screen.dart:767**` SnackBar(content: Text('${_t('خطأ:')} $e'), backgroundColor: Colors.red), `
+- **lib\Commande\partial_proforma_screen.dart:829**` _tr('فاتورة شحن جزئية', 'Facture d\'expédition partielle', 'Partial Shipping Note', language), `
+- **lib\Commande\partial_proforma_screen.dart:835**` tooltip: _tr('سجل الفواتير المسلمة', 'Historique des livraisons', 'Deliveries History', language), `
+- **lib\Commande\partial_proforma_screen.dart:840**` tooltip: _tr('إعادة تعيين كل التسليمات', 'Réinitialiser toutes les livraisons', 'Reset All Deliveries', language), `
+- **lib\Commande\partial_proforma_screen.dart:851**` _tr('لا توجد عناصر في هذه الطلبية!', 'Aucun élément dans cette commande!', 'No items found in this order!', language), `
+- **lib\Commande\partial_proforma_screen.dart:883**` '${_tr('الطلب', 'Commande', 'Order', language)} #${widget.order['id']}', `
+- **lib\Commande\partial_proforma_screen.dart:914**` '${_t('إجمالي تقدم تسليم الطلبية')}:', `
+- **lib\Commande\partial_proforma_screen.dart:922**` '$totalDeliveredItemsCount / $totalOrderItemsCount ${_t('نافذة')}', `
+- **lib\Commande\partial_proforma_screen.dart:1040**` _statItem(_t('الإجمالي'), total, Colors.blue), `
+- **lib\Commande\partial_proforma_screen.dart:1046**` _t('سلمت سابقاً'), `
+- **lib\Commande\partial_proforma_screen.dart:1078**` tooltip: _t('تعديل الكمية المسلمة سابقاً'), `
+- **lib\Commande\partial_proforma_screen.dart:1086**` _statItem(_t('المتبقي'), remaining, remaining > 0 ? Colors.orange : Colors.grey), `
+- **lib\Commande\partial_proforma_screen.dart:1107**` _t('التسليم الحالي:'), `
+- **lib\Commande\partial_proforma_screen.dart:1205**` _t('تم تسليم هذا البند بالكامل'), `
+- **lib\Commande\partial_proforma_screen.dart:1252**` '${_t('الكميات المحددة')}:', `
+- **lib\Commande\partial_proforma_screen.dart:1261**` '$_totalSelectedCount ${_t('نافذة')}', `
+- **lib\Commande\partial_proforma_screen.dart:1273**` '${_t('القيمة الإجمالية للتسليم')}:', `
+- **lib\Commande\partial_proforma_screen.dart:1310**` _t('معاينة الفاتورة'), `
+- **lib\Commande\partial_proforma_screen.dart:1334**` _t('تأكيد وحفظ التسليم'), `
+- **lib\Commande\pdf_fiche_coupe_api.dart:136**` pw.Text('رقم الطلبية: ${order['id']}'), `
+- **lib\Commande\pdf_fiche_coupe_api.dart:348**` text.contains('الشرائح') || `
+- **lib\Commande\pdf_fiche_coupe_api.dart:349**` text.contains('المحور') || `
+- **lib\Commande\pdf_fiche_coupe_api.dart:350**` text.contains('الصندوق')) { `
+- **lib\Commande\pdf_invoice_api.dart:127**` item.title.contains('موستيكير') || `
+- **lib\Commande\pdf_invoice_api.dart:302**` titleText = 'فاتورة تقديرية / أولية'; `
+- **lib\Commande\pdf_invoice_api.dart:318**` titleText = 'وصل تسليم'; `
+- **lib\Commande\pdf_invoice_api.dart:830**` final reasonText = 'سبب التعديل: ${item.replacementReason}'; `
+- **lib\Commande\Systeme\calculate_component.dart:496**` if (_textHasAny(originalName, const ['plinthe', 'بلانت'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:499**` if (_textHasAny(originalName, const ['الظلفة', 'sash', 'ouvrant'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:510**` if (_textHasAny(originalName, const ['traverse', 'تقسيم', 'mullion'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:513**` if (_textHasAny(originalName, const ['batmo', 'باتمو'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:539**` if (_textHasAny(originalName, const ['parclose', 'باكيت', 'بيركلوز'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:540**` if (_textHasAny(originalName, const ['منزلق', 'coulissant', 'sliding'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:541**` if (_textHasAny(originalName, const ['مزدوج', 'double'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:544**` if (_textHasAny(originalName, const ['مفرد', 'simple'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:548**` if (_textHasAny(originalName, const ['مزدوج', 'double'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:551**` if (_textHasAny(originalName, const ['مفرد', 'simple'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:556**` if (_textHasAny(originalName, const ['rail', 'الري'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:569**` if (isScrew && _textHasAny(originalName, const ['حديد الدعم', 'renfort'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:573**` _textHasAny(originalName, const ['بوشون باتمو', 'bouchon batmo'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:576**` if (isScrew && _textHasAny(originalName, const ['الباتمو', 'batmo'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:579**` if (isScrew && _textHasAny(originalName, const ['الكيت', 'kit'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:583**` _textHasAny(originalName, const ['المانيفال', 'manivelle'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:587**` _textHasAny(originalName, const ['المحرك', 'moteur', 'motor'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:591**` _textHasAny(originalName, const ['الصندوق', 'caisson', 'box'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:594**` if (isScrew && _textHasAny(originalName, const ['التجميع', 'assembly'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:598**` _textHasAny(originalName, const ['التركيب', 'installation'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:602**` _textHasAny(originalName, const ['الإكسسوارات', 'accessory'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:606**` if (_textHasAny(originalName, const ['بوشون باتمو', 'bouchon batmo'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:619**` if (_textHasAny(originalName, const ['clamp', 'clam', 'كلامب', 'كلام'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:622**` if (_textHasAny(originalName, const ['قاش دوبل', 'gache double'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:625**` if (_textHasAny(originalName, const ['قاش سامبل', 'gache simple'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:628**` if (_textHasAny(originalName, const ['قاش بورت', 'gache porte'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:659**` if (_textHasAny(originalName, const ['canon', 'الأسطوانة'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:662**` if (_textHasAny(originalName, const ['قفل بمفتاح', 'clef'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:666**` if (_textHasAny(originalName, const ['اسبانيوليت', 'إسبانيوليت'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:669**` if (_textHasAny(originalName, const ['مفاصل', 'hinges'])) return 'مفاصل'; `
+- **lib\Commande\Systeme\calculate_component.dart:670**` if (_textHasAny(originalName, const ['فيرو', 'verrou'])) return 'فيرو'; `
+- **lib\Commande\Systeme\calculate_component.dart:680**` if (_textHasAny(originalName, const ['كريمون', 'cremone', 'crémone'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:691**` if (_textHasAny(originalName, const ['مقبض', 'handle', 'poignée'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:694**` if (_textHasAny(originalName, const ['الطاسو', 'tasso'])) return 'tasso'; `
+- **lib\Commande\Systeme\calculate_component.dart:695**` if (_textHasAny(originalName, const ['الإيكار', 'ايكار', 'إيكار', 'ekar', 'ikar'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:698**` if (_textHasAny(originalName, const ['عجلات', 'roulette'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:713**` if (_textHasAny(originalName, const ['براغي'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:716**` if (_textHasAny(originalName, const ['مانيفال', 'manivelle'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:719**` if (_textHasAny(originalName, const ['محرك', 'moteur'])) return 'محرك'; `
+- **lib\Commande\Systeme\calculate_component.dart:720**` if (_textHasAny(originalName, const ['صندوق', 'caisson'])) return 'صندوق'; `
+- **lib\Commande\Systeme\calculate_component.dart:721**` if (_textHasAny(originalName, const ['كيت', 'kit'])) return 'كيت'; `
+- **lib\Commande\Systeme\calculate_component.dart:722**` if (_textHasAny(originalName, const ['سكك', 'coulisse'])) return 'سكك'; `
+- **lib\Commande\Systeme\calculate_component.dart:723**` if (_textHasAny(originalName, const ['lame finale', 'نهائية'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:726**` if (_textHasAny(originalName, const ['شرائح', 'lame'])) return 'شريحة'; `
+- **lib\Commande\Systeme\calculate_component.dart:727**` if (_textHasAny(originalName, const ['محور', 'axe'])) return 'محور'; `
+- **lib\Commande\Systeme\calculate_component.dart:728**` if (_textHasAny(originalName, const ['أطاش', 'attache'])) return 'أطاش'; `
+- **lib\Commande\Systeme\calculate_component.dart:736**` if (_textHasAny(originalName, const ['الامبو', 'embout'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:757**` if (_textHasAny(originalName, const ['بروس', 'bross', 'brosse'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:760**` if (_textHasAny(originalName, const ['bronze', 'برونز'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:763**` if (_textHasAny(originalName, const ['vitrage', 'فيتراج'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:766**` if (_textHasAny(originalName, const ['bourrage', 'بوراج'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:769**` if (_textHasAny(originalName, const ['frappe', 'فراب', 'ضرب'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:772**` if (_textHasAny(originalName, const ['centrale', 'central', 'سنترال'])) { `
+- **lib\Commande\Systeme\calculate_component.dart:1825**` selectorCategory: _textHasAny(originalName, const ['براغي']) `
+- **lib\Commande\Systeme\calculate_component.dart:1829**` roleKey: _textHasAny(originalName, const ['براغي']) `
+- **lib\Commande\Systeme\calculate_component.dart:4397**` bladeText.contains('إكسترودي') || `
+- **lib\Commande\Systeme\calculate_component.dart:4398**` bladeText.contains('اكسترودي'); `
+- **lib\Commande\Systeme\calculate_component.dart:7205**` name: 'باجيت ديكور\n$thicknessText$bName', `
+- **lib\Commande\Systeme\calculate_component.dart:7223**` String sizeText = size.isNotEmpty ? 'مقاس: $size - ' : ''; `
+- **lib\Commande\Systeme\calculate_component.dart:7228**` name: 'وردة ديكور\n$sizeText$rName', `
+- **lib\Commande\Systeme\calculate_component.dart:7349**` 'زجاج مفرد\n${thickness.toStringAsFixed(0)}مم: $namePart (${price.toStringAsFixed(0)} دج/م²)\n$dimText'; `
+- **lib\Commande\Systeme\calculate_component.dart:7388**` 'بانو (Panneau)\n- النوع: $subtype - اللون: $color$productLine (${price.toStringAsFixed(0)} $priceUnit)\n$dimText'; `
+- **lib\Commande\Systeme\calculate_component.dart:7458**` '\n- سعر المتر المربع: ${totalSqmPrice.toStringAsFixed(0)} دج\n$dimText'; `
+- **lib\Commande\Systeme\calculate_component.dart:7465**` String decorText = '\n- ديكور داخلي: ${glass.decorH}×${glass.decorV}'; `
+- **lib\Commande\Systeme\calculate_component.dart:7467**` decorText += ' (اللون: ${glass.decorColor})'; `
+- **lib\Commande\Systeme\calculate_component.dart:7470**` decorText += ' - مع ورود الديكور (Rosettes)'; `
+- **lib\Commande\Systeme\calculate_component.dart:7656**` cuttingListText = 'قطع القص: ${parts.join(' ، ')}'; `
+- **lib\Commande\Systeme\calculate_component.dart:8044**` cuttingListText = 'قطع القص: ${parts.join(' ، ')}'; `
+- **lib\Commande\Systeme\calculate_component.dart:8101**` (isAccessoryOverride || _textHasAny(originalName, const ['براغي']) `
+- **lib\Commande\Systeme\material_consumption_screen.dart:168**` if (rowText.contains('plinthe') || rowText.contains('بلانت')) { `
+- **lib\Commande\Systeme\material_consumption_screen.dart:999**` text.contains('أوبي') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1000**` text.contains('نصف أوبي') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1001**` text.contains('فيرو'); `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1008**` text.contains('كيت فولي') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1009**` text.contains('كيت الستار') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1010**` text.contains('كيت مانيفال') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1011**` text.contains('كيت مانيفر') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1012**` text.contains('كيت حزام'); `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1203**` text.contains('إكسترودي') || `
+- **lib\Commande\Systeme\material_consumption_screen.dart:1204**` text.contains('اكسترودي'); `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2193**` title: Text(Localization.translate('الالكمية والتكلفة', lang)), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2383**` '${Localization.translate('العرض:', lang)} ', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2404**` '${Localization.translate('الارتفاع:', lang)} ', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2473**` '${Localization.translate('نوع القفل:', lang)} ', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2486**` : '${Localization.translate('مقبض منزلق (جرار)', lang)} / ${Localization.translate('أودراماتيك', lang)}', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2829**` labelText: Localization.translate('نسبة الربح (%)', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:2984**` Localization.translate('الكمية:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3018**` Localization.translate('نافذة', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3043**` Localization.translate('ملخص تسعير', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3053**` Localization.translate('سعر التكلفة (بدون هدر)', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3054**` '${totalCostNoWaste.toStringAsFixed(0)} ${Localization.translate('دج', lang)}', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3062**` Localization.translate('سعر البيع المقترح', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3063**` '${sellingPrice.toStringAsFixed(0)} ${Localization.translate('دج', lang)}', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3443**` ? Localization.translate('عنصر واحد', lang) `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3445**` ? Localization.translate('عنصران', lang) `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3447**` ? '$visibleCount ${Localization.translate('عناصر', lang)}' `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3448**` : '$visibleCount ${Localization.translate('عنصر', lang)}', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:3470**` '${totalPrice.toStringAsFixed(1)} ${Localization.translate('دج', lang)}', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4028**` title: Text(Localization.translate('تعديل كمية النوافذ', lang)), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4034**` labelText: Localization.translate('الكمية المطلوبة', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4041**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4050**` child: Text(Localization.translate('تأكيد', lang)), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4074**` Localization.translate('تفاصيل الحساب', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4083**` Localization.translate('سعر البروفيلات:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4087**` Localization.translate('سعر الزجاج:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4091**` Localization.translate('سعر الستار:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4095**` Localization.translate('سعر الإكسسوارات:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4100**` Localization.translate('المجموع الإجمالي:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4110**` child: Text(Localization.translate('إغلاق', lang)), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4157**` final currency = Localization.translate('دج', lang); `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4221**` ? Localization.translate('إخفاء', lang) `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4222**` : Localization.translate('إعدادات السعر', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4248**` Localization.translate('تفاصيل', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4284**` Localization.translate('سعر التكلفة:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4339**` '${Localization.translate('السعر الإجمالي', lang)} (${widget.model.quantity} ${Localization.translate('قطع', lang)}):', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4385**` Localization.translate('سعر القطعة الواحدة:', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4424**` Localization.translate('حفظ وإضافة للطلب', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4460**` _headerCell(Localization.translate('الصورة', lang), _colImg, _wImg), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4462**` Localization.translate('البيان', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4466**` _headerCell(Localization.translate('الكمية', lang), _colQty, _wQty), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4468**` Localization.translate('سعر الوحدة', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4473**` Localization.translate('السعر التقديري', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4478**` Localization.translate('التكلفة الفعلية', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4482**` _headerCell(Localization.translate('الطول', lang), _colLen, _wLen), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4484**` Localization.translate('اللون', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4489**` Localization.translate('تفعيل', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4555**` final currency = Localization.translate('دج', lang); `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4584**` '${Localization.translate('التكلفة:', lang)} ${cost.toStringAsFixed(0)} $currency', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4604**` '${Localization.translate('البيع:', lang)} ${selling.toStringAsFixed(0)} $currency', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:4652**` final currency = Localization.translate('دج', lang); `
+- **lib\Commande\Systeme\material_consumption_screen.dart:6120**` : Localization.translate(errorMsg ?? 'فشل التحديث', lang), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:6147**` '${Localization.translate('تعديل سعر', lang)} ${Localization.translate(item.name, lang)}', `
+- **lib\Commande\Systeme\material_consumption_screen.dart:6188**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Commande\Systeme\material_consumption_screen.dart:6225**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Commande\Systeme\model.dart:2104**` text.contains('إكسترودي') || `
+- **lib\Commande\Systeme\model.dart:2105**` text.contains('اكسترودي'); `
+- **lib\Commande\Systeme\model.dart:8605**` text.contains('فيتراج') || `
+- **lib\Commande\Systeme\model.dart:8606**` text.contains('زجاج') || `
+- **lib\Commande\Systeme\model.dart:13753**` text.contains('فيتراج') || `
+- **lib\Commande\Systeme\model.dart:13754**` text.contains('زجاج') || `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:567**` text.contains('إكسترودي') || `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:568**` text.contains('اكسترودي'); `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:922**` text.contains('بوشون')) && `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:923**` (text.contains('batmo') || text.contains('باتمو'))) { `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:946**` text.contains('تراينغل') || `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:947**` text.contains('تريانغل')) { `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:978**` text.contains('إيكار') || `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:979**` text.contains('ايكار')) { `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:2070**` '${Localization.translate('اختر', lang)} ' `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:2089**` hintText: Localization.translate('بحث...', lang), `
+- **lib\Commande\Systeme\profile_selector_dialog.dart:2197**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:597**` title: Text(Localization.translate('ركوب الزجاج للمنزلق', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:608**` child: Text(Localization.translate('لا', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:612**` child: Text(Localization.translate('نعم', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:781**` Localization.translate('أبعاد البانو ديكور غير محددة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:792**` child: Text(Localization.translate('حسناً', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:811**` Localization.translate('لا يمكن وضع هذا البانو هنا', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:814**` '${Localization.translate('حجم الديكور', lang)} ${decorWidth.toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(0)} ${Localization.translate('مم', lang)} ' `
+- **lib\Commande\Systeme\show_system_francais.dart:815**` '${Localization.translate('أكبر من المساحة المتاحة', lang)} ${available.width.toStringAsFixed(0)} × ${available.height.toStringAsFixed(0)} ${Localization.translate('مم', lang)}. ' `
+- **lib\Commande\Systeme\show_system_francais.dart:816**` '${Localization.translate('ينبغي اختيار بانو آخر.', lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:821**` child: Text(Localization.translate('حسناً', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:836**` title: Text(Localization.translate('إلغاء التقسيم؟', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:838**` '${Localization.translate('البانو ديكور لا يقبل أي تقسيمات.', lang)} ' `
+- **lib\Commande\Systeme\show_system_francais.dart:839**` '${Localization.translate('يجب إلغاء التقسيم الحالي لتفعيله. هل توافق؟', lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:844**` child: Text(Localization.translate('لا', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:848**` child: Text(Localization.translate('نعم', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:1308**` Localization.translate('إلغاء', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:1322**` Localization.translate('تطبيق القياس الجديد', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:1890**` ? Localization.translate('وضع الرسم', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:1891**` : Localization.translate('وضع التحريك', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:1906**` Localization.translate('ستار', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:1916**` tooltip: Localization.translate('توسيط الرسم', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:1921**` tooltip: Localization.translate('تصغير الرسم', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:1927**` tooltip: Localization.translate('تكبير الرسم', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:4146**` title: Text(Localization.translate('تأكيد الخروج', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:4148**` Localization.translate('هل تريد الخروج من صفحة الرسم؟', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:4153**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:4157**` child: Text(Localization.translate('خروج', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:4440**` Localization.translate('نوع المعالجة:', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:4660**` Localization.translate('سمك الزجاج:', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:5145**` Text(Localization.translate('جهتان', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:5146**` Text(Localization.translate('جهة واحدة', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:6472**` Localization.translate('أفقي:', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:6517**` Localization.translate('عمودي:', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:6983**` Localization.translate('الخصائص العامة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7056**` ? Localization.translate('مشاهدة: وجه داخلي', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:7057**` : Localization.translate('مشاهدة: وجه خارجي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7078**` ? '${Localization.translate('اللون:', lang)} ${widget.model.selectedDbColor!['name']}' `
+- **lib\Commande\Systeme\show_system_francais.dart:7079**` : Localization.translate('لون الألمنيوم', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7125**` ? '${Localization.translate('لون الإكسسوارات:', lang)} ${widget.model.selectedAccessoryColor!['name']}' `
+- **lib\Commande\Systeme\show_system_francais.dart:7126**` : Localization.translate('لون الإكسسوارات (افتراضي)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7178**` Localization.translate('إطار سفلي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7193**` Localization.translate('رسم الجدار', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7318**` Localization.translate('غطاء جانبي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7447**` Localization.translate('ستار (Volet)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7541**` Localization.translate('صندوق نفق (Coffre Tunnel)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7608**` Localization.translate('نوع الستار (Mechanism):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7700**` Localization.translate('جهة الستار (Drive Side):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7735**` Localization.translate('وضع الستار (Position):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7760**` Localization.translate('استخدام بلانت أسفل الضلفة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7779**` Localization.translate('سيستم او بي (System OB)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7795**` Localization.translate('ديمي او بي (Demi OB)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7835**` Localization.translate('تدعيم المونطو (Renfort)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7864**` Localization.translate('الجانبي (Latéral):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7873**` Localization.translate('يسرى', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7878**` Localization.translate('يمنى', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:7886**` Localization.translate('المركزي (Central):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8024**` title = 'تعديل عرض الخلية الداخلية'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8035**` title = 'تعديل ارتفاع الخلية الداخلية'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8042**` title = 'تعديل عرض الدلفة اليسرى'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8048**` title = 'تعديل عرض الدلفة اليمنى'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8051**` title = hit.isWidth ? 'تعديل عرض التقسيم' : 'تعديل ارتفاع التقسيم'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8084**` labelText: Localization.translate('القياس الداخلي (mm)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8102**` Localization.translate('إلغاء', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8298**` Localization.translate('تطبيق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8322**` title = 'تعديل عرض الإطار (خارجي)'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8327**` title = 'تعديل ارتفاع الإطار (خارجي)'; `
+- **lib\Commande\Systeme\show_system_francais.dart:8375**` Localization.translate('إلغاء', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8396**` Localization.translate('تطبيق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8768**` Localization.translate('تعديل قياسات النافذة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8841**` Localization.translate('إلغاء', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:8861**` Localization.translate('تطبيق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9074**` title: Text(Localization.translate('نوع التقسيم', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9078**` Localization.translate('Traverse — تقسيم عادي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9083**` Localization.translate('Cadre double — إطار مزدوج', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9088**` Localization.translate('Cadre 140 — إطار بتجويف واحد', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9104**` Text(Localization.translate('عكس اتجاه التجويف', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9164**` Localization.translate('العمود محدد', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9203**` label: Localization.translate('قلب الجهة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9226**` Localization.translate('حذف', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9253**` Localization.translate('التقسيم محدد (اسحب للتحريك)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9263**` Localization.translate('حذف', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9286**` Localization.translate('الإطار محدد', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9304**` Localization.translate('حذف الإطار', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9324**` return Localization.translate('علوية', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:9326**` return Localization.translate('يسرى', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:9328**` return Localization.translate('يمنى', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:9330**` return Localization.translate('سفلية', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:9443**` '${Localization.translate('تخصيص غطاء الجهة', lang)} ${Localization.translate(sideLabel, lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:9457**` '${Localization.translate('من', lang)} ${Localization.translate(leading, lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:9466**` '${Localization.translate('من', lang)} ${Localization.translate(trailing, lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:9496**` '${Localization.translate('بداية الغطاء من', lang)} ${Localization.translate(startLabel, lang)} (${Localization.translate('مم', lang)})', `
+- **lib\Commande\Systeme\show_system_francais.dart:9507**` ? '${Localization.translate('نهاية الغطاء قبل', lang)} ${Localization.translate(endLabel, lang)} (${Localization.translate('مم', lang)})' `
+- **lib\Commande\Systeme\show_system_francais.dart:9529**` '${Localization.translate('طول الجهة:', lang)} ${sideLength.toStringAsFixed(0)} ${Localization.translate('مم', lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:9551**` Localization.translate('حذف', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9561**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9573**` Localization.translate('أدخل قياسات صحيحة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:9623**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9654**` label: Text(Localization.translate('علوية', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9660**` label: Text(Localization.translate('يسرى', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9666**` label: Text(Localization.translate('يمنى', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9672**` label: Text(Localization.translate('سفلية', lang)), `
+- **lib\Commande\Systeme\show_system_francais.dart:9859**` Localization.translate('لون الستار', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10021**` Localization.translate('سلسلة المنزلق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10078**` tooltip: Localization.translate('تراجع', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10088**` tooltip: Localization.translate('إعادة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10108**` : Localization.translate('نسخ قياس الإطار السابق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10117**` tooltip: Localization.translate('مسح الرسم', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10189**` ? Localization.translate('وضع الرسم', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:10190**` : Localization.translate('وضع التحريك', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10225**` Localization.translate('ستار', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10340**` return '${Localization.translate('المتبقي', lang)}: ${(totalNetSize - p1).toStringAsFixed(1)} mm'; `
+- **lib\Commande\Systeme\show_system_francais.dart:10344**` return '${Localization.translate('القطعة الوسطى', lang)}: ${(totalNetSize - p1 - p2).toStringAsFixed(1)} mm'; `
+- **lib\Commande\Systeme\show_system_francais.dart:10375**` Localization.translate('تقسيم متساوي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10388**` Localization.translate('قياس مخصص', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10437**` '$e ${Localization.translate('قطع', lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:10454**` Localization.translate('عدد القطع:', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10476**` '$e ${Localization.translate('قطع', lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:10491**` '${Localization.translate('إجمالي القياس الصافي', lang)}: ${totalNetSize.toStringAsFixed(1)} mm', `
+- **lib\Commande\Systeme\show_system_francais.dart:10691**` ? Localization.translate('حذف التقسيم', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:10692**` : Localization.translate('إلغاء', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10756**` Localization.translate('تطبيق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10805**` Localization.translate('إعدادات الإطار والظلفة:', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10825**` : Localization.translate('اختر الإطار (Cadre)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10892**` : Localization.translate('اختر الظلفة (Sash)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:10949**` ? Localization.translate('مقبض كلاسيكي (فتح)', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:10950**` : Localization.translate('مقبض منزلق (جرار)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:11408**` return Localization.translate('عادي', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:11410**` return Localization.translate('مزدوج', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:11412**` return Localization.translate('بانو', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:11912**` Localization.translate('اختر النوع ثم اضغط على الإطار', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12566**` label: Localization.translate('تقسيم أفقي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12579**` label: Localization.translate('تقسيم عمودي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12594**` label: Localization.translate('إعادة التكبير', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12606**` label: Localization.translate('فارغة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12619**` label: Localization.translate('زجاج ثابت', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12634**` label: Localization.translate('ضلفة واحدة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12646**` label: Localization.translate('ضلفتان', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12659**` label: Localization.translate('منزلق 2', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12694**` label: Localization.translate('منزلق 3', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12726**` label: Localization.translate('منزلق 4', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:12997**` ? Localization.translate('إزالة غطاء الإطار المنزلق', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:12998**` : Localization.translate('إضافة غطاء الإطار المنزلق', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13021**` ? Localization.translate('إزالة غطاء جانبي', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:13022**` : Localization.translate('إضافة غطاء جانبي', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13073**` label: Localization.translate('ضلفة واحدة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13085**` label: Localization.translate('ضلفتان', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13099**` Localization.translate('لا توجد درف متوفرة لهذه السلسلة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13201**` Localization.translate('الجانبي (Lateral):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13241**` Localization.translate('الوسطي (Central):', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13341**` String btnLabel = Localization.translate('المقبض (Poignée)', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13348**` btnLabel = Localization.translate('مقبض الباب بمفتاح', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13352**` btnLabel = Localization.translate('مقبض الباب حمام', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13374**` btnLabel = Localization.translate('مقبض أوكتو', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13379**` btnLabel = Localization.translate('مقبض كريمون', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13386**` btnLabel = Localization.translate('قفل نقطة', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13390**` btnLabel = Localization.translate('مقبض أوكتو', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13396**` : Localization.translate('مقبض كريمون', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13421**` ? Localization.translate('مقبض كلاسيكي (كودي)', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:13422**` : Localization.translate('مقبض منزلق (اندراماتيك)', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13720**` ? '${Localization.translate('Parclose', lang)}: ${parcloseOverride['code']} (${(parcloseOverride['max_glass_thickness'] as num?)?.toDouble() ?? 0.0} ${Localization.translate('مم', lang)})' `
+- **lib\Commande\Systeme\show_system_francais.dart:13740**` structName = Localization.translate('عادي', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13743**` structName = Localization.translate('مزدوج', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13746**` structName = Localization.translate('بانو', lang); `
+- **lib\Commande\Systeme\show_system_francais.dart:13812**` '${Localization.translate('الزجاج الحالي', lang)}: $glassDesc', `
+- **lib\Commande\Systeme\show_system_francais.dart:13830**` label: Localization.translate('تخصيص مظهر الزجاج', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13919**` label: Localization.translate('مقبض الباب بمفتاح', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:13938**` label: Localization.translate('مقبض الباب حمام', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14024**` label: Localization.translate('مقبض نافذة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14040**` label: Localization.translate('مقبض نافذة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14056**` label: Localization.translate('مقبض أوكتو', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14079**` ? Localization.translate('مقبض كريمون', lang) `
+- **lib\Commande\Systeme\show_system_francais.dart:14080**` : Localization.translate('مقبض كريمون', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14099**` label: Localization.translate('مقبض الباب بمفتاح', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14118**` label: Localization.translate('مقبض الباب حمام', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14137**` label: Localization.translate('مقبض أوكتو', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14247**` label: Localization.translate('مقبض كريمون', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14264**` label: Localization.translate('مقبض كريمون', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14282**` label: Localization.translate('مقبض أوكتو', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14300**` label: Localization.translate('قفل نقطة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14373**` : '${Localization.translate('المنطقة المحددة', lang)}: ${Localization.translate(zone.content.name, lang)}  |  ${Localization.translate('الأبعاد', lang)}: ${zone.boundary.width.toInt()} × ${zone.boundary.height.toInt()} mm', `
+- **lib\Commande\Systeme\show_system_francais.dart:14399**` Localization.translate('الكمية والتكلفة', lang), `
+- **lib\Commande\Systeme\show_system_francais.dart:14575**` '${Localization.translate('السمك الأقصى للزجاج', lang)}: $maxThickness ${Localization.translate('مم', lang)}', `
+- **lib\Commande\Systeme\show_system_francais.dart:14612**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Inventory\inventory_page.dart:39**` title: Text(_t('مخزون الورشة')), `
+- **lib\Inventory\inventory_page.dart:44**` Tab(icon: Icon(Icons.category), text: 'البروفيلات'), `
+- **lib\Inventory\inventory_page.dart:45**` Tab(icon: Icon(Icons.window), text: 'الزجاج'), `
+- **lib\Inventory\inventory_page.dart:46**` Tab(icon: Icon(Icons.build), text: 'الإكسسوارات'), `
+- **lib\items_produits\accessoires.dart:609**` labelText: Localization.translate('تصنيف الإكسسوار (النوع)', Provider.of<AppSettingsProvider>(context).language), `
+- **lib\items_produits\accessoires.dart:627**` labelText: Localization.translate('عدد البراغي المستخدمة', Provider.of<AppSettingsProvider>(context).language), `
+- **lib\items_produits\accessoires.dart:667**` labelText: Localization.translate('الجودة (النوعية)', Provider.of<AppSettingsProvider>(context).language), `
+- **lib\items_produits\accessoires.dart:685**` _t('استخدام البراغي:'), `
+- **lib\items_produits\accessoires.dart:693**` title: Text(_t('براغي المحرك')), `
+- **lib\items_produits\accessoires.dart:705**` title: Text(_t('براغي الصندوق')), `
+- **lib\items_produits\accessoires.dart:717**` title: Text(_t('براغي الباتمو')), `
+- **lib\items_produits\accessoires.dart:729**` title: Text(_t('براغي بوشون باتمو')), `
+- **lib\items_produits\accessoires.dart:743**` title: Text(_t('براغي حديد الدعم (Renfort)')), `
+- **lib\items_produits\accessoires.dart:755**` title: Text(_t('براغي المانيفال')), `
+- **lib\items_produits\accessoires.dart:769**` title: Text(_t('براغي التجميع')), `
+- **lib\items_produits\accessoires.dart:783**` title: Text(_t('براغي الإكسسوارات')), `
+- **lib\items_produits\accessoires.dart:797**` title: Text(_t('براغي التركيب')), `
+- **lib\items_produits\accessoires.dart:811**` title: Text(_t('براغي الكيت')), `
+- **lib\items_produits\accessoires.dart:848**` _t('نوع اللاش:'), `
+- **lib\items_produits\accessoires.dart:898**` _t('نوع القفل:'), `
+- **lib\items_produits\accessoires.dart:906**` title: Text(_t('قفل بمفتاح (Clef)')), `
+- **lib\items_produits\accessoires.dart:918**` title: Text(_t('قفل Condamnation')), `
+- **lib\items_produits\accessoires.dart:1224**` content: Text('الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!'), `
+- **lib\items_produits\accessoires.dart:1401**` content: Text('حدث خطأ في قاعدة البيانات: $e'), `
+- **lib\items_produits\accessoires.dart:1795**` labelText: Localization.translate('تصنيف الإكسسوار (النوع)', Provider.of<AppSettingsProvider>(context).language), `
+- **lib\items_produits\accessoires.dart:1813**` labelText: Localization.translate('عدد البراغي المستخدمة', Provider.of<AppSettingsProvider>(context).language), `
+- **lib\items_produits\accessoires.dart:1853**` labelText: Localization.translate('الجودة (النوعية)', Provider.of<AppSettingsProvider>(context).language), `
+- **lib\items_produits\accessoires.dart:1871**` _t('استخدام البراغي:'), `
+- **lib\items_produits\accessoires.dart:1879**` title: Text(_t('براغي المحرك')), `
+- **lib\items_produits\accessoires.dart:1891**` title: Text(_t('براغي الصندوق')), `
+- **lib\items_produits\accessoires.dart:1903**` title: Text(_t('براغي الباتمو')), `
+- **lib\items_produits\accessoires.dart:1915**` title: Text(_t('براغي بوشون باتمو')), `
+- **lib\items_produits\accessoires.dart:1929**` title: Text(_t('براغي حديد الدعم (Renfort)')), `
+- **lib\items_produits\accessoires.dart:1941**` title: Text(_t('براغي المانيفال')), `
+- **lib\items_produits\accessoires.dart:1953**` title: Text(_t('براغي التجميع')), `
+- **lib\items_produits\accessoires.dart:1965**` title: Text(_t('براغي الإكسسوارات')), `
+- **lib\items_produits\accessoires.dart:1977**` title: Text(_t('براغي التركيب')), `
+- **lib\items_produits\accessoires.dart:1991**` title: Text(_t('براغي الكيت')), `
+- **lib\items_produits\accessoires.dart:2028**` _t('نوع اللاش:'), `
+- **lib\items_produits\accessoires.dart:2074**` _t('نوع القفل:'), `
+- **lib\items_produits\accessoires.dart:2082**` title: Text(_t('قفل بمفتاح (Clef)')), `
+- **lib\items_produits\accessoires.dart:2094**` title: Text(_t('قفل Condamnation')), `
+- **lib\items_produits\accessoires.dart:2398**` content: Text('الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!'), `
+- **lib\items_produits\accessoires.dart:2590**` content: Text('حدث خطأ في قاعدة البيانات: $e'), `
+- **lib\items_produits\accessoires.dart:2642**` _t('تأكيد الحذف'), `
+- **lib\items_produits\accessoires.dart:2656**` _t('سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.'), `
+- **lib\items_produits\accessoires.dart:2668**` child: Text(_t('إلغاء')), `
+- **lib\items_produits\accessoires.dart:2688**` _t('موافق، قم بالأرشفة'), `
+- **lib\items_produits\accessoires.dart:2711**` text.contains('قاش') || text.contains('كاش'); `
+- **lib\items_produits\accessoires.dart:2717**` text.contains('برغ') || text.contains('براغ'); `
+- **lib\items_produits\accessoires.dart:2747**` title: Text(_t('قواعد الإكسسوار')), `
+- **lib\items_produits\accessoires.dart:2760**` title: Text(_t('الاختيار الافتراضي')), `
+- **lib\items_produits\accessoires.dart:2761**` subtitle: Text(_t('يُختار تلقائياً عند توفر هذا النوع')), `
+- **lib\items_produits\accessoires.dart:2767**` Text(_t('القاش المرتبط بالقفل'), `
+- **lib\items_produits\accessoires.dart:2775**` labelText: _t('اختر القاش'), `
+- **lib\items_produits\accessoires.dart:2780**` value: null, child: Text(_t('بدون ربط'))), `
+- **lib\items_produits\accessoires.dart:2794**` labelText: _t('عدد القاش لهذا الأكسسوار'), `
+- **lib\items_produits\accessoires.dart:2799**` Text(_t('براغي التجميع'), `
+- **lib\items_produits\accessoires.dart:2807**` labelText: _t('نوع البرغي'), `
+- **lib\items_produits\accessoires.dart:2812**` value: null, child: Text(_t('بدون ربط'))), `
+- **lib\items_produits\accessoires.dart:2822**` Text(_t('عدد البراغي يؤخذ من حقل عدد البراغي في الأكسسوار')), `
+- **lib\items_produits\accessoires.dart:2824**` Text(_t('إعدادات التراينغل'), `
+- **lib\items_produits\accessoires.dart:2832**` labelText: _t('الخصم من طول الظلفة (مم)'), `
+- **lib\items_produits\accessoires.dart:2840**` labelText: _t('موقع تقسيم التراينغل'), `
+- **lib\items_produits\accessoires.dart:2845**` child: Text(_t('منتصف الظلفة'))), `
+- **lib\items_produits\accessoires.dart:2847**` child: Text(_t('موقع مخصص'))), `
+- **lib\items_produits\accessoires.dart:2859**` labelText: _t('موقع المقبض من بداية الظلفة (مم)'), `
+- **lib\items_produits\accessoires.dart:2871**` child: Text(_t('إلغاء'))), `
+- **lib\items_produits\accessoires.dart:2895**` child: Text(_t('حفظ')), `
+- **lib\items_produits\accessoires.dart:3381**` String label = Localization.translate('النوع:', lang) + ' ' + Localization.translate(typeStr, lang); `
+- **lib\items_produits\accessoires.dart:3431**` Localization.translate('عدد البراغي للإكسسوار:', lang) + ' ${item['screw_count']}', `
+- **lib\items_produits\accessoires.dart:3503**` Localization.translate('الاستخدامات:', lang) + ' ' + translatedUsages, `
+- **lib\items_produits\accessoires.dart:3543**` tooltip: _t('قواعد الإكسسوار'), `
+- **lib\items_produits\accessoires.dart:3647**` hintText: Localization.translate('البحث بالاسم أو النوع...', Provider.of<AppSettingsProvider>(context, listen: false).language), `
+- **lib\items_produits\catalog_rules_screen.dart:295**` if (text.contains('caisson') || text.contains('صندوق')) { `
+- **lib\items_produits\catalog_rules_screen.dart:298**` if (text.contains('coulisse') || text.contains('كوليس')) { `
+- **lib\items_produits\catalog_rules_screen.dart:301**` if (text.contains('axe') || text.contains('محور')) return 'shutter_axis'; `
+- **lib\items_produits\catalog_rules_screen.dart:302**` if (text.contains('moteur') || text.contains('محرك')) { `
+- **lib\items_produits\catalog_rules_screen.dart:305**` if (text.contains('kit') || text.contains('كيت')) return 'shutter_kit'; `
+- **lib\items_produits\catalog_rules_screen.dart:306**` if (text.contains('bouchon') || text.contains('غطاء')) { `
+- **lib\items_produits\catalog_rules_screen.dart:315**` text.contains('بوشون')) && `
+- **lib\items_produits\catalog_rules_screen.dart:316**` (text.contains('batmo') || text.contains('باتمو')); `
+- **lib\items_produits\catalog_rules_screen.dart:320**` text.contains('براغ'); `
+- **lib\items_produits\catalog_rules_screen.dart:337**` (text.contains('vis') || text.contains('براغ'))) { `
+- **lib\items_produits\catalog_rules_screen.dart:342**` if ((text.contains('caisson') || text.contains('صندوق')) && `
+- **lib\items_produits\catalog_rules_screen.dart:343**` (text.contains('vis') || text.contains('براغ'))) { `
+- **lib\items_produits\catalog_rules_screen.dart:360**` text.contains('تراينغل') || `
+- **lib\items_produits\catalog_rules_screen.dart:361**` text.contains('تريانغل')) { `
+- **lib\items_produits\catalog_rules_screen.dart:364**` if (text.contains('verrou') || text.contains('فيرو')) return 'verrou'; `
+- **lib\items_produits\catalog_rules_screen.dart:367**` text.contains('كريمون')) { `
+- **lib\items_produit…28923 tokens truncated…nts_screen.dart:1153**` noLabel: Localization.translate('ملغي', lang), `
+- **lib\Screen\measurements_screen.dart:1164**` labelText: Localization.translate('ملاحظات إضافية', lang), `
+- **lib\Screen\measurements_screen.dart:1172**` tooltip: Localization.translate('تحويل الكلام إلى نص مستمر', lang), `
+- **lib\Screen\measurements_screen.dart:1187**` ? Localization.translate('إيقاف الاستماع المستمر', lang) `
+- **lib\Screen\measurements_screen.dart:1188**` : Localization.translate('تحدث لإملاء الملاحظات (مستمر بدون انقطاع)', lang), `
+- **lib\Screen\measurements_screen.dart:1215**` Localization.translate('المرفقات والوسائط التوضيحية', lang), `
+- **lib\Screen\measurements_screen.dart:1228**` label: Text(Localization.translate('صورة', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\measurements_screen.dart:1233**` label: Text(Localization.translate('فيديو', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\measurements_screen.dart:1238**` label: Text(_isRecording ? Localization.translate('إيقاف', lang) : Localization.translate('تسجيل صوت', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\measurements_screen.dart:1250**` Text(Localization.translate('المرفقات المحملة حالياً:', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), `
+- **lib\Screen\measurements_screen.dart:1301**` Text(Localization.translate('تسجيل صوتي', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)), `
+- **lib\Screen\measurements_screen.dart:1326**` Localization.translate('حفظ القياس في الهاتف', lang), `
+- **lib\Screen\measurements_screen.dart:1346**` '${Localization.translate('القياسات المسجلة سابقاً', lang)} (${_savedMeasurements.length})', `
+- **lib\Screen\measurements_screen.dart:1352**` tooltip: _isMultiSelectMode ? Localization.translate('إلغاء الوضع', lang) : Localization.translate('تحديد متعدد', lang), `
+- **lib\Screen\measurements_screen.dart:1368**` Localization.translate('تحويل الكل كطلبية', lang), `
+- **lib\Screen\measurements_screen.dart:1384**` final String label = group == 'ALL' ? Localization.translate('جميع الطلبيات', lang) : group; `
+- **lib\Screen\measurements_screen.dart:1417**` '${Localization.translate('محدد:', lang)} ${_selectedMeasurementIds.length}', `
+- **lib\Screen\measurements_screen.dart:1424**` '${Localization.translate('تحويل المحددة كطلبية واحدة', lang)} (${_selectedMeasurementIds.length})', `
+- **lib\Screen\measurements_screen.dart:1446**` ? Text(Localization.translate('لا توجد قياسات مسجلة بعد.', lang)) `
+- **lib\Screen\measurements_screen.dart:1496**` '${Localization.translate((item['window_location'] ?? '').toString(), lang)} - ${item['length']} × ${item['width']} ${Localization.translate('مم', lang)}', `
+- **lib\Screen\measurements_screen.dart:1527**` '${Localization.translate('نظام', lang)}: ${Localization.translate((item['opening_system'] ?? '').toString(), lang)}', `
+- **lib\Screen\measurements_screen.dart:1533**` '${Localization.translate('ستار', lang)}: ${item['shutter_exists'] == 1 ? Localization.translate('نعم', lang) : Localization.translate('لا', lang)} | ${Localization.translate('ملاحظة', lang)}: ${item['note'] ?? ''}', `
+- **lib\Screen\measurements_screen.dart:1543**` tooltip: Localization.translate('تحويل إلى طلبية منفردة', lang), `
+- **lib\Screen\measurements_screen.dart:1548**` tooltip: Localization.translate('مشاركة ورفع كـ ZIP', lang), `
+- **lib\Screen\moustiquaire_screen.dart:152**` return Localization.translate('Enroulable (ملفوفة / سحاب زبرك)', lang); `
+- **lib\Screen\moustiquaire_screen.dart:154**` return Localization.translate('Plissée (مطوية / أكورديون)', lang); `
+- **lib\Screen\moustiquaire_screen.dart:156**` return Localization.translate('Coulissante (منزلقة / جرار)', lang); `
+- **lib\Screen\moustiquaire_screen.dart:158**` return Localization.translate('Fixe (إطار ثابت)', lang); `
+- **lib\Screen\moustiquaire_screen.dart:201**` Localization.translate('تمت إضافة الناموسية إلى القائمة بنجاح', lang), `
+- **lib\Screen\moustiquaire_screen.dart:292**` Localization.translate('نظام الموستيكير (Moustiquaire)', lang), `
+- **lib\Screen\moustiquaire_screen.dart:429**` Localization.translate('وحدة القياس:', lang), `
+- **lib\Screen\moustiquaire_screen.dart:441**` Localization.translate('مم (mm)', lang), `
+- **lib\Screen\moustiquaire_screen.dart:448**` Localization.translate('سم (cm)', lang), `
+- **lib\Screen\moustiquaire_screen.dart:476**` '${Localization.translate('العرض', lang)} (${Localization.translate(_selectedUnit == InputUnit.mm ? 'مم' : 'سم', lang)})', `
+- **lib\Screen\moustiquaire_screen.dart:482**` ? Localization.translate('مطلوب', lang) `
+- **lib\Screen\moustiquaire_screen.dart:496**` '${Localization.translate('الارتفاع', lang)} (${Localization.translate(_selectedUnit == InputUnit.mm ? 'مم' : 'سم', lang)})', `
+- **lib\Screen\moustiquaire_screen.dart:502**` ? Localization.translate('مطلوب', lang) `
+- **lib\Screen\moustiquaire_screen.dart:522**` ? Localization.translate('مطلوب', lang) `
+- **lib\Screen\moustiquaire_screen.dart:684**` '${Localization.translate('قائمة الناموسيات المضافة', lang)} (${_items.length})', `
+- **lib\Screen\moustiquaire_screen.dart:734**` '${Localization.translate('النوع:', lang)} ${_getTypeLabel(item.type, lang)} | ${Localization.translate('إطار:', lang)} ${item.frameColor} | ${Localization.translate('المساحة:', lang)} ${item.totalAreaSqm.toStringAsFixed(2)} m²', `
+- **lib\Screen\moustiquaire_screen.dart:786**` Localization.translate('إجمالي عدد القطع:', lang), `
+- **lib\Screen\order_allocation_screen.dart:190**` '*المنتج / Produit:* ${Localization.translate(windowType, lang)}', `
+- **lib\Screen\order_allocation_screen.dart:197**` '*نوع البروفيل / Gamme:* ${Localization.translate(game, lang)}', `
+- **lib\Screen\order_allocation_screen.dart:201**` '*اللون / Couleur:* ${Localization.translate(color, lang)}', `
+- **lib\Screen\order_allocation_screen.dart:205**` '*الزجاج / Vitrage:* ${Localization.translate(glass, lang)}', `
+- **lib\Screen\order_allocation_screen.dart:209**` '*الستار / Volet:* ${Localization.translate(volet, lang)}', `
+- **lib\Screen\order_allocation_screen.dart:278**` '*عنصر / Produit:* ${Localization.translate(item['window_type'] ?? 'Window', lang)} (${item['largeur']}x${item['hauteur']})', `
+- **lib\Screen\order_allocation_screen.dart:576**` labelText: _tr('الارتفاع (مم)', 'Hauteur (mm)', 'Height (mm)', lang), `
+- **lib\Screen\order_allocation_screen.dart:588**` labelText: _tr('العرض (مم)', 'Largeur (mm)', 'Width (mm)', lang), `
+- **lib\Screen\order_allocation_screen.dart:607**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\order_allocation_screen.dart:714**` Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم `
+- **lib\Screen\order_allocation_screen.dart:736**` SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red), `
+- **lib\Screen\order_allocation_screen.dart:777**` Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم `
+- **lib\Screen\order_allocation_screen.dart:799**` SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red), `
+- **lib\Screen\order_allocation_screen.dart:851**` Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم `
+- **lib\Screen\order_allocation_screen.dart:873**` SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red), `
+- **lib\Screen\order_allocation_screen.dart:1095**` _tr('إلغاء', 'Annuler', 'Cancel', lang), `
+- **lib\Screen\order_allocation_screen.dart:1170**` labelText: _tr('اختر العامل', 'Choisir l’ouvrier', 'Choose worker', lang), `
+- **lib\Screen\order_allocation_screen.dart:1192**` labelText: 'الكمية المسندة (الأقصى $remainingQty)', `
+- **lib\Screen\order_allocation_screen.dart:1275**` _tr('إلغاء', 'Annuler', 'Cancel', lang), `
+- **lib\Screen\order_allocation_screen.dart:1704**` '💵 ${_tr("أجرة التصنيع:", "Prix fab.:", "Mfg price:", lang)} ${workerPrice.toStringAsFixed(0)} د.ج / ${_tr("قطعة", "pc", "pc", lang)} (${_tr("الإجمالي:", "Total:", "Total:", lang)} ${totalWorkerPrice.toStringAsFixed(0)} د.ج)', `
+- **lib\Screen\price_management_screen.dart:632**` content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)), `
+- **lib\Screen\price_management_screen.dart:715**` content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)), `
+- **lib\Screen\price_management_screen.dart:827**` subtitle: Localization.translate('سعر المتر الطولي', lang), `
+- **lib\Screen\price_management_screen.dart:857**` content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)), `
+- **lib\Screen\price_management_screen.dart:890**` Localization.translate('أسعار المكونات والقطع', lang), `
+- **lib\Screen\price_management_screen.dart:914**` Localization.translate('سعر المتر المربع للستار', lang), `
+- **lib\Screen\price_management_screen.dart:1003**` child: Text(Localization.translate('لا توجد بيانات.', lang)), `
+- **lib\Screen\price_management_screen.dart:1025**` Localization.translate('لا توجد نتائج مطابقة للبحث.', lang), `
+- **lib\Screen\price_management_screen.dart:1110**` ? Localization.translate('الألوان', lang) `
+- **lib\Screen\price_management_screen.dart:1111**` : Localization.translate('خام', lang), `
+- **lib\Screen\price_management_screen.dart:1312**` tooltip: Localization.translate('حذف', lang), `
+- **lib\Screen\price_management_screen.dart:1365**` Localization.translate('+ إضافة لون', lang), `
+- **lib\Screen\price_management_screen.dart:1407**` subtitle: Localization.translate('سعر م²', lang), `
+- **lib\Screen\price_management_screen.dart:1472**` subtitle: Localization.translate('سعر المتر الخطي', lang), `
+- **lib\Screen\price_management_screen.dart:1577**` subtitle: Localization.translate('سعر الوحدة', lang), `
+- **lib\Screen\price_management_screen.dart:1600**` title: Localization.translate('المحرك (Moteur) — سعر التركيب', lang), `
+- **lib\Screen\price_management_screen.dart:1638**` title: Localization.translate('سعر التركيب', lang), `
+- **lib\Screen\price_management_screen.dart:1644**` subtitle: Localization.translate('يُضاف إلى سعر المحرك', lang), `
+- **lib\Screen\price_management_screen.dart:1658**` title: Localization.translate('المانيفال (Manivelle)', lang), `
+- **lib\Screen\price_management_screen.dart:1664**` title: Localization.translate('سعر تركيب المانيفال', lang), `
+- **lib\Screen\price_management_screen.dart:1670**` subtitle: Localization.translate('يُضاف إلى سعر القطعة', lang), `
+- **lib\Screen\price_management_screen.dart:1684**` title: Localization.translate('إكسسوارات خاصة', lang), `
+- **lib\Screen\price_management_screen.dart:1690**` title: Localization.translate('سعر الكيت OB', lang), `
+- **lib\Screen\price_management_screen.dart:1703**` title: Localization.translate('سعر ديمي OB', lang), `
+- **lib\Screen\price_management_screen.dart:1716**` title: Localization.translate('سعر الفيرو سنترال', lang), `
+- **lib\Screen\price_management_screen.dart:1765**` '${Localization.translate('اختر لوناً لـ', lang)} ${Localization.translate(bladeKey, lang)}', `
+- **lib\Screen\price_management_screen.dart:1819**` child: Text(Localization.translate('إغلاق', lang)), `
+- **lib\Screen\price_management_screen.dart:1843**` content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)), `
+- **lib\Screen\price_management_screen.dart:1872**` content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)), `
+- **lib\Screen\price_management_screen.dart:1906**` Localization.translate('أسعار الإكسسوارات', lang), `
+- **lib\Screen\price_management_screen.dart:1953**` hintText: Localization.translate('بحث في الإكسسوارات...', lang), `
+- **lib\Screen\price_management_screen.dart:1980**` Localization.translate('لم يتم العثور على أكسسوارات.', lang), `
+- **lib\Screen\price_management_screen.dart:2006**` Localization.translate('لا توجد نتائج مطابقة للبحث.', lang), `
+- **lib\Screen\price_management_screen.dart:2067**` text.contains('مقبض')) { `
+- **lib\Screen\price_management_screen.dart:2072**` text.contains('مفصل')) { `
+- **lib\Screen\price_management_screen.dart:2078**` text.contains('قفل') || `
+- **lib\Screen\price_management_screen.dart:2079**` text.contains('فيرو')) { `
+- **lib\Screen\price_management_screen.dart:2084**` text.contains('عجل')) { `
+- **lib\Screen\price_management_screen.dart:2089**` text.contains('قاش')) { `
+- **lib\Screen\price_management_screen.dart:2094**` text.contains('كريمون')) { `
+- **lib\Screen\price_management_screen.dart:2097**` if (text.contains('bouchon') || text.contains('بوشون')) { `
+- **lib\Screen\price_management_screen.dart:2172**` tooltip: Localization.translate('تخصيص الألوان', lang), `
+- **lib\Screen\price_management_screen.dart:2188**` label: Localization.translate('خام', lang), `
+- **lib\Screen\price_management_screen.dart:2261**` title: Localization.translate('السعر', lang), `
+- **lib\Screen\price_management_screen.dart:2334**` title: Localization.translate('خام', lang), `
+- **lib\Screen\price_management_screen.dart:2399**` Localization.translate('لم يتم العثور على أكسسوارات.', lang), `
+- **lib\Screen\price_management_screen.dart:2546**` content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)), `
+- **lib\Screen\price_management_screen.dart:2556**` '${Localization.translate('تعذر حفظ سعر القطاع', lang)}: $error', `
+- **lib\Screen\price_management_screen.dart:2591**` content: Text(Localization.translate('تم حفظ تخصيص اللون.', lang)), `
+- **lib\Screen\price_management_screen.dart:2599**` '${Localization.translate('تعذر حفظ تخصيص اللون', lang)}: $error', `
+- **lib\Screen\price_management_screen.dart:2611**` child: Text(Localization.translate('لا يوجد أنظمة (Profiles).', lang)), `
+- **lib\Screen\price_management_screen.dart:2616**` child: Text(Localization.translate('لا توجد ألوان.', lang)), `
+- **lib\Screen\price_management_screen.dart:2627**` labelText: Localization.translate('اختر النظام (Profile)', lang), `
+- **lib\Screen\price_management_screen.dart:2740**` '${Localization.translate('تعديل طول البار', lang)} - ${section['name']}', `
+- **lib\Screen\price_management_screen.dart:2746**` labelText: Localization.translate('طول البار (بالمتر)', lang), `
+- **lib\Screen\price_management_screen.dart:2752**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\price_management_screen.dart:2770**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Screen\price_management_screen.dart:2781**` child: Text(Localization.translate('لا توجد سلاسل.', lang)), `
+- **lib\Screen\price_management_screen.dart:2829**` labelText: Localization.translate('اختر السلسلة', lang), `
+- **lib\Screen\price_management_screen.dart:2908**` "${Localization.translate('الرمز', lang)}: ${section['code']}", `
+- **lib\Screen\price_management_screen.dart:3039**` displayTitle = '$name  —  اللون: ${item.specificColor}'; `
+- **lib\Screen\price_management_screen.dart:3043**` displayTitle = '$name  —  اللون: $colorText'; `
+- **lib\Screen\price_management_screen.dart:3054**` displaySubtitle = 'سعر المتر الخطي  |  النوع: باجيت ديكور'; `
+- **lib\Screen\price_management_screen.dart:3056**` displaySubtitle = 'سعر القطعة  |  النوع: وردة ديكور'; `
+- **lib\Screen\price_management_screen.dart:3058**` displaySubtitle = 'سعر القطعة  |  النوع: بانو ديكور'; `
+- **lib\Screen\price_management_screen.dart:3060**` displaySubtitle = 'سعر المتر المربع  |  النوع: $glassType'; `
+- **lib\Screen\price_management_screen.dart:3138**` hintText: Localization.translate('بحث...', lang), `
+- **lib\Screen\price_management_screen.dart:3172**` Localization.translate('لا توجد نتائج مطابقة للبحث.', lang), `
+- **lib\Screen\price_management_screen.dart:3267**` Localization.translate('إضافة قاعدة جديدة', lang), `
+- **lib\Screen\price_management_screen.dart:3347**` '${Localization.translate('الصندوق:', lang)} $boxSize ${Localization.translate('ملم', lang)}', `
+- **lib\Screen\price_management_screen.dart:3369**` '${Localization.translate('أقصى عرض اللامة:', lang)} ${maxWidth.toStringAsFixed(0)} ${Localization.translate('ملم', lang)}', `
+- **lib\Screen\price_management_screen.dart:3391**` '${Localization.translate('أقصى ارتفاع:', lang)} ${maxHeight.toStringAsFixed(0)} ${Localization.translate('ملم', lang)}', `
+- **lib\Screen\price_management_screen.dart:3580**` title: Text(Localization.translate('حذف القاعدة', lang)), `
+- **lib\Screen\price_management_screen.dart:3590**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\price_management_screen.dart:3598**` child: Text(Localization.translate('حذف', lang)), `
+- **lib\Screen\price_management_screen.dart:3677**` ? Localization.translate('إضافة قاعدة حدود الصندوق', lang) `
+- **lib\Screen\price_management_screen.dart:3678**` : Localization.translate('تعديل قاعدة حدود الصندوق', lang), `
+- **lib\Screen\price_management_screen.dart:3689**` labelText: Localization.translate('نوع الشفرة', lang), `
+- **lib\Screen\price_management_screen.dart:3721**` labelText: Localization.translate('مقاس الصندوق', lang), `
+- **lib\Screen\price_management_screen.dart:3729**` child: Text('$size ملم'), `
+- **lib\Screen\price_management_screen.dart:3777**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\price_management_screen.dart:3828**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Screen\price_management_screen.dart:3845**` title: Text(Localization.translate('إدارة الأسعار', lang)), `
+- **lib\Screen\price_management_screen.dart:3858**` Tab(text: Localization.translate("الألمنيوم (السلاسل)", lang)), `
+- **lib\Screen\price_management_screen.dart:3859**` Tab(text: Localization.translate("ألوان الأنظمة", lang)), `
+- **lib\Screen\price_management_screen.dart:3860**` Tab(text: Localization.translate("الزجاج", lang)), `
+- **lib\Screen\price_management_screen.dart:3861**` Tab(text: Localization.translate("الستائر", lang)), `
+- **lib\Screen\price_management_screen.dart:3862**` Tab(text: Localization.translate("الجوانات", lang)), `
+- **lib\Screen\price_management_screen.dart:3863**` Tab(text: Localization.translate("الإكسسوارات", lang)), `
+- **lib\Screen\price_management_screen.dart:3864**` Tab(text: Localization.translate("أسعار المقاطع", lang)), `
+- **lib\Screen\price_management_screen.dart:3865**` Tab(text: Localization.translate("حدود الصناديق (Caissons)", lang)), `
+- **lib\Screen\price_management_screen.dart:3887**` Localization.translate('سعر المتر الطولي', lang), `
+- **lib\Screen\price_management_screen.dart:3936**` Localization.translate('تخصيص ألوان الإكسسوارات', lang), `
+- **lib\Screen\price_management_screen.dart:4063**` child: Text(Localization.translate('إغلاق', lang)), `
+- **lib\Screen\price_management_screen.dart:4091**` Localization.translate('تخصيص ألوان مركبات ستائر', lang), `
+- **lib\Screen\price_management_screen.dart:4101**` labelText: Localization.translate('اختر المكون', lang), `
+- **lib\Screen\price_management_screen.dart:4208**` child: Text(Localization.translate('إغلاق', lang)), `
+- **lib\Screen\project_details_screen.dart:65**` Localization.translate('تعديل المشروع', lang), `
+- **lib\Screen\project_details_screen.dart:74**` labelText: Localization.translate('اسم المشروع', lang), `
+- **lib\Screen\project_details_screen.dart:83**` labelText: Localization.translate('الوصف', lang), `
+- **lib\Screen\project_details_screen.dart:92**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\project_details_screen.dart:109**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Screen\project_details_screen.dart:124**` title: Text(Localization.translate('حذف المشروع', lang)), `
+- **lib\Screen\project_details_screen.dart:134**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\project_details_screen.dart:147**` child: Text(Localization.translate('حذف', lang)), `
+- **lib\Screen\project_details_screen.dart:180**` child: Text(Localization.translate('المشروع غير موجود', lang)), `
+- **lib\Screen\project_details_screen.dart:215**` tooltip: Localization.translate('تعديل', lang), `
+- **lib\Screen\project_details_screen.dart:220**` tooltip: Localization.translate('حذف', lang), `
+- **lib\Screen\project_details_screen.dart:253**` Localization.translate('الزبون', lang), `
+- **lib\Screen\project_details_screen.dart:273**` Localization.translate('الوصف', lang), `
+- **lib\Screen\project_details_screen.dart:296**` Localization.translate('عدد الطلبيات', lang), `
+- **lib\Screen\project_details_screen.dart:352**` Localization.translate('الطلبيات المرتبطة', lang), `
+- **lib\Screen\project_details_screen.dart:370**` Localization.translate('ربط طلبية موجودة', lang), `
+- **lib\Screen\project_details_screen.dart:384**` Localization.translate('إضافة طلبية', lang), `
+- **lib\Screen\project_details_screen.dart:429**` title: Text('طلب #$displayNumber'), `
+- **lib\Screen\projects_screen.dart:90**` ? Localization.translate('إضافة مشروع جديد', lang) `
+- **lib\Screen\projects_screen.dart:91**` : Localization.translate('تعديل المشروع', lang), `
+- **lib\Screen\projects_screen.dart:101**` labelText: Localization.translate('اسم المشروع', lang), `
+- **lib\Screen\projects_screen.dart:111**` labelText: Localization.translate('الزبون', lang), `
+- **lib\Screen\projects_screen.dart:135**` labelText: Localization.translate('الوصف (اختياري)', lang), `
+- **lib\Screen\projects_screen.dart:146**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\projects_screen.dart:156**` SnackBar(content: Text(Localization.translate('يرجى إدخال اسم المشروع', lang))), `
+- **lib\Screen\projects_screen.dart:162**` SnackBar(content: Text(Localization.translate('يرجى اختيار الزبون', lang))), `
+- **lib\Screen\projects_screen.dart:178**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Screen\projects_screen.dart:194**` Localization.translate('المشاريع', lang), `
+- **lib\Screen\projects_screen.dart:215**` hintText: Localization.translate('البحث عن مشروع...', lang), `
+- **lib\Screen\projects_screen.dart:232**` Localization.translate('لا توجد مشاريع حالية', lang), `
+- **lib\Screen\receipt_pdf_service.dart:213**` pw.Text('رقم الوصل: $receiptId', `
+- **lib\Screen\receipt_pdf_service.dart:317**` pw.Text(tr('البيان / Motif:'), `
+- **lib\Screen\receipt_pdf_service.dart:334**` pw.Text(tr('المستلم / Signataire'), `
+- **lib\Screen\receipt_pdf_service.dart:346**` pw.Text(tr('الدافع / Payeur'), `
+- **lib\Screen\receipt_pdf_service.dart:384**` text: 'وصل معاملة الصندوق رقم $receiptId', `
+- **lib\Screen\receipt_pdf_service.dart:416**` dialogTitle: 'حفظ الوصل PDF', `
+- **lib\Screen\receipt_pdf_service.dart:452**` content: Text('خطأ في حفظ الملف: $e', `
+- **lib\Screen\receipt_pdf_service.dart:527**` text: 'وصل معاملة الصندوق رقم $receiptId', `
+- **lib\Screen\receipt_pdf_service.dart:564**` dialogTitle: 'حفظ الوصل PDF', `
+- **lib\Screen\reports_hub_screen.dart:29**` 'title': Localization.translate('تقرير النواقص الشامل', lang), `
+- **lib\Screen\reports_hub_screen.dart:30**` 'subtitle': Localization.translate('نواقص كل الطلبيات (Aluminium, Verre, Acc)', lang), `
+- **lib\Screen\reports_hub_screen.dart:43**` 'title': Localization.translate('أجور وسلفيات العمال', lang), `
+- **lib\Screen\reports_hub_screen.dart:44**` 'subtitle': Localization.translate('عرض رواتب العمال والمعاملات المالية', lang), `
+- **lib\Screen\reports_hub_screen.dart:59**` 'title': Localization.translate('المحاسبة الأسبوعية للعمال', lang), `
+- **lib\Screen\reports_hub_screen.dart:60**` 'subtitle': Localization.translate('مستحقات العمال أسبوعياً والأجور المدفوعة', lang), `
+- **lib\Screen\reports_hub_screen.dart:75**` 'title': Localization.translate('تقرير المشتريات', lang), `
+- **lib\Screen\reports_hub_screen.dart:76**` 'subtitle': Localization.translate('عرض فواتير الشراء والمرتجعات', lang), `
+- **lib\Screen\reports_hub_screen.dart:91**` 'title': Localization.translate('حسابات الموردين', lang), `
+- **lib\Screen\reports_hub_screen.dart:92**` 'subtitle': Localization.translate('الديون ومدفوعات الموردين', lang), `
+- **lib\Screen\reports_hub_screen.dart:105**` 'title': Localization.translate('الخزينة والمالية', lang), `
+- **lib\Screen\reports_hub_screen.dart:106**` 'subtitle': Localization.translate('عرض الصندوق ومدفوعات الزبائن والأرباح', lang), `
+- **lib\Screen\reports_hub_screen.dart:122**` Localization.translate('مركز التقارير والمالية', lang), `
+- **lib\Screen\reports_hub_screen.dart:134**` Localization.translate('لا توجد لديك صلاحيات لرؤية أي تقارير', lang), `
+- **lib\Screen\sales_screen.dart:78**` content: Text('خطأ أثناء تحميل المبيعات: $e'), `
+- **lib\Screen\sales_screen.dart:221**` return _tr('المؤكدة', 'Confirmée', 'Confirmed', lang); `
+- **lib\Screen\sales_screen.dart:223**` return _tr('التصنيع الجزئي', 'Fab. Partielle', 'Partial Mfg', lang); `
+- **lib\Screen\sales_screen.dart:225**` return _tr('التصنيع الكلي', 'Fab. Totale', 'Full Mfg', lang); `
+- **lib\Screen\sales_screen.dart:227**` return _tr('التوزيع الجزئي', 'Dist. Partielle', 'Partial Dist', lang); `
+- **lib\Screen\sales_screen.dart:229**` return _tr('التوزيع الكلي', 'Dist. Totale', 'Full Dist', lang); `
+- **lib\Screen\sales_screen.dart:232**` return _tr('المركبة', 'Installée', 'Installed', lang); `
+- **lib\Screen\sales_screen.dart:235**` return _tr('المحجوزة', 'Réservée', 'Reserved', lang); `
+- **lib\Screen\sales_screen.dart:250**` return _tr('قيد الانتظار', 'En Attente', 'Pending', lang); `
+- **lib\Screen\sales_screen.dart:329**` return _tr('إجمالي المبيعات', 'Total des ventes', 'Total Sales', lang); `
+- **lib\Screen\sales_screen.dart:509**` _tr('الكل', 'Tous', 'All', lang), `
+- **lib\Screen\sales_screen.dart:516**` _tr('المؤكدة', 'Confirmée', 'Confirmed', lang), `
+- **lib\Screen\sales_screen.dart:571**` _tr('المركبة', 'Installée', 'Installed', lang), `
+- **lib\Screen\sales_screen.dart:578**` _tr('المحجوزة / حجز', 'Réservée', 'Reserved', lang), `
+- **lib\Screen\sales_screen.dart:671**` '${_tr('طلب', 'Commande', 'Order', lang)} #$displayNumber - $clientName', `
+- **lib\Screen\sales_screen.dart:678**` '${_tr('التاريخ', 'Date', 'Date', lang)}: $date  ·  ${_tr('الحالة', 'Statut', 'Status', lang)}: ${_translateStatus(order['status']?.toString(), lang)}', `
+- **lib\Screen\sales_screen.dart:737**` : _tr('زبون غير معروف', 'Client inconnu', 'Unknown client', lang); `
+- **lib\Screen\sales_screen.dart:767**` '${_tr('طلب', 'Commande', 'Order', lang)} #$orderId - $clientName', `
+- **lib\Screen\sales_screen.dart:799**` '${_tr('قيمة الطلب', 'Montant', 'Amount', lang)}: ${_currencyFormatter.format(orderTotal)} دج  ·  ${_tr('مجموع المسلّم', 'Livré', 'Delivered', lang)}: ${_currencyFormatter.format(sumDeliveries)} دج', `
+- **lib\Screen\sales_screen.dart:902**` '${_tr('تاريخ التسليم', 'Date livraison', 'Delivery date', lang)}: $delDate', `
+- **lib\Screen\sales_screen.dart:914**` '${_tr('القطع', 'Pièces', 'Items', lang)}: $itemsSummary', `
+- **lib\Screen\selected_systems_screen.dart:89**` 'title': 'System Sliding (نظام الجرار)', `
+- **lib\Screen\selected_systems_screen.dart:90**` 'subtitle': 'نظام النوافذ والأبواب الجرارة 2/3/4 سكة', `
+- **lib\Screen\selected_systems_screen.dart:97**` 'title': 'System Beating (النظام الفرنسي)', `
+- **lib\Screen\selected_systems_screen.dart:98**` 'subtitle': 'نظام الفتح الداخلي والخارجي والقلاب', `
+- **lib\Screen\selected_systems_screen.dart:107**` 'title': 'Conception (التصميم)', `
+- **lib\Screen\selected_systems_screen.dart:108**` 'subtitle': 'صفحة الرسم والتصميم للنوافذ والأبواب', `
+- **lib\Screen\selected_systems_screen.dart:115**` 'title': 'System Rolling (الستار / Volet)', `
+- **lib\Screen\selected_systems_screen.dart:116**` 'subtitle': 'أنظمة الستائر المتحركة والمحركات', `
+- **lib\Screen\selected_systems_screen.dart:123**` 'title': 'Caisson Tunnel (صندوق التونيل)', `
+- **lib\Screen\selected_systems_screen.dart:124**` 'subtitle': 'صناديق الستار المدمجة في الجدار', `
+- **lib\Screen\selected_systems_screen.dart:131**` 'title': 'Moustiquaire (موستيكير / الناموسية)', `
+- **lib\Screen\selected_systems_screen.dart:140**` 'title': 'Pre-cadre (إطار التثبيت الأولي)', `
+- **lib\Screen\selected_systems_screen.dart:141**` 'subtitle': 'إطارات الإخفاء والتجهيز قبل التركيب', `
+- **lib\Screen\selected_systems_screen.dart:148**` 'title': 'Verre Trempé (الزجاج المعالج)', `
+- **lib\Screen\selected_systems_screen.dart:149**` 'subtitle': 'أنظمة الزجاج المقوى والواجهات', `
+- **lib\Screen\selected_systems_screen.dart:378**` ? '${Localization.translate("تم تفعيل", lang)} ${item.title}' `
+- **lib\Screen\selected_systems_screen.dart:379**` : '${Localization.translate("تم إيقاف", lang)} ${item.title}', `
+- **lib\Screen\selected_systems_screen.dart:433**` ? '${Localization.translate("تم تفعيل النظام", lang)}: ${item.name}' `
+- **lib\Screen\selected_systems_screen.dart:434**` : '${Localization.translate("تم إيقاف النظام", lang)}: ${item.name}', `
+- **lib\Screen\selected_systems_screen.dart:572**` Localization.translate('تحديد الأنظمة المستعملة', lang), `
+- **lib\Screen\selected_systems_screen.dart:600**` tooltip: Localization.translate('مزامنة من السحابة', lang), `
+- **lib\Screen\selected_systems_screen.dart:623**` '${Localization.translate("أنظمة العمل", lang)} ($activeModesCount/${_systemModes.length})', `
+- **lib\Screen\selected_systems_screen.dart:628**` '${Localization.translate("أنظمة الألمنيوم", lang)} ($activeProfilesCount/${_profileSystems.length})', `
+- **lib\Screen\selected_systems_screen.dart:743**` Localization.translate('تفعيل الكل', lang), `
+- **lib\Screen\selected_systems_screen.dart:779**` Localization.translate('إلغاء الكل', lang), `
+- **lib\Screen\selected_systems_screen.dart:826**` Localization.translate('لا توجد أنظمة مطابقة للبحث', lang), `
+- **lib\Screen\selected_systems_screen.dart:1106**` '${Localization.translate("نوع", lang)}: ${item.type}', `
+- **lib\Screen\selected_systems_screen.dart:1119**` ? Localization.translate('مفعل بالورشة', lang) `
+- **lib\Screen\selected_systems_screen.dart:1120**` : Localization.translate('معطل', lang), `
+- **lib\Screen\settings_screen.dart:42**` Localization.translate('تسجيل دخول Supabase', lang), `
+- **lib\Screen\settings_screen.dart:55**` labelText: Localization.translate('البريد', lang), `
+- **lib\Screen\settings_screen.dart:63**` labelText: Localization.translate('كلمة المرور', lang), `
+- **lib\Screen\settings_screen.dart:71**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\settings_screen.dart:84**` child: Text(Localization.translate('إنشاء حساب', lang)), `
+- **lib\Screen\settings_screen.dart:97**` child: Text(Localization.translate('دخول', lang)), `
+- **lib\Screen\settings_screen.dart:207**` Localization.translate('معلومات الورشة', lang), `
+- **lib\Screen\settings_screen.dart:233**` Localization.translate('إعدادات القص والفضلات', lang), `
+- **lib\Screen\settings_screen.dart:266**` Localization.translate('إعدادات الشاشة والمظهر', lang), `
+- **lib\Screen\settings_screen.dart:294**` Localization.translate('تحديد الأنظمة المستعملة بالورشة', lang), `
+- **lib\Screen\settings_screen.dart:385**` Localization.translate('رفع للسحابة', lang), `
+- **lib\Screen\settings_screen.dart:526**` Localization.translate('إلغاء', lang), `
+- **lib\Screen\settings_screen.dart:746**` Localization.translate('تصدير ملف .db', lang), `
+- **lib\Screen\settings_screen.dart:1059**` Localization.translate('تحديث الكتالوج الآن', lang), `
+- **lib\Screen\settings_screen.dart:1189**` Localization.translate('رفع الكتالوج الآن', lang), `
+- **lib\Screen\settings_screen.dart:1391**` Localization.translate('إغلاق التطبيق', lang), `
+- **lib\Screen\settings_screen.dart:1427**` Localization.translate('إعدادات الشاشة والمظهر', lang), `
+- **lib\Screen\settings_screen.dart:1446**` Localization.translate('طريقة العرض (View Mode)', lang), `
+- **lib\Screen\settings_screen.dart:1457**` Localization.translate('عادي (كلاسيكي)', lang), `
+- **lib\Screen\settings_screen.dart:1468**` Localization.translate('تبويبات (متصفح)', lang), `
+- **lib\Screen\settings_screen.dart:1479**` Localization.translate('نوافذ مصغرة', lang), `
+- **lib\Screen\subscription_checker.dart:87**` body: Center(child: Text(_t('عذراً، يجب تسجيل الدخول.'))), `
+- **lib\Screen\subscription_checker.dart:108**` child: Text('حدث خطأ أثناء فحص الاشتراك: ${snapshot.error}'), `
+- **lib\Screen\subscription_checker.dart:334**` child: Text(_t('تسجيل الخروج')), `
+- **lib\Screen\subscription_checker.dart:352**` child: Text('خطأ: لم يتم العثور على بيانات الورشة.'), `
+- **lib\Screen\subscription_checker.dart:504**` child: Text(_t('تسجيل الخروج')), `
+- **lib\Screen\subscription_expired_screen.dart:21**` title: Text(Localization.translate('انتهى الاشتراك', lang)), `
+- **lib\Screen\subscription_expired_screen.dart:96**` 'https://wa.me/213554301484?text=مرحباً، أريد تجديد اشتراكي في تطبيق إدارة الورش.', `
+- **lib\Screen\subscription_review_dialog.dart:135**` child: Center(child: Text('تعذر تحميل بيانات الاشتراك')), `
+- **lib\Screen\subscription_review_dialog.dart:186**` Localization.translate('مراجعة الاشتراك', lang), `
+- **lib\Screen\subscription_review_dialog.dart:428**` title: Localization.translate('تاريخ بداية الاشتراك:', lang), `
+- **lib\Screen\subscription_review_dialog.dart:435**` title: Localization.translate('تاريخ نهاية الاشتراك:', lang), `
+- **lib\Screen\subscription_review_dialog.dart:446**` title: Localization.translate('كود الورشة:', lang), `
+- **lib\Screen\supplier_details_screen.dart:193**` _tr('طباعة الوصل', 'Imprimer reçu', 'Print Receipt', lang), `
+- **lib\Screen\supplier_details_screen.dart:210**` _tr('مشاركة', 'Partager', 'Share', lang), `
+- **lib\Screen\supplier_details_screen.dart:227**` _tr('حفظ الوصل', 'Enregistrer reçu', 'Save Receipt', lang), `
+- **lib\Screen\supplier_details_screen.dart:278**` '${_tr('كشف حساب المورد: ', 'Fiche Fournisseur: ', 'Supplier Statement: ', lang)}${widget.supplier['name']}', `
+- **lib\Screen\supplier_details_screen.dart:327**` _tr('طباعة PDF', 'Imprimer PDF', 'Print PDF', lang), `
+- **lib\Screen\supplier_details_screen.dart:340**` _tr('مشاركة PDF', 'Partager PDF', 'Share PDF', lang), `
+- **lib\Screen\supplier_details_screen.dart:353**` _tr('حفظ PDF', 'Enregistrer PDF', 'Save PDF', lang), `
+- **lib\Screen\supplier_details_screen.dart:493**` _tr('الكل', 'Tous', 'All', lang), `
+- **lib\Screen\supplier_details_screen.dart:506**` _tr('المدفوعات', 'Paiements', 'Payments', lang), `
+- **lib\Screen\supplier_details_screen.dart:510**` _tr('المرتجعات', 'Retours', 'Returns', lang), `
+- **lib\Screen\supplier_details_screen.dart:644**` amountText = '+ ${formatter.format(debit)} دج'; `
+- **lib\Screen\supplier_details_screen.dart:649**` amountText = '- ${formatter.format(credit)} دج'; `
+- **lib\Screen\supplier_details_screen.dart:654**` amountText = '- ${formatter.format(credit)} دج'; `
+- **lib\Screen\supplier_ledger_pdf_service.dart:178**` pw.Text('${t('الهاتف')}: $supplierPhone', style: pw.TextStyle(font: fontRegular, fontSize: 9)), `
+- **lib\Screen\supplier_ledger_pdf_service.dart:182**` pw.Text('${t('البريد الإلكتروني')}: $supplierEmail', style: pw.TextStyle(font: fontRegular, fontSize: 9)), `
+- **lib\Screen\supplier_ledger_pdf_service.dart:277**` pw.Text(t('توقيع المورد'), style: pw.TextStyle(font: fontBold, fontSize: 9)), `
+- **lib\Screen\supplier_ledger_pdf_service.dart:284**` pw.Text(t('إمضاء الورشة'), style: pw.TextStyle(font: fontBold, fontSize: 9)), `
+- **lib\Screen\supplier_ledger_pdf_service.dart:348**` await Share.shareXFiles([XFile(file.path)], text: 'كشف حساب المورد $name'); `
+- **lib\Screen\supplier_ledger_pdf_service.dart:382**` dialogTitle: Localization.translate('حفظ كشف الحساب', lang), `
+- **lib\Screen\supplier_ledger_pdf_service.dart:404**` Localization.translate('تم حفظ كشف الحساب بنجاح', lang), `
+- **lib\Screen\supplier_ledger_pdf_service.dart:416**` '${Localization.translate('خطأ في حفظ الملف', lang)}: $e', `
+- **lib\Screen\suppliers_screen.dart:59**` ? Localization.translate('إضافة مورد جديد', lang) `
+- **lib\Screen\suppliers_screen.dart:60**` : Localization.translate('تعديل بيانات المورد', lang), `
+- **lib\Screen\suppliers_screen.dart:69**` labelText: Localization.translate('اسم المورد', lang), `
+- **lib\Screen\suppliers_screen.dart:82**` labelText: Localization.translate('رقم الهاتف', lang), `
+- **lib\Screen\suppliers_screen.dart:91**` labelText: Localization.translate('البريد الإلكتروني', lang), `
+- **lib\Screen\suppliers_screen.dart:100**` labelText: Localization.translate('ملاحظات', lang), `
+- **lib\Screen\suppliers_screen.dart:145**` tooltip: Localization.translate('حذف الموقع', lang), `
+- **lib\Screen\suppliers_screen.dart:164**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\suppliers_screen.dart:171**` ).showSnackBar(SnackBar(content: Text(Localization.translate('الاسم مطلوب', lang)))); `
+- **lib\Screen\suppliers_screen.dart:193**` child: Text(Localization.translate('حفظ', lang)), `
+- **lib\Screen\suppliers_screen.dart:206**` title: Text(Localization.translate('تأكيد الحذف', lang)), `
+- **lib\Screen\suppliers_screen.dart:207**` content: Text(Localization.translate('هل أنت متأكد من حذف هذا المورد؟', lang)), `
+- **lib\Screen\suppliers_screen.dart:211**` child: Text(Localization.translate('إلغاء', lang)), `
+- **lib\Screen\suppliers_screen.dart:217**` Localization.translate('حذف', lang), `
+- **lib\Screen\suppliers_screen.dart:236**` title: Text(Localization.translate('الموردين', lang)), `
+- **lib\Screen\suppliers_screen.dart:242**` label: Text(Localization.translate('مورد جديد', lang)), `
+- **lib\Screen\suppliers_screen.dart:247**` ? Center(child: Text(Localization.translate('لا يوجد موردين مضافين حتى الآن.', lang))) `
+- **lib\Screen\suppliers_screen.dart:295**` tooltip: Localization.translate('فتح الموقع في الخرائط', lang), `
+- **lib\Screen\support_dialog.dart:25**` final ratingText = _rating > 0 ? '$_rating نجوم' : 'لم يتم تحديد تقييم'; `
+- **lib\Screen\support_dialog.dart:28**` "مراسلة الإدارة وتقديم شكوى / ملاحظة:\n• تقييم التطبيق: $ratingText\n• الملاحظة أو الشكوى:\n${userMsg.isNotEmpty ? userMsg : 'لا توجد تفاصيل إضافية'}"; `
+- **lib\Screen\support_dialog.dart:47**` content: Text(_t('تعذر فتح واتساب تلقائياً. يرجى التواصل مباشرة على الرقم: 0554301484')), `
+- **lib\Screen\support_dialog.dart:131**` hintText: _t('اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...'), `
+- **lib\Screen\support_dialog.dart:145**` child: Text(_t('إلغاء')), `
+- **lib\Screen\tempered_glass_work_screen.dart:160**` return _tr('فيترين / واجهة محل', 'Vitrine', 'Storefront'); `
+- **lib\Screen\tempered_glass_work_screen.dart:162**` return _tr('كابين دوش', 'Cabine de douche', 'Shower cabin'); `
+- **lib\Screen\tempered_glass_work_screen.dart:164**` return _tr('باب زجاجي', 'Porte en verre', 'Glass door'); `
+- **lib\Screen\tempered_glass_work_screen.dart:166**` return _tr('واجهة زجاجية', 'Façade vitrée', 'Glass facade'); `
+- **lib\Screen\tempered_glass_work_screen.dart:168**` return _tr('درابزين زجاجي', 'Garde-corps', 'Glass railing'); `
+- **lib\Screen\tempered_glass_work_screen.dart:170**` return _tr('طاولة أو رف زجاجي', 'Table / étagère', 'Table / shelf'); `
+- **lib\Screen\tempered_glass_work_screen.dart:172**` return _tr('عمل زجاجي آخر', 'Autre travail', 'Other glass work'); `
+- **lib\Screen\tempered_glass_work_screen.dart:179**` return _tr('شفاف', 'Clair', 'Clear'); `
+- **lib\Screen\tempered_glass_work_screen.dart:181**` return _tr('سابلي / مصنفر', 'Sablé', 'Frosted'); `
+- **lib\Screen\tempered_glass_work_screen.dart:183**` return _tr('فيمي / مدخن', 'Fumé', 'Smoked'); `
+- **lib\Screen\tempered_glass_work_screen.dart:185**` return _tr('فيتي / مورق', 'Feuilleté', 'Laminated'); `
+- **lib\Screen\tempered_glass_work_screen.dart:187**` return _tr('ديكور', 'Décor', 'Decorative'); `
+- **lib\Screen\tempered_glass_work_screen.dart:194**` return _tr('بدون ستيكر', 'Sans sticker', 'No sticker'); `
+- **lib\Screen\tempered_glass_work_screen.dart:196**` return _tr('ستيكر موشي / نقش جزئي', 'Sticker motif', 'Pattern sticker'); `
+- **lib\Screen\tempered_glass_work_screen.dart:198**` return _tr('ستيكر كامل', 'Sticker complet', 'Full sticker'); `
+- **lib\Screen\tempered_glass_work_screen.dart:236**` _tr('التقاط صورة', 'Prendre une photo', 'Take a photo'), `
+- **lib\Screen\tempered_glass_work_screen.dart:252**` return _tr('أدخل رقماً أكبر من صفر', 'Valeur invalide', 'Invalid value'); `
+- **lib\Screen\tempered_glass_work_screen.dart:484**` labelText: _tr('ملاحظات العمل', 'Notes', 'Work notes'), `
+- **lib\Screen\tempered_glass_work_screen.dart:677**` '${_tr("الكمية", "Qté", "Qty")}: ' `
+- **lib\Screen\tempered_glass_work_screen.dart:705**` '${_tr("إجمالي المساحة", "Surface totale", "Total area")}: ' `
+- **lib\Screen\tempered_glass_work_screen.dart:710**` '${_tr("الإجمالي", "Total", "Total")}: ' `
+- **lib\Screen\treasury_screen.dart:41**` return Localization.translate('دفعة مرتبطة بطلبية زبون', lang); `
+- **lib\Screen\treasury_screen.dart:60**` return Localization.translate('مصروف عام غير مرتبط بفاتورة', lang); `
+- **lib\Screen\treasury_screen.dart:63**` return Localization.translate('عملية مرتبطة بمرجع', lang); `
+- **lib\Screen\treasury_screen.dart:65**` return Localization.translate('عملية مستقلة', lang); `
+- **lib\Screen\treasury_screen.dart:153**` Localization.translate('التاريخ', lang), `
+- **lib\Screen\treasury_screen.dart:161**` hintText: Localization.translate('تاريخ...', lang), `
+- **lib\Screen\treasury_screen.dart:173**` Localization.translate('أدخلها', lang), `
+- **lib\Screen\treasury_screen.dart:181**` hintText: Localization.translate('المُدخل...', lang), `
+- **lib\Screen\treasury_screen.dart:193**` Localization.translate('اسم الدافع', lang), `
+- **lib\Screen\treasury_screen.dart:201**` hintText: Localization.translate('اسم الدافع...', lang), `
+- **lib\Screen\treasury_screen.dart:213**` Localization.translate('نوع العملية', lang), `
+- **lib\Screen\treasury_screen.dart:221**` hintText: Localization.translate('النوع...', lang), `
+- **lib\Screen\treasury_screen.dart:233**` Localization.translate('الارتباط', lang), `
+- **lib\Screen\treasury_screen.dart:241**` hintText: Localization.translate('الارتباط...', lang), `
+- **lib\Screen\treasury_screen.dart:253**` Localization.translate('طريقة الدفع', lang), `
+- **lib\Screen\treasury_screen.dart:261**` hintText: Localization.translate('طريقة الدفع...', lang), `
+- **lib\Screen\treasury_screen.dart:273**` Localization.translate('البيان', lang), `
+- **lib\Screen\treasury_screen.dart:281**` hintText: Localization.translate('البيان...', lang), `
+- **lib\Screen\treasury_screen.dart:293**` Localization.translate('الدفع', lang), `
+- **lib\Screen\treasury_screen.dart:301**` hintText: Localization.translate('الدفع...', lang), `
+- **lib\Screen\treasury_screen.dart:318**` Localization.translate('السحب', lang), `
+- **lib\Screen\treasury_screen.dart:326**` hintText: Localization.translate('السحب...', lang), `
+- **lib\Screen\treasury_screen.dart:343**` Localization.translate('الصندوق', lang), `
+- **lib\Screen\treasury_screen.dart:351**` hintText: Localization.translate('الصندوق...', lang), `
+- **lib\Screen\treasury_screen.dart:363**` Localization.translate('الإيصال', lang), `
+- **lib\Screen\treasury_screen.dart:404**` Localization.translate('مسح', lang), `
+- **lib\Screen\treasury_screen.dart:454**` ? Localization.translate('النظام', lang) `
+- **lib\Screen\treasury_screen.dart:465**` ? Localization.translate('غير محدد', lang) `
+- **lib\Screen\treasury_screen.dart:478**` ? Localization.translate('دفع', lang) `
+- **lib\Screen\treasury_screen.dart:479**` : Localization.translate('سحب', lang)) `
+- **lib\Screen\treasury_screen.dart:501**` ? Localization.translate('نقداً / Espèce', lang) `
+- **lib\Screen\treasury_screen.dart:512**` ? Localization.translate('بدون بيان', lang) `
+- **lib\Screen\treasury_screen.dart:545**` ? Localization.translate('الصندوق الرئيسي', lang) `
+- **lib\Screen\treasury_screen.dart:555**` tooltip: Localization.translate('خيارات الوصل', lang), `
+- **lib\Screen\treasury_screen.dart:619**` Localization.translate('سجل عمليات الصندوق', lang), `
+- **lib\Screen\treasury_screen.dart:632**` '${Localization.translate('الدفع', lang)}: ${formatter.format(filteredTotalIncome)} $currency   •   ' `
+- **lib\Screen\treasury_screen.dart:633**` '${Localization.translate('السحب', lang)}: ${formatter.format(filteredTotalExpense)} $currency   •   ' `
+- **lib\Screen\treasury_screen.dart:634**` '${Localization.translate('الرصيد', lang)}: ${formatter.format(filteredTotalIncome - filteredTotalExpense)} $currency', `
+- **lib\Screen\treasury_screen.dart:1191**` Localization.translate('تأكيد الحذف', lang), `
+- **lib\Screen\treasury_screen.dart:1198**` Localization.translate('هل أنت متأكد من حذف هذه المعاملة؟', lang), `
+- **lib\Screen\treasury_screen.dart:1205**` Localization.translate('إلغاء', lang), `
+- **lib\Screen\treasury_screen.dart:1212**` Localization.translate('حذف', lang), `
+- **lib\Screen\treasury_screen.dart:1232**` Localization.translate('تم حذف المعاملة بنجاح', lang), `
+- **lib\Screen\treasury_screen.dart:1268**` Localization.translate('تعديل المعاملة', lang), `
+- **lib\Screen\treasury_screen.dart:1285**` labelText: Localization.translate('المبلغ (د.ج)', lang), `
+- **lib\Screen\treasury_screen.dart:1374**` labelText: Localization.translate('اختر الصندوق', lang), `
+- **lib\Screen\treasury_screen.dart:1401**` labelText: Localization.translate('طريقة الدفع', lang), `
+- **lib\Screen\treasury_screen.dart:1437**` labelText: Localization.translate('البيان / السبب', lang), `
+- **lib\Screen\treasury_screen.dart:1449**` Localization.translate('إلغاء', lang), `
+- **lib\Screen\treasury_screen.dart:1460**` Localization.translate('يرجى إدخال مبلغ صحيح', lang), `
+- **lib\Screen\treasury_screen.dart:1480**` Localization.translate('تم تعديل المعاملة بنجاح', lang), `
+- **lib\Screen\treasury_screen.dart:1486**` Localization.translate('حفظ', lang), `
+- **lib\Screen\treasury_screen.dart:1517**` '${Localization.translate('طباعة الوصل', lang)} / Imprimer', `
+- **lib\Screen\treasury_screen.dart:1534**` '${Localization.translate('مشاركة', lang)} / Partager', `
+- **lib\Screen\treasury_screen.dart:1551**` '${Localization.translate('حفظ الوصل', lang)} / Enregistrer', `
+- **lib\Screen\treasury_screen.dart:1572**` '${Localization.translate('تعديل المعاملة', lang)} / Modifier', `
+- **lib\Screen\treasury_screen.dart:1591**` '${Localization.translate('حذف المعاملة', lang)} / Supprimer', `
+- **lib\Screen\treasury_screen.dart:1622**` Localization.translate('إدارة الصناديق والحسابات', lang), `
+- **lib\Screen\treasury_screen.dart:1659**` child: Text(Localization.translate('إضافة', lang)), `
+- **lib\Screen\treasury_screen.dart:1789**` '${Localization.translate('هل أنت متأكد من حذف الصندوق', lang)} "${Localization.translate(name, lang)}"؟ ${Localization.translate('سيتم نقل معاملاته تلقائياً للصندوق الآخر.', lang)}', `
+- **lib\Screen\treasury_screen.dart:1849**` child: Text(Localization.translate('إغلاق', lang)), `
+- **lib\Screen\treasury_screen.dart:1918**` Localization.translate('إضافة معاملة للصندوق', lang), `
+- **lib\Screen\treasury_screen.dart:1938**` labelText: Localization.translate('نوع المعاملة', lang), `
+- **lib\Screen\treasury_screen.dart:1949**` Localization.translate('قبض / Encaissement', lang), `
+- **lib\Screen\treasury_screen.dart:1960**` Localization.translate('دفع / Décaissement', lang), `
+- **lib\Screen\treasury_screen.dart:1990**` labelText: Localization.translate('نوع الجهة', lang), `
+- **lib\Screen\treasury_screen.dart:2002**` Localization.translate('زبون', lang), `
+- **lib\Screen\treasury_screen.dart:2013**` Localization.translate('مورد (استرجاع)', lang), `
+- **lib\Screen\treasury_screen.dart:2025**` Localization.translate('مورد', lang), `
+- **lib\Screen\treasury_screen.dart:2036**` Localization.translate('عامل', lang), `
+- **lib\Screen\treasury_screen.dart:2047**` Localization.translate('مصاريف عامة', lang), `
+- **lib\Screen\treasury_screen.dart:2074**` Localization.translate('اختر الزبون', lang), `
+- **lib\Screen\treasury_screen.dart:2081**` labelText: Localization.translate('اختر الزبون', lang), `
+- **lib\Screen\treasury_screen.dart:2120**` Localization.translate('اختر المورد', lang), `
+- **lib\Screen\treasury_screen.dart:2127**` labelText: Localization.translate('اختر المورد', lang), `
+- **lib\Screen\treasury_screen.dart:2166**` Localization.translate('اختر العامل', lang), `
+- **lib\Screen\treasury_screen.dart:2173**` labelText: Localization.translate('اختر العامل', lang), `
+- **lib\Screen\treasury_screen.dart:2210**` labelText: Localization.translate('رقم الهاتف', lang), `
+- **lib\Screen\treasury_screen.dart:2262**` '  (${oldBalance >= 0 ? Localization.translate("مدين", lang) : Localization.translate("دائن", lang)})', `
+- **lib\Screen\treasury_screen.dart:2286**` labelText: Localization.translate('المبلغ (د.ج)', lang), `
+- **lib\Screen\treasury_screen.dart:2321**` Localization.translate('الرصيد الجديد:', lang), `
+- **lib\Screen\treasury_screen.dart:2331**` '  (${newBalance >= 0 ? Localization.translate("مدين", lang) : Localization.translate("دائن", lang)})', `
+- **lib\Screen\treasury_screen.dart:2355**` labelText: Localization.translate('اختر الصندوق', lang), `
+- **lib\Screen\treasury_screen.dart:2512**` labelText: Localization.translate('البيان / السبب', lang), `
+- **lib\Screen\treasury_screen.dart:2529**` Localization.translate('إلغاء', lang), `
+- **lib\Screen\treasury_screen.dart:2599**` Localization.translate('حفظ', lang), `
+- **lib\Screen\treasury_screen.dart:2617**` final currency = Localization.translate('د.ج', lang); `
+- **lib\Screen\treasury_screen.dart:2625**` Localization.translate('الخزينة (Caisse)', lang), `
+- **lib\Screen\treasury_screen.dart:2637**` tooltip: Localization.translate('بحث', lang), `
+- **lib\Screen\treasury_screen.dart:2646**` tooltip: Localization.translate('فلترة', lang), `
+- **lib\Screen\treasury_screen.dart:2880**` Localization.translate('الكل', lang), `
+- **lib\Screen\treasury_screen.dart:2890**` Localization.translate('مقبوضات', lang), `
+- **lib\Screen\treasury_screen.dart:2900**` Localization.translate('مدفوعات', lang), `
+- **lib\Screen\treasury_screen.dart:2939**` Localization.translate('كلها', lang), `
+- **lib\Screen\treasury_screen.dart:3002**` Localization.translate('إجمالي المصفى:', lang), `
+- **lib\Screen\treasury_screen.dart:3016**` '${Localization.translate('المقبوضات:', lang)} +${formatter.format(_filteredTotalIncome)} $currency', `
+- **lib\Screen\treasury_screen.dart:3026**` '${Localization.translate('المدفوعات:', lang)} -${formatter.format(_filteredTotalExpense)} $currency', `
+- **lib\Screen\treasury_screen.dart:3035**` '${Localization.translate('الصافي:', lang)} ${formatter.format(_filteredTotalIncome - _filteredTotalExpense)} $currency', `
+- **lib\Screen\treasury_screen.dart:3242**` '${Localization.translate('المبلغ:', lang)} / Montant:', `
+- **lib\Screen\treasury_screen.dart:3270**` '${Localization.translate('اسم الدافع', lang)}: ', `
+- **lib\Screen\treasury_screen.dart:3327**` '${Localization.translate("الرصيد", lang)}: ${formatter.format(oldBal.abs())} → ${formatter.format(newBal.abs())} $currency', `
+- **lib\Screen\treasury_screen.dart:3348**` '${Localization.translate('بواسطة', lang)}: ${item['recorded_by'] ?? ''} | $dateStr', `
+- **lib\Screen\treasury_screen.dart:3515**` return '${Localization.translate('دفعة لطلبية', lang)} ${Localization.translate('رقم', lang)} $orderId'; `
+- **lib\Screen\treasury_screen.dart:3518**` return '${Localization.translate('من الزبون', lang)}: ${desc.replaceFirst('من الزبون: ', '')}'; `
+- **lib\Screen\treasury_screen.dart:3521**` return '${Localization.translate('للمورد', lang)}: ${desc.replaceFirst('للمورد: ', '')}'; `
+- **lib\Screen\treasury_screen.dart:3524**` return '${Localization.translate('استرجاع من المورد', lang)}: ${desc.replaceFirst('استرجاع من المورد: ', '')}'; `
+- **lib\Screen\treasury_screen.dart:3527**` return '${Localization.translate('إلى العامل', lang)}: ${desc.replaceFirst('إلى العامل: ', '')}'; `
+- **lib\Screen\treasury_screen.dart:3532**` Localization.translate('دفع للمورد الفاتورة', lang), `
+- **lib\Screen\treasury_screen.dart:3538**` Localization.translate('دفع للمورد الفاتورة', lang), `
+- **lib\Screen\treasury_screen.dart:3547**` return '${Localization.translate('دفع للمورد:', lang)} $supplier - ${Localization.translate('رقم الفاتورة', lang)}: $inv'; `
+- **lib\Screen\treasury_screen.dart:3549**` return '${Localization.translate('دفع للمورد:', lang)} $content'; `
+- **lib\Screen\treasury_screen.dart:3554**` '${Localization.translate('دفع للمورد:', lang)}', `
+- **lib\Screen\treasury_screen.dart:3560**` Localization.translate('دفع للمورد فاتورة رقم', lang), `
+- **lib\Screen\treasury_screen.dart:3563**` return desc.isEmpty ? Localization.translate('بدون بيان', lang) : desc; `
+- **lib\Screen\welcom_screen.dart:218**` Localization.translate('تنبيهات المخزون', lang), `
+- **lib\Screen\welcom_screen.dart:336**` '${Localization.translate('الرصيد', lang)}: ${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 2)}', `
+- **lib\Screen\welcom_screen.dart:347**` '${Localization.translate('الحد الأدنى', lang)}: ${min.toStringAsFixed(min.truncateToDouble() == min ? 0 : 2)}', `
+- **lib\Screen\welcom_screen.dart:368**` Localization.translate('إغلاق', lang), `
+- **lib\Screen\welcom_screen.dart:795**` Localization.translate('التنقل السريع', lang), `
+- **lib\Screen\welcom_screen.dart:807**` Localization.translate('تحليل الطلبيات', lang), `
+- **lib\Screen\welcom_screen.dart:907**` ? _desktopText(lang, 'المستخدم', 'Utilisateur', 'User') `
+- **lib\Screen\welcom_screen.dart:1388**` title: _desktopText(lang, 'الخزينة', 'Trésorerie', 'Treasury'), `
+- **lib\Screen\welcom_screen.dart:1503**` _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'), `
+- **lib\Screen\welcom_screen.dart:1825**` _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'), `
+- **lib\Screen\welcom_screen.dart:1837**` _desktopText(lang, 'الزبائن', 'Clients', 'Clients'), `
+- **lib\Screen\welcom_screen.dart:1850**` _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'), `
+- **lib\Screen\welcom_screen.dart:1882**` ? _desktopText(lang, 'كل الطلبيات', 'Tout voir', 'View all') `
+- **lib\Screen\welcom_screen.dart:1942**` _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'), `
+- **lib\Screen\welcom_screen.dart:1954**` _desktopText(lang, 'الزبائن', 'Clients', 'Clients'), `
+- **lib\Screen\welcom_screen.dart:1966**` _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'), `
+- **lib\Screen\welcom_screen.dart:1995**` _desktopText(lang, 'كل العمليات', 'Tout voir', 'View all'), `
+- **lib\Screen\welcom_screen.dart:2015**` title: _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'), `
+- **lib\Screen\welcom_screen.dart:2091**` _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Order Date'), `
+- **lib\Screen\welcom_screen.dart:2101**` _desktopText(lang, 'المجموع (د.ج)', 'Total (DA)', 'Total (DA)'), `
+- **lib\Screen\welcom_screen.dart:2111**` _desktopText(lang, 'المدفوع', 'Payé', 'Paid'), `
+- **lib\Screen\welcom_screen.dart:2121**` _desktopText(lang, 'المتبقي', 'Reste', 'Balance'), `
+- **lib\Screen\welcom_screen.dart:2131**` _desktopText(lang, 'حالة الورشة', 'Statut', 'Status'), `
+- **lib\Screen\welcom_screen.dart:2141**` _desktopText(lang, 'المُدخل', 'Inscrit par', 'Recorded By'), `
+- **lib\Screen\welcom_screen.dart:2151**` _desktopText(lang, 'فريق التنفيذ', 'Assignés', 'Assigned Workers'), `
+- **lib\Screen\welcom_screen.dart:2462**` _desktopText(lang, 'اسم الزبون', 'Nom client', 'Client Name'), `
+- **lib\Screen\welcom_screen.dart:2472**` _desktopText(lang, 'رقم الهاتف', 'Téléphone', 'Phone'), `
+- **lib\Screen\welcom_screen.dart:2482**` _desktopText(lang, 'العنوان', 'Adresse', 'Address'), `
+- **lib\Screen\welcom_screen.dart:2492**` _desktopText(lang, 'البريد الإلكتروني', 'E-mail', 'Email'), `
+- **lib\Screen\welcom_screen.dart:2517**` _desktopText(lang, 'تاريخ الإضافة', 'Date d\'ajout', 'Added Date'), `
+- **lib\Screen\welcom_screen.dart:2527**` _desktopText(lang, 'مجموع الحسابات', 'Total', 'Total'), `
+- **lib\Screen\welcom_screen.dart:2537**` _desktopText(lang, 'المدفوع', 'Payé', 'Paid'), `
+- **lib\Screen\welcom_screen.dart:2547**` _desktopText(lang, 'المتبقي', 'Reste', 'Remaining'), `
+- **lib\Screen\welcom_screen.dart:2557**` _desktopText(lang, 'عدد الطلبيات', 'Cmds', 'Orders'), `
+- **lib\Screen\welcom_screen.dart:2567**` _desktopText(lang, 'المُضيف', 'Ajouté par', 'Added By'), `
+- **lib\Screen\welcom_screen.dart:2889**` _desktopText(lang, 'البيان', 'Libellé', 'Description'), `
+- **lib\Screen\welcom_screen.dart:2895**` _desktopText(lang, 'الدفع', 'Encaissement', 'Income'), `
+- **lib\Screen\welcom_screen.dart:2901**` _desktopText(lang, 'السحب', 'Décaissement', 'Withdrawal'), `
+- **lib\Screen\welcom_screen.dart:2907**` _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Created at'), `
+- **lib\Screen\welcom_screen.dart:2913**` _desktopText(lang, 'أدخلها', 'Saisi par', 'Recorded by'), `
+- **lib\Screen\welcom_screen.dart:2919**` _desktopText(lang, 'الصندوق', 'Caisse', 'Cashbox'), `
+- **lib\Screen\welcom_screen.dart:2996**` ? _desktopText(lang, 'النظام', 'Système', 'System') `
+- **lib\Screen\welcom_screen.dart:3004**` ? _desktopText(lang, 'الرئيسي', 'Principale', 'Main') `
+- **lib\Screen\welcom_screen.dart:3061**` _desktopText(lang, 'الإجماليات', 'Totaux', 'Totals'), `
+- **lib\Screen\welcom_screen.dart:3071**` '${rows.length} ${_desktopText(lang, 'عملية', 'opérations', 'entries')}', `
+- **lib\Screen\welcom_screen.dart:3524**` title: _desktopText(lang, 'المخزون', 'Stock', 'Inventory'), `
+- **lib\Screen\welcom_screen.dart:3612**` _desktopText(lang, 'عنصر', 'Article', 'Item')) `
+- **lib\Screen\welcom_screen.dart:3756**` title: _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'), `
+- **lib\Screen\welcom_screen.dart:3896**` tooltip: 'تحديث ومزامنة البيانات والمهام من السحابة', `
+- **lib\Screen\welcom_screen.dart:4287**` title: Localization.translate('بطاقة رفع القياسات', lang), `
+- **lib\Screen\welcom_screen.dart:4318**` Localization.translate('بطاقة رفع القياسات', lang), `
+- **lib\Screen\welcom_screen.dart:4385**` label: Localization.translate('المشاريع', lang), `
+- **lib\Screen\welcom_screen.dart:4389**` title: Localization.translate('المشاريع', lang), `
+- **lib\Screen\welcom_screen.dart:4421**` label: Localization.translate('مهامي وتصنيعاتي', lang), `
+- **lib\Screen\welcom_screen.dart:4425**` title: Localization.translate('مهامي وتصنيعاتي', lang), `
+- **lib\Screen\welcom_screen.dart:4453**` label: Localization.translate('الموردين', lang), `
+- **lib\Screen\welcom_screen.dart:4457**` title: Localization.translate('الموردين', lang), `
+- **lib\Screen\welcom_screen.dart:4465**` label: Localization.translate('المخزون', lang), `
+- **lib\Screen\welcom_screen.dart:4469**` title: Localization.translate('المخزون', lang), `
+- **lib\Screen\welcom_screen.dart:4477**` label: Localization.translate('المشتريات', lang), `
+- **lib\Screen\welcom_screen.dart:4481**` title: Localization.translate('المشتريات', lang), `
+- **lib\Screen\welcom_screen.dart:4513**` label: Localization.translate('الخزينة', lang), `
+- **lib\Screen\welcom_screen.dart:4517**` title: Localization.translate('الخزينة', lang), `
+- **lib\Screen\welcom_screen.dart:4951**` final newWord = Localization.translate('جديدة', lang); `
+- **lib\Screen\welcom_screen.dart:4955**` final newWord = Localization.translate('جديد', lang); `
+- **lib\Screen\welcom_screen.dart:4959**` final newWord = Localization.translate('جديد', lang); `
+- **lib\Screen\welcom_screen.dart:4963**` final newWord = Localization.translate('جديدة', lang); `
+- **lib\Screen\welcom_screen.dart:5531**` Localization.translate('حالة الطلبيات', lang), `
+- **lib\Screen\welcom_screen.dart:5550**` label: Localization.translate('دائري', lang), `
+- **lib\Screen\welcom_screen.dart:5556**` label: Localization.translate('أشهر', lang), `
+- **lib\Screen\welcom_screen.dart:5562**` label: Localization.translate('منحنى بياني', lang), `
+- **lib\Screen\welcom_screen.dart:5629**` Localization.translate('إجمالي', lang), `
+- **lib\Screen\worker_archive_screen.dart:68**` if (dateStr == null || dateStr.isEmpty) return _tr('غير محدد', 'Non spécifié', 'Not specified', lang); `
+- **lib\Screen\worker_archive_screen.dart:82**` _tr('إرجاع من الأرشيف / مسح', 'Restaurer de l\'archive / Effacer', 'Restore from Archive / Delete', lang), `
+- **lib\Screen\worker_archive_screen.dart:97**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\worker_archive_screen.dart:103**` _tr('تأكيد الإرجاع / المسح', 'Confirmer la restauration', 'Confirm Restore', lang), `
+- **lib\Screen\worker_archive_screen.dart:139**` _tr('تعديل الملاحظات', 'Modifier les remarques', 'Edit Notes', lang), `
+- **lib\Screen\worker_archive_screen.dart:145**` hintText: _tr('أدخل الملاحظات والتعديلات...', 'Entrez les remarques ou modifications...', 'Enter notes or modifications...', lang), `
+- **lib\Screen\worker_archive_screen.dart:153**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\worker_archive_screen.dart:157**` child: Text(_tr('حفظ التعديل', 'Enregistrer', 'Save Changes', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\worker_archive_screen.dart:194**` _tr('أرشيف المهام والتوزيع 📦', 'Archives & Distribution 📦', 'Tasks & Distribution Archive 📦', lang), `
+- **lib\Screen\worker_archive_screen.dart:201**` tooltip: _tr('تحديث', 'Actualiser', 'Refresh', lang), `
+- **lib\Screen\worker_archive_screen.dart:239**` _tr('لا توجد مهام أرشيفية مسجلة', 'Aucune tâche archivée', 'No archived tasks recorded', lang), `
+- **lib\Screen\worker_archive_screen.dart:278**` final unassignedStr = _tr('غير محدد', 'Non spécifié', 'Not specified', lang); `
+- **lib\Screen\worker_archive_screen.dart:298**` : _tr('زبون غير محدد', 'Client non spécifié', 'Unspecified Client', lang), `
+- **lib\Screen\worker_archive_screen.dart:315**` ? _tr('مقفول (مرّ أكثر من أسبوع)', 'Verrouillé (+7 jours)', 'Locked (over 1 week)', lang) `
+- **lib\Screen\worker_archive_screen.dart:316**` : _tr('مفتوح (أقل من أسبوع)', 'Modifiable (<7 jours)', 'Editable (<1 week)', lang), `
+- **lib\Screen\worker_archive_screen.dart:337**` _tr('اسم العامل الصانع:', 'Nom de l\'ouvrier:', 'Worker name:', lang), `
+- **lib\Screen\worker_archive_screen.dart:353**` _tr('عامل التركيب:', 'Poseur:', 'Installer:', lang), `
+- **lib\Screen\worker_archive_screen.dart:381**` _dateRow(Icons.assignment_outlined, _tr('تاريخ الإسناد:', 'Date d\'attribution:', 'Assignment date:', lang), assignedAt, Colors.orange), `
+- **lib\Screen\worker_archive_screen.dart:383**` _dateRow(Icons.build_circle_outlined, _tr('تاريخ الصنع:', 'Date de fabrication:', 'Manufacturing date:', lang), mfgAt, Colors.green), `
+- **lib\Screen\worker_archive_screen.dart:385**` _dateRow(Icons.check_box_rounded, _tr('تاريخ تركيب الزجاج بالورشة:', 'Date de pose vitrage à l\'atelier:', 'Workshop glass installation date:', lang), glassAt, Colors.teal), `
+- **lib\Screen\worker_archive_screen.dart:387**` _dateRow(Icons.local_shipping_rounded, _tr('تاريخ التوزيع والخروج للميدان:', 'Date de distribution et sortie terrain:', 'Distribution & field dispatch date:', lang), distributedAt, Colors.indigo), `
+- **lib\Screen\worker_archive_screen.dart:390**` _dateRow(Icons.construction_rounded, _tr('تاريخ التركيب بالموقع:', 'Date d\'installation sur site:', 'On-site installation date:', lang), installedAt, Colors.purple), `
+- **lib\Screen\worker_archive_screen.dart:394**` _dateRow(Icons.task_alt_rounded, _tr('تاريخ الانتهاء والأرشفة النهائية:', 'Date d\'achèvement et d\'archivage final:', 'Completion & final archiving date:', lang), completedAt, Colors.green), `
+- **lib\Screen\worker_archive_screen.dart:427**` '${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${largeur}cm × ${hauteur}cm | ${_tr("الكمية:", "Qté:", "Qty:", lang)} $qty', `
+- **lib\Screen\worker_archive_screen.dart:433**` '${_tr("أجرة التصنيع:", "Prix de fabrication:", "Worker price:", lang)} ${total.toStringAsFixed(2)} DZD', `
+- **lib\Screen\worker_archive_screen.dart:453**` _tr('تعديل الملاحظات', 'Modifier les remarques', 'Edit Notes', lang), `
+- **lib\Screen\worker_archive_screen.dart:469**` _tr('إرجاع من الأرشيف / مسح', 'Restaurer / Effacer de l\'archive', 'Restore / Delete from archive', lang), `
+- **lib\Screen\worker_attendance_screen.dart:84**` _tr('⚠️ لا يمكن تسجيل الحضور أو الغياب للأيام المستقبلية!', `
+- **lib\Screen\worker_attendance_screen.dart:186**` _tr('تم تسجيل الدخول اليوم بالفعل — الساعة ${existing.first['check_in']}', `
+- **lib\Screen\worker_attendance_screen.dart:210**` _tr('✅ تم تسجيل الدخول الساعة $now', '✅ Pointage entrée: $now', '✅ Checked in at $now', lang), `
+- **lib\Screen\worker_attendance_screen.dart:227**` _tr('⚠️ لم يتم تسجيل الدخول بعد اليوم!', `
+- **lib\Screen\worker_attendance_screen.dart:244**` _tr('تم تسجيل الخروج اليوم بالفعل — الساعة ${existing.first['check_out']}', `
+- **lib\Screen\worker_attendance_screen.dart:268**` _tr('✅ تم تسجيل الخروج الساعة $now', '✅ Pointage sortie: $now', '✅ Checked out at $now', lang), `
+- **lib\Screen\worker_attendance_screen.dart:288**` _tr('تفاصيل وتعديل حضور اليوم', 'Détails de présence', 'Attendance Details', lang), `
+- **lib\Screen\worker_attendance_screen.dart:299**` labelText: _tr('التاريخ', 'Date', 'Date', lang), `
+- **lib\Screen\worker_attendance_screen.dart:311**` labelText: _tr('وقت الدخول', 'Entrée', 'Check In', lang), `
+- **lib\Screen\worker_attendance_screen.dart:316**` tooltip: _tr('اختيار وقت الدخول', 'Choisir l\'heure', 'Pick Check-In Time', lang), `
+- **lib\Screen\worker_attendance_screen.dart:337**` labelText: _tr('وقت الخروج', 'Sortie', 'Check Out', lang), `
+- **lib\Screen\worker_attendance_screen.dart:342**` tooltip: _tr('اختيار وقت الخروج', 'Choisir l\'heure', 'Pick Check-Out Time', lang), `
+- **lib\Screen\worker_attendance_screen.dart:364**` labelText: _tr('ملاحظات / سبب الغياب', 'Note / Motif', 'Note / Reason', lang), `
+- **lib\Screen\worker_attendance_screen.dart:374**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)), `
+- **lib\Screen\worker_attendance_screen.dart:390**` child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\worker_attendance_screen.dart:447**` '${_tr('جدول حضور وغياب العامل', 'Calendrier de présence', 'Attendance Calendar', lang)}: ${widget.worker['name']}', `
+- **lib\Screen\worker_attendance_screen.dart:458**` Tab(text: _tr('🗓️ تقويم الشهر', '🗓️ Calendrier Mensuel', '🗓️ Monthly Grid', lang)), `
+- **lib\Screen\worker_attendance_screen.dart:459**` Tab(text: _tr('⏱️ السجل والتوقيت', '⏱️ Pointage Horaire', '⏱️ Time Log', lang)), `
+- **lib\Screen\worker_attendance_screen.dart:511**` label: _tr('أيام الحضور', 'Présent', 'Present', lang), `
+- **lib\Screen\worker_attendance_screen.dart:512**` value: '$presentDays ${_tr("يوم", "j", "d", lang)}', `
+- **lib\Screen\worker_attendance_screen.dart:516**` label: _tr('أيام الغياب', 'Absent', 'Absent', lang), `
+- **lib\Screen\worker_attendance_screen.dart:517**` value: '$absentDays ${_tr("يوم", "j", "d", lang)}', `
+- **lib\Screen\worker_attendance_screen.dart:521**` label: _tr('الراتب المستحق', 'Salaire Dû', 'Earned Wage', lang), `
+- **lib\Screen\worker_attendance_screen.dart:529**` _tr('💡 اضغط على أي يوم للتغيير: (🟢 حاضر 👈 🔴 غائب 👈 ⚪ إعادة تعيين)', `
+- **lib\Screen\worker_attendance_screen.dart:598**` _tr('⚠️ لا يمكن تسجيل الحضور أو الغياب للأيام المستقبلية!', `
+- **lib\Screen\worker_attendance_screen.dart:645**` ? _tr('مستقبلي', 'Futur', 'Future', lang) `
+- **lib\Screen\worker_attendance_screen.dart:647**` ? _tr('حاضر', 'Présent', 'Present', lang) `
+- **lib\Screen\worker_attendance_screen.dart:649**` ? _tr('غائب', 'Absent', 'Absent', lang) `
+- **lib\Screen\worker_attendance_screen.dart:650**` : _tr('فارغ', 'Neutre', 'Empty', lang))), `
+- **lib\Screen\worker_attendance_screen.dart:677**` _tr('تسجيل الساعات لليوم الحالي', "Pointage d'aujourd'hui", 'Today Check-In/Out', lang), `
+- **lib\Screen\worker_attendance_screen.dart:685**` label: _tr('دخول', 'Entrée', 'In', lang), `
+- **lib\Screen\worker_attendance_screen.dart:691**` label: _tr('خروج', 'Sortie', 'Out', lang), `
+- **lib\Screen\worker_attendance_screen.dart:697**` label: _tr('المدة', 'Durée', 'Duration', lang), `
+- **lib\Screen\worker_attendance_screen.dart:711**` label: Text(_tr('تسجيل الدخول (الآن)', 'Pointer entrée', 'Check In (Now)', lang), `
+- **lib\Screen\worker_attendance_screen.dart:725**` label: Text(_tr('تسجيل الخروج (الآن)', 'Pointer sortie', 'Check Out (Now)', lang), `
+- **lib\Screen\worker_attendance_screen.dart:743**` _tr('⚙️ إدخال / تعديل ساعات الدخول والخروج يدوياً', '⚙️ Modifier les heures manuellement', '⚙️ Custom Time Entry / Edit', lang), `
+- **lib\Screen\worker_attendance_screen.dart:759**` _tr('لا توجد سجلات حضور بعد', 'Aucun enregistrement', 'No attendance records yet', lang), `
+- **lib\Screen\worker_finances_screen.dart:156**` _tr('إلغاء الفلتر 🧹', 'Réinitialiser', 'Reset Filter', lang), `
+- **lib\Screen\worker_finances_screen.dart:162**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)), `
+- **lib\Screen\worker_finances_screen.dart:181**` _tr('تطبيق الفلتر', 'Appliquer', 'Apply Filter', lang), `
+- **lib\Screen\worker_finances_screen.dart:383**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)), `
+- **lib\Screen\worker_finances_screen.dart:407**` child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang)), `
+- **lib\Screen\worker_finances_screen.dart:580**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)), `
+- **lib\Screen\worker_finances_screen.dart:601**` child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang)), `
+- **lib\Screen\worker_finances_screen.dart:643**` '${_t('تسجيل مال للعامل')}: ${worker['name']}', `
+- **lib\Screen\worker_finances_screen.dart:656**` _t('سلفة (Advance)'), `
+- **lib\Screen\worker_finances_screen.dart:663**` _t('أجرة (Salary)'), `
+- **lib\Screen\worker_finances_screen.dart:670**` labelText: _t('نوع العملية'), `
+- **lib\Screen\worker_finances_screen.dart:680**` labelText: _t('مصدر الدفع / الصندوق'), `
+- **lib\Screen\worker_finances_screen.dart:698**` labelText: _t('المبلغ (دج)'), `
+- **lib\Screen\worker_finances_screen.dart:706**` labelText: _t('ملاحظة'), `
+- **lib\Screen\worker_finances_screen.dart:716**` child: Text(_t('إلغاء')), `
+- **lib\Screen\worker_finances_screen.dart:751**` 'إلى العامل: $workerName - ${type == 'advance' ? 'سلفة' : 'دفعة أجر'} (${noteCtrl.text.isNotEmpty ? noteCtrl.text : 'بدون ملاحظات'})', `
+- **lib\Screen\worker_finances_screen.dart:765**` _t('تم تسجيل العملية بنجاح وخصمها من الصندوق'), `
+- **lib\Screen\worker_finances_screen.dart:773**` child: const Text('حفظ'), `
+- **lib\Screen\worker_finances_screen.dart:789**` _t('تأكيد حذف العملية'), `
+- **lib\Screen\worker_finances_screen.dart:793**` '${_t('هل أنت متأكد من حذف هذه العملية بقيمة')} ${trans['amount']} د.ج؟ ${_t('سيتم إلغاء الحركة واسترجاع المبلغ إلى الصندوق تلقائياً.')} ', `
+- **lib\Screen\worker_finances_screen.dart:799**` child: Text(_t('إلغاء')), `
+- **lib\Screen\worker_finances_screen.dart:816**` _t('تم حذف العملية بنجاح وإعادة المبلغ للصندوق'), `
+- **lib\Screen\worker_finances_screen.dart:823**` child: Text(_t('حذف'), style: const TextStyle(color: Colors.white)), `
+- **lib\Screen\worker_finances_screen.dart:843**` '${_t('تعديل عملية')}: ${worker['name']}', `
+- **lib\Screen\worker_finances_screen.dart:856**` _t('سلفة (Advance)'), `
+- **lib\Screen\worker_finances_screen.dart:863**` _t('أجرة (Salary)'), `
+- **lib\Screen\worker_finances_screen.dart:870**` labelText: _t('نوع العملية'), `
+- **lib\Screen\worker_finances_screen.dart:879**` labelText: _t('المبلغ (سيُعدل بالصندوق)'), `
+- **lib\Screen\worker_finances_screen.dart:887**` labelText: _t('ملاحظة'), `
+- **lib\Screen\worker_finances_screen.dart:897**` child: Text(_t('إلغاء')), `
+- **lib\Screen\worker_finances_screen.dart:929**` _t('تم تعديل العملية بنجاح وتحديث الصندوق'), `
+- **lib\Screen\worker_finances_screen.dart:937**` child: Text(_t('حفظ')), `
+- **lib\Screen\worker_finances_screen.dart:1035**` _t('تعديل'), `
+- **lib\Screen\worker_finances_screen.dart:1048**` _t('حذف'), `
+- **lib\Screen\worker_finances_screen.dart:1067**` _t('إغلاق'), `
+- **lib\Screen\worker_finances_screen.dart:1239**` _t('إضافة عامل'), `
+- **lib\Screen\worker_tasks_screen.dart:429**` child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'), `
+- **lib\Screen\worker_tasks_screen.dart:478**` content: Text(lang == AppLanguage.arabic ? 'تم مسح وتصفير كافة الإسنادات والمهام بنجاح محلياً ومنا السحابة 🧹' : 'Toutes les tâches ont été réinitialisées 🧹'), `
+- **lib\Screen\worker_tasks_screen.dart:503**` tooltip: lang == AppLanguage.arabic ? 'تصفير كافة المهام والإسنادات (للتطوير)' : 'Réinitialiser toutes les tâches (Dev)', `
+- **lib\Screen\worker_tasks_screen.dart:508**` tooltip: lang == AppLanguage.arabic ? 'الأرشيف' : 'Archives', `
+- **lib\Screen\worker_tasks_screen.dart:670**` Localization.translate('🔍 معلومات تشخيص:', lang), `
+- **lib\Screen\worker_tasks_screen.dart:952**` '${Localization.translate(windowType, lang)} ($finalW × $finalH مم)', `
+- **lib\Screen\worker_transactions_detail_screen.dart:128**` final titleCtrl = TextEditingController(text: 'عمل يومي'); `
+- **lib\Screen\worker_transactions_detail_screen.dart:144**` _tr('إضافة عمل يومي للعامل', 'Ajouter travail journalier', 'Add Daily Job', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:158**` labelText: _tr('عنوان العمل', 'Titre', 'Title', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:161**` validator: (v) => (v == null || v.trim().isEmpty) ? _tr('العنوان مطلوب', 'Titre requis', 'Title required', lang) : null, `
+- **lib\Screen\worker_transactions_detail_screen.dart:168**` labelText: _tr('التاريخ', 'Date', 'Date', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:187**` labelText: _tr('سعر العمل / الأجرة (دج)', 'Prix / Tarif (DA)', 'Price (DA)', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:189**` suffixText: 'دج', `
+- **lib\Screen\worker_transactions_detail_screen.dart:192**` if (v == null || v.trim().isEmpty) return _tr('السعر مطلوب', 'Prix requis', 'Price required', lang); `
+- **lib\Screen\worker_transactions_detail_screen.dart:194**` return _tr('أدخل مبلغاً صحيحاً', 'Montant invalide', 'Invalid price', lang); `
+- **lib\Screen\worker_transactions_detail_screen.dart:203**` labelText: _tr('ملاحظات / تفاصيل العمل (اختياري)', 'Remarques / Détails', 'Notes / Details', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:214**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:223**` child: Text(_tr('إضافة العمل', 'Ajouter', 'Add Job', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:269**` _tr('إضافة معاملة جديدة للعامل', 'Nouvelle transaction ouvrier', 'New Worker Transaction', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:283**` labelText: _tr('نوع المعاملة', 'Type de transaction', 'Transaction Type', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:289**` child: Text(_tr('سلفة / تسقيع', 'Avance', 'Advance', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:293**` child: Text(_tr('دفعة أجر / تسوية', 'Paiement salaire', 'Salary Payout', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:304**` labelText: _tr('مصدر الدفع / الصندوق', 'Source de paiement', 'Payment Source', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:317**` labelText: _tr('المبلغ (دج)', 'Montant (DA)', 'Amount (DA)', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:319**` suffixText: 'دج', `
+- **lib\Screen\worker_transactions_detail_screen.dart:322**` if (v == null || v.trim().isEmpty) return _tr('المبلغ مطلوب', 'Montant requis', 'Amount required', lang); `
+- **lib\Screen\worker_transactions_detail_screen.dart:324**` return _tr('أدخل مبلغاً صحيحاً', 'Montant invalide', 'Invalid amount', lang); `
+- **lib\Screen\worker_transactions_detail_screen.dart:335**` labelText: _tr('ملاحظات / البيان', 'Remarques / Note', 'Notes / Description', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:346**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:351**` child: Text(_tr('حفظ المعاملة', 'Enregistrer', 'Save Transaction', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:392**` content: Text(_tr('تم تسليم وسجل المعاملة بنجاح', 'Transaction enregistrée', 'Transaction recorded', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:435**` '${_tr('معاملات وسلف العامل: ', 'Finances Ouvrier: ', 'Worker Finances: ', lang)}${widget.worker['name']}', `
+- **lib\Screen\worker_transactions_detail_screen.dart:446**` tooltip: _tr('سجل حضور ودخول العامل', 'Présence ouvrier', 'Worker Attendance', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:457**` tooltip: _tr('إضافة عمل يومي', 'Ajouter travail journalier', 'Add Daily Job', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:468**` tooltip: _tr('فلتر بالتاريخ', 'Filtrer par date', 'Filter by date', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:474**` tooltip: _tr('تحديث', 'Actualiser', 'Refresh', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:484**` _tr('تسجيل سلفة / دفعة جديدة', 'Nouvelle avance/paiement', 'New Advance/Payout', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:511**` _tr('🗓️ تسجيل وتحديد أيام حضور وغياب العامل (تقويم الشهر)', `
+- **lib\Screen\worker_transactions_detail_screen.dart:533**` title: _tr('إجمالي المستحقات (المصنعة/اليومية)', 'Gains (Fabriqués/Journaliers)', 'Total Earned', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:543**` title: _tr('إجمالي السلف والمدفوعات', 'Avances & Paiements', 'Total Advances', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:554**` title: _tr('صافي الرصيد المستحق للعامل', 'Solde Net Dû', 'Net Remaining Balance', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:574**` hintText: _tr('بحث بالمبلغ أو الملاحظات...', 'Rechercher par montant ou note...', 'Search by amount or note...', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:587**` _buildFilterChip('All', _tr('كل المعاملات', 'Toutes', 'All', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:588**` _buildFilterChip('Advance', _tr('السلفيات فقط', 'Avances seules', 'Advances Only', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:589**` _buildFilterChip('Salary', _tr('دفعات الأجر والتسويات', 'Paiements salaire', 'Salary Payouts', lang)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:643**` _tr('الأعمال اليومية غير المسواة (${_dailyJobs.length})', `
+- **lib\Screen\worker_transactions_detail_screen.dart:657**` label: Text(_tr('إضافة', 'Ajouter', 'Add', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)), `
+- **lib\Screen\worker_transactions_detail_screen.dart:668**` '${j['title']} — ${j['price']} دج', `
+- **lib\Screen\worker_transactions_detail_screen.dart:696**` _tr('لا توجد معاملات مسجلة لهذا العامل', 'Aucune transaction enregistrée', 'No transactions found', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:784**` ? _tr('سلفة مالية', 'Avance financière', 'Cash Advance', lang) `
+- **lib\Screen\worker_transactions_detail_screen.dart:785**` : _tr('دفعة أجر / تسوية', 'Paiement salaire', 'Salary Settlement', lang); `
+- **lib\Screen\worker_transactions_detail_screen.dart:860**` ? _tr('تمت المحاسبة', 'Réglé', 'Settled', lang) `
+- **lib\Screen\worker_transactions_detail_screen.dart:861**` : _tr('غير محاسب', 'Non réglé', 'Unsettled', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:895**` _tr('فلتر بالتاريخ', 'Filtrer par date', 'Filter by date', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:908**` _tr('تاريخ البداية', 'Date de début', 'Start Date', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:914**` : _tr('غير محدد', 'Non spécifié', 'Not set', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:944**` _tr('تاريخ النهاية', 'Date de fin', 'End Date', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:950**` : _tr('غير محدد', 'Non spécifié', 'Not set', lang), `
+- **lib\Screen\worker_transactions_detail_screen.dart:979**` child: Text(_tr('مسح الفلتر', 'Effacer', 'Clear', lang), style: const TextStyle(color: Colors.red, fontFamily: 'Cairo')), `
+- **lib\Screen\worker_transactions_detail_screen.dart:983**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\worker_transactions_detail_screen.dart:994**` child: Text(_tr('تطبيق الفلتر', 'Appliquer', 'Apply', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), `
+- **lib\Screen\worker_weekly_settlement_screen.dart:162**` child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'), `
+- **lib\Screen\worker_weekly_settlement_screen.dart:603**` _tr('تسجيل دفعة وتسوية الحساب', `
+- **lib\Screen\worker_weekly_settlement_screen.dart:618**` '${_tr("صافي المستحق للعامل:", `
+- **lib\Screen\worker_weekly_settlement_screen.dart:621**` '#,##0.00').format(netDue)} د.ج\n${_tr( `
+- **lib\Screen\worker_weekly_settlement_screen.dart:635**` labelText: _tr('المبلغ المدفوع فعلياً (د.ج)', `
+- **lib\Screen\worker_weekly_settlement_screen.dart:643**` .isEmpty) return _tr('يرجى إدخال المبلغ', `
+- **lib\Screen\worker_weekly_settlement_screen.dart:647**` return _tr('الرجاء إدخال رقم صحيح', `
+- **lib\Screen\worker_weekly_settlement_screen.dart:658**` labelText: _tr('الدفع من صندوق / الخزينة', `
+- **lib\Screen\worker_weekly_settlement_screen.dart:688**` child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), `
+- **lib\Screen\worker_weekly_settlement_screen.dart:1166**` final titleCtrl = TextEditingController(text: 'عمل يومي'); `
+- **lib\Screen\worker_weekly_settlement_screen.dart:1247**` suffixText: 'د.ج', `
+- **lib\Screen\worker_weekly_settlement_screen.dart:1281**` child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'), `
+- **lib\Screen\worker_weekly_settlement_screen.dart:1653**` '${j['title']} — $price د.ج', `
+- **lib\Screen\workers_management_screen.dart:279**` content: Text(_t('تم تحديث العمال من Supabase بنجاح')), `
+- **lib\Screen\workers_management_screen.dart:405**` content: Text(_t('تم مزامنة العمال بنجاح')), `
+- **lib\Screen\workers_management_screen.dart:412**` content: Text('خطأ في الاتصال بالسحابة: $e'), `
+- **lib\Screen\workers_management_screen.dart:446**` tooltip: _t('تحديث من السحابة'), `
+- **lib\Screen\workers_management_screen.dart:479**` ? Center(child: Text(_t('لا يوجد عمال مسجلين في ورشتك حالياً'))) `
+- **lib\Screen\workers_management_screen.dart:504**` child: const Text('إلغاء'), `
+- **lib\Screen\workers_management_screen.dart:749**` return _tr('غير مفعلة', 'Non activée', 'Disabled', lang); `
+- **lib\Screen\workers_management_screen.dart:763**` return '${_tr('صالحة من', 'Valable du', 'Valid from', lang)} $fromText ' `
+- **lib\Screen\workers_management_screen.dart:764**` '${_tr('إلى', 'au', 'to', lang)} $toText'; `
+- **lib\Screen\workers_management_screen.dart:816**` _t('تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.'), `
+- **lib\Screen\workers_management_screen.dart:863**` cancelText: _tr('إلغاء', 'Annuler', 'Cancel', lang), `
+- **lib\Screen\workers_management_screen.dart:864**` confirmText: _tr('اعتماد', 'Valider', 'Apply', lang), `
+- **lib\Screen\workers_management_screen.dart:926**` content: Text('تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.'), `
+- **lib\Screen\workers_management_screen.dart:998**` content: Text('تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.'), `
+- **lib\Screen\workers_management_screen.dart:1064**` label: _tr('رؤية فقط', 'Lecture seule', 'View only', lang), `
+- **lib\Screen\workers_management_screen.dart:1083**` label: _tr('إلغاء الكل', 'Tout désactiver', 'Disable all', lang), `
+- **lib\Screen\workers_management_screen.dart:1229**` _t('تعديل بيانات العامل'), `
+- **lib\Screen\workers_management_screen.dart:1248**` labelText: _t('الاسم الكامل'), `
+- **lib\Screen\workers_management_screen.dart:1264**` labelText: _t('البريد الإلكتروني'), `
+- **lib\Screen\workers_management_screen.dart:1278**` labelText: _t('رقم الهاتف (واتساب)'), `
+- **lib\Screen\workers_management_screen.dart:1280**` hintText: '0555 123 456 أو +213555123456', `
+- **lib\Screen\workers_management_screen.dart:1293**` labelText: _t('المنصب / الدور'), `
+- **lib\Screen\workers_management_screen.dart:1295**` hintText: _t('مثال: نجار، مركّب، مندوب...'), `
+- **lib\Screen\workers_management_screen.dart:1308**` labelText: _t('العنوان'), `
+- **lib\Screen\workers_management_screen.dart:1324**` child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\workers_management_screen.dart:1328**` label: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')), `
+- **lib\Screen\workers_management_screen.dart:1465**` _tr('بدون اسم', 'Sans nom', 'No name', lang), `
+- **lib\Screen\workers_management_screen.dart:1485**` '${_tr("المنصب:", "Poste:", "Role:", lang)} $role', `
+- **lib\Screen\workers_management_screen.dart:2902**` _tr('أسبوع', 'Une semaine', 'One week', lang), `
+- **lib\Screen\workers_management_screen.dart:2909**` _tr('10 أيام', '10 jours', '10 days', lang), `
+- **lib\Screen\workers_management_screen.dart:2915**` label: Text(_tr('شهر', 'Un mois', 'One month', lang)), `
+- **lib\Screen\workshop_profile_screen.dart:156**` SnackBar(content: Text(_t('اسم الورشة لا يمكن أن يكون فارغاً'))), `
+- **lib\Screen\workshop_profile_screen.dart:203**` content: Text(_t('تم حفظ معلومات الورشة بنجاح')), `
+- **lib\Screen\workshop_profile_screen.dart:212**` content: Text('خطأ في الحفظ: $e'), `
+- **lib\Screen\workshop_profile_screen.dart:245**` title: const Text('تعديل معلومات المستخدم'), `
+- **lib\Screen\workshop_profile_screen.dart:251**` decoration: InputDecoration(labelText: _t('اسم المستخدم')), `
+- **lib\Screen\workshop_profile_screen.dart:257**` labelText: _t('المسمى الوظيفي'), `
+- **lib\Screen\workshop_profile_screen.dart:258**` hintText: _t('مثال: رئيس ورشة، عامل متقدم، مبتدئ...'), `
+- **lib\Screen\workshop_profile_screen.dart:266**` child: const Text('إلغاء'), `
+- **lib\Screen\workshop_profile_screen.dart:270**` child: const Text('حفظ'), `
+- **lib\Screen\workshop_profile_screen.dart:296**` title: const Text('ملف ومعلومات الورشة'), `
+- **lib\Screen\workshop_profile_screen.dart:301**` tooltip: 'حفظ المعلومات', `
+- **lib\Screen\workshop_profile_screen.dart:366**` labelText: _t('اسم الورشة'), `
+- **lib\Screen\workshop_profile_screen.dart:374**` labelText: _t('موقع الورشة'), `
+- **lib\Screen\workshop_profile_screen.dart:383**` labelText: _t('رقم الهاتف'), `
+- **lib\Screen\workshop_profile_screen.dart:392**` labelText: _t('تخصصات الورشة'), `
+- **lib\Screen\workshop_profile_screen.dart:394**` hintText: 'مثال: ألمنيوم، زجاج، بي في سي...', `
+- **lib\Screen\workshop_profile_screen.dart:412**` labelText: _t('رقم السجل التجاري (RC)'), `
+- **lib\Screen\workshop_profile_screen.dart:420**` labelText: _t('رقم التعريف الجبائي (NIF)'), `
+- **lib\Screen\workshop_profile_screen.dart:428**` labelText: _t('رقم التعريف الإحصائي (NIS)'), `
+- **lib\Screen\workshop_profile_screen.dart:436**` labelText: _t('رقم المادة (AI)'), `
+- **lib\Screen\workshop_profile_screen.dart:444**` labelText: _t('الحساب البنكي (RIB)'), `
+- **lib\Screen\workshop_profile_screen.dart:463**` labelText: _t('اسم مدير الورشة'), `
+- **lib\Screen\workshop_profile_screen.dart:472**` labelText: _t('عدد مستخدمي الورشة'), `
+- **lib\Screen\workshop_profile_screen.dart:474**` hintText: 'مثال: 5', `
+- **lib\Screen\workshop_profile_screen.dart:481**` label: Text(_t('حفظ التعديلات الرئيسية')), `
+- **lib\Screen\workshop_profile_screen.dart:513**` final wJobTitle = wData['job_role'] ?? 'عامل (غير مصنف)'; `
+- **lib\services\ai_voice_service.dart:27**` النص: "$text" `
+- **lib\services\ai_voice_service.dart:70**` if (resultText.isEmpty) return 'لم أتمكن من فهم الطلب.'; `
+- **lib\services\subscription_service.dart:110**` return daysAgo == 0 ? 'انتهى اليوم' : 'منتهي منذ ${_arabicDaysText(daysAgo)}'; `
+- **lib\services\subscription_service.dart:144**` return '$monthsText و $daysText'; `
+- **lib\services\windows_google_sign_in_io.dart:244**` <head><meta charset="utf-8"><title>تسجيل الدخول</title></head> `
+- **lib\widgets\desktop_window_frame.dart:99**` tooltip: Localization.translate('تصغير', lang), `
+- **lib\widgets\desktop_window_frame.dart:105**` tooltip: _isMaximized ? 'استعادة الحجم' : 'تكبير', `
+- **lib\widgets\desktop_window_frame.dart:113**` tooltip: Localization.translate('إغلاق', lang), `
+- **lib\widgets\numeric_filter_search_field.dart:464**` tooltip: Localization.translate('مسح الفلتر', widget.lang), `
+- **lib\widgets\numeric_filter_search_field.dart:641**` Localization.translate('اختيار من القائمة', widget.lang), `
+- **lib\widgets\table_date_range_filter.dart:219**` Localization.translate('فلترة التاريخ:', lang), `
+- **lib\widgets\table_date_range_filter.dart:230**` _buildPresetChip(DateRangePreset.all, Localization.translate('الكل', lang), isDark), `
+- **lib\widgets\table_date_range_filter.dart:231**` _buildPresetChip(DateRangePreset.today, Localization.translate('اليوم', lang), isDark), `
+- **lib\widgets\table_date_range_filter.dart:232**` _buildPresetChip(DateRangePreset.thisWeek, Localization.translate('هذا الأسبوع', lang), isDark), `
+- **lib\widgets\table_date_range_filter.dart:233**` _buildPresetChip(DateRangePreset.thisMonth, Localization.translate('هذا الشهر', lang), isDark), `
+- **lib\widgets\table_date_range_filter.dart:234**` _buildPresetChip(DateRangePreset.lastThreeMonths, Localization.translate('آخر 3 أشهر', lang), isDark), `
+- **lib\widgets\table_date_range_filter.dart:255**` '${Localization.translate("من:", lang)} ', `
+- **lib\widgets\table_date_range_filter.dart:288**` '${Localization.translate("إلى:", lang)} ', `
+- **lib\widgets\table_date_range_filter.dart:306**` tooltip: Localization.translate('مسح فلتر التاريخ', lang), `
+

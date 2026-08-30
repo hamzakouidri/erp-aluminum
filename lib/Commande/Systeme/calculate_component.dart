@@ -692,6 +692,9 @@ class ComponentCalculator {
       return 'مقبض';
     }
     if (_textHasAny(originalName, const ['الطاسو', 'tasso'])) return 'tasso';
+    if (_textHasAny(originalName, const ['الإيكار', 'ايكار', 'إيكار', 'ekar', 'ikar'])) {
+      return 'ekar';
+    }
     if (_textHasAny(originalName, const ['عجلات', 'roulette'])) {
       return 'roulette';
     }
@@ -874,6 +877,8 @@ class ComponentCalculator {
         return 'tringle';
       case 'tasso':
         return 'tasso';
+      case 'ekar':
+        return 'ekar';
       case 'roulette':
         return 'roulette';
       case 'entrematique':
@@ -1019,18 +1024,47 @@ class ComponentCalculator {
   /// with the selected integrated-cover frame. A caisson tunnel (behind the
   /// window), or a shutter without a regular caisson, never adds that pair.
   /// هذه الدالة tassoQuantity هي "حاسبة عدد قطع التاسو" ، ودورها هو حساب العدد الدقيق لقطع التاسو المطلوبة لكل تقسيم في الستارة.
+  static ({int tasso, int ekar}) divisionConnectorQuantities({
+    required int divisionPieceCount,
+    required bool isPvc,
+    required bool hasRegularCaissonAboveWindow,
+    required bool selectedFrameHasIntegratedCover,
+  }) {
+    if (divisionPieceCount <= 0) return (tasso: 0, ekar: 0);
+    if (isPvc) {
+      return (
+        tasso: (divisionPieceCount * 2) +
+            (hasRegularCaissonAboveWindow && selectedFrameHasIntegratedCover
+                ? 2
+                : 0),
+        ekar: 0,
+      );
+    }
+    return (
+      tasso: divisionPieceCount + 1,
+      ekar: math.max(0, 2 * (divisionPieceCount - 1)),
+    );
+  }
+
+  /// Backward-compatible Tasso-only helper used by older callers and tests.
+  /// The complete aluminium calculation uses [divisionConnectorQuantities],
+  /// because it must return both Tasso and Ekar quantities.
   static int tassoQuantity({
     required int divisionPieceCount,
     required bool isPvc,
     required bool hasRegularCaissonAboveWindow,
     required bool selectedFrameHasIntegratedCover,
   }) {
-    return (divisionPieceCount * 2) +
-        (isPvc &&
-                hasRegularCaissonAboveWindow &&
-                selectedFrameHasIntegratedCover
-            ? 2
-            : 0);
+    final count = math.max(0, divisionPieceCount);
+    final pvcCaissonException =
+        isPvc &&
+        hasRegularCaissonAboveWindow &&
+        selectedFrameHasIntegratedCover;
+
+    if (isPvc) {
+      return (count * 2) + (pvcCaissonException ? 2 : 0);
+    }
+    return count * 2;
   }
 
   /// Physical weight of the shutter curtain, calculated from the actual
@@ -1654,6 +1688,9 @@ class ComponentCalculator {
       bool isActive = true,
       String? color,
       int qty = 0,
+      List<double>? pieces,
+      String? cuttingList,
+      String unit = 'حبة',
     }) {
       final selectorType = _selectorTypeForAccessory(originalName);
       return _createAccessory(
@@ -1672,7 +1709,44 @@ class ComponentCalculator {
             ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
             : window.activeSeries?.id,
         materialType: window.isPVC ? 'pvc' : 'aluminium',
+        pieces: pieces,
+        cuttingList: cuttingList,
+        unit: unit,
       );
+    }
+
+    BomItem createRelatedAccessory(
+      String sourceKey,
+      String fallbackName, {
+      required int qty,
+      bool isActive = true,
+    }) {
+      final source = window.componentOverrides[sourceKey];
+      final related = source is Map ? source['gache_accessory'] : null;
+      if (related is Map) {
+        final relatedOverrides = Map<String, dynamic>.from(
+          window.componentOverrides,
+        )..[fallbackName] = Map<String, dynamic>.from(related);
+        return _createAccessory(
+          relatedOverrides,
+          fallbackName,
+          isActive: isActive,
+          qty: qty * window.quantity,
+          catalogItemId: catalogueId(related),
+          colorId: catalogueColorId(null, accessory: true),
+          overrideKey: fallbackName,
+          selectorCategory: 'accessory',
+          selectorType: _selectorTypeForAccessory(fallbackName),
+          roleKey: _roleKeyForAccessorySelector(
+            _selectorTypeForAccessory(fallbackName),
+          ),
+          sourceSeriesId: window.systemMode == 'sliding'
+              ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+              : window.activeSeries?.id,
+          materialType: window.isPVC ? 'pvc' : 'aluminium',
+        );
+      }
+      return createAccessory(fallbackName, isActive: isActive, qty: qty);
     }
 
     BomItem createInteractiveAccessory(
@@ -2327,20 +2401,26 @@ class ComponentCalculator {
       gachePortes = 0;
     }
 
-    double rawEspaLen = hasShutter ? window.height - 350 : window.height - 200;
-    double espaLength = 300;
-    if (rawEspaLen >= 400) {
-      int multiples = ((rawEspaLen - 400) / 200).floor();
-      espaLength = 400 + (multiples * 200).toDouble();
+    int configuredGacheCount(Iterable<String> keys) {
+      for (final key in keys) {
+        final override = window.componentOverrides[key];
+        if (override is! Map) continue;
+        final value = override['gache_count'];
+        final count = value is num
+            ? value.toInt()
+            : int.tryParse(value?.toString() ?? '') ?? 0;
+        if (count > 0) return count;
+      }
+      return 0;
     }
-    if (espaLength > 1800) espaLength = 1800;
 
-    int gacheQtyPerDoubleSash = 2;
-    if (espaLength > 1400) {
-      gacheQtyPerDoubleSash = 4;
-    } else if (espaLength >= 1000) {
-      gacheQtyPerDoubleSash = 3;
-    }
+    final gacheQtyPerDoubleSash = configuredGacheCount([
+      'إسبانيوليت (Espagnolette)',
+      'اسبانيولات المنزلق (Espagnolette)',
+    ]);
+    final activeSeriesName = (window.activeSeries?.name ?? '').toLowerCase();
+    final isTprSeries = activeSeriesName.contains('tpr') ||
+        activeSeriesName.contains('tpi');
 
     // --- 1. البروفيلات (Profiles) ---
     // ===== دالة مساعدة: تفجير مركبات Kit بناءً على قياسات الضلفة =====
@@ -3249,12 +3329,10 @@ class ComponentCalculator {
           slidingTotalHandles += 2;
 
           double h = hForCalc;
-          int gachesPerEspagnolette = 2;
-          if (h >= 1000 && h <= 1400) {
-            gachesPerEspagnolette = 3;
-          } else if (h > 1400) {
-            gachesPerEspagnolette = 4;
-          }
+          final gachesPerEspagnolette = configuredGacheCount([
+            'اسبانيولات المنزلق (Espagnolette)',
+            'إسبانيوليت (Espagnolette)',
+          ]);
           slidingTotalGacheCoulissant += gachesPerEspagnolette * 2;
 
           bool excludeChicane =
@@ -3354,7 +3432,7 @@ class ComponentCalculator {
         if (porteJointLength > 0) {
           items.add(
             createJoint(
-              'جوان برونز (Joint Bronze)',
+              'جوان بروس (Joint Brosse)',
               qty: porteJointLength * 2.0,
               unit: 'متر',
             ),
@@ -3796,7 +3874,8 @@ class ComponentCalculator {
 
       if (windowDoubleSashCount > 0 && window.isPVC) {
         items.add(
-          createAccessory(
+          createRelatedAccessory(
+            'إسبانيوليت (Espagnolette)',
             'قاش دوبل (Gache Double Ouvrant)',
             isActive: !isVerrouCentralActive,
             qty: windowDoubleSashCount * gacheQtyPerDoubleSash,
@@ -3807,7 +3886,8 @@ class ComponentCalculator {
 
     if (windowSingleSashCount > 0 && window.isPVC) {
       items.add(
-        createAccessory(
+        createRelatedAccessory(
+          'إسبانيوليت (Espagnolette)',
           'قاش سامبل (Gache Simple Ouvrant)',
           qty: windowSingleSashCount * gacheQtyPerDoubleSash,
         ),
@@ -3936,6 +4016,43 @@ class ComponentCalculator {
       }
 
       if (useCremone && cremoneQty > 0) {
+        final triangleOverride =
+            window.componentOverrides['تراينغل الكريمون (Triangle)'];
+        double numberFromTriangle(String key) {
+          final value = triangleOverride?[key];
+          return value is num
+              ? value.toDouble()
+              : double.tryParse(value?.toString() ?? '') ?? 0.0;
+        }
+        final triangleDeduction = math.max(
+          0.0,
+          numberFromTriangle('triangle_deduction_mm'),
+        );
+        final triangleTotal = math.max(
+          0.0,
+          window.height.toDouble() - triangleDeduction,
+        );
+        final triangleMode =
+            triangleOverride?['triangle_position_mode']?.toString() ??
+            'center';
+        final customPosition = math.min(
+          triangleTotal,
+          math.max(0.0, numberFromTriangle('triangle_position_mm')),
+        );
+        final firstTrianglePiece = triangleMode == 'custom'
+            ? customPosition
+            : triangleTotal / 2.0;
+        final secondTrianglePiece = triangleTotal - firstTrianglePiece;
+        final trianglePieces = <double>[];
+        for (var i = 0; i < cremoneQty * window.quantity; i++) {
+          trianglePieces.addAll([
+            firstTrianglePiece / 1000.0,
+            secondTrianglePiece / 1000.0,
+          ]);
+        }
+        final triangleCuttingList =
+            'قطع القص: ${firstTrianglePiece.toStringAsFixed(0)} مم + '
+            '${secondTrianglePiece.toStringAsFixed(0)} مم لكل تراينغل';
         items.add(
           createAccessory(
             'كريمون (Cremone)',
@@ -3948,6 +4065,9 @@ class ComponentCalculator {
             'تراينغل الكريمون (Triangle)',
             color: accessoryColorName,
             qty: cremoneQty,
+            unit: 'قطعة',
+            pieces: trianglePieces,
+            cuttingList: triangleCuttingList,
           ),
         );
       }
@@ -4172,9 +4292,9 @@ class ComponentCalculator {
           final bool isTPR = seriesName.contains('tpr') && !window.isSlidingPVC;
           if (isTPR) {
             items.add(
-              createAccessory(
+              createRelatedAccessory(
+                'اسبانيولات المنزلق (Espagnolette)',
                 'Gâche coulissant TPR',
-                color: accessoryColorName,
                 qty: slidingTotalEspagnolettes,
               ),
             );
@@ -4187,9 +4307,9 @@ class ComponentCalculator {
             );
           } else {
             items.add(
-              createAccessory(
+              createRelatedAccessory(
+                'اسبانيولات المنزلق (Espagnolette)',
                 'كاش كوليسون (Gache coulissant)',
-                color: accessoryColorName,
                 qty: slidingTotalGacheCoulissant,
               ),
             );
@@ -4850,18 +4970,43 @@ class ComponentCalculator {
 
     if (hasSingleSash || hasDoubleSash) {
       int totalAccessoryScrews = 0;
+      final linkedScrewTotals = <int, int>{};
+      final linkedScrews = <int, Map<String, dynamic>>{};
       for (var item in items) {
         if (item.category == 'accessory') {
           int screwCount = 0;
-          if (window.componentOverrides.containsKey(item.originalName)) {
-            var override = window.componentOverrides[item.originalName];
-            if (override['screw_count'] != null) {
-              screwCount = override['screw_count'] is int
-                  ? override['screw_count']
-                  : int.tryParse(override['screw_count'].toString()) ?? 0;
+          Map<String, dynamic>? override;
+          final exactOverride = window.componentOverrides[item.originalName];
+          if (exactOverride is Map) {
+            override = Map<String, dynamic>.from(exactOverride);
+          } else if (item.originalName.contains('Espagnolette')) {
+            final genericOverride =
+                window.componentOverrides['إسبانيوليت (Espagnolette)'];
+            if (genericOverride is Map) {
+              override = Map<String, dynamic>.from(genericOverride);
             }
           }
-          totalAccessoryScrews += screwCount * item.quantity.toInt();
+          final resolvedOverride = override;
+          if (resolvedOverride != null &&
+              resolvedOverride['screw_count'] != null) {
+            screwCount = resolvedOverride['screw_count'] is int
+                ? resolvedOverride['screw_count']
+                : int.tryParse(resolvedOverride['screw_count'].toString()) ?? 0;
+          }
+          final linked = resolvedOverride?['screw_accessory'];
+          if (linked is Map && linked['id'] != null) {
+            final linkedId = linked['id'] is num
+                ? (linked['id'] as num).toInt()
+                : int.tryParse(linked['id'].toString());
+            if (linkedId != null) {
+              linkedScrewTotals[linkedId] =
+                  (linkedScrewTotals[linkedId] ?? 0) +
+                  (screwCount * item.quantity.toInt());
+              linkedScrews[linkedId] = Map<String, dynamic>.from(linked);
+            }
+          } else {
+            totalAccessoryScrews += screwCount * item.quantity.toInt();
+          }
         }
       }
       if (totalAccessoryScrews > 0) {
@@ -4870,6 +5015,32 @@ class ComponentCalculator {
             window.componentOverrides,
             'براغي الإكسسوارات',
             qty: totalAccessoryScrews,
+          ),
+        );
+      }
+      for (final entry in linkedScrewTotals.entries) {
+        final linked = linkedScrews[entry.key];
+        if (linked == null || entry.value <= 0) continue;
+        final linkedName =
+            'براغي مرتبطة: ${linked['name'] ?? 'براغي التجميع'}';
+        final relatedOverrides = Map<String, dynamic>.from(
+          window.componentOverrides,
+        )..[linkedName] = linked;
+        items.add(
+          _createAccessory(
+            relatedOverrides,
+            linkedName,
+            qty: entry.value,
+            overrideKey: linkedName,
+            catalogItemId: linked['id'] is num
+                ? (linked['id'] as num).toInt()
+                : int.tryParse('${linked['id'] ?? ''}'),
+            colorId: catalogueColorId(accessoryColorName, accessory: true),
+            selectorCategory: 'accessory',
+            selectorType: 'assembly_screw',
+            roleKey: 'assembly_screw',
+            sourceSeriesId: window.activeSeries?.id,
+            materialType: window.isPVC ? 'pvc' : 'aluminium',
           ),
         );
       }
@@ -5416,7 +5587,9 @@ class ComponentCalculator {
           0,
           (sum, pieces) => sum + pieces.length,
         );
-    final int tassoQty = tassoQuantity(
+    final connectorQty = isTprSeries
+        ? (tasso: 0, ekar: 0)
+        : divisionConnectorQuantities(
       divisionPieceCount: divisionPieceCount,
       isPvc: isOuterFramePvc,
       // The regular caisson is drawn above the window.  A tunnel caisson is
@@ -5425,9 +5598,35 @@ class ComponentCalculator {
       selectedFrameHasIntegratedCover: integratedFrameCoverWidth > 0,
     );
 
-    if (tassoQty > 0) {
+    if (isTprSeries) {
+      final plinthePieceCount = items
+          .where(
+            (item) => item.originalName.contains('بلانت') ||
+                item.originalName.toLowerCase().contains('plinthe'),
+          )
+          .fold<int>(0, (sum, item) => sum + (item.pieces?.length ?? 0));
+      final int assemblyScrewQty =
+          4 * (divisionPieceCount + plinthePieceCount);
+      if (assemblyScrewQty > 0) {
+        items.add(createAccessory('براغي التجميع', qty: assemblyScrewQty));
+      }
+    }
+    if (connectorQty.tasso > 0) {
       items.add(
-        createAccessory('الطاسو (Tasso)', qty: tassoQty, isActive: true),
+        createAccessory(
+          'الطاسو (Tasso)',
+          qty: connectorQty.tasso,
+          isActive: true,
+        ),
+      );
+    }
+    if (connectorQty.ekar > 0) {
+      items.add(
+        createAccessory(
+          'الإيكار (Ekar)',
+          qty: connectorQty.ekar,
+          isActive: true,
+        ),
       );
     }
 
@@ -7520,6 +7719,9 @@ class ComponentCalculator {
     String? roleKey,
     int? sourceSeriesId,
     String? materialType,
+    List<double>? pieces,
+    String? cuttingList,
+    String unit = 'حبة',
   }) {
     String lookupKey = originalName;
     if (!overrides.containsKey(lookupKey) &&
@@ -7557,7 +7759,7 @@ class ComponentCalculator {
       imagePath: imagePath,
       colorName: color,
       quantity: qty.toDouble(),
-      unit: 'حبة',
+      unit: unit,
       unitPrice: price,
       isMissing: !isLinked,
       isActive: isActive,
@@ -7570,6 +7772,8 @@ class ComponentCalculator {
       roleKey: roleKey,
       sourceSeriesId: sourceSeriesId,
       materialType: materialType,
+      pieces: pieces,
+      cuttingList: cuttingList,
     );
   }
 

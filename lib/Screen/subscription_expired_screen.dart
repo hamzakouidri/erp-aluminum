@@ -4,16 +4,21 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../login_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
+import '../services/subscription_service.dart';
 
 class SubscriptionExpiredScreen extends StatelessWidget {
   const SubscriptionExpiredScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('انتهى الاشتراك'),
+        title: Text(Localization.translate('انتهى الاشتراك', lang)),
         centerTitle: true,
         backgroundColor: Colors.redAccent,
         foregroundColor: Colors.white,
@@ -47,34 +52,41 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: const Column(
-                  children: [
-                    Text(
-                      'معلومات الدفع (BaridiMob)',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.blue,
-                      ),
+              StreamBuilder<String>(
+                stream: SubscriptionPaymentSettings().getBaridiMobRipStream(),
+                builder: (context, paymentSnapshot) {
+                  final rip = paymentSnapshot.data?.trim() ?? '';
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
                     ),
-                    SizedBox(height: 8),
-                    Text(
-                      'RIP: 00799999999999999999',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                      ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'معلومات الدفع (BaridiMob)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.blue,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          rip.isEmpty ? 'لم يتم تحديد الرقم بعد' : 'CCP/RIP: $rip',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                            color: rip.isEmpty ? Colors.orange.shade700 : null,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(

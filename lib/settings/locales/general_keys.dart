@@ -379,8 +379,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
     AppLanguage.french:
         'Perte de scie et minimum de chute selon le type de pièce.',
-    AppLanguage.english:
-        'Saw kerf and minimum remnant by part type.',
+    AppLanguage.english: 'Saw kerf and minimum remnant by part type.',
   },
   'اختر نظام العمل': {
     AppLanguage.arabic: 'اختر نظام العمل',
@@ -6575,5 +6574,20 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'تفاصيل',
     AppLanguage.french: 'Détails',
     AppLanguage.english: 'Details',
+  },
+  'اختيار من القائمة': {
+    AppLanguage.arabic: 'اختيار من القائمة',
+    AppLanguage.french: 'Choisir dans la liste',
+    AppLanguage.english: 'Choose from list',
+  },
+  'اختيار حالة الطلبية': {
+    AppLanguage.arabic: 'اختيار حالة الطلبية',
+    AppLanguage.french: 'Choisir le statut de la commande',
+    AppLanguage.english: 'Choose order status',
+  },
+  'كل الحالات': {
+    AppLanguage.arabic: 'كل الحالات',
+    AppLanguage.french: 'Tous les statuts',
+    AppLanguage.english: 'All statuses',
   },
 };

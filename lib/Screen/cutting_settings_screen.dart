@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class CuttingSettingsScreen extends StatefulWidget {
   const CuttingSettingsScreen({super.key});
@@ -28,6 +31,11 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+
+  String _t(String key) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    return Localization.translate(key, lang);
+  }
 
   @override
   void initState() {
@@ -68,7 +76,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تحميل إعدادات القص: $error')),
+          SnackBar(content: Text('${_t('تعذر تحميل إعدادات القص')}: $error')),
         );
       }
     } finally {
@@ -83,8 +91,10 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
     );
     if (sawKerfMm == null || globalMinimum == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('أدخل فاقد المنشار والحد العام للفضلة بقيم أكبر من صفر.'),
+        SnackBar(
+          content: Text(
+            _t('أدخل فاقد المنشار والحد العام للفضلة بقيم أكبر من صفر.'),
+          ),
         ),
       );
       return;
@@ -97,7 +107,11 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
       final value = _positiveNumber(raw);
       if (value == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('قيمة ${spec.label} يجب أن تكون أكبر من صفر.')),
+          SnackBar(
+            content: Text(
+              '${_t('قيمة')} ${_t(spec.label)} ${_t('يجب أن تكون أكبر من صفر.')}',
+            ),
+          ),
         );
         return;
       }
@@ -119,8 +133,8 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
       CuttingSettings.setSawKerfMm(sawKerfMm);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم حفظ إعدادات القص والفضلات بنجاح'),
+          SnackBar(
+            content: Text(_t('تم حفظ إعدادات القص والفضلات بنجاح')),
             backgroundColor: Colors.green,
           ),
         );
@@ -129,7 +143,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في حفظ إعدادات القص: $error'),
+            content: Text('${_t('خطأ في حفظ إعدادات القص')}: $error'),
             backgroundColor: Colors.red,
           ),
         );
@@ -153,6 +167,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sectionColor = isDark ? Colors.blue.shade300 : Colors.blue.shade800;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
 
     if (_isLoading) {
       // Keep the form visible immediately while the local database is read.
@@ -161,12 +176,12 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إعدادات القص والفضلات'),
+        title: Text(Localization.translate('إعدادات القص والفضلات', lang)),
         actions: [
           IconButton(
             onPressed: _isLoading || _isSaving ? null : _saveSettings,
             icon: const Icon(Icons.save),
-            tooltip: 'حفظ الإعدادات',
+            tooltip: Localization.translate('حفظ الإعدادات', lang),
           ),
         ],
       ),
@@ -176,7 +191,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'إعدادات القص والفضلات',
+              Localization.translate('إعدادات القص والفضلات', lang),
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -184,17 +199,23 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'تُستخدم هذه القيم في حساب عدد القضبان. أدخل القيم بالمليمتر؛ مثال: 5 مم = نصف سنتيمتر. الحد الخاص بنوع البروفيل يتقدم على الحد العام.',
+            Text(
+              Localization.translate(
+                'تُستخدم هذه القيم في حساب عدد القضبان. أدخل القيم بالمليمتر؛ مثال: 5 مم = نصف سنتيمتر. الحد الخاص بنوع البروفيل يتقدم على الحد العام.',
+                lang,
+              ),
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _sawKerfController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'فاقد شفرة المنشار لكل قص (مم)',
-                hintText: 'مثال: 4 أو 5',
+              decoration: InputDecoration(
+                labelText: Localization.translate(
+                  'فاقد شفرة المنشار لكل قص (مم)',
+                  lang,
+                ),
+                hintText: Localization.translate('مثال: 4 أو 5', lang),
                 prefixIcon: Icon(Icons.content_cut),
                 border: OutlineInputBorder(),
               ),
@@ -203,9 +224,12 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
             TextField(
               controller: _minimumReusableLengthController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'الحد العام للفضلة القابلة للاستعمال (مم)',
-                hintText: 'مثال: 300',
+              decoration: InputDecoration(
+                labelText: Localization.translate(
+                  'الحد العام للفضلة القابلة للاستعمال (مم)',
+                  lang,
+                ),
+                hintText: Localization.translate('مثال: 300', lang),
                 prefixIcon: Icon(Icons.straighten),
                 border: OutlineInputBorder(),
               ),
@@ -220,8 +244,12 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: '${spec.label} — أقل فضلة (مم)',
-                    hintText: 'اتركه فارغًا لاستعمال الحد العام',
+                    labelText:
+                        '${Localization.translate(spec.label, lang)} — ${Localization.translate('أقل فضلة (مم)', lang)}',
+                    hintText: Localization.translate(
+                      'اتركه فارغًا لاستعمال الحد العام',
+                      lang,
+                    ),
                     prefixIcon: const Icon(Icons.view_stream_outlined),
                     border: const OutlineInputBorder(),
                   ),
@@ -238,7 +266,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save),
-              label: const Text('حفظ إعدادات القص'),
+              label: Text(Localization.translate('حفظ إعدادات القص', lang)),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 46),
               ),

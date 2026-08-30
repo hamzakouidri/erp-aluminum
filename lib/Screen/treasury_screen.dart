@@ -158,7 +158,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'تاريخ...',
+          hintText: Localization.translate('تاريخ...', lang),
           controller: columnControllers['date'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -178,7 +178,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'المُدخل...',
+          hintText: Localization.translate('المُدخل...', lang),
           controller: columnControllers['entered_by'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -198,7 +198,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'اسم الدافع...',
+          hintText: Localization.translate('اسم الدافع...', lang),
           controller: columnControllers['payer_name'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -218,7 +218,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'النوع...',
+          hintText: Localization.translate('النوع...', lang),
           controller: columnControllers['type'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -238,7 +238,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'الارتباط...',
+          hintText: Localization.translate('الارتباط...', lang),
           controller: columnControllers['relation'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -258,7 +258,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'طريقة الدفع...',
+          hintText: Localization.translate('طريقة الدفع...', lang),
           controller: columnControllers['method'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -278,7 +278,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'البيان...',
+          hintText: Localization.translate('البيان...', lang),
           controller: columnControllers['desc'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -298,7 +298,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'الدفع...',
+          hintText: Localization.translate('الدفع...', lang),
           isNumeric: true,
           lang: lang,
           initialNumericState:
@@ -323,7 +323,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'السحب...',
+          hintText: Localization.translate('السحب...', lang),
           isNumeric: true,
           lang: lang,
           initialNumericState:
@@ -348,7 +348,7 @@ class TreasuryScreen extends StatefulWidget {
           ),
         ),
         filter: CompactTableFilterField(
-          hintText: 'الصندوق...',
+          hintText: Localization.translate('الصندوق...', lang),
           controller: columnControllers['caisse'],
           lang: lang,
           onTextChanged: (_) => onFiltersUpdated(),
@@ -712,23 +712,21 @@ class TreasuryScreen extends StatefulWidget {
                     decoration: BoxDecoration(
                       border: Border.all(color: borderColor),
                     ),
-                    child: SingleChildScrollView(
-                      child: ResizableColumnsTable(
-                        columns: columns,
-                        rows: rows,
-                        headerColor: headerColor,
-                        filterRowColor: isDark
-                            ? const Color(0xFF1A1A26)
-                            : const Color(0xFFF1F5F9),
-                        borderColor: borderColor,
-                        rowColor: isDark
-                            ? const Color(0xFF171721)
-                            : Colors.white,
-                        horizontalController: horizontalScrollController,
-                        headerMinHeight: 40,
-                        filterRowMinHeight: 34,
-                        rowMinHeight: 46,
-                      ),
+                    child: ResizableColumnsTable(
+                      columns: columns,
+                      rows: rows,
+                      headerColor: headerColor,
+                      filterRowColor: isDark
+                          ? const Color(0xFF1A1A26)
+                          : const Color(0xFFF1F5F9),
+                      borderColor: borderColor,
+                      rowColor: isDark
+                          ? const Color(0xFF171721)
+                          : Colors.white,
+                      horizontalController: horizontalScrollController,
+                      headerMinHeight: 40,
+                      filterRowMinHeight: 34,
+                      rowMinHeight: 46,
                     ),
                   ),
           ),

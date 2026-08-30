@@ -107,7 +107,9 @@ class SubscriptionDetails {
       } else if (lang == AppLanguage.english) {
         return daysAgo == 0 ? 'Expired today' : 'Expired $daysAgo day(s) ago';
       }
-      return daysAgo == 0 ? 'انتهى اليوم' : 'منتهي منذ ${_arabicDaysText(daysAgo)}';
+      return daysAgo == 0
+          ? 'انتهى اليوم'
+          : 'منتهي منذ ${_arabicDaysText(daysAgo)}';
     }
 
     if (daysRemaining == 0) {
@@ -337,7 +339,7 @@ class SubscriptionService {
 
     final totalDays = endDate.difference(startDate).inDays.clamp(1, 3650);
     final daysRemaining = endDate.difference(now).inDays;
-    final isExpired = now.isAfter(endDate) || rawStatus == 'expired';
+    final isExpired = !now.isBefore(endDate) || rawStatus == 'expired';
 
     // Renewal window rules:
     // - Yearly: renew allowed when remaining days <= 30 (1 month)
@@ -411,5 +413,31 @@ class SubscriptionService {
       role: 'manager',
       isLifetime: false,
     );
+  }
+}
+
+/// Payment destination shown to workshops when they request a subscription
+/// renewal. It is managed by the application administrator, not by each
+/// workshop, and is deliberately separate from workshop data.
+class SubscriptionPaymentSettings {
+  static const String collectionName = 'app_config';
+  static const String documentName = 'subscription';
+
+  Stream<String> getBaridiMobRipStream() {
+    return FirebaseFirestore.instance
+        .collection(collectionName)
+        .doc(documentName)
+        .snapshots()
+        .map((snapshot) => snapshot.data()?['baridiMobRip']?.toString().trim() ?? '');
+  }
+
+  Future<void> saveBaridiMobRip(String rip) async {
+    await FirebaseFirestore.instance
+        .collection(collectionName)
+        .doc(documentName)
+        .set({
+          'baridiMobRip': rip.trim(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
   }
 }

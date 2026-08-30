@@ -146,7 +146,10 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                   )
                 : IconButton(
                     icon: const Icon(Icons.cloud_download_rounded),
-                    tooltip: 'مزامنة واستيراد الكتالوج العالمي من السحابة',
+                    tooltip: Localization.translate(
+                      'مزامنة واستيراد الكتالوج العالمي من السحابة',
+                      lang,
+                    ),
                     onPressed: () =>
                         _syncFromCloud(force: true).catchError((_) {}),
                   ),

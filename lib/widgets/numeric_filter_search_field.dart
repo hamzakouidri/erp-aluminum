@@ -44,7 +44,8 @@ class NumericFilterState {
     switch (operator) {
       case NumericFilterOperator.none:
         if (targetValue != null) {
-          return (v - targetValue!).abs() < 0.0001 || v.toString().contains(rawQuery.trim());
+          return (v - targetValue!).abs() < 0.0001 ||
+              v.toString().contains(rawQuery.trim());
         }
         return true;
 
@@ -129,55 +130,81 @@ class NumericFilterState {
       case NumericFilterOperator.none:
         return lang == AppLanguage.french
             ? 'Tous (Sans filtre)'
-            : (lang == AppLanguage.english ? 'All (No Filter)' : 'الكل (بدون فلتر)');
+            : (lang == AppLanguage.english
+                  ? 'All (No Filter)'
+                  : 'الكل (بدون فلتر)');
       case NumericFilterOperator.equalsZero:
         return lang == AppLanguage.french
             ? 'Égal à zéro ($symbol)'
-            : (lang == AppLanguage.english ? 'Equals zero ($symbol)' : 'يساوي الصفر ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Equals zero ($symbol)'
+                  : 'يساوي الصفر ($symbol)');
       case NumericFilterOperator.notEqualsZero:
         return lang == AppLanguage.french
             ? 'Différent de zéro ($symbol)'
-            : (lang == AppLanguage.english ? 'Not equal to zero ($symbol)' : 'لا يساوي الصفر ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Not equal to zero ($symbol)'
+                  : 'لا يساوي الصفر ($symbol)');
       case NumericFilterOperator.greaterThanZero:
         return lang == AppLanguage.french
             ? 'Strictement supérieur à zéro ($symbol)'
-            : (lang == AppLanguage.english ? 'Greater than zero ($symbol)' : 'أكبر تماماً من الصفر ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Greater than zero ($symbol)'
+                  : 'أكبر تماماً من الصفر ($symbol)');
       case NumericFilterOperator.lessThanZero:
         return lang == AppLanguage.french
             ? 'Strictement inférieur à zéro ($symbol)'
-            : (lang == AppLanguage.english ? 'Less than zero ($symbol)' : 'أصغر تماماً من الصفر ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Less than zero ($symbol)'
+                  : 'أصغر تماماً من الصفر ($symbol)');
       case NumericFilterOperator.greaterThanOrEqualZero:
         return lang == AppLanguage.french
             ? 'Supérieur ou égal à zéro ($symbol)'
-            : (lang == AppLanguage.english ? 'Greater or equal to zero ($symbol)' : 'أكبر أو يساوي الصفر ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Greater or equal to zero ($symbol)'
+                  : 'أكبر أو يساوي الصفر ($symbol)');
       case NumericFilterOperator.lessThanOrEqualZero:
         return lang == AppLanguage.french
             ? 'Inférieur ou égal à zéro ($symbol)'
-            : (lang == AppLanguage.english ? 'Less or equal to zero ($symbol)' : 'أصغر أو يساوي الصفر ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Less or equal to zero ($symbol)'
+                  : 'أصغر أو يساوي الصفر ($symbol)');
       case NumericFilterOperator.equalsValue:
         return lang == AppLanguage.french
             ? 'Égal à la valeur ($symbol)'
-            : (lang == AppLanguage.english ? 'Equals value ($symbol)' : 'يساوي القيمة ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Equals value ($symbol)'
+                  : 'يساوي القيمة ($symbol)');
       case NumericFilterOperator.greaterThanValue:
         return lang == AppLanguage.french
             ? 'Supérieur à la valeur ($symbol)'
-            : (lang == AppLanguage.english ? 'Greater than value ($symbol)' : 'أكبر من القيمة ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Greater than value ($symbol)'
+                  : 'أكبر من القيمة ($symbol)');
       case NumericFilterOperator.lessThanValue:
         return lang == AppLanguage.french
             ? 'Inférieur à la valeur ($symbol)'
-            : (lang == AppLanguage.english ? 'Less than value ($symbol)' : 'أصغر من القيمة ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Less than value ($symbol)'
+                  : 'أصغر من القيمة ($symbol)');
       case NumericFilterOperator.greaterThanOrEqualValue:
         return lang == AppLanguage.french
             ? 'Supérieur ou égal à la valeur ($symbol)'
-            : (lang == AppLanguage.english ? 'Greater or equal to value ($symbol)' : 'أكبر أو يساوي القيمة ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Greater or equal to value ($symbol)'
+                  : 'أكبر أو يساوي القيمة ($symbol)');
       case NumericFilterOperator.lessThanOrEqualValue:
         return lang == AppLanguage.french
             ? 'Inférieur ou égal à la valeur ($symbol)'
-            : (lang == AppLanguage.english ? 'Less or equal to value ($symbol)' : 'أصغر أو يساوي القيمة ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Less or equal to value ($symbol)'
+                  : 'أصغر أو يساوي القيمة ($symbol)');
       case NumericFilterOperator.notEqualsValue:
         return lang == AppLanguage.french
             ? 'Différent de la valeur ($symbol)'
-            : (lang == AppLanguage.english ? 'Not equal to value ($symbol)' : 'لا يساوي القيمة ($symbol)');
+            : (lang == AppLanguage.english
+                  ? 'Not equal to value ($symbol)'
+                  : 'لا يساوي القيمة ($symbol)');
     }
   }
 }
@@ -200,7 +227,8 @@ class NumericFilterSearchField extends StatefulWidget {
   });
 
   @override
-  State<NumericFilterSearchField> createState() => _NumericFilterSearchFieldState();
+  State<NumericFilterSearchField> createState() =>
+      _NumericFilterSearchFieldState();
 }
 
 class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
@@ -251,7 +279,8 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final raw = _controller.text.trim();
     final hasNumber = double.tryParse(raw.replaceAll(',', '.')) != null;
-    final isActive = _currentOperator != NumericFilterOperator.none || raw.isNotEmpty;
+    final isActive =
+        _currentOperator != NumericFilterOperator.none || raw.isNotEmpty;
 
     final symbol = NumericFilterState(
       operator: _currentOperator,
@@ -276,7 +305,10 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
           ),
           filled: true,
           fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 0,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide(
@@ -298,7 +330,10 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
             borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.8),
           ),
           prefixIcon: PopupMenuButton<NumericFilterOperator>(
-            tooltip: Localization.translate('خيارات الفلترة الرقمية', widget.lang),
+            tooltip: Localization.translate(
+              'خيارات الفلترة الرقمية',
+              widget.lang,
+            ),
             icon: Container(
               padding: const EdgeInsets.all(4),
               child: Row(
@@ -309,12 +344,17 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
                     size: 18,
                     color: _currentOperator != NumericFilterOperator.none
                         ? const Color(0xFF2563EB)
-                        : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                        : (isDark
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade600),
                   ),
                   if (symbol.isNotEmpty) ...[
                     const SizedBox(width: 3),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1.5,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF2563EB).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
@@ -341,26 +381,78 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
             itemBuilder: (context) {
               return [
                 // 1. None
-                _buildMenuItem(NumericFilterOperator.none, Icons.clear_all_rounded, Colors.grey),
+                _buildMenuItem(
+                  NumericFilterOperator.none,
+                  Icons.clear_all_rounded,
+                  Colors.grey,
+                ),
                 const PopupMenuDivider(),
 
                 // 2. Zero comparisons
-                _buildMenuItem(NumericFilterOperator.equalsZero, Icons.exposure_zero_rounded, Colors.blue),
-                _buildMenuItem(NumericFilterOperator.notEqualsZero, Icons.remove_circle_outline_rounded, Colors.orange),
-                _buildMenuItem(NumericFilterOperator.greaterThanZero, Icons.trending_up_rounded, Colors.green),
-                _buildMenuItem(NumericFilterOperator.lessThanZero, Icons.trending_down_rounded, Colors.red),
-                _buildMenuItem(NumericFilterOperator.greaterThanOrEqualZero, Icons.keyboard_double_arrow_up_rounded, Colors.teal),
-                _buildMenuItem(NumericFilterOperator.lessThanOrEqualZero, Icons.keyboard_double_arrow_down_rounded, Colors.deepOrange),
+                _buildMenuItem(
+                  NumericFilterOperator.equalsZero,
+                  Icons.exposure_zero_rounded,
+                  Colors.blue,
+                ),
+                _buildMenuItem(
+                  NumericFilterOperator.notEqualsZero,
+                  Icons.remove_circle_outline_rounded,
+                  Colors.orange,
+                ),
+                _buildMenuItem(
+                  NumericFilterOperator.greaterThanZero,
+                  Icons.trending_up_rounded,
+                  Colors.green,
+                ),
+                _buildMenuItem(
+                  NumericFilterOperator.lessThanZero,
+                  Icons.trending_down_rounded,
+                  Colors.red,
+                ),
+                _buildMenuItem(
+                  NumericFilterOperator.greaterThanOrEqualZero,
+                  Icons.keyboard_double_arrow_up_rounded,
+                  Colors.teal,
+                ),
+                _buildMenuItem(
+                  NumericFilterOperator.lessThanOrEqualZero,
+                  Icons.keyboard_double_arrow_down_rounded,
+                  Colors.deepOrange,
+                ),
 
                 // 3. Specific value comparisons (available or highlighted if a number is typed)
                 if (hasNumber) ...[
                   const PopupMenuDivider(),
-                  _buildMenuItem(NumericFilterOperator.equalsValue, Icons.check_rounded, Colors.blue),
-                  _buildMenuItem(NumericFilterOperator.greaterThanValue, Icons.arrow_upward_rounded, Colors.green),
-                  _buildMenuItem(NumericFilterOperator.lessThanValue, Icons.arrow_downward_rounded, Colors.red),
-                  _buildMenuItem(NumericFilterOperator.greaterThanOrEqualValue, Icons.north_east_rounded, Colors.teal),
-                  _buildMenuItem(NumericFilterOperator.lessThanOrEqualValue, Icons.south_east_rounded, Colors.deepOrange),
-                  _buildMenuItem(NumericFilterOperator.notEqualsValue, Icons.close_rounded, Colors.purple),
+                  _buildMenuItem(
+                    NumericFilterOperator.equalsValue,
+                    Icons.check_rounded,
+                    Colors.blue,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.greaterThanValue,
+                    Icons.arrow_upward_rounded,
+                    Colors.green,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.lessThanValue,
+                    Icons.arrow_downward_rounded,
+                    Colors.red,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.greaterThanOrEqualValue,
+                    Icons.north_east_rounded,
+                    Colors.teal,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.lessThanOrEqualValue,
+                    Icons.south_east_rounded,
+                    Colors.deepOrange,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.notEqualsValue,
+                    Icons.close_rounded,
+                    Colors.purple,
+                  ),
                 ],
               ];
             },
@@ -384,7 +476,9 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
   ) {
     final state = NumericFilterState(
       operator: op,
-      targetValue: double.tryParse(_controller.text.trim().replaceAll(',', '.')),
+      targetValue: double.tryParse(
+        _controller.text.trim().replaceAll(',', '.'),
+      ),
     );
     final isSelected = _currentOperator == op;
 
@@ -405,7 +499,11 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
             ),
           ),
           if (isSelected)
-            const Icon(Icons.check_circle_rounded, color: Color(0xFF2563EB), size: 16),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF2563EB),
+              size: 16,
+            ),
         ],
       ),
     );
@@ -419,6 +517,8 @@ class CompactTableFilterField extends StatefulWidget {
   final TextEditingController? controller;
   final ValueChanged<String>? onTextChanged;
   final ValueChanged<NumericFilterState>? onNumericFilterChanged;
+  final List<TableFilterOption> options;
+  final String? optionsTooltip;
   final AppLanguage lang;
   final NumericFilterState initialNumericState;
 
@@ -429,12 +529,15 @@ class CompactTableFilterField extends StatefulWidget {
     this.controller,
     this.onTextChanged,
     this.onNumericFilterChanged,
+    this.options = const [],
+    this.optionsTooltip,
     this.lang = AppLanguage.arabic,
     this.initialNumericState = const NumericFilterState(),
   });
 
   @override
-  State<CompactTableFilterField> createState() => _CompactTableFilterFieldState();
+  State<CompactTableFilterField> createState() =>
+      _CompactTableFilterFieldState();
 }
 
 class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
@@ -445,7 +548,9 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
   void initState() {
     super.initState();
     _currentOperator = widget.initialNumericState.operator;
-    _controller = widget.controller ?? TextEditingController(text: widget.initialNumericState.rawQuery);
+    _controller =
+        widget.controller ??
+        TextEditingController(text: widget.initialNumericState.rawQuery);
   }
 
   @override
@@ -486,12 +591,26 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
     _notify();
   }
 
+  void _selectOption(TableFilterOption option) {
+    setState(() {
+      // Keep the field readable in the current language while the filter
+      // logic still accepts both the translated label and the raw value.
+      _controller.text = option.value.isEmpty ? '' : option.label;
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
+    });
+    _notify();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final raw = _controller.text.trim();
     final hasNumber = double.tryParse(raw.replaceAll(',', '.')) != null;
-    final isActive = (widget.isNumeric && _currentOperator != NumericFilterOperator.none) || raw.isNotEmpty;
+    final isActive =
+        (widget.isNumeric && _currentOperator != NumericFilterOperator.none) ||
+        raw.isNotEmpty;
 
     final symbol = widget.isNumeric
         ? NumericFilterState(
@@ -515,10 +634,64 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (widget.options.isNotEmpty)
+            PopupMenuButton<TableFilterOption>(
+              tooltip:
+                  widget.optionsTooltip ??
+                  Localization.translate('اختيار من القائمة', widget.lang),
+              padding: EdgeInsets.zero,
+              icon: Icon(
+                Icons.filter_list_rounded,
+                size: 13,
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+              onSelected: _selectOption,
+              itemBuilder: (context) => widget.options
+                  .map(
+                    (option) => PopupMenuItem<TableFilterOption>(
+                      value: option,
+                      child: Row(
+                        children: [
+                          Icon(
+                            option.icon ?? Icons.label_outline_rounded,
+                            size: 16,
+                            color:
+                                option.color ??
+                                (isDark
+                                    ? Colors.grey.shade300
+                                    : Colors.blueGrey.shade600),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              option.label,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                          ),
+                          if (_controller.text.trim() == option.value ||
+                              _controller.text.trim() == option.label)
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: Color(0xFF2563EB),
+                              size: 15,
+                            ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+
           // Operator dropdown for numeric fields
           if (widget.isNumeric)
             PopupMenuButton<NumericFilterOperator>(
-              tooltip: Localization.translate('خيارات الفلترة الرقمية', widget.lang),
+              tooltip: Localization.translate(
+                'خيارات الفلترة الرقمية',
+                widget.lang,
+              ),
               padding: EdgeInsets.zero,
               icon: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -538,12 +711,16 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
                       Icon(
                         Icons.filter_list_rounded,
                         size: 13,
-                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
                       ),
                     Icon(
                       Icons.arrow_drop_down,
                       size: 12,
-                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      color: isDark
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade600,
                     ),
                   ],
                 ),
@@ -551,22 +728,74 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
               onSelected: _setOperator,
               itemBuilder: (context) {
                 return [
-                  _buildMenuItem(NumericFilterOperator.none, Icons.clear_all_rounded, Colors.grey),
+                  _buildMenuItem(
+                    NumericFilterOperator.none,
+                    Icons.clear_all_rounded,
+                    Colors.grey,
+                  ),
                   const PopupMenuDivider(),
-                  _buildMenuItem(NumericFilterOperator.equalsZero, Icons.exposure_zero_rounded, Colors.blue),
-                  _buildMenuItem(NumericFilterOperator.notEqualsZero, Icons.remove_circle_outline_rounded, Colors.orange),
-                  _buildMenuItem(NumericFilterOperator.greaterThanZero, Icons.trending_up_rounded, Colors.green),
-                  _buildMenuItem(NumericFilterOperator.lessThanZero, Icons.trending_down_rounded, Colors.red),
-                  _buildMenuItem(NumericFilterOperator.greaterThanOrEqualZero, Icons.keyboard_double_arrow_up_rounded, Colors.teal),
-                  _buildMenuItem(NumericFilterOperator.lessThanOrEqualZero, Icons.keyboard_double_arrow_down_rounded, Colors.deepOrange),
+                  _buildMenuItem(
+                    NumericFilterOperator.equalsZero,
+                    Icons.exposure_zero_rounded,
+                    Colors.blue,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.notEqualsZero,
+                    Icons.remove_circle_outline_rounded,
+                    Colors.orange,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.greaterThanZero,
+                    Icons.trending_up_rounded,
+                    Colors.green,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.lessThanZero,
+                    Icons.trending_down_rounded,
+                    Colors.red,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.greaterThanOrEqualZero,
+                    Icons.keyboard_double_arrow_up_rounded,
+                    Colors.teal,
+                  ),
+                  _buildMenuItem(
+                    NumericFilterOperator.lessThanOrEqualZero,
+                    Icons.keyboard_double_arrow_down_rounded,
+                    Colors.deepOrange,
+                  ),
                   if (hasNumber) ...[
                     const PopupMenuDivider(),
-                    _buildMenuItem(NumericFilterOperator.equalsValue, Icons.check_rounded, Colors.blue),
-                    _buildMenuItem(NumericFilterOperator.greaterThanValue, Icons.arrow_upward_rounded, Colors.green),
-                    _buildMenuItem(NumericFilterOperator.lessThanValue, Icons.arrow_downward_rounded, Colors.red),
-                    _buildMenuItem(NumericFilterOperator.greaterThanOrEqualValue, Icons.north_east_rounded, Colors.teal),
-                    _buildMenuItem(NumericFilterOperator.lessThanOrEqualValue, Icons.south_east_rounded, Colors.deepOrange),
-                    _buildMenuItem(NumericFilterOperator.notEqualsValue, Icons.close_rounded, Colors.purple),
+                    _buildMenuItem(
+                      NumericFilterOperator.equalsValue,
+                      Icons.check_rounded,
+                      Colors.blue,
+                    ),
+                    _buildMenuItem(
+                      NumericFilterOperator.greaterThanValue,
+                      Icons.arrow_upward_rounded,
+                      Colors.green,
+                    ),
+                    _buildMenuItem(
+                      NumericFilterOperator.lessThanValue,
+                      Icons.arrow_downward_rounded,
+                      Colors.red,
+                    ),
+                    _buildMenuItem(
+                      NumericFilterOperator.greaterThanOrEqualValue,
+                      Icons.north_east_rounded,
+                      Colors.teal,
+                    ),
+                    _buildMenuItem(
+                      NumericFilterOperator.lessThanOrEqualValue,
+                      Icons.south_east_rounded,
+                      Colors.deepOrange,
+                    ),
+                    _buildMenuItem(
+                      NumericFilterOperator.notEqualsValue,
+                      Icons.close_rounded,
+                      Colors.purple,
+                    ),
                   ],
                 ];
               },
@@ -590,7 +819,10 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
                   color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
                 ),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 4,
+                ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -623,7 +855,9 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
   ) {
     final state = NumericFilterState(
       operator: op,
-      targetValue: double.tryParse(_controller.text.trim().replaceAll(',', '.')),
+      targetValue: double.tryParse(
+        _controller.text.trim().replaceAll(',', '.'),
+      ),
     );
     final isSelected = _currentOperator == op;
 
@@ -644,9 +878,30 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
             ),
           ),
           if (isSelected)
-            const Icon(Icons.check_circle_rounded, color: Color(0xFF2563EB), size: 15),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF2563EB),
+              size: 15,
+            ),
         ],
       ),
     );
   }
+}
+
+/// An optional predefined choice displayed inside a compact table filter.
+/// `value` is what is written to the field and used by the filter; `label` is
+/// what the user sees in the menu.
+class TableFilterOption {
+  final String value;
+  final String label;
+  final IconData? icon;
+  final Color? color;
+
+  const TableFilterOption({
+    required this.value,
+    required this.label,
+    this.icon,
+    this.color,
+  });
 }

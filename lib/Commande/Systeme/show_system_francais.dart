@@ -349,10 +349,10 @@ class _WindowViewState extends State<WindowView> {
     int seriesId,
   ) async {
     // SeriesDesignRoles is the only source for profiles on the drawing page.
-    return db.getDesignSectionsForRoles(
-      seriesId,
-      const ['frame', 'frame_extension'],
-    );
+    return db.getDesignSectionsForRoles(seriesId, const [
+      'frame',
+      'frame_extension',
+    ]);
   }
 
   Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
@@ -1953,318 +1953,465 @@ class _WindowViewState extends State<WindowView> {
             : const Color(0xFFE8EAF6),
         appBar: _buildAppBar(context),
         body: Stack(
-        children: [
-          Column(
-            children: [
-              if (isInnerDivisionSelected)
-                _buildInnerDivisionToolbar(context)
-              else if (isFrameSelected)
-                _buildFrameToolbar(context)
-              else ...[
-                if (!_isWindowsDesktop && !isMullionSelected)
-                  _buildSplitToolbar(context, hasSelection),
-                if (isMullionSelected) _buildMullionToolbar(context),
-              ],
+          children: [
+            Column(
+              children: [
+                if (isInnerDivisionSelected)
+                  _buildInnerDivisionToolbar(context)
+                else if (isFrameSelected)
+                  _buildFrameToolbar(context)
+                else ...[
+                  if (!_isWindowsDesktop && !isMullionSelected)
+                    _buildSplitToolbar(context, hasSelection),
+                  if (isMullionSelected) _buildMullionToolbar(context),
+                ],
 
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    widget.model.updateLayoutMetrics(
-                      Size(constraints.maxWidth, constraints.maxHeight),
-                    );
-                    return Stack(
-                      children: [
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTapUp: (details) async {
-                            final modelPos = _getModelPos(
-                              details.localPosition,
-                            );
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      widget.model.updateLayoutMetrics(
+                        Size(constraints.maxWidth, constraints.maxHeight),
+                      );
+                      return Stack(
+                        children: [
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapUp: (details) async {
+                              final modelPos = _getModelPos(
+                                details.localPosition,
+                              );
 
-                            // --- Individual frame dimension tap (coupled windows) ---
-                            // First check the number painted directly in
-                            // a frame profile.  This is intentionally
-                            // narrower than the surrounding profile.
-                            InnerDimensionHit? individualTap =
-                                _frameProfileDimensionHit(modelPos);
-                            if (widget.model.zones.length > 1) {
-                              final double scW = widget.model.sideCoverWidth;
-                              double offsetDistTop = 60.0;
-                              if (widget.model.hasShutter) {
-                                offsetDistTop += 20.0;
-                              }
-                              if (widget.model.hasSideCovers &&
-                                  !widget.model.removedShutterSides.contains(
-                                    'top',
-                                  )) {
-                                offsetDistTop += scW + 15.0;
-                              }
-                              double offsetDistRight = 50.0;
-                              if (widget.model.hasSideCovers &&
-                                  !widget.model.removedShutterSides.contains(
-                                    'right',
-                                  )) {
-                                offsetDistRight += scW + 15.0;
-                              }
-                              double offsetDistBottom = 50.0;
-                              if (widget.model.hasSideCovers &&
-                                  widget.model.hasBottomFrame &&
-                                  !widget.model.removedShutterSides.contains(
-                                    'bottom',
-                                  )) {
-                                offsetDistBottom += scW + 15.0;
-                              }
-                              final bool isSlantedOrArched =
-                                  widget.model.archHeight > 0 ||
-                                  widget.model.topSlantLeftY != 0 ||
-                                  widget.model.topSlantRightY != 0 ||
-                                  widget.model.bottomSlantLeftY != 0 ||
-                                  widget.model.bottomSlantRightY != 0;
+                              // --- Individual frame dimension tap (coupled windows) ---
+                              // First check the number painted directly in
+                              // a frame profile.  This is intentionally
+                              // narrower than the surrounding profile.
+                              InnerDimensionHit? individualTap =
+                                  _frameProfileDimensionHit(modelPos);
+                              if (widget.model.zones.length > 1) {
+                                final double scW = widget.model.sideCoverWidth;
+                                double offsetDistTop = 60.0;
+                                if (widget.model.hasShutter) {
+                                  offsetDistTop += 20.0;
+                                }
+                                if (widget.model.hasSideCovers &&
+                                    !widget.model.removedShutterSides.contains(
+                                      'top',
+                                    )) {
+                                  offsetDistTop += scW + 15.0;
+                                }
+                                double offsetDistRight = 50.0;
+                                if (widget.model.hasSideCovers &&
+                                    !widget.model.removedShutterSides.contains(
+                                      'right',
+                                    )) {
+                                  offsetDistRight += scW + 15.0;
+                                }
+                                double offsetDistBottom = 50.0;
+                                if (widget.model.hasSideCovers &&
+                                    widget.model.hasBottomFrame &&
+                                    !widget.model.removedShutterSides.contains(
+                                      'bottom',
+                                    )) {
+                                  offsetDistBottom += scW + 15.0;
+                                }
+                                final bool isSlantedOrArched =
+                                    widget.model.archHeight > 0 ||
+                                    widget.model.topSlantLeftY != 0 ||
+                                    widget.model.topSlantRightY != 0 ||
+                                    widget.model.bottomSlantLeftY != 0 ||
+                                    widget.model.bottomSlantRightY != 0;
 
-                              // Layer-1 width tap
-                              final vJoints = widget.model
-                                  .getVerticalFrameJoints();
-                              if (individualTap == null && vJoints.isNotEmpty) {
-                                final xCoords = [
-                                  0.0,
-                                  ...vJoints,
-                                  widget.model.width,
-                                ];
-                                for (int i = 0; i < xCoords.length - 1; i++) {
-                                  double xCenter =
-                                      (xCoords[i] + xCoords[i + 1]) / 2;
-                                  double wY;
-                                  if (isSlantedOrArched) {
-                                    double maxBottomY = math.max(
-                                      widget.model.bottomSlantLeftY,
-                                      widget.model.bottomSlantRightY,
-                                    );
-                                    wY =
-                                        widget.model.height +
-                                        maxBottomY +
-                                        offsetDistBottom;
-                                  } else {
-                                    wY = -offsetDistTop;
-                                    if (widget.model.hasShutter &&
-                                        widget.model.isCaissonTunnel) {
-                                      wY -= widget.model.shutterBoxHeight;
+                                // Layer-1 width tap
+                                final vJoints = widget.model
+                                    .getVerticalFrameJoints();
+                                if (individualTap == null &&
+                                    vJoints.isNotEmpty) {
+                                  final xCoords = [
+                                    0.0,
+                                    ...vJoints,
+                                    widget.model.width,
+                                  ];
+                                  for (int i = 0; i < xCoords.length - 1; i++) {
+                                    double xCenter =
+                                        (xCoords[i] + xCoords[i + 1]) / 2;
+                                    double wY;
+                                    if (isSlantedOrArched) {
+                                      double maxBottomY = math.max(
+                                        widget.model.bottomSlantLeftY,
+                                        widget.model.bottomSlantRightY,
+                                      );
+                                      wY =
+                                          widget.model.height +
+                                          maxBottomY +
+                                          offsetDistBottom;
+                                    } else {
+                                      wY = -offsetDistTop;
+                                      if (widget.model.hasShutter &&
+                                          widget.model.isCaissonTunnel) {
+                                        wY -= widget.model.shutterBoxHeight;
+                                      }
+                                    }
+                                    // Individual width labels are drawn one
+                                    // layer below the total width label.
+                                    if ((modelPos.dx - xCenter).abs() < 85.0 &&
+                                        (modelPos.dy - (wY + 50.0)).abs() <
+                                            28.0) {
+                                      final targetZone = widget.model.zones
+                                          .reduce(
+                                            (a, b) =>
+                                                (a.boundary.center.dx - xCenter)
+                                                        .abs() <
+                                                    (b.boundary.center.dx -
+                                                            xCenter)
+                                                        .abs()
+                                                ? a
+                                                : b,
+                                          );
+                                      individualTap = InnerDimensionHit(
+                                        targetZone.id,
+                                        true,
+                                      );
+                                      break;
                                     }
                                   }
-                                  // Individual width labels are drawn one
-                                  // layer below the total width label.
-                                  if ((modelPos.dx - xCenter).abs() < 85.0 &&
-                                      (modelPos.dy - (wY + 50.0)).abs() <
-                                          28.0) {
-                                    final targetZone = widget.model.zones
-                                        .reduce(
-                                          (a, b) =>
-                                              (a.boundary.center.dx - xCenter)
-                                                      .abs() <
-                                                  (b.boundary.center.dx -
-                                                          xCenter)
-                                                      .abs()
-                                              ? a
-                                              : b,
-                                        );
-                                    individualTap = InnerDimensionHit(
-                                      targetZone.id,
-                                      true,
-                                    );
-                                    break;
-                                  }
                                 }
-                              }
-                              // Layer-1 height tap
-                              if (individualTap == null) {
-                                final hJoints = widget.model
-                                    .getHorizontalFrameJoints();
-                                if (hJoints.isNotEmpty) {
-                                  final yCoords = [
-                                    0.0,
-                                    ...hJoints,
-                                    widget.model.height,
-                                  ];
-                                  for (int j = 0; j < yCoords.length - 1; j++) {
-                                    double yCenter =
-                                        (yCoords[j] + yCoords[j + 1]) / 2;
-                                    final individualX =
-                                        widget.model.width +
-                                        offsetDistRight +
-                                        50.0;
-                                    if ((modelPos.dy - yCenter).abs() < 85.0) {
-                                      if ((modelPos.dx - individualX).abs() <
-                                          28.0) {
-                                        final rowZones = widget.model.zones
-                                            .where(
-                                              (z) =>
-                                                  z.boundary.top <=
-                                                      yCenter + 5 &&
-                                                  z.boundary.bottom >=
-                                                      yCenter - 5,
-                                            )
-                                            .toList();
-                                        final targetZone =
-                                            (rowZones.isEmpty
-                                                    ? widget.model.zones
-                                                    : rowZones)
-                                                .reduce(
-                                                  (a, b) =>
-                                                      a.boundary.right >
-                                                          b.boundary.right
-                                                      ? a
-                                                      : b,
-                                                );
-                                        individualTap = InnerDimensionHit(
-                                          targetZone.id,
-                                          false,
-                                        );
-                                        break;
+                                // Layer-1 height tap
+                                if (individualTap == null) {
+                                  final hJoints = widget.model
+                                      .getHorizontalFrameJoints();
+                                  if (hJoints.isNotEmpty) {
+                                    final yCoords = [
+                                      0.0,
+                                      ...hJoints,
+                                      widget.model.height,
+                                    ];
+                                    for (
+                                      int j = 0;
+                                      j < yCoords.length - 1;
+                                      j++
+                                    ) {
+                                      double yCenter =
+                                          (yCoords[j] + yCoords[j + 1]) / 2;
+                                      final individualX =
+                                          widget.model.width +
+                                          offsetDistRight +
+                                          50.0;
+                                      if ((modelPos.dy - yCenter).abs() <
+                                          85.0) {
+                                        if ((modelPos.dx - individualX).abs() <
+                                            28.0) {
+                                          final rowZones = widget.model.zones
+                                              .where(
+                                                (z) =>
+                                                    z.boundary.top <=
+                                                        yCenter + 5 &&
+                                                    z.boundary.bottom >=
+                                                        yCenter - 5,
+                                              )
+                                              .toList();
+                                          final targetZone =
+                                              (rowZones.isEmpty
+                                                      ? widget.model.zones
+                                                      : rowZones)
+                                                  .reduce(
+                                                    (a, b) =>
+                                                        a.boundary.right >
+                                                            b.boundary.right
+                                                        ? a
+                                                        : b,
+                                                  );
+                                          individualTap = InnerDimensionHit(
+                                            targetZone.id,
+                                            false,
+                                          );
+                                          break;
+                                        }
                                       }
                                     }
                                   }
                                 }
                               }
-                            }
-                            if (individualTap != null) {
-                              _showFrameResizeDialog(context, individualTap);
-                              return;
-                            }
-                            // --- end individual frame tap ---
+                              if (individualTap != null) {
+                                _showFrameResizeDialog(context, individualTap);
+                                return;
+                              }
+                              // --- end individual frame tap ---
 
-                            if (_paintbrushSecondsLeft > 0 ||
-                                _isLeftDrawerOpen) {
-                              // A prepared zone type has priority over
-                              // the glass brush. This makes a choice such
-                              // as "double sash" apply to the frame that
-                              // is clicked next.
-                              if (_activePaintZoneContent != null) {
-                                WindowZone? tappedZ;
-                                for (final zone in widget.model.zones) {
-                                  if (zone.boundary.contains(modelPos)) {
-                                    tappedZ = zone;
-                                    break;
+                              if (_paintbrushSecondsLeft > 0 ||
+                                  _isLeftDrawerOpen) {
+                                // A prepared zone type has priority over
+                                // the glass brush. This makes a choice such
+                                // as "double sash" apply to the frame that
+                                // is clicked next.
+                                if (_activePaintZoneContent != null) {
+                                  WindowZone? tappedZ;
+                                  for (final zone in widget.model.zones) {
+                                    if (zone.boundary.contains(modelPos)) {
+                                      tappedZ = zone;
+                                      break;
+                                    }
+                                  }
+                                  if (tappedZ != null) {
+                                    final applied =
+                                        await _paintZoneContentFromUi(
+                                          tappedZ,
+                                          _activePaintZoneContent!,
+                                          slidingSashesCount:
+                                              _activePaintSlidingSashesCount,
+                                        );
+                                    if (applied) {
+                                      setState(() {
+                                        _paintbrushSecondsLeft = 10;
+                                      });
+                                      return;
+                                    }
                                   }
                                 }
-                                if (tappedZ != null) {
-                                  final applied = await _paintZoneContentFromUi(
-                                    tappedZ,
-                                    _activePaintZoneContent!,
-                                    slidingSashesCount:
-                                        _activePaintSlidingSashesCount,
-                                  );
-                                  if (applied) {
+                                final specToApply =
+                                    _activePaintGlassSpec ??
+                                    (widget.model.selectedZone != null
+                                        ? widget.model.selectedZone!
+                                              .getGlassForCell(
+                                                widget.model.activeSubZone,
+                                              )
+                                        : _tempGlassSpec);
+                                if (specToApply != null) {
+                                  WindowZone? tappedZ;
+                                  for (var z in widget.model.zones) {
+                                    if (z.boundary.contains(modelPos)) {
+                                      tappedZ = z;
+                                      break;
+                                    }
+                                  }
+                                  if (tappedZ != null) {
+                                    String? tappedCellId;
+                                    bool isDouble =
+                                        tappedZ.content ==
+                                        ZoneContent.doubleSash;
+                                    bool isSingle =
+                                        tappedZ.content ==
+                                        ZoneContent.singleSash;
+                                    bool isSliding =
+                                        tappedZ.content ==
+                                        ZoneContent.slidingSash;
+                                    if (isDouble || isSingle || isSliding) {
+                                      if (isSliding) {
+                                        final count =
+                                            tappedZ.slidingSashesCount;
+                                        double chicaneT = 45.0;
+                                        final series =
+                                            widget.model.activeSlidingSeries ??
+                                            widget.model.activeSeries;
+                                        if (series != null) {
+                                          for (var sec in series.sections) {
+                                            final secType = sec.type
+                                                .toLowerCase();
+                                            if (secType == 'chicane' ||
+                                                secType == 'sash_central' ||
+                                                secType == 'central' ||
+                                                secType == 'centrale') {
+                                              if (sec.visibleWidth > 0) {
+                                                chicaneT = sec.visibleWidth;
+                                              } else if (sec.thickness > 0)
+                                                chicaneT = sec.thickness;
+                                            }
+                                          }
+                                        }
+                                        final double sashWidth =
+                                            (tappedZ.boundary.width +
+                                                (count - 1) * chicaneT) /
+                                            count;
+
+                                        List<int> tracks;
+                                        if (count == 2) {
+                                          tracks =
+                                              (tappedZ.openDirection ==
+                                                  OpenDirection.left)
+                                              ? [1, 0]
+                                              : [0, 1];
+                                        } else if (count == 3) {
+                                          tracks = [0, 1, 0];
+                                        } else if (count == 4) {
+                                          tracks = [0, 1, 1, 0];
+                                        } else {
+                                          tracks = List.generate(
+                                            count,
+                                            (i) => i % 2,
+                                          );
+                                        }
+
+                                        int selectedSashIndex = -1;
+                                        for (int tg = 1; tg >= 0; tg--) {
+                                          for (int i = 0; i < count; i++) {
+                                            if (tracks[i] == tg) {
+                                              double left =
+                                                  tappedZ.boundary.left +
+                                                  i * (sashWidth - chicaneT);
+                                              Rect sashRect = Rect.fromLTRB(
+                                                left,
+                                                tappedZ.boundary.top,
+                                                left + sashWidth,
+                                                tappedZ.boundary.bottom,
+                                              );
+                                              if (sashRect.contains(modelPos)) {
+                                                selectedSashIndex = i;
+                                                break;
+                                              }
+                                            }
+                                          }
+                                          if (selectedSashIndex != -1) break;
+                                        }
+
+                                        if (selectedSashIndex == -1) {
+                                          double tX =
+                                              (modelPos.dx -
+                                                  tappedZ.boundary.left) /
+                                              tappedZ.boundary.width;
+                                          selectedSashIndex = (tX * count)
+                                              .floor()
+                                              .clamp(0, count - 1);
+                                        }
+
+                                        tappedCellId =
+                                            'main_cell_0_$selectedSashIndex';
+                                      } else {
+                                        double splitX =
+                                            tappedZ.boundary.left +
+                                            tappedZ.boundary.width *
+                                                tappedZ.doubleSashRatio;
+                                        bool isRight =
+                                            isDouble && (modelPos.dx > splitX);
+                                        Rect sashR = tappedZ.boundary;
+                                        if (isDouble) {
+                                          final sep = 4.0;
+                                          sashR = isRight
+                                              ? Rect.fromLTRB(
+                                                  splitX + sep / 2,
+                                                  tappedZ.boundary.top,
+                                                  tappedZ.boundary.right,
+                                                  tappedZ.boundary.bottom,
+                                                )
+                                              : Rect.fromLTRB(
+                                                  tappedZ.boundary.left,
+                                                  tappedZ.boundary.top,
+                                                  splitX - sep / 2,
+                                                  tappedZ.boundary.bottom,
+                                                );
+                                        }
+                                        final sashT =
+                                            tappedZ.sashThickness ??
+                                            widget.model.getSectionThickness(
+                                              'sash',
+                                              fallback: 45.0,
+                                            );
+                                        final glassR = sashR.deflate(sashT);
+                                        if (glassR.contains(modelPos)) {
+                                          int currentInnerH = isRight
+                                              ? tappedZ.rightInnerH
+                                              : tappedZ.innerH;
+                                          int currentInnerV = isRight
+                                              ? tappedZ.rightInnerV
+                                              : tappedZ.innerV;
+                                          double cellW =
+                                              glassR.width /
+                                              (currentInnerV + 1);
+                                          double cellH =
+                                              glassR.height /
+                                              (currentInnerH + 1);
+                                          final clampedX = modelPos.dx.clamp(
+                                            glassR.left + 0.1,
+                                            glassR.right - 0.1,
+                                          );
+                                          final clampedY = modelPos.dy.clamp(
+                                            glassR.top + 0.1,
+                                            glassR.bottom - 0.1,
+                                          );
+                                          int col =
+                                              ((clampedX - glassR.left) / cellW)
+                                                  .clamp(0, currentInnerV)
+                                                  .toInt();
+                                          int row =
+                                              ((clampedY - glassR.top) / cellH)
+                                                  .clamp(0, currentInnerH)
+                                                  .toInt();
+                                          String sidePrefix = isDouble
+                                              ? (isRight ? 'right' : 'left')
+                                              : 'main';
+                                          tappedCellId =
+                                              '${sidePrefix}_cell_${row}_$col';
+                                        } else {
+                                          tappedCellId = null;
+                                        }
+                                      }
+                                    } else {
+                                      // Non-sash zone (fixed glass, etc.)
+                                      final glassR = tappedZ.boundary;
+                                      int currentInnerH = tappedZ.innerH;
+                                      int currentInnerV = tappedZ.innerV;
+                                      double cellW =
+                                          glassR.width / (currentInnerV + 1);
+                                      double cellH =
+                                          glassR.height / (currentInnerH + 1);
+                                      final clampedX = modelPos.dx.clamp(
+                                        glassR.left + 0.1,
+                                        glassR.right - 0.1,
+                                      );
+                                      final clampedY = modelPos.dy.clamp(
+                                        glassR.top + 0.1,
+                                        glassR.bottom - 0.1,
+                                      );
+                                      int col =
+                                          ((clampedX - glassR.left) / cellW)
+                                              .clamp(0, currentInnerV)
+                                              .toInt();
+                                      int row =
+                                          ((clampedY - glassR.top) / cellH)
+                                              .clamp(0, currentInnerH)
+                                              .toInt();
+                                      tappedCellId = 'main_cell_${row}_$col';
+                                    }
+                                    var targetCellId = tappedCellId;
+                                    if (_isDecorPanelSpec(specToApply)) {
+                                      final placement =
+                                          await _prepareDecorPanelPlacement(
+                                            zone: tappedZ,
+                                            cellId: tappedCellId,
+                                            spec: specToApply,
+                                          );
+                                      if (!placement.allowed) return;
+                                      targetCellId = placement.cellId;
+                                    }
+                                    widget.model.paintZoneOrCellSpec(
+                                      tappedZ.id,
+                                      spec: specToApply,
+                                      cellId: targetCellId,
+                                    );
+                                    // إعادة المؤقت عند كل ضغطة ناجحة
                                     setState(() {
                                       _paintbrushSecondsLeft = 10;
                                     });
                                     return;
                                   }
-                                }
-                              }
-                              final specToApply =
-                                  _activePaintGlassSpec ??
-                                  (widget.model.selectedZone != null
-                                      ? widget.model.selectedZone!
-                                            .getGlassForCell(
-                                              widget.model.activeSubZone,
-                                            )
-                                      : _tempGlassSpec);
-                              if (specToApply != null) {
-                                WindowZone? tappedZ;
-                                for (var z in widget.model.zones) {
-                                  if (z.boundary.contains(modelPos)) {
-                                    tappedZ = z;
-                                    break;
+                                } else if (_activePaintFinish != null) {
+                                  WindowZone? tappedZ;
+                                  for (var z in widget.model.zones) {
+                                    if (z.boundary.contains(modelPos)) {
+                                      tappedZ = z;
+                                      break;
+                                    }
                                   }
-                                }
-                                if (tappedZ != null) {
-                                  String? tappedCellId;
-                                  bool isDouble =
-                                      tappedZ.content == ZoneContent.doubleSash;
-                                  bool isSingle =
-                                      tappedZ.content == ZoneContent.singleSash;
-                                  bool isSliding =
-                                      tappedZ.content ==
-                                      ZoneContent.slidingSash;
-                                  if (isDouble || isSingle || isSliding) {
-                                    if (isSliding) {
-                                      final count = tappedZ.slidingSashesCount;
-                                      double chicaneT = 45.0;
-                                      final series =
-                                          widget.model.activeSlidingSeries ??
-                                          widget.model.activeSeries;
-                                      if (series != null) {
-                                        for (var sec in series.sections) {
-                                          final secType = sec.type
-                                              .toLowerCase();
-                                          if (secType == 'chicane' ||
-                                              secType == 'sash_central' ||
-                                              secType == 'central' ||
-                                              secType == 'centrale') {
-                                            if (sec.visibleWidth > 0) {
-                                              chicaneT = sec.visibleWidth;
-                                            } else if (sec.thickness > 0)
-                                              chicaneT = sec.thickness;
-                                          }
-                                        }
-                                      }
-                                      final double sashWidth =
-                                          (tappedZ.boundary.width +
-                                              (count - 1) * chicaneT) /
-                                          count;
-
-                                      List<int> tracks;
-                                      if (count == 2) {
-                                        tracks =
-                                            (tappedZ.openDirection ==
-                                                OpenDirection.left)
-                                            ? [1, 0]
-                                            : [0, 1];
-                                      } else if (count == 3) {
-                                        tracks = [0, 1, 0];
-                                      } else if (count == 4) {
-                                        tracks = [0, 1, 1, 0];
-                                      } else {
-                                        tracks = List.generate(
-                                          count,
-                                          (i) => i % 2,
-                                        );
-                                      }
-
-                                      int selectedSashIndex = -1;
-                                      for (int tg = 1; tg >= 0; tg--) {
-                                        for (int i = 0; i < count; i++) {
-                                          if (tracks[i] == tg) {
-                                            double left =
-                                                tappedZ.boundary.left +
-                                                i * (sashWidth - chicaneT);
-                                            Rect sashRect = Rect.fromLTRB(
-                                              left,
-                                              tappedZ.boundary.top,
-                                              left + sashWidth,
-                                              tappedZ.boundary.bottom,
-                                            );
-                                            if (sashRect.contains(modelPos)) {
-                                              selectedSashIndex = i;
-                                              break;
-                                            }
-                                          }
-                                        }
-                                        if (selectedSashIndex != -1) break;
-                                      }
-
-                                      if (selectedSashIndex == -1) {
-                                        double tX =
-                                            (modelPos.dx -
-                                                tappedZ.boundary.left) /
-                                            tappedZ.boundary.width;
-                                        selectedSashIndex = (tX * count)
-                                            .floor()
-                                            .clamp(0, count - 1);
-                                      }
-
-                                      tappedCellId =
-                                          'main_cell_0_$selectedSashIndex';
-                                    } else {
+                                  if (tappedZ != null) {
+                                    String? tappedCellId;
+                                    bool isDouble =
+                                        tappedZ.content ==
+                                        ZoneContent.doubleSash;
+                                    bool isSingle =
+                                        tappedZ.content ==
+                                        ZoneContent.singleSash;
+                                    bool isSliding =
+                                        tappedZ.content ==
+                                        ZoneContent.slidingSash;
+                                    if (isDouble || isSingle || isSliding) {
                                       double splitX =
                                           tappedZ.boundary.left +
                                           tappedZ.boundary.width *
@@ -2306,20 +2453,13 @@ class _WindowViewState extends State<WindowView> {
                                             glassR.width / (currentInnerV + 1);
                                         double cellH =
                                             glassR.height / (currentInnerH + 1);
-                                        final clampedX = modelPos.dx.clamp(
-                                          glassR.left + 0.1,
-                                          glassR.right - 0.1,
-                                        );
-                                        final clampedY = modelPos.dy.clamp(
-                                          glassR.top + 0.1,
-                                          glassR.bottom - 0.1,
-                                        );
                                         int col =
-                                            ((clampedX - glassR.left) / cellW)
+                                            ((modelPos.dx - glassR.left) /
+                                                    cellW)
                                                 .clamp(0, currentInnerV)
                                                 .toInt();
                                         int row =
-                                            ((clampedY - glassR.top) / cellH)
+                                            ((modelPos.dy - glassR.top) / cellH)
                                                 .clamp(0, currentInnerH)
                                                 .toInt();
                                         String sidePrefix = isDouble
@@ -2327,343 +2467,397 @@ class _WindowViewState extends State<WindowView> {
                                             : 'main';
                                         tappedCellId =
                                             '${sidePrefix}_cell_${row}_$col';
-                                      } else {
-                                        tappedCellId = null;
+                                      }
+                                    } else {
+                                      // Non-sash zone (fixed glass, etc.)
+                                      final glassR = tappedZ.boundary;
+                                      if (glassR.contains(modelPos)) {
+                                        int currentInnerH = tappedZ.innerH;
+                                        int currentInnerV = tappedZ.innerV;
+                                        double cellW =
+                                            glassR.width / (currentInnerV + 1);
+                                        double cellH =
+                                            glassR.height / (currentInnerH + 1);
+                                        int col =
+                                            ((modelPos.dx - glassR.left) /
+                                                    cellW)
+                                                .clamp(0, currentInnerV)
+                                                .toInt();
+                                        int row =
+                                            ((modelPos.dy - glassR.top) / cellH)
+                                                .clamp(0, currentInnerH)
+                                                .toInt();
+                                        tappedCellId = 'main_cell_${row}_$col';
                                       }
                                     }
-                                  } else {
-                                    // Non-sash zone (fixed glass, etc.)
-                                    final glassR = tappedZ.boundary;
-                                    int currentInnerH = tappedZ.innerH;
-                                    int currentInnerV = tappedZ.innerV;
-                                    double cellW =
-                                        glassR.width / (currentInnerV + 1);
-                                    double cellH =
-                                        glassR.height / (currentInnerH + 1);
-                                    final clampedX = modelPos.dx.clamp(
-                                      glassR.left + 0.1,
-                                      glassR.right - 0.1,
+                                    widget.model.paintZoneOrCell(
+                                      tappedZ.id,
+                                      finish: _activePaintFinish!,
+                                      structure: _activePaintStructure!,
+                                      cellId: tappedCellId,
                                     );
-                                    final clampedY = modelPos.dy.clamp(
-                                      glassR.top + 0.1,
-                                      glassR.bottom - 0.1,
-                                    );
-                                    int col = ((clampedX - glassR.left) / cellW)
-                                        .clamp(0, currentInnerV)
-                                        .toInt();
-                                    int row = ((clampedY - glassR.top) / cellH)
-                                        .clamp(0, currentInnerH)
-                                        .toInt();
-                                    tappedCellId = 'main_cell_${row}_$col';
+                                    return;
                                   }
-                                  var targetCellId = tappedCellId;
-                                  if (_isDecorPanelSpec(specToApply)) {
-                                    final placement =
-                                        await _prepareDecorPanelPlacement(
-                                          zone: tappedZ,
-                                          cellId: tappedCellId,
-                                          spec: specToApply,
+                                } else if (_activePaintZoneContent != null) {
+                                  WindowZone? tappedZ;
+                                  for (var z in widget.model.zones) {
+                                    if (z.boundary.contains(modelPos)) {
+                                      tappedZ = z;
+                                      break;
+                                    }
+                                  }
+                                  if (tappedZ != null) {
+                                    final applied =
+                                        await _paintZoneContentFromUi(
+                                          tappedZ,
+                                          _activePaintZoneContent!,
+                                          slidingSashesCount:
+                                              _activePaintSlidingSashesCount,
                                         );
-                                    if (!placement.allowed) return;
-                                    targetCellId = placement.cellId;
+                                    if (applied) return;
                                   }
-                                  widget.model.paintZoneOrCellSpec(
-                                    tappedZ.id,
-                                    spec: specToApply,
-                                    cellId: targetCellId,
-                                  );
-                                  // إعادة المؤقت عند كل ضغطة ناجحة
+                                } else if (_activePaintCellSash) {
+                                  WindowZone? tappedZ;
+                                  for (var z in widget.model.zones) {
+                                    if (z.boundary.contains(modelPos)) {
+                                      tappedZ = z;
+                                      break;
+                                    }
+                                  }
+                                  if (tappedZ != null) {
+                                    final cellId = _getTappedCellId(
+                                      tappedZ,
+                                      modelPos,
+                                    );
+                                    if (cellId != null) {
+                                      widget.model.paintCellSash(
+                                        tappedZ.id,
+                                        cellId,
+                                        true,
+                                      );
+                                    }
+                                    return;
+                                  }
+                                } else if (_activePaintCellPanel) {
+                                  WindowZone? tappedZ;
+                                  for (var z in widget.model.zones) {
+                                    if (z.boundary.contains(modelPos)) {
+                                      tappedZ = z;
+                                      break;
+                                    }
+                                  }
+                                  if (tappedZ != null) {
+                                    final cellId = _getTappedCellId(
+                                      tappedZ,
+                                      modelPos,
+                                    );
+                                    if (cellId != null) {
+                                      widget.model.paintCellPanel(
+                                        tappedZ.id,
+                                        cellId,
+                                        true,
+                                      );
+                                    }
+                                    return;
+                                  }
+                                }
+                              }
+
+                              final outerTap = widget.model
+                                  .checkOuterDimensionTap(modelPos);
+                              // The compact number inside each outer frame
+                              // has priority over the general dimension
+                              // areas, so only the visible number opens its
+                              // own edit dialog.
+                              final innerTap =
+                                  _frameProfileDimensionHit(modelPos) ??
+                                  widget.model.checkInnerDimensionTap(modelPos);
+                              final mullionDimTap = widget.model
+                                  .checkMullionDimensionTap(modelPos);
+
+                              bool tappedZone = false;
+                              for (var z in widget.model.zones) {
+                                if (z.boundary.contains(modelPos)) {
+                                  tappedZone = true;
+                                  break;
+                                }
+                              }
+
+                              bool tappedMullion = false;
+                              bool? tappedMullionIsHorizontal;
+                              double? tappedMullionPosition;
+                              double nearestMullionDistance = double.infinity;
+                              double hitSlop = 40.0;
+                              final mullionT = widget.model.mullionThickness;
+                              for (
+                                int i = 0;
+                                i < widget.model.zones.length;
+                                i++
+                              ) {
+                                for (
+                                  int j = i + 1;
+                                  j < widget.model.zones.length;
+                                  j++
+                                ) {
+                                  final z1 = widget.model.zones[i].boundary;
+                                  final z2 = widget.model.zones[j].boundary;
+                                  if ((z1.bottom - z2.top).abs() <=
+                                          mullionT + 2 ||
+                                      (z2.bottom - z1.top).abs() <=
+                                          mullionT + 2) {
+                                    double yCenter = (z1.bottom + z2.top) / 2;
+                                    if ((z2.bottom - z1.top).abs() <=
+                                        mullionT + 2) {
+                                      yCenter = (z2.bottom + z1.top) / 2;
+                                    }
+                                    double overlapLeft = math.max(
+                                      z1.left,
+                                      z2.left,
+                                    );
+                                    double overlapRight = math.min(
+                                      z1.right,
+                                      z2.right,
+                                    );
+                                    if (overlapLeft < overlapRight &&
+                                        modelPos.dx >= overlapLeft &&
+                                        modelPos.dx <= overlapRight &&
+                                        (modelPos.dy - yCenter).abs() <
+                                            hitSlop) {
+                                      final distance = (modelPos.dy - yCenter)
+                                          .abs();
+                                      if (distance < nearestMullionDistance) {
+                                        tappedMullion = true;
+                                        tappedMullionIsHorizontal = true;
+                                        tappedMullionPosition = yCenter;
+                                        nearestMullionDistance = distance;
+                                      }
+                                    }
+                                  }
+                                  if ((z1.right - z2.left).abs() <=
+                                          mullionT + 2 ||
+                                      (z2.right - z1.left).abs() <=
+                                          mullionT + 2) {
+                                    double xCenter = (z1.right + z2.left) / 2;
+                                    if ((z2.right - z1.left).abs() <=
+                                        mullionT + 2) {
+                                      xCenter = (z2.right + z1.left) / 2;
+                                    }
+                                    double overlapTop = math.max(
+                                      z1.top,
+                                      z2.top,
+                                    );
+                                    double overlapBottom = math.min(
+                                      z1.bottom,
+                                      z2.bottom,
+                                    );
+                                    if (overlapTop < overlapBottom &&
+                                        modelPos.dy >= overlapTop &&
+                                        modelPos.dy <= overlapBottom &&
+                                        (modelPos.dx - xCenter).abs() <
+                                            hitSlop) {
+                                      final distance = (modelPos.dx - xCenter)
+                                          .abs();
+                                      if (distance < nearestMullionDistance) {
+                                        tappedMullion = true;
+                                        tappedMullionIsHorizontal = false;
+                                        tappedMullionPosition = xCenter;
+                                        nearestMullionDistance = distance;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+
+                              final now = DateTime.now();
+                              bool isDoubleTap = false;
+                              if (_lastTapTime != null &&
+                                  now.difference(_lastTapTime!) <
+                                      const Duration(milliseconds: 300)) {
+                                if (_lastTapPosition != null &&
+                                    (details.localPosition - _lastTapPosition!)
+                                            .distance <
+                                        30.0) {
+                                  isDoubleTap = true;
+                                }
+                              }
+                              _lastTapTime = now;
+                              _lastTapPosition = details.localPosition;
+
+                              if (!tappedZone &&
+                                  !tappedMullion &&
+                                  outerTap == DimensionTap.none &&
+                                  innerTap == null &&
+                                  mullionDimTap == null) {
+                                if (_isDrawerOpen || _isLeftDrawerOpen) {
                                   setState(() {
-                                    _paintbrushSecondsLeft = 10;
+                                    _isDrawerOpen = false;
+                                    _isLeftDrawerOpen = false;
                                   });
                                   return;
                                 }
-                              } else if (_activePaintFinish != null) {
-                                WindowZone? tappedZ;
-                                for (var z in widget.model.zones) {
-                                  if (z.boundary.contains(modelPos)) {
-                                    tappedZ = z;
-                                    break;
-                                  }
+                                if (_isBottomPanelExpanded ||
+                                    _isShutterSelected) {
+                                  setState(() {
+                                    _isBottomPanelExpanded = false;
+                                    _isShutterSelected = false;
+                                  });
+                                  widget.model.clearSelection();
+                                  return;
                                 }
-                                if (tappedZ != null) {
-                                  String? tappedCellId;
-                                  bool isDouble =
-                                      tappedZ.content == ZoneContent.doubleSash;
-                                  bool isSingle =
-                                      tappedZ.content == ZoneContent.singleSash;
-                                  bool isSliding =
+                              }
+
+                              if (outerTap != DimensionTap.none) {
+                                _showResizeDialog(
+                                  context,
+                                  focusWidth: outerTap == DimensionTap.width,
+                                );
+                                return;
+                              }
+                              if (innerTap != null) {
+                                _showInnerResizeDialog(context, innerTap);
+                                return;
+                              }
+                              if (mullionDimTap != null) {
+                                _showMullionResizeDialog(
+                                  context,
+                                  mullionDimTap,
+                                );
+                                return;
+                              }
+
+                              if (isDoubleTap) {
+                                final double h = widget.model.height;
+                                if (modelPos.dy >= h - 30.0 &&
+                                    modelPos.dy <= h + 250.0) {
+                                  widget.model.toggleBottomWall();
+                                  return;
+                                }
+
+                                if (tappedMullion &&
+                                    tappedMullionIsHorizontal != null &&
+                                    tappedMullionPosition != null) {
+                                  widget.model.selectAt(
+                                    modelPos,
+                                    isLongPress: false,
+                                  );
+                                  _showMullionTypeDialog(context);
+                                  return;
+                                }
+                              }
+
+                              if (widget.model.hasShutter &&
+                                  !tappedZone &&
+                                  !tappedMullion &&
+                                  outerTap == DimensionTap.none &&
+                                  innerTap == null &&
+                                  mullionDimTap == null) {
+                                final double shutterTop =
+                                    -widget.model.shutterBoxHeight;
+                                final double shutterBottom =
+                                    widget.model.topSlantLeftY;
+                                if (modelPos.dy >= shutterTop - 20 &&
+                                    modelPos.dy <= shutterBottom + 10 &&
+                                    modelPos.dx >= -20 &&
+                                    modelPos.dx <= widget.model.width + 20) {
+                                  setState(() {
+                                    _isShutterSelected = true;
+                                    _isBottomPanelExpanded = true;
+                                    _activeShutterTab = 0;
+                                    widget.model.clearSelection();
+                                  });
+                                  if (_shutterLamesOptions.isEmpty &&
+                                      _shutterCoulisseOptions.isEmpty) {
+                                    _loadShutterOptions();
+                                  }
+                                  return;
+                                }
+                              }
+
+                              // In a coupled drawing the physical border
+                              // selects that frame itself, not the content
+                              // inside it.  Its eight resize handles then
+                              // become available.
+                              final frameAtBorder = _frameAtBorder(modelPos);
+                              if (frameAtBorder != null) {
+                                setState(() {
+                                  _isShutterSelected = false;
+                                  _isBottomPanelExpanded = true;
+                                });
+                                widget.model.selectFrameByIndex(frameAtBorder);
+                                return;
+                              }
+
+                              setState(() {
+                                _isShutterSelected = false;
+                                _isBottomPanelExpanded = true;
+                              });
+                              widget.model.selectAt(
+                                modelPos,
+                                isLongPress: false,
+                              );
+
+                              if (!widget.model.isShutterOnly &&
+                                  isDoubleTap &&
+                                  tappedZone) {
+                                setState(() {
+                                  _isLeftDrawerOpen = true;
+                                });
+                              }
+                            },
+                            onSecondaryTapDown: (details) async {
+                              await _showDesktopContextMenu(
+                                context,
+                                details.globalPosition,
+                                details.localPosition,
+                              );
+                            },
+                            onLongPressStart: (details) async {
+                              final modelPos = _getModelPos(
+                                details.localPosition,
+                              );
+                              WindowZone? tappedZ;
+                              for (var z in widget.model.zones) {
+                                if (z.boundary.contains(modelPos)) {
+                                  tappedZ = z;
+                                  break;
+                                }
+                              }
+                              if (tappedZ != null &&
+                                  (tappedZ.content == ZoneContent.singleSash ||
                                       tappedZ.content ==
-                                      ZoneContent.slidingSash;
-                                  if (isDouble || isSingle || isSliding) {
-                                    double splitX =
-                                        tappedZ.boundary.left +
-                                        tappedZ.boundary.width *
-                                            tappedZ.doubleSashRatio;
-                                    bool isRight =
-                                        isDouble && (modelPos.dx > splitX);
-                                    Rect sashR = tappedZ.boundary;
-                                    if (isDouble) {
-                                      final sep = 4.0;
-                                      sashR = isRight
-                                          ? Rect.fromLTRB(
-                                              splitX + sep / 2,
-                                              tappedZ.boundary.top,
-                                              tappedZ.boundary.right,
-                                              tappedZ.boundary.bottom,
-                                            )
-                                          : Rect.fromLTRB(
-                                              tappedZ.boundary.left,
-                                              tappedZ.boundary.top,
-                                              splitX - sep / 2,
-                                              tappedZ.boundary.bottom,
-                                            );
-                                    }
-                                    final sashT =
-                                        tappedZ.sashThickness ??
-                                        widget.model.getSectionThickness(
-                                          'sash',
-                                          fallback: 45.0,
-                                        );
-                                    final glassR = sashR.deflate(sashT);
-                                    if (glassR.contains(modelPos)) {
-                                      int currentInnerH = isRight
-                                          ? tappedZ.rightInnerH
-                                          : tappedZ.innerH;
-                                      int currentInnerV = isRight
-                                          ? tappedZ.rightInnerV
-                                          : tappedZ.innerV;
-                                      double cellW =
-                                          glassR.width / (currentInnerV + 1);
-                                      double cellH =
-                                          glassR.height / (currentInnerH + 1);
-                                      int col =
-                                          ((modelPos.dx - glassR.left) / cellW)
-                                              .clamp(0, currentInnerV)
-                                              .toInt();
-                                      int row =
-                                          ((modelPos.dy - glassR.top) / cellH)
-                                              .clamp(0, currentInnerH)
-                                              .toInt();
-                                      String sidePrefix = isDouble
-                                          ? (isRight ? 'right' : 'left')
-                                          : 'main';
-                                      tappedCellId =
-                                          '${sidePrefix}_cell_${row}_$col';
-                                    }
-                                  } else {
-                                    // Non-sash zone (fixed glass, etc.)
-                                    final glassR = tappedZ.boundary;
-                                    if (glassR.contains(modelPos)) {
-                                      int currentInnerH = tappedZ.innerH;
-                                      int currentInnerV = tappedZ.innerV;
-                                      double cellW =
-                                          glassR.width / (currentInnerV + 1);
-                                      double cellH =
-                                          glassR.height / (currentInnerH + 1);
-                                      int col =
-                                          ((modelPos.dx - glassR.left) / cellW)
-                                              .clamp(0, currentInnerV)
-                                              .toInt();
-                                      int row =
-                                          ((modelPos.dy - glassR.top) / cellH)
-                                              .clamp(0, currentInnerH)
-                                              .toInt();
-                                      tappedCellId = 'main_cell_${row}_$col';
-                                    }
-                                  }
-                                  widget.model.paintZoneOrCell(
-                                    tappedZ.id,
-                                    finish: _activePaintFinish!,
-                                    structure: _activePaintStructure!,
-                                    cellId: tappedCellId,
+                                          ZoneContent.doubleSash ||
+                                      tappedZ.content ==
+                                          ZoneContent.slidingSash)) {
+                                _suppressHandleDragForLongPress = true;
+                                _isDraggingHandle = false;
+                                _isDraggingHinge = false;
+                              }
+
+                              if (_isLeftDrawerOpen ||
+                                  _paintbrushSecondsLeft > 0) {
+                                final specToApply =
+                                    _activePaintGlassSpec ??
+                                    (widget.model.selectedZone != null
+                                        ? widget.model.selectedZone!
+                                              .getGlassForCell(
+                                                widget.model.activeSubZone,
+                                              )
+                                        : _tempGlassSpec);
+                                if (specToApply != null && tappedZ != null) {
+                                  widget.model.paintAllZonesSpec(specToApply);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'تم تعميم نوع البانو/الزجاج على جميع المناطق',
+                                      ),
+                                      backgroundColor: Colors.blue,
+                                      duration: Duration(seconds: 2),
+                                    ),
                                   );
                                   return;
                                 }
-                              } else if (_activePaintZoneContent != null) {
-                                WindowZone? tappedZ;
-                                for (var z in widget.model.zones) {
-                                  if (z.boundary.contains(modelPos)) {
-                                    tappedZ = z;
-                                    break;
-                                  }
-                                }
-                                if (tappedZ != null) {
-                                  final applied = await _paintZoneContentFromUi(
-                                    tappedZ,
-                                    _activePaintZoneContent!,
-                                    slidingSashesCount:
-                                        _activePaintSlidingSashesCount,
-                                  );
-                                  if (applied) return;
-                                }
-                              } else if (_activePaintCellSash) {
-                                WindowZone? tappedZ;
-                                for (var z in widget.model.zones) {
-                                  if (z.boundary.contains(modelPos)) {
-                                    tappedZ = z;
-                                    break;
-                                  }
-                                }
-                                if (tappedZ != null) {
-                                  final cellId = _getTappedCellId(
-                                    tappedZ,
-                                    modelPos,
-                                  );
-                                  if (cellId != null) {
-                                    widget.model.paintCellSash(
-                                      tappedZ.id,
-                                      cellId,
-                                      true,
-                                    );
-                                  }
-                                  return;
-                                }
-                              } else if (_activePaintCellPanel) {
-                                WindowZone? tappedZ;
-                                for (var z in widget.model.zones) {
-                                  if (z.boundary.contains(modelPos)) {
-                                    tappedZ = z;
-                                    break;
-                                  }
-                                }
-                                if (tappedZ != null) {
-                                  final cellId = _getTappedCellId(
-                                    tappedZ,
-                                    modelPos,
-                                  );
-                                  if (cellId != null) {
-                                    widget.model.paintCellPanel(
-                                      tappedZ.id,
-                                      cellId,
-                                      true,
-                                    );
-                                  }
-                                  return;
-                                }
                               }
-                            }
 
-                            final outerTap = widget.model
-                                .checkOuterDimensionTap(modelPos);
-                            // The compact number inside each outer frame
-                            // has priority over the general dimension
-                            // areas, so only the visible number opens its
-                            // own edit dialog.
-                            final innerTap =
-                                _frameProfileDimensionHit(modelPos) ??
-                                widget.model.checkInnerDimensionTap(modelPos);
-                            final mullionDimTap = widget.model
-                                .checkMullionDimensionTap(modelPos);
-
-                            bool tappedZone = false;
-                            for (var z in widget.model.zones) {
-                              if (z.boundary.contains(modelPos)) {
-                                tappedZone = true;
-                                break;
-                              }
-                            }
-
-                            bool tappedMullion = false;
-                            bool? tappedMullionIsHorizontal;
-                            double? tappedMullionPosition;
-                            double nearestMullionDistance = double.infinity;
-                            double hitSlop = 40.0;
-                            final mullionT = widget.model.mullionThickness;
-                            for (
-                              int i = 0;
-                              i < widget.model.zones.length;
-                              i++
-                            ) {
-                              for (
-                                int j = i + 1;
-                                j < widget.model.zones.length;
-                                j++
-                              ) {
-                                final z1 = widget.model.zones[i].boundary;
-                                final z2 = widget.model.zones[j].boundary;
-                                if ((z1.bottom - z2.top).abs() <=
-                                        mullionT + 2 ||
-                                    (z2.bottom - z1.top).abs() <=
-                                        mullionT + 2) {
-                                  double yCenter = (z1.bottom + z2.top) / 2;
-                                  if ((z2.bottom - z1.top).abs() <=
-                                      mullionT + 2) {
-                                    yCenter = (z2.bottom + z1.top) / 2;
-                                  }
-                                  double overlapLeft = math.max(
-                                    z1.left,
-                                    z2.left,
-                                  );
-                                  double overlapRight = math.min(
-                                    z1.right,
-                                    z2.right,
-                                  );
-                                  if (overlapLeft < overlapRight &&
-                                      modelPos.dx >= overlapLeft &&
-                                      modelPos.dx <= overlapRight &&
-                                      (modelPos.dy - yCenter).abs() < hitSlop) {
-                                    final distance = (modelPos.dy - yCenter)
-                                        .abs();
-                                    if (distance < nearestMullionDistance) {
-                                      tappedMullion = true;
-                                      tappedMullionIsHorizontal = true;
-                                      tappedMullionPosition = yCenter;
-                                      nearestMullionDistance = distance;
-                                    }
-                                  }
-                                }
-                                if ((z1.right - z2.left).abs() <=
-                                        mullionT + 2 ||
-                                    (z2.right - z1.left).abs() <=
-                                        mullionT + 2) {
-                                  double xCenter = (z1.right + z2.left) / 2;
-                                  if ((z2.right - z1.left).abs() <=
-                                      mullionT + 2) {
-                                    xCenter = (z2.right + z1.left) / 2;
-                                  }
-                                  double overlapTop = math.max(z1.top, z2.top);
-                                  double overlapBottom = math.min(
-                                    z1.bottom,
-                                    z2.bottom,
-                                  );
-                                  if (overlapTop < overlapBottom &&
-                                      modelPos.dy >= overlapTop &&
-                                      modelPos.dy <= overlapBottom &&
-                                      (modelPos.dx - xCenter).abs() < hitSlop) {
-                                    final distance = (modelPos.dx - xCenter)
-                                        .abs();
-                                    if (distance < nearestMullionDistance) {
-                                      tappedMullion = true;
-                                      tappedMullionIsHorizontal = false;
-                                      tappedMullionPosition = xCenter;
-                                      nearestMullionDistance = distance;
-                                    }
-                                  }
-                                }
-                              }
-                            }
-
-                            final now = DateTime.now();
-                            bool isDoubleTap = false;
-                            if (_lastTapTime != null &&
-                                now.difference(_lastTapTime!) <
-                                    const Duration(milliseconds: 300)) {
-                              if (_lastTapPosition != null &&
-                                  (details.localPosition - _lastTapPosition!)
-                                          .distance <
-                                      30.0) {
-                                isDoubleTap = true;
-                              }
-                            }
-                            _lastTapTime = now;
-                            _lastTapPosition = details.localPosition;
-
-                            if (!tappedZone &&
-                                !tappedMullion &&
-                                outerTap == DimensionTap.none &&
-                                innerTap == null &&
-                                mullionDimTap == null) {
                               if (_isDrawerOpen || _isLeftDrawerOpen) {
                                 setState(() {
                                   _isDrawerOpen = false;
@@ -2671,665 +2865,584 @@ class _WindowViewState extends State<WindowView> {
                                 });
                                 return;
                               }
-                              if (_isBottomPanelExpanded ||
-                                  _isShutterSelected) {
-                                setState(() {
-                                  _isBottomPanelExpanded = false;
-                                  _isShutterSelected = false;
-                                });
-                                widget.model.clearSelection();
-                                return;
-                              }
-                            }
-
-                            if (outerTap != DimensionTap.none) {
-                              _showResizeDialog(
-                                context,
-                                focusWidth: outerTap == DimensionTap.width,
+                              widget.model.selectAt(
+                                modelPos,
+                                isLongPress: true,
                               );
-                              return;
-                            }
-                            if (innerTap != null) {
-                              _showInnerResizeDialog(context, innerTap);
-                              return;
-                            }
-                            if (mullionDimTap != null) {
-                              _showMullionResizeDialog(context, mullionDimTap);
-                              return;
-                            }
 
-                            if (isDoubleTap) {
-                              final double h = widget.model.height;
-                              if (modelPos.dy >= h - 30.0 &&
-                                  modelPos.dy <= h + 250.0) {
-                                widget.model.toggleBottomWall();
+                              if (widget.model.selection.type ==
+                                  SelectionType.mullion) {
+                                widget.model.deleteSelectedMullion();
                                 return;
                               }
-
-                              if (tappedMullion &&
-                                  tappedMullionIsHorizontal != null &&
-                                  tappedMullionPosition != null) {
-                                widget.model.selectAt(
-                                  modelPos,
-                                  isLongPress: false,
-                                );
-                                _showMullionTypeDialog(context);
+                              if (widget.model.selection.type ==
+                                  SelectionType.innerDivision) {
+                                widget.model.deleteSelectedInnerDivision();
                                 return;
                               }
-                            }
-
-                            if (widget.model.hasShutter &&
-                                !tappedZone &&
-                                !tappedMullion &&
-                                outerTap == DimensionTap.none &&
-                                innerTap == null &&
-                                mullionDimTap == null) {
-                              final double shutterTop =
-                                  -widget.model.shutterBoxHeight;
-                              final double shutterBottom =
-                                  widget.model.topSlantLeftY;
-                              if (modelPos.dy >= shutterTop - 20 &&
-                                  modelPos.dy <= shutterBottom + 10 &&
-                                  modelPos.dx >= -20 &&
-                                  modelPos.dx <= widget.model.width + 20) {
-                                setState(() {
-                                  _isShutterSelected = true;
-                                  _isBottomPanelExpanded = true;
-                                  _activeShutterTab = 0;
-                                  widget.model.clearSelection();
-                                });
-                                if (_shutterLamesOptions.isEmpty &&
-                                    _shutterCoulisseOptions.isEmpty) {
-                                  _loadShutterOptions();
+                              if (widget.model.selection.type ==
+                                  SelectionType.frame) {
+                                if (widget.model.getFrameRects().length > 1) {
+                                  widget.model.deleteSelectedFrame();
+                                  return;
                                 }
-                                return;
-                              }
-                            }
-
-                            // In a coupled drawing the physical border
-                            // selects that frame itself, not the content
-                            // inside it.  Its eight resize handles then
-                            // become available.
-                            final frameAtBorder = _frameAtBorder(modelPos);
-                            if (frameAtBorder != null) {
-                              setState(() {
-                                _isShutterSelected = false;
-                                _isBottomPanelExpanded = true;
-                              });
-                              widget.model.selectFrameByIndex(frameAtBorder);
-                              return;
-                            }
-
-                            setState(() {
-                              _isShutterSelected = false;
-                              _isBottomPanelExpanded = true;
-                            });
-                            widget.model.selectAt(modelPos, isLongPress: false);
-
-                            if (!widget.model.isShutterOnly &&
-                                isDoubleTap &&
-                                tappedZone) {
-                              setState(() {
-                                _isLeftDrawerOpen = true;
-                              });
-                            }
-                          },
-                          onSecondaryTapDown: (details) async {
-                            await _showDesktopContextMenu(
-                              context,
-                              details.globalPosition,
-                              details.localPosition,
-                            );
-                          },
-                          onLongPressStart: (details) async {
-                            final modelPos = _getModelPos(
-                              details.localPosition,
-                            );
-                            WindowZone? tappedZ;
-                            for (var z in widget.model.zones) {
-                              if (z.boundary.contains(modelPos)) {
-                                tappedZ = z;
-                                break;
-                              }
-                            }
-                            if (tappedZ != null &&
-                                (tappedZ.content == ZoneContent.singleSash ||
-                                    tappedZ.content == ZoneContent.doubleSash ||
-                                    tappedZ.content ==
-                                        ZoneContent.slidingSash)) {
-                              _suppressHandleDragForLongPress = true;
-                              _isDraggingHandle = false;
-                              _isDraggingHinge = false;
-                            }
-
-                            if (_isLeftDrawerOpen ||
-                                _paintbrushSecondsLeft > 0) {
-                              final specToApply =
-                                  _activePaintGlassSpec ??
-                                  (widget.model.selectedZone != null
-                                      ? widget.model.selectedZone!
-                                            .getGlassForCell(
-                                              widget.model.activeSubZone,
-                                            )
-                                      : _tempGlassSpec);
-                              if (specToApply != null && tappedZ != null) {
-                                widget.model.paintAllZonesSpec(specToApply);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'تم تعميم نوع البانو/الزجاج على جميع المناطق',
-                                    ),
-                                    backgroundColor: Colors.blue,
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                                return;
-                              }
-                            }
-
-                            if (_isDrawerOpen || _isLeftDrawerOpen) {
-                              setState(() {
-                                _isDrawerOpen = false;
-                                _isLeftDrawerOpen = false;
-                              });
-                              return;
-                            }
-                            widget.model.selectAt(modelPos, isLongPress: true);
-
-                            if (widget.model.selection.type ==
-                                SelectionType.mullion) {
-                              widget.model.deleteSelectedMullion();
-                              return;
-                            }
-                            if (widget.model.selection.type ==
-                                SelectionType.innerDivision) {
-                              widget.model.deleteSelectedInnerDivision();
-                              return;
-                            }
-                            if (widget.model.selection.type ==
-                                SelectionType.frame) {
-                              if (widget.model.getFrameRects().length > 1) {
-                                widget.model.deleteSelectedFrame();
-                                return;
-                              }
-                              if (widget.model.canBeArchedOrSlanted) {
-                                widget.model.selection = SelectionInfo(
-                                  type: SelectionType.frame,
-                                );
-                                widget.model.showZoneMenu = false;
-                                widget.model.activeSubZone = null;
-                                widget.model.refreshUI();
-                                ScaffoldMessenger.of(
-                                  context,
-                                ).hideCurrentSnackBar();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Row(
-                                      children: [
-                                        Icon(
-                                          Icons.gesture_rounded,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                        SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
+                                if (widget.model.canBeArchedOrSlanted) {
+                                  widget.model.selection = SelectionInfo(
+                                    type: SelectionType.frame,
+                                  );
+                                  widget.model.showZoneMenu = false;
+                                  widget.model.activeSubZone = null;
+                                  widget.model.refreshUI();
+                                  ScaffoldMessenger.of(
+                                    context,
+                                  ).hideCurrentSnackBar();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Row(
+                                        children: [
+                                          Icon(
+                                            Icons.gesture_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
+                                      backgroundColor: Colors.amber.shade900,
+                                      duration: const Duration(
+                                        milliseconds: 2200,
+                                      ),
+                                      behavior: SnackBarBehavior.floating,
                                     ),
-                                    backgroundColor: Colors.amber.shade900,
-                                    duration: const Duration(
-                                      milliseconds: 2200,
-                                    ),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                                return;
+                                  );
+                                  return;
+                                }
                               }
-                            }
 
-                            final zone = widget.model.selectedZone;
-                            final cellKey = widget.model.activeSubZone;
-                            if (zone != null &&
-                                cellKey != null &&
-                                cellKey.contains('_cell_')) {
-                              final hasSash =
-                                  zone.cellIsSash[cellKey] == true ||
-                                  zone.cellIsDoubleSash[cellKey] == true;
-                              if (hasSash) {
-                                final selected =
-                                    await showDialog<Map<String, dynamic>>(
-                                      context: context,
-                                      builder: (context) =>
-                                          ProfileSelectorDialog(
-                                            profileType: 'sash',
-                                            seriesId: activeSeriesForSystem?.id,
-                                            hasSimpleGlassForReducer: widget
-                                                .model
-                                                .hasSimpleGlassForReducer,
-                                            hasDoubleGlassForRules: widget
-                                                .model
-                                                .hasDoubleGlassForRules,
-                                          ),
-                                    );
-                                if (!mounted || selected == null) return;
-                                final mutableSelected =
-                                    Map<String, dynamic>.from(selected);
-                                mutableSelected['calculated_price'] =
-                                    await _sectionPriceForSelectedColor(
-                                      mutableSelected,
-                                    );
-                                if (!mounted) return;
-
-                                setState(() {
-                                  final newOverrides =
-                                      Map<String, Map<String, dynamic>>.from(
-                                        zone.cellSashOverrides,
+                              final zone = widget.model.selectedZone;
+                              final cellKey = widget.model.activeSubZone;
+                              if (zone != null &&
+                                  cellKey != null &&
+                                  cellKey.contains('_cell_')) {
+                                final hasSash =
+                                    zone.cellIsSash[cellKey] == true ||
+                                    zone.cellIsDoubleSash[cellKey] == true;
+                                if (hasSash) {
+                                  final selected =
+                                      await showDialog<Map<String, dynamic>>(
+                                        context: context,
+                                        builder: (context) =>
+                                            ProfileSelectorDialog(
+                                              profileType: 'sash',
+                                              seriesId:
+                                                  activeSeriesForSystem?.id,
+                                              hasSimpleGlassForReducer: widget
+                                                  .model
+                                                  .hasSimpleGlassForReducer,
+                                              hasDoubleGlassForRules: widget
+                                                  .model
+                                                  .hasDoubleGlassForRules,
+                                            ),
                                       );
-                                  newOverrides[cellKey] = mutableSelected;
-                                  zone.cellSashOverrides = newOverrides;
-                                  widget.model.refreshUI();
+                                  if (!mounted || selected == null) return;
+                                  final mutableSelected =
+                                      Map<String, dynamic>.from(selected);
+                                  mutableSelected['calculated_price'] =
+                                      await _sectionPriceForSelectedColor(
+                                        mutableSelected,
+                                      );
+                                  if (!mounted) return;
+
+                                  setState(() {
+                                    final newOverrides =
+                                        Map<String, Map<String, dynamic>>.from(
+                                          zone.cellSashOverrides,
+                                        );
+                                    newOverrides[cellKey] = mutableSelected;
+                                    zone.cellSashOverrides = newOverrides;
+                                    widget.model.refreshUI();
+                                  });
+                                }
+                              }
+                            },
+                            onScaleStart: (details) {
+                              if (_isDrawerOpen || _isLeftDrawerOpen) {
+                                setState(() {
+                                  _isDrawerOpen = false;
+                                  _isLeftDrawerOpen = false;
                                 });
                               }
-                            }
-                          },
-                          onScaleStart: (details) {
-                            if (_isDrawerOpen || _isLeftDrawerOpen) {
-                              setState(() {
-                                _isDrawerOpen = false;
-                                _isLeftDrawerOpen = false;
-                              });
-                            }
-                            _baseUserScale = _userScale;
-                            _baseUserPan = _userPan;
-                            _focalPointStart = details.localFocalPoint;
+                              _baseUserScale = _userScale;
+                              _baseUserPan = _userPan;
+                              _focalPointStart = details.localFocalPoint;
 
-                            if (details.pointerCount < 2) {
-                              final modelPos = _getModelPos(
-                                details.localFocalPoint,
-                              );
+                              if (details.pointerCount < 2) {
+                                final modelPos = _getModelPos(
+                                  details.localFocalPoint,
+                                );
 
-                              // Helper to map model coordinates to screen pixels for comfortable hit-testing
-                              Offset modelToScreen(Offset mPos) {
-                                return _modelToScreen(mPos);
-                              }
+                                // Helper to map model coordinates to screen pixels for comfortable hit-testing
+                                Offset modelToScreen(Offset mPos) {
+                                  return _modelToScreen(mPos);
+                                }
 
-                              final tlScreen = modelToScreen(
-                                Offset(0, widget.model.topSlantLeftY),
-                              );
-                              final trScreen = modelToScreen(
-                                Offset(
-                                  widget.model.width,
-                                  widget.model.topSlantRightY,
-                                ),
-                              );
-                              final tcScreen = modelToScreen(
-                                Offset(
-                                  widget.model.width / 2,
-                                  math.min(
-                                        widget.model.topSlantLeftY,
-                                        widget.model.topSlantRightY,
-                                      ) -
-                                      (widget.model.archHeight * 2),
-                                ),
-                              );
-                              final touchScreen = details.localFocalPoint;
-                              const double hitRadius = 35.0;
+                                final tlScreen = modelToScreen(
+                                  Offset(0, widget.model.topSlantLeftY),
+                                );
+                                final trScreen = modelToScreen(
+                                  Offset(
+                                    widget.model.width,
+                                    widget.model.topSlantRightY,
+                                  ),
+                                );
+                                final tcScreen = modelToScreen(
+                                  Offset(
+                                    widget.model.width / 2,
+                                    math.min(
+                                          widget.model.topSlantLeftY,
+                                          widget.model.topSlantRightY,
+                                        ) -
+                                        (widget.model.archHeight * 2),
+                                  ),
+                                );
+                                final touchScreen = details.localFocalPoint;
+                                const double hitRadius = 35.0;
 
-                              final isFrameSelected =
-                                  widget.model.selection.type ==
-                                  SelectionType.frame;
-                              final frameResizeHandle = _frameResizeHandleAt(
-                                touchScreen,
-                              );
-                              if (frameResizeHandle != null &&
-                                  widget.model.selection.zoneId != null) {
-                                _draggedFrameResizeHandle = frameResizeHandle;
-                                _draggedFrameZoneId =
-                                    widget.model.selection.zoneId;
-                                _frameResizeHistorySaved = false;
-                              } else if (isFrameSelected &&
-                                  widget.model.selection.zoneId == null &&
-                                  widget.model.canBeArchedOrSlanted &&
-                                  (touchScreen - tlScreen).distance <
-                                      hitRadius) {
-                                _isDraggingSlantLeft = true;
-                              } else if (isFrameSelected &&
-                                  widget.model.selection.zoneId == null &&
-                                  widget.model.canBeArchedOrSlanted &&
-                                  (touchScreen - trScreen).distance <
-                                      hitRadius) {
-                                _isDraggingSlantRight = true;
-                              } else if (isFrameSelected &&
-                                  widget.model.selection.zoneId == null &&
-                                  widget.model.canBeArchedOrSlanted &&
-                                  (touchScreen - tcScreen).distance <
-                                      hitRadius) {
-                                _isDraggingArch = true;
-                              } else if (widget.model.selectedZone != null &&
-                                  widget.model.selectedZone!.boundary.contains(
-                                    modelPos,
-                                  ) &&
-                                  widget.model.isDrawingMode) {
-                                final zone = widget.model.selectedZone!;
-                                final bounds = zone.boundary;
-                                final isTopBound = _isTopZone(zone);
-                                final double topOffset = widget.model.hasShutter
-                                    ? widget.model.shutterBoxHeight
-                                    : 0.0;
+                                final isFrameSelected =
+                                    widget.model.selection.type ==
+                                    SelectionType.frame;
+                                final frameResizeHandle = _frameResizeHandleAt(
+                                  touchScreen,
+                                );
+                                if (frameResizeHandle != null &&
+                                    widget.model.selection.zoneId != null) {
+                                  _draggedFrameResizeHandle = frameResizeHandle;
+                                  _draggedFrameZoneId =
+                                      widget.model.selection.zoneId;
+                                  _frameResizeHistorySaved = false;
+                                } else if (isFrameSelected &&
+                                    widget.model.selection.zoneId == null &&
+                                    widget.model.canBeArchedOrSlanted &&
+                                    (touchScreen - tlScreen).distance <
+                                        hitRadius) {
+                                  _isDraggingSlantLeft = true;
+                                } else if (isFrameSelected &&
+                                    widget.model.selection.zoneId == null &&
+                                    widget.model.canBeArchedOrSlanted &&
+                                    (touchScreen - trScreen).distance <
+                                        hitRadius) {
+                                  _isDraggingSlantRight = true;
+                                } else if (isFrameSelected &&
+                                    widget.model.selection.zoneId == null &&
+                                    widget.model.canBeArchedOrSlanted &&
+                                    (touchScreen - tcScreen).distance <
+                                        hitRadius) {
+                                  _isDraggingArch = true;
+                                } else if (widget.model.selectedZone != null &&
+                                    widget.model.selectedZone!.boundary
+                                        .contains(modelPos) &&
+                                    widget.model.isDrawingMode) {
+                                  final zone = widget.model.selectedZone!;
+                                  final bounds = zone.boundary;
+                                  final isTopBound = _isTopZone(zone);
+                                  final double topOffset =
+                                      widget.model.hasShutter
+                                      ? widget.model.shutterBoxHeight
+                                      : 0.0;
 
-                                bool hitHandle = false;
-                                bool hitHinge = false;
+                                  bool hitHandle = false;
+                                  bool hitHinge = false;
 
-                                if (zone.content == ZoneContent.singleSash ||
-                                    zone.content == ZoneContent.doubleSash) {
-                                  final isLeftActive =
-                                      (zone.openDirection ==
-                                      OpenDirection.left);
-                                  final activeIsRight =
-                                      !isLeftActive; // fallback/default
-
-                                  final sep = 4.0;
-                                  final midX =
-                                      bounds.left +
-                                      bounds.width * zone.doubleSashRatio;
-                                  final leftR = Rect.fromLTRB(
-                                    bounds.left,
-                                    bounds.top,
-                                    midX - sep / 2,
-                                    bounds.bottom,
-                                  );
-                                  final rightR = Rect.fromLTRB(
-                                    midX + sep / 2,
-                                    bounds.top,
-                                    bounds.right,
-                                    bounds.bottom,
-                                  );
-
-                                  final sashRect =
-                                      (zone.content == ZoneContent.doubleSash)
-                                      ? (activeIsRight ? rightR : leftR)
-                                      : bounds;
-
-                                  final handleSide =
-                                      (zone.content == ZoneContent.doubleSash)
-                                      ? (activeIsRight
-                                            ? OpenDirection.left
-                                            : OpenDirection.right)
-                                      : zone.openDirection!;
-
-                                  // Precise hit testing for handle
-                                  double hRatio =
-                                      zone.handlePositionRatio ?? 0.5;
-                                  double hX = sashRect.center.dx;
-                                  double hY = sashRect.center.dy;
-
-                                  if (handleSide == OpenDirection.left) {
-                                    hX = sashRect.left + 20;
-                                    double topYVal = getSashTopY(
-                                      hX,
-                                      sashRect.top,
-                                      widget.model.profileThickness,
-                                      topOffset,
-                                      isTopBound,
-                                    );
-                                    hY =
-                                        topYVal +
-                                        ((sashRect.bottom - topYVal) *
-                                            (1.0 - hRatio));
-                                  } else if (handleSide ==
-                                      OpenDirection.right) {
-                                    hX = sashRect.right - 20;
-                                    double topYVal = getSashTopY(
-                                      hX,
-                                      sashRect.top,
-                                      widget.model.profileThickness,
-                                      topOffset,
-                                      isTopBound,
-                                    );
-                                    hY =
-                                        topYVal +
-                                        ((sashRect.bottom - topYVal) *
-                                            (1.0 - hRatio));
-                                  } else if (handleSide == OpenDirection.top) {
-                                    hX =
-                                        sashRect.left +
-                                        (sashRect.width * hRatio);
-                                    double topYVal = getSashTopY(
-                                      hX,
-                                      sashRect.top,
-                                      widget.model.profileThickness,
-                                      topOffset,
-                                      isTopBound,
-                                    );
-                                    hY = topYVal + 22;
-                                  } else if (handleSide ==
-                                      OpenDirection.bottom) {
-                                    hY = sashRect.bottom - 22;
-                                    hX =
-                                        sashRect.left +
-                                        (sashRect.width * hRatio);
-                                  }
-
-                                  final handleScreenPos = modelToScreen(
-                                    Offset(hX, hY),
-                                  );
-                                  if ((touchScreen - handleScreenPos).distance <
-                                      45.0) {
-                                    _isDraggingHandle = true;
-                                    hitHandle = true;
-                                  }
-
-                                  // Precise hit testing for hinges
-                                  bool hingesOnLeft = false;
-                                  bool hingesOnRight = false;
-                                  bool hingesOnTop = false;
-                                  bool hingesOnBottom = false;
-
-                                  if (zone.content == ZoneContent.doubleSash) {
-                                    hingesOnLeft = !activeIsRight;
-                                    hingesOnRight = activeIsRight;
-                                  } else {
-                                    hingesOnLeft =
-                                        (zone.openDirection ==
-                                        OpenDirection.right);
-                                    hingesOnRight =
+                                  if (zone.content == ZoneContent.singleSash ||
+                                      zone.content == ZoneContent.doubleSash) {
+                                    final isLeftActive =
                                         (zone.openDirection ==
                                         OpenDirection.left);
-                                    hingesOnTop =
-                                        (zone.openDirection ==
-                                        OpenDirection.bottom);
-                                    hingesOnBottom =
-                                        (zone.openDirection ==
-                                        OpenDirection.top);
-                                  }
+                                    final activeIsRight =
+                                        !isLeftActive; // fallback/default
 
-                                  final hingeCount = standardHingeCountForSash(
-                                    sashHeight: sashRect.height,
-                                    glassStructure: zone.glass.structure,
-                                  );
+                                    final sep = 4.0;
+                                    final midX =
+                                        bounds.left +
+                                        bounds.width * zone.doubleSashRatio;
+                                    final leftR = Rect.fromLTRB(
+                                      bounds.left,
+                                      bounds.top,
+                                      midX - sep / 2,
+                                      bounds.bottom,
+                                    );
+                                    final rightR = Rect.fromLTRB(
+                                      midX + sep / 2,
+                                      bounds.top,
+                                      bounds.right,
+                                      bounds.bottom,
+                                    );
 
-                                  if (hingeCount >= 3 && !hitHandle) {
-                                    double hgX = 0;
-                                    double hgY = 0;
-                                    final hingeRevealOffset =
-                                        (widget.model.profileThickness * 0.28)
-                                            .clamp(9.0, 18.0)
-                                            .toDouble();
-                                    if (hingesOnLeft || hingesOnRight) {
-                                      hgX = hingesOnRight
-                                          ? sashRect.right + hingeRevealOffset
-                                          : sashRect.left - hingeRevealOffset;
-                                      double startY =
-                                          getSashTopY(
-                                            hgX,
-                                            sashRect.top,
-                                            widget.model.profileThickness,
-                                            topOffset,
-                                            isTopBound,
-                                          ) +
-                                          100;
-                                      double step =
-                                          (sashRect.bottom - 100 - startY) /
-                                          (hingeCount - 1);
-                                      hgY =
-                                          startY +
-                                          step +
-                                          zone.middleHingeDragOffset;
-                                    } else if (hingesOnTop || hingesOnBottom) {
-                                      hgY = hingesOnBottom
-                                          ? sashRect.bottom + hingeRevealOffset
-                                          : sashRect.top - hingeRevealOffset;
-                                      double startX = sashRect.left + 100;
-                                      double step =
-                                          (sashRect.right - 100 - startX) /
-                                          (hingeCount - 1);
-                                      hgX =
-                                          startX +
-                                          step +
-                                          zone.middleHingeDragOffset;
-                                      if (hingesOnTop) {
-                                        hgY =
+                                    final sashRect =
+                                        (zone.content == ZoneContent.doubleSash)
+                                        ? (activeIsRight ? rightR : leftR)
+                                        : bounds;
+
+                                    final handleSide =
+                                        (zone.content == ZoneContent.doubleSash)
+                                        ? (activeIsRight
+                                              ? OpenDirection.left
+                                              : OpenDirection.right)
+                                        : zone.openDirection!;
+
+                                    // Precise hit testing for handle
+                                    double hRatio =
+                                        zone.handlePositionRatio ?? 0.5;
+                                    double hX = sashRect.center.dx;
+                                    double hY = sashRect.center.dy;
+
+                                    if (handleSide == OpenDirection.left) {
+                                      hX = sashRect.left + 20;
+                                      double topYVal = getSashTopY(
+                                        hX,
+                                        sashRect.top,
+                                        widget.model.profileThickness,
+                                        topOffset,
+                                        isTopBound,
+                                      );
+                                      hY =
+                                          topYVal +
+                                          ((sashRect.bottom - topYVal) *
+                                              (1.0 - hRatio));
+                                    } else if (handleSide ==
+                                        OpenDirection.right) {
+                                      hX = sashRect.right - 20;
+                                      double topYVal = getSashTopY(
+                                        hX,
+                                        sashRect.top,
+                                        widget.model.profileThickness,
+                                        topOffset,
+                                        isTopBound,
+                                      );
+                                      hY =
+                                          topYVal +
+                                          ((sashRect.bottom - topYVal) *
+                                              (1.0 - hRatio));
+                                    } else if (handleSide ==
+                                        OpenDirection.top) {
+                                      hX =
+                                          sashRect.left +
+                                          (sashRect.width * hRatio);
+                                      double topYVal = getSashTopY(
+                                        hX,
+                                        sashRect.top,
+                                        widget.model.profileThickness,
+                                        topOffset,
+                                        isTopBound,
+                                      );
+                                      hY = topYVal + 22;
+                                    } else if (handleSide ==
+                                        OpenDirection.bottom) {
+                                      hY = sashRect.bottom - 22;
+                                      hX =
+                                          sashRect.left +
+                                          (sashRect.width * hRatio);
+                                    }
+
+                                    final handleScreenPos = modelToScreen(
+                                      Offset(hX, hY),
+                                    );
+                                    if ((touchScreen - handleScreenPos)
+                                            .distance <
+                                        45.0) {
+                                      _isDraggingHandle = true;
+                                      hitHandle = true;
+                                    }
+
+                                    // Precise hit testing for hinges
+                                    bool hingesOnLeft = false;
+                                    bool hingesOnRight = false;
+                                    bool hingesOnTop = false;
+                                    bool hingesOnBottom = false;
+
+                                    if (zone.content ==
+                                        ZoneContent.doubleSash) {
+                                      hingesOnLeft = !activeIsRight;
+                                      hingesOnRight = activeIsRight;
+                                    } else {
+                                      hingesOnLeft =
+                                          (zone.openDirection ==
+                                          OpenDirection.right);
+                                      hingesOnRight =
+                                          (zone.openDirection ==
+                                          OpenDirection.left);
+                                      hingesOnTop =
+                                          (zone.openDirection ==
+                                          OpenDirection.bottom);
+                                      hingesOnBottom =
+                                          (zone.openDirection ==
+                                          OpenDirection.top);
+                                    }
+
+                                    final hingeCount =
+                                        standardHingeCountForSash(
+                                          sashHeight: sashRect.height,
+                                          glassStructure: zone.glass.structure,
+                                        );
+
+                                    if (hingeCount >= 3 && !hitHandle) {
+                                      double hgX = 0;
+                                      double hgY = 0;
+                                      final hingeRevealOffset =
+                                          (widget.model.profileThickness * 0.28)
+                                              .clamp(9.0, 18.0)
+                                              .toDouble();
+                                      if (hingesOnLeft || hingesOnRight) {
+                                        hgX = hingesOnRight
+                                            ? sashRect.right + hingeRevealOffset
+                                            : sashRect.left - hingeRevealOffset;
+                                        double startY =
                                             getSashTopY(
                                               hgX,
                                               sashRect.top,
                                               widget.model.profileThickness,
                                               topOffset,
                                               isTopBound,
-                                            ) -
-                                            hingeRevealOffset;
+                                            ) +
+                                            100;
+                                        double step =
+                                            (sashRect.bottom - 100 - startY) /
+                                            (hingeCount - 1);
+                                        hgY =
+                                            startY +
+                                            step +
+                                            zone.middleHingeDragOffset;
+                                      } else if (hingesOnTop ||
+                                          hingesOnBottom) {
+                                        hgY = hingesOnBottom
+                                            ? sashRect.bottom +
+                                                  hingeRevealOffset
+                                            : sashRect.top - hingeRevealOffset;
+                                        double startX = sashRect.left + 100;
+                                        double step =
+                                            (sashRect.right - 100 - startX) /
+                                            (hingeCount - 1);
+                                        hgX =
+                                            startX +
+                                            step +
+                                            zone.middleHingeDragOffset;
+                                        if (hingesOnTop) {
+                                          hgY =
+                                              getSashTopY(
+                                                hgX,
+                                                sashRect.top,
+                                                widget.model.profileThickness,
+                                                topOffset,
+                                                isTopBound,
+                                              ) -
+                                              hingeRevealOffset;
+                                        }
                                       }
-                                    }
-                                    final hingeScreenPos = modelToScreen(
-                                      Offset(hgX, hgY),
-                                    );
-                                    if ((touchScreen - hingeScreenPos)
-                                            .distance <
-                                        45.0) {
-                                      _isDraggingHinge = true;
-                                      hitHinge = true;
-                                    }
-                                  }
-                                } else if (zone.content ==
-                                    ZoneContent.slidingSash) {
-                                  int count = zone.slidingSashesCount;
-                                  if (count < 2) count = 2;
-                                  double frameT =
-                                      zone.sashThickness ??
-                                      widget.model.getSectionThickness(
-                                        'sash',
-                                        fallback: 45.0,
+                                      final hingeScreenPos = modelToScreen(
+                                        Offset(hgX, hgY),
                                       );
-                                  double sashWidth =
-                                      (bounds.width + (count - 1) * frameT) /
-                                      count;
-
-                                  // Left sash (i=0)
-                                  double left0 = bounds.left;
-                                  Rect sashRectLeft = Rect.fromLTRB(
-                                    left0,
-                                    bounds.top,
-                                    left0 + sashWidth,
-                                    bounds.bottom,
-                                  );
-
-                                  // Right sash (i=count-1)
-                                  double leftN =
-                                      bounds.left +
-                                      (count - 1) * (sashWidth - frameT);
-                                  Rect sashRectRight = Rect.fromLTRB(
-                                    leftN,
-                                    bounds.top,
-                                    leftN + sashWidth,
-                                    bounds.bottom,
-                                  );
-
-                                  double hRatio =
-                                      zone.handlePositionRatio ?? 0.5;
-
-                                  // Left handle (OpenDirection.left on sashRectLeft)
-                                  double hXLeft = sashRectLeft.left + 20;
-                                  double topYLeft = getSashTopY(
-                                    hXLeft,
-                                    sashRectLeft.top,
-                                    widget.model.profileThickness,
-                                    topOffset,
-                                    isTopBound,
-                                  );
-                                  double hYLeft =
-                                      topYLeft +
-                                      ((sashRectLeft.bottom - topYLeft) *
-                                          (1.0 - hRatio));
-
-                                  // Right handle (OpenDirection.right on sashRectRight)
-                                  double hXRight = sashRectRight.right - 20;
-                                  double topYRight = getSashTopY(
-                                    hXRight,
-                                    sashRectRight.top,
-                                    widget.model.profileThickness,
-                                    topOffset,
-                                    isTopBound,
-                                  );
-                                  double hYRight =
-                                      topYRight +
-                                      ((sashRectRight.bottom - topYRight) *
-                                          (1.0 - hRatio));
-
-                                  final handleScreenPosLeft = modelToScreen(
-                                    Offset(hXLeft, hYLeft),
-                                  );
-                                  final handleScreenPosRight = modelToScreen(
-                                    Offset(hXRight, hYRight),
-                                  );
-
-                                  if ((touchScreen - handleScreenPosLeft)
-                                              .distance <
-                                          45.0 ||
-                                      (touchScreen - handleScreenPosRight)
+                                      if ((touchScreen - hingeScreenPos)
                                               .distance <
                                           45.0) {
-                                    _isDraggingHandle = true;
-                                    hitHandle = true;
-                                  }
-                                }
+                                        _isDraggingHinge = true;
+                                        hitHinge = true;
+                                      }
+                                    }
+                                  } else if (zone.content ==
+                                      ZoneContent.slidingSash) {
+                                    int count = zone.slidingSashesCount;
+                                    if (count < 2) count = 2;
+                                    double frameT =
+                                        zone.sashThickness ??
+                                        widget.model.getSectionThickness(
+                                          'sash',
+                                          fallback: 45.0,
+                                        );
+                                    double sashWidth =
+                                        (bounds.width + (count - 1) * frameT) /
+                                        count;
 
-                                if (hitHandle || hitHinge) {
-                                  // Done, drag started for handle or hinge
-                                } else {
-                                  final dividerX =
-                                      bounds.left +
-                                      bounds.width * zone.doubleSashRatio;
-                                  final dividerTop = _modelToScreen(
-                                    Offset(dividerX, bounds.top),
-                                  );
-                                  final dividerBottom = _modelToScreen(
-                                    Offset(dividerX, bounds.bottom),
-                                  );
-                                  final dividerScreenX = dividerTop.dx;
-                                  final topScreenY = dividerTop.dy;
-                                  final bottomScreenY = dividerBottom.dy;
-                                  final double dist =
-                                      (touchScreen.dx - dividerScreenX).abs();
-
-                                  if (zone.content == ZoneContent.doubleSash &&
-                                      dist < 30.0 &&
-                                      touchScreen.dy >= topScreenY &&
-                                      touchScreen.dy <= bottomScreenY) {
-                                    widget.model.selectAt(
-                                      modelPos,
-                                      isLongPress: true,
+                                    // Left sash (i=0)
+                                    double left0 = bounds.left;
+                                    Rect sashRectLeft = Rect.fromLTRB(
+                                      left0,
+                                      bounds.top,
+                                      left0 + sashWidth,
+                                      bounds.bottom,
                                     );
-                                    _isDraggingDoubleSashDivider = true;
-                                  } else if ((zone.content ==
-                                              ZoneContent.singleSash ||
-                                          zone.content ==
-                                              ZoneContent.doubleSash) &&
-                                      (() {
+
+                                    // Right sash (i=count-1)
+                                    double leftN =
+                                        bounds.left +
+                                        (count - 1) * (sashWidth - frameT);
+                                    Rect sashRectRight = Rect.fromLTRB(
+                                      leftN,
+                                      bounds.top,
+                                      leftN + sashWidth,
+                                      bounds.bottom,
+                                    );
+
+                                    double hRatio =
+                                        zone.handlePositionRatio ?? 0.5;
+
+                                    // Left handle (OpenDirection.left on sashRectLeft)
+                                    double hXLeft = sashRectLeft.left + 20;
+                                    double topYLeft = getSashTopY(
+                                      hXLeft,
+                                      sashRectLeft.top,
+                                      widget.model.profileThickness,
+                                      topOffset,
+                                      isTopBound,
+                                    );
+                                    double hYLeft =
+                                        topYLeft +
+                                        ((sashRectLeft.bottom - topYLeft) *
+                                            (1.0 - hRatio));
+
+                                    // Right handle (OpenDirection.right on sashRectRight)
+                                    double hXRight = sashRectRight.right - 20;
+                                    double topYRight = getSashTopY(
+                                      hXRight,
+                                      sashRectRight.top,
+                                      widget.model.profileThickness,
+                                      topOffset,
+                                      isTopBound,
+                                    );
+                                    double hYRight =
+                                        topYRight +
+                                        ((sashRectRight.bottom - topYRight) *
+                                            (1.0 - hRatio));
+
+                                    final handleScreenPosLeft = modelToScreen(
+                                      Offset(hXLeft, hYLeft),
+                                    );
+                                    final handleScreenPosRight = modelToScreen(
+                                      Offset(hXRight, hYRight),
+                                    );
+
+                                    if ((touchScreen - handleScreenPosLeft)
+                                                .distance <
+                                            45.0 ||
+                                        (touchScreen - handleScreenPosRight)
+                                                .distance <
+                                            45.0) {
+                                      _isDraggingHandle = true;
+                                      hitHandle = true;
+                                    }
+                                  }
+
+                                  if (hitHandle || hitHinge) {
+                                    // Done, drag started for handle or hinge
+                                  } else {
+                                    final dividerX =
+                                        bounds.left +
+                                        bounds.width * zone.doubleSashRatio;
+                                    final dividerTop = _modelToScreen(
+                                      Offset(dividerX, bounds.top),
+                                    );
+                                    final dividerBottom = _modelToScreen(
+                                      Offset(dividerX, bounds.bottom),
+                                    );
+                                    final dividerScreenX = dividerTop.dx;
+                                    final topScreenY = dividerTop.dy;
+                                    final bottomScreenY = dividerBottom.dy;
+                                    final double dist =
+                                        (touchScreen.dx - dividerScreenX).abs();
+
+                                    if (zone.content ==
+                                            ZoneContent.doubleSash &&
+                                        dist < 30.0 &&
+                                        touchScreen.dy >= topScreenY &&
+                                        touchScreen.dy <= bottomScreenY) {
+                                      widget.model.selectAt(
+                                        modelPos,
+                                        isLongPress: true,
+                                      );
+                                      _isDraggingDoubleSashDivider = true;
+                                    } else if ((zone.content ==
+                                                ZoneContent.singleSash ||
+                                            zone.content ==
+                                                ZoneContent.doubleSash) &&
+                                        (() {
+                                          final sashT =
+                                              zone.sashThickness ??
+                                              widget.model.profileThickness;
+                                          if (zone.content ==
+                                              ZoneContent.doubleSash) {
+                                            final sep = 4.0;
+                                            final midX =
+                                                bounds.left +
+                                                bounds.width *
+                                                    zone.doubleSashRatio;
+                                            final leftR = Rect.fromLTRB(
+                                              bounds.left,
+                                              bounds.top,
+                                              midX - sep / 2,
+                                              bounds.bottom,
+                                            );
+                                            final rightR = Rect.fromLTRB(
+                                              midX + sep / 2,
+                                              bounds.top,
+                                              bounds.right,
+                                              bounds.bottom,
+                                            );
+                                            final leftGlassR = widget.model
+                                                .getSafeGlassRect(leftR, sashT);
+                                            final rightGlassR = widget.model
+                                                .getSafeGlassRect(
+                                                  rightR,
+                                                  sashT,
+                                                );
+                                            return _checkAndStartSashDividerDrag(
+                                                  zone.id,
+                                                  false,
+                                                  leftGlassR,
+                                                  zone.innerH,
+                                                  zone.innerV,
+                                                  zone.innerHPositions,
+                                                  zone.innerVPositions,
+                                                  touchScreen,
+                                                ) ||
+                                                _checkAndStartSashDividerDrag(
+                                                  zone.id,
+                                                  true,
+                                                  rightGlassR,
+                                                  zone.rightInnerH,
+                                                  zone.rightInnerV,
+                                                  zone.rightInnerHPositions,
+                                                  zone.rightInnerVPositions,
+                                                  touchScreen,
+                                                );
+                                          } else {
+                                            final glassR = widget.model
+                                                .getSafeGlassRect(
+                                                  bounds,
+                                                  sashT,
+                                                );
+                                            return _checkAndStartSashDividerDrag(
+                                              zone.id,
+                                              false,
+                                              glassR,
+                                              zone.innerH,
+                                              zone.innerV,
+                                              zone.innerHPositions,
+                                              zone.innerVPositions,
+                                              touchScreen,
+                                            );
+                                          }
+                                        })()) {
+                                      // Started dragging sash division
+                                    } else if ((() {
+                                      if (zone.glass.structure ==
+                                          GlassStructure.double) {
                                         final sashT =
                                             zone.sashThickness ??
                                             widget.model.profileThickness;
@@ -3356,651 +3469,673 @@ class _WindowViewState extends State<WindowView> {
                                               .getSafeGlassRect(leftR, sashT);
                                           final rightGlassR = widget.model
                                               .getSafeGlassRect(rightR, sashT);
-                                          return _checkAndStartSashDividerDrag(
+                                          return _checkAndStartGlassDecorDrag(
                                                 zone.id,
-                                                false,
                                                 leftGlassR,
-                                                zone.innerH,
-                                                zone.innerV,
-                                                zone.innerHPositions,
-                                                zone.innerVPositions,
+                                                zone.glass,
                                                 touchScreen,
                                               ) ||
-                                              _checkAndStartSashDividerDrag(
+                                              _checkAndStartGlassDecorDrag(
                                                 zone.id,
-                                                true,
                                                 rightGlassR,
-                                                zone.rightInnerH,
-                                                zone.rightInnerV,
-                                                zone.rightInnerHPositions,
-                                                zone.rightInnerVPositions,
+                                                zone.glass,
                                                 touchScreen,
                                               );
                                         } else {
                                           final glassR = widget.model
                                               .getSafeGlassRect(bounds, sashT);
-                                          return _checkAndStartSashDividerDrag(
+                                          return _checkAndStartGlassDecorDrag(
                                             zone.id,
-                                            false,
                                             glassR,
-                                            zone.innerH,
-                                            zone.innerV,
-                                            zone.innerHPositions,
-                                            zone.innerVPositions,
+                                            zone.glass,
                                             touchScreen,
                                           );
                                         }
-                                      })()) {
-                                    // Started dragging sash division
-                                  } else if ((() {
-                                    if (zone.glass.structure ==
-                                        GlassStructure.double) {
-                                      final sashT =
-                                          zone.sashThickness ??
-                                          widget.model.profileThickness;
-                                      if (zone.content ==
-                                          ZoneContent.doubleSash) {
-                                        final sep = 4.0;
-                                        final midX =
-                                            bounds.left +
-                                            bounds.width * zone.doubleSashRatio;
-                                        final leftR = Rect.fromLTRB(
-                                          bounds.left,
-                                          bounds.top,
-                                          midX - sep / 2,
-                                          bounds.bottom,
-                                        );
-                                        final rightR = Rect.fromLTRB(
-                                          midX + sep / 2,
-                                          bounds.top,
-                                          bounds.right,
-                                          bounds.bottom,
-                                        );
-                                        final leftGlassR = widget.model
-                                            .getSafeGlassRect(leftR, sashT);
-                                        final rightGlassR = widget.model
-                                            .getSafeGlassRect(rightR, sashT);
-                                        return _checkAndStartGlassDecorDrag(
-                                              zone.id,
-                                              leftGlassR,
-                                              zone.glass,
-                                              touchScreen,
-                                            ) ||
-                                            _checkAndStartGlassDecorDrag(
-                                              zone.id,
-                                              rightGlassR,
-                                              zone.glass,
-                                              touchScreen,
-                                            );
-                                      } else {
-                                        final glassR = widget.model
-                                            .getSafeGlassRect(bounds, sashT);
-                                        return _checkAndStartGlassDecorDrag(
-                                          zone.id,
-                                          glassR,
-                                          zone.glass,
-                                          touchScreen,
-                                        );
                                       }
+                                      return false;
+                                    })()) {
+                                      // Started dragging glass decoration
+                                    } else {
+                                      // Defer drawing start — wait for real drag in onScaleUpdate
+                                      widget.model.pendingDrawStart = modelPos;
                                     }
-                                    return false;
-                                  })()) {
-                                    // Started dragging glass decoration
-                                  } else {
-                                    // Defer drawing start — wait for real drag in onScaleUpdate
-                                    widget.model.pendingDrawStart = modelPos;
                                   }
-                                }
-                              } else if (widget.model.isDrawingMode &&
-                                  widget.model.selection.type !=
-                                      SelectionType.mullion) {
-                                widget.model.pendingDrawStart = modelPos;
-                              }
-                            }
-                          },
-                          onScaleUpdate: (details) {
-                            if (details.pointerCount >= 2) {
-                              setState(() {
-                                double newScale =
-                                    (_baseUserScale * details.scale).clamp(
-                                      0.5,
-                                      5.0,
-                                    );
-                                _userScale = newScale;
-                                final canvasOrigin = Offset(
-                                  widget.model.canvasDx,
-                                  widget.model.canvasDy,
-                                );
-                                _userPan =
-                                    details.localFocalPoint -
-                                    canvasOrigin -
-                                    (details.localFocalPoint -
-                                            canvasOrigin -
-                                            _baseUserPan) *
-                                        (newScale / _baseUserScale);
-                              });
-                            } else {
-                              final modelPos = _getModelPos(
-                                details.localFocalPoint,
-                              );
-                              // Commit pendingDrawStart → real drawing only after
-                              // the finger has actually moved (≥5 logical pixels)
-                              if (widget.model.drawingStart == null &&
-                                  widget.model.pendingDrawStart != null) {
-                                final pending = widget.model.pendingDrawStart!;
-                                final screenPending = _modelToScreen(pending);
-                                if ((details.localFocalPoint - screenPending)
-                                        .distance >=
-                                    5.0) {
-                                  widget.model.startDrawing(pending);
+                                } else if (widget.model.isDrawingMode &&
+                                    widget.model.selection.type !=
+                                        SelectionType.mullion) {
+                                  widget.model.pendingDrawStart = modelPos;
                                 }
                               }
-                              if (widget.model.drawingStart != null) {
-                                widget.model.updateDrawing(modelPos);
-                              } else if (_draggedFrameResizeHandle != null &&
-                                  _draggedFrameZoneId != null) {
-                                final handle = _draggedFrameResizeHandle!;
-                                final deltaX =
-                                    details.focalPointDelta.dx /
-                                    (_userScale * widget.model.canvasScale);
-                                final deltaY =
-                                    details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
-                                widget.model.resizeFrameFromHandles(
-                                  _draggedFrameZoneId!,
-                                  moveLeft:
-                                      handle == _FrameResizeHandle.left ||
-                                      handle == _FrameResizeHandle.topLeft ||
-                                      handle == _FrameResizeHandle.bottomLeft,
-                                  moveRight:
-                                      handle == _FrameResizeHandle.right ||
-                                      handle == _FrameResizeHandle.topRight ||
-                                      handle == _FrameResizeHandle.bottomRight,
-                                  moveTop:
-                                      handle == _FrameResizeHandle.top ||
-                                      handle == _FrameResizeHandle.topLeft ||
-                                      handle == _FrameResizeHandle.topRight,
-                                  moveBottom:
-                                      handle == _FrameResizeHandle.bottom ||
-                                      handle == _FrameResizeHandle.bottomLeft ||
-                                      handle == _FrameResizeHandle.bottomRight,
-                                  deltaX: deltaX,
-                                  deltaY: deltaY,
-                                  saveHistory: !_frameResizeHistorySaved,
-                                );
-                                _frameResizeHistorySaved = true;
-                              } else if (_isDraggingSlantLeft) {
-                                double dy =
-                                    details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
-                                widget.model.updateTopSlantAndArch(
-                                  leftSlant: (widget.model.topSlantLeftY + dy)
-                                      .clamp(-500.0, 500.0),
-                                );
-                              } else if (_isDraggingSlantRight) {
-                                double dy =
-                                    details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
-                                widget.model.updateTopSlantAndArch(
-                                  rightSlant: (widget.model.topSlantRightY + dy)
-                                      .clamp(-500.0, 500.0),
-                                );
-                              } else if (_isDraggingArch) {
-                                double dy =
-                                    details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
-                                widget.model.updateTopSlantAndArch(
-                                  arch: (widget.model.archHeight - dy / 2)
-                                      .clamp(0.0, 800.0),
-                                );
-                              } else if (widget.model.selection.type ==
-                                  SelectionType.mullion) {
-                                widget.model.moveSelectedMullion(
-                                  (widget.model.selection.isHorizontalMullion!
-                                          ? details.focalPointDelta.dy
-                                          : details.focalPointDelta.dx) /
-                                      (_userScale * widget.model.canvasScale),
-                                );
-                              } else if (widget.model.selection.type ==
-                                  SelectionType.innerDivision) {
-                                double deltaX =
-                                    details.focalPointDelta.dx /
-                                    (_userScale * widget.model.canvasScale);
-                                double deltaY =
-                                    details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
-                                widget.model.moveSelectedInnerDivision(
-                                  deltaX,
-                                  deltaY,
-                                );
-                              } else if (_isDraggingDecor &&
-                                  _draggedDecorZoneId != null &&
-                                  widget.model.isDrawingMode) {
-                                final zone = widget.model.zones.firstWhere(
-                                  (z) => z.id == _draggedDecorZoneId,
-                                );
-                                final sashT =
-                                    zone.sashThickness ??
-                                    widget.model.profileThickness;
-                                Rect parentR = zone.boundary;
-                                Rect sashR = parentR;
-                                if (zone.content == ZoneContent.doubleSash) {
-                                  final sep = 4.0;
-                                  final midX =
-                                      parentR.left +
-                                      parentR.width * zone.doubleSashRatio;
-                                  if (modelPos.dx < midX) {
-                                    sashR = Rect.fromLTRB(
-                                      parentR.left,
-                                      parentR.top,
-                                      midX - sep / 2,
-                                      parentR.bottom,
-                                    );
-                                  } else {
-                                    sashR = Rect.fromLTRB(
-                                      midX + sep / 2,
-                                      parentR.top,
-                                      parentR.right,
-                                      parentR.bottom,
-                                    );
-                                  }
-                                }
-                                final glassR = widget.model.getSafeGlassRect(
-                                  sashR,
-                                  sashT,
-                                );
-
-                                if (_draggedDecorIsHorizontal) {
-                                  double newRatio =
-                                      (modelPos.dy - glassR.top) /
-                                      glassR.height;
-                                  newRatio = newRatio.clamp(0.02, 0.98);
-                                  widget.model.updateZoneGlassDecorHPos(
-                                    _draggedDecorZoneId!,
-                                    _draggedDecorIndex,
-                                    newRatio,
-                                  );
-                                } else {
-                                  double newRatio =
-                                      (modelPos.dx - glassR.left) /
-                                      glassR.width;
-                                  newRatio = newRatio.clamp(0.02, 0.98);
-                                  widget.model.updateZoneGlassDecorVPos(
-                                    _draggedDecorZoneId!,
-                                    _draggedDecorIndex,
-                                    newRatio,
-                                  );
-                                }
-                              } else if (_isDraggingDoubleSashDivider &&
-                                  widget.model.selectedZone != null &&
-                                  widget.model.isDrawingMode) {
-                                final zone = widget.model.selectedZone!;
-                                final bounds = zone.boundary;
-                                double newRatio =
-                                    (modelPos.dx - bounds.left) / bounds.width;
-                                newRatio = newRatio.clamp(0.15, 0.85);
-                                widget.model.updateZoneDoubleSashRatio(
-                                  zone.id,
-                                  newRatio,
-                                );
-                              } else if (_isDraggingSashDivision &&
-                                  _draggedSashZoneId != null &&
-                                  widget.model.isDrawingMode) {
-                                final zone = widget.model.zones.firstWhere(
-                                  (z) => z.id == _draggedSashZoneId,
-                                );
-                                final isRight = _draggedSashIsRight;
-                                final sashT =
-                                    zone.sashThickness ??
-                                    widget.model.profileThickness;
-                                Rect parentR = zone.boundary;
-                                Rect sashR = parentR;
-                                if (zone.content == ZoneContent.doubleSash) {
-                                  final sep = 4.0;
-                                  final midX =
-                                      parentR.left +
-                                      parentR.width * zone.doubleSashRatio;
-                                  if (!isRight) {
-                                    sashR = Rect.fromLTRB(
-                                      parentR.left,
-                                      parentR.top,
-                                      midX - sep / 2,
-                                      parentR.bottom,
-                                    );
-                                  } else {
-                                    sashR = Rect.fromLTRB(
-                                      midX + sep / 2,
-                                      parentR.top,
-                                      parentR.right,
-                                      parentR.bottom,
-                                    );
-                                  }
-                                }
-                                final glassR = widget.model.getSafeGlassRect(
-                                  sashR,
-                                  sashT,
-                                );
-
-                                if (_draggedSashIsHorizontal) {
-                                  double newRatio =
-                                      (modelPos.dy - glassR.top) /
-                                      glassR.height;
-                                  widget.model.updateZoneInnerHDivisionRatio(
-                                    _draggedSashZoneId!,
-                                    isRight,
-                                    _draggedSashIndex,
-                                    newRatio,
-                                  );
-                                } else {
-                                  double newRatio =
-                                      (modelPos.dx - glassR.left) /
-                                      glassR.width;
-                                  widget.model.updateZoneInnerVDivisionRatio(
-                                    _draggedSashZoneId!,
-                                    isRight,
-                                    _draggedSashIndex,
-                                    newRatio,
-                                  );
-                                }
-                              } else if (!_suppressHandleDragForLongPress &&
-                                  _isDraggingHinge &&
-                                  widget.model.selectedZone != null &&
-                                  widget.model.isDrawingMode) {
-                                _handleHingeDrag(
-                                  details.focalPointDelta,
-                                  widget.model.selectedZone!,
-                                );
-                              } else if (!_suppressHandleDragForLongPress &&
-                                  _isDraggingHandle &&
-                                  widget.model.selectedZone != null &&
-                                  widget.model.isDrawingMode) {
-                                _handleHandleDrag(
-                                  details.focalPointDelta,
-                                  widget.model.selectedZone!,
-                                );
-                              } else if (!widget.model.isDrawingMode) {
+                            },
+                            onScaleUpdate: (details) {
+                              if (details.pointerCount >= 2) {
                                 setState(() {
+                                  double newScale =
+                                      (_baseUserScale * details.scale).clamp(
+                                        0.5,
+                                        5.0,
+                                      );
+                                  _userScale = newScale;
+                                  final canvasOrigin = Offset(
+                                    widget.model.canvasDx,
+                                    widget.model.canvasDy,
+                                  );
                                   _userPan =
-                                      _baseUserPan +
+                                      details.localFocalPoint -
+                                      canvasOrigin -
                                       (details.localFocalPoint -
-                                          _focalPointStart);
+                                              canvasOrigin -
+                                              _baseUserPan) *
+                                          (newScale / _baseUserScale);
                                 });
+                              } else {
+                                final modelPos = _getModelPos(
+                                  details.localFocalPoint,
+                                );
+                                // Commit pendingDrawStart → real drawing only after
+                                // the finger has actually moved (≥5 logical pixels)
+                                if (widget.model.drawingStart == null &&
+                                    widget.model.pendingDrawStart != null) {
+                                  final pending =
+                                      widget.model.pendingDrawStart!;
+                                  final screenPending = _modelToScreen(pending);
+                                  if ((details.localFocalPoint - screenPending)
+                                          .distance >=
+                                      5.0) {
+                                    widget.model.startDrawing(pending);
+                                  }
+                                }
+                                if (widget.model.drawingStart != null) {
+                                  widget.model.updateDrawing(modelPos);
+                                } else if (_draggedFrameResizeHandle != null &&
+                                    _draggedFrameZoneId != null) {
+                                  final handle = _draggedFrameResizeHandle!;
+                                  final deltaX =
+                                      details.focalPointDelta.dx /
+                                      (_userScale * widget.model.canvasScale);
+                                  final deltaY =
+                                      details.focalPointDelta.dy /
+                                      (_userScale * widget.model.canvasScale);
+                                  widget.model.resizeFrameFromHandles(
+                                    _draggedFrameZoneId!,
+                                    moveLeft:
+                                        handle == _FrameResizeHandle.left ||
+                                        handle == _FrameResizeHandle.topLeft ||
+                                        handle == _FrameResizeHandle.bottomLeft,
+                                    moveRight:
+                                        handle == _FrameResizeHandle.right ||
+                                        handle == _FrameResizeHandle.topRight ||
+                                        handle ==
+                                            _FrameResizeHandle.bottomRight,
+                                    moveTop:
+                                        handle == _FrameResizeHandle.top ||
+                                        handle == _FrameResizeHandle.topLeft ||
+                                        handle == _FrameResizeHandle.topRight,
+                                    moveBottom:
+                                        handle == _FrameResizeHandle.bottom ||
+                                        handle ==
+                                            _FrameResizeHandle.bottomLeft ||
+                                        handle ==
+                                            _FrameResizeHandle.bottomRight,
+                                    deltaX: deltaX,
+                                    deltaY: deltaY,
+                                    saveHistory: !_frameResizeHistorySaved,
+                                  );
+                                  _frameResizeHistorySaved = true;
+                                } else if (_isDraggingSlantLeft) {
+                                  double dy =
+                                      details.focalPointDelta.dy /
+                                      (_userScale * widget.model.canvasScale);
+                                  widget.model.updateTopSlantAndArch(
+                                    leftSlant: (widget.model.topSlantLeftY + dy)
+                                        .clamp(-500.0, 500.0),
+                                  );
+                                } else if (_isDraggingSlantRight) {
+                                  double dy =
+                                      details.focalPointDelta.dy /
+                                      (_userScale * widget.model.canvasScale);
+                                  widget.model.updateTopSlantAndArch(
+                                    rightSlant:
+                                        (widget.model.topSlantRightY + dy)
+                                            .clamp(-500.0, 500.0),
+                                  );
+                                } else if (_isDraggingArch) {
+                                  double dy =
+                                      details.focalPointDelta.dy /
+                                      (_userScale * widget.model.canvasScale);
+                                  widget.model.updateTopSlantAndArch(
+                                    arch: (widget.model.archHeight - dy / 2)
+                                        .clamp(0.0, 800.0),
+                                  );
+                                } else if (widget.model.selection.type ==
+                                    SelectionType.mullion) {
+                                  widget.model.moveSelectedMullion(
+                                    (widget.model.selection.isHorizontalMullion!
+                                            ? details.focalPointDelta.dy
+                                            : details.focalPointDelta.dx) /
+                                        (_userScale * widget.model.canvasScale),
+                                  );
+                                } else if (widget.model.selection.type ==
+                                    SelectionType.innerDivision) {
+                                  double deltaX =
+                                      details.focalPointDelta.dx /
+                                      (_userScale * widget.model.canvasScale);
+                                  double deltaY =
+                                      details.focalPointDelta.dy /
+                                      (_userScale * widget.model.canvasScale);
+                                  widget.model.moveSelectedInnerDivision(
+                                    deltaX,
+                                    deltaY,
+                                  );
+                                } else if (_isDraggingDecor &&
+                                    _draggedDecorZoneId != null &&
+                                    widget.model.isDrawingMode) {
+                                  final zone = widget.model.zones.firstWhere(
+                                    (z) => z.id == _draggedDecorZoneId,
+                                  );
+                                  final sashT =
+                                      zone.sashThickness ??
+                                      widget.model.profileThickness;
+                                  Rect parentR = zone.boundary;
+                                  Rect sashR = parentR;
+                                  if (zone.content == ZoneContent.doubleSash) {
+                                    final sep = 4.0;
+                                    final midX =
+                                        parentR.left +
+                                        parentR.width * zone.doubleSashRatio;
+                                    if (modelPos.dx < midX) {
+                                      sashR = Rect.fromLTRB(
+                                        parentR.left,
+                                        parentR.top,
+                                        midX - sep / 2,
+                                        parentR.bottom,
+                                      );
+                                    } else {
+                                      sashR = Rect.fromLTRB(
+                                        midX + sep / 2,
+                                        parentR.top,
+                                        parentR.right,
+                                        parentR.bottom,
+                                      );
+                                    }
+                                  }
+                                  final glassR = widget.model.getSafeGlassRect(
+                                    sashR,
+                                    sashT,
+                                  );
+
+                                  if (_draggedDecorIsHorizontal) {
+                                    double newRatio =
+                                        (modelPos.dy - glassR.top) /
+                                        glassR.height;
+                                    newRatio = newRatio.clamp(0.02, 0.98);
+                                    widget.model.updateZoneGlassDecorHPos(
+                                      _draggedDecorZoneId!,
+                                      _draggedDecorIndex,
+                                      newRatio,
+                                    );
+                                  } else {
+                                    double newRatio =
+                                        (modelPos.dx - glassR.left) /
+                                        glassR.width;
+                                    newRatio = newRatio.clamp(0.02, 0.98);
+                                    widget.model.updateZoneGlassDecorVPos(
+                                      _draggedDecorZoneId!,
+                                      _draggedDecorIndex,
+                                      newRatio,
+                                    );
+                                  }
+                                } else if (_isDraggingDoubleSashDivider &&
+                                    widget.model.selectedZone != null &&
+                                    widget.model.isDrawingMode) {
+                                  final zone = widget.model.selectedZone!;
+                                  final bounds = zone.boundary;
+                                  double newRatio =
+                                      (modelPos.dx - bounds.left) /
+                                      bounds.width;
+                                  newRatio = newRatio.clamp(0.15, 0.85);
+                                  widget.model.updateZoneDoubleSashRatio(
+                                    zone.id,
+                                    newRatio,
+                                  );
+                                } else if (_isDraggingSashDivision &&
+                                    _draggedSashZoneId != null &&
+                                    widget.model.isDrawingMode) {
+                                  final zone = widget.model.zones.firstWhere(
+                                    (z) => z.id == _draggedSashZoneId,
+                                  );
+                                  final isRight = _draggedSashIsRight;
+                                  final sashT =
+                                      zone.sashThickness ??
+                                      widget.model.profileThickness;
+                                  Rect parentR = zone.boundary;
+                                  Rect sashR = parentR;
+                                  if (zone.content == ZoneContent.doubleSash) {
+                                    final sep = 4.0;
+                                    final midX =
+                                        parentR.left +
+                                        parentR.width * zone.doubleSashRatio;
+                                    if (!isRight) {
+                                      sashR = Rect.fromLTRB(
+                                        parentR.left,
+                                        parentR.top,
+                                        midX - sep / 2,
+                                        parentR.bottom,
+                                      );
+                                    } else {
+                                      sashR = Rect.fromLTRB(
+                                        midX + sep / 2,
+                                        parentR.top,
+                                        parentR.right,
+                                        parentR.bottom,
+                                      );
+                                    }
+                                  }
+                                  final glassR = widget.model.getSafeGlassRect(
+                                    sashR,
+                                    sashT,
+                                  );
+
+                                  if (_draggedSashIsHorizontal) {
+                                    double newRatio =
+                                        (modelPos.dy - glassR.top) /
+                                        glassR.height;
+                                    widget.model.updateZoneInnerHDivisionRatio(
+                                      _draggedSashZoneId!,
+                                      isRight,
+                                      _draggedSashIndex,
+                                      newRatio,
+                                    );
+                                  } else {
+                                    double newRatio =
+                                        (modelPos.dx - glassR.left) /
+                                        glassR.width;
+                                    widget.model.updateZoneInnerVDivisionRatio(
+                                      _draggedSashZoneId!,
+                                      isRight,
+                                      _draggedSashIndex,
+                                      newRatio,
+                                    );
+                                  }
+                                } else if (!_suppressHandleDragForLongPress &&
+                                    _isDraggingHinge &&
+                                    widget.model.selectedZone != null &&
+                                    widget.model.isDrawingMode) {
+                                  _handleHingeDrag(
+                                    details.focalPointDelta,
+                                    widget.model.selectedZone!,
+                                  );
+                                } else if (!_suppressHandleDragForLongPress &&
+                                    _isDraggingHandle &&
+                                    widget.model.selectedZone != null &&
+                                    widget.model.isDrawingMode) {
+                                  _handleHandleDrag(
+                                    details.focalPointDelta,
+                                    widget.model.selectedZone!,
+                                  );
+                                } else if (!widget.model.isDrawingMode) {
+                                  setState(() {
+                                    _userPan =
+                                        _baseUserPan +
+                                        (details.localFocalPoint -
+                                            _focalPointStart);
+                                  });
+                                }
                               }
-                            }
-                          },
-                          onScaleEnd: (details) {
-                            if (widget.model.drawingStart != null) {
-                              widget.model.endDrawing();
-                            }
-                            bool wasDraggingProperty =
-                                _isDraggingSlantLeft ||
-                                _isDraggingSlantRight ||
-                                _isDraggingArch ||
-                                _isDraggingDoubleSashDivider ||
-                                _isDraggingSashDivision ||
-                                _isDraggingDecor ||
-                                _isDraggingHinge ||
-                                _isDraggingHandle;
-                            if (wasDraggingProperty) {
-                              widget.model.saveSnapshotOutside();
-                            }
-                            _isDraggingHandle = false;
-                            _isDraggingHinge = false;
-                            _suppressHandleDragForLongPress = false;
-                            _isDraggingSlantLeft = false;
-                            _isDraggingSlantRight = false;
-                            _isDraggingArch = false;
-                            _isDraggingDoubleSashDivider = false;
-                            _isDraggingSashDivision = false;
-                            _isDraggingDecor = false;
-                            _draggedSashZoneId = null;
-                            _draggedDecorZoneId = null;
-                            _draggedFrameResizeHandle = null;
-                            _draggedFrameZoneId = null;
-                            _frameResizeHistorySaved = false;
-                          },
-                          child: Listener(
-                            onPointerSignal: _handleDrawingPointerSignal,
-                            child: MouseRegion(
-                              cursor: _isWindowsDesktop
-                                  ? SystemMouseCursors.precise
-                                  : MouseCursor.defer,
-                              child: Container(
-                                width: double.infinity,
-                                height: double.infinity,
-                                decoration: BoxDecoration(
-                                  color:
-                                      Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? const Color(0xFF232332)
-                                      : const Color(0xFFF5F5F5),
-                                ),
-                                child: CustomPaint(
-                                  size: Size(
-                                    constraints.maxWidth,
-                                    constraints.maxHeight,
+                            },
+                            onScaleEnd: (details) {
+                              if (widget.model.drawingStart != null) {
+                                widget.model.endDrawing();
+                              }
+                              bool wasDraggingProperty =
+                                  _isDraggingSlantLeft ||
+                                  _isDraggingSlantRight ||
+                                  _isDraggingArch ||
+                                  _isDraggingDoubleSashDivider ||
+                                  _isDraggingSashDivision ||
+                                  _isDraggingDecor ||
+                                  _isDraggingHinge ||
+                                  _isDraggingHandle;
+                              if (wasDraggingProperty) {
+                                widget.model.saveSnapshotOutside();
+                              }
+                              _isDraggingHandle = false;
+                              _isDraggingHinge = false;
+                              _suppressHandleDragForLongPress = false;
+                              _isDraggingSlantLeft = false;
+                              _isDraggingSlantRight = false;
+                              _isDraggingArch = false;
+                              _isDraggingDoubleSashDivider = false;
+                              _isDraggingSashDivision = false;
+                              _isDraggingDecor = false;
+                              _draggedSashZoneId = null;
+                              _draggedDecorZoneId = null;
+                              _draggedFrameResizeHandle = null;
+                              _draggedFrameZoneId = null;
+                              _frameResizeHistorySaved = false;
+                            },
+                            child: Listener(
+                              onPointerSignal: _handleDrawingPointerSignal,
+                              child: MouseRegion(
+                                cursor: _isWindowsDesktop
+                                    ? SystemMouseCursors.precise
+                                    : MouseCursor.defer,
+                                child: Container(
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? const Color(0xFF232332)
+                                        : const Color(0xFFF5F5F5),
                                   ),
-                                  painter: AppWorkspacePainter(
-                                    model: widget.model,
-                                    userScale: _userScale,
-                                    userPan: _userPan,
+                                  child: CustomPaint(
+                                    size: Size(
+                                      constraints.maxWidth,
+                                      constraints.maxHeight,
+                                    ),
+                                    painter: AppWorkspacePainter(
+                                      model: widget.model,
+                                      userScale: _userScale,
+                                      userPan: _userPan,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        if (_isWindowsDesktop)
-                          Positioned(
-                            top: 18,
-                            right: _paintbrushSecondsLeft > 0 ? 150 : 18,
-                            child: Offstage(
-                              offstage: true,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).cardColor.withValues(alpha: 0.94),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
+                          if (_isWindowsDesktop)
+                            Positioned(
+                              top: 18,
+                              right: _paintbrushSecondsLeft > 0 ? 150 : 18,
+                              child: Offstage(
+                                offstage: true,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: Container(
+                                    decoration: BoxDecoration(
                                       color: Theme.of(
                                         context,
-                                      ).dividerColor.withValues(alpha: 0.7),
+                                      ).cardColor.withValues(alpha: 0.94),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: Theme.of(
+                                          context,
+                                        ).dividerColor.withValues(alpha: 0.7),
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.18,
+                                          ),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
                                     ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Semantics(
+                                          button: true,
+                                          label: 'تكبير الرسم',
+                                          child: IconButton(
+                                            icon: const Icon(Icons.add),
+                                            onPressed: () => _changeDrawingZoom(
+                                              _zoomStep,
+                                              Offset(
+                                                constraints.maxWidth / 2,
+                                                constraints.maxHeight / 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 26,
+                                          height: 1,
+                                          color: Theme.of(context).dividerColor,
+                                        ),
+                                        Semantics(
+                                          button: true,
+                                          label: 'تصغير الرسم',
+                                          child: IconButton(
+                                            icon: const Icon(Icons.remove),
+                                            onPressed: () => _changeDrawingZoom(
+                                              1 / _zoomStep,
+                                              Offset(
+                                                constraints.maxWidth / 2,
+                                                constraints.maxHeight / 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 26,
+                                          height: 1,
+                                          color: Theme.of(context).dividerColor,
+                                        ),
+                                        Semantics(
+                                          button: true,
+                                          label: 'إعادة حجم الرسم',
+                                          child: IconButton(
+                                            icon: const Icon(
+                                              Icons
+                                                  .center_focus_strong_outlined,
+                                            ),
+                                            onPressed: _resetDrawingZoom,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_paintbrushSecondsLeft > 0 &&
+                              (_activePaintFinish != null ||
+                                  _activePaintZoneContent != null ||
+                                  _activePaintCellSash ||
+                                  _activePaintCellPanel ||
+                                  _activePaintGlassSpec != null))
+                            Positioned(
+                              top: 20,
+                              right: 20,
+                              child: GestureDetector(
+                                onTap: _cancelPaintbrushMode,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.blue.shade700,
+                                        Colors.blue.shade400,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(22),
                                     boxShadow: [
                                       BoxShadow(
                                         color: Colors.black.withValues(
-                                          alpha: 0.18,
+                                          alpha: 0.3,
                                         ),
-                                        blurRadius: 10,
+                                        blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
                                     ],
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 1.5,
+                                    ),
                                   ),
-                                  child: Column(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Semantics(
-                                        button: true,
-                                        label: 'تكبير الرسم',
-                                        child: IconButton(
-                                          icon: const Icon(Icons.add),
-                                          onPressed: () => _changeDrawingZoom(
-                                            _zoomStep,
-                                            Offset(
-                                              constraints.maxWidth / 2,
-                                              constraints.maxHeight / 2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 26,
-                                        height: 1,
-                                        color: Theme.of(context).dividerColor,
-                                      ),
-                                      Semantics(
-                                        button: true,
-                                        label: 'تصغير الرسم',
-                                        child: IconButton(
-                                          icon: const Icon(Icons.remove),
-                                          onPressed: () => _changeDrawingZoom(
-                                            1 / _zoomStep,
-                                            Offset(
-                                              constraints.maxWidth / 2,
-                                              constraints.maxHeight / 2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 26,
-                                        height: 1,
-                                        color: Theme.of(context).dividerColor,
-                                      ),
-                                      Semantics(
-                                        button: true,
-                                        label: 'إعادة حجم الرسم',
-                                        child: IconButton(
-                                          icon: const Icon(
-                                            Icons.center_focus_strong_outlined,
-                                          ),
-                                          onPressed: _resetDrawingZoom,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        if (_paintbrushSecondsLeft > 0 &&
-                            (_activePaintFinish != null ||
-                                _activePaintZoneContent != null ||
-                                _activePaintCellSash ||
-                                _activePaintCellPanel ||
-                                _activePaintGlassSpec != null))
-                          Positioned(
-                            top: 20,
-                            right: 20,
-                            child: GestureDetector(
-                              onTap: _cancelPaintbrushMode,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.blue.shade700,
-                                      Colors.blue.shade400,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(22),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.colorize_rounded,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      '$_paintbrushSecondsLeft ث',
-                                      style: const TextStyle(
+                                      const Icon(
+                                        Icons.colorize_rounded,
                                         color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
+                                        size: 16,
                                       ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Icon(
-                                      Icons.close_rounded,
-                                      color: Colors.white70,
-                                      size: 14,
-                                    ),
-                                  ],
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        '$_paintbrushSecondsLeft ث',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(
+                                        Icons.close_rounded,
+                                        color: Colors.white70,
+                                        size: 14,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                _buildInteractiveBottomPanel(context),
+              ],
+            ),
+
+            // 🟢 القائمة الجانبية اليسرى (Left Drawer) لخصائص الزجاج
+            if (!widget.model.isShutterOnly)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                left: _isLeftDrawerOpen ? 0 : -330,
+                top: 15,
+                bottom: 120,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 330,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF1E1E2C)
+                            : Colors.white,
+                        borderRadius: const BorderRadius.only(
+                          bottomRight: Radius.circular(15),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 10,
+                            offset: const Offset(5, 0),
                           ),
-                      ],
-                    );
-                  },
+                        ],
+                      ),
+                      child: _buildLeftDrawerContent(context),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(
+                        () => _isLeftDrawerOpen = !_isLeftDrawerOpen,
+                      ),
+                      onVerticalDragUpdate: (details) {
+                        setState(() {
+                          _leftDrawerHandleTop += details.delta.dy;
+                          if (_leftDrawerHandleTop < 0) {
+                            _leftDrawerHandleTop = 0;
+                          }
+                          double maxTop =
+                              MediaQuery.of(context).size.height -
+                              120 -
+                              70 -
+                              15;
+                          if (_leftDrawerHandleTop > maxTop) {
+                            _leftDrawerHandleTop = maxTop;
+                          }
+                        });
+                      },
+                      child: Container(
+                        margin: EdgeInsets.only(top: _leftDrawerHandleTop),
+                        width: 40,
+                        height: 70,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF1E1E2C)
+                              : Colors.white,
+                          borderRadius: const BorderRadius.horizontal(
+                            right: Radius.circular(15),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 8,
+                              offset: const Offset(2, 0),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          _isLeftDrawerOpen
+                              ? Icons.keyboard_double_arrow_left_rounded
+                              : Icons.keyboard_double_arrow_right_rounded,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.blue.shade300
+                              : Colors.blue.shade800,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              _buildInteractiveBottomPanel(context),
-            ],
-          ),
 
-          // 🟢 القائمة الجانبية اليسرى (Left Drawer) لخصائص الزجاج
-          if (!widget.model.isShutterOnly)
+            // 🟢 طبقة التعتيم لإغلاق القائمة عند النقر خارجها
+            if (_isDrawerOpen)
+              GestureDetector(
+                onTap: () => setState(() => _isDrawerOpen = false),
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
+              ),
+
+            // 🟢 القائمة الجانبية (Drawer)
+            // 🟢 القائمة الجانبية (Drawer) بعد التعديل لتخفيف الازدحام السفلي
             AnimatedPositioned(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              left: _isLeftDrawerOpen ? 0 : -330,
+              right: _isDrawerOpen ? 0 : -330,
               top: 15,
+              // 🟢 رفعناها لتكون في الجزء العلوي من الشاشة
               bottom: 120,
+              // 🟢 ترك مسافة كبيرة جداً من الأسفل لمنع التداخل
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                // 🟢 جعل زر السحب في الأعلى بدلاً من المنتصف
                 children: [
-                  Container(
-                    width: 330,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? const Color(0xFF1E1E2C)
-                          : Colors.white,
-                      borderRadius: const BorderRadius.only(
-                        bottomRight: Radius.circular(15),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(5, 0),
-                        ),
-                      ],
-                    ),
-                    child: _buildLeftDrawerContent(context),
-                  ),
                   GestureDetector(
-                    onTap: () =>
-                        setState(() => _isLeftDrawerOpen = !_isLeftDrawerOpen),
+                    onTap: () => setState(() => _isDrawerOpen = !_isDrawerOpen),
                     onVerticalDragUpdate: (details) {
                       setState(() {
-                        _leftDrawerHandleTop += details.delta.dy;
-                        if (_leftDrawerHandleTop < 0) {
-                          _leftDrawerHandleTop = 0;
+                        _rightDrawerHandleTop += details.delta.dy;
+                        if (_rightDrawerHandleTop < 0) {
+                          _rightDrawerHandleTop = 0;
                         }
                         double maxTop =
                             MediaQuery.of(context).size.height - 120 - 70 - 15;
-                        if (_leftDrawerHandleTop > maxTop) {
-                          _leftDrawerHandleTop = maxTop;
+                        if (_rightDrawerHandleTop > maxTop) {
+                          _rightDrawerHandleTop = maxTop;
                         }
                       });
                     },
                     child: Container(
-                      margin: EdgeInsets.only(top: _leftDrawerHandleTop),
+                      margin: EdgeInsets.only(top: _rightDrawerHandleTop),
+                      // 🟢 إزاحة بسيطة للزر ليكون شكله أنيقاً
                       width: 40,
                       height: 70,
                       decoration: BoxDecoration(
@@ -4008,20 +4143,20 @@ class _WindowViewState extends State<WindowView> {
                             ? const Color(0xFF1E1E2C)
                             : Colors.white,
                         borderRadius: const BorderRadius.horizontal(
-                          right: Radius.circular(15),
+                          left: Radius.circular(15),
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.15),
                             blurRadius: 8,
-                            offset: const Offset(2, 0),
+                            offset: const Offset(-2, 0),
                           ),
                         ],
                       ),
                       child: Icon(
-                        _isLeftDrawerOpen
-                            ? Icons.keyboard_double_arrow_left_rounded
-                            : Icons.keyboard_double_arrow_right_rounded,
+                        _isDrawerOpen
+                            ? Icons.keyboard_double_arrow_right_rounded
+                            : Icons.keyboard_double_arrow_left_rounded,
                         color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.blue.shade300
                             : Colors.blue.shade800,
@@ -4029,104 +4164,29 @@ class _WindowViewState extends State<WindowView> {
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
-
-          // 🟢 طبقة التعتيم لإغلاق القائمة عند النقر خارجها
-          if (_isDrawerOpen)
-            GestureDetector(
-              onTap: () => setState(() => _isDrawerOpen = false),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.1),
-                width: double.infinity,
-                height: double.infinity,
-              ),
-            ),
-
-          // 🟢 القائمة الجانبية (Drawer)
-          // 🟢 القائمة الجانبية (Drawer) بعد التعديل لتخفيف الازدحام السفلي
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            right: _isDrawerOpen ? 0 : -330,
-            top: 15,
-            // 🟢 رفعناها لتكون في الجزء العلوي من الشاشة
-            bottom: 120,
-            // 🟢 ترك مسافة كبيرة جداً من الأسفل لمنع التداخل
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              // 🟢 جعل زر السحب في الأعلى بدلاً من المنتصف
-              children: [
-                GestureDetector(
-                  onTap: () => setState(() => _isDrawerOpen = !_isDrawerOpen),
-                  onVerticalDragUpdate: (details) {
-                    setState(() {
-                      _rightDrawerHandleTop += details.delta.dy;
-                      if (_rightDrawerHandleTop < 0) {
-                        _rightDrawerHandleTop = 0;
-                      }
-                      double maxTop =
-                          MediaQuery.of(context).size.height - 120 - 70 - 15;
-                      if (_rightDrawerHandleTop > maxTop) {
-                        _rightDrawerHandleTop = maxTop;
-                      }
-                    });
-                  },
-                  child: Container(
-                    margin: EdgeInsets.only(top: _rightDrawerHandleTop),
-                    // 🟢 إزاحة بسيطة للزر ليكون شكله أنيقاً
-                    width: 40,
-                    height: 70,
+                  Container(
+                    width: 330,
                     decoration: BoxDecoration(
                       color: Theme.of(context).brightness == Brightness.dark
                           ? const Color(0xFF1E1E2C)
                           : Colors.white,
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(15),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(15),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 8,
-                          offset: const Offset(-2, 0),
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(-5, 0),
                         ),
                       ],
                     ),
-                    child: Icon(
-                      _isDrawerOpen
-                          ? Icons.keyboard_double_arrow_right_rounded
-                          : Icons.keyboard_double_arrow_left_rounded,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.blue.shade300
-                          : Colors.blue.shade800,
-                      size: 26,
-                    ),
+                    child: _buildDrawerContent(context),
                   ),
-                ),
-                Container(
-                  width: 330,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF1E1E2C)
-                        : Colors.white,
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(15),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 10,
-                        offset: const Offset(-5, 0),
-                      ),
-                    ],
-                  ),
-                  child: _buildDrawerContent(context),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -4238,7 +4298,8 @@ class _WindowViewState extends State<WindowView> {
           }
 
           Widget? buildParcloseThicknessInfo() {
-            final maximum = widget.model.parcloseCapacityForStructure(spec.structure) ??
+            final maximum =
+                widget.model.parcloseCapacityForStructure(spec.structure) ??
                 widget.model.selectedParcloseMaxGlassThickness;
             if (maximum == null || spec.structure == GlassStructure.closed) {
               return null;
@@ -4253,7 +4314,8 @@ class _WindowViewState extends State<WindowView> {
 
             final isExact = remainingGap.abs() < 0.01;
             final isAbove = totalPack > maximum;
-            final color = isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
+            final color =
+                isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
                 ? Colors.green.shade700
                 : (isAbove ? Colors.red.shade700 : Colors.orange.shade800);
             final icon = isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
@@ -4341,7 +4403,6 @@ class _WindowViewState extends State<WindowView> {
                   jointTwoSides: spec.jointTwoSides,
                 )
               : null;
-
 
           Widget buildProcessingChip(
             String label,
@@ -8469,7 +8530,9 @@ class _WindowViewState extends State<WindowView> {
               Icon(
                 _isShutterSelected
                     ? Icons.menu_rounded
-                    : (isFrame ? Icons.crop_square_rounded : Icons.window_rounded),
+                    : (isFrame
+                          ? Icons.crop_square_rounded
+                          : Icons.window_rounded),
                 size: 16,
                 color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
               ),
@@ -8631,25 +8694,44 @@ class _WindowViewState extends State<WindowView> {
 
     switch (selectedValue) {
       case 'content_fixe':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.fixedGlass);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(selectedZone, ZoneContent.fixedGlass);
         break;
       case 'content_single_sash':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.singleSash);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(selectedZone, ZoneContent.singleSash);
         break;
       case 'content_double_sash':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.doubleSash);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(selectedZone, ZoneContent.doubleSash);
         break;
       case 'content_sliding_2':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.slidingSash, slidingSashesCount: 2);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(
+            selectedZone,
+            ZoneContent.slidingSash,
+            slidingSashesCount: 2,
+          );
         break;
       case 'content_sliding_3':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.slidingSash, slidingSashesCount: 3);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(
+            selectedZone,
+            ZoneContent.slidingSash,
+            slidingSashesCount: 3,
+          );
         break;
       case 'content_sliding_4':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.slidingSash, slidingSashesCount: 4);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(
+            selectedZone,
+            ZoneContent.slidingSash,
+            slidingSashesCount: 4,
+          );
         break;
       case 'content_vide':
-        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.empty);
+        if (selectedZone != null)
+          _paintZoneContentFromUi(selectedZone, ZoneContent.empty);
         break;
       case 'add_h_division':
         if (selectedZone != null) {
@@ -8723,7 +8805,9 @@ class _WindowViewState extends State<WindowView> {
     bool enabled = true,
     Color? color,
   }) {
-    final itemColor = color ?? (enabled ? (isDark ? Colors.white : Colors.black87) : Colors.grey);
+    final itemColor =
+        color ??
+        (enabled ? (isDark ? Colors.white : Colors.black87) : Colors.grey);
     return PopupMenuItem<String>(
       value: value,
       enabled: enabled,
@@ -8734,7 +8818,13 @@ class _WindowViewState extends State<WindowView> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              label,
+              Localization.translate(
+                label,
+                Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language,
+              ),
               style: TextStyle(
                 fontSize: 13,
                 color: itemColor,
@@ -8995,6 +9085,7 @@ class _WindowViewState extends State<WindowView> {
                   children: [
                     SectionImageWidget(
                       code: code,
+                      name: name,
                       imagePath: frame['image_path']?.toString(),
                       size: 28,
                       fallbackIcon: type == MullionProfileType.flat
@@ -9693,7 +9784,8 @@ class _WindowViewState extends State<WindowView> {
         widget.model.isShutterOnly ||
         widget.model.drawNextShapeAsShutterOnly ||
         _isShutterSelected;
-    final rawShutterColorItems = widget.model.availableAccessoryColors.isNotEmpty
+    final rawShutterColorItems =
+        widget.model.availableAccessoryColors.isNotEmpty
         ? widget.model.availableAccessoryColors
         : widget.model.availableColors;
     final shutterColorItems = <Map<String, dynamic>>[];
@@ -9704,10 +9796,12 @@ class _WindowViewState extends State<WindowView> {
         shutterColorItems.add(c);
       }
     }
-    final selectedShutterColorId = (widget.model.selectedAccessoryColor?['id'] ??
-            widget.model.selectedDbColor?['id'])
-        ?.toString();
-    final selectedShutterColor = (selectedShutterColorId != null &&
+    final selectedShutterColorId =
+        (widget.model.selectedAccessoryColor?['id'] ??
+                widget.model.selectedDbColor?['id'])
+            ?.toString();
+    final selectedShutterColor =
+        (selectedShutterColorId != null &&
             shutterColorItems.any(
               (color) => color['id']?.toString() == selectedShutterColorId,
             ))
@@ -14951,7 +15045,13 @@ class _ContentButton extends StatelessWidget {
             ),
             const SizedBox(width: 5),
             Text(
-              label,
+              Localization.translate(
+                label,
+                Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language,
+              ),
               style: TextStyle(
                 color: isDark
                     ? Colors.white
@@ -15805,6 +15905,7 @@ class _ProfileButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: SectionImageWidget(
         code: code,
+        name: label,
         imagePath: imagePath,
         size: 24.0,
         fallbackIcon: Icons.image_not_supported_rounded,

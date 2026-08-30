@@ -1,5 +1,8 @@
 import 'dart:ui' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class ResizableTableColumn {
   final String id;
@@ -97,10 +100,8 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   double _widthFor(ResizableTableColumn column) =>
       _widths[column.id] ?? column.initialWidth;
 
-  double get _tableWidth => widget.columns.fold<double>(
-    0,
-    (sum, column) => sum + _widthFor(column),
-  );
+  double get _tableWidth =>
+      widget.columns.fold<double>(0, (sum, column) => sum + _widthFor(column));
 
   void _resize(ResizableTableColumn column, double delta) {
     final next = (_widthFor(column) + delta)
@@ -110,6 +111,49 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   }
 
   bool get _hasAnyFilter => widget.columns.any((c) => c.filter != null);
+
+  /// Keeps wheel input local to this table.  The table has two nested
+  /// scrollables: the rows scroll vertically while the wide set of columns
+  /// scrolls horizontally.  Letting the nearest ancestor decide which one
+  /// receives a mouse signal makes the result depend on the exact hit-tested
+  /// child (and was especially noticeable on the Windows orders screen).
+  ///
+  /// A normal wheel stays vertical.  A horizontal trackpad signal, or a
+  /// Shift+wheel gesture, is routed to the horizontal table viewport.  The
+  /// pointer-signal resolver prevents the page behind the table from moving
+  /// at the same time.
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+
+    final dx = event.scrollDelta.dx;
+    final dy = event.scrollDelta.dy;
+    final shiftHorizontal = HardwareKeyboard.instance.isShiftPressed;
+    final useHorizontal = dx.abs() > 0 || shiftHorizontal;
+    final delta = useHorizontal && dx != 0 ? dx : dy;
+    if (delta == 0) return;
+
+    final controller = useHorizontal
+        ? _horizontalController
+        : _verticalController;
+    if (!controller.hasClients) return;
+
+    final position = controller.position;
+    final target = (position.pixels + delta)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    if ((target - position.pixels).abs() < 0.5) return;
+
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (!controller.hasClients) return;
+      final current = controller.position;
+      final currentTarget = (current.pixels + delta)
+          .clamp(current.minScrollExtent, current.maxScrollExtent)
+          .toDouble();
+      if ((currentTarget - current.pixels).abs() >= 0.5) {
+        controller.jumpTo(currentTarget);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -168,8 +212,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               _buildHeader(headerColor, borderColor),
 
               // 2. Filter Sub-Row (under column headers)
-              if (_hasAnyFilter)
-                _buildFilterRow(filterRowColor, borderColor),
+              if (_hasAnyFilter) _buildFilterRow(filterRowColor, borderColor),
 
               // 3. Table Rows
               tableBody,
@@ -186,19 +229,23 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               PointerDeviceKind.stylus,
             },
           ),
-          child: Scrollbar(
-            controller: _horizontalController,
-            thumbVisibility: true,
-            interactive: true,
-            child: SingleChildScrollView(
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerSignal: _handlePointerSignal,
+            child: Scrollbar(
               controller: _horizontalController,
-              scrollDirection: Axis.horizontal,
-              child: isBoundedHeight
-                  ? SizedBox(
-                      height: constraints.maxHeight,
-                      child: tableContent,
-                    )
-                  : tableContent,
+              thumbVisibility: true,
+              interactive: true,
+              child: SingleChildScrollView(
+                controller: _horizontalController,
+                scrollDirection: Axis.horizontal,
+                child: isBoundedHeight
+                    ? SizedBox(
+                        height: constraints.maxHeight,
+                        child: tableContent,
+                      )
+                    : tableContent,
+              ),
             ),
           ),
         );
@@ -262,7 +309,8 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               width: 14,
               child: MouseRegion(
                 cursor: SystemMouseCursors.resizeColumn,
-                onEnter: (_) => setState(() => _hoveredHandleColumnId = column.id),
+                onEnter: (_) =>
+                    setState(() => _hoveredHandleColumnId = column.id),
                 onExit: (_) => setState(() {
                   if (_draggingHandleColumnId != column.id) {
                     _hoveredHandleColumnId = null;
@@ -317,7 +365,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             for (var i = 0; i < widget.columns.length; i++)
               Container(
                 width: _widthFor(widget.columns[i]),
-                constraints: BoxConstraints(minHeight: widget.filterRowMinHeight),
+                constraints: BoxConstraints(
+                  minHeight: widget.filterRowMinHeight,
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                 decoration: BoxDecoration(
                   border: BorderDirectional(

@@ -177,7 +177,8 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
               if (lengthVal == null || lengthVal <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('يرجى إدخال قياس (طول) صحيح بـ $unitText',
+                    content: Text(
+                      '${Localization.translate('يرجى إدخال قياس (طول) صحيح بـ', lang)} $unitText',
                       style: const TextStyle(fontFamily: 'Cairo'),
                     ),
                     backgroundColor: Colors.red,
@@ -227,9 +228,10 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                   quantityController.text = '1';
                 });
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تمت الإضافة، يمكنك إدخال قياس آخر مباشرة',
-                      style: TextStyle(fontFamily: 'Cairo'),
+                  SnackBar(
+                    content: Text(
+                      Localization.translate('تمت الإضافة، يمكنك إدخال قياس آخر مباشرة', lang),
+                      style: const TextStyle(fontFamily: 'Cairo'),
                     ),
                     backgroundColor: Colors.green,
                     duration: Duration(milliseconds: 1200),

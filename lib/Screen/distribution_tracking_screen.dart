@@ -641,7 +641,12 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: Text(
+              Localization.translate(
+                'إلغاء',
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -663,8 +668,13 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       await _loadDeliveries();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹'),
+          SnackBar(
+            content: Text(
+              Localization.translate(
+                'تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹',
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
+            ),
             backgroundColor: Colors.red,
           ),
         );

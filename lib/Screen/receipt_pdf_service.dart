@@ -12,6 +12,9 @@ import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class ReceiptPdfService {
   static String formatReceiptNumber(Map<String, dynamic> transaction) {
@@ -39,6 +42,12 @@ class ReceiptPdfService {
     final logoBase64 = prefs.getString('workshop_logo_base64') ?? '';
     final savedLang = prefs.getString('app_language') ?? 'arabic';
     final currency = savedLang == 'arabic' ? 'د.ج' : 'DA';
+    final pdfLang = savedLang == 'french'
+        ? AppLanguage.french
+        : savedLang == 'english'
+        ? AppLanguage.english
+        : AppLanguage.arabic;
+    String tr(String key) => Localization.translate(key, pdfLang);
 
     pw.Widget? logoWidget;
     if (logoBase64.isNotEmpty) {
@@ -201,7 +210,7 @@ class ReceiptPdfService {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('رقم الوصل: $receiptId',
+                  pw.Text('${tr('رقم الوصل:')} $receiptId',
                       style: pw.TextStyle(font: fontBold, fontSize: 9)),
                   pw.Text('$dateStr  $timeStr',
                       style:
@@ -305,7 +314,7 @@ class ReceiptPdfService {
 
               // البيان
               if (description.isNotEmpty) ...[
-                pw.Text('البيان / Motif:',
+                pw.Text(tr('البيان / Motif:'),
                     style: pw.TextStyle(font: fontBold, fontSize: 9)),
                 pw.Text(description,
                     style: pw.TextStyle(font: fontRegular, fontSize: 9)),
@@ -322,7 +331,7 @@ class ReceiptPdfService {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
-                      pw.Text('المستلم / Signataire',
+                      pw.Text(tr('المستلم / Signataire'),
                           style: pw.TextStyle(font: fontBold, fontSize: 8)),
                       pw.SizedBox(height: 20),
                       pw.Container(
@@ -334,7 +343,7 @@ class ReceiptPdfService {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
-                      pw.Text('الدافع / Payeur',
+                      pw.Text(tr('الدافع / Payeur'),
                           style: pw.TextStyle(font: fontBold, fontSize: 8)),
                       pw.SizedBox(height: 20),
                       pw.Container(
@@ -404,7 +413,10 @@ class ReceiptPdfService {
 
         if (finalPath == null) {
           final picked = await FilePicker.saveFile(
-            dialogTitle: 'حفظ الوصل PDF',
+            dialogTitle: Localization.translate(
+              'حفظ الوصل PDF',
+              Provider.of<AppSettingsProvider>(context, listen: false).language,
+            ),
             fileName: filename,
             type: FileType.custom,
             allowedExtensions: ['pdf'],
@@ -424,9 +436,13 @@ class ReceiptPdfService {
 
       if (finalPath != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم حفظ الوصل بنجاح',
-              style: TextStyle(fontFamily: 'Cairo'),
+          SnackBar(
+            content: Text(
+              Localization.translate(
+                'تم حفظ الوصل بنجاح',
+                Provider.of<AppSettingsProvider>(context, listen: false).language,
+              ),
+              style: const TextStyle(fontFamily: 'Cairo'),
             ),
             duration: Duration(seconds: 4),
           ),
@@ -436,7 +452,8 @@ class ReceiptPdfService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في حفظ الملف: $e',
+            content: Text(
+              '${Localization.translate('خطأ في حفظ الملف', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
@@ -548,7 +565,10 @@ class ReceiptPdfService {
         savedPath = filename;
       } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         final picked = await FilePicker.saveFile(
-          dialogTitle: 'حفظ الوصل PDF',
+          dialogTitle: Localization.translate(
+            'حفظ الوصل PDF',
+            Provider.of<AppSettingsProvider>(context, listen: false).language,
+          ),
           fileName: filename,
           type: FileType.custom,
           allowedExtensions: ['pdf'],
@@ -577,10 +597,13 @@ class ReceiptPdfService {
 
       if (savedPath != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'تم حفظ الوصل بنجاح',
-              style: TextStyle(fontFamily: 'Cairo'),
+              Localization.translate(
+                'تم حفظ الوصل بنجاح',
+                Provider.of<AppSettingsProvider>(context, listen: false).language,
+              ),
+              style: const TextStyle(fontFamily: 'Cairo'),
             ),
           ),
         );

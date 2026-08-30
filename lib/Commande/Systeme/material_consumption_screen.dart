@@ -4712,6 +4712,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             _cell(
               SectionImageWidget(
                 code: item.profileCode,
+                name: item.name,
                 imagePath: item.imagePath,
                 size: isKitElement ? 32.0 : 28.0,
                 fallbackIcon: isKitElement ? Icons.extension : Icons.image,

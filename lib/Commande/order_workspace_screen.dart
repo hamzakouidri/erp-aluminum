@@ -2,12 +2,21 @@ import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/add_commande.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/settings/localization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+String _orderWorkspaceText(BuildContext context, String key) {
+  final lang = Provider.of<AppSettingsProvider>(
+    context,
+    listen: false,
+  ).language;
+  return Localization.translate(key, lang);
+}
 
 int _orderDisplayNumber(Map<String, dynamic> order) {
   for (final key in const ['display_number', 'order_code']) {
@@ -67,7 +76,11 @@ Future<void> openOrderInWorkspaceTab(
       .length;
   if (openOrders >= OrderWorkspaceScreen.maximumOpenOrders) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('الحد الأقصى هو 3 طلبيات مفتوحة.')),
+      SnackBar(
+        content: Text(
+          _orderWorkspaceText(context, 'الحد الأقصى هو 3 طلبيات مفتوحة.'),
+        ),
+      ),
     );
     return;
   }
@@ -192,7 +205,11 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
 
   void _showCapacityMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('الحد الأقصى هو 3 طلبيات مفتوحة.')),
+      SnackBar(
+        content: Text(
+          _orderWorkspaceText(context, 'الحد الأقصى هو 3 طلبيات مفتوحة.'),
+        ),
+      ),
     );
   }
 
@@ -229,7 +246,9 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
       _tabs.add(
         _createTab(
           editCommandeId: orderId,
-          title: clientName.isEmpty ? 'طلبية #$orderId' : clientName,
+          title: clientName.isEmpty
+              ? '${_orderWorkspaceText(context, 'طلبية')} #$orderId'
+              : clientName,
         ),
       );
       _activeIndex = _tabs.length - 1;
@@ -262,16 +281,21 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
     final shouldClose = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('إغلاق الطلبية؟'),
-        content: const Text('أي تعديلات لم تُحفظ في هذه الطلبية ستُفقد.'),
+        title: Text(_orderWorkspaceText(context, 'إغلاق الطلبية؟')),
+        content: Text(
+          _orderWorkspaceText(
+            context,
+            'أي تعديلات لم تُحفظ في هذه الطلبية ستُفقد.',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('إلغاء'),
+            child: Text(_orderWorkspaceText(context, 'إلغاء')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('إغلاق'),
+            child: Text(_orderWorkspaceText(context, 'إغلاق')),
           ),
         ],
       ),
@@ -315,7 +339,7 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
     final selected = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('فتح طلبية محفوظة'),
+        title: Text(_orderWorkspaceText(context, 'فتح طلبية محفوظة')),
         content: SizedBox(
           width: 460,
           height: 420,
@@ -333,7 +357,9 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
                 title: Text(
                   clientName.isEmpty ? 'طلبية #$displayId' : clientName,
                 ),
-                subtitle: Text('طلبية #$displayId'),
+                subtitle: Text(
+                  '${_orderWorkspaceText(context, 'طلبية')} #$displayId',
+                ),
                 onTap: () => Navigator.pop(
                   dialogContext,
                   Map<String, dynamic>.from(order),
@@ -345,7 +371,7 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
+            child: Text(_orderWorkspaceText(context, 'إلغاء')),
           ),
         ],
       ),
@@ -387,15 +413,17 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
       onWillPop: _onWillPop,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('الطلبيات المفتوحة'),
+          title: Text(_orderWorkspaceText(context, 'الطلبيات المفتوحة')),
           actions: [
             IconButton(
-              tooltip: 'فتح طلبية محفوظة',
+              tooltip: _orderWorkspaceText(context, 'فتح طلبية محفوظة'),
               onPressed: _showOrderPicker,
               icon: const Icon(Icons.folder_open_outlined),
             ),
             IconButton(
-              tooltip: _atCapacity ? 'الحد الأقصى: 3' : 'طلبية جديدة',
+              tooltip: _atCapacity
+                  ? '${_orderWorkspaceText(context, 'الحد الأقصى:')} 3'
+                  : _orderWorkspaceText(context, 'طلبية جديدة'),
               onPressed: _addNewOrder,
               icon: const Icon(Icons.add_circle_outline),
             ),
@@ -475,7 +503,10 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
                                           ),
                                         ),
                                         IconButton(
-                                          tooltip: 'إغلاق',
+                                          tooltip: _orderWorkspaceText(
+                                            context,
+                                            'إغلاق',
+                                          ),
                                           visualDensity: VisualDensity.compact,
                                           onPressed: () =>
                                               _requestCloseTab(index),

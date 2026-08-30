@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:bidi/bidi.dart' as bidi;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import '../settings/localization.dart';
@@ -89,60 +90,67 @@ class PdfInvoiceApi {
         data.documentTitleKey == 'BON_ROUTE';
     final imageWidgets = <int, pw.MemoryImage>{};
     if (!isOfficial) {
-      for (int i = 0; i < data.items.length; i++) {
-        final item = data.items[i];
-        final path = item.imagePath;
+      // Partial delivery notes can contain many repeated item images. Cache
+      // each load once and start all item loads together instead of waiting
+      // for every image sequentially.
+      final imageLoadCache = <String, Future<Uint8List?>>{};
 
-        if (item.title.contains('Moustiquaire') ||
-            item.title.contains('موستيكير') ||
-            (path != null && path.contains('moustiquaire'))) {
-          try {
-            final bytes = (await rootBundle.load(
-              'Icon/media.webp',
-            )).buffer.asUint8List();
-            imageWidgets[i] = pw.MemoryImage(bytes);
-          } catch (_) {
-            try {
-              final bytes = (await rootBundle.load(
-                'assets/Icon/media.webp',
-              )).buffer.asUint8List();
-              imageWidgets[i] = pw.MemoryImage(bytes);
-            } catch (_) {}
-          }
-        } else if (path != null && path.isNotEmpty) {
+      Future<Uint8List?> loadPath(String path) {
+        return imageLoadCache.putIfAbsent(path, () async {
           try {
             if (path.startsWith('assets/') || path.startsWith('Icon/')) {
-              final bytes = (await rootBundle.load(path)).buffer.asUint8List();
-              imageWidgets[i] = pw.MemoryImage(bytes);
-            } else {
-              final file = File(path);
-              if (await file.exists()) {
-                imageWidgets[i] = pw.MemoryImage(await file.readAsBytes());
-              }
+              return (await rootBundle.load(path)).buffer.asUint8List();
             }
-          }
-          catch (_) {}
-        }
+            final file = File(path);
+            if (await file.exists()) return file.readAsBytes();
+          } catch (_) {}
+          return null;
+        });
+      }
 
-        // Compatibility fallback for old tunnel rows whose only image was
-        // the official asset. New rows reach the branches above first.
-        if (!imageWidgets.containsKey(i) &&
-            (item.title.contains('Caisson Tunnel') ||
-                (path != null && path.contains('caisson_tunnel')))) {
-          try {
-            final bytes = (await rootBundle.load(
-              'Icon/caisson_tunnel.jpg',
-            )).buffer.asUint8List();
-            imageWidgets[i] = pw.MemoryImage(bytes);
-          } catch (_) {
-            try {
-              final bytes = (await rootBundle.load(
-                'assets/Icon/caisson_tunnel.jpg',
-              )).buffer.asUint8List();
-              imageWidgets[i] = pw.MemoryImage(bytes);
-            } catch (_) {}
-          }
+      Future<Uint8List?> loadFirstAvailable(List<String> paths) async {
+        for (final path in paths) {
+          final bytes = await loadPath(path);
+          if (bytes != null) return bytes;
         }
+        return null;
+      }
+
+      final imageResults = await Future.wait<MapEntry<int, pw.MemoryImage>?>([
+        for (int i = 0; i < data.items.length; i++)
+          () async {
+            final item = data.items[i];
+            final path = item.imagePath;
+            Uint8List? bytes;
+
+            if (item.title.contains('Moustiquaire') ||
+                item.title.contains('موستيكير') ||
+                (path != null && path.contains('moustiquaire'))) {
+              bytes = await loadFirstAvailable([
+                'Icon/media.webp',
+                'assets/Icon/media.webp',
+              ]);
+            } else if (path != null && path.isNotEmpty) {
+              bytes = await loadPath(path);
+            }
+
+            // Compatibility fallback for old tunnel rows whose only image was
+            // the official asset. New rows reach the branches above first.
+            if (bytes == null &&
+                (item.title.contains('Caisson Tunnel') ||
+                    (path != null && path.contains('caisson_tunnel')))) {
+              bytes = await loadFirstAvailable([
+                'Icon/caisson_tunnel.jpg',
+                'assets/Icon/caisson_tunnel.jpg',
+              ]);
+            }
+
+            return bytes == null ? null : MapEntry(i, pw.MemoryImage(bytes));
+          }(),
+      ]);
+
+      for (final result in imageResults) {
+        if (result != null) imageWidgets[result.key] = result.value;
       }
     }
 
@@ -220,6 +228,10 @@ class PdfInvoiceApi {
                 color: PdfColors.grey900,
               ),
             ),
+          ],
+          if (data.invoiceNote.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            _buildDocumentNoteAtEnd(data.invoiceNote),
           ],
         ],
         footer: (context) => _buildDocumentFooter(data),
@@ -495,34 +507,26 @@ class PdfInvoiceApi {
   /// in the string, even when textDirection: rtl is set (rtl only affects
   /// alignment/paragraph direction, not glyph run reordering).
   ///
-  /// To display Arabic correctly we must produce the text in **visual order**:
-  ///   1. Reshape each character to its contextual Arabic form.
-  ///   2. Reverse the characters **within each Arabic word** (so when rendered
-  ///      LTR the rightmost glyph appears on the left of each word).
-  ///   3. Reverse the **word order** (so the first Arabic word ends up on the
-  ///      right side of the rendered line).
-  ///   4. Render with textDirection: ltr (we have already done the reordering).
-  ///
-  /// Latin / numeric tokens embedded in the string are kept in their original
-  /// order and position relative to the Arabic words.
+  /// To display Arabic correctly we reshape it first, then use the Unicode
+  /// Bidirectional Algorithm to produce visual order. A word-by-word reverse
+  /// is not sufficient for notes containing French, numbers or parentheses.
   static String _ar(String text) {
     if (!_hasArabic(text)) return text;
 
-    // Step 1 – reshape the whole text in one pass (handles ligatures etc.)
+    // Keep user-entered line order. Reversing the whole note at once would
+    // also reverse the lines, making the last line appear first in the PDF.
+    return text
+        .replaceAll('\r\n', '\n')
+        .split('\n')
+        .map(_arSingleLine)
+        .join('\n');
+  }
+
+  static List<int> _arSingleLine(String text) {
+    // Shape Arabic glyphs first, then resolve mixed RTL/LTR runs (Arabic,
+    // French, numbers and paired punctuation) with the real UBA algorithm.
     final reshaped = ArabicReshaper.instance.reshape(text);
-
-    // Step 2 & 3 – split into space-delimited tokens, process each, reverse order
-    final tokens = reshaped.split(' ');
-    final processed = tokens.map((token) {
-      if (_hasArabic(token)) {
-        // Reverse the rune sequence inside this Arabic word
-        return String.fromCharCodes(token.runes.toList().reversed);
-      }
-      return token; // Latin/digit token stays as-is
-    }).toList();
-
-    // Reverse the token order for RTL paragraph layout
-    return processed.reversed.join(' ');
+    return bidi.logicalToVisual(reshaped);
   }
 
   // Always LTR: _ar() already produced visual-order text.
@@ -588,6 +592,7 @@ class PdfInvoiceApi {
       child: pw.Text(
         _ar(text),
         textDirection: _dir(text),
+        maxLines: null,
         style: pw.TextStyle(
           color: PdfColors.white,
           fontWeight: pw.FontWeight.bold,
@@ -1267,15 +1272,31 @@ class PdfInvoiceApi {
     );
   }
 
-  /// Put the order note at the bottom of every document. Official documents
-  /// also keep the workshop legal/contact line in the same footer.
+  /// Keep the order note in the document flow so it is rendered once, after
+  /// the last content block, instead of changing the footer height while
+  /// MultiPage is calculating the page count.
+  static pw.Widget _buildDocumentNoteAtEnd(String note) {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.only(top: 8),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+        ),
+      ),
+      child: _buildInvoiceNote(note),
+    );
+  }
+
+  /// Official documents keep the workshop legal/contact line in the footer.
+  /// The order note is deliberately not part of this footer: it belongs once
+  /// at the end of the document content.
   static pw.Widget _buildDocumentFooter(DevisData data) {
     final isOfficial =
         data.isProForma ||
         data.documentTitleKey == 'FACTURE_VENTE' ||
         data.documentTitleKey == 'BON_ROUTE';
-    final note = data.invoiceNote.trim();
-    if (!isOfficial && note.isEmpty) return pw.SizedBox();
+    if (!isOfficial) return pw.SizedBox();
 
     final parts = <String>[];
     if (isOfficial) {
@@ -1294,19 +1315,12 @@ class PdfInvoiceApi {
 
     final footerText = parts.join(' | ');
     final children = <pw.Widget>[];
-    if (note.isNotEmpty) children.add(_buildInvoiceNote(note));
-    if (note.isNotEmpty && footerText.isNotEmpty) {
-      children.add(pw.SizedBox(height: 4));
-    }
     if (footerText.isNotEmpty) {
       children.add(
         pw.Text(
           _ar(footerText),
           textDirection: _dir(footerText),
-          style: const pw.TextStyle(
-            fontSize: 7.5,
-            color: PdfColors.grey700,
-          ),
+          style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey700),
           textAlign: pw.TextAlign.center,
         ),
       );
@@ -1657,6 +1671,10 @@ class PdfInvoiceApi {
                 ),
             ],
           ),
+          if (data.invoiceNote.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            _buildDocumentNoteAtEnd(data.invoiceNote),
+          ],
         ],
         footer: (context) => _buildDocumentFooter(data),
       ),

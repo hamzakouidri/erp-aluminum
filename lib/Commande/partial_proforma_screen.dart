@@ -188,7 +188,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(_t('حدث خطأ أثناء إعادة التعيين: $e')),
+              content: Text('${_t('حدث خطأ أثناء إعادة التعيين:')} $e'),
               backgroundColor: Colors.red,
             ),
           );
@@ -293,7 +293,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('خطأ أثناء التعديل: $e'),
+              content: Text('${_t('خطأ أثناء التعديل:')} $e'),
               backgroundColor: Colors.red,
             ),
           );
@@ -354,9 +354,13 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                 }
                 if (modelMap.isNotEmpty) {
                   final model = WindowModel(db: _db);
-                  await applyWindowModelAndLoadCatalog(model, modelMap);
+                  // A damaged/old drawing must not block the partial delivery
+                  // preview forever while the catalogue is being rebuilt.
+                  await applyWindowModelAndLoadCatalog(model, modelMap)
+                      .timeout(const Duration(seconds: 12));
                   applyStoredOrderDetailColorToWindowModel(model, item);
-                  final newPath = await saveWindowImageToDisk(model);
+                  final newPath = await saveWindowImageToDisk(model)
+                      .timeout(const Duration(seconds: 12));
                   if (newPath.isNotEmpty) {
                     await _db.updateCommandeDetailImagePath(id, newPath);
                     item['drawing_image_path'] = newPath;
@@ -372,7 +376,10 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         }
       }
 
-      final workshop = await DevisBuilder.loadWorkshopInfo();
+      final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => DevisWorkshopInfo.empty,
+      );
       final devis = await DevisBuilder.build(
         order: widget.order,
         items: partialItems,
@@ -380,7 +387,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         isPartial: true,
         hidePrices: widget.hidePrices,
         documentTitleKey: widget.documentTitleKey,
-      );
+      ).timeout(const Duration(seconds: 30));
 
       setState(() {
         _isLoading = false;
@@ -401,7 +408,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ أثناء معاينة الفاتورة: $e'),
+            content: Text('${_t('خطأ أثناء معاينة الفاتورة:')} $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -497,9 +504,11 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                 }
                 if (modelMap.isNotEmpty) {
                   final model = WindowModel(db: _db);
-                  await applyWindowModelAndLoadCatalog(model, modelMap);
+                  await applyWindowModelAndLoadCatalog(model, modelMap)
+                      .timeout(const Duration(seconds: 12));
                   applyStoredOrderDetailColorToWindowModel(model, item);
-                  final newPath = await saveWindowImageToDisk(model);
+                  final newPath = await saveWindowImageToDisk(model)
+                      .timeout(const Duration(seconds: 12));
                   if (newPath.isNotEmpty) {
                     await _db.updateCommandeDetailImagePath(id, newPath);
                     item['drawing_image_path'] = newPath;
@@ -526,7 +535,10 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         _totalSelectedAmount,
       );
 
-      final workshop = await DevisBuilder.loadWorkshopInfo();
+      final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => DevisWorkshopInfo.empty,
+      );
       final devis = await DevisBuilder.build(
         order: widget.order,
         items: partialItems,
@@ -534,7 +546,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         isPartial: true,
         hidePrices: widget.hidePrices,
         documentTitleKey: widget.autoOpenBonDeChargeOnSave ? 'BON_CHARGE' : widget.documentTitleKey,
-      );
+      ).timeout(const Duration(seconds: 30));
 
       await _loadOrderDetails();
 
@@ -616,7 +628,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خطأ أثناء تأكيد وحفظ التسليم: $e'),
+          content: Text('${_t('خطأ أثناء تأكيد وحفظ التسليم:')} $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -752,7 +764,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                                       } catch (e) {
                                         if (mounted) {
                                           ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+                                            SnackBar(content: Text('${_t('خطأ:')} $e'), backgroundColor: Colors.red),
                                           );
                                         }
                                       } finally {

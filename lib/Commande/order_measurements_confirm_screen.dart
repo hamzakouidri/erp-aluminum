@@ -249,7 +249,13 @@ class _OrderMeasurementsConfirmScreenState
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('خطأ أثناء تحميل البيانات: $e')));
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${_uiText('خطأ أثناء تحميل البيانات', 'Erreur lors du chargement des données', 'Error loading data')}: $e',
+          ),
+        ),
+      );
     }
   }
 

@@ -1146,7 +1146,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                         initialValue: selectedSeriesId,
                         isExpanded: true,
                         decoration: InputDecoration(
-                          labelText: 'السلسلة المرتبطة *',
+                          labelText: Localization.translate(
+                            'السلسلة المرتبطة *',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
@@ -1174,7 +1177,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                       TextFormField(
                         controller: codeCtrl,
                         decoration: InputDecoration(
-                          labelText: 'الكود التجاري (Code) *',
+                          labelText: Localization.translate(
+                            'الكود التجاري (Code) *',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
@@ -1190,7 +1196,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                       TextFormField(
                         controller: nameCtrl,
                         decoration: InputDecoration(
-                          labelText: 'اسم المقطع (Name) *',
+                          labelText: Localization.translate(
+                            'اسم المقطع (Name) *',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
@@ -1206,7 +1215,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                       DropdownButtonFormField<String>(
                         initialValue: selectedType,
                         decoration: InputDecoration(
-                          labelText: 'نوع المقطع الهندسي *',
+                          labelText: Localization.translate(
+                            'نوع المقطع الهندسي *',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
@@ -1283,7 +1295,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                         controller: thicknessCtrl,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: 'سماكة المقطع / Thickness (mm)',
+                          labelText: Localization.translate(
+                            'سماكة المقطع / Thickness (mm)',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
@@ -1296,7 +1311,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                         controller: glassDedCtrl,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: 'خصم الزجاج / Glass Deduction (mm)',
+                          labelText: Localization.translate(
+                            'خصم الزجاج / Glass Deduction (mm)',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
@@ -1309,7 +1327,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                         controller: weightCtrl,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: 'الوزن التقريبي للمتر (Kg/m)',
+                          labelText: Localization.translate(
+                            'الوزن التقريبي للمتر (Kg/m)',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
                           labelStyle: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,

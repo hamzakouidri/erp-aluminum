@@ -25,6 +25,7 @@ class GlassOrderReceptionScreen extends StatefulWidget {
 class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _glassItems = [];
+  int? _displayOrderNumber;
 
   final Map<int, int> _receivedQtyMap = {};
   final Set<int> _editingUnlockedSet = {};
@@ -46,6 +47,10 @@ class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
         return;
       }
 
+      final displayNumber = await widget.db.getOrderSequenceNumber(
+        widget.commandeId,
+      );
+
       final items = await database.query(
         'Commandes_details',
         where: 'id_commandes = ?',
@@ -64,6 +69,7 @@ class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
       if (mounted) {
         setState(() {
           _glassItems = List<Map<String, dynamic>>.from(items);
+          _displayOrderNumber = displayNumber > 0 ? displayNumber : null;
           _isLoading = false;
         });
       }
@@ -608,11 +614,14 @@ class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final orderNumber = _displayOrderNumber ?? widget.commandeId;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          '${_tr("تدقيق واستلام الزجاج", "Vérification Vitrage", "Glass Reception", lang)} — #${widget.commandeId}',
+          '${_tr("تدقيق واستلام الزجاج", "Vérification Vitrage", "Glass Reception", lang)} — #$orderNumber',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
         ),
         elevation: 0,

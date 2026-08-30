@@ -36,6 +36,11 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
   final TextEditingController _invoiceController = TextEditingController();
   final TextEditingController _supplierController = TextEditingController();
   bool _isLoading = true;
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
   List<Map<String, dynamic>> _items = [];
   double _itemsTotal = 0.0;
   double _paidAmount = 0.0;
@@ -213,16 +218,16 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('حفظ التعديلات'),
+              title: Text(_t('حفظ التعديلات')),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Align(
+                    Align(
                       alignment: Alignment.centerRight,
                       child: Text(
-                        'اختر نوع الحفظ:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        _t('اختر نوع الحفظ:'),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
                     RadioListTile<String>(
@@ -231,7 +236,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                       onChanged: (value) => setState(
                         () => selectedOption = value ?? 'confirmed_paid',
                       ),
-                      title: const Text('مؤكدة ومدفوعة'),
+                      title: Text(_t('مؤكدة ومدفوعة')),
                     ),
                     RadioListTile<String>(
                       value: 'confirmed_only',
@@ -239,14 +244,14 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                       onChanged: (value) => setState(
                         () => selectedOption = value ?? 'confirmed_only',
                       ),
-                      title: const Text('مؤكدة فقط'),
+                      title: Text(_t('مؤكدة فقط')),
                     ),
                     RadioListTile<String>(
                       value: 'partial',
                       groupValue: selectedOption,
                       onChanged: (value) =>
                           setState(() => selectedOption = value ?? 'partial'),
-                      title: const Text('دفع مبلغ معين'),
+                      title: Text(_t('دفع مبلغ معين')),
                     ),
                     if (selectedOption == 'partial') ...[
                       const SizedBox(height: 8),
@@ -257,7 +262,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                           signed: false,
                         ),
                         decoration: InputDecoration(
-                          labelText: 'المبلغ المدفوع',
+                          labelText: _t('المبلغ المدفوع'),
                           border: const OutlineInputBorder(),
                           errorText: errorText,
                         ),
@@ -287,7 +292,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                           : null,
                       child: InputDecorator(
                         decoration: InputDecoration(
-                          labelText: 'تاريخ دفعة المورد',
+                          labelText: _t('تاريخ دفعة المورد'),
                           prefixIcon: const Icon(Icons.calendar_today),
                           suffixIcon: Icon(
                             canChangePaymentDate
@@ -313,7 +318,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('إلغاء'),
+                  child: Text(_t('إلغاء')),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -365,7 +370,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                       'payment_date': selectedPaymentDate.toIso8601String(),
                     });
                   },
-                  child: const Text('حفظ'),
+                  child: Text(_t('حفظ')),
                 ),
               ],
             );
@@ -384,9 +389,9 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
     if (!hasChanges) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('لا توجد تعديلات للتراجع عنها'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(_t('لا توجد تعديلات للتراجع عنها')),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
@@ -399,17 +404,19 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           children: [
             const Icon(Icons.undo, color: Colors.orange),
             const SizedBox(width: 8),
-            const Text('تجاهل التعديلات'),
+            Text(_t('تجاهل التعديلات')),
           ],
         ),
-        content: const Text(
-          'هل تريد التراجع عن جميع التعديلات غير المحفوظة واستعادة القيم الأصلية؟',
+        content: Text(
+          _t(
+            'هل تريد التراجع عن جميع التعديلات غير المحفوظة واستعادة القيم الأصلية؟',
+          ),
           textAlign: TextAlign.right,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('لا'),
+            child: Text(_t('لا')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
@@ -420,15 +427,15 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                 _supplierController.text = _originalSupplier;
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('تم استعادة القيم الأصلية'),
+                SnackBar(
+                  content: Text(_t('تم استعادة القيم الأصلية')),
                   backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 2),
+                  duration: const Duration(seconds: 2),
                 ),
               );
             },
-            child: const Text(
-              'نعم، تراجع',
+            child: Text(
+              _t('نعم، تراجع'),
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -489,7 +496,9 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     setState(() => _purchaseDate = nextDate);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('تم تغيير تاريخ المشتريات')));
+    ).showSnackBar(
+      SnackBar(content: Text(_t('تم تغيير تاريخ المشتريات'))),
+    );
   }
 
   Future<void> _pickInvoiceImage(ImageSource source) async {
@@ -505,10 +514,10 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
       _imagePath = pickedImage.path;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text(
-          'تم حفظ صورة الفاتورة',
-          style: TextStyle(fontFamily: 'Cairo'),
+          _t('تم حفظ صورة الفاتورة'),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
       ),
     );
@@ -523,12 +532,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt),
-              title: const Text('التقاط صورة بالكاميرا'),
+              title: Text(_t('التقاط صورة بالكاميرا')),
               onTap: () => Navigator.pop(context, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('اختيار من المعرض'),
+              title: Text(_t('اختيار من المعرض')),
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
           ],
@@ -546,13 +555,13 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
     final List<pw.Widget> content = [
       pw.Text(
-        'فاتورة مشتريات',
+        _t('فاتورة مشتريات'),
         style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
       ),
       pw.SizedBox(height: 10),
-      pw.Text('رقم الفاتورة: ${_invoiceController.text.trim()}'),
-      pw.Text('المورد: ${_supplierController.text.trim()}'),
-      pw.Text('معرّف المشتريات: ${widget.achatId}'),
+      pw.Text('${_t('رقم الفاتورة:')} ${_invoiceController.text.trim()}'),
+      pw.Text('${_t('المورد:')} ${_supplierController.text.trim()}'),
+      pw.Text('${_t('معرّف المشتريات:')} ${widget.achatId}'),
       pw.SizedBox(height: 12),
     ];
 
@@ -561,7 +570,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
         final imageBytes = File(_imagePath!).readAsBytesSync();
         final invoiceImage = pw.MemoryImage(imageBytes);
         content.addAll([
-          pw.Text('صورة الفاتورة المرفقة:'),
+          pw.Text(_t('صورة الفاتورة المرفقة:')),
           pw.SizedBox(height: 8),
           pw.Center(
             child: pw.Image(
@@ -663,11 +672,11 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('تأكيد', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('تأكيد'), style: const TextStyle(fontFamily: 'Cairo')),
           ),
         ],
       ),
@@ -706,7 +715,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -779,9 +788,9 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'كمية الإرجاع',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('كمية الإرجاع'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -789,7 +798,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -875,7 +884,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                 );
                 Navigator.of(context).pop();
               },
-              child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('حفظ'), style: const TextStyle(fontFamily: 'Cairo')),
             ),
           ],
         );
@@ -1008,8 +1017,8 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                             const TextInputType.numberWithOptions(
                                               decimal: true,
                                             ),
-                                        decoration: const InputDecoration(
-                                          labelText: 'كمية الإرجاع',
+                                        decoration: InputDecoration(
+                                          labelText: _t('كمية الإرجاع'),
                                           isDense: true,
                                         ),
                                         onChanged: (val) {
@@ -1067,17 +1076,18 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText:
-                              'المبلغ المسترجع من المورد (نقداً أو كدين)',
+                          labelText: _t(
+                            'المبلغ المسترجع من المورد (نقداً أو كدين)',
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          hintText: 'مثال: $totalRefundEstimation',
+                          hintText: '${_t('مثال:')} $totalRefundEstimation',
                         ),
                       ),
                       const SizedBox(height: 5),
-                      const Text(
-                        'سيتم تسجيل هذا المبلغ في الخزينة كمداخيل.',
+                      Text(
+                        _t('سيتم تسجيل هذا المبلغ في الخزينة كمداخيل.'),
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey,
@@ -1205,17 +1215,17 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
             children: [
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'اسم العنصر',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('اسم العنصر'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: codeCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'الكود / القياس',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('الكود / القياس'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1224,9 +1234,9 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'الكمية',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('الكمية'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1235,9 +1245,9 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'سعر الوحدة',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('سعر الوحدة'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -1245,7 +1255,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -1310,7 +1320,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                 );
                 Navigator.of(context).pop();
               },
-              child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
+          child: Text(_t('حفظ'), style: const TextStyle(fontFamily: 'Cairo')),
             ),
           ],
         );

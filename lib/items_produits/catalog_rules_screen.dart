@@ -22,13 +22,14 @@ class _RuleRole {
 }
 
 class _CatalogRulesScreenState extends State<CatalogRulesScreen>
-    {
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   late final Map<String, TextEditingController> _searchControllers;
 
-  // Shutters and side covers are intentionally not removed from the database
-  // or from the calculation engine. They have dedicated profile/shutter
-  // rules; this screen is only the grouped accessory-rules editor.
-  final _tables = const ['Accessories'];
+  // Keep accessories and joints as separate grouped rule pages. Shutter
+  // components and side-cover profiles continue to use their dedicated
+  // profile/shutter selectors and are not mixed into this catalogue page.
+  final _tables = const ['Accessories', 'Joints'];
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
   final Map<String, Map<String, dynamic>> _rulesByItem = {};
   bool _loading = true;
@@ -41,6 +42,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: _tables.length, vsync: this);
     _searchControllers = {
       for (final table in _tables) table: TextEditingController(),
     };
@@ -49,6 +51,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   @override
   void dispose() {
+    _tabController.dispose();
     for (final controller in _searchControllers.values) {
       controller.dispose();
     }
@@ -59,16 +62,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     setState(() => _loading = true);
     final results = await Future.wait<dynamic>([
       widget.db.readAccessories(),
+      widget.db.readJoints(),
       widget.db.getCatalogItemRules(itemTable: 'Accessories'),
+      widget.db.getCatalogItemRules(itemTable: 'Joints'),
     ]);
     if (!mounted) return;
     _itemsByTable
       ..clear()
       ..addAll({
         'Accessories': results[0] as List<Map<String, dynamic>>,
+        'Joints': results[1] as List<Map<String, dynamic>>,
       });
     _rulesByItem.clear();
-    for (final raw in results[1] as List<Map<String, dynamic>>) {
+    for (final raw in [
+      ...(results[2] as List<Map<String, dynamic>>),
+      ...(results[3] as List<Map<String, dynamic>>),
+    ]) {
       final table = raw['item_table']?.toString() ?? '';
       final itemId = (raw['item_id'] as num?)?.toInt();
       if (table.isEmpty || itemId == null) continue;
@@ -146,6 +155,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('handle', 'مقبض', 'Poignée'),
           _RuleRole('hinge', 'مفاصل', 'Paumelles'),
           _RuleRole('tasso', 'طاسو', 'Tasso'),
+          _RuleRole('ekar', 'إيكار', 'Ekar'),
           _RuleRole('roulette', 'عجلات', 'Roulettes'),
           _RuleRole('entrematique', 'أونتروماتيك', 'Entrematique'),
           _RuleRole('other', 'أخرى', 'Autre'),
@@ -381,6 +391,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (text.contains('poign') || text.contains('مقبض')) return 'handle';
       if (text.contains('paum') || text.contains('مفصل')) return 'hinge';
       if (text.contains('tasso') || text.contains('طاسو')) return 'tasso';
+      if (text.contains('ekar') ||
+          text.contains('ikar') ||
+          text.contains('إيكار') ||
+          text.contains('ايكار')) {
+        return 'ekar';
+      }
       if (text.contains('roulette') || text.contains('عجلات')) {
         return 'roulette';
       }
@@ -485,7 +501,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(_t('قواعد الأكسسوارات', 'Règles des accessoires')),
+        title: Text(
+          _t('قواعد الأكسسوارات والجوانات', 'Règles des accessoires et des joints'),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(
+              icon: const Icon(Icons.extension_outlined),
+              text: _t('الأكسسوارات', 'Accessoires'),
+            ),
+            Tab(
+              icon: const Icon(Icons.linear_scale_outlined),
+              text: _t('الجوانات', 'Joints'),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: _t('حفظ', 'Enregistrer'),
@@ -502,7 +533,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _tableView('Accessories'),
+          : TabBarView(
+              controller: _tabController,
+              children: _tables.map(_tableView).toList(growable: false),
+            ),
     );
   }
 
@@ -519,6 +553,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final categories = _rolesForTable(table)
         .where((role) => role.key != 'other')
         .toList(growable: false);
+    final isJoints = table == 'Joints';
 
     return ListView(
       padding: const EdgeInsets.all(14),
@@ -549,8 +584,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         const SizedBox(height: 14),
         Text(
           _t(
-            'اختر عنوان الإكسسوار لعرض أنواعه وقواعده',
-            'Choisissez une rubrique pour afficher ses articles et règles',
+            isJoints
+                ? 'اختر عنوان الجوان لعرض أنواعه وقواعده'
+                : 'اختر عنوان الإكسسوار لعرض أنواعه وقواعده',
+            isJoints
+                ? 'Choisissez une rubrique de joints pour afficher ses articles et règles'
+                : 'Choisissez une rubrique pour afficher ses articles et règles',
           ),
           style: Theme.of(context).textTheme.titleMedium,
         ),
@@ -560,7 +599,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             padding: const EdgeInsets.all(24),
             child: Text(
               query.trim().isEmpty
-                  ? _t('لا توجد إكسسوارات.', 'Aucun accessoire.')
+                  ? _t(
+                      isJoints ? 'لا توجد جوانات.' : 'لا توجد إكسسوارات.',
+                      isJoints ? 'Aucun joint.' : 'Aucun accessoire.',
+                    )
                   : _t('لا توجد نتائج.', 'Aucun résultat.'),
               textAlign: TextAlign.center,
             ),
@@ -633,6 +675,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       case 'gache_door':
         return Icons.toggle_on_outlined;
       case 'tasso':
+      case 'ekar':
       case 'roulette':
         return Icons.circle_outlined;
       default:

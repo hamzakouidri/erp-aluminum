@@ -8,6 +8,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'order_date_utils.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class PdfFicheCoupeApi {
   static Future<void> generateAndPrintFicheCoupe({
@@ -21,6 +23,13 @@ class PdfFicheCoupeApi {
     final fontBold = await PdfGoogleFonts.cairoBold();
     final prefs = await SharedPreferences.getInstance();
     final logoBase64 = prefs.getString('workshop_logo_base64') ?? '';
+    final savedLanguage = prefs.getString('app_language') ?? 'arabic';
+    final language = savedLanguage == 'french'
+        ? AppLanguage.french
+        : savedLanguage == 'english'
+        ? AppLanguage.english
+        : AppLanguage.arabic;
+    String tr(String key) => Localization.translate(key, language);
 
     final activeItems = items.where((item) {
       try {
@@ -60,10 +69,10 @@ class PdfFicheCoupeApi {
         textDirection: pw.TextDirection.rtl,
         theme: pw.ThemeData.withFont(base: font, bold: fontBold),
         build: (context) => [
-          _buildHeader(order, workshopName, logoBase64),
+          _buildHeader(order, workshopName, logoBase64, language),
           pw.SizedBox(height: 20),
           pw.Text(
-            'ورقة التقطيع (Fiche de Coupe)',
+            tr('ورقة التقطيع (Fiche de Coupe)'),
             style: pw.TextStyle(
               fontSize: 20,
               fontWeight: pw.FontWeight.bold,
@@ -86,7 +95,9 @@ class PdfFicheCoupeApi {
     Map<String, dynamic> order,
     String workshopName,
     String logoBase64,
+    AppLanguage language,
   ) {
+    String tr(String key) => Localization.translate(key, language);
     pw.Widget? logoWidget;
     if (logoBase64.isNotEmpty) {
       try {
@@ -119,7 +130,7 @@ class PdfFicheCoupeApi {
                 ),
                 pw.SizedBox(height: 1 * PdfPageFormat.mm),
                 pw.Text(
-                  'قسم التصنيع - Atelier',
+                  tr('قسم التصنيع - Atelier'),
                   style: const pw.TextStyle(fontSize: 16),
                 ),
               ],
@@ -130,12 +141,12 @@ class PdfFicheCoupeApi {
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
             pw.Text(
-              'العميل: ${order['firstname'] ?? ''} ${order['lastname'] ?? ''}',
+              '${tr('العميل:')} ${order['firstname'] ?? ''} ${order['lastname'] ?? ''}',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             ),
-            pw.Text('رقم الطلبية: ${order['id']}'),
+            pw.Text('${tr('رقم الطلبية:')} ${order['id']}'),
             pw.Text(
-              'التاريخ: ${formatOrderDate(order['created_at'], fallback: order['updated_at'], emptyLabel: 'غير محدد')}',
+              '${tr('التاريخ:')} ${formatOrderDate(order['created_at'], fallback: order['updated_at'], emptyLabel: tr('غير محدد'))}',
             ),
           ],
         ),

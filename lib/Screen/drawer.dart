@@ -42,8 +42,9 @@ class AppDrawer extends StatefulWidget {
   /// the normal Navigator behaviour, while the desktop shell can collapse the
   /// sidebar without losing the currently open page.
   final VoidCallback? onCollapse;
+  final String? expandedGroup;
 
-  const AppDrawer({super.key, this.onCollapse});
+  const AppDrawer({super.key, this.onCollapse, this.expandedGroup});
 
   @override
   State<AppDrawer> createState() => _AppDrawerState();
@@ -210,12 +211,14 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Widget _desktopGroup({
+    required String groupKey,
     required String title,
     required IconData icon,
     required List<Widget> children,
     Color? color,
   }) {
     return ExpansionTile(
+      initiallyExpanded: widget.expandedGroup == groupKey,
       leading: Icon(icon, color: Colors.white),
       title: Text(
         title,
@@ -945,6 +948,7 @@ class _AppDrawerState extends State<AppDrawer> {
     if (orderItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
+          groupKey: 'orders',
           title: _desktopLabel(
             lang,
             arabic: 'الطلبات والمبيعات',
@@ -960,6 +964,7 @@ class _AppDrawerState extends State<AppDrawer> {
     if (purchaseItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
+          groupKey: 'purchases',
           title: _desktopLabel(
             lang,
             arabic: 'المشتريات',
@@ -975,6 +980,7 @@ class _AppDrawerState extends State<AppDrawer> {
     if (inventoryItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
+          groupKey: 'inventory',
           title: _desktopLabel(
             lang,
             arabic: 'المخزون والمنتجات',
@@ -990,6 +996,7 @@ class _AppDrawerState extends State<AppDrawer> {
     if (financeItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
+          groupKey: 'finance',
           title: _desktopLabel(
             lang,
             arabic: 'الصندوق والحسابات',
@@ -1005,6 +1012,7 @@ class _AppDrawerState extends State<AppDrawer> {
     if (clientItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
+          groupKey: 'clients',
           title: _desktopLabel(
             lang,
             arabic: 'الزبائن',
@@ -1044,6 +1052,7 @@ class _AppDrawerState extends State<AppDrawer> {
     if (taskItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
+          groupKey: 'tasks',
           title: _desktopLabel(
             lang,
             arabic: 'المهام والتنفيذ',
@@ -1058,6 +1067,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     menu.add(
       _desktopGroup(
+        groupKey: 'management',
         title: _desktopLabel(
           lang,
           arabic: 'الإعدادات والإدارة',
@@ -1071,6 +1081,7 @@ class _AppDrawerState extends State<AppDrawer> {
     );
     menu.add(
       _desktopGroup(
+        groupKey: 'account',
         title: _desktopLabel(
           lang,
           arabic: 'الحساب',

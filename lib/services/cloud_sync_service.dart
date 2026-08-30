@@ -1131,22 +1131,27 @@ class CloudSyncService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // ⚡ الاستماع الفوري واللحظي لتحديثات صلاحيات هذا الحساب (permissions).
-    // يعمل بشكل مستقل عن معرّف الورشة، لأن مستند users/{uid} يخص هذا الحساب
-    // فقط، ويجب أن يتحدث حتى قبل ربط العامل بورشة صحيحة.
+    // Firebase is retained for authentication only when Supabase is active.
+    // In that mode roles and permissions arrive from workshop_members through
+    // Supabase Realtime; do not keep a second Firebase permissions listener.
     _permissionsListener?.cancel();
-    _permissionsListener = _firestore
-        .collection('users')
-        .doc(user.uid)
-        .snapshots()
-        .listen(
-          (doc) async {
-            if (!doc.exists || doc.data() == null) return;
-            await _applyPermissionsUpdate(doc.data()!);
-          },
-          onError: _scheduleRealtimeListenerRetry,
-          onDone: _scheduleRealtimeListenerRetry,
-        );
+    _permissionsListener = null;
+    if (!supabaseWorkshopSync.isSignedIn) {
+      // Legacy compatibility for accounts that have not opened a Supabase
+      // session yet.
+      _permissionsListener = _firestore
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen(
+            (doc) async {
+              if (!doc.exists || doc.data() == null) return;
+              await _applyPermissionsUpdate(doc.data()!);
+            },
+            onError: _scheduleRealtimeListenerRetry,
+            onDone: _scheduleRealtimeListenerRetry,
+          );
+    }
 
     if (supabaseWorkshopDataOnly) {
       _listener?.cancel();
@@ -2605,6 +2610,13 @@ class CloudSyncService {
     // belong in their workshop backup, regardless of role.
     notifyChange();
     _dbUpdateController.add('catalog_changed');
+
+    // With an active Supabase workshop session, the catalogue is already part
+    // of workshopTables and is uploaded through workshop_sync_rows. Do not
+    // send the same data to the legacy Firebase global_catalog path.
+    if (SupabaseWorkshopSyncService().isSignedIn) {
+      return;
+    }
 
     try {
       await init();
@@ -4334,6 +4346,13 @@ class CloudSyncService {
 
   Future<void> _performGlobalCatalogBackup() async {
     await init();
+    if (SupabaseWorkshopSyncService().isSignedIn) {
+      // Supabase is the only data backend. The normal pending-row uploader
+      // includes catalogue tables now, so this legacy API becomes a safe
+      // compatibility alias instead of writing to Firebase.
+      await SupabaseWorkshopSyncService().uploadPendingChanges();
+      return;
+    }
     await _hasUnpublishedCatalogChanges();
     final catalogGeneration = _catalogChangeGeneration;
 
@@ -4524,6 +4543,11 @@ class CloudSyncService {
   }) async {
     print("--- CloudSyncService: downloadGlobalCatalog() started ---");
     await init();
+
+    if (SupabaseWorkshopSyncService().isSignedIn) {
+      await SupabaseWorkshopSyncService().downloadWorkshopData(full: true);
+      return;
+    }
 
     if (!discardPendingLocalChanges && await _hasUnpublishedCatalogChanges()) {
       throw StateError(

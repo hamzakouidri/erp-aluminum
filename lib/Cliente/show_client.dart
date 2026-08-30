@@ -330,7 +330,7 @@ class _ShowClientState extends State<ShowClient> {
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'كشف حساب الزبون (Chrono)',
+            tooltip: Localization.translate('كشف حساب الزبون (Chrono)', lang),
             onPressed: () {
               Navigator.push(
                 context,

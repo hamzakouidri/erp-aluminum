@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/sql_database.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class WorkshopProfileScreen extends StatefulWidget {
   const WorkshopProfileScreen({super.key});
@@ -15,11 +18,11 @@ class WorkshopProfileScreen extends StatefulWidget {
 
 class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
+  final _db = SqlDatabase();
 
   bool _isLoading = true;
   Map<String, dynamic>? _managerData;
-  List<QueryDocumentSnapshot> _workers = [];
+  List<Map<String, dynamic>> _workers = [];
 
   final _workshopNameController = TextEditingController();
   final _locationController = TextEditingController();
@@ -30,6 +33,11 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   final _rcController = TextEditingController();
   final _nifController = TextEditingController();
   final _nisController = TextEditingController();
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
   final _aiController = TextEditingController();
   final _ribController = TextEditingController();
 
@@ -61,8 +69,8 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
               profile['workshop_specialties']?.toString() ?? '';
           _managerNameController.text =
               profile['manager_name']?.toString() ?? '';
-          _workerCountController.text =
-              (profile['worker_count'] ?? '').toString();
+          _workerCountController.text = (profile['worker_count'] ?? '')
+              .toString();
           _logoBase64 = profile['logo']?.toString();
         }
       } catch (syncError) {
@@ -87,13 +95,21 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       _aiController.text = _managerData?['ai']?.toString() ?? localAi;
       _ribController.text = _managerData?['rib']?.toString() ?? localRib;
 
-      final workersSnapshot = await _firestore
-          .collection('users')
-          .where('workshopId', isEqualTo: user.uid)
-          .where('role', isEqualTo: 'worker')
-          .get();
-
-      _workers = workersSnapshot.docs;
+      // Employees is the canonical local mirror of the Supabase workshop
+      // members. This page used to query Firebase users, which made the team
+      // appear empty after the workshop data moved to Supabase.
+      final managerUid = (prefs.getString('workshop_code') ?? '').trim();
+      final employees = await _db.readEmployees();
+      _workers = employees.where((worker) {
+        final uid = (worker['uid'] ?? '').toString().trim();
+        final email = (worker['email'] ?? '').toString().trim().toLowerCase();
+        return uid.isNotEmpty &&
+            uid != user.uid &&
+            (managerUid.isEmpty || uid != managerUid) &&
+            email.isNotEmpty &&
+            email != 'no email' &&
+            email != 'no_email';
+      }).toList();
     } catch (e) {
       debugPrint('Error loading workshop profile: $e');
     } finally {
@@ -137,7 +153,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     if (newWorkshopName.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اسم الورشة لا يمكن أن يكون فارغاً')),
+          SnackBar(content: Text(_t('اسم الورشة لا يمكن أن يكون فارغاً'))),
         );
       }
       return;
@@ -153,7 +169,10 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       await prefs.setString('workshop_nis', _nisController.text.trim());
       await prefs.setString('workshop_ai', _aiController.text.trim());
       await prefs.setString('workshop_rib', _ribController.text.trim());
-      await prefs.setString('workshop_address', _locationController.text.trim());
+      await prefs.setString(
+        'workshop_address',
+        _locationController.text.trim(),
+      );
       if (_logoBase64 != null) {
         await prefs.setString('workshop_logo_base64', _logoBase64!);
       }
@@ -183,8 +202,8 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم حفظ معلومات الورشة بنجاح'),
+          SnackBar(
+            content: Text(_t('تم حفظ معلومات الورشة بنجاح')),
             backgroundColor: Colors.green,
           ),
         );
@@ -193,7 +212,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في الحفظ: $e'),
+            content: Text('${_t('خطأ في الحفظ:')} $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -217,28 +236,29 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     super.dispose();
   }
 
-  Future<void> _editWorker(QueryDocumentSnapshot workerDoc) async {
-    final data = workerDoc.data() as Map<String, dynamic>;
+  Future<void> _editWorker(Map<String, dynamic> data) async {
+    final uid = (data['uid'] ?? '').toString().trim();
+    if (uid.isEmpty) return;
     final nameCtrl = TextEditingController(text: data['name'] ?? '');
-    final jobTitleCtrl = TextEditingController(text: data['jobTitle'] ?? '');
+    final jobTitleCtrl = TextEditingController(text: data['job_role'] ?? '');
 
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('تعديل معلومات العامل'),
+        title: Text(_t('تعديل معلومات المستخدم')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'اسم العامل'),
+              decoration: InputDecoration(labelText: _t('اسم المستخدم')),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: jobTitleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'المسمى الوظيفي',
-                hintText: 'مثال: رئيس ورشة، عامل متقدم، مبتدئ...',
+              decoration: InputDecoration(
+                labelText: _t('المسمى الوظيفي'),
+                hintText: _t('مثال: رئيس ورشة، عامل متقدم، مبتدئ...'),
               ),
             ),
           ],
@@ -246,11 +266,11 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
+            child: Text(_t('إلغاء')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('حفظ'),
+            child: Text(_t('حفظ')),
           ),
         ],
       ),
@@ -258,11 +278,14 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
 
     if (result == true) {
       try {
-        await _firestore.collection('users').doc(workerDoc.id).update({
-          'name': nameCtrl.text.trim(),
-          'jobTitle': jobTitleCtrl.text.trim(),
-        });
-        _loadData();
+        await _db.updateEmployeeInfo(
+          uid,
+          name: nameCtrl.text.trim(),
+          phone: (data['phone'] ?? '').toString(),
+          address: (data['address'] ?? '').toString(),
+          jobRole: jobTitleCtrl.text.trim(),
+        );
+        await _loadData();
       } catch (e) {
         debugPrint('Error updating worker: $e');
       }
@@ -273,12 +296,12 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ملف ومعلومات الورشة'),
+        title: Text(_t('ملف ومعلومات الورشة')),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _isLoading ? null : _saveManagerData,
-            tooltip: 'حفظ المعلومات',
+            tooltip: _t('حفظ المعلومات'),
           ),
         ],
       ),
@@ -342,16 +365,16 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: _workshopNameController,
-              decoration: const InputDecoration(
-                labelText: 'اسم الورشة',
+              decoration: InputDecoration(
+                labelText: _t('اسم الورشة'),
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _locationController,
-              decoration: const InputDecoration(
-                labelText: 'موقع الورشة',
+              decoration: InputDecoration(
+                labelText: _t('موقع الورشة'),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -359,8 +382,8 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             TextField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'رقم الهاتف',
+              decoration: InputDecoration(
+                labelText: _t('رقم الهاتف'),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -368,10 +391,10 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             TextField(
               controller: _specialtiesController,
               maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'تخصصات الورشة',
+              decoration: InputDecoration(
+                labelText: _t('تخصصات الورشة'),
                 border: OutlineInputBorder(),
-                hintText: 'مثال: ألمنيوم، زجاج، بي في سي...',
+                hintText: _t('مثال: ألمنيوم، زجاج، بي في سي...'),
               ),
             ),
             const SizedBox(height: 10),
@@ -388,40 +411,40 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: _rcController,
-              decoration: const InputDecoration(
-                labelText: 'رقم السجل التجاري (RC)',
+              decoration: InputDecoration(
+                labelText: _t('رقم السجل التجاري (RC)'),
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _nifController,
-              decoration: const InputDecoration(
-                labelText: 'رقم التعريف الجبائي (NIF)',
+              decoration: InputDecoration(
+                labelText: _t('رقم التعريف الجبائي (NIF)'),
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _nisController,
-              decoration: const InputDecoration(
-                labelText: 'رقم التعريف الإحصائي (NIS)',
+              decoration: InputDecoration(
+                labelText: _t('رقم التعريف الإحصائي (NIS)'),
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _aiController,
-              decoration: const InputDecoration(
-                labelText: 'رقم المادة (AI)',
+              decoration: InputDecoration(
+                labelText: _t('رقم المادة (AI)'),
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _ribController,
-              decoration: const InputDecoration(
-                labelText: 'الحساب البنكي (RIB)',
+              decoration: InputDecoration(
+                labelText: _t('الحساب البنكي (RIB)'),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -439,8 +462,8 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: _managerNameController,
-              decoration: const InputDecoration(
-                labelText: 'اسم مدير الورشة',
+              decoration: InputDecoration(
+                labelText: _t('اسم مدير الورشة'),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -448,17 +471,17 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             TextField(
               controller: _workerCountController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'عدد عمال الورشة',
+              decoration: InputDecoration(
+                labelText: _t('عدد مستخدمي الورشة'),
                 border: OutlineInputBorder(),
-                hintText: 'مثال: 5',
+                hintText: _t('مثال: 5'),
               ),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _saveManagerData,
               icon: const Icon(Icons.save),
-              label: const Text('حفظ التعديلات الرئيسية'),
+              label: Text(_t('حفظ التعديلات الرئيسية')),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 45),
               ),
@@ -479,7 +502,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             const SizedBox(height: 10),
             if (_workers.isEmpty)
               const Text(
-                'لا يوجد عمال مسجلين في ورشتك بعد.',
+                'لا يوجد مستخدمون مسجلون في ورشتك بعد.',
                 style: TextStyle(color: Colors.grey),
               )
             else
@@ -488,9 +511,9 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _workers.length,
                 itemBuilder: (context, index) {
-                  final wData = _workers[index].data() as Map<String, dynamic>;
+                  final wData = _workers[index];
                   final wName = wData['name'] ?? 'بدون اسم';
-                  final wJobTitle = wData['jobTitle'] ?? 'عامل (غير مصنف)';
+                  final wJobTitle = wData['job_role'] ?? 'عامل (غير مصنف)';
 
                   return Card(
                     child: ListTile(

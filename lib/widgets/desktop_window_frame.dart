@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 /// The Windows caption area is drawn by Flutter so the window controls remain
 /// visible even when the pointer is not hovering over the title bar.
@@ -38,6 +41,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : const Color(0xFF172033);
     final background = isDark ? const Color(0xFF111827) : Colors.white;
@@ -73,7 +77,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'ورشتي',
+                            Localization.translate('ورشتي', lang),
                             style: TextStyle(
                               color: foreground,
                               fontFamily: 'Cairo',
@@ -92,13 +96,16 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
               else
                 Expanded(child: DragToMoveArea(child: const SizedBox.expand())),
               _CaptionButton(
-                tooltip: 'تصغير',
+                tooltip: Localization.translate('تصغير', lang),
                 icon: Icons.remove_rounded,
                 foreground: foreground,
                 onPressed: () => windowManager.minimize(),
               ),
               _CaptionButton(
-                tooltip: _isMaximized ? 'استعادة الحجم' : 'تكبير',
+                tooltip: Localization.translate(
+                  _isMaximized ? 'استعادة الحجم' : 'تكبير',
+                  lang,
+                ),
                 icon: _isMaximized
                     ? Icons.filter_none_rounded
                     : Icons.crop_square_rounded,
@@ -106,7 +113,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                 onPressed: _toggleMaximize,
               ),
               _CaptionButton(
-                tooltip: 'إغلاق',
+                tooltip: Localization.translate('إغلاق', lang),
                 icon: Icons.close_rounded,
                 foreground: const Color(0xFFDC2626),
                 closeButton: true,

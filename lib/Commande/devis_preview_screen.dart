@@ -110,6 +110,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       context,
       listen: false,
     ).language;
+    // Generate the PDF in the background. The visual preview must remain
+    // usable while PDF bytes are being prepared; putting a full-screen loader
+    // here made partial delivery previews look stuck indefinitely.
+    _isLoading = false;
     _initPdfGeneration();
   }
 
@@ -153,11 +157,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Future<Uint8List?> _buildPdfBytes({bool showErrors = true}) async {
     try {
-      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 15));
+      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 10));
       return await PdfInvoiceApi.buildPdfBytes(
         _currentDevisData,
         overrideLang: _invoiceLanguage,
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(const Duration(seconds: 30));
     } catch (e) {
       debugPrint('PDF generation error: $e');
       if (showErrors && mounted) {
@@ -1615,6 +1619,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               fontFamily: 'Cairo',
             ),
             textAlign: TextAlign.center,
+            softWrap: true,
+            maxLines: null,
+            overflow: TextOverflow.visible,
+            textWidthBasis: TextWidthBasis.parent,
           ),
         if (noteText.isNotEmpty && footerText.isNotEmpty)
           const SizedBox(height: 5),

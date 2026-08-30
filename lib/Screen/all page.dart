@@ -87,6 +87,7 @@ class MultiTabScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // جلب بيانات التبويبات من الـ Provider
     final tabProvider = Provider.of<TabProvider>(context);
+    final lang = Provider.of<AppSettingsProvider>(context).language;
 
     // تأمين وجود الشاشة الرئيسية الافتراضية عند أول تشغيل
     tabProvider.initDefaultTab(const WelcomScreen());
@@ -94,13 +95,15 @@ class MultiTabScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text('نظام إدارة الورشة (ERP)'),
+        title: Text(
+          Localization.translate('نظام إدارة الورشة (ERP)', lang),
+        ),
         backgroundColor: Colors.blueGrey.shade900,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: 'الإعدادات',
+            tooltip: Localization.translate('الإعدادات', lang),
             onPressed: () {
               tabProvider.openTab(
                 'الإعدادات',

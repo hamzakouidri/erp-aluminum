@@ -3863,6 +3863,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
   Widget _buildSliverHeader(BuildContext context) {
     final isDesktop = _isWindowsDesktop;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return SliverAppBar(
       expandedHeight: isDesktop ? 132 : 180,
       pinned: true,
@@ -3893,7 +3897,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
               )
             : IconButton(
                 icon: const Icon(Icons.sync_rounded, color: Colors.white),
-                tooltip: 'تحديث ومزامنة البيانات والمهام من السحابة',
+                tooltip: _desktopText(
+                  lang,
+                  'تحديث ومزامنة البيانات والمهام من السحابة',
+                  'Actualiser et synchroniser les données et les tâches depuis le cloud',
+                  'Refresh and sync data and tasks from the cloud',
+                ),
                 onPressed: () => _autoSyncData(showSnackBar: true),
               ),
         Stack(

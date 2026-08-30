@@ -248,8 +248,7 @@ class _CommandePageState extends State<CommandePage> {
     return !product.isReplaced &&
         !product.isGlassWork &&
         !product.isMoustiquaire &&
-        !product.isCaissonTunnel &&
-        !product.isShutterOnly;
+        !product.isCaissonTunnel;
   }
 
   void _enterBulkSelectionMode() {
@@ -298,6 +297,9 @@ class _CommandePageState extends State<CommandePage> {
   // copy of the same window (often with its former colour).
   final Map<WindowModel, int> _persistedDetailIds = {};
   final ScrollController _scrollController = ScrollController();
+  Timer? _reorderAutoScrollTimer;
+  bool _reorderDragActive = false;
+  double? _lastReorderPointerY;
 
   void _scrollToHighlightedProduct() {
     if (_highlightedProduct == null) return;
@@ -311,6 +313,69 @@ class _CommandePageState extends State<CommandePage> {
         );
       }
     });
+  }
+
+  void _startReorderDrag(int index) {
+    _reorderDragActive = true;
+    _lastReorderPointerY = null;
+    _reorderAutoScrollTimer?.cancel();
+    _reorderAutoScrollTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _autoScrollWhileReordering(),
+    );
+  }
+
+  void _finishReorderDrag(int index) {
+    _reorderDragActive = false;
+    _lastReorderPointerY = null;
+    _reorderAutoScrollTimer?.cancel();
+    _reorderAutoScrollTimer = null;
+  }
+
+  void _handleReorderPointerMove(PointerMoveEvent event) {
+    if (_reorderDragActive) {
+      _lastReorderPointerY = event.position.dy;
+    }
+  }
+
+  void _autoScrollWhileReordering() {
+    if (!mounted ||
+        !_reorderDragActive ||
+        _lastReorderPointerY == null ||
+        !_scrollController.hasClients) {
+      return;
+    }
+
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    const edgeDistance = 88.0;
+    final topEdge = topInset + edgeDistance;
+    final bottomEdge =
+        screenHeight - MediaQuery.paddingOf(context).bottom - edgeDistance;
+    final pointerY = _lastReorderPointerY!;
+
+    double delta = 0;
+    if (pointerY < topEdge) {
+      final factor = ((topEdge - pointerY) / edgeDistance)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      delta = -18.0 * factor;
+    } else if (pointerY > bottomEdge) {
+      final factor = ((pointerY - bottomEdge) / edgeDistance)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      delta = 18.0 * factor;
+    }
+
+    if (delta == 0) return;
+    final position = _scrollController.position;
+    final nextOffset = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (nextOffset != position.pixels) {
+      _scrollController.jumpTo(nextOffset.toDouble());
+    }
   }
 
   // حفظ آخر خصائص مستخدمة داخل نفس الطلبية
@@ -437,6 +502,10 @@ class _CommandePageState extends State<CommandePage> {
       final workLabel = payload['workTypeLabel']?.toString() ?? 'عمل زجاجي';
       final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
       final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
+      final shapeLabel = payload['panelShapeLabel']?.toString() ?? 'مستقيم (I)';
+      final operationLabel =
+          payload['operationLabel']?.toString() ?? 'منزلق';
+      final kitLabel = payload['selectedKitLabel']?.toString() ?? '';
       final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
       final notes = payload['notes']?.toString() ?? '';
       final singlePayload = <String, dynamic>{
@@ -456,8 +525,9 @@ class _CommandePageState extends State<CommandePage> {
       );
       model.isGlassWork = true;
       model.isReplaced = false;
-      model.manualNameOverride = 'Verre Trempé - $workLabel';
+      model.manualNameOverride = 'Verre Trempé - $workLabel - $shapeLabel';
       model.description =
+          '$operationLabel${kitLabel.isEmpty ? '' : ' | $kitLabel'} | $shapeLabel | '
           '$finishLabel ${thickness.toStringAsFixed(0)} mm | $stickerLabel | '
           '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm'
           '${notes.isEmpty ? '' : ' | $notes'}';
@@ -557,6 +627,7 @@ class _CommandePageState extends State<CommandePage> {
   // 🟢 التخلص من المتحكمات لتفريغ الذاكرة
   @override
   void dispose() {
+    _reorderAutoScrollTimer?.cancel();
     clientController.dispose();
     quoteDateController.dispose();
     validDateController.dispose();
@@ -564,6 +635,7 @@ class _CommandePageState extends State<CommandePage> {
     remiseController.dispose();
     taxController.dispose();
     projectController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -861,9 +933,7 @@ class _CommandePageState extends State<CommandePage> {
   Future<void> _calculateGlobalMaterialsAndCost() async {
     if (addedProducts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("الرجاء إضافة منتجات أولاً لحساب تكلفتها"),
-        ),
+        SnackBar(content: Text(t('الرجاء إضافة منتجات أولاً لحساب تكلفتها'))),
       );
       return;
     }
@@ -1322,7 +1392,7 @@ class _CommandePageState extends State<CommandePage> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('فشل حفظ الطلبية: $e'),
+          content: Text('${t('فشل حفظ الطلبية')}: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1376,7 +1446,7 @@ class _CommandePageState extends State<CommandePage> {
     final products = _bulkEditableProducts();
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد عناصر قابلة لهذا التخصيص.')),
+        SnackBar(content: Text(t('لا توجد عناصر قابلة لهذا التخصيص.'))),
       );
       return null;
     }
@@ -1391,7 +1461,9 @@ class _CommandePageState extends State<CommandePage> {
     _bulkSelectedProducts.removeWhere((product) => !products.contains(product));
     if (_bulkSelectedProducts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدد عنصرًا واحدًا على الأقل لتطبيق $title.')),
+        SnackBar(
+          content: Text('${t('حدد عنصرًا واحدًا على الأقل لتطبيق')} $title.'),
+        ),
       );
       return null;
     }
@@ -1408,7 +1480,7 @@ class _CommandePageState extends State<CommandePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تعذر تطبيق التخصيص: $error'),
+            content: Text('${t('تعذر تطبيق التخصيص:')} $error'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1419,12 +1491,92 @@ class _CommandePageState extends State<CommandePage> {
     }
   }
 
+  Future<bool?> _askBulkPricePolicy() async {
+    var recalculate = true;
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(t('سعر العناصر بعد التغيير')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                t(
+                  'اختر هل تريد الحفاظ على السعر الحالي أم إعادة حسابه حسب التغيير الجديد.',
+                ),
+              ),
+              RadioListTile<bool>(
+                value: true,
+                groupValue: recalculate,
+                onChanged: (value) =>
+                    setDialogState(() => recalculate = value ?? true),
+                title: Text(t('إعادة حساب السعر')),
+                subtitle: Text(t('يأخذ اللون أو السلسلة الجديدة بالحسبان.')),
+              ),
+              RadioListTile<bool>(
+                value: false,
+                groupValue: recalculate,
+                onChanged: (value) =>
+                    setDialogState(() => recalculate = value ?? false),
+                title: Text(t('الحفاظ على السعر الحالي')),
+                subtitle: Text(t('يبقى السعر كما هو قبل التغيير.')),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(t('إلغاء')),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, recalculate),
+              child: Text(t('متابعة')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _prepareBulkCatalog(Iterable<WindowModel> products) async {
     for (final product in products) {
-      if (product.availableSystems.isEmpty || product.allGlassCache.isEmpty) {
+      final needsCatalog =
+          product.availableSystems.isEmpty ||
+          product.allGlassCache.isEmpty ||
+          product.availableColors.isEmpty ||
+          (product.isShutterOnly && product.availableAccessoryColors.isEmpty);
+      if (!needsCatalog) continue;
+      try {
         await product.loadCatalogData(product.systemMode ?? 'mixed');
+      } catch (error, stackTrace) {
+        // One incomplete legacy row must not prevent the colour dialog from
+        // opening for the remaining selected products.
+        debugPrint('Bulk colour catalog load failed: $error\n$stackTrace');
       }
     }
+  }
+
+  int? _bulkColorId(Map<String, dynamic> color) {
+    final rawId = color['id'];
+    return rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
+  }
+
+  List<Map<String, dynamic>> _bulkColorPalette(WindowModel product) {
+    final source = product.isShutterOnly
+        ? (product.availableAccessoryColors.isNotEmpty
+              ? product.availableAccessoryColors
+              : product.availableColors)
+        : product.availableColors;
+    final result = <Map<String, dynamic>>[];
+    final seen = <int>{};
+    for (final color in source) {
+      final id = _bulkColorId(color);
+      if (id != null && seen.add(id)) {
+        result.add(Map<String, dynamic>.from(color));
+      }
+    }
+    return result;
   }
 
   double _readMapPrice(Map<String, dynamic>? value) {
@@ -1651,9 +1803,12 @@ class _CommandePageState extends State<CommandePage> {
   // 🟢 تغيير لون العناصر المحددة من الطلبية
   Future<void> _showApplyBulkColorDialog() async {
     final selected = await _selectBulkProducts(
-      title: 'تغيير لون عناصر الطلبية',
+      title: t('تغيير لون عناصر الطلبية'),
     );
     if (selected == null || selected.isEmpty) return;
+
+    final recalculatePrices = await _askBulkPricePolicy();
+    if (recalculatePrices == null || !mounted) return;
 
     final prepared = await _runBulkOperation<bool>(() async {
       await _prepareBulkCatalog(selected);
@@ -1661,39 +1816,55 @@ class _CommandePageState extends State<CommandePage> {
     });
     if (prepared != true || !mounted) return;
 
-    final allColors = await widget.db.readColors();
-    Set<int>? allowedColorIds;
-    for (final product in selected) {
-      final ids = product.availableColors
-          .map((color) {
-            final rawId = color['id'];
-            return rawId is num
-                ? rawId.toInt()
-                : int.tryParse(rawId?.toString() ?? '');
-          })
-          .whereType<int>()
-          .toSet();
-      allowedColorIds = allowedColorIds == null
-          ? ids
-          : allowedColorIds.intersection(ids);
+    List<Map<String, dynamic>> allColors = const [];
+    try {
+      allColors = await widget.db.readColors();
+    } catch (error, stackTrace) {
+      // The palettes loaded with the selected products are still enough to
+      // render the picker if the global colour query is temporarily delayed.
+      debugPrint('Bulk colour list load failed: $error\n$stackTrace');
     }
-    final colors = allColors.where((color) {
-      final rawId = color['id'];
-      final id = rawId is num
-          ? rawId.toInt()
-          : int.tryParse(rawId?.toString() ?? '');
-      return id != null && (allowedColorIds?.contains(id) ?? false);
-    }).toList();
+    // A bulk colour change may contain products from different series.  The
+    // picker must show every colour supported by at least one selected series
+    // (union), rather than only colours shared by all selected series
+    // (intersection).  Each product is still checked before applying the
+    // choice below, so an incompatible colour is never assigned to it.
+    final allowedColorIds = <int>{};
+    for (final product in selected) {
+      final ids = _bulkColorPalette(
+        product,
+      ).map(_bulkColorId).whereType<int>().toSet();
+      allowedColorIds.addAll(ids);
+    }
+    final colorsById = <int, Map<String, dynamic>>{};
+    for (final color in allColors) {
+      final id = _bulkColorId(color);
+      if (id != null && allowedColorIds.contains(id)) {
+        colorsById[id] = Map<String, dynamic>.from(color);
+      }
+    }
+    // Keep the loaded series/accessory palette as a fallback and as the
+    // source of truth for colours that are present locally but not yet in a
+    // freshly-read global list.
+    for (final product in selected) {
+      for (final color in _bulkColorPalette(product)) {
+        final id = _bulkColorId(color);
+        if (id != null && allowedColorIds.contains(id)) {
+          colorsById.putIfAbsent(id, () => Map<String, dynamic>.from(color));
+        }
+      }
+    }
+    final colors = colorsById.values.toList();
 
     if (!mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('اختيار لون العناصر المحددة'),
+        title: Text(t('اختيار لون العناصر المحددة')),
         content: SizedBox(
           width: double.maxFinite,
           child: colors.isEmpty
-              ? const Text('لا يوجد لون مشترك صالح لهذه العناصر.')
+              ? Text(t('لا توجد ألوان متاحة للسلاسل المختارة.'))
               : ListView(
                   shrinkWrap: true,
                   children: colors.map((dbColor) {
@@ -1719,17 +1890,33 @@ class _CommandePageState extends State<CommandePage> {
                         final changed = await _runBulkOperation<int>(() async {
                           var count = 0;
                           for (final product in selected) {
-                            final allowed = product.availableColors.any(
+                            final allowed = _bulkColorPalette(product).any(
                               (color) =>
-                                  color['id']?.toString() ==
-                                  dbColor['id']?.toString(),
+                                  _bulkColorId(color) == _bulkColorId(dbColor),
                             );
                             if (!allowed) continue;
-                            product.selectedDbColor = dbColor;
-                            await product.refreshSectionPricesForSelectedColor(
-                              notify: false,
-                            );
-                            await _recalculateProductSellingPrice(product);
+                            final previousTotalCost = product.totalCost;
+                            final previousManualPrice =
+                                product.manualPriceOverride;
+                            if (product.isShutterOnly) {
+                              product.selectedAccessoryColor = dbColor;
+                              product.selectedDbColor = dbColor;
+                            } else {
+                              product.selectedDbColor = dbColor;
+                              if (product.hasShutter) {
+                                product.selectedAccessoryColor = dbColor;
+                              }
+                              await product
+                                  .refreshSectionPricesForSelectedColor(
+                                    notify: false,
+                                  );
+                            }
+                            if (recalculatePrices) {
+                              await _recalculateProductSellingPrice(product);
+                            } else {
+                              product.totalCost = previousTotalCost;
+                              product.manualPriceOverride = previousManualPrice;
+                            }
                             count++;
                           }
                           if (mounted) setState(() {});
@@ -1741,7 +1928,7 @@ class _CommandePageState extends State<CommandePage> {
                             SnackBar(
                               backgroundColor: Colors.green.shade700,
                               content: Text(
-                                'تم تغيير اللون لـ $changed عنصر بنجاح.',
+                                '${t('تم تغيير اللون لـ')} $changed ${t('عنصر')} ${t('بنجاح')}.',
                               ),
                             ),
                           );
@@ -1754,7 +1941,7 @@ class _CommandePageState extends State<CommandePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
+            child: Text(t('إلغاء')),
           ),
         ],
       ),
@@ -1762,7 +1949,7 @@ class _CommandePageState extends State<CommandePage> {
   }
 
   Future<void> _showBulkSeriesDialog() async {
-    final selected = await _selectBulkProducts(title: 'تغيير سلسلة العناصر');
+    final selected = await _selectBulkProducts(title: t('تغيير سلسلة العناصر'));
     if (selected == null || selected.isEmpty) return;
     final prepared = await _runBulkOperation<bool>(() async {
       await _prepareBulkCatalog(selected);
@@ -1781,14 +1968,14 @@ class _CommandePageState extends State<CommandePage> {
     }
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد سلاسل متاحة لهذه العناصر.')),
+        SnackBar(content: Text(t('لا توجد سلاسل متاحة لهذه العناصر.'))),
       );
       return;
     }
     final chosen = await showDialog<AluminumSeries>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('اختر السلسلة الجديدة'),
+        title: Text(t('اختر السلسلة الجديدة')),
         content: SizedBox(
           width: double.maxFinite,
           height: 420,
@@ -1817,12 +2004,15 @@ class _CommandePageState extends State<CommandePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
+            child: Text(t('إلغاء')),
           ),
         ],
       ),
     );
     if (chosen == null || !mounted) return;
+
+    final recalculatePrices = await _askBulkPricePolicy();
+    if (recalculatePrices == null || !mounted) return;
 
     final changed = await _runBulkOperation<int>(() async {
       var count = 0;
@@ -1833,6 +2023,8 @@ class _CommandePageState extends State<CommandePage> {
             .cast<AluminumSeries?>()
             .firstWhere((series) => series != null, orElse: () => null);
         if (localSeries == null) continue;
+        final previousTotalCost = product.totalCost;
+        final previousManualPrice = product.manualPriceOverride;
         if (isSlidingSeriesForDrawing(localSeries)) {
           if (product.systemMode == 'sliding') {
             await product.setActiveSeries(localSeries);
@@ -1846,7 +2038,12 @@ class _CommandePageState extends State<CommandePage> {
           product.loadedSeriesId = localSeries.id;
           product.loadedSeriesName = localSeries.name;
         }
-        await _recalculateProductSellingPrice(product);
+        if (recalculatePrices) {
+          await _recalculateProductSellingPrice(product);
+        } else {
+          product.totalCost = previousTotalCost;
+          product.manualPriceOverride = previousManualPrice;
+        }
         count++;
       }
       if (mounted) setState(() {});
@@ -1857,7 +2054,9 @@ class _CommandePageState extends State<CommandePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.green.shade700,
-          content: Text('تم تغيير السلسلة لـ $changed عنصر بنجاح.'),
+          content: Text(
+            '${t('تم تغيير السلسلة لـ')} $changed ${t('عنصر')} ${t('بنجاح')}.',
+          ),
         ),
       );
     }
@@ -1911,14 +2110,14 @@ class _CommandePageState extends State<CommandePage> {
             }
 
             return AlertDialog(
-              title: const Text('تغيير زجاج العناصر المحددة'),
+              title: Text(t('تغيير زجاج العناصر المحددة')),
               content: SizedBox(
                 width: double.maxFinite,
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
                       enumDropdown(
-                        label: 'نوع الزجاج',
+                        label: t('نوع الزجاج'),
                         value: structure,
                         values: GlassStructure.values,
                         onChanged: (value) {
@@ -1933,8 +2132,8 @@ class _CommandePageState extends State<CommandePage> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'سمك الزجاج الخارجي (مم)',
+                        decoration: InputDecoration(
+                          labelText: t('سمك الزجاج الخارجي (مم)'),
                         ),
                       ),
                       if (structure == GlassStructure.double) ...[
@@ -1944,28 +2143,28 @@ class _CommandePageState extends State<CommandePage> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'سمك الزجاج الداخلي (مم)',
+                          decoration: InputDecoration(
+                            labelText: t('سمك الزجاج الداخلي (مم)'),
                           ),
                         ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: intercall,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'سمك الأنتركال (مم)',
+                          decoration: InputDecoration(
+                            labelText: t('سمك الأنتركال (مم)'),
                           ),
                         ),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('مع غاز'),
+                          title: Text(t('مع غاز')),
                           value: hasGas,
                           onChanged: (value) =>
                               setDialogState(() => hasGas = value),
                         ),
                       ],
                       enumDropdown(
-                        label: 'معالجة الوجه الخارجي',
+                        label: t('معالجة الوجه الخارجي'),
                         value: processingOuter,
                         values: GlassProcessing.values,
                         onChanged: (value) {
@@ -1975,7 +2174,7 @@ class _CommandePageState extends State<CommandePage> {
                         },
                       ),
                       enumDropdown(
-                        label: 'نوع الوجه الخارجي',
+                        label: t('نوع الوجه الخارجي'),
                         value: finishOuter,
                         values: GlassFinish.values,
                         onChanged: (value) {
@@ -1985,7 +2184,7 @@ class _CommandePageState extends State<CommandePage> {
                         },
                       ),
                       enumDropdown(
-                        label: 'لون الوجه الخارجي',
+                        label: t('لون الوجه الخارجي'),
                         value: colorOuter,
                         values: GlassColor.values,
                         onChanged: (value) {
@@ -1996,7 +2195,7 @@ class _CommandePageState extends State<CommandePage> {
                       ),
                       if (structure == GlassStructure.double) ...[
                         enumDropdown(
-                          label: 'معالجة الوجه الداخلي',
+                          label: t('معالجة الوجه الداخلي'),
                           value: processingInner,
                           values: GlassProcessing.values,
                           onChanged: (value) {
@@ -2006,7 +2205,7 @@ class _CommandePageState extends State<CommandePage> {
                           },
                         ),
                         enumDropdown(
-                          label: 'نوع الوجه الداخلي',
+                          label: t('نوع الوجه الداخلي'),
                           value: finishInner,
                           values: GlassFinish.values,
                           onChanged: (value) {
@@ -2016,7 +2215,7 @@ class _CommandePageState extends State<CommandePage> {
                           },
                         ),
                         enumDropdown(
-                          label: 'لون الوجه الداخلي',
+                          label: t('لون الوجه الداخلي'),
                           value: colorInner,
                           values: GlassColor.values,
                           onChanged: (value) {
@@ -2033,7 +2232,7 @@ class _CommandePageState extends State<CommandePage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('إلغاء'),
+                  child: Text(t('إلغاء')),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -2081,13 +2280,24 @@ class _CommandePageState extends State<CommandePage> {
                       ),
                     );
                   },
-                  child: const Text('تطبيق'),
+                  child: Text(t('تطبيق')),
                 ),
               ],
             );
           },
         ),
       );
+    } catch (error, stackTrace) {
+      debugPrint('Bulk glass dialog failed: $error\n$stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${t('تعذر فتح إعدادات الزجاج')}: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
     } finally {
       outerThickness.dispose();
       innerThickness.dispose();
@@ -2096,43 +2306,66 @@ class _CommandePageState extends State<CommandePage> {
   }
 
   Future<void> _showBulkGlassDialog() async {
-    final selected = await _selectBulkProducts(title: 'تغيير زجاج العناصر');
-    if (selected == null || selected.isEmpty) return;
-    final prepared = await _runBulkOperation<bool>(() async {
-      await _prepareBulkCatalog(selected);
-      return true;
-    });
-    if (prepared != true || !mounted) return;
-
-    final source = selected.firstWhere(
-      (product) => product.zones.isNotEmpty,
-      orElse: () => selected.first,
-    );
-    if (source.zones.isEmpty) return;
-    final base =
-        source.getUniformGlassSpecification() ?? source.zones.first.glass;
-    final spec = await _showBulkGlassSpecDialog(base);
-    if (spec == null || !mounted) return;
-
-    final changed = await _runBulkOperation<int>(() async {
-      var count = 0;
-      for (final product in selected) {
-        if (product.zones.isEmpty) continue;
-        await product.applyGlassSpecificationToAllZones(spec);
-        await _recalculateProductSellingPrice(product);
-        count++;
-      }
-      if (mounted) setState(() {});
-      return count;
-    });
-    if (mounted && changed != null) {
-      _exitBulkSelectionMode();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: Colors.green.shade700,
-          content: Text('تم تغيير الزجاج لـ $changed عنصر بنجاح.'),
-        ),
+    try {
+      final selected = await _selectBulkProducts(
+        title: t('تغيير زجاج العناصر'),
       );
+      if (selected == null || selected.isEmpty) return;
+      final prepared = await _runBulkOperation<bool>(() async {
+        await _prepareBulkCatalog(selected);
+        return true;
+      });
+      if (prepared != true || !mounted) return;
+
+      final source = selected.firstWhere(
+        (product) => product.zones.isNotEmpty,
+        orElse: () => selected.first,
+      );
+      if (source.zones.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('لا توجد مناطق زجاجية في العناصر المحددة.')),
+          ),
+        );
+        return;
+      }
+      final base =
+          source.getUniformGlassSpecification() ?? source.zones.first.glass;
+      final spec = await _showBulkGlassSpecDialog(base);
+      if (spec == null || !mounted) return;
+
+      final changed = await _runBulkOperation<int>(() async {
+        var count = 0;
+        for (final product in selected) {
+          if (product.zones.isEmpty) continue;
+          await product.applyGlassSpecificationToAllZones(spec);
+          await _recalculateProductSellingPrice(product);
+          count++;
+        }
+        if (mounted) setState(() {});
+        return count;
+      });
+      if (mounted && changed != null) {
+        _exitBulkSelectionMode();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.green.shade700,
+            content: Text(
+              '${t('تم تغيير الزجاج لـ')} $changed ${t('عنصر')} ${t('بنجاح')}.',
+            ),
+          ),
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Bulk glass change failed: $error\n$stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${t('تعذر تغيير الزجاج')}: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -2383,16 +2616,18 @@ class _CommandePageState extends State<CommandePage> {
                   value: allSelected,
                   controlAffinity: ListTileControlAffinity.leading,
                   title: Text(
-                    'تحديد الكل (${products.length})',
+                    '${t('تحديد الكل')} (${products.length})',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text('تم تحديد ${_bulkSelectedProducts.length}'),
+                  subtitle: Text(
+                    '${t('تم تحديد')} ${_bulkSelectedProducts.length}',
+                  ),
                   onChanged: (_) => _toggleAllBulkProducts(),
                 ),
                 TextButton.icon(
                   onPressed: _exitBulkSelectionMode,
                   icon: const Icon(Icons.close),
-                  label: const Text('إلغاء التحديد'),
+                  label: Text(t('إلغاء التحديد')),
                 ),
               ],
             ),
@@ -2647,55 +2882,61 @@ class _CommandePageState extends State<CommandePage> {
                 ),
               ),
               const SizedBox(height: 10),
-              ReorderableListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                buildDefaultDragHandles: false,
-                itemCount: addedProducts.length,
-                onReorder: _moveProductToPosition,
-                proxyDecorator: (child, index, animation) {
-                  return AnimatedBuilder(
-                    animation: animation,
-                    builder: (context, child) {
-                      final elevation = Tween<double>(
-                        begin: 4,
-                        end: 14,
-                      ).evaluate(animation);
-                      return Material(
-                        color: Colors.transparent,
-                        elevation: elevation,
-                        borderRadius: BorderRadius.circular(15),
-                        child: child,
-                      );
-                    },
-                    child: child,
-                  );
-                },
-                itemBuilder: (context, index) {
-                  final product = addedProducts[index];
-                  return KeyedSubtree(
-                    key: ObjectKey(product),
-                    child: ReorderableDelayedDragStartListener(
-                      index: index,
-                      child: Stack(
-                        children: [
-                          _buildProductCard(product),
-                          PositionedDirectional(
-                            top: 10,
-                            end: 10,
-                            child: IgnorePointer(
-                              child: Icon(
-                                Icons.drag_indicator_rounded,
-                                color: Colors.blue.shade600,
-                                size: 24,
+              Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerMove: _handleReorderPointerMove,
+                child: ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  itemCount: addedProducts.length,
+                  onReorder: _moveProductToPosition,
+                  onReorderStart: _startReorderDrag,
+                  onReorderEnd: _finishReorderDrag,
+                  proxyDecorator: (child, index, animation) {
+                    return AnimatedBuilder(
+                      animation: animation,
+                      builder: (context, child) {
+                        final elevation = Tween<double>(
+                          begin: 4,
+                          end: 14,
+                        ).evaluate(animation);
+                        return Material(
+                          color: Colors.transparent,
+                          elevation: elevation,
+                          borderRadius: BorderRadius.circular(15),
+                          child: child,
+                        );
+                      },
+                      child: child,
+                    );
+                  },
+                  itemBuilder: (context, index) {
+                    final product = addedProducts[index];
+                    return KeyedSubtree(
+                      key: ObjectKey(product),
+                      child: ReorderableDelayedDragStartListener(
+                        index: index,
+                        child: Stack(
+                          children: [
+                            _buildProductCard(product),
+                            PositionedDirectional(
+                              top: 10,
+                              end: 10,
+                              child: IgnorePointer(
+                                child: Icon(
+                                  Icons.drag_indicator_rounded,
+                                  color: Colors.blue.shade600,
+                                  size: 24,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 15),
             ] else ...[
@@ -2738,61 +2979,81 @@ class _CommandePageState extends State<CommandePage> {
               if (addedProducts.isNotEmpty) const SizedBox(height: 15),
             ],
 
-            Row(
-              children: [
-                Expanded(
-                  child: ElegantAnimatedButton(
-                    gradientColors: const [
-                      Colors.indigoAccent,
-                      Colors.blueAccent,
-                    ],
-                    onPressed: _showAddNormalProduct,
-                    icon: const Icon(Icons.add, color: Colors.white, size: 20),
-                    label: Text(
-                      Localization.translate(
-                        'Add Product',
-                        Provider.of<AppSettingsProvider>(context).language,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 600;
+                final normalButton = ElegantAnimatedButton(
+                  gradientColors: const [
+                    Colors.indigoAccent,
+                    Colors.blueAccent,
+                  ],
+                  onPressed: _showAddNormalProduct,
+                  icon: isMobile
+                      ? null
+                      : const Icon(Icons.add, color: Colors.white, size: 20),
+                  label: Text(
+                    Localization.translate(
+                      'Add Product',
+                      Provider.of<AppSettingsProvider>(context).language,
                     ),
-                    height: 46,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElegantAnimatedButton(
-                    gradientColors: const [
-                      Colors.orangeAccent,
-                      Colors.deepOrangeAccent,
-                    ],
-                    onPressed: () => _showAddSpecialProductDialog(),
-                    icon: const Icon(Icons.add, color: Colors.white, size: 20),
-                    label: Text(
-                      Localization.translate(
-                        'Add Product Special',
-                        Provider.of<AppSettingsProvider>(context).language,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
-                    height: 46,
                   ),
-                ),
-              ],
+                  height: 46,
+                );
+                final specialButton = ElegantAnimatedButton(
+                  gradientColors: const [
+                    Colors.orangeAccent,
+                    Colors.deepOrangeAccent,
+                  ],
+                  onPressed: () => _showAddSpecialProductDialog(),
+                  icon: isMobile
+                      ? null
+                      : const Icon(Icons.add, color: Colors.white, size: 20),
+                  label: Text(
+                    Localization.translate(
+                      'Add Product Special',
+                      Provider.of<AppSettingsProvider>(context).language,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  height: 46,
+                );
+
+                if (isMobile) {
+                  return Column(
+                    children: [
+                      normalButton,
+                      const SizedBox(height: 8),
+                      specialButton,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: normalButton),
+                    const SizedBox(width: 8),
+                    Expanded(child: specialButton),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 15),
 
             TextField(
               controller: controller, // متحكم الملاحظات
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               decoration: InputDecoration(
                 hintText: Localization.translate(
@@ -2824,7 +3085,11 @@ class _CommandePageState extends State<CommandePage> {
                 filled: true,
                 fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               ),
-              maxLines: 4,
+              // Let the field grow with the note instead of cutting it after
+              // four lines. The surrounding page is already scrollable, so a
+              // long note remains reachable without an inner fixed-height box.
+              minLines: 4,
+              maxLines: null,
             ),
             const SizedBox(height: 15),
 
@@ -3604,7 +3869,9 @@ class _CommandePageState extends State<CommandePage> {
                                   Icons.table_chart,
                                   color: Colors.purple,
                                 ),
-                                tooltip: 'جدول المقاسات (Edit Table Details)',
+                                tooltip: t(
+                                  'جدول المقاسات (Edit Table Details)',
+                                ),
                                 onPressed: () async {
                                   final result = await Navigator.push(
                                     context,
@@ -3805,7 +4072,7 @@ class _CommandePageState extends State<CommandePage> {
                                   Icons.copy,
                                   color: Colors.green,
                                 ),
-                                tooltip: 'تكرار (Duplicate)',
+                                tooltip: t('تكرار (Duplicate)'),
                                 onPressed: () {
                                   final cloned = WindowModel(db: p.db);
                                   final map = p.toMap();
@@ -4302,7 +4569,7 @@ class _CommandePageState extends State<CommandePage> {
               });
               Navigator.pop(ctx);
             },
-            child: Text('حفظ'),
+            child: Text(t('حفظ')),
           ),
         ],
       ),

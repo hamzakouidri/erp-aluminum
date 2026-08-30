@@ -666,7 +666,10 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text('🔍 معلومات تشخيص:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                      Text(
+                                        Localization.translate('🔍 معلومات تشخيص:', lang),
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                      ),
                                       const SizedBox(height: 4),
                                       Text(_debugInfo, style: const TextStyle(fontSize: 10, fontFamily: 'Courier')),
                                     ],
@@ -690,6 +693,17 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         ],
       ),
     );
+  }
+
+  int _taskOrderNumber(Map<String, dynamic> task, int fallback) {
+    for (final key in const ['display_number', 'order_code']) {
+      final value = task[key];
+      final number = value is num
+          ? value.toInt()
+          : int.tryParse(value?.toString().trim() ?? '');
+      if (number != null && number > 0) return number;
+    }
+    return fallback;
   }
 
   Widget _scopeFilterButton(String scope, String label, IconData icon) {
@@ -796,6 +810,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     final isGlassInstalled = t['is_glass_installed'] == 1;
 
     final commandeId = (t['id_commandes'] as num?)?.toInt() ?? 0;
+    final displayOrderNumber = _taskOrderNumber(t, commandeId);
 
     int finalW = (t['unit_width'] as num?)?.toInt() ?? 0;
     int finalH = (t['unit_height'] as num?)?.toInt() ?? 0;
@@ -838,42 +853,51 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                GestureDetector(
-                  onTap: () {
-                    if (settings.canViewOrderDetails() && commandeId > 0) {
-                      openOrderInWorkspaceTab(
-                        context,
-                        editCommandeId: commandeId,
-                        db: widget.db,
-                      );
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.assignment_outlined, size: 14, color: Color(0xFF3B82F6)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${lang == AppLanguage.arabic ? "طلبية" : "Order"} #${t['id_commandes']}',
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Color(0xFF3B82F6),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      if (settings.canViewOrderDetails() && commandeId > 0) {
+                        openOrderInWorkspaceTab(
+                          context,
+                          editCommandeId: commandeId,
+                          db: widget.db,
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.assignment_outlined, size: 14, color: Color(0xFF3B82F6)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              '${lang == AppLanguage.arabic ? "طلبية" : "Order"} #$displayOrderNumber',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: Color(0xFF3B82F6),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                Text(
-                  assignedAt,
-                  style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    assignedAt,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                  ),
                 ),
               ],
             ),
@@ -885,13 +909,16 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 children: [
                   const Icon(Icons.engineering_outlined, size: 16, color: Colors.blueAccent),
                   const SizedBox(width: 6),
-                  Text(
-                    '${lang == AppLanguage.arabic ? "العامل المعيّن" : "Ouvrier affecté"}: ${t['worker_name'] ?? (lang == AppLanguage.arabic ? "غير محدد" : "Non affecté")}',
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueAccent,
+                  Expanded(
+                    child: Text(
+                      '${lang == AppLanguage.arabic ? "العامل المعيّن" : "Ouvrier affecté"}: ${t['worker_name'] ?? (lang == AppLanguage.arabic ? "غير محدد" : "Non affecté")}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueAccent,
+                      ),
                     ),
                   ),
                 ],
@@ -905,9 +932,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 children: [
                   const Icon(Icons.person_outline, size: 16, color: Colors.blueGrey),
                   const SizedBox(width: 6),
-                  Text(
-                    '${lang == AppLanguage.arabic ? "الزبون" : "Client"}: $clientName',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Text(
+                      '${lang == AppLanguage.arabic ? "الزبون" : "Client"}: $clientName',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),

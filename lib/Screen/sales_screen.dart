@@ -73,9 +73,15 @@ class _SalesScreenState extends State<SalesScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        final lang = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ أثناء تحميل المبيعات: $e'),
+            content: Text(
+              '${_tr('خطأ أثناء تحميل المبيعات', 'Erreur lors du chargement des ventes', 'Error loading sales', lang)}: $e',
+            ),
             backgroundColor: Colors.red,
           ),
         );

@@ -485,6 +485,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   void _showConfirmMeasurementsDialog(Map<String, dynamic> item) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final qty = (item['orig_quantity'] ?? item['quantity'] ?? 1) as int;
     final origH = (item['hauteur'] ?? 0) as int;
     final origW = (item['largeur'] ?? 0) as int;
@@ -571,9 +572,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                 child: TextFormField(
                                   controller: heightCtrls[index],
                                   keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    labelText: 'الارتفاع (مم)',
-                                    border: OutlineInputBorder(),
+                                  decoration: InputDecoration(
+                                    labelText: _tr('الارتفاع (مم)', 'Hauteur (mm)', 'Height (mm)', lang),
+                                    border: const OutlineInputBorder(),
                                     isDense: true,
                                   ),
                                 ),
@@ -583,9 +584,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                 child: TextFormField(
                                   controller: widthCtrls[index],
                                   keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    labelText: 'العرض (مم)',
-                                    border: OutlineInputBorder(),
+                                  decoration: InputDecoration(
+                                    labelText: _tr('العرض (مم)', 'Largeur (mm)', 'Width (mm)', lang),
+                                    border: const OutlineInputBorder(),
                                     isDense: true,
                                   ),
                                 ),
@@ -603,7 +604,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton.icon(
               onPressed: () async {
@@ -732,7 +733,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(_tr('خطأ', 'Erreur', 'Error', lang) + ': $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -795,7 +799,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(_tr('خطأ', 'Erreur', 'Error', lang) + ': $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -869,7 +876,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(_tr('خطأ', 'Erreur', 'Error', lang) + ': $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -879,6 +889,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     Map<String, dynamic> alloc,
     Map<String, dynamic> item,
   ) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final isManufactured = alloc['is_manufactured'] == 1;
     final detailId = item['id'] as int;
     final itemUnitIndex = item['unit_index'];
@@ -1061,8 +1072,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                       TextFormField(
                         controller: priceCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+                        decoration: InputDecoration(
+                          labelText: _tr(
+                            'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+                            'Prix de fabrication par pièce pour l’ouvrier (DA) - facultatif',
+                            'Worker manufacturing price per piece (DZD) - optional',
+                            lang,
+                          ),
                           helperText:
                               'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
                           border: OutlineInputBorder(),
@@ -1084,8 +1100,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'إلغاء',
+                child: Text(
+                  _tr('إلغاء', 'Annuler', 'Cancel', lang),
                   style: TextStyle(fontFamily: 'Cairo'),
                 ),
               ),
@@ -1119,6 +1135,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   void _showAssignDialog(Map<String, dynamic> item, int remainingQty) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     String? selectedWorkerUid = _workers.isNotEmpty
         ? _workers.first['uid'].toString()
         : null;
@@ -1158,9 +1175,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                   children: [
                     DropdownButtonFormField<String>(
                       value: selectedWorkerUid,
-                      decoration: const InputDecoration(
-                        labelText: 'اختر العامل',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: _tr('اختر العامل', 'Choisir l’ouvrier', 'Choose worker', lang),
+                        border: const OutlineInputBorder(),
                       ),
                       items: _workers.map((w) {
                         return DropdownMenuItem<String>(
@@ -1181,7 +1198,12 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                       controller: qtyCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'الكمية المسندة (الأقصى $remainingQty)',
+                        labelText: _tr(
+                          'الكمية المسندة (الأقصى $remainingQty)',
+                          'Quantité assignée (maximum $remainingQty)',
+                          'Assigned quantity (maximum $remainingQty)',
+                          lang,
+                        ),
                         border: const OutlineInputBorder(),
                       ),
                       validator: (val) {
@@ -1235,8 +1257,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                       TextFormField(
                         controller: priceCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+                        decoration: InputDecoration(
+                          labelText: _tr(
+                            'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+                            'Prix de fabrication par pièce pour l’ouvrier (DA) - facultatif',
+                            'Worker manufacturing price per piece (DZD) - optional',
+                            lang,
+                          ),
                           helperText:
                               'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
                           border: OutlineInputBorder(),
@@ -1258,8 +1285,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'إلغاء',
+                child: Text(
+                  _tr('إلغاء', 'Annuler', 'Cancel', lang),
                   style: TextStyle(fontFamily: 'Cairo'),
                 ),
               ),
@@ -1853,7 +1880,12 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                       size: 18,
                                                       color: Colors.red,
                                                     ),
-                                                    tooltip: 'إلغاء التعيين',
+                                                    tooltip: _tr(
+                                                      'إلغاء التعيين',
+                                                      'Annuler l’affectation',
+                                                      'Unassign',
+                                                      lang,
+                                                    ),
                                                     onPressed: () =>
                                                         _removeWorkerAllocation(
                                                           alloc['id'] as int,

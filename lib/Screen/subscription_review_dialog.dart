@@ -23,7 +23,6 @@ void showSubscriptionReviewDialog(BuildContext context) {
 class SubscriptionReviewDialog extends StatelessWidget {
   const SubscriptionReviewDialog({super.key});
 
-  static const String baridiMobRip = '00799999999999999999';
   static const String adminWhatsAppNumber = '213554301484';
 
   Future<void> _launchWhatsApp(
@@ -70,9 +69,15 @@ class SubscriptionReviewDialog extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'تعذر فتح تطبيق واتساب. يرجى التواصل على الرقم: 0554301484',
+              Localization.translate(
+                'تعذر فتح تطبيق واتساب. يرجى التواصل على الرقم: 0554301484',
+                Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language,
+              ),
             ),
             backgroundColor: Colors.red,
           ),
@@ -81,15 +86,27 @@ class SubscriptionReviewDialog extends StatelessWidget {
     }
   }
 
-  void _copyRip(BuildContext context) {
-    Clipboard.setData(const ClipboardData(text: baridiMobRip));
+  void _copyRip(BuildContext context, String rip) {
+    Clipboard.setData(ClipboardData(text: rip));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
-          children: const [
-            Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text('تم نسخ رقم RIP الخاص بـ BaridiMob بنجاح'),
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              Localization.translate(
+                'تم نسخ رقم RIP الخاص بـ BaridiMob بنجاح',
+                Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language,
+              ),
+            ),
           ],
         ),
         backgroundColor: Colors.green.shade700,
@@ -123,9 +140,13 @@ class SubscriptionReviewDialog extends StatelessWidget {
 
             final details = snapshot.data;
             if (details == null) {
-              return const Padding(
-                padding: EdgeInsets.all(24.0),
-                child: Center(child: Text('تعذر تحميل بيانات الاشتراك')),
+              return Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Center(
+                  child: Text(
+                    Localization.translate('تعذر تحميل بيانات الاشتراك', lang),
+                  ),
+                ),
               );
             }
 
@@ -418,14 +439,20 @@ class SubscriptionReviewDialog extends StatelessWidget {
                       children: [
                         _buildInfoRow(
                           icon: Icons.calendar_today_rounded,
-                          title: 'تاريخ بداية الاشتراك:',
+                          title: Localization.translate(
+                            'تاريخ بداية الاشتراك:',
+                            lang,
+                          ),
                           value: details.formattedStartDate,
                           isDark: isDark,
                         ),
                         const Divider(height: 16),
                         _buildInfoRow(
                           icon: Icons.event_busy_rounded,
-                          title: 'تاريخ نهاية الاشتراك:',
+                          title: Localization.translate(
+                            'تاريخ نهاية الاشتراك:',
+                            lang,
+                          ),
                           value: details.formattedEndDate,
                           isDark: isDark,
                           valueColor: details.isLifetime
@@ -436,7 +463,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const Divider(height: 16),
                           _buildInfoRow(
                             icon: Icons.qr_code_rounded,
-                            title: 'كود الورشة:',
+                            title: Localization.translate('كود الورشة:', lang),
                             value: details.joinCode,
                             isDark: isDark,
                           ),
@@ -527,62 +554,84 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const SizedBox(height: 12),
 
                           // BaridiMob Info
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? const Color(0xFF1E293B)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.payment_rounded,
-                                  color: Color(0xFF2563EB),
-                                  size: 20,
+                          StreamBuilder<String>(
+                            stream: SubscriptionPaymentSettings()
+                                .getBaridiMobRipStream(),
+                            builder: (context, paymentSnapshot) {
+                              final baridiMobRip =
+                                  paymentSnapshot.data?.trim() ?? '';
+                              final hasRip = baridiMobRip.isNotEmpty;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'الدفع عبر BaridiMob (RIP):',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark
-                                              ? Colors.grey.shade400
-                                              : Colors.grey.shade600,
-                                        ),
-                                      ),
-                                      Text(
-                                        baridiMobRip,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          letterSpacing: 1.1,
-                                        ),
-                                      ),
-                                    ],
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF1E293B)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
                                   ),
                                 ),
-                                IconButton(
-                                  tooltip: 'نسخ رقم RIP',
-                                  icon: const Icon(
-                                    Icons.copy_rounded,
-                                    color: Color(0xFF2563EB),
-                                    size: 20,
-                                  ),
-                                  onPressed: () => _copyRip(context),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.payment_rounded,
+                                      color: Color(0xFF2563EB),
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'الدفع عبر BaridiMob (CCP/RIP):',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isDark
+                                                  ? Colors.grey.shade400
+                                                  : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                          Text(
+                                            hasRip
+                                                ? baridiMobRip
+                                                : 'لم يتم تحديد الرقم بعد',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              letterSpacing: 1.1,
+                                              color: hasRip
+                                                  ? null
+                                                  : Colors.orange.shade700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: Localization.translate(
+                                        'نسخ رقم RIP',
+                                        lang,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.copy_rounded,
+                                        color: Color(0xFF2563EB),
+                                        size: 20,
+                                      ),
+                                      onPressed: hasRip
+                                          ? () =>
+                                                _copyRip(context, baridiMobRip)
+                                          : null,
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
                           const SizedBox(height: 14),
 

@@ -1,0 +1,618 @@
+# تقرير جرد النصوص العربية في التطبيق
+
+تاريخ الفحص: 2026-08-30
+
+## النطاق والنتيجة
+
+- ملفات Dart المفحوصة: 157
+- الملفات التي تحتوي عربية: 128
+- الأسطر التي تحتوي عربية (بما فيها التعليقات والبيانات): 15,574
+- أسطر التعليقات/التوثيق المستبعدة من واجهة المستخدم: 1,296
+- مفاتيح الترجمة الموجودة في ملفات locales: 2,546
+- استعمالات واجهة مرشحة بلا مفتاح ترجمة مطابق: 716
+- نصوص واجهة فريدة بلا مفتاح ترجمة مطابق: 596
+
+## ملاحظة منهجية
+
+هذه القائمة هي النصوص العربية الموجودة داخل مواضع واجهة أو مواضع ترجمة محتملة، مع استبعاد ملفات قاموس الترجمة نفسها. لم أعتبر التعليقات وأسماء المتغيرات والنصوص الحسابية ترجمة واجهة. بعض السطور الديناميكية أو النصوص التي تحتوي متغيرات تحتاج مراجعة بشرية قبل ترجمتها.
+
+للقائمة الدقيقة التي تعرض السطر البرمجي كاملًا دون تقطيع النصوص الديناميكية، راجع [التقرير التفصيلي](arabic_translation_audit_detailed.md).
+
+## النصوص المرشحة للترجمة ومواقعها
+
+- **- ${formatter.format(credit)} دج** — lib\Screen\supplier_details_screen.dart:649, lib\Screen\supplier_details_screen.dart:654
+- **- النوع: $translatedGasketType** — lib\items_produits\joint.dart:708
+- **- مع ورود الديكور (Rosettes)** — lib\Commande\Systeme\calculate_component.dart:7449
+- **, lang)} ${orderAdvance.toStringAsFixed(2)} دج** — lib\Cliente\show_client.dart:852
+- **, lang)} ${orderRemaining.toStringAsFixed(2)} دج** — lib\Cliente\show_client.dart:861
+- **, lang)} ${orderTotal.toStringAsFixed(2)} دج** — lib\Cliente\show_client.dart:846
+- **, lang)} ${remaining.toStringAsFixed(2)} د.ج** — lib\Cliente\show_client.dart:241, lib\Commande\commande.dart:189
+- **, lang)} ${totalWorkerPrice.toStringAsFixed(0)} د.ج)** — lib\Screen\order_allocation_screen.dart:1704
+- **, lang)} ${workerPrice.toStringAsFixed(0)} د.ج / ${_tr(** — lib\Screen\order_allocation_screen.dart:1704
+- **, lang)}: ${_currencyFormatter.format(orderTotal)} دج  ·  ${_tr(** — lib\Screen\sales_screen.dart:799
+- **, lang)}: ${_currencyFormatter.format(sumDeliveries)} دج** — lib\Screen\sales_screen.dart:799
+- **, lang)}: ${glassDim.height.toStringAsFixed(1)} × ${glassDim.width.toStringAsFixed(1)} مم** — lib\Screen\glass_order_reception_screen.dart:815
+- **, lang)}: $winH × $winW مم** — lib\Screen\glass_order_reception_screen.dart:829
+- **،** — lib\Commande\order_required_goods_screen.dart:2189
+- **؟ ${Localization.translate(** — lib\Screen\treasury_screen.dart:1789
+- **(اللون: ${glass.decorColor})** — lib\Commande\Systeme\calculate_component.dart:7446
+- **).format(totalRefund)} دج** — lib\Screen\achat_return_screen.dart:129
+- **])).clamp(0.0, double.infinity).toStringAsFixed(2)} د.ج** — lib\Commande\commande.dart:1394
+- **]} — $price د.ج** — lib\Screen\worker_weekly_settlement_screen.dart:1653
+- **]} د.ج؟ ${_t(** — lib\Screen\worker_finances_screen.dart:793
+- **]} دج** — lib\Screen\worker_transactions_detail_screen.dart:668
+- ***الزجاج / Vitrage:* ${Localization.translate(glass, lang)}** — lib\Screen\order_allocation_screen.dart:205
+- ***الستار / Volet:* ${Localization.translate(volet, lang)}** — lib\Screen\order_allocation_screen.dart:209
+- ***اللون / Couleur:* ${Localization.translate(color, lang)}** — lib\Screen\order_allocation_screen.dart:201
+- ***المنتج / Produit:* ${Localization.translate(windowType, lang)}** — lib\Screen\order_allocation_screen.dart:190
+- ***عنصر / Produit:* ${Localization.translate(item[** — lib\Screen\order_allocation_screen.dart:278
+- ***نوع البروفيل / Gamme:* ${Localization.translate(game, lang)}** — lib\Screen\order_allocation_screen.dart:197
+- **\n- ديكور داخلي: ${glass.decorH}×${glass.decorV}** — lib\Commande\Systeme\calculate_component.dart:7444
+- **\n- سعر المتر المربع: ${totalSqmPrice.toStringAsFixed(0)} دج\n$dimText** — lib\Commande\Systeme\calculate_component.dart:7437
+- **+ ${formatter.format(debit)} دج** — lib\Screen\supplier_details_screen.dart:644
+- **⏱️ السجل والتوقيت** — lib\Screen\worker_attendance_screen.dart:459
+- **⚙️ إدخال / تعديل ساعات الدخول والخروج يدوياً** — lib\Screen\worker_attendance_screen.dart:743
+- **⚠️ لا يمكن تسجيل الحضور أو الغياب للأيام المستقبلية!** — lib\Screen\worker_attendance_screen.dart:84, lib\Screen\worker_attendance_screen.dart:598
+- **⚠️ لم يتم تسجيل الدخول بعد اليوم!** — lib\Screen\worker_attendance_screen.dart:227
+- **✅ تم تسجيل الخروج الساعة $now** — lib\Screen\worker_attendance_screen.dart:268
+- **✅ تم تسجيل الدخول الساعة $now** — lib\Screen\worker_attendance_screen.dart:210
+- **✅ تم تفعيل $email كاشتراك دائم** — lib\Screen\admin_users_screen.dart:243
+- **✅ تم تفعيل $email لمدة $days أيام** — lib\Screen\admin_users_screen.dart:216
+- **💡 اضغط على أي يوم للتغيير: (🟢 حاضر 👈 🔴 غائب 👈 ⚪ إعادة تعيين)** — lib\Screen\worker_attendance_screen.dart:529
+- **🗓️ تسجيل وتحديد أيام حضور وغياب العامل (تقويم الشهر)** — lib\Screen\worker_transactions_detail_screen.dart:511
+- **🗓️ تقويم الشهر** — lib\Screen\worker_attendance_screen.dart:458
+- **$_rating نجوم** — lib\Screen\support_dialog.dart:25
+- **${((double.tryParse(_priceControllers[itemIndex]!.text) ?? 0.0) * (int.tryParse(_quantityControllers[itemIndex]!.text) ?? 1)).toStringAsFixed(2)} دج** — lib\Commande\order_table_edit_screen.dart:2044
+- **${child.unitPrice.toStringAsFixed(2)} دج / ${_t(child.unit)}** — lib\Commande\order_required_goods_screen.dart:2982
+- **${info.intercall} مم** — lib\Screen\glass_order_reception_screen.dart:1030
+- **${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}** — lib\Commande\order_required_goods_screen.dart:2933, lib\Commande\order_required_goods_screen.dart:4244
+- **${Localization.translate(windowType, lang)} ($finalW × $finalH مم)** — lib\Screen\worker_tasks_screen.dart:952
+- **$d يوم** — lib\Screen\admin_users_screen.dart:435
+- **$monthsText و $daysText** — lib\services\subscription_service.dart:144
+- **$n مستخدمين** — lib\Screen\admin_users_screen.dart:475
+- **$name  —  اللون: ${item.specificColor}** — lib\Screen\price_management_screen.dart:3039
+- **$name  —  اللون: $colorText** — lib\Screen\price_management_screen.dart:3043
+- **$size ملم** — lib\Screen\price_management_screen.dart:3729
+- **0555 123 456 أو +213555123456** — lib\Screen\workers_management_screen.dart:1280
+- **1. اختر البروفيل** — lib\items_produits\series_table_config_screen.dart:715
+- **10 أيام** — lib\Screen\workers_management_screen.dart:2909
+- **Caisson Tunnel (صندوق التونيل)** — lib\Screen\selected_systems_screen.dart:123
+- **Conception (التصميم)** — lib\Commande\choose_systems.dart:278, lib\Screen\selected_systems_screen.dart:107
+- **https://wa.me/213554301484?text=مرحباً، أريد تجديد اشتراكي في تطبيق إدارة الورش.** — lib\Screen\subscription_expired_screen.dart:96
+- **Moustiquaire (موستيكير / الناموسية)** — lib\Screen\selected_systems_screen.dart:131
+- **Pre-cadre (إطار التثبيت الأولي)** — lib\Screen\selected_systems_screen.dart:140
+- **System Beating (النظام الفرنسي)** — lib\Screen\selected_systems_screen.dart:97
+- **System Rolling (الستار / Volet)** — lib\Screen\selected_systems_screen.dart:115
+- **System Sliding (نظام الجرار)** — lib\Screen\selected_systems_screen.dart:89
+- **Verre Trempé (الزجاج المعالج)** — lib\Screen\selected_systems_screen.dart:148
+- **أجرة التصنيع:** — lib\Screen\order_allocation_screen.dart:1704, lib\Screen\worker_archive_screen.dart:433
+- **أدخل الملاحظات والتعديلات...** — lib\Screen\worker_archive_screen.dart:145
+- **أدخل رقم CCP/RIP أولاً.** — lib\Screen\admin_users_screen.dart:68
+- **أدخل رقم الوثيقة** — lib\Commande\order_required_goods_screen.dart:2024
+- **أدخل رقماً أكبر من صفر** — lib\Screen\tempered_glass_work_screen.dart:252
+- **أدخل مبلغاً صحيحاً** — lib\Screen\worker_transactions_detail_screen.dart:194, lib\Screen\worker_transactions_detail_screen.dart:324
+- **أرجون** — lib\Screen\glass_order_reception_screen.dart:411
+- **أرشيف المهام والتوزيع 📦** — lib\Screen\worker_archive_screen.dart:194
+- **أسبوع** — lib\Screen\workers_management_screen.dart:2902
+- **أسطوانة** — lib\items_produits\catalog_rules_screen.dart:375
+- **أضف مورّدًا ومكان تخزين قبل إنشاء طلب الشراء.** — lib\Commande\order_required_goods_screen.dart:1963
+- **أطاش** — lib\Commande\Systeme\calculate_component.dart:728
+- **أنبوب المحرك (L\** — lib\items_produits\shutters.dart:86, lib\items_produits\shutters.dart:536, lib\items_produits\shutters.dart:1141
+- **أنظمة الزجاج المقوى والواجهات** — lib\Screen\selected_systems_screen.dart:149
+- **أنظمة الستائر المتحركة والمحركات** — lib\Screen\selected_systems_screen.dart:116
+- **أوبي** — lib\Commande\Systeme\material_consumption_screen.dart:999
+- **أونتروماتيك** — lib\items_produits\catalog_rules_screen.dart:395
+- **أيام الحضور** — lib\Screen\worker_attendance_screen.dart:511
+- **أيام الغياب** — lib\Screen\worker_attendance_screen.dart:516
+- **إجراء** — lib\Commande\order_required_goods_screen.dart:2859, lib\Screen\achat_details_screen.dart:1465
+- **إجمالي السلف والمدفوعات** — lib\Screen\worker_transactions_detail_screen.dart:543
+- **إجمالي المساحة** — lib\Screen\tempered_glass_work_screen.dart:705
+- **إجمالي المستحقات (المصنعة/اليومية)** — lib\Screen\worker_transactions_detail_screen.dart:533
+- **إجمالي تقدم تسليم الطلبية** — lib\Commande\partial_proforma_screen.dart:914
+- **إخفاء المكونات** — lib\Commande\order_required_goods_screen.dart:3126
+- **إخفاء خطة القص** — lib\Commande\order_required_goods_screen.dart:3148
+- **إدارة الحساب** — lib\Screen\admin_users_screen.dart:831
+- **إدارة: $email** — lib\Screen\admin_users_screen.dart:414
+- **إرجاع من الأرشيف / مسح** — lib\Screen\worker_archive_screen.dart:82, lib\Screen\worker_archive_screen.dart:469
+- **إسبانيوليت** — lib\items_produits\catalog_rules_screen.dart:372, lib\Commande\Systeme\calculate_component.dart:666
+- **إسناد:** — lib\Screen\external_operations_hub_screen.dart:1459
+- **إضافة العمل** — lib\Screen\worker_transactions_detail_screen.dart:223
+- **إضافة عمل يومي** — lib\Screen\worker_transactions_detail_screen.dart:457
+- **إضافة عمل يومي للعامل** — lib\Screen\worker_transactions_detail_screen.dart:144
+- **إضافة مستودع** — lib\Screen\inventory_screen.dart:111, lib\Screen\inventory_screen.dart:274
+- **إضافة معاملة جديدة للعامل** — lib\Screen\worker_transactions_detail_screen.dart:269
+- **إطارات الإخفاء والتجهيز قبل التركيب** — lib\Screen\selected_systems_screen.dart:141
+- **إعادة تعيين كل التسليمات** — lib\Commande\partial_proforma_screen.dart:840
+- **إعدادات التراينغل** — lib\items_produits\accessoires.dart:2824
+- **إلغاء الفلتر 🧹** — lib\Screen\worker_finances_screen.dart:156
+- **إلغاء تحديد الكل** — lib\Commande\order_table_edit_screen.dart:1682
+- **إلى العامل: $workerName - ${type ==** — lib\Screen\worker_finances_screen.dart:751
+- **إلى:** — lib\widgets\table_date_range_filter.dart:288
+- **إنشاء** — lib\Commande\order_required_goods_screen.dart:2130
+- **إيكار** — lib\items_produits\catalog_rules_screen.dart:387, lib\Commande\Systeme\calculate_component.dart:695, lib\Commande\Systeme\profile_selector_dialog.dart:978
+- **اختر القاش** — lib\items_produits\accessoires.dart:2775
+- **اختر المورّد** — lib\Commande\order_required_goods_screen.dart:2046
+- **اختيار وقت الخروج** — lib\Screen\worker_attendance_screen.dart:342
+- **اختيار وقت الدخول** — lib\Screen\worker_attendance_screen.dart:316
+- **اسبانيوليت** — lib\items_produits\catalog_rules_screen.dart:371, lib\Commande\Systeme\calculate_component.dart:666
+- **استرجاع من المورد:** — lib\Screen\treasury_screen.dart:3524
+- **استعادة الحجم** — lib\widgets\desktop_window_frame.dart:105
+- **استعمال المقطع** — lib\items_produits\series_table_config_screen.dart:1021
+- **اسم الدافع** — lib\Screen\treasury_screen.dart:193, lib\Screen\treasury_screen.dart:3270
+- **اسم العامل الصانع:** — lib\Screen\worker_archive_screen.dart:337
+- **اسم المستودع** — lib\Screen\inventory_screen.dart:117
+- **اسم ونوع الزجاج (مثال: كلير 5 مم)** — lib\Screen\glass_order_reception_screen.dart:386
+- **اطار** — lib\Commande\order_required_goods_screen.dart:3243
+- **اعتماد** — lib\Commande\order_required_goods_screen.dart:4981, lib\items_produits\series_table_config_screen.dart:1230, lib\Screen\workers_management_screen.dart:864
+- **اعتماد صرف المخزون** — lib\Commande\order_required_goods_screen.dart:4967
+- **افتراضي** — lib\items_produits\catalog_rules_screen.dart:698
+- **اكتمال استلام الزجاج** — lib\Screen\glass_order_reception_screen.dart:567
+- **اكسترودي** — lib\Commande\Systeme\calculate_component.dart:4377, lib\Commande\Systeme\profile_selector_dialog.dart:568, lib\Commande\Systeme\model.dart:2105, lib\Commande\Systeme\material_consumption_screen.dart:1204
+- **الأبعاد:** — lib\Screen\external_operations_hub_screen.dart:1370, lib\Screen\external_operations_hub_screen.dart:2378, lib\Screen\worker_archive_screen.dart:427
+- **الأرشيف** — lib\Screen\worker_tasks_screen.dart:508
+- **الأسطوانة** — lib\Commande\Systeme\calculate_component.dart:659
+- **الأعمال اليومية غير المسواة (${_dailyJobs.length})** — lib\Screen\worker_transactions_detail_screen.dart:643
+- **الإجمالي** — lib\Commande\partial_proforma_screen.dart:1040, lib\Screen\achat_details_screen.dart:1455, lib\Screen\tempered_glass_work_screen.dart:710
+- **الإجماليات** — lib\Screen\welcom_screen.dart:3061
+- **الإطار** — lib\items_produits\series_table_config_screen.dart:1479
+- **الإطار محدد** — lib\Commande\Systeme\show_system_francais.dart:9286
+- **الإكسسوارات (Accessoires)** — lib\Screen\global_consumption_report_screen.dart:143, lib\Screen\global_consumption_report_screen.dart:240
+- **الإيكار** — lib\Commande\Systeme\calculate_component.dart:695
+- **الاختيار الافتراضي** — lib\items_produits\accessoires.dart:2760
+- **الامبو** — lib\Commande\Systeme\calculate_component.dart:736
+- **الانتركل** — lib\Screen\glass_order_reception_screen.dart:1030
+- **الانتركل (مم)** — lib\Screen\glass_order_reception_screen.dart:356
+- **الباقي** — lib\Commande\order_required_goods_screen.dart:3019
+- **الباكلوز** — lib\items_produits\series_table_config_screen.dart:1488
+- **البحث...** — lib\Commande\add_commande.dart:5222
+- **التركيب** — lib\Commande\Systeme\calculate_component.dart:598
+- **التسليم الحالي:** — lib\Commande\partial_proforma_screen.dart:1107
+- **التصنيع الجزئي** — lib\Screen\sales_screen.dart:223
+- **التصنيع الكلي** — lib\Screen\sales_screen.dart:225
+- **التقاط صورة** — lib\Screen\tempered_glass_work_screen.dart:236
+- **التوزيع الجزئي** — lib\Screen\sales_screen.dart:227
+- **التوزيع الكلي** — lib\Screen\sales_screen.dart:229
+- **الحد الأقصى: 3** — lib\Commande\order_workspace_screen.dart:408
+- **الخصم من طول الظلفة (مم)** — lib\items_produits\accessoires.dart:2832
+- **الدفع من صندوق / الخزينة** — lib\Screen\worker_weekly_settlement_screen.dart:658
+- **الرئيسي** — lib\Screen\welcom_screen.dart:3004
+- **الراتب المستحق** — lib\Screen\worker_attendance_screen.dart:521
+- **الري** — lib\Commande\Systeme\calculate_component.dart:556
+- **الزبون:** — lib\Screen\external_operations_hub_screen.dart:1264
+- **الزجاج (Verre)** — lib\Screen\global_consumption_report_screen.dart:142, lib\Screen\global_consumption_report_screen.dart:237
+- **السعر مطلوب** — lib\Screen\worker_transactions_detail_screen.dart:192
+- **السلفيات فقط** — lib\Screen\worker_transactions_detail_screen.dart:588
+- **الشرائح** — lib\Commande\pdf_fiche_coupe_api.dart:348
+- **الشريط العلوي ثابت وواضح والنوافذ تظهر تحته** — lib\Screen\app_workspace_shell.dart:1740
+- **الضلفة** — lib\items_produits\series_table_config_screen.dart:1483
+- **الطاسو** — lib\Commande\Systeme\calculate_component.dart:694
+- **الطلب** — lib\Commande\partial_proforma_screen.dart:883
+- **الطلبية لم تعد موجودة في قاعدة البيانات.** — lib\Commande\commande.dart:3000
+- **الظلفة** — lib\Commande\Systeme\calculate_component.dart:499
+- **العامل الصانع:** — lib\Screen\external_operations_hub_screen.dart:1379, lib\Screen\external_operations_hub_screen.dart:2387
+- **العنوان مطلوب** — lib\Screen\worker_transactions_detail_screen.dart:161
+- **الغطاء الجانبي** — lib\Commande\order_required_goods_screen.dart:3214
+- **الفئة** — lib\Commande\order_required_goods_screen.dart:2810
+- **الفضلات المتاحة** — lib\Screen\inventory_screen.dart:370, lib\Screen\inventory_screen.dart:1031
+- **القاش المرتبط بالقفل** — lib\items_produits\accessoires.dart:2767
+- **القيمة الإجمالية للتسليم** — lib\Commande\partial_proforma_screen.dart:1273
+- **الكميات المحددة** — lib\Commande\partial_proforma_screen.dart:1252
+- **الكمية الإجمالية المطلوبة** — lib\Commande\partial_proforma_screen.dart:232
+- **الكمية المتبقية** — lib\Screen\glass_order_reception_screen.dart:895
+- **الكمية المستلمة** — lib\Screen\glass_order_reception_screen.dart:894
+- **الكمية المسلمة المعدلة** — lib\Commande\partial_proforma_screen.dart:241
+- **الكمية المسندة (الأقصى $remainingQty)** — lib\Screen\order_allocation_screen.dart:1192
+- **الكمية يجب أن تكون بين** — lib\Commande\partial_proforma_screen.dart:263
+- **المانيفال** — lib\Commande\Systeme\calculate_component.dart:583
+- **المبلغ المدفوع فعلياً (د.ج)** — lib\Screen\worker_weekly_settlement_screen.dart:635
+- **المبلغ مطلوب** — lib\Screen\worker_transactions_detail_screen.dart:322
+- **المتبقي للتأكيد ⏳** — lib\Screen\glass_order_reception_screen.dart:792
+- **المجموع (د.ج)** — lib\Screen\welcom_screen.dart:2101
+- **المحجوزة** — lib\Screen\sales_screen.dart:235
+- **المحجوزة / حجز** — lib\Screen\sales_screen.dart:578
+- **المحور** — lib\Commande\pdf_fiche_coupe_api.dart:349
+- **المدة** — lib\Screen\worker_attendance_screen.dart:697
+- **المدفوعات** — lib\Screen\supplier_details_screen.dart:506
+- **المرتجعات** — lib\Screen\supplier_details_screen.dart:510
+- **المستخدم** — lib\Screen\welcom_screen.dart:907
+- **المُضيف** — lib\Screen\welcom_screen.dart:2567
+- **المنصب:** — lib\Screen\workers_management_screen.dart:1485
+- **المواد** — lib\Commande\order_required_goods_screen.dart:2164
+- **المورّد** — lib\Commande\order_required_goods_screen.dart:2032
+- **المورد: ${_supplierController.text.trim()}** — lib\Screen\achat_details_screen.dart:561
+- **الوجه الخارجي (مثال: ستوبسول 5 مم)** — lib\Screen\glass_order_reception_screen.dart:343
+- **الوجه الداخلي (مثال: كلير 5 مم)** — lib\Screen\glass_order_reception_screen.dart:367
+- **الوحدة:** — lib\items_produits\shutters.dart:1335
+- **انتراميتيك** — lib\items_produits\catalog_rules_screen.dart:396
+- **انتهى اليوم** — lib\services\subscription_service.dart:110
+- **ايكار** — lib\items_produits\catalog_rules_screen.dart:388, lib\Commande\Systeme\calculate_component.dart:695, lib\Commande\Systeme\profile_selector_dialog.dart:979
+- **باب زجاجي** — lib\Screen\tempered_glass_work_screen.dart:164
+- **باتمو** — lib\items_produits\catalog_rules_screen.dart:316, lib\Commande\Systeme\calculate_component.dart:513, lib\Commande\Systeme\profile_selector_dialog.dart:923
+- **باجيت ديكور\n$thicknessText$bName** — lib\Commande\Systeme\calculate_component.dart:7184
+- **باكيت** — lib\Commande\Systeme\calculate_component.dart:539
+- **بانو (Panneau)\n- النوع: $subtype - اللون: $color$productLine (${price.toStringAsFixed(0)} $priceUnit)\n$dimText** — lib\Commande\Systeme\calculate_component.dart:7367
+- **بحث بالاسم أو البريد الإلكتروني...** — lib\Screen\admin_users_screen.dart:870
+- **بحث بالمبلغ أو الملاحظات...** — lib\Screen\worker_transactions_detail_screen.dart:574
+- **بدون اسم** — lib\Screen\workers_management_screen.dart:1465
+- **بدون ربط** — lib\items_produits\series_table_config_screen.dart:1567, lib\items_produits\accessoires.dart:2780, lib\items_produits\accessoires.dart:2812
+- **بدون ستيكر** — lib\Screen\tempered_glass_work_screen.dart:194
+- **بدون ملاحظات** — lib\Screen\worker_finances_screen.dart:751
+- **براش** — lib\items_produits\series_table_config_screen.dart:1407
+- **براغ** — lib\items_produits\catalog_rules_screen.dart:320, lib\items_produits\catalog_rules_screen.dart:337, lib\items_produits\catalog_rules_screen.dart:343, lib\items_produits\accessoires.dart:2717
+- **براغي** — lib\Commande\Systeme\calculate_component.dart:713, lib\Commande\Systeme\calculate_component.dart:1804, lib\Commande\Systeme\calculate_component.dart:1808, lib\Commande\Systeme\calculate_component.dart:8080
+- **برغ** — lib\items_produits\accessoires.dart:2717
+- **بروس** — lib\items_produits\series_table_config_screen.dart:1409, lib\items_produits\catalog_rules_screen.dart:418, lib\items_produits\catalog_rules_screen.dart:424, lib\Commande\Systeme\calculate_component.dart:757
+- **بروش** — lib\items_produits\series_table_config_screen.dart:1408
+- **بروفيلات السلسلة** — lib\items_produits\series_table_config_screen.dart:809
+- **بطاقات زجاج** — lib\Screen\glass_order_reception_screen.dart:674
+- **بلانت** — lib\Commande\Systeme\calculate_component.dart:496, lib\Commande\Systeme\material_consumption_screen.dart:168
+- **بوراج** — lib\items_produits\series_table_config_screen.dart:1415, lib\items_produits\catalog_rules_screen.dart:406, lib\Commande\Systeme\calculate_component.dart:766
+- **بوشون** — lib\items_produits\catalog_rules_screen.dart:315, lib\Commande\Systeme\profile_selector_dialog.dart:922, lib\Screen\price_management_screen.dart:2097
+- **بيركلوز** — lib\Commande\Systeme\calculate_component.dart:539
+- **تأكيد إعادة التعيين** — lib\Commande\partial_proforma_screen.dart:146
+- **تأكيد الإرجاع / المسح** — lib\Screen\worker_archive_screen.dart:103
+- **تأكيد الاستلام** — lib\Screen\glass_order_reception_screen.dart:906
+- **تأكيد وإعادة تعيين** — lib\Commande\partial_proforma_screen.dart:166
+- **تأكيد وحفظ** — lib\Commande\partial_proforma_screen.dart:460
+- **تأكيد وحفظ استلام الزجاج ✅** — lib\Screen\glass_order_reception_screen.dart:975
+- **تأكيد وحفظ التسليم** — lib\Commande\partial_proforma_screen.dart:440, lib\Commande\partial_proforma_screen.dart:1334
+- **تاريخ الإسناد:** — lib\Screen\worker_archive_screen.dart:381
+- **تاريخ الإنشاء: ${DateTime.now().toString().substring(0, 16)}** — lib\Screen\global_consumption_report_screen.dart:147
+- **تاريخ الانتهاء والأرشفة النهائية:** — lib\Screen\worker_archive_screen.dart:394
+- **تاريخ البداية** — lib\Screen\worker_transactions_detail_screen.dart:908
+- **تاريخ التركيب بالموقع:** — lib\Screen\worker_archive_screen.dart:390
+- **تاريخ التوزيع والخروج للميدان:** — lib\Screen\worker_archive_screen.dart:387
+- **تاريخ الصنع:** — lib\Screen\worker_archive_screen.dart:383
+- **تاريخ النهاية** — lib\Screen\worker_transactions_detail_screen.dart:944
+- **تاريخ تركيب الزجاج بالورشة:** — lib\Screen\worker_archive_screen.dart:385
+- **تحديث ومزامنة البيانات والمهام من السحابة** — lib\Screen\welcom_screen.dart:3896
+- **تحفظ نافذة طلبية** — lib\Screen\external_operations_hub_screen.dart:2320
+- **تحويل إلى طلب أو فاتورة شراء** — lib\Commande\order_required_goods_screen.dart:2446
+- **تحويل الكميات المطلوبة إلى شراء** — lib\Commande\order_required_goods_screen.dart:1985
+- **تداخل طول الضلفة (مم)** — lib\items_produits\series_table_config_screen.dart:1297
+- **تدقيق واستلام الزجاج** — lib\Screen\glass_order_reception_screen.dart:622
+- **تراينغل** — lib\items_produits\catalog_rules_screen.dart:360, lib\Commande\Systeme\profile_selector_dialog.dart:946
+- **تركيب:** — lib\Screen\external_operations_hub_screen.dart:1478
+- **تريانغل** — lib\items_produits\catalog_rules_screen.dart:361, lib\Commande\Systeme\profile_selector_dialog.dart:947
+- **تسجيل الخروج (الآن)** — lib\Screen\worker_attendance_screen.dart:725
+- **تسجيل الدخول (الآن)** — lib\Screen\worker_attendance_screen.dart:711
+- **تسجيل الدخول / فتح الجلسة** — lib\Screen\drawer.dart:1764
+- **تسجيل الساعات لليوم الحالي** — lib\Screen\worker_attendance_screen.dart:677
+- **تسجيل دفعة وتسوية الحساب** — lib\Screen\worker_weekly_settlement_screen.dart:603
+- **تسجيل سلفة / دفعة جديدة** — lib\Screen\worker_transactions_detail_screen.dart:484
+- **تصفير كافة المهام والإسنادات (للتطوير)** — lib\Screen\worker_tasks_screen.dart:503
+- **تطبيق الفلتر** — lib\Screen\worker_transactions_detail_screen.dart:994, lib\Screen\worker_finances_screen.dart:181
+- **تطبيق على الكل** — lib\Commande\order_table_edit_screen.dart:1600
+- **تعديل الاستلام** — lib\Screen\glass_order_reception_screen.dart:848
+- **تعديل القواعد** — lib\items_produits\series_table_config_screen.dart:945
+- **تعديل القياس والنوع** — lib\Screen\glass_order_reception_screen.dart:841
+- **تعديل الكمية المسلمة سابقاً** — lib\Commande\partial_proforma_screen.dart:219, lib\Commande\partial_proforma_screen.dart:1078
+- **تعديل الملاحظات** — lib\Screen\worker_archive_screen.dart:139, lib\Screen\worker_archive_screen.dart:453
+- **تعديل قياس ونوع الزجاج** — lib\Screen\glass_order_reception_screen.dart:269
+- **تعديل معلومات المستخدم** — lib\Screen\workshop_profile_screen.dart:245
+- **تعذر إنشاء وثيقة الشراء:** — lib\Commande\order_required_goods_screen.dart:2208
+- **تعذر الحفظ** — lib\items_produits\series_table_config_screen.dart:624
+- **تعذر تحميل بيانات الاشتراك** — lib\Screen\subscription_review_dialog.dart:135
+- **تعذر تطبيق التخصيص: $error** — lib\Commande\add_commande.dart:1478
+- **تعذر حذف الطلبية: $error** — lib\Commande\commande.dart:3022
+- **تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.** — lib\Screen\workers_management_screen.dart:998
+- **تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.** — lib\Screen\workers_management_screen.dart:926
+- **تعذر حفظ رقم CCP/RIP: $error** — lib\Screen\admin_users_screen.dart:85
+- **تعذر حفظ قواعد الكتالوج** — lib\items_produits\catalog_rules_screen.dart:464
+- **تغيير القطاع** — lib\Commande\order_required_goods_screen.dart:3142
+- **تفاصيل النقائص والتحفظات الميدانية:** — lib\Screen\external_operations_hub_screen.dart:2425
+- **تفاصيل وتعديل حضور اليوم** — lib\Screen\worker_attendance_screen.dart:288
+- **تفعيل تنبيه نفاد الكمية** — lib\Screen\inventory_screen.dart:944
+- **تكبير** — lib\widgets\desktop_window_frame.dart:105
+- **تلقائي** — lib\items_produits\series_table_config_screen.dart:963
+- **تم إنشاء وثائق الشراء:** — lib\Commande\order_required_goods_screen.dart:2189
+- **تم إيقاف** — lib\Screen\selected_systems_screen.dart:379
+- **تم الاستلام ✅** — lib\Screen\glass_order_reception_screen.dart:779
+- **تم الاستلام 💎** — lib\Screen\external_operations_hub_screen.dart:914
+- **تم الطلب 🚚** — lib\Screen\external_operations_hub_screen.dart:908
+- **تم تأكيد وحفظ كميات التسليم في قاعدة البيانات بنجاح. هل ترغب في طباعة الفاتورة التقديرية الجزئية للتسليم الحالي الآن؟** — lib\Commande\partial_proforma_screen.dart:586
+- **تم تحديث الكمية المسلمة بنجاح** — lib\Commande\partial_proforma_screen.dart:287
+- **تم تحديد ${_bulkSelectedProducts.length}** — lib\Commande\add_commande.dart:2615
+- **تم تسجيل الخروج اليوم بالفعل — الساعة ${existing.first[** — lib\Screen\worker_attendance_screen.dart:244
+- **تم تسجيل الدخول اليوم بالفعل — الساعة ${existing.first[** — lib\Screen\worker_attendance_screen.dart:186
+- **تم تسليم هذا البند بالكامل** — lib\Commande\partial_proforma_screen.dart:1205
+- **تم تسليم وسجل المعاملة بنجاح** — lib\Screen\worker_transactions_detail_screen.dart:392
+- **تم تطبيق الخصائص الموحدة على جميع العناصر بنجاح** — lib\Commande\order_table_edit_screen.dart:594
+- **تم تغيير الزجاج لـ $changed عنصر بنجاح.** — lib\Commande\add_commande.dart:2348
+- **تم تغيير السلسلة لـ $changed عنصر بنجاح.** — lib\Commande\add_commande.dart:2054
+- **تم تغيير تاريخ المشتريات** — lib\Screen\achat_details_screen.dart:499
+- **تم تفعيل** — lib\Screen\selected_systems_screen.dart:378
+- **تم حذف الطلبية بنجاح.** — lib\Commande\commande.dart:3012
+- **تم حفظ استلام الزجاج ✅** — lib\Screen\glass_order_reception_screen.dart:601
+- **تم حفظ التسليم بنجاح** — lib\Commande\partial_proforma_screen.dart:580
+- **تم حفظ رقم CCP/RIP. سيظهر للمستخدمين مباشرة.** — lib\Screen\admin_users_screen.dart:78
+- **تم حفظ قواعد الكتالوج العامة.** — lib\items_produits\catalog_rules_screen.dart:454
+- **تم سحب اشتراك $email** — lib\Screen\admin_users_screen.dart:271
+- **تم مسح وتصفير كافة الإسنادات والمهام بنجاح محلياً ومنا السحابة 🧹** — lib\Screen\worker_tasks_screen.dart:478
+- **تم مسح ورشة $email** — lib\Screen\admin_users_screen.dart:392
+- **تمت إعادة تعيين كل كميات التسليم بنجاح** — lib\Commande\partial_proforma_screen.dart:182
+- **تمت المحاسبة** — lib\Screen\worker_transactions_detail_screen.dart:860
+- **تُنشأ بالعناصر المحسوبة وقابلة للتعديل.** — lib\Commande\order_required_goods_screen.dart:2010
+- **توزيع:** — lib\Screen\external_operations_hub_screen.dart:1468
+- **توفير السلع** — lib\Screen\external_operations_hub_screen.dart:1156
+- **توقيع المورد** — lib\Screen\supplier_ledger_pdf_service.dart:277
+- **جار تجهيز الصور** — lib\Commande\commande.dart:4379
+- **جدول الكمية** — lib\items_produits\catalog_rules_screen.dart:702
+- **جدول حضور وغياب العامل** — lib\Screen\worker_attendance_screen.dart:447
+- **حاضر** — lib\Screen\worker_attendance_screen.dart:647
+- **حالة الطلب:** — lib\Screen\external_operations_hub_screen.dart:893
+- **حامل الجوان** — lib\items_produits\series_table_config_screen.dart:1494
+- **حدث خطأ أثناء إعادة التعيين: $e** — lib\Commande\partial_proforma_screen.dart:191
+- **حدث خطأ أثناء الحفظ: $e** — lib\items_produits\joint.dart:303, lib\items_produits\joint.dart:609
+- **حدث خطأ أثناء فحص الاشتراك: ${snapshot.error}** — lib\Screen\subscription_checker.dart:108
+- **حدث خطأ في قاعدة البيانات: $e** — lib\items_produits\accessoires.dart:1401, lib\items_produits\accessoires.dart:2590
+- **حدد عنصرًا واحدًا على الأقل لتطبيق $title.** — lib\Commande\add_commande.dart:1461
+- **حذف الإطار** — lib\Commande\Systeme\show_system_francais.dart:9304
+- **حذف المنتج** — lib\Commande\add_commande.dart:3643
+- **حسابات ضلف النظام المنزلق** — lib\items_produits\series_table_config_screen.dart:1272
+- **حفظ المعاملة** — lib\Screen\worker_transactions_detail_screen.dart:351
+- **حفظ المعلومات** — lib\Screen\workshop_profile_screen.dart:301
+- **حفظ المكوّنات** — lib\items_produits\series_table_config_screen.dart:703
+- **حفظ الوصل PDF** — lib\Screen\receipt_pdf_service.dart:416, lib\Screen\receipt_pdf_service.dart:564
+- **حفظ رقم الدفع** — lib\Screen\admin_users_screen.dart:135
+- **خارجي** — lib\Screen\glass_order_reception_screen.dart:206
+- **خصم عرض 3 ضلفات (مم)** — lib\items_produits\series_table_config_screen.dart:1289
+- **خصم عرض 4 ضلفات (مم)** — lib\items_produits\series_table_config_screen.dart:1293
+- **خصم عرض ضلفتين (مم)** — lib\items_produits\series_table_config_screen.dart:1285
+- **خطأ أثناء التعديل: $e** — lib\Commande\partial_proforma_screen.dart:296
+- **خطأ أثناء تأكيد وحفظ التسليم: $e** — lib\Commande\partial_proforma_screen.dart:631
+- **خطأ أثناء تحميل البيانات: $e** — lib\Commande\order_measurements_confirm_screen.dart:252
+- **خطأ أثناء تحميل المبيعات: $e** — lib\Screen\sales_screen.dart:78
+- **خطأ أثناء توليد الفاتورة: $e** — lib\Commande\commande.dart:1355, lib\Commande\commande.dart:1444, lib\Commande\commande.dart:1497, lib\Commande\commande.dart:1653, lib\Commande\commande.dart:1762, lib\Commande\commande.dart:2216, lib\Commande\commande.dart:2312
+- **خطأ أثناء توليد المستند: $e** — lib\Commande\commande.dart:1550
+- **خطأ أثناء جلب الطلبيات: $e** — lib\Screen\link_existing_orders_screen.dart:58
+- **خطأ أثناء ربط الطلبيات: $e** — lib\Screen\link_existing_orders_screen.dart:99
+- **خطأ أثناء معاينة الفاتورة: $e** — lib\Commande\partial_proforma_screen.dart:411
+- **خطأ في الاتصال بالسحابة: $e** — lib\Screen\workers_management_screen.dart:412
+- **خطأ في الحفظ: $e** — lib\Screen\workshop_profile_screen.dart:212
+- **خطأ في حفظ الملف: $e** — lib\Screen\receipt_pdf_service.dart:452
+- **خطأ في حفظ حد $label: $e** — lib\Screen\admin_users_screen.dart:342
+- **خطأ: $e** — lib\Commande\partial_proforma_screen.dart:767, lib\Screen\admin_users_screen.dart:224, lib\Screen\admin_users_screen.dart:251, lib\Screen\admin_users_screen.dart:277, lib\Screen\admin_users_screen.dart:309, lib\Screen\admin_users_screen.dart:398, lib\Screen\order_allocation_screen.dart:736, lib\Screen\order_allocation_screen.dart:799, lib\Screen\order_allocation_screen.dart:873
+- **خطة القص** — lib\Commande\order_required_goods_screen.dart:3012
+- **خلوص تركيب السكة (مم)** — lib\items_produits\series_table_config_screen.dart:1313
+- **دائن** — lib\Screen\treasury_screen.dart:2262, lib\Screen\treasury_screen.dart:2331
+- **داخلي** — lib\Screen\glass_order_reception_screen.dart:208
+- **درابزين زجاجي** — lib\Screen\tempered_glass_work_screen.dart:168
+- **دفعات الأجر والتسويات** — lib\Screen\worker_transactions_detail_screen.dart:589
+- **دفعة أجر** — lib\Screen\worker_finances_screen.dart:751
+- **دفعة أجر / تسوية** — lib\Screen\worker_transactions_detail_screen.dart:293, lib\Screen\worker_transactions_detail_screen.dart:785
+- **دلفة** — lib\Commande\order_required_goods_screen.dart:3235
+- **ديكور** — lib\Screen\tempered_glass_work_screen.dart:187
+- **رؤية فقط** — lib\Screen\workers_management_screen.dart:1064
+- **ربط أنواع الجوانات** — lib\items_produits\series_table_config_screen.dart:1458
+- **رقم CCP / RIP لـ BaridiMob** — lib\Screen\admin_users_screen.dart:116
+- **رقم الطلبية: ${order[** — lib\Commande\pdf_fiche_coupe_api.dart:136
+- **رقم الفاتورة: ${_invoiceController.text.trim()}** — lib\Screen\achat_details_screen.dart:560
+- **رقم الوصل: $receiptId** — lib\Screen\receipt_pdf_service.dart:213
+- **رقم طلب الشراء** — lib\Commande\order_required_goods_screen.dart:2019
+- **رقم فاتورة الشراء** — lib\Commande\order_required_goods_screen.dart:2020
+- **زبون غير محدد** — lib\Screen\external_operations_hub_screen.dart:1232, lib\Screen\worker_archive_screen.dart:298
+- **زجاج بديكور** — lib\Screen\glass_order_reception_screen.dart:222
+- **زجاج مزدوج** — lib\Screen\glass_order_reception_screen.dart:220
+- **زجاج مزدوج فقط** — lib\items_produits\series_table_config_screen.dart:972
+- **زجاج مفرد** — lib\Screen\glass_order_reception_screen.dart:215, lib\Screen\glass_order_reception_screen.dart:224
+- **زجاج مفرد فقط** — lib\items_produits\series_table_config_screen.dart:970
+- **زجاج مفرد\n${thickness.toStringAsFixed(0)}مم: $namePart (${price.toStringAsFixed(0)} دج/م²)\n$dimText** — lib\Commande\Systeme\calculate_component.dart:7328
+- **سابلي / مصنفر** — lib\Screen\tempered_glass_work_screen.dart:181
+- **سبب التعديل: ${item.replacementReason}** — lib\Commande\pdf_invoice_api.dart:830
+- **ستيكر كامل** — lib\Screen\tempered_glass_work_screen.dart:198
+- **ستيكر موشي / نقش جزئي** — lib\Screen\tempered_glass_work_screen.dart:196
+- **سجل الفواتير الجزئية المسلمة** — lib\Commande\partial_proforma_screen.dart:675
+- **سجل الفواتير المسلمة** — lib\Commande\partial_proforma_screen.dart:835
+- **سجل حضور ودخول العامل** — lib\Screen\worker_transactions_detail_screen.dart:446
+- **سطر** — lib\Commande\order_required_goods_screen.dart:2164, lib\Commande\order_required_goods_screen.dart:2178
+- **سعر العمل / الأجرة (دج)** — lib\Screen\worker_transactions_detail_screen.dart:187
+- **سعر القطعة  |  النوع: بانو ديكور** — lib\Screen\price_management_screen.dart:3058
+- **سعر القطعة  |  النوع: وردة ديكور** — lib\Screen\price_management_screen.dart:3056
+- **سعر المتر الخطي  |  النوع: باجيت ديكور** — lib\Screen\price_management_screen.dart:3054
+- **سعر المتر المربع  |  النوع: $glassType** — lib\Screen\price_management_screen.dart:3060
+- **سكك** — lib\Commande\Systeme\calculate_component.dart:722
+- **سلفة / تسقيع** — lib\Screen\worker_transactions_detail_screen.dart:289
+- **سلفة مالية** — lib\Screen\worker_transactions_detail_screen.dart:784
+- **سلمت سابقاً** — lib\Commande\partial_proforma_screen.dart:1046
+- **سم** — lib\Screen\moustiquaire_screen.dart:476, lib\Screen\moustiquaire_screen.dart:496
+- **سنترال** — lib\items_produits\series_table_config_screen.dart:1402, lib\items_produits\catalog_rules_screen.dart:412, lib\Commande\Systeme\calculate_component.dart:772
+- **سيتم تحديث سجلات الطلب بالكميات المحددة.** — lib\Commande\partial_proforma_screen.dart:446
+- **سيتم فصل الشراء تلقائيًا إلى وثيقتين:** — lib\Commande\order_required_goods_screen.dart:2094
+- **شرائح** — lib\Commande\Systeme\calculate_component.dart:726
+- **شريحة** — lib\Commande\Systeme\calculate_component.dart:726
+- **شهر** — lib\Screen\workers_management_screen.dart:2915
+- **صافي الرصيد المستحق للعامل** — lib\Screen\worker_transactions_detail_screen.dart:554
+- **صافي المستحق للعامل:** — lib\Screen\worker_weekly_settlement_screen.dart:618
+- **صالحة من** — lib\Screen\workers_management_screen.dart:763
+- **صفحة الرسم والتصميم للنوافذ والأبواب** — lib\Screen\selected_systems_screen.dart:108
+- **صناديق الستار المدمجة في الجدار** — lib\Screen\selected_systems_screen.dart:124
+- **صنف مرتبط سيُضاف إلى الوثيقة** — lib\Commande\order_required_goods_screen.dart:2073
+- **ضرب** — lib\items_produits\series_table_config_screen.dart:1399, lib\Commande\Systeme\calculate_component.dart:769
+- **ضلفة** — lib\Commande\order_required_goods_screen.dart:3236
+- **طاسو** — lib\items_produits\catalog_rules_screen.dart:384
+- **طاولة أو رف زجاجي** — lib\Screen\tempered_glass_work_screen.dart:170
+- **طباعة PDF** — lib\Screen\supplier_details_screen.dart:327
+- **طباعة الفاتورة** — lib\Commande\partial_proforma_screen.dart:617
+- **طلب #$displayNumber** — lib\Screen\project_details_screen.dart:429
+- **طلب زجاج للطلبية** — lib\Screen\external_operations_hub_screen.dart:803
+- **طلب شراء (مسودة)** — lib\Commande\order_required_goods_screen.dart:1998
+- **طلبية** — lib\Screen\external_operations_hub_screen.dart:1110, lib\Screen\external_operations_hub_screen.dart:1361
+- **طلبية #$displayId** — lib\Commande\order_workspace_screen.dart:346
+- **طلبية #$editCommandeId** — lib\Commande\order_workspace_screen.dart:83
+- **طلبية #$orderId** — lib\Commande\order_workspace_screen.dart:240
+- **عامل (غير مصنف)** — lib\Screen\workshop_profile_screen.dart:513
+- **عامل التركيب:** — lib\Screen\external_operations_hub_screen.dart:1392, lib\Screen\worker_archive_screen.dart:353
+- **عجل** — lib\Screen\price_management_screen.dart:2084
+- **عجلات** — lib\items_produits\catalog_rules_screen.dart:391, lib\Commande\Systeme\calculate_component.dart:698
+- **عدد البراغي يؤخذ من حقل عدد البراغي في الأكسسوار** — lib\items_produits\accessoires.dart:2822
+- **عدد القاش لهذا الأكسسوار** — lib\items_produits\accessoires.dart:2794
+- **عرض المكونات** — lib\Commande\order_required_goods_screen.dart:3126
+- **عرض خطة القص** — lib\Commande\order_required_goods_screen.dart:3148
+- **عمل زجاجي آخر** — lib\Screen\tempered_glass_work_screen.dart:172
+- **عمل يومي** — lib\Screen\worker_weekly_settlement_screen.dart:1166, lib\Screen\worker_transactions_detail_screen.dart:128
+- **عملية** — lib\Screen\welcom_screen.dart:3071
+- **عمود** — lib\Commande\order_required_goods_screen.dart:3229
+- **عنصر/نافذة** — lib\Screen\external_operations_hub_screen.dart:1118
+- **عنوان العمل** — lib\Screen\worker_transactions_detail_screen.dart:158
+- **غائب** — lib\Screen\worker_attendance_screen.dart:649
+- **غطاء** — lib\items_produits\catalog_rules_screen.dart:306
+- **غطاء جانبي مدمج** — lib\items_produits\series_table_config_screen.dart:1089
+- **غطاء مدمج** — lib\items_produits\series_table_config_screen.dart:928
+- **غير محاسب** — lib\Screen\worker_transactions_detail_screen.dart:861
+- **غير مصرح** — lib\Commande\commande.dart:2949
+- **غير مفعلة** — lib\Screen\workers_management_screen.dart:749
+- **فاتورة تقديرية / أولية** — lib\Commande\pdf_invoice_api.dart:302
+- **فاتورة شحن جزئية** — lib\Commande\partial_proforma_screen.dart:829
+- **فاتورة شراء** — lib\Commande\order_required_goods_screen.dart:2008
+- **فارغ** — lib\Screen\worker_attendance_screen.dart:650
+- **فاصل** — lib\Commande\order_required_goods_screen.dart:3228
+- **فتح المشتريات** — lib\Screen\external_operations_hub_screen.dart:2681
+- **فتح ومنزلق** — lib\items_produits\series_table_config_screen.dart:961
+- **فراب** — lib\items_produits\series_table_config_screen.dart:1397, lib\items_produits\catalog_rules_screen.dart:409, lib\Commande\Systeme\calculate_component.dart:769
+- **فريق التنفيذ** — lib\Screen\welcom_screen.dart:2151
+- **فشل التحديث** — lib\Commande\Systeme\material_consumption_screen.dart:6120
+- **فشل توليد ملف PDF** — lib\Commande\commande.dart:4179
+- **فشل حفظ الطلبية: $e** — lib\Commande\add_commande.dart:1392
+- **فعّالة** — lib\Screen\admin_users_screen.dart:857
+- **فلتر بالتاريخ** — lib\Screen\worker_transactions_detail_screen.dart:468, lib\Screen\worker_transactions_detail_screen.dart:895
+- **فيتراج** — lib\items_produits\series_table_config_screen.dart:1391, lib\items_produits\catalog_rules_screen.dart:403, lib\Commande\Systeme\calculate_component.dart:763, lib\Commande\Systeme\model.dart:8605, lib\Commande\Systeme\model.dart:13753
+- **فيترين / واجهة محل** — lib\Screen\tempered_glass_work_screen.dart:160
+- **فيتي / مورق** — lib\Screen\tempered_glass_work_screen.dart:185
+- **فيرو** — lib\items_produits\catalog_rules_screen.dart:364, lib\Commande\Systeme\calculate_component.dart:670, lib\Commande\Systeme\material_consumption_screen.dart:1001, lib\Screen\price_management_screen.dart:2079
+- **فيمي / مدخن** — lib\Screen\tempered_glass_work_screen.dart:183
+- **قاش** — lib\items_produits\accessoires.dart:2711, lib\Screen\price_management_screen.dart:2089
+- **قاش بورت** — lib\Commande\Systeme\calculate_component.dart:628
+- **قاش دوبل** — lib\Commande\Systeme\calculate_component.dart:622
+- **قاش سامبل** — lib\Commande\Systeme\calculate_component.dart:625
+- **قطاع $barNumber: $cutText مم — الباقي** — lib\Commande\order_required_goods_screen.dart:4367
+- **قطاعات الألمنيوم (Aluminium)** — lib\Screen\global_consumption_report_screen.dart:141, lib\Screen\global_consumption_report_screen.dart:234
+- **قطع الشيكان لكل فاصل** — lib\items_produits\series_table_config_screen.dart:1308
+- **قطع القص: ${parts.join(** — lib\Commande\Systeme\calculate_component.dart:7635, lib\Commande\Systeme\calculate_component.dart:8023
+- **قفل** — lib\Screen\price_management_screen.dart:2078
+- **قفل بمفتاح** — lib\Commande\Systeme\calculate_component.dart:662
+- **قواعد** — lib\items_produits\series_table_config_screen.dart:1010
+- **قواعد الأكسسوارات** — lib\items_produits\catalog_rules_screen.dart:495
+- **قواعد الإكسسوار** — lib\items_produits\accessoires.dart:2747, lib\items_produits\accessoires.dart:3543
+- **قواعد الكتالوج العامة** — lib\items_produits\catalog_rules_screen.dart:481
+- **قواعد المقاطع المختارة** — lib\items_produits\series_table_config_screen.dart:905
+- **قياس الزجاج الحقيقي** — lib\Screen\glass_order_reception_screen.dart:815
+- **قياس النافذة** — lib\Screen\glass_order_reception_screen.dart:829
+- **قياسات الزجاج الحقيقية (مم):** — lib\Screen\glass_order_reception_screen.dart:280
+- **قيد الطلب ⏳** — lib\Screen\external_operations_hub_screen.dart:902
+- **كابين دوش** — lib\Screen\tempered_glass_work_screen.dart:162
+- **كاش** — lib\items_produits\accessoires.dart:2711
+- **كانة** — lib\Commande\order_required_goods_screen.dart:3237
+- **كريمون** — lib\items_produits\catalog_rules_screen.dart:367, lib\Commande\Systeme\calculate_component.dart:680, lib\Screen\price_management_screen.dart:2094
+- **كشف حساب المورد $name** — lib\Screen\supplier_ledger_pdf_service.dart:348
+- **كشف حساب المورد:** — lib\Screen\supplier_details_screen.dart:278
+- **كل أنواع الزجاج** — lib\items_produits\series_table_config_screen.dart:974
+- **كل الطلبيات** — lib\Screen\welcom_screen.dart:1882
+- **كل العمليات** — lib\Screen\welcom_screen.dart:1995
+- **كل المعاملات** — lib\Screen\worker_transactions_detail_screen.dart:587
+- **كلام** — lib\Commande\Systeme\calculate_component.dart:619
+- **كلامب** — lib\Commande\Systeme\calculate_component.dart:619
+- **كمية الشراء** — lib\Commande\order_required_goods_screen.dart:2838
+- **كيت** — lib\items_produits\catalog_rules_screen.dart:305, lib\Commande\Systeme\calculate_component.dart:721
+- **كيت حزام** — lib\Commande\Systeme\material_consumption_screen.dart:1012
+- **كيت فولي** — lib\Commande\Systeme\material_consumption_screen.dart:1008
+- **كيت مانيفال** — lib\Commande\Systeme\material_consumption_screen.dart:1010
+- **كيت مانيفر** — lib\Commande\Systeme\material_consumption_screen.dart:1011
+- **لا توجد إكسسوارات.** — lib\items_produits\catalog_rules_screen.dart:570
+- **لا توجد سجلات حضور بعد** — lib\Screen\worker_attendance_screen.dart:759
+- **لا توجد سلع مرتبطة بقاعدة البيانات لتحويلها إلى شراء.** — lib\Commande\order_required_goods_screen.dart:1944
+- **لا توجد عناصر في هذه الطلبية!** — lib\Commande\partial_proforma_screen.dart:851
+- **لا توجد عناصر لهذه الطلبية** — lib\Screen\glass_order_reception_screen.dart:639
+- **لا توجد عناصر.** — lib\items_produits\catalog_rules_screen.dart:519
+- **لا توجد فواتير جزئية مسلمة سابقاً** — lib\Commande\partial_proforma_screen.dart:693
+- **لا توجد كميات متاحة لاعتماد صرفها.** — lib\Commande\order_required_goods_screen.dart:4960
+- **لا توجد معاملات مسجلة لهذا العامل** — lib\Screen\worker_transactions_detail_screen.dart:696
+- **لا توجد مهام أرشيفية مسجلة** — lib\Screen\worker_archive_screen.dart:239
+- **لا توجد نتائج.** — lib\items_produits\catalog_rules_screen.dart:571
+- **لا يقبل كوفرجوا** — lib\items_produits\series_table_config_screen.dart:930
+- **لا يمكن الحذف** — lib\Commande\commande.dart:2921
+- **للمورد:** — lib\Screen\treasury_screen.dart:3521
+- **لم يتم تحديد تقييم** — lib\Screen\support_dialog.dart:25
+- **لون** — lib\Screen\external_operations_hub_screen.dart:2806
+- **لون الستار** — lib\Commande\Systeme\show_system_francais.dart:9859
+- **ليس لديك صلاحية إنشاء المشتريات** — lib\Commande\order_required_goods_screen.dart:1934
+- **مثال: $totalRefundEstimation** — lib\Screen\achat_details_screen.dart:1082
+- **مثال: 300** — lib\Screen\cutting_settings_screen.dart:232
+- **مثال: 4 أو 5** — lib\Screen\cutting_settings_screen.dart:218
+- **مثال: 5** — lib\Screen\workshop_profile_screen.dart:474
+- **مثال: ألمنيوم، زجاج، بي في سي...** — lib\Screen\workshop_profile_screen.dart:394
+- **مثال: مستودع المواد الجاهزة** — lib\Screen\inventory_screen.dart:118
+- **مجموع الحسابات** — lib\Screen\welcom_screen.dart:2527
+- **مجهول** — lib\Screen\achat_details_screen.dart:1497, lib\Screen\achat_details_screen.dart:2019
+- **محور** — lib\items_produits\catalog_rules_screen.dart:301, lib\Commande\Systeme\calculate_component.dart:727
+- **مختلط** — lib\Commande\choose_systems.dart:687
+- **مدين** — lib\Screen\treasury_screen.dart:2262, lib\Screen\treasury_screen.dart:2331
+- **مراسلة الإدارة وتقديم شكوى / ملاحظة:\n• تقييم التطبيق: $ratingText\n• الملاحظة أو الشكوى:\n${userMsg.isNotEmpty ? userMsg :** — lib\Screen\support_dialog.dart:28
+- **مربع صغير** — lib\Screen\app_workspace_shell.dart:1923
+- **مستقبلي** — lib\Screen\worker_attendance_screen.dart:645
+- **مسح البحث** — lib\items_produits\catalog_rules_screen.dart:541
+- **مسح كلي 🧹** — lib\Screen\external_operations_hub_screen.dart:407
+- **مسح ورشة $email وجميع مستخدميها؟ لا يمكن التراجع.** — lib\Screen\admin_users_screen.dart:358
+- **مسموح مع الستار** — lib\items_produits\series_table_config_screen.dart:1107
+- **مشاركة / حفظ PDF** — lib\Commande\devis_preview_screen.dart:1952
+- **مشاركة PDF** — lib\Screen\supplier_details_screen.dart:340
+- **مع غاز أرجون** — lib\Screen\glass_order_reception_screen.dart:212, lib\Screen\glass_order_reception_screen.dart:377
+- **معاملات وسلف العامل:** — lib\Screen\worker_transactions_detail_screen.dart:435
+- **معاينة الفاتورة** — lib\Commande\partial_proforma_screen.dart:1310
+- **معرّف المشتريات: ${widget.achatId}** — lib\Screen\achat_details_screen.dart:562
+- **مفاصل** — lib\Commande\Systeme\calculate_component.dart:669
+- **مفتوح (أقل من أسبوع)** — lib\Screen\worker_archive_screen.dart:316
+- **مفصل** — lib\items_produits\catalog_rules_screen.dart:383, lib\Screen\price_management_screen.dart:2072
+- **مقاس: $size -** — lib\Commande\Systeme\calculate_component.dart:7202
+- **مقبض** — lib\items_produits\catalog_rules_screen.dart:382, lib\Commande\Systeme\calculate_component.dart:691, lib\Screen\price_management_screen.dart:2067
+- **مقفول (مرّ أكثر من أسبوع)** — lib\Screen\worker_archive_screen.dart:315
+- **مكان التخزين** — lib\Commande\order_required_goods_screen.dart:2053
+- **مكوّن داخل الكِت** — lib\Commande\order_required_goods_screen.dart:2967
+- **مكوّنات وحسابات السلسلة** — lib\items_produits\series_table_config_screen.dart:669, lib\items_produits\series_table_config_screen.dart:801
+- **ملاحظات / البيان** — lib\Screen\worker_transactions_detail_screen.dart:335
+- **ملاحظات / تفاصيل العمل (اختياري)** — lib\Screen\worker_transactions_detail_screen.dart:203
+- **ملاحظات / سبب الغياب** — lib\Screen\worker_attendance_screen.dart:364
+- **ملاحظات العمل** — lib\Screen\tempered_glass_work_screen.dart:484
+- **ملاحظة حسابية** — lib\items_produits\series_table_config_screen.dart:1206
+- **ملاحظة خاصة بالسلسلة** — lib\items_produits\series_table_config_screen.dart:1320
+- **ملف ومعلومات الورشة** — lib\Screen\workshop_profile_screen.dart:296
+- **ممنوع مع الستار** — lib\items_produits\series_table_config_screen.dart:932
+- **منتصف الظلفة** — lib\items_produits\accessoires.dart:2845
+- **منتهي منذ ${_arabicDaysText(daysAgo)}** — lib\services\subscription_service.dart:110
+- **منتهية / بحاجة تفعيل** — lib\Screen\admin_users_screen.dart:854
+- **موستيكير** — lib\Commande\devis_preview_screen.dart:1428, lib\Commande\pdf_invoice_api.dart:127
+- **موقع المقبض من بداية الظلفة (مم)** — lib\items_produits\accessoires.dart:2859
+- **موقع تقسيم التراينغل** — lib\items_produits\accessoires.dart:2840
+- **موقع مخصص** — lib\items_produits\accessoires.dart:2847
+- **نافذة التغيير** — lib\items_produits\catalog_rules_screen.dart:707
+- **نافذة في قاعدة البيانات؟** — lib\Commande\partial_proforma_screen.dart:446
+- **نصف أوبي** — lib\Commande\Systeme\material_consumption_screen.dart:1000
+- **نظام الفتح الداخلي والخارجي والقلاب** — lib\Screen\selected_systems_screen.dart:98
+- **نظام النوافذ** — lib\Screen\app_workspace_shell.dart:1739
+- **نظام النوافذ والأبواب الجرارة 2/3/4 سكة** — lib\Screen\selected_systems_screen.dart:90
+- **نهائية** — lib\Commande\Systeme\calculate_component.dart:723
+- **نواقص الطلبية** — lib\Screen\external_operations_hub_screen.dart:2657
+- **نوع** — lib\Screen\selected_systems_screen.dart:1106
+- **نوع البرغي** — lib\items_produits\accessoires.dart:2807
+- **هل أنت متأكد من رغبتك في إعادة تعيين كل كميات التسليم إلى صفر لهذه الطلبية؟ سيتم حذف جميع سجلات التسليم السابقة لمواد هذا الطلب.** — lib\Commande\partial_proforma_screen.dart:152
+- **هل ترغب في تأكيد وحفظ تسليم** — lib\Commande\partial_proforma_screen.dart:446
+- **واجهة زجاجية** — lib\Screen\tempered_glass_work_screen.dart:166
+- **وباقي العناصر** — lib\Commande\order_required_goods_screen.dart:2096
+- **وردة ديكور\n$sizeText$rName** — lib\Commande\Systeme\calculate_component.dart:7207
+- **وسط** — lib\items_produits\series_table_config_screen.dart:1404
+- **وصل تسليم** — lib\Commande\pdf_invoice_api.dart:318
+- **وصل معاملة الصندوق رقم $receiptId** — lib\Screen\receipt_pdf_service.dart:384, lib\Screen\receipt_pdf_service.dart:527
+- **وقت الخروج** — lib\Screen\worker_attendance_screen.dart:337
+- **وقت الدخول** — lib\Screen\worker_attendance_screen.dart:311
+- **يُختار تلقائياً عند توفر هذا النوع** — lib\items_produits\accessoires.dart:2761
+- **يرجى إدخال المبلغ** — lib\Screen\worker_weekly_settlement_screen.dart:643
+- **يرجى إدخال قياس (طول) صحيح بـ $unitText** — lib\Screen\caisson_tunnel_screen.dart:180
+- **يرجى إدخال مبلغ صالح لا يزيد عن المتبقي** — lib\Screen\achat_details_screen.dart:349
+- **يرجى تحديد كمية أكبر من صفر لعنصر واحد على الأقل لتأكيد التسليم!** — lib\Commande\partial_proforma_screen.dart:424
+- **يرجى تحديد كمية أكبر من صفر لعنصر واحد على الأقل للمعاينة!** — lib\Commande\partial_proforma_screen.dart:316
+- **يظهر في الرسم** — lib\items_produits\series_table_config_screen.dart:1149
+- **يظهر في نافذة التغيير** — lib\items_produits\series_table_config_screen.dart:1168
+- **يظهر مع الزجاج** — lib\items_produits\series_table_config_screen.dart:1050
+- **يمكن تعديل كل وثيقة بعد إنشائها.** — lib\Commande\order_required_goods_screen.dart:2097
+- **يمكن مراجعته وتأكيده لاحقًا دون إدخال المخزون.** — lib\Commande\order_required_goods_screen.dart:2000
+- **يوم** — lib\Screen\worker_attendance_screen.dart:512, lib\Screen\worker_attendance_screen.dart:517

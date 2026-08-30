@@ -309,7 +309,11 @@ class WorkspaceTabStrip extends StatelessWidget {
                 : Localization.translate(entry.title, language);
 
             return Padding(
-              padding: const EdgeInsetsDirectional.only(end: 5, top: 4, bottom: 3),
+              padding: const EdgeInsetsDirectional.only(
+                end: 5,
+                top: 4,
+                bottom: 3,
+              ),
               child: Material(
                 color: active
                     ? const Color(0xFFF1F5F9)
@@ -325,7 +329,10 @@ class WorkspaceTabStrip extends StatelessWidget {
                   ),
                   onTap: () => workspace.activate(index),
                   child: Padding(
-                    padding: const EdgeInsetsDirectional.only(start: 11, end: 7),
+                    padding: const EdgeInsetsDirectional.only(
+                      start: 11,
+                      end: 7,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -638,6 +645,9 @@ class _WorkspaceHeader extends StatelessWidget {
                     .snapshots(),
           builder: (context, snapshot) {
             final data = snapshot.data?.data() as Map<String, dynamic>?;
+            final language =
+                Provider.of<AppSettingsProvider>(context, listen: false)
+                    .language;
             final workshopName = data?['workshopName'] ?? 'ورشة الألمنيوم';
             final String displayName =
                 (data?['displayName'] as String?)?.trim().isNotEmpty == true
@@ -662,9 +672,10 @@ class _WorkspaceHeader extends StatelessWidget {
                     children: [
                       Builder(
                         builder: (innerContext) => IconButton(
-                          tooltip: isSidebarOpen
-                              ? 'إغلاق القائمة'
-                              : 'فتح القائمة',
+                          tooltip: Localization.translate(
+                            isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                            language,
+                          ),
                           onPressed:
                               onToggleSidebar ??
                               () => Scaffold.of(innerContext).openDrawer(),
@@ -759,7 +770,7 @@ class _WorkspaceHeader extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
@@ -769,7 +780,10 @@ class _WorkspaceHeader extends StatelessWidget {
                                 ),
                                 SizedBox(width: 6),
                                 Text(
-                                  'الجلسة مغلقة - اضغط لتسجيل الدخول',
+                                  Localization.translate(
+                                    'الجلسة مغلقة - اضغط لتسجيل الدخول',
+                                    language,
+                                  ),
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -784,7 +798,10 @@ class _WorkspaceHeader extends StatelessWidget {
                         onPressed: () {
                           openAdaptiveScreen(
                             context,
-                            title: 'الإعدادات',
+                            title: Localization.translate(
+                              'الإعدادات',
+                              language,
+                            ),
                             icon: Icons.settings,
                             screen: const SettingsScreen(),
                           );
@@ -807,7 +824,7 @@ class _WorkspaceHeader extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              modeTitle,
+                              Localization.translate(modeTitle, language),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -816,7 +833,7 @@ class _WorkspaceHeader extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              modeSubtitle,
+                              Localization.translate(modeSubtitle, language),
                               style: const TextStyle(
                                 color: Color(0xFFBFDBFE),
                                 fontSize: 12,
@@ -1150,35 +1167,106 @@ class _TabbedWorkspaceView extends StatefulWidget {
   State<_TabbedWorkspaceView> createState() => _TabbedWorkspaceViewState();
 }
 
-/// A slim, always visible handle keeps the desktop navigation discoverable
-/// after the full sidebar is collapsed.  This is especially important on the
-/// dashboard, which intentionally has no separate workspace header.
+/// A slim icon rail keeps every desktop navigation section discoverable after
+/// the full sidebar is collapsed. Clicking an icon reopens the drawer with
+/// that section expanded.
 class _CollapsedDesktopSidebar extends StatelessWidget {
-  final VoidCallback onOpen;
+  final ValueChanged<String?> onOpenGroup;
 
-  const _CollapsedDesktopSidebar({required this.onOpen});
+  const _CollapsedDesktopSidebar({required this.onOpenGroup});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final language =
+        Provider.of<AppSettingsProvider>(context, listen: false).language;
     return Material(
       color: isDark ? const Color(0xFF172554) : const Color(0xFF3E55D9),
       elevation: 6,
       child: SafeArea(
         right: false,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 14),
-            child: IconButton(
-              tooltip: 'إظهار القائمة',
-              onPressed: onOpen,
-              icon: const Icon(Icons.menu_rounded),
-              color: Colors.white,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.white.withValues(alpha: 0.12),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              IconButton(
+                tooltip: Localization.translate('إظهار القائمة', language),
+                onPressed: () => onOpenGroup(null),
+                icon: const Icon(Icons.menu_rounded),
+                color: Colors.white,
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.12),
+                ),
               ),
-            ),
+              const Divider(
+                height: 18,
+                indent: 10,
+                endIndent: 10,
+                color: Colors.white24,
+              ),
+              for (final item in [
+                (
+                  key: 'orders',
+                  icon: Icons.shopping_cart_checkout_rounded,
+                  label: Localization.translate('الطلبات والمبيعات', language),
+                ),
+                (
+                  key: 'purchases',
+                  icon: Icons.shopping_bag_rounded,
+                  label: Localization.translate('المشتريات', language),
+                ),
+                (
+                  key: 'inventory',
+                  icon: Icons.warehouse_rounded,
+                  label: Localization.translate('المخزون والمنتجات', language),
+                ),
+                (
+                  key: 'finance',
+                  icon: Icons.account_balance_wallet_rounded,
+                  label: Localization.translate('الصندوق والحسابات', language),
+                ),
+                (
+                  key: 'clients',
+                  icon: Icons.groups_rounded,
+                  label: Localization.translate('الزبائن', language),
+                ),
+                (
+                  key: 'projects',
+                  icon: Icons.folder_shared_rounded,
+                  label: Localization.translate('المشاريع', language),
+                ),
+                (
+                  key: 'tasks',
+                  icon: Icons.task_alt_rounded,
+                  label: Localization.translate('المهام والتنفيذ', language),
+                ),
+                (
+                  key: 'management',
+                  icon: Icons.settings_suggest_rounded,
+                  label: Localization.translate('الإعدادات والإدارة', language),
+                ),
+                (
+                  key: 'account',
+                  icon: Icons.account_circle_rounded,
+                  label: Localization.translate('الحساب', language),
+                ),
+              ])
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: IconButton(
+                    tooltip: item.label,
+                    onPressed: () => onOpenGroup(item.key),
+                    icon: Icon(item.icon),
+                    color: Colors.white,
+                    iconSize: 22,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(46, 42),
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
           ),
         ),
       ),
@@ -1188,6 +1276,10 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
 
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   bool _isSidebarOpen = true;
+  String? _expandedSidebarGroup;
+  bool _hasVisitedNonHome = false;
+  bool _collapseSidebarScheduled = false;
+  bool _keepSidebarOpenRequested = false;
   final ScrollController _tabsScrollController = ScrollController();
   final Map<String, GlobalKey> _tabKeys = {};
   String? _lastEnsuredActiveTabId;
@@ -1255,6 +1347,35 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     });
   }
 
+  void _openSidebarGroup(String? group) {
+    setState(() {
+      _isSidebarOpen = true;
+      _expandedSidebarGroup = group;
+      _keepSidebarOpenRequested = true;
+    });
+  }
+
+  void _collapseSidebarAfterReturningHome(WorkspaceController workspace) {
+    if (!workspace.isHomeActive) {
+      _hasVisitedNonHome = true;
+      _keepSidebarOpenRequested = false;
+      return;
+    }
+    if (_keepSidebarOpenRequested) {
+      _keepSidebarOpenRequested = false;
+      return;
+    }
+    if (!_hasVisitedNonHome || !_isSidebarOpen || _collapseSidebarScheduled) {
+      return;
+    }
+    _collapseSidebarScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _collapseSidebarScheduled = false;
+      if (!mounted || !workspace.isHomeActive || !_isSidebarOpen) return;
+      setState(() => _isSidebarOpen = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
@@ -1265,6 +1386,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     // same top application bar.
     const showWorkspaceChrome = true;
     final activeEntryId = workspace.entries[workspace.activeIndex].id;
+    _collapseSidebarAfterReturningHome(workspace);
     if (_lastEnsuredActiveTabId != activeEntryId) {
       _lastEnsuredActiveTabId = activeEntryId;
       _ensureActiveTabVisible(activeEntryId);
@@ -1508,21 +1630,24 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
 
     if (isDesktop) {
       return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.fastOutSlowIn,
+            // The content area can contain heavy tables. Animating the width
+            // forces those pages to relayout on every frame and can make the
+            // Windows UI look frozen while the sidebar opens.
+            duration: Duration.zero,
             width: _isSidebarOpen ? 290 : 56,
             child: _isSidebarOpen
                 ? Material(
-                    elevation: 6,
+                    elevation: 10,
                     child: AppDrawer(
+                      key: ValueKey('desktop-sidebar-$_expandedSidebarGroup'),
                       onCollapse: () => setState(() => _isSidebarOpen = false),
+                      expandedGroup: _expandedSidebarGroup,
                     ),
                   )
-                : _CollapsedDesktopSidebar(
-                    onOpen: () => setState(() => _isSidebarOpen = true),
-                  ),
+                : _CollapsedDesktopSidebar(onOpenGroup: _openSidebarGroup),
           ),
           Expanded(child: mainContent),
         ],
@@ -1688,6 +1813,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
 
     if (isDesktop) {
       return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 250),
@@ -1695,13 +1821,13 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
             width: _isSidebarOpen ? 290 : 56,
             child: _isSidebarOpen
                 ? Material(
-                    elevation: 6,
+                    elevation: 10,
                     child: AppDrawer(
                       onCollapse: () => setState(() => _isSidebarOpen = false),
                     ),
                   )
                 : _CollapsedDesktopSidebar(
-                    onOpen: () => setState(() => _isSidebarOpen = true),
+                    onOpenGroup: (_) => setState(() => _isSidebarOpen = true),
                   ),
           ),
           Expanded(child: mainContent),
@@ -1751,6 +1877,10 @@ class _WindowFrameState extends State<_WindowFrame> {
 
   @override
   Widget build(BuildContext context) {
+    final language = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return Material(
       color: Colors.transparent,
       child: GestureDetector(
@@ -1845,7 +1975,7 @@ class _WindowFrameState extends State<_WindowFrame> {
                           color: Colors.white,
                         ),
                         visualDensity: VisualDensity.compact,
-                        tooltip: 'مربع صغير',
+                        tooltip: Localization.translate('مربع صغير', language),
                       ),
                       IconButton(
                         onPressed: widget.onFullscreen,
@@ -1854,7 +1984,10 @@ class _WindowFrameState extends State<_WindowFrame> {
                           color: Colors.white,
                         ),
                         visualDensity: VisualDensity.compact,
-                        tooltip: 'تكبير داخل المساحة',
+                        tooltip: Localization.translate(
+                          'تكبير داخل المساحة',
+                          language,
+                        ),
                       ),
                       IconButton(
                         onPressed: widget.onImmersiveToggle,
@@ -1865,9 +1998,12 @@ class _WindowFrameState extends State<_WindowFrame> {
                           color: Colors.white,
                         ),
                         visualDensity: VisualDensity.compact,
-                        tooltip: widget.immersive
-                            ? 'إغلاق ملء الشاشة'
-                            : 'ملء شاشة الهاتف',
+                        tooltip: Localization.translate(
+                          widget.immersive
+                              ? 'إغلاق ملء الشاشة'
+                              : 'ملء شاشة الهاتف',
+                          language,
+                        ),
                       ),
 
                       if (widget.entry.id != 'home')
@@ -1875,7 +2011,7 @@ class _WindowFrameState extends State<_WindowFrame> {
                           onPressed: widget.onClose,
                           icon: const Icon(Icons.close, color: Colors.white),
                           visualDensity: VisualDensity.compact,
-                          tooltip: 'إغلاق',
+                        tooltip: Localization.translate('إغلاق', language),
                         ),
                     ],
                   ),

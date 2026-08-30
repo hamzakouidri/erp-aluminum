@@ -8,6 +8,8 @@ import 'package:database_data/settings/app_settings.dart';
 
 import 'package:provider/provider.dart';
 
+import '../widgets/section_image.dart';
+
 class JointsScreen extends StatefulWidget {
   final SqlDatabase db;
 
@@ -300,7 +302,11 @@ class _JointsScreenState extends State<JointsScreen> {
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('حدث خطأ أثناء الحفظ: $e')),
+                        SnackBar(
+                          content: Text(
+                            '${Localization.translate('حدث خطأ أثناء الحفظ', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
+                          ),
+                        ),
                       );
                     }
                   }
@@ -606,7 +612,11 @@ class _JointsScreenState extends State<JointsScreen> {
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('حدث خطأ أثناء الحفظ: $e')),
+                        SnackBar(
+                          content: Text(
+                            '${Localization.translate('حدث خطأ أثناء الحفظ', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
+                          ),
+                        ),
                       );
                     }
                   }
@@ -647,7 +657,12 @@ class _JointsScreenState extends State<JointsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
 
-            child: const Text('إلغاء'),
+            child: Text(
+              Localization.translate(
+                'إلغاء',
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
+            ),
           ),
 
           ElevatedButton(
@@ -689,6 +704,7 @@ class _JointsScreenState extends State<JointsScreen> {
       context,
       listen: false,
     ).language;
+    final imageCode = _jointAssetCode(item, thickness);
     String subtitle = "${item['type']}";
     if (thickness > 0) {
       subtitle +=
@@ -709,6 +725,13 @@ class _JointsScreenState extends State<JointsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
 
       child: ListTile(
+        leading: SectionImageWidget(
+          code: imageCode,
+          imagePath: item['image_path']?.toString(),
+          name: item['name']?.toString(),
+          size: 54,
+          fallbackIcon: Icons.gesture,
+        ),
         title: Text(
           item['name'].toString(),
 
@@ -738,6 +761,43 @@ class _JointsScreenState extends State<JointsScreen> {
             : null,
       ),
     );
+  }
+
+  /// Resolves the bundled profile image for joints that historically had no
+  /// code/image_path column. Bourrage joints use the catalogue codes 52034,
+  /// 52035 and 52036 according to their nominal thickness.
+  String? _jointAssetCode(Map<String, dynamic> item, double thickness) {
+    final explicitCode = item['code']?.toString().trim() ?? '';
+    if (explicitCode.isNotEmpty) return explicitCode;
+
+    final label = '${item['name'] ?? ''} ${item['gasket_type'] ?? ''}'
+        .toLowerCase();
+
+    final isBrush =
+        label.contains('بروس') ||
+        label.contains('براش') ||
+        label.contains('brosse') ||
+        label.contains('brush') ||
+        label.contains('bros');
+    if (isBrush) return 'joint_brosse.png';
+
+    final isVitrage =
+        label.contains('فيتراج') ||
+        label.contains('vitrage') ||
+        label.contains('vitre') ||
+        label.contains('glass');
+    if (isVitrage) return 'joint_vitrage.png';
+
+    final isBourrage =
+        label.contains('بوراج') ||
+        label.contains('bourrage') ||
+        label.contains('barre-clouse') ||
+        label.contains('barclose');
+    if (!isBourrage) return null;
+
+    if (thickness >= 5.0) return '52036';
+    if (thickness >= 3.0) return '52035';
+    return '52034';
   }
 
   @override

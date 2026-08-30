@@ -691,7 +691,10 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                                   color: _blue,
                                   size: 32,
                                 ),
-                                tooltip: 'إضافة للفاتورة',
+                                tooltip: Localization.translate(
+                                  'إضافة للفاتورة',
+                                  lang,
+                                ),
                                 onPressed: () => _showAddItemDialog(item),
                               ),
                             ),

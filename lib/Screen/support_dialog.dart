@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 
 class SupportDialog extends StatefulWidget {
   const SupportDialog({super.key});
@@ -12,6 +15,11 @@ class _SupportDialogState extends State<SupportDialog> {
   int _rating = 0;
   final TextEditingController _msgController = TextEditingController();
   bool _isSending = false;
+
+  String _t(String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
 
   void _sendToWhatsApp() async {
     final ratingText = _rating > 0 ? '$_rating نجوم' : 'لم يتم تحديد تقييم';
@@ -35,8 +43,8 @@ class _SupportDialogState extends State<SupportDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر فتح واتساب تلقائياً. يرجى التواصل مباشرة على الرقم: 0554301484'),
+          SnackBar(
+            content: Text(_t('تعذر فتح واتساب تلقائياً. يرجى التواصل مباشرة على الرقم: 0554301484')),
             backgroundColor: Colors.red,
           ),
         );
@@ -120,7 +128,7 @@ class _SupportDialogState extends State<SupportDialog> {
               maxLines: 4,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                hintText: 'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...',
+                hintText: _t('اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...'),
                 hintStyle: TextStyle(
                   fontSize: 12.5,
                   color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
@@ -134,7 +142,7 @@ class _SupportDialogState extends State<SupportDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('إلغاء'),
+          child: Text(_t('إلغاء')),
         ),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(

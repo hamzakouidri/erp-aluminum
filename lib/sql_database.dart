@@ -232,6 +232,37 @@ class SqlDatabase {
   ];
 
   static const List<String> workshopTables = [
+    // The workshop catalogue is part of the workshop state as well. Keeping
+    // these tables here makes rules, profiles, accessories, colours, kits and
+    // prices follow the same Supabase Realtime path as orders and payments.
+    'Profile',
+    'Series',
+    'Sections',
+    'SeriesTableConfig',
+    'SeriesDesignConfig',
+    'SeriesDesignRoles',
+    'CatalogItemRules',
+    'SectionJointLinks',
+    'SeriesShutterRules',
+    'Colors',
+    'Accessories',
+    'Joints',
+    'Glass',
+    'ShutterComponents',
+    'ShutterColorPrices',
+    'ShutterComponentColors',
+    'ShutterSqmPrices',
+    'ShutterBoxLimits',
+    'CaissonTunnelPrices',
+    'SeriesColorPrices',
+    'SectionColorPrices',
+    'AccessoryColorPrices',
+    'ProfileColors',
+    'ProfileColorConfig',
+    'KitBundles',
+    'KitBundleItems',
+    'KitItemRanges',
+    'KitItemVariants',
     'ClientCodeSequence',
     'Client',
     'Projects',
@@ -335,7 +366,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 64,
+          version: 65,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -346,7 +377,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 64,
+      version: 65,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -503,7 +534,11 @@ class SqlDatabase {
         final id = sec['id'];
         final code = sec['code']?.toString() ?? '';
         if (code.isNotEmpty) {
-          final expectedPath = 'assets/sections/$code.png';
+          final normalizedCode = code.replaceFirst(
+            RegExp(r'\.(png|jpe?g|jpeg|svg|webp)$', caseSensitive: false),
+            '',
+          );
+          final expectedPath = 'assets/sections/$normalizedCode.png';
           await db.update(
             'Sections',
             {'image_path': expectedPath},
@@ -520,7 +555,11 @@ class SqlDatabase {
         final id = prof['id'];
         final code = prof['code']?.toString() ?? '';
         if (code.isNotEmpty) {
-          final expectedPath = 'assets/sections/$code.png';
+          final normalizedCode = code.replaceFirst(
+            RegExp(r'\.(png|jpe?g|jpeg|svg|webp)$', caseSensitive: false),
+            '',
+          );
+          final expectedPath = 'assets/sections/$normalizedCode.png';
           await db.update(
             'Profile',
             {'image_path': expectedPath},
@@ -2322,6 +2361,13 @@ class SqlDatabase {
           is_gache_porte INTEGER DEFAULT 0,
           is_lock_clef INTEGER DEFAULT 0,
           is_lock_condamnation INTEGER DEFAULT 0,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          gache_accessory_id INTEGER,
+          gache_count INTEGER NOT NULL DEFAULT 0,
+          screw_accessory_id INTEGER,
+          triangle_deduction_mm REAL NOT NULL DEFAULT 0.0,
+          triangle_position_mode TEXT NOT NULL DEFAULT 'center',
+          triangle_position_mm REAL NOT NULL DEFAULT 0.0,
           is_active INTEGER NOT NULL DEFAULT 1
         )
       ''');
@@ -2939,6 +2985,21 @@ class SqlDatabase {
     if (oldVersion < 63) {
       await _ensureOrderCodeInfrastructure(db);
       await _backfillOrderCodes(db);
+    }
+    if (oldVersion < 65) {
+      for (final sql in const [
+        'ALTER TABLE Accessories ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE Accessories ADD COLUMN gache_accessory_id INTEGER',
+        'ALTER TABLE Accessories ADD COLUMN gache_count INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE Accessories ADD COLUMN screw_accessory_id INTEGER',
+        'ALTER TABLE Accessories ADD COLUMN triangle_deduction_mm REAL NOT NULL DEFAULT 0.0',
+        "ALTER TABLE Accessories ADD COLUMN triangle_position_mode TEXT NOT NULL DEFAULT 'center'",
+        'ALTER TABLE Accessories ADD COLUMN triangle_position_mm REAL NOT NULL DEFAULT 0.0',
+      ]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {}
+      }
     }
   }
 
@@ -5870,6 +5931,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
+    await _backfillOrderCodes(myDb);
     final cleanEmail = workerEmail.trim().toLowerCase();
     final cleanUid = workerUid.trim().toLowerCase();
 
@@ -5879,7 +5941,7 @@ class SqlDatabase {
       results = await myDb.rawQuery(
         '''
         SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
-               cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+               cd.id_commandes, c.order_code AS display_number, cd.accessories, cd.description, cd.quantity as detail_quantity,
                cl.firstname, cl.lastname, e.name as worker_name
         FROM WorkerAllocations wa
         LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
@@ -5905,7 +5967,7 @@ class SqlDatabase {
       results = await myDb.rawQuery(
         '''
         SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
-               cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+               cd.id_commandes, c.order_code AS display_number, cd.accessories, cd.description, cd.quantity as detail_quantity,
                cl.firstname, cl.lastname, e.name as worker_name
         FROM WorkerAllocations wa
         LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
@@ -6026,8 +6088,9 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readAbsoluteAllWorkerAllocations() async {
     Database? myDb = await db;
     if (myDb == null) return [];
+    await _backfillOrderCodes(myDb);
     return await myDb.rawQuery('''
-      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.id_commandes, cd.accessories, cd.description, cl.firstname, cl.lastname, e.name as worker_name
+      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.id_commandes, c.order_code AS display_number, cd.accessories, cd.description, cl.firstname, cl.lastname, e.name as worker_name
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
@@ -9610,6 +9673,50 @@ class SqlDatabase {
     return res;
   }
 
+  /// Makes one accessory the default for its category/material scope.  The
+  /// category is the part before the quality suffix in `type`, so changing a
+  /// quality variant does not leave several competing defaults behind.
+  Future<void> setAccessoryDefault(int id, bool enabled) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    final rows = await myDb.query(
+      'Accessories',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final row = rows.first;
+    if (enabled) {
+      final rawType = row['type']?.toString() ?? '';
+      final category = rawType.split('|').first.trim();
+      final material = row['material_type']?.toString() ?? 'Aluminium';
+      final scope = row['scope']?.toString() ?? 'Global';
+      await myDb.transaction((txn) async {
+        await txn.update(
+          'Accessories',
+          {'is_default': 0},
+          where: "(type = ? OR type LIKE ?) AND material_type = ? AND scope = ?",
+          whereArgs: [category, '$category|%', material, scope],
+        );
+        await txn.update(
+          'Accessories',
+          {'is_default': 1},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      });
+    } else {
+      await myDb.update(
+        'Accessories',
+        {'is_default': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+  }
+
   Future<int> deleteAccessory(int id) async {
     Database? myDb = await db;
     var res = await myDb!.update(
@@ -11716,6 +11823,13 @@ class SqlDatabase {
         series_id INTEGER,
         series_ids TEXT,
         screw_count INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        gache_accessory_id INTEGER,
+        gache_count INTEGER NOT NULL DEFAULT 0,
+        screw_accessory_id INTEGER,
+        triangle_deduction_mm REAL NOT NULL DEFAULT 0.0,
+        triangle_position_mode TEXT NOT NULL DEFAULT 'center',
+        triangle_position_mm REAL NOT NULL DEFAULT 0.0,
         is_active INTEGER NOT NULL DEFAULT 1
       )
     ''');
@@ -13432,13 +13546,20 @@ class SqlDatabase {
 
   // ==================== INVENTORY MANAGEMENT ====================
   Future<List<Map<String, dynamic>>> readLocations() async {
-    Database? myDb = await db;
+    final myDb = await db;
+    if (myDb == null) return [];
+    const principalName = 'المستودع الرئيسي';
+    const principalType = 'مستودع رئيسي';
     List<Map<String, dynamic>> locations = [];
     try {
-      locations = await myDb!.query('Locations', orderBy: 'id ASC');
+      locations = await myDb.query(
+        'Locations',
+        where: 'is_active IS NULL OR is_active != 0',
+        orderBy: 'id ASC',
+      );
     } catch (e) {
       // Table might not exist if the upgrade script failed or was skipped
-      await myDb!.execute('''
+      await myDb.execute('''
         CREATE TABLE IF NOT EXISTS Locations (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
@@ -13489,8 +13610,89 @@ class SqlDatabase {
         );
       }
     }
-    locations = await myDb.query('Locations', orderBy: 'id ASC');
-    return locations;
+    // The previous repair code itself wrote mojibake. Normalize those legacy
+    // values to real Unicode Arabic before returning the list.
+    var repairedLegacyLocation = false;
+    for (final location in locations) {
+      final name = location['name']?.toString() ?? '';
+      final type = location['type']?.toString() ?? '';
+      final hasBrokenEncoding =
+          name.contains('Ø') ||
+          name.contains('Ù') ||
+          name.contains('Ã') ||
+          name.contains('Â') ||
+          name.contains('â') ||
+          type.contains('Ø') ||
+          type.contains('Ù') ||
+          type.contains('Ã') ||
+          type.contains('Â') ||
+          type.contains('â');
+      if (hasBrokenEncoding) {
+        await myDb.update(
+          'Locations',
+          {'name': principalName, 'type': principalType},
+          where: 'id = ?',
+          whereArgs: [location['id']],
+        );
+        repairedLegacyLocation = true;
+      }
+    }
+
+    if (repairedLegacyLocation) {
+      CloudSyncService().notifyChange();
+    }
+
+    locations = await myDb.query(
+      'Locations',
+      where: 'is_active IS NULL OR is_active != 0',
+      orderBy: 'id ASC',
+    );
+
+    // Old synchronized databases can contain the same warehouse many times.
+    // Keep only the first row in the UI while preserving the stored records.
+    final seenNames = <String>{};
+    return locations.where((location) {
+      final name = (location['name']?.toString() ?? '').trim();
+      return name.isNotEmpty && seenNames.add(name.toLowerCase());
+    }).toList();
+  }
+
+  /// Adds a warehouse without imposing a fixed number of warehouses.
+  /// Existing names are returned instead of creating another duplicate row.
+  Future<int> insertLocation(
+    String name, {
+    String type = 'مستودع',
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return 0;
+    await readLocations();
+
+    final existing = await myDb.query(
+      'Locations',
+      columns: const ['id'],
+      where:
+          'LOWER(TRIM(name)) = LOWER(?) AND (is_active IS NULL OR is_active != 0)',
+      whereArgs: [cleanName],
+      orderBy: 'id ASC',
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      return (existing.first['id'] as num).toInt();
+    }
+
+    final id = await myDb.insert(
+      'Locations',
+      _withDistributedId({
+        'name': cleanName,
+        'type': type.trim().isEmpty ? 'مستودع' : type.trim(),
+        'is_active': 1,
+      }),
+    );
+    CloudSyncService().notifyChange();
+    return id;
   }
 
   Future<int> updateMinQty({

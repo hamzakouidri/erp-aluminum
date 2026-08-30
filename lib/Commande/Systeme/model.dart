@@ -341,6 +341,8 @@ class AluminumSection {
   final bool isMullion;
   final double maxGlassThickness;
   final int? linkedParcloseDoubleId;
+  final int? linkedRenfortId;
+  final double renfortDeduction;
   final String? imagePath;
   final bool allowsSideCover;
 
@@ -366,6 +368,8 @@ class AluminumSection {
     this.isMullion = false,
     this.maxGlassThickness = 0.0,
     this.linkedParcloseDoubleId,
+    this.linkedRenfortId,
+    this.renfortDeduction = 140.0,
     this.imagePath,
     this.allowsSideCover = true,
   }) : thickness = profileThickness ?? thickness;
@@ -400,6 +404,12 @@ class AluminumSection {
       maxGlassThickness:
           (map['max_glass_thickness'] as num?)?.toDouble() ?? 0.0,
       linkedParcloseDoubleId: map['linked_parclose_double_id'] as int?,
+      linkedRenfortId: map['linked_renfort_id'] is num
+          ? (map['linked_renfort_id'] as num).toInt()
+          : int.tryParse(map['linked_renfort_id']?.toString() ?? ''),
+      renfortDeduction: readDouble('renfort_deduction') > 0
+          ? readDouble('renfort_deduction')
+          : 140.0,
       imagePath: map['image_path']?.toString(),
       allowsSideCover: (map['allows_side_cover'] as int?) != 0,
     );
@@ -427,6 +437,8 @@ class AluminumSection {
       'is_mullion': isMullion ? 1 : 0,
       'max_glass_thickness': maxGlassThickness,
       'linked_parclose_double_id': linkedParcloseDoubleId,
+      'linked_renfort_id': linkedRenfortId,
+      'renfort_deduction': renfortDeduction,
       'image_path': imagePath,
       'allows_side_cover': allowsSideCover ? 1 : 0,
     };
@@ -3585,7 +3597,8 @@ class WindowModel extends ChangeNotifier {
 
   double get plintheHeight {
     if (componentOverrides.containsKey('بلانت (Plinthe)')) {
-      final rawWidth = componentOverrides['بلانت (Plinthe)']['visible_width'] ??
+      final rawWidth =
+          componentOverrides['بلانت (Plinthe)']['visible_width'] ??
           componentOverrides['بلانت (Plinthe)']['thickness'];
       final width = rawWidth is num
           ? rawWidth.toDouble()
@@ -6663,15 +6676,15 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-      // Plant/Plinthe is an independent series role. Do not derive it from
-      // the selected sash: a thin or thick sash may use the same plant.
-      final configuredPlinthes = configuredSectionsFor(const ['plant']);
-      if (configuredPlinthes.isNotEmpty &&
-          !componentOverrides.containsKey('بلانت (Plinthe)')) {
-        componentOverrides['بلانت (Plinthe)'] = configuredPlinthes.first.toMap();
-      }
+    // Plant/Plinthe is an independent series role. Do not derive it from
+    // the selected sash: a thin or thick sash may use the same plant.
+    final configuredPlinthes = configuredSectionsFor(const ['plant']);
+    if (configuredPlinthes.isNotEmpty &&
+        !componentOverrides.containsKey('بلانت (Plinthe)')) {
+      componentOverrides['بلانت (Plinthe)'] = configuredPlinthes.first.toMap();
+    }
 
-      final reducers = configuredSectionsFor(const ['reducer']);
+    final reducers = configuredSectionsFor(const ['reducer']);
     if (reducers.isNotEmpty &&
         hasSimpleGlassForReducer &&
         !hasDoubleGlassForRules) {
@@ -14008,7 +14021,72 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadJointRuleDefaults(dynamic d, int seriesId) async {
+    final rules = await db.getCatalogItemRules(
+      itemTable: 'Joints',
+      seriesId: seriesId,
+    );
+    if (rules.isEmpty) return;
+
+    Future<void> loadJoint(
+      String overrideKey,
+      String roleKey, {
+      List<String> aliases = const [],
+    }) async {
+      if (componentOverrides.containsKey(overrideKey)) return;
+      final acceptedRoles = {roleKey, ...aliases};
+      final matchingRules = rules.where((rule) {
+        if (rule['show_in_quantity'] == 0) return false;
+        final currentRole = rule['role_key']?.toString().trim();
+        return currentRole != null && acceptedRoles.contains(currentRole);
+      });
+
+      for (final rule in matchingRules) {
+        final itemId = (rule['item_id'] as num?)?.toInt();
+        if (itemId == null) continue;
+        final rows = await d.query(
+          'Joints',
+          where: 'id = ? AND (is_active = 1 OR is_active IS NULL)',
+          whereArgs: [itemId],
+          limit: 1,
+        );
+        if (rows.isEmpty) continue;
+        final selected = Map<String, dynamic>.from(rows.first);
+        final rawPrice = selected['price_per_meter'] ?? selected['price'];
+        selected['calculated_price'] = rawPrice is num
+            ? rawPrice.toDouble()
+            : double.tryParse(rawPrice?.toString() ?? '') ?? 0.0;
+        componentOverrides[overrideKey] = selected;
+        return;
+      }
+    }
+
+    // These keys are the exact keys consumed by ComponentCalculator. Keeping
+    // the mapping here makes the Joints rules page affect the quantity table
+    // without coupling the catalogue UI to the calculation formulas.
+    await loadJoint('جوان الزجاج (Joint Vitrage)', 'joint_vitrage');
+    await loadJoint('جوان البوراج (Joint Bourrage)', 'joint_bourrage');
+    await loadJoint(
+      'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
+      'joint_bourrage',
+    );
+    await loadJoint(
+      'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
+      'joint_bourrage',
+    );
+    await loadJoint('جوان الضرب (Joint Frappe)', 'joint_frappe');
+    await loadJoint('جوان الوسط (Joint Central)', 'joint_central');
+    await loadJoint('جوان بروس للظلفة (Joint Brosse Sash)', 'joint_brosse');
+    await loadJoint(
+      'جوان بروس للستار (Joint Brosse Shutter)',
+      'shutter_joint_brosse',
+      aliases: const ['joint_brosse'],
+    );
+    await loadJoint('جوان برونز (Joint Bronze)', 'joint_bronze');
+  }
+
   Future<void> _loadAccessoryDefaults(dynamic d, int seriesId) async {
+    await _loadJointRuleDefaults(d, seriesId);
     final strictAccessoryRules = await db.getCatalogItemRules(
       itemTable: 'Accessories',
       seriesId: seriesId,
@@ -14139,6 +14217,12 @@ class WindowModel extends ChangeNotifier {
         return 'roulette';
       }
       if (lower.contains('tasso') || key.contains('الطاسو')) return 'tasso';
+      if (lower.contains('ekar') ||
+          lower.contains('ikar') ||
+          key.contains('إيكار') ||
+          key.contains('ايكار')) {
+        return 'ekar';
+      }
       if (lower.contains('entrematique') || key.contains('أونتروماتيك')) {
         return 'entrematique';
       }
@@ -14543,9 +14627,24 @@ class WindowModel extends ChangeNotifier {
       }
 
       if (res.isNotEmpty) {
-        Map<String, dynamic> selected = res.first;
-        if (key == 'إسبانيوليت (Espagnolette)' ||
-            key == 'اسبانيولات المنزلق (Espagnolette)') {
+        // The administrator's default is an explicit catalogue choice. It
+        // wins over the old "first row" behaviour and over automatic length
+        // guessing, so every drawing uses the value entered in Accessories.
+        final defaults = res.where((accessory) {
+          final value = accessory['is_default'];
+          if (value is num) return value != 0;
+          final text = value?.toString().trim().toLowerCase();
+          return text == '1' ||
+              text == 'true' ||
+              text == 'yes' ||
+              text == 'oui';
+        }).toList();
+        Map<String, dynamic> selected = Map<String, dynamic>.from(
+          defaults.isNotEmpty ? defaults.first : res.first,
+        );
+        if (defaults.isEmpty &&
+            (key == 'إسبانيوليت (Espagnolette)' ||
+                key == 'اسبانيولات المنزلق (Espagnolette)')) {
           // اختَر أطول إسبانيوليت لا تتجاوز الطول المطلوب، لا أول نتيجة في
           // الجدول. هذا هو نفس قانون نافذة «تغيير».
           final heightCm = height / 10.0;
@@ -14578,6 +14677,32 @@ class WindowModel extends ChangeNotifier {
         }
         final m = Map<String, dynamic>.from(selected);
         m['calculated_price'] = await resolveAccessoryPrice(m);
+        Future<Map<String, dynamic>?> loadRelatedAccessory(
+          dynamic rawId,
+        ) async {
+          final relatedId = rawId is num
+              ? rawId.toInt()
+              : int.tryParse(rawId?.toString() ?? '');
+          if (relatedId == null) return null;
+          try {
+            final related = await d.query(
+              'Accessories',
+              where: '(is_active = 1 OR is_active IS NULL) AND id = ?',
+              whereArgs: [relatedId],
+              limit: 1,
+            );
+            return related.isEmpty
+                ? null
+                : Map<String, dynamic>.from(related.first);
+          } catch (_) {
+            return null;
+          }
+        }
+
+        final linkedGache = await loadRelatedAccessory(m['gache_accessory_id']);
+        if (linkedGache != null) m['gache_accessory'] = linkedGache;
+        final linkedScrew = await loadRelatedAccessory(m['screw_accessory_id']);
+        if (linkedScrew != null) m['screw_accessory'] = linkedScrew;
         componentOverrides[key] = m;
       }
     }
@@ -14756,6 +14881,13 @@ class WindowModel extends ChangeNotifier {
       '%76000%كيت%',
     ]);
     await loadAccessory('قاش (Gache)', ['%قاش%', '%gâche%', '%gache%']);
+    await loadAccessory('الطاسو (Tasso)', ['%طاسو%', '%tasso%']);
+    await loadAccessory('الإيكار (Ekar)', [
+      '%إيكار%',
+      '%ايكار%',
+      '%ekar%',
+      '%ikar%',
+    ]);
     // Default Manivelle
     if (!componentOverrides.containsKey('المانيفال (Manivelle)')) {
       try {
@@ -14911,6 +15043,42 @@ class WindowModel extends ChangeNotifier {
         }
       }
     } catch (_) {}
+    await _enrichAccessoryRelations(d);
+  }
+
+  Future<void> _enrichAccessoryRelations(dynamic d) async {
+    Future<Map<String, dynamic>?> findAccessory(dynamic rawId) async {
+      final id = rawId is num
+          ? rawId.toInt()
+          : int.tryParse(rawId?.toString() ?? '');
+      if (id == null) return null;
+      try {
+        final rows = await d.query(
+          'Accessories',
+          where: '(is_active = 1 OR is_active IS NULL) AND id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    for (final entry in componentOverrides.entries) {
+      final value = entry.value;
+      if (value is! Map) continue;
+      final accessory = Map<String, dynamic>.from(value);
+      if (accessory['gache_accessory'] == null) {
+        final linked = await findAccessory(accessory['gache_accessory_id']);
+        if (linked != null) accessory['gache_accessory'] = linked;
+      }
+      if (accessory['screw_accessory'] == null) {
+        final linked = await findAccessory(accessory['screw_accessory_id']);
+        if (linked != null) accessory['screw_accessory'] = linked;
+      }
+      componentOverrides[entry.key] = accessory;
+    }
   }
 
   void updateSelectedZoneGlassDecor({
@@ -15524,24 +15692,109 @@ class WindowModel extends ChangeNotifier {
           math.min(dyTop, dyBottom),
         );
 
-        if (copyPreviousFrameSize) {
-          // Copy the frame adjoining the side chosen by the drag. The first
-          // added frame therefore copies the only existing frame; subsequent
-          // frames copy the immediately neighbouring one.
+        final drawnX1 = math.min(drawingStart!.dx, drawingCurrent!.dx);
+        final drawnX2 = math.max(drawingStart!.dx, drawingCurrent!.dx);
+        final drawnY1 = math.min(drawingStart!.dy, drawingCurrent!.dy);
+        final drawnY2 = math.max(drawingStart!.dy, drawingCurrent!.dy);
+        final tThickness = divisionThickness;
+
+        // 🟢 10cm (100mm) Magnetic Snapping & Column detection
+        final vJoints = <double>{0.0, width};
+        for (final z in zones) {
+          if (z.boundary.left <= profileThickness + 2.0) {
+            vJoints.add(0.0);
+          } else {
+            vJoints.add(z.boundary.left - tThickness / 2);
+          }
+          if (z.boundary.right >= width - profileThickness - 2.0) {
+            vJoints.add(width);
+          } else {
+            vJoints.add(z.boundary.right + tThickness / 2);
+          }
+        }
+        final sortedVJoints =
+            vJoints.where((x) => x >= -1.0 && x <= width + 1.0).toList()
+              ..sort();
+
+        double spanLeft = 0.0;
+        double spanRight = width;
+        if (sortedVJoints.length > 2) {
+          final matchedCols = <int>[];
+          for (int i = 0; i < sortedVJoints.length - 1; i++) {
+            double cLeft = sortedVJoints[i];
+            double cRight = sortedVJoints[i + 1];
+            if (cRight - cLeft < 30.0) continue;
+
+            // 10cm (100mm) magnetic snap threshold
+            double hitLeft = cLeft - 100.0;
+            double hitRight = cRight + 100.0;
+            if (drawnX2 >= hitLeft && drawnX1 <= hitRight) {
+              matchedCols.add(i);
+            }
+          }
+          if (matchedCols.isNotEmpty) {
+            spanLeft = sortedVJoints[matchedCols.first];
+            spanRight = sortedVJoints[matchedCols.last + 1];
+          }
+        }
+
+        // 🟢 10cm (100mm) Magnetic Snapping & Row detection
+        final hJoints = <double>{0.0, height};
+        for (final z in zones) {
+          if (z.boundary.top <= topOffset + profileThickness + 2.0) {
+            hJoints.add(0.0);
+          } else {
+            hJoints.add(z.boundary.top - tThickness / 2);
+          }
+          if (z.boundary.bottom >= height - bottomOffset - pHeight - 2.0) {
+            hJoints.add(height);
+          } else {
+            hJoints.add(z.boundary.bottom + tThickness / 2);
+          }
+        }
+        final sortedHJoints =
+            hJoints.where((y) => y >= -1.0 && y <= height + 1.0).toList()
+              ..sort();
+
+        double spanTop = 0.0;
+        double spanBottom = height;
+        if (sortedHJoints.length > 2) {
+          final matchedRows = <int>[];
+          for (int j = 0; j < sortedHJoints.length - 1; j++) {
+            double rTop = sortedHJoints[j];
+            double rBottom = sortedHJoints[j + 1];
+            if (rBottom - rTop < 30.0) continue;
+
+            // 10cm (100mm) magnetic snap threshold
+            double hitTop = rTop - 100.0;
+            double hitBottom = rBottom + 100.0;
+            if (drawnY2 >= hitTop && drawnY1 <= hitBottom) {
+              matchedRows.add(j);
+            }
+          }
+          if (matchedRows.isNotEmpty) {
+            spanTop = sortedHJoints[matchedRows.first];
+            spanBottom = sortedHJoints[matchedRows.last + 1];
+          }
+        }
+
+        if (copyPreviousFrameSize || newW < 50.0) {
+          final joints = getVerticalFrameJoints();
           if (minVal == dxRight) {
-            final joints = getVerticalFrameJoints();
             final start = joints.isEmpty ? 0.0 : joints.last;
             newW = width - start;
           } else if (minVal == dxLeft) {
-            final joints = getVerticalFrameJoints();
             final end = joints.isEmpty ? width : joints.first;
             newW = end;
-          } else if (minVal == dyBottom) {
-            final joints = getHorizontalFrameJoints();
+          }
+        }
+
+        if (copyPreviousFrameSize || newH < 50.0) {
+          final joints = getHorizontalFrameJoints();
+          if (minVal == dyBottom) {
             final start = joints.isEmpty ? 0.0 : joints.last;
             newH = height - start;
-          } else {
-            final joints = getHorizontalFrameJoints();
+          } else if (minVal == dyTop) {
             final end = joints.isEmpty ? height : joints.first;
             newH = end;
           }
@@ -15551,34 +15804,42 @@ class WindowModel extends ChangeNotifier {
         newH = _limitFrameDimension(newH);
 
         final List<WindowZone> newZones = [];
-        final tThickness = divisionThickness;
 
         if (minVal == dxRight) {
           double oldW = width;
           width = oldW + newW;
           for (var z in zones) {
             double rightEdge = oldW - profileThickness;
-            if ((z.boundary.right - rightEdge).abs() < 2.0) {
-              final cloned = z.clone();
-              cloned.boundary = Rect.fromLTRB(
-                z.boundary.left,
-                z.boundary.top,
-                oldW - tThickness / 2,
-                z.boundary.bottom,
-              );
-              newZones.add(cloned);
-            } else {
-              newZones.add(z);
-            }
+            bool isBesideSpan =
+                z.boundary.bottom > spanTop + 5.0 &&
+                z.boundary.top < spanBottom - 5.0;
+            double newRight =
+                (z.boundary.right - rightEdge).abs() < 2.0 && isBesideSpan
+                ? oldW - tThickness / 2
+                : z.boundary.right;
+            final cloned = z.clone();
+            cloned.boundary = Rect.fromLTRB(
+              z.boundary.left,
+              z.boundary.top,
+              newRight,
+              z.boundary.bottom,
+            );
+            newZones.add(cloned);
           }
           newZones.add(
             WindowZone(
               id: UniqueKey().toString(),
               boundary: Rect.fromLTRB(
                 oldW + tThickness / 2,
-                topOffset + profileThickness,
+                spanTop +
+                    (spanTop <= 1.0
+                        ? topOffset + profileThickness
+                        : tThickness / 2),
                 width - profileThickness,
-                height - bottomOffset - pHeight,
+                spanBottom -
+                    (spanBottom >= height - 1.0
+                        ? bottomOffset + pHeight
+                        : tThickness / 2),
               ),
               sashThickness: _calculateSashThickness(false),
             ),
@@ -15588,7 +15849,11 @@ class WindowModel extends ChangeNotifier {
           width = oldW + newW;
           for (var z in zones) {
             double leftEdge = profileThickness;
-            double newLeft = (z.boundary.left - leftEdge).abs() < 2.0
+            bool isBesideSpan =
+                z.boundary.bottom > spanTop + 5.0 &&
+                z.boundary.top < spanBottom - 5.0;
+            double newLeft =
+                (z.boundary.left - leftEdge).abs() < 2.0 && isBesideSpan
                 ? newW + tThickness / 2
                 : z.boundary.left + newW;
             final cloned = z.clone();
@@ -15605,9 +15870,15 @@ class WindowModel extends ChangeNotifier {
               id: UniqueKey().toString(),
               boundary: Rect.fromLTRB(
                 profileThickness,
-                topOffset + profileThickness,
+                spanTop +
+                    (spanTop <= 1.0
+                        ? topOffset + profileThickness
+                        : tThickness / 2),
                 newW - tThickness / 2,
-                height - bottomOffset - pHeight,
+                spanBottom -
+                    (spanBottom >= height - 1.0
+                        ? bottomOffset + pHeight
+                        : tThickness / 2),
               ),
               sashThickness: _calculateSashThickness(false),
             ),
@@ -15617,26 +15888,33 @@ class WindowModel extends ChangeNotifier {
           height = oldH + newH;
           for (var z in zones) {
             double bottomEdge = oldH - bottomOffset - pHeight;
-            if ((z.boundary.bottom - bottomEdge).abs() < 2.0) {
-              final cloned = z.clone();
-              cloned.boundary = Rect.fromLTRB(
-                z.boundary.left,
-                z.boundary.top,
-                z.boundary.right,
-                oldH - tThickness / 2,
-              );
-              newZones.add(cloned);
-            } else {
-              newZones.add(z);
-            }
+            bool isUnderSpan =
+                z.boundary.right > spanLeft + 5.0 &&
+                z.boundary.left < spanRight - 5.0;
+            double newBottom =
+                (z.boundary.bottom - bottomEdge).abs() < 2.0 && isUnderSpan
+                ? oldH - tThickness / 2
+                : z.boundary.bottom;
+            final cloned = z.clone();
+            cloned.boundary = Rect.fromLTRB(
+              z.boundary.left,
+              z.boundary.top,
+              z.boundary.right,
+              newBottom,
+            );
+            newZones.add(cloned);
           }
           newZones.add(
             WindowZone(
               id: UniqueKey().toString(),
               boundary: Rect.fromLTRB(
-                profileThickness,
+                spanLeft +
+                    (spanLeft <= 1.0 ? profileThickness : tThickness / 2),
                 oldH + tThickness / 2,
-                width - profileThickness,
+                spanRight -
+                    (spanRight >= width - 1.0
+                        ? profileThickness
+                        : tThickness / 2),
                 height - bottomOffset - pHeight,
               ),
               sashThickness: _calculateSashThickness(false),
@@ -15647,7 +15925,11 @@ class WindowModel extends ChangeNotifier {
           height = oldH + newH;
           for (var z in zones) {
             double topEdge = topOffset + profileThickness;
-            double newTop = (z.boundary.top - topEdge).abs() < 2.0
+            bool isUnderSpan =
+                z.boundary.right > spanLeft + 5.0 &&
+                z.boundary.left < spanRight - 5.0;
+            double newTop =
+                (z.boundary.top - topEdge).abs() < 2.0 && isUnderSpan
                 ? newH + tThickness / 2
                 : z.boundary.top + newH;
             final cloned = z.clone();
@@ -15663,9 +15945,13 @@ class WindowModel extends ChangeNotifier {
             WindowZone(
               id: UniqueKey().toString(),
               boundary: Rect.fromLTRB(
-                profileThickness,
+                spanLeft +
+                    (spanLeft <= 1.0 ? profileThickness : tThickness / 2),
                 topOffset + profileThickness,
-                width - profileThickness,
+                spanRight -
+                    (spanRight >= width - 1.0
+                        ? profileThickness
+                        : tThickness / 2),
                 newH - tThickness / 2,
               ),
               sashThickness: _calculateSashThickness(false),

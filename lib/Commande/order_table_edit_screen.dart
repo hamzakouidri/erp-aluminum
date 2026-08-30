@@ -1179,7 +1179,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
         return lang == AppLanguage.english
             ? 'Glass:'
             : lang == AppLanguage.french
-            ? 'Remplacement:'
+            ? 'Vitrage:'
             : 'الزجاج:';
       case 'cover':
         return lang == AppLanguage.english
@@ -1419,7 +1419,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
               _globalGlassKeyController,
               _globalGlassController,
               t('اسم الزجاج'),
-              t('تفاصيل الزجاج / Remplacement'),
+              t('تفاصيل الزجاج / Vitrage'),
               'glass',
               valueMaxLines: 4,
             ),
@@ -1585,9 +1585,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                 );
               });
               final msg = (_isSelectionMode && _selectedIndices.isNotEmpty)
-                  ? t(
-                      'تم تطبيق التعديل على العناصر المحددة (${_selectedIndices.length})',
-                    )
+                  ? '${t('تم تطبيق التعديل على العناصر المحددة')} (${_selectedIndices.length})'
                   : t('تم تطبيق التعديل بنجاح على جميع العناصر');
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(msg), backgroundColor: Colors.green),
@@ -1688,7 +1686,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           IconButton(
             icon: const Icon(Icons.check, color: Colors.white),
             onPressed: _saveAll,
-            tooltip: 'حفظ التعديلات',
+            tooltip: t('حفظ التعديلات'),
           ),
         ],
       ),

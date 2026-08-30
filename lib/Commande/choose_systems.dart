@@ -196,6 +196,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       final workLabel = payload['workTypeLabel']?.toString() ?? 'عمل زجاجي';
       final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
       final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
+      final shapeLabel = payload['panelShapeLabel']?.toString() ?? 'مستقيم (I)';
+      final operationLabel =
+          payload['operationLabel']?.toString() ?? 'منزلق';
+      final kitLabel = payload['selectedKitLabel']?.toString() ?? '';
       final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
       final notes = payload['notes']?.toString() ?? '';
 
@@ -210,8 +214,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       final model = _makeModel(w: width, h: height);
       model.isGlassWork = true;
       model.isReplaced = false;
-      model.manualNameOverride = 'Verre Trempé - $workLabel';
+      model.manualNameOverride = 'Verre Trempé - $workLabel - $shapeLabel';
       model.description =
+          '$operationLabel${kitLabel.isEmpty ? '' : ' | $kitLabel'} | $shapeLabel | '
           '$finishLabel ${thickness.toStringAsFixed(0)} mm | $stickerLabel | '
           '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm'
           '${notes.isEmpty ? '' : ' | $notes'}';
@@ -317,7 +322,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         ItemBuildSystem(
           width: 60,
           height: 60,
-          title: 'Moustiquaire (موستيكير)',
+          title: Localization.translate('Moustiquaire (موستيكير)', lang),
           iconPath: 'Icon/media.webp',
           onTap: () => _navigateToSystem(context, 'moustiquaire'),
         ),
@@ -345,7 +350,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         ItemBuildSystem(
           width: 60,
           height: 60,
-          title: 'Verre Trempé (أعمال الزجاج)',
+          title: Localization.translate('Verre Trempé (أعمال الزجاج)', lang),
           iconPath: 'Icon/verre.png',
           onTap: () => _navigateToSystem(context, 'verre'),
         ),
