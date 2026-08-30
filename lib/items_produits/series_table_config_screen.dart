@@ -97,6 +97,34 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'Profil de maintien du vitrage',
     ),
     _SeriesRole(
+      key: 'cache_rainure',
+      ar: 'Cache-rainure',
+      fr: 'Cache-rainure',
+      descriptionAr: 'Cache-rainure',
+      descriptionFr: 'Cache de rainure propre à cette série',
+    ),
+    _SeriesRole(
+      key: 'cache_rail',
+      ar: 'Cache-rail',
+      fr: 'Cache-rail',
+      descriptionAr: 'Cache-rail',
+      descriptionFr: 'Cache de rail propre à cette série',
+    ),
+    _SeriesRole(
+      key: 'bavette',
+      ar: 'Bavette',
+      fr: 'Bavette',
+      descriptionAr: 'Bavette',
+      descriptionFr: 'Profil bavette propre à cette série',
+    ),
+    _SeriesRole(
+      key: 'seuil',
+      ar: 'Seuil',
+      fr: 'Seuil',
+      descriptionAr: 'Seuil',
+      descriptionFr: 'Profil de seuil propre à cette série',
+    ),
+    _SeriesRole(
       key: 'mullion',
       ar: 'التقسيم',
       fr: 'Traverse / montant',
@@ -136,9 +164,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     ),
     _SeriesRole(
       key: 'triangle',
-      ar: 'التراينغل',
+      ar: 'Triangle',
       fr: 'Triangle',
-      descriptionAr: 'مقطع التراينغل المرتبط بغلق الكريمون',
+      descriptionAr: 'Triangle',
       descriptionFr: 'Profil triangle lié à la fermeture par crémone',
     ),
     _SeriesRole(
@@ -370,7 +398,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
   void _restoreDefinition(List<Map<String, dynamic>> roles) {
     for (final item in roles) {
-      final role = item['role_key']?.toString() ?? '';
+      var role = item['role_key']?.toString() ?? '';
+      // Keep legacy role names readable when older rules are loaded.
+      if (role == 'pattes' || role == 'patte') role = 'triangle';
+      if (role == 'c' || role == 'profil_c' || role == 'profile_c') continue;
       final sectionId = (item['section_id'] as num?)?.toInt();
       if (!_sectionIdsByRole.containsKey(role) || sectionId == null) continue;
       _sectionIdsByRole[role]!.add(sectionId);
@@ -649,10 +680,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       return Scaffold(
         appBar: AppBar(
           title: Text(
-            _t(
-              'مكوّنات وحسابات السلسلة',
-              'Composants et calculs de la série',
-            ),
+            _t('مكوّنات وحسابات السلسلة', 'Composants et calculs de la série'),
           ),
         ),
         body: Center(

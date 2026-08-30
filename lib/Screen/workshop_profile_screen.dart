@@ -38,6 +38,13 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
+
+  String _localizedJobRole(String value) {
+    if (value.trim() == 'نائب مدير (صلاحيات كاملة)') {
+      return _t('نائب مدير (صلاحيات كاملة)');
+    }
+    return value;
+  }
   final _aiController = TextEditingController();
   final _ribController = TextEditingController();
 
@@ -353,7 +360,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             const SizedBox(height: 20),
             // Workshop Info
             Text(
-              'معلومات الورشة',
+              _t('معلومات الورشة'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -399,7 +406,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'معلومات إضافية',
+              _t('معلومات إضافية'),
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.bold,
@@ -450,7 +457,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             ),
             // Manager Info
             Text(
-              'معلومات المدير',
+              _t('معلومات المدير'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -490,7 +497,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
 
             // Workers Section
             Text(
-              'فريق العمل',
+              _t('فريق العمل'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -513,7 +520,9 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
                 itemBuilder: (context, index) {
                   final wData = _workers[index];
                   final wName = wData['name'] ?? 'بدون اسم';
-                  final wJobTitle = wData['job_role'] ?? 'عامل (غير مصنف)';
+                  final wJobTitle = _localizedJobRole(
+                    (wData['job_role'] ?? 'عامل (غير مصنف)').toString(),
+                  );
 
                   return Card(
                     child: ListTile(

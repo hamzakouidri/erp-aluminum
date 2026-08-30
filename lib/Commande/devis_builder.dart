@@ -1571,7 +1571,9 @@ class DevisBuilder {
     // 8. Fermeture (Closure) & Montant (Ouvrant) details - window only
     final bool isPVC =
         (seriesName?.toString().toLowerCase().contains('pvc') ?? false) ||
-        (gameName?.toLowerCase().contains('pvc') ?? false);
+        (gameName?.toLowerCase().contains('pvc') ?? false) ||
+        (map['slidingSeriesName']?.toString().toLowerCase().contains('pvc') ??
+            false);
     bool useEntrematique = false;
     bool hasKeyLock = false;
     bool hasSliding = false;
@@ -1647,7 +1649,7 @@ class DevisBuilder {
       }
 
       // 9. Montant lateral / central renforcé or simple
-      if (hasSliding) {
+      if (hasSliding && !isPVC) {
         if (_currentLang == AppLanguage.french) {
           details.add(
             'Montant latéral: ${hasLateralReinforced ? "renforcé" : "simple"}',
@@ -1830,6 +1832,11 @@ class DevisBuilder {
     final zones = _zonesFromMap(map);
     final hasWindowStructure = zones.isNotEmpty || map.isNotEmpty;
     if (!isShutterOnly && !hasWindowStructure) return details;
+    final isPVC =
+        (seriesName?.toLowerCase().contains('pvc') ?? false) ||
+        (gameName?.toLowerCase().contains('pvc') ?? false) ||
+        (map['slidingSeriesName']?.toString().toLowerCase().contains('pvc') ??
+            false);
     final fixedOnlyWindow = !isShutterOnly && _isFixedOnlyWindow(zones);
 
     final translatedSystem = Localization.translate(systemType, _currentLang);
@@ -1936,6 +1943,7 @@ class DevisBuilder {
             seriesName: seriesName,
             gameName: gameName,
             displaySeries: displaySeries,
+            isPvc: isPVC,
           ),
         );
       }
@@ -2497,7 +2505,9 @@ class DevisBuilder {
     String? seriesName,
     String? gameName,
     required String displaySeries,
+    bool isPvc = false,
   }) {
+    if (isPvc) return const [];
     final haystack = '${seriesName ?? ''} ${gameName ?? ''} $displaySeries'
         .toLowerCase();
     final isTpr = haystack.contains('tpr') || haystack.contains('67000');
@@ -2630,22 +2640,22 @@ class DevisBuilder {
   /// (for example, "Vitrage: Clair 5 mm") and the precise glass line built
   /// from the drawing. Keep the precise line only when both are present.
   /// Also normalize the old French "Remplacement" label to "Vitrage".
-  static List<String> _removeRedundantGlassSummaryLines(
-    List<String> details,
-  ) {
-    final normalized = details.map((line) {
-      final trimmed = line.trim();
-      final lower = trimmed.toLowerCase();
-      if (_currentLang == AppLanguage.french &&
-          lower.startsWith('remplacement panneau:')) {
-        return 'Panneau vitrage:${trimmed.substring('Remplacement panneau:'.length)}';
-      }
-      if (_currentLang == AppLanguage.french &&
-          lower.startsWith('remplacement:')) {
-        return 'Vitrage:${trimmed.substring('Remplacement:'.length)}';
-      }
-      return trimmed;
-    }).toList(growable: false);
+  static List<String> _removeRedundantGlassSummaryLines(List<String> details) {
+    final normalized = details
+        .map((line) {
+          final trimmed = line.trim();
+          final lower = trimmed.toLowerCase();
+          if (_currentLang == AppLanguage.french &&
+              lower.startsWith('remplacement panneau:')) {
+            return 'Panneau vitrage:${trimmed.substring('Remplacement panneau:'.length)}';
+          }
+          if (_currentLang == AppLanguage.french &&
+              lower.startsWith('remplacement:')) {
+            return 'Vitrage:${trimmed.substring('Remplacement:'.length)}';
+          }
+          return trimmed;
+        })
+        .toList(growable: false);
 
     bool isGlassLine(String line) {
       final lower = line.trim().toLowerCase();
@@ -2680,9 +2690,13 @@ class DevisBuilder {
 
     final glassLines = normalized.where(isGlassLine).toList(growable: false);
     final hasPreciseLine = glassLines.any((line) => !isGenericSummary(line));
-    final filtered = normalized.where((line) {
-      return !(hasPreciseLine && isGlassLine(line) && isGenericSummary(line));
-    }).toList(growable: false);
+    final filtered = normalized
+        .where((line) {
+          return !(hasPreciseLine &&
+              isGlassLine(line) &&
+              isGenericSummary(line));
+        })
+        .toList(growable: false);
     return _dedupeDetails(filtered);
   }
 

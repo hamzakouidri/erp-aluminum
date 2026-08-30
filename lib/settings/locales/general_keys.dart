@@ -976,6 +976,41 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Propriétés du vitrage',
     AppLanguage.english: 'Glass Properties',
   },
+  'نوع الباجيت:': {
+    AppLanguage.arabic: 'نوع الباجيت:',
+    AppLanguage.french: 'Type de parclose :',
+    AppLanguage.english: 'Glass bead type:',
+  },
+  'ديكور الزجاج المزدوج (ورود):': {
+    AppLanguage.arabic: 'ديكور الزجاج المزدوج (ورود):',
+    AppLanguage.french: 'Décor du double vitrage (rosaces) :',
+    AppLanguage.english: 'Double-glazing décor (rosettes):',
+  },
+  'وردات': {
+    AppLanguage.arabic: 'وردات',
+    AppLanguage.french: 'Rosaces',
+    AppLanguage.english: 'Rosettes',
+  },
+  'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.': {
+    AppLanguage.arabic: 'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+    AppLanguage.french:
+        'Aucune rosace décorative dans la base de données. Veuillez d’abord en ajouter.',
+    AppLanguage.english:
+        'No decorative rosettes found in the database. Please add them first.',
+  },
+  'سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:': {
+    AppLanguage.arabic:
+        'سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:',
+    AppLanguage.french:
+        'Épaisseur de l’intercalaire (Intercall) — proposée automatiquement selon la parclose :',
+    AppLanguage.english:
+        'Spacer thickness (Intercall) — automatically suggested by the parclose:',
+  },
+  'سُمك الزجاج مطابق لسعة البيركلوز': {
+    AppLanguage.arabic: 'سُمك الزجاج مطابق لسعة البيركلوز',
+    AppLanguage.french: 'L’épaisseur du vitrage correspond à la capacité de la parclose',
+    AppLanguage.english: 'Glass thickness matches the parclose capacity',
+  },
   'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)': {
     AppLanguage.arabic: 'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)',
     AppLanguage.french: 'Ratio de division du battant (un battant plus grand)',
@@ -1093,13 +1128,23 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'الوجه الخارجي': {
     AppLanguage.arabic: 'الوجه الخارجي',
-    AppLanguage.french: 'Face Extérieur',
-    AppLanguage.english: 'Face External',
+    AppLanguage.french: 'Face extérieure',
+    AppLanguage.english: 'Outer face',
   },
   'الوجه الداخلي': {
     AppLanguage.arabic: 'الوجه الداخلي',
-    AppLanguage.french: 'Face Intérieur',
-    AppLanguage.english: 'Face Internal',
+    AppLanguage.french: 'Face intérieure',
+    AppLanguage.english: 'Inner face',
+  },
+  'المظهر:': {
+    AppLanguage.arabic: 'المظهر:',
+    AppLanguage.french: 'Aspect :',
+    AppLanguage.english: 'Appearance:',
+  },
+  'المظهر (بانو):': {
+    AppLanguage.arabic: 'المظهر (بانو):',
+    AppLanguage.french: 'Aspect (panneau) :',
+    AppLanguage.english: 'Appearance (panel):',
   },
   'الوزن التقريبي للمتر (Kg/m)': {
     AppLanguage.arabic: 'الوزن التقريبي للمتر (Kg/m)',
@@ -5164,6 +5209,11 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'المركزي (Central):',
     AppLanguage.french: 'Central :',
     AppLanguage.english: 'Central:',
+  },
+  'مركز': {
+    AppLanguage.arabic: 'مركز',
+    AppLanguage.french: 'Centre',
+    AppLanguage.english: 'Center',
   },
   'هذه السلسلة لا تدعم تدعيم المونطو': {
     AppLanguage.arabic: 'هذه السلسلة لا تدعم تدعيم المونطو',

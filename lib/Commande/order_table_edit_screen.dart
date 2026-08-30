@@ -754,8 +754,15 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
 
     // 8. Fermeture — window only, not for standalone volet
     if (!p.isShutterOnly) {
+      final pMap = p.toMap();
       final isPVC =
-          (p.activeSeries?.name?.toLowerCase().contains('pvc') ?? false);
+          p.isPVC ||
+          p.isSlidingPVC ||
+          (p.activeSeries?.name?.toLowerCase().contains('pvc') ?? false) ||
+          (pMap['slidingSeriesName']?.toString().toLowerCase().contains(
+                'pvc',
+              ) ??
+              false);
       bool useEntrematique = false;
       bool hasKeyLock = false;
       bool hasSliding = false;
@@ -764,7 +771,6 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       bool hasLateralReinforced = false;
 
       // Use toMap() zones (same data as devis_builder uses)
-      final pMap = p.toMap();
       final zonesList = pMap['zones'] as List? ?? [];
       for (final z in zonesList) {
         if (z == null || z is! Map) continue;
@@ -835,7 +841,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       }
 
       // Montant renforcé
-      if (hasSliding) {
+      if (hasSliding && !isPVC) {
         if (curLang == AppLanguage.french) {
           details.add(
             'Montant latéral: ${hasLateralReinforced ? "renforcé" : "simple"}',

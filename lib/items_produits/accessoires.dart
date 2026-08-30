@@ -41,6 +41,11 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
         label.contains('andramatique')) {
       return 'assets/sections/intramatique.png';
     }
+    if (label.contains('gache porte') ||
+        label.contains('gâche porte') ||
+        label.contains('قاش بورت')) {
+      return 'assets/sections/40127.svg';
+    }
     return null;
   }
 

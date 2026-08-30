@@ -750,6 +750,23 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         child: Text(_tr('غطاء جانبي / Couvre-joint')),
                       ),
                       DropdownMenuItem(
+                        value: 'cache_rainure',
+                        child: Text('Cache-rainure'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_rail',
+                        child: Text('Cache-rail'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'bavette',
+                        child: Text('Bavette'),
+                      ),
+                      DropdownMenuItem(value: 'seuil', child: Text('Seuil')),
+                      DropdownMenuItem(
+                        value: 'triangle',
+                        child: Text('Triangle'),
+                      ),
+                      DropdownMenuItem(
                         value: 'bardage',
                         child: Text(_tr('بارداش (Bardage Profile)')),
                       ),
@@ -1183,6 +1200,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
         section['linked_parclose_double_id'] as int?;
     String? selectedImagePath = section['image_path']?.toString();
     String selectedType = section['type']?.toString() ?? 'frame';
+    // Migrate legacy catalogue labels when an old row is edited.
+    if (selectedType == 'pattes' || selectedType == 'patte') {
+      selectedType = 'triangle';
+    } else if (selectedType == 'c' ||
+        selectedType == 'profil_c' ||
+        selectedType == 'profile_c') {
+      // Profil C was removed from the catalogue types. Keep old records
+      // editable without showing the deleted type in the dropdown.
+      selectedType = 'frame';
+    }
     String displayedType = selectedType;
     if ([
       'sash_lateral',
@@ -1309,6 +1336,23 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       DropdownMenuItem(
                         value: 'side_cover',
                         child: Text(_tr('غطاء جانبي / Couvre-joint')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_rainure',
+                        child: Text('Cache-rainure'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_rail',
+                        child: Text('Cache-rail'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'bavette',
+                        child: Text('Bavette'),
+                      ),
+                      DropdownMenuItem(value: 'seuil', child: Text('Seuil')),
+                      DropdownMenuItem(
+                        value: 'triangle',
+                        child: Text('Triangle'),
                       ),
                       DropdownMenuItem(
                         value: 'bardage',

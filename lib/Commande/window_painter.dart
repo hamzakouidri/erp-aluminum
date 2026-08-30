@@ -2027,6 +2027,15 @@ class WindowPainter extends CustomPainter {
         : _drawableStandaloneSideCoverWidth;
     if (coverWidth <= 0) return;
 
+    // In a multi-frame drawing the cover follows the outside perimeter of
+    // the real frames. Drawing one cover around the full window rectangle
+    // leaves a cover floating over empty areas when a frame is only above one
+    // part of another row.
+    if (model.getFrameRects().length > 1) {
+      _drawMultiFrameSideCovers(canvas, coverWidth);
+      return;
+    }
+
     if (model.useCustomSideCoverLayout) {
       final segments = model.effectiveSideCoverSegments;
       if (segments.isNotEmpty) {
@@ -2041,6 +2050,152 @@ class WindowPainter extends CustomPainter {
     }
 
     _drawSideCovers(canvas, w, h, topY, coverWidth);
+  }
+
+  void _drawMultiFrameSideCovers(Canvas canvas, double coverWidth) {
+    final edges = model.getExposedFrameEdgeSegments();
+    if (edges.isEmpty) return;
+
+    // With the normal layout, draw one continuous ring around the union of
+    // all touching frames. Inflating that union follows steps and raised
+    // frames without filling the empty area beside a partial upper frame.
+    // Custom/hidden sides keep the segmented path below so those explicit
+    // user choices remain respected.
+    if (!model.useCustomSideCoverLayout &&
+        model.hiddenSideCoverSegments.isEmpty &&
+        model.removedShutterSides.isEmpty &&
+        _hasEffectiveBottomFrame) {
+      Path? frameUnion;
+      for (final frameRect in model.getFrameRects()) {
+        final framePath = Path()..addRect(frameRect);
+        frameUnion = frameUnion == null
+            ? framePath
+            : Path.combine(PathOperation.union, frameUnion!, framePath);
+      }
+      if (frameUnion == null) return;
+
+      Path? expandedUnion;
+      for (final frameRect in model.getFrameRects()) {
+        final expandedPath = Path()..addRect(frameRect.inflate(coverWidth));
+        expandedUnion = expandedUnion == null
+            ? expandedPath
+            : Path.combine(PathOperation.union, expandedUnion!, expandedPath);
+      }
+      if (expandedUnion == null) return;
+
+      final coverPath = Path.combine(
+        PathOperation.difference,
+        expandedUnion,
+        frameUnion,
+      );
+      final paint = Paint();
+      if (_isWoodColor() && TextureCache.woodTexture != null) {
+        _applyWoodShader(
+          paint,
+          model
+              .getFrameRects()
+              .fold<Rect>(
+                model.getFrameRects().first,
+                (bounds, rect) => bounds.expandToInclude(rect),
+              )
+              .inflate(coverWidth),
+        );
+      } else {
+        paint.color = _fc[1];
+      }
+      canvas.drawPath(coverPath, paint);
+      canvas.drawPath(
+        coverPath,
+        Paint()
+          ..color = _fb
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
+      return;
+    }
+
+    final paint = Paint();
+    if (_isWoodColor() && TextureCache.woodTexture != null) {
+      _applyWoodShader(
+        paint,
+        Rect.fromLTWH(
+          -coverWidth,
+          -coverWidth,
+          model.width + coverWidth * 2,
+          model.height + coverWidth * 2,
+        ),
+      );
+    } else {
+      paint.color = _fc[1];
+    }
+    final borderPaint = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    final customSegments = model.useCustomSideCoverLayout
+        ? model.effectiveSideCoverSegments
+        : const <SideCoverSegment>[];
+
+    for (final edge in edges) {
+      if (model.hiddenSideCoverSegments.contains(edge.side) ||
+          model.removedShutterSides.contains(edge.side) ||
+          (edge.side == 'bottom' && !_hasEffectiveBottomFrame)) {
+        continue;
+      }
+
+      final spans = customSegments.isEmpty
+          ? <SideCoverSegment>[
+              SideCoverSegment(
+                side: edge.side,
+                startOffset: edge.start,
+                endOffset: edge.end,
+                visibleWidth: coverWidth,
+              ),
+            ]
+          : customSegments.where((segment) => segment.side == edge.side);
+
+      for (final span in spans) {
+        final start = math.max(edge.start, span.startOffset);
+        final end = math.min(edge.end, span.endOffset);
+        if (end <= start) continue;
+        final visible = (span.visibleWidth > 0 ? span.visibleWidth : coverWidth)
+            .clamp(0.0, coverWidth)
+            .toDouble();
+        if (visible <= 0) continue;
+
+        final rect = switch (edge.side) {
+          'top' => Rect.fromLTRB(
+            start,
+            edge.coordinate - visible,
+            end,
+            edge.coordinate,
+          ),
+          'bottom' => Rect.fromLTRB(
+            start,
+            edge.coordinate,
+            end,
+            edge.coordinate + visible,
+          ),
+          'left' => Rect.fromLTRB(
+            edge.coordinate - visible,
+            start,
+            edge.coordinate,
+            end,
+          ),
+          'right' => Rect.fromLTRB(
+            edge.coordinate,
+            start,
+            edge.coordinate + visible,
+            end,
+          ),
+          _ => Rect.zero,
+        };
+        if (rect.isEmpty) continue;
+        canvas.drawRect(rect, paint);
+        canvas.drawRect(rect, borderPaint);
+      }
+    }
   }
 
   void _drawSideCovers(

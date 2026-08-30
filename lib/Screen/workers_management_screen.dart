@@ -26,6 +26,8 @@ class WorkersManagementScreen extends StatefulWidget {
 }
 
 class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
+  static const _fullManagerJobRole = 'نائب مدير (صلاحيات كاملة)';
+
   List<Map<String, dynamic>> _workers = [];
   bool _isLoading = false;
   String _joinCode = 'جاري التحميل...';
@@ -34,6 +36,18 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
+
+  String _localizedJobRole(String value, AppLanguage lang) {
+    if (value.trim() == _fullManagerJobRole) {
+      return _tr(
+        'نائب مدير (صلاحيات كاملة)',
+        'Directeur adjoint (droits complets)',
+        'Deputy manager (full permissions)',
+        lang,
+      );
+    }
+    return value;
+  }
 
   /// هل المستخدم الحالي نائب مدير (عامل بصلاحية manage_workers) وليس المدير الأصلي؟
   bool get _isDeputyManager {
@@ -584,6 +598,18 @@ class _WorkerCardState extends State<WorkerCard> {
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
+
+  String _localizedJobRole(String value, AppLanguage lang) {
+    if (value.trim() == _fullManagerJobRole) {
+      return _tr(
+        'نائب مدير (صلاحيات كاملة)',
+        'Directeur adjoint (droits complets)',
+        'Deputy manager (full permissions)',
+        lang,
+      );
+    }
+    return value;
+  }
 
   @override
   void initState() {
@@ -1485,7 +1511,7 @@ class _WorkerCardState extends State<WorkerCard> {
                             ),
                           if (role.isNotEmpty)
                             Text(
-                              '${_tr("المنصب:", "Poste:", "Role:", lang)} $role',
+                              '${_tr("المنصب:", "Poste:", "Role:", lang)} ${_localizedJobRole(role, lang)}',
                               style: const TextStyle(
                                 fontSize: 11,
                                 color: Colors.blue,

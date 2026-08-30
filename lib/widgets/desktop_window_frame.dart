@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 
@@ -18,11 +21,37 @@ class DesktopWindowFrame extends StatefulWidget {
 
 class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
   bool _isMaximized = false;
+  ImageProvider? _workshopLogo;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _readWindowState());
+    _loadWorkshopLogo();
+  }
+
+  Future<void> _loadWorkshopLogo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawLogo = prefs.getString('workshop_logo_base64')?.trim() ?? '';
+      if (rawLogo.isEmpty) return;
+
+      ImageProvider? logo;
+      if (rawLogo.startsWith('http')) {
+        logo = NetworkImage(rawLogo);
+      } else {
+        final encoded = rawLogo.contains(',')
+            ? rawLogo.substring(rawLogo.indexOf(',') + 1)
+            : rawLogo;
+        final bytes = base64Decode(encoded);
+        if (bytes.isNotEmpty) logo = MemoryImage(bytes);
+      }
+
+      if (mounted && logo != null) setState(() => _workshopLogo = logo);
+    } catch (_) {
+      // Keep the application icon as a safe fallback when no workshop logo
+      // has been saved yet or when an old value is not valid image data.
+    }
   }
 
   Future<void> _readWindowState() async {
@@ -54,7 +83,9 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
             color: background,
             border: Border(
               bottom: BorderSide(
-                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                color: isDark
+                    ? const Color(0xFF334155)
+                    : const Color(0xFFE2E8F0),
               ),
             ),
           ),
@@ -70,11 +101,22 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                       padding: const EdgeInsetsDirectional.only(start: 14),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.window_rounded,
-                            size: 18,
-                            color: Color(0xFF2563EB),
-                          ),
+                          if (_workshopLogo != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image(
+                                image: _workshopLogo!,
+                                width: 20,
+                                height: 20,
+                                fit: BoxFit.contain,
+                              ),
+                            )
+                          else
+                            const Icon(
+                              Icons.window_rounded,
+                              size: 18,
+                              color: Color(0xFF2563EB),
+                            ),
                           const SizedBox(width: 8),
                           Text(
                             Localization.translate('ورشتي', lang),
@@ -92,7 +134,16 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                 ),
               ),
               if (widget.topBar != null)
-                Expanded(child: widget.topBar!)
+                Expanded(
+                  // The tab strip can be narrower than the caption area.
+                  // Keep the empty part of that area a native-caption-like
+                  // target so a double click toggles the window size.
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onDoubleTap: _toggleMaximize,
+                    child: widget.topBar!,
+                  ),
+                )
               else
                 Expanded(child: DragToMoveArea(child: const SizedBox.expand())),
               _CaptionButton(

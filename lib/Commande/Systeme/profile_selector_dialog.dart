@@ -422,6 +422,21 @@ List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   if (t.contains('couvre') || t.contains('side cover') || t.contains('غطاء')) {
     return const ['side_cover'];
   }
+  if (t.contains('patte') || t == 'p' || t == 'profil p' || t == 'profile p') {
+    return const ['triangle'];
+  }
+  if (t.contains('cache-rainure') ||
+      t.contains('cache rainure') ||
+      t.contains('cache_rainure')) {
+    return const ['cache_rainure'];
+  }
+  if (t.contains('cache-rail') ||
+      t.contains('cache rail') ||
+      t.contains('cache_rail')) {
+    return const ['cache_rail'];
+  }
+  if (t.contains('bavette')) return const ['bavette'];
+  if (t == 'seuil' || t.contains('seuil')) return const ['seuil'];
   if (t == 'rail' || t.contains('rail') || t.contains('سكة')) {
     return const ['rail'];
   }

@@ -380,6 +380,13 @@ class _WindowViewState extends State<WindowView> {
     return false;
   }
 
+  /// PVC has no reinforced sliding montant. Keep this rule at the drawing
+  /// level so an old saved flag cannot bring reinforcement controls back.
+  bool get _pvcMontantReinforcementDisabled =>
+      widget.model.isPVC ||
+      widget.model.isSlidingPVC ||
+      _seriesIsPvc(widget.model.activeSlidingSeries);
+
   List<Map<String, dynamic>> _filterFrameProfilesForDrawingRules(
     List<Map<String, dynamic>> profiles, {
     required AluminumSeries? series,
@@ -4325,7 +4332,7 @@ class _WindowViewState extends State<WindowView> {
             String message;
             if (widget.model.isPVC || jointVitrage <= 0) {
               message = isExact
-                  ? 'سُمك الزجاج مطابق لسعة البيركلوز: ${glassTotal.toStringAsFixed(0)} مم'
+                  ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang)}: ${glassTotal.toStringAsFixed(0)} مم'
                   : isAbove
                   ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
                   : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
@@ -4553,10 +4560,10 @@ class _WindowViewState extends State<WindowView> {
                     ),
                   ],
                 ),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(top: 12, bottom: 4),
                   child: Text(
-                    'المظهر:',
+                    Localization.translate('المظهر:', lang),
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                   ),
                 ),
@@ -4830,7 +4837,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'خصائص الزجاج',
+                    Localization.translate('خصائص الزجاج', lang),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.blue.shade800,
@@ -5212,10 +5219,10 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ],
 
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 8, bottom: 8),
                 child: Text(
-                  'هيكل الزجاج:',
+                  Localization.translate('هيكل الزجاج:', lang),
                   style: TextStyle(
                     color: Colors.black87,
                     fontSize: 12,
@@ -5396,10 +5403,10 @@ class _WindowViewState extends State<WindowView> {
               ),
               const SizedBox(height: 8),
               if (structure == GlassStructure.closed) ...[
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(top: 12, bottom: 8),
                   child: Text(
-                    'المظهر (بانو):',
+                    Localization.translate('المظهر (بانو):', lang),
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                   ),
                 ),
@@ -6347,8 +6354,8 @@ class _WindowViewState extends State<WindowView> {
                 ],
               ] else if (structure == GlassStructure.double) ...[
                 const Divider(),
-                const Text(
-                  "الوجه الخارجي",
+                Text(
+                  Localization.translate('الوجه الخارجي', lang),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
@@ -6358,8 +6365,8 @@ class _WindowViewState extends State<WindowView> {
                 buildGlassLayer(true),
                 const SizedBox(height: 8),
                 const Divider(),
-                const Text(
-                  "الوجه الداخلي",
+                Text(
+                  Localization.translate('الوجه الداخلي', lang),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
@@ -6368,8 +6375,11 @@ class _WindowViewState extends State<WindowView> {
                 ),
                 buildGlassLayer(false),
                 const SizedBox(height: 12),
-                const Text(
-                  "سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:",
+                Text(
+                  Localization.translate(
+                    'سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:',
+                    lang,
+                  ),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
@@ -6486,8 +6496,11 @@ class _WindowViewState extends State<WindowView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      "ديكور الزجاج المزدوج (ورود):",
+                    Text(
+                      Localization.translate(
+                        'ديكور الزجاج المزدوج (ورود):',
+                        lang,
+                      ),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.blue,
@@ -6497,8 +6510,8 @@ class _WindowViewState extends State<WindowView> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          "وردات",
+                        Text(
+                          Localization.translate('وردات', lang),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
@@ -6691,8 +6704,8 @@ class _WindowViewState extends State<WindowView> {
                       children: [
                         Row(
                           children: [
-                            const Text(
-                              'نوع الباجيت:',
+                            Text(
+                              Localization.translate('نوع الباجيت:', lang),
                               style: TextStyle(fontSize: 12),
                             ),
                             const SizedBox(width: 8),
@@ -6765,8 +6778,8 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         Row(
                           children: [
-                            const Text(
-                              'اللون:',
+                            Text(
+                              Localization.translate('اللون:', lang),
                               style: TextStyle(fontSize: 12),
                             ),
                             const Spacer(),
@@ -6816,10 +6829,13 @@ class _WindowViewState extends State<WindowView> {
                           .toList();
 
                       if (rosettes.isEmpty) {
-                        return const Padding(
+                        return Padding(
                           padding: EdgeInsets.symmetric(vertical: 4.0),
                           child: Text(
-                            'لا يوجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                            Localization.translate(
+                              'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                              lang,
+                            ),
                             style: TextStyle(color: Colors.red, fontSize: 11),
                           ),
                         );
@@ -7888,102 +7904,107 @@ class _WindowViewState extends State<WindowView> {
                   ),
               ],
 
-              const Divider(height: 30),
+              if (!_pvcMontantReinforcementDisabled) ...[
+                const Divider(height: 30),
 
-              // 🟢 2. قسم تدعيم المونطو (يظهر دائماً في الأسفل)
-              // 🟢 هذا الجزء يحل مشكلة تدعيم المونطو (Renfort)
-              Text(
-                Localization.translate('تدعيم المونطو (Renfort)', lang),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                  fontSize: 14,
+                // 🟢 2. قسم تدعيم المونطو (يظهر دائماً في الأسفل)
+                // 🟢 هذا الجزء يحل مشكلة تدعيم المونطو (Renfort)
+                Text(
+                  Localization.translate('تدعيم المونطو (Renfort)', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                    fontSize: 14,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
+                const SizedBox(height: 10),
 
-              Builder(
-                builder: (context) {
-                  final montantProfiles = <Map<String, dynamic>>[
-                    ..._sashProfiles,
-                    ...?widget.model.activeSlidingSeries?.sections.map(
-                      (section) => section.toMap(),
-                    ),
-                  ];
-                  final bool isSupported = montantProfiles.any(
-                    (item) =>
-                        _isSlidingMontantCandidate(item, central: false) ||
-                        _isSlidingMontantCandidate(item, central: true),
-                  );
+                Builder(
+                  builder: (context) {
+                    final montantProfiles = <Map<String, dynamic>>[
+                      ..._sashProfiles,
+                      ...?widget.model.activeSlidingSeries?.sections.map(
+                        (section) => section.toMap(),
+                      ),
+                    ];
+                    final bool isSupported = montantProfiles.any(
+                      (item) =>
+                          _isSlidingMontantCandidate(item, central: false) ||
+                          _isSlidingMontantCandidate(item, central: true),
+                    );
 
-                  // 2. إذا كانت السلسلة فيها مونطو منزلق ويوجد نظام منزلق
-                  if (isSupported && firstSlidingZone != null) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          Localization.translate('الجانبي (Latéral):', lang),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            buildCompactOption(
-                              Localization.translate('يسرى', lang),
-                              'lateral_0',
-                              firstSlidingZone,
+                    // 2. إذا كانت السلسلة فيها مونطو منزلق ويوجد نظام منزلق
+                    if (isSupported && firstSlidingZone != null) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            Localization.translate('الجانبي (Latéral):', lang),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
                             ),
-                            buildCompactOption(
-                              Localization.translate('يمنى', lang),
-                              'lateral_1',
-                              firstSlidingZone,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          Localization.translate('المركزي (Central):', lang),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
                           ),
-                        ),
-                        Wrap(
-                          children: List.generate(centralCount, (index) {
-                            return SizedBox(
-                              width: 120,
-                              child: buildCompactOption(
-                                'مركز $index',
-                                'central_$index',
+                          Row(
+                            children: [
+                              buildCompactOption(
+                                Localization.translate('يسرى', lang),
+                                'lateral_0',
                                 firstSlidingZone,
                               ),
-                            );
-                          }),
+                              buildCompactOption(
+                                Localization.translate('يمنى', lang),
+                                'lateral_1',
+                                firstSlidingZone,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            Localization.translate('المركزي (Central):', lang),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Wrap(
+                            children: List.generate(centralCount, (index) {
+                              return SizedBox(
+                                width: 120,
+                                child: buildCompactOption(
+                                  '${Localization.translate('مركز', lang)} ${index + 1}',
+                                  'central_$index',
+                                  firstSlidingZone,
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      );
+                    }
+                    // 3. إذا كانت السلسلة غير مدعومة
+                    else if (firstSlidingZone != null) {
+                      return Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          Localization.translate(
+                            'هذه السلسلة لا تدعم تدعيم المونطو',
+                            lang,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 11,
+                          ),
                         ),
-                      ],
-                    );
-                  }
-                  // 3. إذا كانت السلسلة غير مدعومة
-                  else if (firstSlidingZone != null) {
-                    return Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Text(
-                        Localization.translate(
-                          'هذه السلسلة لا تدعم تدعيم المونطو',
-                          lang,
-                        ),
-                        style: const TextStyle(color: Colors.red, fontSize: 11),
-                      ),
-                    );
-                  }
-                  // 4. إذا لم يكن هناك نظام منزلق أصلاً
-                  else {
-                    return const SizedBox.shrink();
-                  }
-                },
-              ),
+                      );
+                    }
+                    // 4. إذا لم يكن هناك نظام منزلق أصلاً
+                    else {
+                      return const SizedBox.shrink();
+                    }
+                  },
+                ),
+              ],
             ],
           );
         },
@@ -11736,6 +11757,8 @@ class _WindowViewState extends State<WindowView> {
   Future<void> _syncSlidingMontantOverrideFromFlags({
     required bool central,
   }) async {
+    if (_pvcMontantReinforcementDisabled) return;
+
     final reinforced = central
         ? widget.model.zones.any(
             (zone) => zone.slidingMontantReinforced.entries.any(
@@ -13195,11 +13218,21 @@ class _WindowViewState extends State<WindowView> {
           );
         } else if (isSliding) {
           final lateralProfiles = sashProfiles
-              .where((s) => _isSlidingMontantCandidate(s, central: false))
+              .where(
+                (s) =>
+                    _isSlidingMontantCandidate(s, central: false) &&
+                    (!_pvcMontantReinforcementDisabled ||
+                        !_isReinforcedMontant(s, central: false)),
+              )
               .toList();
 
           final centralProfiles = sashProfiles
-              .where((s) => _isSlidingMontantCandidate(s, central: true))
+              .where(
+                (s) =>
+                    _isSlidingMontantCandidate(s, central: true) &&
+                    (!_pvcMontantReinforcementDisabled ||
+                        !_isReinforcedMontant(s, central: true)),
+              )
               .toList();
 
           bool isLateralSelected(Map<String, dynamic> item) {
@@ -13213,11 +13246,13 @@ class _WindowViewState extends State<WindowView> {
                 current['id']?.toString() == '${item['id']}') {
               return true;
             }
-            bool isLateralReinforced = widget.model.zones.any(
-              (z) =>
-                  z.slidingMontantReinforced['lateral_0'] == true ||
-                  z.slidingMontantReinforced['lateral_1'] == true,
-            );
+            bool isLateralReinforced =
+                !_pvcMontantReinforcementDisabled &&
+                widget.model.zones.any(
+                  (z) =>
+                      z.slidingMontantReinforced['lateral_0'] == true ||
+                      z.slidingMontantReinforced['lateral_1'] == true,
+                );
             final String code = item['code']?.toString() ?? '';
             final String name = item['name']?.toString().toLowerCase() ?? '';
             final String type = item['type']?.toString().toLowerCase() ?? '';
@@ -13240,11 +13275,13 @@ class _WindowViewState extends State<WindowView> {
                 current['id']?.toString() == '${item['id']}') {
               return true;
             }
-            bool isCentralReinforced = widget.model.zones.any(
-              (z) => z.slidingMontantReinforced.entries.any(
-                (e) => e.key.startsWith('central_') && e.value == true,
-              ),
-            );
+            bool isCentralReinforced =
+                !_pvcMontantReinforcementDisabled &&
+                widget.model.zones.any(
+                  (z) => z.slidingMontantReinforced.entries.any(
+                    (e) => e.key.startsWith('central_') && e.value == true,
+                  ),
+                );
             final String code = item['code']?.toString() ?? '';
             final String name = item['name']?.toString().toLowerCase() ?? '';
             final String type = item['type']?.toString().toLowerCase() ?? '';

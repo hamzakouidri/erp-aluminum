@@ -3,6 +3,36 @@ import '../app_settings.dart';
 /// Glass drawing setup vocabulary.  The internal drawing values remain stable
 /// while these labels can be translated independently in the UI.
 const Map<String, Map<AppLanguage, String>> translationPhase7Keys = {
+  'ملف ومعلومات الورشة': {
+    AppLanguage.arabic: 'ملف ومعلومات الورشة',
+    AppLanguage.french: 'Profil et informations de l’atelier',
+    AppLanguage.english: 'Workshop profile and information',
+  },
+  'معلومات الورشة': {
+    AppLanguage.arabic: 'معلومات الورشة',
+    AppLanguage.french: 'Informations de l’atelier',
+    AppLanguage.english: 'Workshop information',
+  },
+  'معلومات إضافية': {
+    AppLanguage.arabic: 'معلومات إضافية',
+    AppLanguage.french: 'Informations complémentaires',
+    AppLanguage.english: 'Additional information',
+  },
+  'معلومات المدير': {
+    AppLanguage.arabic: 'معلومات المدير',
+    AppLanguage.french: 'Informations du directeur',
+    AppLanguage.english: 'Manager information',
+  },
+  'فريق العمل': {
+    AppLanguage.arabic: 'فريق العمل',
+    AppLanguage.french: 'Équipe de travail',
+    AppLanguage.english: 'Work team',
+  },
+  'نائب مدير (صلاحيات كاملة)': {
+    AppLanguage.arabic: 'نائب مدير (صلاحيات كاملة)',
+    AppLanguage.french: 'Directeur adjoint (droits complets)',
+    AppLanguage.english: 'Deputy manager (full permissions)',
+  },
   'تهيئة رسم الألواح الزجاجية': {
     AppLanguage.arabic: 'تهيئة رسم الألواح الزجاجية',
     AppLanguage.french: 'Préparation du dessin des panneaux vitrés',

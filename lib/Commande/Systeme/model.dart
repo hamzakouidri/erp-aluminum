@@ -320,6 +320,25 @@ class SideCoverSegment {
   }
 }
 
+/// One exposed edge of a physical frame in a multi-frame drawing. [start]
+/// and [end] are measured on the edge axis; [coordinate] is the fixed x/y
+/// position of that edge in the drawing.
+class FrameEdgeSegment {
+  final String side;
+  final double start;
+  final double end;
+  final double coordinate;
+
+  const FrameEdgeSegment({
+    required this.side,
+    required this.start,
+    required this.end,
+    required this.coordinate,
+  });
+
+  double get length => math.max(0.0, end - start);
+}
+
 class AluminumSection {
   final int id;
   final int seriesId;
@@ -2918,6 +2937,55 @@ class WindowModel extends ChangeNotifier {
     );
   }
 
+  bool _isFrameSection(AluminumSection section) {
+    final type = section.type.toLowerCase();
+    return section.isFrame ||
+        type == 'frame' ||
+        type.contains('cadre') ||
+        type.contains('إطار') ||
+        type.contains('فريم');
+  }
+
+  /// Multi-frame drawings always use a plain frame and a real, separate
+  /// side-cover profile. An integrated-cover frame would make the cover part
+  /// extend through empty areas between physical frames.
+  void _enforceMultiFramePlainFrameRule() {
+    if (getFrameRects().length <= 1) return;
+
+    final series = activeFrameSeries ?? activeSeries;
+    if (series == null) return;
+
+    final currentFrame =
+        activeFrameOverride ?? getSectionByType('frame')?.toMap();
+    if (!_overrideHasIntegratedSideCover(currentFrame)) return;
+
+    final plainFrames = series.sections
+        .where(
+          (section) =>
+              _isFrameSection(section) &&
+              !_sectionHasIntegratedSideCover(section),
+        )
+        .toList();
+    if (plainFrames.isEmpty) return;
+
+    final plainFrame = _preferredFrameForSeries(plainFrames, series).toMap();
+    if (usesSlidingPrimaryProfiles) {
+      slidingFrameOverride = plainFrame;
+    } else {
+      frameOverride = plainFrame;
+      selectedFrameCode = plainFrame['code']?.toString();
+    }
+
+    hasSideCovers = true;
+    final separateCovers = availableSideCovers
+        .where((cover) => !_sectionHasIntegratedSideCover(cover))
+        .toList();
+    if (separateCovers.isNotEmpty) {
+      selectedSideCover ??= separateCovers.first;
+      sideCoverOverride ??= selectedSideCover!.toMap();
+    }
+  }
+
   String? slidingSeriesFamily({AluminumSeries? series}) {
     final source = series ?? activeSlidingSeries ?? activeSeries;
     if (source == null) return null;
@@ -3118,8 +3186,11 @@ class WindowModel extends ChangeNotifier {
       mutable['user_selected'] = true;
     }
 
+    // PVC never uses a reinforced sliding montant, including when a drawing
+    // loaded from an older version still contains the old reinforcement flag.
     final isReinforced =
-        reinforced ?? isSlidingMontantReinforced(mutable, central: central);
+        !isSlidingPVC &&
+        (reinforced ?? isSlidingMontantReinforced(mutable, central: central));
 
     for (final zone in zones) {
       if (zone.content != ZoneContent.slidingSash) continue;
@@ -3921,10 +3992,10 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isIntegratedFrame {
-    // Aluminium shutter windows use a plain frame plus a separate cover.
-    // Treating an old saved integrated-frame override as effective here would
-    // make it reappear in both the drawing and the quantity table.
-    if (hasShutter && !isFramePVC) return false;
+    // Any multi-frame drawing uses a plain frame plus a separate cover.
+    // Treating an integrated-frame override as effective here would make the
+    // cover span empty areas between the physical frames.
+    if (getFrameRects().length > 1) return false;
     if (activeFrameOverride != null) {
       final nameLower = (activeFrameOverride!['name'] ?? '')
           .toString()
@@ -9133,8 +9204,49 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  void _disableSlidingMontantReinforcementForPvc() {
+    if (!isSlidingPVC) return;
+
+    for (final zone in zones) {
+      for (final key in zone.slidingMontantReinforced.keys.toList()) {
+        if (zone.slidingMontantReinforced[key] == true) {
+          zone.slidingMontantReinforced[key] = false;
+        }
+      }
+    }
+
+    const reinforcedKeys = [
+      'قائم جانبي معزز (Sash Lateral Renforcé)',
+      'قائم وسطي معزز (Sash Central Renforcé)',
+    ];
+    for (final key in reinforcedKeys) {
+      componentOverrides.remove(key);
+    }
+
+    // A legacy save may have put a reinforced profile under the normal key.
+    // Remove it so the regular series profile is resolved again.
+    const normalOverrides = [
+      ('قائم جانبي (Sash Lateral)', false),
+      ('قائم جانبي (Lateral)', false),
+      ('قائم وسطي (Sash Central)', true),
+      ('قائم وسطي (Central)', true),
+    ];
+    for (final (key, central) in normalOverrides) {
+      final value = componentOverrides[key];
+      if (value is Map &&
+          isSlidingMontantReinforced(
+            Map<String, dynamic>.from(value),
+            central: central,
+          )) {
+        componentOverrides.remove(key);
+      }
+    }
+  }
+
   @override
   void notifyListeners() {
+    _enforceMultiFramePlainFrameRule();
+    _disableSlidingMontantReinforcementForPvc();
     validateAndSanitizeAllZonesHandles();
     super.notifyListeners();
   }
@@ -17451,47 +17563,77 @@ class WindowModel extends ChangeNotifier {
     final List<List<WindowZone>> groups = [];
     final double jointT = profileThickness * 2;
 
+    bool zonesAreAdjacent(WindowZone first, WindowZone second) {
+      final verticalTouch =
+          (first.boundary.right - second.boundary.left).abs() < jointT - 2.0 ||
+          (second.boundary.right - first.boundary.left).abs() < jointT - 2.0;
+      if (verticalTouch) {
+        final overlapTop = math.max(first.boundary.top, second.boundary.top);
+        final overlapBottom = math.min(
+          first.boundary.bottom,
+          second.boundary.bottom,
+        );
+        if (overlapTop < overlapBottom - 5.0) return true;
+      }
+
+      final horizontalTouch =
+          (first.boundary.bottom - second.boundary.top).abs() < jointT - 2.0 ||
+          (second.boundary.bottom - first.boundary.top).abs() < jointT - 2.0;
+      if (horizontalTouch) {
+        final overlapLeft = math.max(first.boundary.left, second.boundary.left);
+        final overlapRight = math.min(
+          first.boundary.right,
+          second.boundary.right,
+        );
+        if (overlapLeft < overlapRight - 5.0) return true;
+      }
+      return false;
+    }
+
+    // A group is one physical frame only when its zones fill one rectangular
+    // footprint. This prevents a small upper frame touching the first zone of
+    // a wider lower row from becoming one fictitious frame around the empty
+    // upper-right area.
+    bool isRectangularFrame(List<WindowZone> candidate) {
+      if (candidate.length <= 1) return true;
+      var minLeft = candidate.first.boundary.left;
+      var maxRight = candidate.first.boundary.right;
+      var minTop = candidate.first.boundary.top;
+      var maxBottom = candidate.first.boundary.bottom;
+      var occupiedArea = 0.0;
+      for (final zone in candidate) {
+        minLeft = math.min(minLeft, zone.boundary.left);
+        maxRight = math.max(maxRight, zone.boundary.right);
+        minTop = math.min(minTop, zone.boundary.top);
+        maxBottom = math.max(maxBottom, zone.boundary.bottom);
+        occupiedArea += zone.boundary.width * zone.boundary.height;
+      }
+      final boundingArea = math.max(
+        1.0,
+        (maxRight - minLeft) * (maxBottom - minTop),
+      );
+      // The gaps between zones are mullions, so a small loss is expected.
+      // A real empty region, such as the upper-right of a partial frame, is
+      // much larger and must split the groups.
+      return occupiedArea / boundingArea >= 0.78;
+    }
+
     for (final zone in zones) {
       final List<int> connectedGroupIndices = [];
       for (int i = 0; i < groups.length; i++) {
         bool isConnected = false;
         for (final other in groups[i]) {
-          // Check vertical adjacency
-          if ((zone.boundary.right - other.boundary.left).abs() <
-                  jointT - 2.0 ||
-              (other.boundary.right - zone.boundary.left).abs() <
-                  jointT - 2.0) {
-            double overlapTop = math.max(zone.boundary.top, other.boundary.top);
-            double overlapBottom = math.min(
-              zone.boundary.bottom,
-              other.boundary.bottom,
-            );
-            if (overlapTop < overlapBottom - 5.0) {
-              isConnected = true;
-            }
+          if (zonesAreAdjacent(zone, other)) {
+            isConnected = true;
+            break;
           }
-
-          // Check horizontal adjacency
-          if ((zone.boundary.bottom - other.boundary.top).abs() <
-                  jointT - 2.0 ||
-              (other.boundary.bottom - zone.boundary.top).abs() <
-                  jointT - 2.0) {
-            double overlapLeft = math.max(
-              zone.boundary.left,
-              other.boundary.left,
-            );
-            double overlapRight = math.min(
-              zone.boundary.right,
-              other.boundary.right,
-            );
-            if (overlapLeft < overlapRight - 5.0) {
-              isConnected = true;
-            }
-          }
-
-          if (isConnected) break;
         }
-        if (isConnected) {
+        if (isConnected &&
+            isRectangularFrame([
+              for (final index in connectedGroupIndices) ...groups[index],
+              zone,
+              ...groups[i],
+            ])) {
           connectedGroupIndices.add(i);
         }
       }
@@ -17534,6 +17676,155 @@ class WindowModel extends ChangeNotifier {
     }
 
     return rects;
+  }
+
+  /// Returns only the outside perimeter of the physical frames.
+  ///
+  /// A single global rectangle is incorrect when one frame is above only
+  /// part of another row: it creates a cover across the empty area. Shared
+  /// edges are therefore removed and touching collinear edges are joined.
+  List<FrameEdgeSegment> getExposedFrameEdgeSegments() {
+    final rects = getFrameRects();
+    if (rects.length <= 1) return const <FrameEdgeSegment>[];
+
+    const tolerance = 2.0;
+    final raw = <FrameEdgeSegment>[];
+
+    void addVisiblePieces({
+      required String side,
+      required double start,
+      required double end,
+      required double coordinate,
+      required List<List<double>> blockers,
+    }) {
+      var pieces = <List<double>>[
+        [start, end],
+      ];
+      for (final blocker in blockers) {
+        final next = <List<double>>[];
+        for (final piece in pieces) {
+          final overlapStart = math.max(piece[0], blocker[0]);
+          final overlapEnd = math.min(piece[1], blocker[1]);
+          if (overlapEnd <= overlapStart + tolerance) {
+            next.add(piece);
+            continue;
+          }
+          if (piece[0] < overlapStart - tolerance) {
+            next.add([piece[0], overlapStart]);
+          }
+          if (overlapEnd < piece[1] - tolerance) {
+            next.add([overlapEnd, piece[1]]);
+          }
+        }
+        pieces = next;
+        if (pieces.isEmpty) break;
+      }
+      for (final piece in pieces) {
+        if (piece[1] > piece[0] + tolerance) {
+          raw.add(
+            FrameEdgeSegment(
+              side: side,
+              start: piece[0],
+              end: piece[1],
+              coordinate: coordinate,
+            ),
+          );
+        }
+      }
+    }
+
+    for (var index = 0; index < rects.length; index++) {
+      final rect = rects[index];
+      final others = [
+        for (var otherIndex = 0; otherIndex < rects.length; otherIndex++)
+          if (otherIndex != index) rects[otherIndex],
+      ];
+
+      addVisiblePieces(
+        side: 'top',
+        start: rect.left,
+        end: rect.right,
+        coordinate: rect.top,
+        blockers: [
+          for (final other in others)
+            if ((other.bottom - rect.top).abs() <= tolerance)
+              [
+                math.max(rect.left, other.left),
+                math.min(rect.right, other.right),
+              ],
+        ],
+      );
+      addVisiblePieces(
+        side: 'bottom',
+        start: rect.left,
+        end: rect.right,
+        coordinate: rect.bottom,
+        blockers: [
+          for (final other in others)
+            if ((other.top - rect.bottom).abs() <= tolerance)
+              [
+                math.max(rect.left, other.left),
+                math.min(rect.right, other.right),
+              ],
+        ],
+      );
+      addVisiblePieces(
+        side: 'left',
+        start: rect.top,
+        end: rect.bottom,
+        coordinate: rect.left,
+        blockers: [
+          for (final other in others)
+            if ((other.right - rect.left).abs() <= tolerance)
+              [
+                math.max(rect.top, other.top),
+                math.min(rect.bottom, other.bottom),
+              ],
+        ],
+      );
+      addVisiblePieces(
+        side: 'right',
+        start: rect.top,
+        end: rect.bottom,
+        coordinate: rect.right,
+        blockers: [
+          for (final other in others)
+            if ((other.left - rect.right).abs() <= tolerance)
+              [
+                math.max(rect.top, other.top),
+                math.min(rect.bottom, other.bottom),
+              ],
+        ],
+      );
+    }
+
+    raw.sort((a, b) {
+      final sideCompare = a.side.compareTo(b.side);
+      if (sideCompare != 0) return sideCompare;
+      final coordinateCompare = a.coordinate.compareTo(b.coordinate);
+      if (coordinateCompare != 0) return coordinateCompare;
+      return a.start.compareTo(b.start);
+    });
+
+    final merged = <FrameEdgeSegment>[];
+    for (final segment in raw) {
+      if (merged.isNotEmpty) {
+        final previous = merged.last;
+        if (previous.side == segment.side &&
+            (previous.coordinate - segment.coordinate).abs() <= tolerance &&
+            segment.start <= previous.end + tolerance) {
+          merged[merged.length - 1] = FrameEdgeSegment(
+            side: previous.side,
+            start: previous.start,
+            end: math.max(previous.end, segment.end),
+            coordinate: previous.coordinate,
+          );
+          continue;
+        }
+      }
+      merged.add(segment);
+    }
+    return merged;
   }
 }
 
