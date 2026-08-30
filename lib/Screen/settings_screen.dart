@@ -6,6 +6,7 @@ import '../services/cloud_sync_service.dart';
 import '../services/supabase_catalog_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import 'workshop_profile_screen.dart';
+import 'cutting_settings_screen.dart';
 import 'selected_systems_screen.dart';
 import 'package:flutter/services.dart';
 import '../sql_database.dart';
@@ -179,6 +180,39 @@ class SettingsScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => const WorkshopProfileScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(
+                  Icons.content_cut_rounded,
+                  color: Colors.orange,
+                ),
+                title: Text(
+                  Localization.translate('إعدادات القص والفضلات', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+                subtitle: Text(
+                  Localization.translate(
+                    'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
+                    lang,
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CuttingSettingsScreen(),
                     ),
                   );
                 },

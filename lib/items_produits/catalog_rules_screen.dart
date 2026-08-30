@@ -138,6 +138,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('sliding_lock', 'قفل/قاش منزلق', 'Gâche coulissant'),
           _RuleRole('verrou', 'فيرو', 'Verrou'),
           _RuleRole('cremone', 'كريمون', 'Crémone'),
+          _RuleRole('tringle', 'تراينغل الكريمون', 'Tringle crémone'),
           _RuleRole('espagnolette', 'إسبانيوليت', 'Espagnolette'),
           _RuleRole('canon', 'أسطوانة الباب', 'Canon'),
           _RuleRole(
@@ -360,6 +361,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         if (text.contains('porte')) return 'gache_door';
         return 'gache_simple';
       }
+      if (text.contains('tringle') ||
+          text.contains('tangle') ||
+          text.contains('triangle') ||
+          text.contains('تراينغل') ||
+          text.contains('تريانغل')) {
+        return 'tringle';
+      }
       if (text.contains('verrou') || text.contains('فيرو')) return 'verrou';
       if (text.contains('cremone') ||
           text.contains('crémone') ||
@@ -468,7 +476,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<AppSettingsProvider>();
-    if (!settings.isManager) return const Scaffold(body: SizedBox.shrink());
+    if (!settings.isManager) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_t('قواعد الكتالوج العامة', 'Règles du catalogue')),
+        ),
+        body: Center(
+          child: Text(
+            _t(
+              'ليس لديك صلاحية للوصول إلى قواعد الكتالوج.',
+              'Vous n\'avez pas accès aux règles du catalogue.',
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(_t('قواعد الكتالوج العامة', 'Règles du catalogue')),

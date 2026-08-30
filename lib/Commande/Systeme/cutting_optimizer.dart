@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'cutting_calculator.dart';
 
 /// يمثل قطعة صغيرة مقصوصة
@@ -17,8 +18,8 @@ class BarCutPlan {
 
   BarCutPlan({
     required this.initialLength,
-    this.sawThickness = 4.0, // 4 mm by default
-  });
+    double? sawThickness,
+  }) : sawThickness = sawThickness ?? CuttingSettings.sawKerfMm;
 
   /// المساحة المشغولة (القطع + سمك المنشار لكل قصة)
   double get usedLength {
@@ -70,8 +71,9 @@ class CuttingOptimizer {
     String profileName,
     List<CuttingItem> inputItems, {
     double barLength = 5800.0,
-    double sawThickness = 4.0,
+    double? sawThickness,
   }) {
+    final effectiveSawThickness = sawThickness ?? CuttingSettings.sawKerfMm;
     List<CutPiece> allCuts = [];
 
     // تحويل الـ CuttingItem إلى قائمة مسطحة من الأطوال (بالمليمتر)
@@ -90,7 +92,7 @@ class CuttingOptimizer {
 
     for (var piece in allCuts) {
       // نمنع قص قطعة أطول من البار أساساً
-      if (piece.length + sawThickness > barLength) {
+      if (piece.length + effectiveSawThickness > barLength) {
         debugPrint('تحذير: قطعة طويلة جداً (${piece.length}) تتجاوز طول البار.');
         continue;
       }
@@ -101,7 +103,8 @@ class CuttingOptimizer {
       // نبحث عن أفضل بار (Best Fit) يترك أقل مساحة متبقية
       for (int i = 0; i < bars.length; i++) {
         if (bars[i].canFit(piece.length)) {
-          double spaceLeft = bars[i].remainingLength - (piece.length + sawThickness);
+          double spaceLeft = bars[i].remainingLength -
+              (piece.length + effectiveSawThickness);
           if (spaceLeft < minRemaining) {
             minRemaining = spaceLeft;
             bestBarIndex = i;
@@ -114,7 +117,10 @@ class CuttingOptimizer {
         bars[bestBarIndex].addPiece(piece.length, piece.label);
       } else {
         // إذا لم نجد، نفتح باراً جديداً
-        var newBar = BarCutPlan(initialLength: barLength, sawThickness: sawThickness);
+        var newBar = BarCutPlan(
+          initialLength: barLength,
+          sawThickness: effectiveSawThickness,
+        );
         newBar.addPiece(piece.length, piece.label);
         bars.add(newBar);
       }
@@ -142,7 +148,7 @@ class CuttingOptimizer {
   static List<ProfileCuttingResult> optimizeAll(
     List<CuttingItem> allItems, {
     double barLength = 5800.0,
-    double sawThickness = 4.0,
+    double? sawThickness,
   }) {
     // تصفية فقط عناصر الألمنيوم (الزجاج والإكسسوارات لا يتم تقطيعها بهذه الخوارزمية)
     var aluminumItems = allItems.where((i) =>
@@ -160,7 +166,12 @@ class CuttingOptimizer {
 
     List<ProfileCuttingResult> results = [];
     groupedByName.forEach((name, itemsList) {
-      var result = optimizeProfile(name, itemsList, barLength: barLength, sawThickness: sawThickness);
+      var result = optimizeProfile(
+        name,
+        itemsList,
+        barLength: barLength,
+        sawThickness: sawThickness,
+      );
       if (result.bars.isNotEmpty) {
         results.add(result);
       }

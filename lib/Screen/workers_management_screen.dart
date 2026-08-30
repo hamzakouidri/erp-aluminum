@@ -230,10 +230,19 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
           permissionsJson,
         );
       } else {
-        await widget.db.updateEmployeePermissions(
-          existing['uid'].toString(),
-          permissionsJson,
-        );
+        final existingUid = existing['uid']?.toString() ?? '';
+        final isSupabaseBacked =
+            existingUid.startsWith('supabase_') ||
+            existingUid.startsWith('pending_supabase_');
+        // Firebase worker documents are the authoritative permission source
+        // for legacy/dual-auth accounts. A stale Supabase membership row must
+        // not overwrite a freshly saved deputy-manager permission locally.
+        if (isSupabaseBacked) {
+          await widget.db.updateEmployeePermissions(
+            existingUid,
+            permissionsJson,
+          );
+        }
       }
     }
   }

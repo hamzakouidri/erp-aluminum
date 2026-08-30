@@ -610,6 +610,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       } else if (_containsAny(original, const ['فيرو', 'Verrou']) &&
           !original.contains('Central')) {
         type = 'فيرو';
+      } else if (_containsAny(original, const [
+        'تراينغل',
+        'تريانغل',
+        'Tringle',
+        'Tangle',
+        'Triangle',
+      ])) {
+        type = 'tringle';
       } else if (_containsAny(original, const ['كيت', 'kit'])) {
         type = 'kit';
         drawingMode ??= AccessoryDrawingMode.sliding;
@@ -1498,25 +1506,41 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final metadata = <String, Map<String, dynamic>>{};
     final prices = <String, double>{};
 
-    for (final kit in kits) {
-      final kitName = kit['name']?.toString() ?? '';
-      if (kitName.isEmpty) continue;
-      final kitId = (kit['id'] as num?)?.toInt();
-      if (kitId == null) continue;
-      final details = await sqlDb.readKitBundleItemsWithDetails(
-        kitId,
-        topLevelOnly: true,
-      );
-      bundleData[kitName] = details
+    // Kit definitions are independent. Loading them one after another made
+    // every kit wait for all of its child/range queries before the table could
+    // be shown.
+    final loadedKits = await Future.wait(
+      kits.map((kit) async {
+        final kitName = kit['name']?.toString() ?? '';
+        final kitId = (kit['id'] as num?)?.toInt();
+        if (kitName.isEmpty || kitId == null) return null;
+
+        final detailsFuture = sqlDb.readKitBundleItemsWithDetails(
+          kitId,
+          topLevelOnly: true,
+        );
+        final priceFuture = _isShutterKitBundle(kit)
+            ? _readShutterKitPrice(dbInstance, kitName)
+            : Future<double?>.value(null);
+        final details = await detailsFuture;
+        final price = await priceFuture;
+        return (
+          name: kitName,
+          details: details,
+          perLeaf: (kit['per_leaf'] ?? 0) == 1,
+          metadata: Map<String, dynamic>.from(kit),
+          price: price,
+        );
+      }),
+    );
+    for (final loaded in loadedKits) {
+      if (loaded == null) continue;
+      bundleData[loaded.name] = loaded.details
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
-      perLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
-      metadata[kitName] = Map<String, dynamic>.from(kit);
-
-      if (_isShutterKitBundle(kit)) {
-        final price = await _readShutterKitPrice(dbInstance, kitName);
-        if (price != null) prices[kitName] = price;
-      }
+      perLeafMap[loaded.name] = loaded.perLeaf;
+      metadata[loaded.name] = loaded.metadata;
+      if (loaded.price != null) prices[loaded.name] = loaded.price!;
     }
 
     _kitBundleData = bundleData;
@@ -1634,6 +1658,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       'أغطية الشفرات (Bouchons Lames)': widget.model.componentOverrides
           .containsKey('أغطية الشفرات (Bouchons Lames)'),
     };
+    // اعرض نسخة أولية من الجدول فورًا. الجلب الذكي للأسعار والاختيارات
+    // يستمر في الخلفية ويستبدل هذه النسخة عند اكتماله.
+    _visibleBomItems = _generateRawBomItems();
+    _hasFetchedDefaults = true;
     // استدعاء الجلب الذكي فور فتح الشاشة (لملء كل المكونات المفقودة)
     _fetchDefaults();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
@@ -1650,7 +1678,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (mounted) {
       setState(() {});
     }
-    if (_hasFetchedDefaults) {
+    if (_hasFetchedDefaults && !_isFetchingDefaults) {
       unawaited(_refreshVisibleBomItems());
     }
   }
@@ -2135,25 +2163,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    if (!_hasFetchedDefaults) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(Localization.translate('الالكمية والتكلفة', lang)),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 14),
-              Text(
-                Localization.translate('جاري تجهيز الكميات والأسعار...', lang),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
     // جدول الكمية يستعمل نفس مرشحات القواعد التي يستعملها شو دايلوج.
     final items = _visibleBomItems;
     return Scaffold(

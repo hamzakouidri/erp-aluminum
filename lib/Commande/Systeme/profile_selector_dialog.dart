@@ -200,6 +200,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'sliding_lock',
     'verrou',
     'cremone',
+    'tringle',
     'espagnolette',
     'canon',
     'door_handle_key',
@@ -268,6 +269,14 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   }
   if (tLower == 'فيرو' || tLower.contains('verrou')) {
     return const ['verrou'];
+  }
+  if (tLower == 'tringle' ||
+      tLower.contains('tringle') ||
+      tLower.contains('tangle') ||
+      tLower.contains('triangle') ||
+      tLower.contains('تراينغل') ||
+      tLower.contains('تريانغل')) {
+    return const ['tringle'];
   }
   if (tLower == 'cremone' ||
       tLower.contains('crémone') ||
@@ -986,6 +995,13 @@ class CatalogCandidateResolver {
       } else {
         roles.add('gache_simple');
       }
+    }
+    if (text.contains('tringle') ||
+        text.contains('tangle') ||
+        text.contains('triangle') ||
+        text.contains('تراينغل') ||
+        text.contains('تريانغل')) {
+      roles.add('tringle');
     }
     if (type.contains('crémone') || type.contains('cremone')) {
       roles.add('cremone');

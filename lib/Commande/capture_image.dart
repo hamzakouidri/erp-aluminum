@@ -37,24 +37,6 @@ Future<Uint8List> captureWindowImage(
     } catch (_) {}
   }
 
-  // If model is Caisson Tunnel, return official Caisson Tunnel asset image bytes for PDF/Flyer
-  if (model.isCaissonTunnel ||
-      (model.manualNameOverride?.contains('Caisson Tunnel') == true)) {
-    try {
-      final ByteData data = await rootBundle.load('Icon/caisson_tunnel.jpg');
-      return data.buffer.asUint8List();
-    } catch (_) {
-      try {
-        final ByteData data = await rootBundle.load(
-          'assets/Icon/caisson_tunnel.jpg',
-        );
-        return data.buffer.asUint8List();
-      } catch (_) {
-        // Fallback drawing if asset not found
-      }
-    }
-  }
-
   if (model.isCustomProduct) {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);

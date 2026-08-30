@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
 class WorkshopProfileScreen extends StatefulWidget {
   const WorkshopProfileScreen({super.key});
@@ -46,18 +47,26 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       final user = _auth.currentUser;
       if (user == null) return;
 
-      final doc = await _firestore.collection('users').doc(user.uid).get();
-      if (doc.exists) {
-        _managerData = doc.data() as Map<String, dynamic>;
-        _workshopNameController.text = _managerData?['workshopName'] ?? '';
-        _locationController.text = _managerData?['workshopLocation'] ?? '';
-        _phoneController.text = _managerData?['phone'] ?? _managerData?['phoneNumber'] ?? '';
-        _specialtiesController.text =
-            _managerData?['workshopSpecialties'] ?? '';
-        _managerNameController.text = _managerData?['name'] ?? '';
-        _workerCountController.text = (_managerData?['workerCount'] ?? '')
-            .toString();
-        _logoBase64 = _managerData?['workshopLogoUrl'];
+      try {
+        final profile = await SupabaseWorkshopSyncService()
+            .readWorkshopProfile();
+        if (profile.isNotEmpty) {
+          _managerData = profile;
+          _workshopNameController.text =
+              profile['workshop_name']?.toString() ?? '';
+          _locationController.text =
+              profile['workshop_address']?.toString() ?? '';
+          _phoneController.text = profile['phone']?.toString() ?? '';
+          _specialtiesController.text =
+              profile['workshop_specialties']?.toString() ?? '';
+          _managerNameController.text =
+              profile['manager_name']?.toString() ?? '';
+          _workerCountController.text =
+              (profile['worker_count'] ?? '').toString();
+          _logoBase64 = profile['logo']?.toString();
+        }
+      } catch (syncError) {
+        debugPrint('Could not load workshop profile from Supabase: $syncError');
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -69,14 +78,14 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       final localAddress = prefs.getString('workshop_address') ?? '';
 
       if (_locationController.text.isEmpty) {
-        _locationController.text = _managerData?['workshopLocation'] ?? localAddress;
+        _locationController.text = localAddress;
       }
 
-      _rcController.text = _managerData?['rc'] ?? localRc;
-      _nifController.text = _managerData?['nif'] ?? localNif;
-      _nisController.text = _managerData?['nis'] ?? localNis;
-      _aiController.text = _managerData?['ai'] ?? localAi;
-      _ribController.text = _managerData?['rib'] ?? localRib;
+      _rcController.text = _managerData?['rc']?.toString() ?? localRc;
+      _nifController.text = _managerData?['nif']?.toString() ?? localNif;
+      _nisController.text = _managerData?['nis']?.toString() ?? localNis;
+      _aiController.text = _managerData?['ai']?.toString() ?? localAi;
+      _ribController.text = _managerData?['rib']?.toString() ?? localRib;
 
       final workersSnapshot = await _firestore
           .collection('users')
@@ -135,44 +144,6 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     }
 
     try {
-      // Check for uniqueness
-      final nameCheck = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: 'manager')
-          .where('workshopName', isEqualTo: newWorkshopName)
-          .get();
-
-      for (var doc in nameCheck.docs) {
-        if (doc.id != user.uid) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر.',
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
-      }
-
-      await _firestore.collection('users').doc(user.uid).update({
-        'workshopName': newWorkshopName,
-        'workshopLocation': _locationController.text.trim(),
-        'workshopSpecialties': _specialtiesController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'name': _managerNameController.text.trim(),
-        'workerCount': int.tryParse(_workerCountController.text.trim()) ?? 0,
-        'rc': _rcController.text.trim(),
-        'nif': _nifController.text.trim(),
-        'nis': _nisController.text.trim(),
-        'ai': _aiController.text.trim(),
-        'rib': _ribController.text.trim(),
-        if (_logoBase64 != null) 'workshopLogoUrl': _logoBase64,
-      });
-
       // Save to local SharedPreferences immediately
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('workshop_name', newWorkshopName);
@@ -185,6 +156,29 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       await prefs.setString('workshop_address', _locationController.text.trim());
       if (_logoBase64 != null) {
         await prefs.setString('workshop_logo_base64', _logoBase64!);
+      }
+
+      // The manager is the source of truth for the workshop header. Publish
+      // these values to Supabase so worker devices receive them through the
+      // workshop sync path; they are no longer written to Firebase.
+      try {
+        await SupabaseWorkshopSyncService().saveWorkshopProfile({
+          'workshop_name': newWorkshopName,
+          'workshop_address': _locationController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'workshop_specialties': _specialtiesController.text.trim(),
+          'manager_name': _managerNameController.text.trim(),
+          'worker_count': int.tryParse(_workerCountController.text.trim()) ?? 0,
+          'rc': _rcController.text.trim(),
+          'nif': _nifController.text.trim(),
+          'nis': _nisController.text.trim(),
+          'ai': _aiController.text.trim(),
+          'rib': _ribController.text.trim(),
+          'logo': _logoBase64 ?? prefs.getString('workshop_logo_base64') ?? '',
+        });
+      } catch (syncError) {
+        // A temporary Supabase/network failure must not undo the local save.
+        debugPrint('Workshop profile Supabase sync deferred: $syncError');
       }
 
       if (mounted) {
@@ -205,6 +199,22 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         );
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _workshopNameController.dispose();
+    _locationController.dispose();
+    _phoneController.dispose();
+    _specialtiesController.dispose();
+    _managerNameController.dispose();
+    _workerCountController.dispose();
+    _rcController.dispose();
+    _nifController.dispose();
+    _nisController.dispose();
+    _aiController.dispose();
+    _ribController.dispose();
+    super.dispose();
   }
 
   Future<void> _editWorker(QueryDocumentSnapshot workerDoc) async {
@@ -261,17 +271,13 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('ملف ومعلومات الورشة'),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: _saveManagerData,
+            onPressed: _isLoading ? null : _saveManagerData,
             tooltip: 'حفظ المعلومات',
           ),
         ],
@@ -281,6 +287,8 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_isLoading) const LinearProgressIndicator(),
+            if (_isLoading) const SizedBox(height: 12),
             // Logo Section
             Center(
               child: GestureDetector(
@@ -367,6 +375,17 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
               ),
             ),
             const SizedBox(height: 10),
+            Text(
+              'معلومات إضافية',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.blue.shade300
+                    : Colors.blue.shade800,
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: _rcController,
               decoration: const InputDecoration(
@@ -406,8 +425,6 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 24),
-
             // Manager Info
             Text(
               'معلومات المدير',
@@ -439,7 +456,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: _saveManagerData,
+              onPressed: _isLoading ? null : _saveManagerData,
               icon: const Icon(Icons.save),
               label: const Text('حفظ التعديلات الرئيسية'),
               style: ElevatedButton.styleFrom(

@@ -18,6 +18,8 @@ class SupabaseWorkshopSyncService {
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
   static const int _batchSize = 200;
   static const int _downloadPageSize = 500;
+  static const String _workshopProfileTable = '__WorkshopProfile';
+  static const String _workshopProfileRowId = 'current';
 
   final SqlDatabase _db = SqlDatabase();
   final Random _random = Random.secure();
@@ -180,6 +182,40 @@ class SupabaseWorkshopSyncService {
     final task = _runSerializedUpload();
     _activeUpload = task;
     return task;
+  }
+
+  /// Saves the manager's workshop header in the existing workshop sync table.
+  /// This keeps the profile available to every workshop member without adding
+  /// another Supabase table or coupling it to a worker's local preferences.
+  Future<void> saveWorkshopProfile(Map<String, dynamic> profile) async {
+    await _ensureReady();
+    final workshopUuid = _workshopUuid!;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _client.from('workshop_sync_rows').upsert({
+      'workshop_id': workshopUuid,
+      'table_name': _workshopProfileTable,
+      'row_id': _workshopProfileRowId,
+      'payload': <String, dynamic>{...profile, 'updated_at': now},
+      'updated_at': now,
+      'deleted_at': null,
+      'device_id': _deviceId,
+      'revision': DateTime.now().microsecondsSinceEpoch,
+    }, onConflict: 'workshop_id,table_name,row_id');
+  }
+
+  Future<Map<String, dynamic>> readWorkshopProfile() async {
+    await _ensureReady();
+    final row = await _client
+        .from('workshop_sync_rows')
+        .select('payload')
+        .eq('workshop_id', _workshopUuid!)
+        .eq('table_name', _workshopProfileTable)
+        .eq('row_id', _workshopProfileRowId)
+        .maybeSingle();
+    final payload = row?['payload'];
+    return payload is Map
+        ? Map<String, dynamic>.from(payload)
+        : <String, dynamic>{};
   }
 
   Future<void> downloadWorkshopData({bool full = false}) {
@@ -411,7 +447,7 @@ class SupabaseWorkshopSyncService {
         final row = Map<String, dynamic>.from(rawRow);
         final table = row['table_name']?.toString() ?? '';
         final rowId = row['row_id']?.toString() ?? '';
-        if (!_isWorkshopTable(table) || rowId.isEmpty) continue;
+        if (rowId.isEmpty) continue;
 
         final updatedAt = row['updated_at']?.toString();
         if (updatedAt != null &&
@@ -421,6 +457,8 @@ class SupabaseWorkshopSyncService {
 
         final deletedAt = row['deleted_at']?.toString();
         if (deletedAt != null && deletedAt.isNotEmpty) {
+          if (table == _workshopProfileTable) continue;
+          if (!_isWorkshopTable(table)) continue;
           tombstones.add({
             'table_name': table,
             'row_id': rowId,
@@ -431,6 +469,14 @@ class SupabaseWorkshopSyncService {
         }
 
         final payload = row['payload'];
+        if (table == _workshopProfileTable) {
+          if (rowId == _workshopProfileRowId && payload is Map) {
+            await _applyWorkshopProfile(Map<String, dynamic>.from(payload));
+            downloadedRows++;
+          }
+          continue;
+        }
+        if (!_isWorkshopTable(table)) continue;
         if (payload is Map) {
           final list =
               data.putIfAbsent(table, () => <Map<String, dynamic>>[])
@@ -448,7 +494,11 @@ class SupabaseWorkshopSyncService {
       data['SyncTombstones'] = tombstones;
     }
 
-    final shouldReplaceLocalWorkshop = full && downloadedRows > 0;
+    // The profile row is metadata, not a business table. It must not make a
+    // full bootstrap clear a worker's local business data when the workshop
+    // has only a profile and no synced orders/clients yet.
+    final shouldReplaceLocalWorkshop =
+        full && (data.isNotEmpty || tombstones.isNotEmpty);
     if (shouldReplaceLocalWorkshop) {
       for (final table in SqlDatabase.workshopTables) {
         data.putIfAbsent(table, () => <Map<String, dynamic>>[]);
@@ -732,6 +782,30 @@ class SupabaseWorkshopSyncService {
     final code = _workshopCode;
     if (code == null || code.isEmpty) return null;
     return 'supabase_workshop_full_bootstrap_v2_$code';
+  }
+
+  Future<void> _applyWorkshopProfile(Map<String, dynamic> profile) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    Future<void> saveString(String key, Object? value) async {
+      final text = value?.toString().trim() ?? '';
+      // Write empty values too, so clearing a field on the manager device
+      // also clears the old value on worker devices.
+      await prefs.setString(key, text);
+    }
+
+    await saveString('workshop_name', profile['workshop_name']);
+    await saveString('workshop_address', profile['workshop_address']);
+    await saveString('phone', profile['phone']);
+    await saveString('workshop_specialties', profile['workshop_specialties']);
+    await saveString('workshop_manager_name', profile['manager_name']);
+    await saveString('workshop_rc', profile['rc']);
+    await saveString('workshop_nif', profile['nif']);
+    await saveString('workshop_nis', profile['nis']);
+    await saveString('workshop_ai', profile['ai']);
+    await saveString('workshop_rib', profile['rib']);
+    await saveString('workshop_logo_base64', profile['logo']);
+    await saveString('workshop_worker_count', profile['worker_count']);
   }
 
   Future<bool> _needsFullBootstrapDownload() async {

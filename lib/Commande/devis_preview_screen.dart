@@ -1419,27 +1419,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Widget _buildItemImage(DevisLineItem item) {
     final path = item.imagePath;
 
-    if (item.title.contains('Caisson Tunnel') ||
-        item.title.contains('Caisson Tunnel') ||
-        (path != null && path.contains('caisson_tunnel'))) {
-      return Container(
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        padding: const EdgeInsets.all(2),
-        child: Image.asset(
-          'Icon/caisson_tunnel.jpg',
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => Image.asset(
-            'assets/Icon/caisson_tunnel.jpg',
-            fit: BoxFit.contain,
-          ),
-        ),
-      );
-    }
-
     if (item.title.contains('Moustiquaire') ||
         item.title.contains('موستيكير') ||
         (path != null && path.contains('moustiquaire'))) {
@@ -1470,6 +1449,29 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         child: Image.file(File(path), fit: BoxFit.contain),
       );
     }
+
+    // Keep the official asset only as a compatibility fallback for old
+    // Caisson Tunnel rows that have no readable saved drawing.
+    if (item.title.contains('Caisson Tunnel') ||
+        (path != null && path.contains('caisson_tunnel'))) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        padding: const EdgeInsets.all(2),
+        child: Image.asset(
+          'Icon/caisson_tunnel.jpg',
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => Image.asset(
+            'assets/Icon/caisson_tunnel.jpg',
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
+    }
+
     return Container(
       alignment: Alignment.center,
       decoration: BoxDecoration(

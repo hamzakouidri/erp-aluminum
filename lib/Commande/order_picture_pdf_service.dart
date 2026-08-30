@@ -231,19 +231,9 @@ class OrderPicturePdfService {
     Map<String, dynamic> rawItem,
     DevisLineItem lineItem,
   ) async {
-    final modelMap = _decodeModelMap(rawItem['partitions_json']);
-    if (modelMap.isNotEmpty) {
-      try {
-        final model = WindowModel(db: db);
-        await applyWindowModelAndLoadCatalog(model, modelMap);
-        return captureWindowImage(
-          model,
-          maxSide: 3200,
-          showDrawingDimensions: true,
-        );
-      } catch (_) {}
-    }
-
+    // Use the exact drawing persisted with the order before reconstructing a
+    // model. Recalculation can produce a different picture after catalogue
+    // defaults change.
     final path =
         (lineItem.imagePath?.trim().isNotEmpty == true
             ? lineItem.imagePath!.trim()
@@ -272,17 +262,29 @@ class OrderPicturePdfService {
     }
 
     final raw = rawItem['drawing_image_base64']?.toString().trim() ?? '';
-    if (raw.isEmpty) return null;
-
-    try {
-      final separator = raw.indexOf(',');
-      final encoded = raw.startsWith('data:image') && separator >= 0
-          ? raw.substring(separator + 1)
-          : raw;
-      return base64Decode(encoded);
-    } catch (_) {
-      return null;
+    if (raw.isNotEmpty) {
+      try {
+        final separator = raw.indexOf(',');
+        final encoded = raw.startsWith('data:image') && separator >= 0
+            ? raw.substring(separator + 1)
+            : raw;
+        return base64Decode(encoded);
+      } catch (_) {}
     }
+
+    final modelMap = _decodeModelMap(rawItem['partitions_json']);
+    if (modelMap.isNotEmpty) {
+      try {
+        final model = WindowModel(db: db);
+        await applyWindowModelAndLoadCatalog(model, modelMap);
+        return captureWindowImage(
+          model,
+          maxSide: 3200,
+          showDrawingDimensions: true,
+        );
+      } catch (_) {}
+    }
+    return null;
   }
 
   static Future<Uint8List?> _asPdfCompatiblePng(Uint8List bytes) async {

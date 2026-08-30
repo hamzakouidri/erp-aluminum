@@ -4147,22 +4147,8 @@ class _OrderPicturePdfPreviewPageState
   }
 
   Future<Uint8List?> _readPreviewImageBytes(Map<String, dynamic> item) async {
-    final jsonRaw = item['partitions_json'];
-    if (jsonRaw != null) {
-      try {
-        final decoded = jsonRaw is Map
-            ? Map<String, dynamic>.from(jsonRaw)
-            : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
-        final model = WindowModel(db: widget.db);
-        await applyWindowModelAndLoadCatalog(model, decoded);
-        return captureWindowImage(
-          model,
-          maxSide: 3200,
-          showDrawingDimensions: true,
-        );
-      } catch (_) {}
-    }
-
+    // Prefer the exact image saved with the order. Rebuilding the model first
+    // can change the drawing after a catalogue/defaults update.
     final path = item['drawing_image_path']?.toString().trim() ?? '';
     if (path.isNotEmpty) {
       try {
@@ -4179,6 +4165,22 @@ class _OrderPicturePdfPreviewPageState
             ? raw.substring(separator + 1)
             : raw;
         return base64Decode(encoded);
+      } catch (_) {}
+    }
+
+    final jsonRaw = item['partitions_json'];
+    if (jsonRaw != null) {
+      try {
+        final decoded = jsonRaw is Map
+            ? Map<String, dynamic>.from(jsonRaw)
+            : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
+        final model = WindowModel(db: widget.db);
+        await applyWindowModelAndLoadCatalog(model, decoded);
+        return captureWindowImage(
+          model,
+          maxSide: 3200,
+          showDrawingDimensions: true,
+        );
       } catch (_) {}
     }
     return null;

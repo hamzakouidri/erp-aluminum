@@ -121,6 +121,7 @@ class _WindowViewState extends State<WindowView> {
 
   bool _isDrawerOpen = false;
   bool _isLeftDrawerOpen = false;
+  bool _isExitDialogOpen = false;
 
   /// On Windows Flutter excludes a mouse from drag scrolling by default.
   /// Both drawing drawers contain horizontal option rows, so enable mouse and
@@ -1848,8 +1849,16 @@ class _WindowViewState extends State<WindowView> {
       context,
       listen: false,
     ).language;
+    final hasMeasuredDrawing =
+        widget.model.width > 0 && widget.model.height > 0;
+    final convertingExistingDrawing =
+        hasMeasuredDrawing && !widget.model.isShutterOnly;
     setState(() {
-      widget.model.prepareShutterOnlyDrawing();
+      if (convertingExistingDrawing) {
+        widget.model.convertCurrentDrawingToShutter();
+      } else if (!widget.model.isShutterOnly) {
+        widget.model.prepareShutterOnlyDrawing();
+      }
       _isShutterSelected = true;
       _isBottomPanelExpanded = true;
       _isDrawerOpen = false;
@@ -1864,7 +1873,12 @@ class _WindowViewState extends State<WindowView> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          Localization.translate('ارسم مستطيل الستار على اللوحة', lang),
+          Localization.translate(
+            convertingExistingDrawing
+                ? 'تم تحويل القياس الحالي إلى ستار'
+                : 'ارسم مستطيل الستار على اللوحة',
+            lang,
+          ),
         ),
         duration: const Duration(seconds: 2),
       ),
@@ -1972,12 +1986,17 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.frame &&
         widget.model.getFrameRects().length > 1;
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF1E1E2C)
-          : const Color(0xFFE8EAF6),
-      appBar: _buildAppBar(context),
-      body: Stack(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_confirmExitFromDrawing());
+      },
+      child: Scaffold(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E2C)
+            : const Color(0xFFE8EAF6),
+        appBar: _buildAppBar(context),
+        body: Stack(
         children: [
           Column(
             children: [
@@ -4145,8 +4164,44 @@ class _WindowViewState extends State<WindowView> {
             ),
           ),
         ],
+        ),
       ),
     );
+  }
+
+  Future<void> _confirmExitFromDrawing() async {
+    if (_isExitDialogOpen || !mounted) return;
+    _isExitDialogOpen = true;
+    try {
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
+      final shouldExit = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(Localization.translate('تأكيد الخروج', lang)),
+          content: Text(
+            Localization.translate('هل تريد الخروج من صفحة الرسم؟', lang),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(Localization.translate('إلغاء', lang)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(Localization.translate('خروج', lang)),
+            ),
+          ],
+        ),
+      );
+      if (shouldExit == true && mounted) {
+        Navigator.of(context).pop(widget.model);
+      }
+    } finally {
+      _isExitDialogOpen = false;
+    }
   }
 
   Widget _buildLeftDrawerContent(BuildContext context) {
@@ -9331,20 +9386,28 @@ class _WindowViewState extends State<WindowView> {
         widget.model.isShutterOnly ||
         widget.model.drawNextShapeAsShutterOnly ||
         _isShutterSelected;
-    final shutterColorItems = widget.model.availableAccessoryColors.isNotEmpty
+    final rawShutterColorItems = widget.model.availableAccessoryColors.isNotEmpty
         ? widget.model.availableAccessoryColors
         : widget.model.availableColors;
-    Map<String, dynamic>? selectedShutterColor;
-    final selectedShutterColorId =
-        widget.model.selectedAccessoryColor?['id'] ??
-        widget.model.selectedDbColor?['id'];
-    for (final color in shutterColorItems) {
-      if (selectedShutterColorId != null &&
-          color['id']?.toString() == selectedShutterColorId.toString()) {
-        selectedShutterColor = color;
-        break;
+    final shutterColorItems = <Map<String, dynamic>>[];
+    final seenShutterColorIds = <String>{};
+    for (final c in rawShutterColorItems) {
+      final idStr = (c['id'] ?? c['name'] ?? '').toString();
+      if (idStr.isNotEmpty && seenShutterColorIds.add(idStr)) {
+        shutterColorItems.add(c);
       }
     }
+    final selectedShutterColorId = (widget.model.selectedAccessoryColor?['id'] ??
+            widget.model.selectedDbColor?['id'])
+        ?.toString();
+    final selectedShutterColor = (selectedShutterColorId != null &&
+            shutterColorItems.any(
+              (color) => color['id']?.toString() == selectedShutterColorId,
+            ))
+        ? shutterColorItems.firstWhere(
+            (color) => color['id']?.toString() == selectedShutterColorId,
+          )
+        : null;
     final primarySeries = widget.systemMode == 'sliding'
         ? widget.model.activeSlidingSeries
         : widget.model.activeSeries;
@@ -14075,36 +14138,34 @@ class _WindowViewState extends State<WindowView> {
     widget.model.clearSelection();
 
     if (!widget.model.isShutterOnly) {
-      // The frame picked in the drawing is the source of truth. Do not replace
-      // it merely because side covers are enabled: a standalone cover is valid
-      // with a non-integrated frame.
-      try {
-        final activeFrame = widget.model.activeFrameOverride;
-        final cId = _selectedProfileColorId();
-        if (activeFrame != null && cId != null) {
+      // The frame picked in the drawing is the source of truth. Refresh its
+      // colour price in the background so database startup never blocks the
+      // transition to the material table.
+      unawaited(() async {
+        try {
+          final activeFrame = widget.model.activeFrameOverride;
+          final cId = _selectedProfileColorId();
+          if (activeFrame == null || cId == null) return;
           final rawFrameId = activeFrame['id'];
           final sId = rawFrameId is num
               ? rawFrameId.toInt()
               : int.tryParse(rawFrameId?.toString() ?? '');
-          if (sId != null) {
-            final db = SqlDatabase();
-            double updatedPrice = await db.getSectionPrice(sId, cId);
-            final pricedFrame = Map<String, dynamic>.from(activeFrame);
-            pricedFrame['calculated_price'] = updatedPrice;
-            if (widget.model.usesSlidingPrimaryProfiles) {
-              widget.model.slidingFrameOverride = pricedFrame;
-            } else {
-              widget.model.frameOverride = pricedFrame;
-              widget.model.selectedFrameCode = pricedFrame['code']?.toString();
-            }
-            widget.model.updateProfileThickness();
+          if (sId == null) return;
+
+          final updatedPrice = await SqlDatabase().getSectionPrice(sId, cId);
+          final pricedFrame = Map<String, dynamic>.from(activeFrame);
+          pricedFrame['calculated_price'] = updatedPrice;
+          if (widget.model.usesSlidingPrimaryProfiles) {
+            widget.model.slidingFrameOverride = pricedFrame;
+          } else {
+            widget.model.frameOverride = pricedFrame;
+            widget.model.selectedFrameCode = pricedFrame['code']?.toString();
           }
+          widget.model.updateProfileThickness();
+        } catch (error) {
+          debugPrint('Failed to refresh frame price in background: $error');
         }
-      } catch (error) {
-        debugPrint(
-          'Failed to refresh frame price before material table: $error',
-        );
-      }
+      }());
     }
 
     if (!context.mounted) return;

@@ -1,5 +1,6 @@
 // Force compile sync trigger 4
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'dart:math' as math;
 
 class BomItem {
@@ -259,6 +260,7 @@ class BomItem {
       }
       if (original == 'Gâche coulissant TPR') return 'Gâche Coulissante TPR';
       if (original == 'كريمون (Cremone)') return 'Crémone';
+      if (original == 'تراينغل الكريمون (Triangle)') return 'Tringle crémone';
       if (original == 'بوشون بارك لوز (Bouchon Parclose)') {
         return 'Bouchon Parclose';
       }
@@ -372,6 +374,7 @@ class BomItem {
       if (original == 'كاش كوليسون (Gache coulissant)') return 'Strike Plate';
       if (original == 'Gâche coulissant TPR') return 'Strike Plate TPR';
       if (original == 'كريمون (Cremone)') return 'Cremone';
+      if (original == 'تراينغل الكريمون (Triangle)') return 'Cremone Tringle';
       if (original == 'بوشون بارك لوز (Bouchon Parclose)') {
         return 'Bouchon Parclose';
       }
@@ -662,6 +665,15 @@ class ComponentCalculator {
     }
     if (_textHasAny(originalName, const ['مفاصل', 'hinges'])) return 'مفاصل';
     if (_textHasAny(originalName, const ['فيرو', 'verrou'])) return 'فيرو';
+    if (_textHasAny(originalName, const [
+      'tringle',
+      'tangle',
+      'triangle',
+      'تراينغل',
+      'تريانغل',
+    ])) {
+      return 'tringle';
+    }
     if (_textHasAny(originalName, const ['كريمون', 'cremone', 'crémone'])) {
       return 'cremone';
     }
@@ -855,6 +867,8 @@ class ComponentCalculator {
         return 'espagnolette';
       case 'cremone':
         return 'cremone';
+      case 'tringle':
+        return 'tringle';
       case 'tasso':
         return 'tasso';
       case 'roulette':
@@ -1278,8 +1292,9 @@ class ComponentCalculator {
   static Map<String, dynamic> optimizeCutting({
     required List<double> pieces,
     required double barLength,
-    double bladeWaste = 0.004, // 4mm per cut
+    double? bladeWaste,
   }) {
+    final effectiveBladeWaste = bladeWaste ?? CuttingSettings.sawKerfMeters;
     if (pieces.isEmpty) {
       return {'exactBars': 0.0, 'optimizedBars': 0};
     }
@@ -1295,7 +1310,7 @@ class ComponentCalculator {
 
     for (double piece in sortedPieces) {
       if (piece <= 0) continue;
-      double pieceWithWaste = piece + bladeWaste;
+      double pieceWithWaste = piece + effectiveBladeWaste;
       bool placed = false;
       for (int i = 0; i < bins.length; i++) {
         if (bins[i] >= piece) {
@@ -1817,32 +1832,6 @@ class ComponentCalculator {
             : window.systemMode == 'sliding'
             ? (window.isSlidingPVC ? 'pvc' : 'aluminium')
             : (window.isPVC ? 'pvc' : 'aluminium'),
-      );
-    }
-
-    BomItem createOther(
-      String originalName, {
-      bool isActive = true,
-      String? color,
-      int qty = 0,
-    }) {
-      final selectorType = _selectorTypeForAccessory(originalName);
-      return _createOther(
-        window.componentOverrides,
-        originalName,
-        isActive: isActive,
-        color: color,
-        qty: qty * window.quantity,
-        catalogItemId: catalogueId(window.componentOverrides[originalName]),
-        colorId: catalogueColorId(color, accessory: true),
-        overrideKey: originalName,
-        selectorCategory: 'accessory',
-        selectorType: selectorType,
-        roleKey: _roleKeyForAccessorySelector(selectorType),
-        sourceSeriesId: window.systemMode == 'sliding'
-            ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
-            : window.activeSeries?.id,
-        materialType: window.isPVC ? 'pvc' : 'aluminium',
       );
     }
 
@@ -3293,9 +3282,11 @@ class ComponentCalculator {
             colorName,
             pieces: sashPlinthePieces,
             unit: 'متر',
-            overrideMap:
-                window.componentOverrides['بلانت (Plinthe)'] ??
-                window.sashOverride,
+            // Plinthe is its own catalogue role. Never fall back to the
+            // selected sash profile, otherwise a thick sash can replace the
+            // plant when the drawing changes sash type.
+            overrideMap: window.componentOverrides['بلانت (Plinthe)'] ??
+                window.getSectionByType('plinthe')?.toMap(),
           ),
         );
         items.add(
@@ -3905,12 +3896,10 @@ class ComponentCalculator {
           ),
         );
         items.add(
-          createProfile(
+          createAccessory(
             'تراينغل الكريمون (Triangle)',
-            colorName,
-            qty: cremoneQty.toDouble(),
-            unit: 'قطعة',
-            selectorType: 'triangle',
+            color: accessoryColorName,
+            qty: cremoneQty,
           ),
         );
       }
@@ -4090,7 +4079,7 @@ class ComponentCalculator {
           } else if (seriesName.contains('67000')) {
             kitKey = 'كيت 67000 (Kit 67000)';
           }
-          items.add(createOther(kitKey, color: colorName, qty: 1));
+          items.add(createAccessory(kitKey, color: accessoryColorName, qty: 1));
         }
         final bool useEntrematique =
             !window.isSlidingPVC &&
@@ -4135,6 +4124,13 @@ class ComponentCalculator {
             items.add(
               createAccessory(
                 'Gâche coulissant TPR',
+                color: accessoryColorName,
+                qty: slidingTotalEspagnolettes,
+              ),
+            );
+            items.add(
+              createAccessory(
+                'تراينغل الكريمون (Triangle)',
                 color: accessoryColorName,
                 qty: slidingTotalEspagnolettes,
               ),
@@ -4343,6 +4339,7 @@ class ComponentCalculator {
         bool filterAxeItems = true,
         bool sizeBound = true,
         bool showKitRow = true,
+        List<String> preferredKitTokens = const [],
       }) {
         String? matchedKitName;
         String? actualKitName;
@@ -4362,6 +4359,25 @@ class ComponentCalculator {
           minimumSizeMm: sizeBound ? window.shutterBoxHeight : null,
           allowWithoutSize: !sizeBound,
         );
+        final normalizedPreferredTokens = preferredKitTokens
+            .map((token) => token.trim().toLowerCase())
+            .where((token) => token.isNotEmpty)
+            .toList(growable: false);
+        final preferredCandidates = normalizedPreferredTokens.isEmpty
+            ? const <Map<String, dynamic>>[]
+            : candidates.where((kit) {
+                final searchable = [
+                  kit['name'],
+                  kit['measurement'],
+                  kit['description'],
+                ].whereType<Object>().join(' ').toLowerCase();
+                return normalizedPreferredTokens.any(
+                  (token) => searchable.contains(token),
+                );
+              }).toList(growable: false);
+        final orderedCandidates = preferredCandidates.isNotEmpty
+            ? preferredCandidates
+            : candidates;
         if (actualKitName != null && actualKitName.isNotEmpty) {
           final manual = candidates.where(
             (kit) => (kit['name'] ?? '').toString() == actualKitName,
@@ -4370,9 +4386,9 @@ class ComponentCalculator {
             matchedKitName = actualKitName;
           }
         }
-        matchedKitName ??= candidates.isEmpty
+        matchedKitName ??= orderedCandidates.isEmpty
             ? null
-            : (candidates.first['name'] ?? '').toString();
+            : (orderedCandidates.first['name'] ?? '').toString();
 
         // Compatibility fallback for orders saved before description codes
         // were introduced. New catalogues always use the code above.
@@ -4499,22 +4515,28 @@ class ComponentCalculator {
         // براغي الكيت
         items.add(createShutter('براغي الكيت', qty: 8));
       } else {
-        // A caisson tunnel is sold and managed as its configured Kit only.
-        // Its children stay nested under that Kit for stock and costing, but
-        // no standalone shutter component may leak into the quantity table.
+        // Select the configured CT bundle matching the selected tunnel kit and
+        // tunnel height when the catalogue contains more than one variant.
+        final tunnelKitType =
+            window.caissonPayload?['kitType']?.toString().toLowerCase() ?? '';
+        final tunnelSize = window.caissonTunnelHeight.toInt().toString();
         addAndExpandKit(
           'كيت صندوق النفق (Kit Caisson Tunnel)',
           'CT',
           sizeBound: false,
           filterAxeItems: false,
           showKitRow: true,
+          preferredKitTokens: [tunnelKitType, tunnelSize],
         );
       }
 
-      // A tunnel must show only its grouped Kit. The physical shutter rows
-      // below belong exclusively to regular caissons.
+      // The tunnel kit supplies the tunnel-specific profiles. The ordinary
+      // shutter rows still have to be calculated from the actual shutter
+      // width/height and selected blade, motor and rail catalogue entries.
+      // Only the regular overhead caisson itself is omitted in tunnel mode;
+      // it is represented by the configured CT kit above.
+      // ===== 2. الصندوق وبراغيه =====
       if (!isTunnel) {
-        // ===== 2. الصندوق وبراغيه =====
         List<double> caissonPieces = [window.width / 1000.0 - 0.01];
         items.add(
           createShutter(
@@ -4525,11 +4547,12 @@ class ComponentCalculator {
           ),
         );
         items.add(createShutter('براغي الصندوق', qty: 10));
+      }
 
-        // ===== 3. المحور (Axe) =====
+      // ===== 3. المحور (Axe) =====
         // Only add a separate Axe row if the selected Axe is 60mm (external).
         // For 40mm/44mm the Axe is already included inside the kit bundle.
-        {
+      {
           final axeOvr = window.componentOverrides['المحور (Axe)'];
           final axeNm = axeOvr?['name']?.toString() ?? '';
           final axeDm = axeOvr?['motor_diameter']?.toString() ?? '';
@@ -4546,9 +4569,9 @@ class ComponentCalculator {
               createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
             );
           }
-        }
+      }
 
-        // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
+      // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
         if (window.shutterMechanism == 'مانيفال') {
           items.add(
             createShutter(
@@ -4700,7 +4723,7 @@ class ComponentCalculator {
         }
 
         // ===== 11. الإكسسوارات الفردية (Tandem, Embout, Support Roulement, Support Moteur) =====
-        if (showIndividualOptions) {
+      if (showIndividualOptions) {
           // X3D parts are required in addition to the standard motor kit, so
           // they must remain visible even when a kit is active.
           if (!isKitActive || isX3dPvcAssembly) {
@@ -4753,7 +4776,6 @@ class ComponentCalculator {
               );
             }
           }
-        }
       }
     }
 
@@ -5515,11 +5537,8 @@ class ComponentCalculator {
         baseGw = sashCutW - sashGlassDeduction;
         baseGh = sashCutH - sashGlassDeduction;
         if (window.canUseOpeningOnlyOptions && zone.hasSashPlintheBottom) {
-          double plintheW =
-              window.componentOverrides.containsKey('بلانت (Plinthe)')
-              ? (window.componentOverrides['بلانت (Plinthe)']['visible_width'] ??
-                        40.0)
-                    .toDouble()
+          double plintheW = window.plintheHeight > 0
+              ? window.plintheHeight
               : 40.0;
           baseGh += sw;
           baseGh -= plintheW;
@@ -5546,11 +5565,8 @@ class ComponentCalculator {
         baseGwRight = sashCutWRight - sashGlassDeduction;
         baseGh = sashCutH - sashGlassDeduction;
         if (window.canUseOpeningOnlyOptions && zone.hasSashPlintheBottom) {
-          double plintheW =
-              window.componentOverrides.containsKey('بلانت (Plinthe)')
-              ? (window.componentOverrides['بلانت (Plinthe)']['visible_width'] ??
-                        40.0)
-                    .toDouble()
+          double plintheW = window.plintheHeight > 0
+              ? window.plintheHeight
               : 40.0;
           baseGh += sw;
           baseGh -= plintheW;
@@ -6612,7 +6628,9 @@ class ComponentCalculator {
       final targetOverride =
           selectedParcloseSimple ??
           parcloseSimple ??
-          (genericParcloseMatches(doubleGlass: false) ? chosenParclose : null) ??
+          (genericParcloseMatches(doubleGlass: false)
+              ? chosenParclose
+              : null) ??
           (parcloseDouble != null ? parcloseDouble : chosenParclose);
       if (targetOverride != null) {
         items.add(
@@ -6652,7 +6670,9 @@ class ComponentCalculator {
       final targetOverride =
           selectedSlidingParcloseSimple ??
           slidingParcloseSimple ??
-          (genericParcloseMatches(doubleGlass: false) ? chosenParclose : null) ??
+          (genericParcloseMatches(doubleGlass: false)
+              ? chosenParclose
+              : null) ??
           selectedParcloseSimple ??
           parcloseSimple ??
           chosenParclose;
@@ -6751,7 +6771,9 @@ class ComponentCalculator {
               'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
               qty: simplePerim,
               unit: 'متر',
-              targetThicknessMm: simpleBourrageTargetThickness > 0 ? simpleBourrageTargetThickness : 4.0,
+              targetThicknessMm: simpleBourrageTargetThickness > 0
+                  ? simpleBourrageTargetThickness
+                  : 4.0,
               overrideKey: 'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
             ),
           );
@@ -6760,22 +6782,32 @@ class ComponentCalculator {
               'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
               qty: doublePerim,
               unit: 'متر',
-              targetThicknessMm: doubleBourrageTargetThickness > 0 ? doubleBourrageTargetThickness : 2.0,
-              overrideKey: 'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
+              targetThicknessMm: doubleBourrageTargetThickness > 0
+                  ? doubleBourrageTargetThickness
+                  : 2.0,
+              overrideKey:
+                  'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
             ),
           );
         } else {
           final double targetThick = simplePerim > 0 && doublePerim <= 0
-              ? (simpleBourrageTargetThickness > 0 ? simpleBourrageTargetThickness : 4.0)
+              ? (simpleBourrageTargetThickness > 0
+                    ? simpleBourrageTargetThickness
+                    : 4.0)
               : (doublePerim > 0 && simplePerim <= 0
-                  ? (doubleBourrageTargetThickness > 0 ? doubleBourrageTargetThickness : 2.0)
-                  : math.max(simpleBourrageTargetThickness, doubleBourrageTargetThickness));
+                    ? (doubleBourrageTargetThickness > 0
+                          ? doubleBourrageTargetThickness
+                          : 2.0)
+                    : math.max(
+                        simpleBourrageTargetThickness,
+                        doubleBourrageTargetThickness,
+                      ));
 
           final String originalName = targetThick <= 2.5
               ? 'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)'
               : (targetThick <= 4.5
-                  ? 'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)'
-                  : 'جوان البوراج (Joint Bourrage)');
+                    ? 'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)'
+                    : 'جوان البوراج (Joint Bourrage)');
 
           items.add(
             createJoint(
@@ -7476,68 +7508,6 @@ class ComponentCalculator {
               ));
     return BomItem(
       category: 'accessory',
-      originalName: originalName,
-      profileCode: profileCode,
-      name: name,
-      imagePath: imagePath,
-      colorName: color,
-      quantity: qty.toDouble(),
-      unit: 'حبة',
-      unitPrice: price,
-      isMissing: !isLinked,
-      isActive: isActive,
-      catalogItemId: linkedCatalogueId,
-      inventoryItemType: 'Accessory',
-      colorId: colorId,
-      overrideKey: overrideKey ?? lookupKey,
-      selectorCategory: selectorCategory ?? 'accessory',
-      selectorType: selectorType ?? _selectorTypeForAccessory(originalName),
-      roleKey: roleKey,
-      sourceSeriesId: sourceSeriesId,
-      materialType: materialType,
-    );
-  }
-
-  static BomItem _createOther(
-    Map<String, dynamic> overrides,
-    String originalName, {
-    bool isActive = true,
-    String? color,
-    int qty = 0,
-    int? catalogItemId,
-    int? colorId,
-    String? overrideKey,
-    String? selectorCategory,
-    String? selectorType,
-    String? roleKey,
-    int? sourceSeriesId,
-    String? materialType,
-  }) {
-    String lookupKey = originalName;
-    bool isLinked = overrides.containsKey(lookupKey);
-    String name = originalName;
-    double price = 0.0;
-    String? profileCode;
-    String? imagePath;
-    if (isLinked) {
-      final ov = overrides[lookupKey];
-      profileCode = ov['code']?.toString();
-      imagePath = ov['image_path']?.toString();
-      final code = ov['code'] ?? '';
-      final cName = ov['name'] ?? originalName;
-      final details = code.toString().isNotEmpty ? '$code - $cName' : cName;
-      name = '$originalName\n$details';
-      price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
-    }
-    final linkedCatalogueId =
-        catalogItemId ??
-        (isLinked && overrides[lookupKey]['id'] is num
-            ? (overrides[lookupKey]['id'] as num).toInt()
-            : int.tryParse(
-                '${isLinked ? overrides[lookupKey]['id'] ?? '' : ''}',
-              ));
-    return BomItem(
-      category: 'other',
       originalName: originalName,
       profileCode: profileCode,
       name: name,

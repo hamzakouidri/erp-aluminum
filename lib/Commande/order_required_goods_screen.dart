@@ -6,6 +6,7 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
@@ -164,12 +165,13 @@ InventoryAwareCuttingPlan optimizeCuttingWithRemnants({
   required Iterable<double> pieces,
   required Iterable<AvailableRemnantPiece> remnants,
   required double stockLength,
-  double bladeWaste = 0.004,
+  double? bladeWaste,
 }) {
+  final effectiveBladeWaste = bladeWaste ?? CuttingSettings.sawKerfMeters;
   final remainingPieces = pieces.where((piece) => piece > 0).toList()
     ..sort((a, b) => b.compareTo(a));
   final bins = remnants
-      .where((piece) => piece.length > bladeWaste)
+      .where((piece) => piece.length > effectiveBladeWaste)
       .map(
         (piece) => <String, dynamic>{
           'piece': piece,
@@ -181,7 +183,7 @@ InventoryAwareCuttingPlan optimizeCuttingWithRemnants({
   final unallocated = <double>[];
 
   for (final cut in remainingPieces) {
-    final needed = cut + bladeWaste;
+    final needed = cut + effectiveBladeWaste;
     Map<String, dynamic>? selected;
     var bestRemainder = double.infinity;
     for (final bin in bins) {
@@ -215,7 +217,7 @@ InventoryAwareCuttingPlan optimizeCuttingWithRemnants({
     fullBarPlan: optimizeRequiredGoodsCutting(
       pieces: unallocated,
       stockLength: stockLength,
-      bladeWaste: bladeWaste,
+      bladeWaste: effectiveBladeWaste,
     ),
   );
 }
@@ -227,19 +229,20 @@ InventoryAwareCuttingPlan optimizeCuttingWithRemnants({
 OrderCuttingPlan optimizeRequiredGoodsCutting({
   required Iterable<double> pieces,
   required double stockLength,
-  double bladeWaste = 0.004,
+  double? bladeWaste,
 }) {
+  final effectiveBladeWaste = bladeWaste ?? CuttingSettings.sawKerfMeters;
   if (stockLength <= 0) {
     return OrderCuttingPlan(
       bars: const [],
       stockLength: stockLength,
-      bladeWaste: bladeWaste,
+      bladeWaste: effectiveBladeWaste,
       oversizedPieces: pieces.where((piece) => piece > 0).toList(),
     );
   }
 
   final stockMm = (stockLength * 1000).round();
-  final kerfMm = (bladeWaste * 1000).round().clamp(0, stockMm);
+  final kerfMm = (effectiveBladeWaste * 1000).round().clamp(0, stockMm);
   final validPieces = pieces.where((piece) => piece > 0).toList();
   final oversizedPieces = validPieces
       .where((piece) => (piece * 1000).round() + kerfMm > stockMm)
@@ -258,7 +261,7 @@ OrderCuttingPlan optimizeRequiredGoodsCutting({
     return OrderCuttingPlan(
       bars: const [],
       stockLength: stockLength,
-      bladeWaste: bladeWaste,
+      bladeWaste: effectiveBladeWaste,
       oversizedPieces: oversizedPieces,
     );
   }
@@ -362,7 +365,7 @@ OrderCuttingPlan optimizeRequiredGoodsCutting({
   return OrderCuttingPlan(
     bars: bars,
     stockLength: stockLength,
-    bladeWaste: bladeWaste,
+    bladeWaste: effectiveBladeWaste,
     oversizedPieces: oversizedPieces,
   );
 }
@@ -471,6 +474,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   final Set<String> _expandedCuttingPlans = {};
   bool _isCreatingPurchase = false;
   late AppLanguage _currentLang;
+  Future<int>? _shutterGreyColorIdFuture;
 
   @override
   void initState() {
@@ -527,11 +531,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     try {
       final kits = await widget.db.readKitBundles();
-      for (final kit in kits) {
+      await Future.wait(kits.map((kit) async {
         final kitName = kit['name']?.toString() ?? '';
-        if (kitName.isEmpty) continue;
+        if (kitName.isEmpty) return;
         final kitId = _safeInt(kit['id']);
-        if (kitId == null) continue;
+        if (kitId == null) return;
         final details = await widget.db.readKitBundleItemsWithDetails(
           kitId,
           topLevelOnly: true,
@@ -541,7 +545,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             .toList();
         kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
         kitBundleMetadata[kitName] = Map<String, dynamic>.from(kit);
-      }
+      }));
     } catch (e) {
       debugPrint('Required goods kit cache load warning: $e');
     }
@@ -551,6 +555,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       perLeaf: kitPerLeafMap,
       metadata: kitBundleMetadata,
     );
+  }
+
+  Future<int> _shutterGreyColorId() {
+    return _shutterGreyColorIdFuture ??= widget.db
+        .ensureShutterComponentsUseGreyPrice();
   }
 
   void _applyInstanceSize(WindowModel model, double width, double height) {
@@ -708,8 +717,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     // The grey colour is the shutter component base price.  This also moves
     // legacy standalone prices into the colour-price table before this BOM is
     // priced.
-    final shutterGreyColorId = await sqlDb
-        .ensureShutterComponentsUseGreyPrice();
+    final shutterGreyColorId = await _shutterGreyColorId();
 
     // Generate initial BOM
     final bomItems = ComponentCalculator.generateBom(
@@ -870,9 +878,31 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               keywordFr = 'bouchon_lame';
               keywordAr = 'أغطية الشفرات';
             }
-          } else if (item.category == 'accessory') {
+          } else if (item.category == 'accessory' ||
+              (item.category == 'other' &&
+                  (item.inventoryItemType ?? '').toLowerCase() ==
+                      'accessory')) {
             table = 'Accessories';
-            if (item.originalName.contains('المقبض') ||
+            if (item.originalName.contains('بوشون باتمو') ||
+                item.originalName.toLowerCase().contains('bouchon batmo')) {
+              keywordFr = 'bouchon batmo';
+              keywordAr = 'بوشون باتمو';
+            } else if (item.originalName.toLowerCase().contains('clam') ||
+                item.originalName.contains('كلام') ||
+                item.originalName.toLowerCase().contains('clamp')) {
+              keywordFr = 'clam';
+              keywordAr = 'كلام';
+            } else if (item.originalName.contains('Triangle') ||
+                item.originalName.contains('Tringle') ||
+                item.originalName.contains('تراينغل') ||
+                item.originalName.contains('تريانغل')) {
+              keywordFr = 'tringle';
+              keywordAr = 'triangle';
+            } else if (item.originalName.contains('Kit 400') ||
+                item.originalName.contains('كيت 400')) {
+              keywordFr = 'kit 400';
+              keywordAr = 'كيت 400';
+            } else if (item.originalName.contains('المقبض') ||
                 item.originalName.contains('Handle')) {
               keywordFr = 'poign';
               keywordAr = 'مقبض';
@@ -1320,8 +1350,20 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       if (orderId == null) {
         throw StateError('رقم الطلبية غير صالح');
       }
-      final rawItems = await widget.db.readCommandeDetails(orderId);
-      final kitCache = await _loadKitBundleCache();
+      final loaded = await Future.wait<dynamic>([
+        widget.db.readCommandeDetails(orderId),
+        _loadKitBundleCache(),
+        widget.db.readSawKerfMm(),
+      ]);
+      final rawItems = loaded[0] as List<Map<String, dynamic>>;
+      final kitCache = loaded[1]
+          as ({
+            Map<String, List<Map<String, dynamic>>> data,
+            Map<String, bool> perLeaf,
+            Map<String, Map<String, dynamic>> metadata,
+          });
+      final sawKerfMm = loaded[2] as double?;
+      if (sawKerfMm != null) CuttingSettings.setSawKerfMm(sawKerfMm);
       final catalogCache = <String, WindowModel>{};
 
       // مخزن التجميع: مفتاح التجميع → السلعة المجمّعة
@@ -3161,6 +3203,48 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     return value > 0 ? value : 0;
   }
 
+  String _remnantThresholdKeyForItem(AggregatedGoodItem item) {
+    final text = '${item.category} ${item.originalName} ${item.name}'
+        .toLowerCase()
+        .replaceAll('ـ', ' ');
+    final hasSideCover = text.contains('غطاء جانبي') ||
+        text.contains('الغطاء الجانبي') ||
+        text.contains('side cover') ||
+        text.contains('couvre-joint') ||
+        text.contains('couvre joint') ||
+        text.contains('couvre');
+    if (hasSideCover) return 'frame_side_cover';
+
+    final isProfile = item.category == 'profile' ||
+        item.category == 'frame' ||
+        item.category == 'mullion' ||
+        item.category == 'sash';
+    if (!isProfile) return '';
+    if (text.contains('تقسيم') ||
+        text.contains('فاصل') ||
+        text.contains('عمود') ||
+        text.contains('mullion') ||
+        text.contains('partition') ||
+        text.contains('traverse')) {
+      return 'mullion';
+    }
+    if (text.contains('دلفة') ||
+        text.contains('ضلفة') ||
+        text.contains('كانة') ||
+        text.contains('sash') ||
+        text.contains('ouvrant')) {
+      return 'sash';
+    }
+    if (text.contains('إطار') ||
+        text.contains('اطار') ||
+        text.contains('frame') ||
+        text.contains('cadre') ||
+        item.category == 'frame') {
+      return 'frame';
+    }
+    return '';
+  }
+
   List<AggregatedGoodItem> get _cuttableCatalogItems => _aggregatedItems
       .where(
         (item) =>
@@ -3194,6 +3278,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final locations = await widget.db.readLocations();
     if (!mounted || locations.isEmpty) return;
     final configuredMinimum = await widget.db.readMinimumReusableLengthMm();
+    final configuredMinimums = await widget.db.readMinimumReusableLengthsMm();
     if (!mounted) return;
 
     var selectedLocationId = (locations.first['id'] as num).toInt();
@@ -3327,6 +3412,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     for (final item in _cuttableCatalogItems) {
       final plan = item.cuttingPlan!;
       final seriesId = await _seriesIdFor(item);
+      final thresholdKey = _remnantThresholdKeyForItem(item);
+      final minimumForItem = configuredMinimums[thresholdKey] ?? minimum;
       for (final cuts in plan.bars) {
         bars.add({
           'item_id': item.catalogItemId,
@@ -3336,6 +3423,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           'bar_index': globalBarIndex++,
           'remainder_mm': _barRemainder(plan, cuts) * 1000,
           'kerf_loss_mm': cuts.length * plan.bladeWaste * 1000,
+          'minimum_reusable_length_mm': minimumForItem,
         });
       }
     }
@@ -4511,23 +4599,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8.0),
-                              child: pb.model.isCaissonTunnel
-                                  ? Image.asset(
-                                      'Icon/caisson_tunnel.jpg',
-                                      fit: BoxFit.contain,
-                                      errorBuilder:
-                                          (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) => Image.asset(
-                                            'assets/Icon/caisson_tunnel.jpg',
-                                            fit: BoxFit.contain,
-                                          ),
-                                    )
-                                  : CustomPaint(
-                                      painter: WindowPainter(model: pb.model),
-                                    ),
+                              // The quantity breakdown must show the same
+                              // drawing as the drawing page, including tunnel
+                              // shutters; the official tunnel photo is only a
+                              // system/catalogue icon.
+                              child: CustomPaint(
+                                painter: WindowPainter(model: pb.model),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),

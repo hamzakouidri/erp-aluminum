@@ -1,7 +1,5 @@
 // Force compile sync trigger
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/localization.dart';
@@ -160,89 +158,21 @@ class DevisBuilder {
   static double _toDouble(dynamic value) => (value as num?)?.toDouble() ?? 0.0;
 
   static Future<DevisWorkshopInfo> loadWorkshopInfo() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final localWorkshopName = prefs.getString('workshop_name') ?? 'ورشتي';
-      final localWorkshopPhone = prefs.getString('phone') ?? '';
-
-      final rc = prefs.getString('workshop_rc') ?? '';
-      final nif = prefs.getString('workshop_nif') ?? '';
-      final nis = prefs.getString('workshop_nis') ?? '';
-      final ai = prefs.getString('workshop_ai') ?? '';
-      final rib = prefs.getString('workshop_rib') ?? '';
-      final address = prefs.getString('workshop_address') ?? '';
-
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        return DevisWorkshopInfo(
-          name: localWorkshopName,
-          phone: localWorkshopPhone,
-          address: address,
-          rc: rc,
-          nif: nif,
-          nis: nis,
-          ai: ai,
-          rib: rib,
-          logoBase64: '',
-        );
-      }
-
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get()
-          .timeout(const Duration(seconds: 5));
-      if (!doc.exists) {
-        return DevisWorkshopInfo(
-          name: localWorkshopName,
-          phone: localWorkshopPhone,
-          address: address,
-          rc: rc,
-          nif: nif,
-          nis: nis,
-          ai: ai,
-          rib: rib,
-          logoBase64: '',
-        );
-      }
-
-      final data = doc.data() ?? {};
-      return DevisWorkshopInfo(
-        name: data['workshopName']?.toString().trim().isNotEmpty == true
-            ? data['workshopName'].toString()
-            : localWorkshopName,
-        phone:
-            data['phone']?.toString() ??
-            data['phoneNumber']?.toString() ??
-            user.phoneNumber ??
-            localWorkshopPhone,
-        address: data['workshopLocation']?.toString() ?? address,
-        rc: data['rc']?.toString() ?? rc,
-        nif: data['nif']?.toString() ?? nif,
-        nis: data['nis']?.toString() ?? nis,
-        ai: data['ai']?.toString() ?? ai,
-        rib: data['rib']?.toString() ?? rib,
-        logoBase64:
-            data['workshopLogoUrl']?.toString() ??
-            data['logoUrl']?.toString() ??
-            '',
-      );
-    } catch (_) {
-      // A document must still open when the phone is offline or Firestore is
-      // slow. Fall back to the workshop information saved on this phone.
-      final prefs = await SharedPreferences.getInstance();
-      return DevisWorkshopInfo(
-        name: prefs.getString('workshop_name') ?? 'ورشتي',
-        phone: prefs.getString('phone') ?? '',
-        address: prefs.getString('workshop_address') ?? '',
-        rc: prefs.getString('workshop_rc') ?? '',
-        nif: prefs.getString('workshop_nif') ?? '',
-        nis: prefs.getString('workshop_nis') ?? '',
-        ai: prefs.getString('workshop_ai') ?? '',
-        rib: prefs.getString('workshop_rib') ?? '',
-        logoBase64: '',
-      );
-    }
+    // Workshop information is owned by Supabase. The sync service writes the
+    // latest profile into these local preferences on every device, so PDFs
+    // must never fall back to a duplicated Firestore profile document.
+    final prefs = await SharedPreferences.getInstance();
+    return DevisWorkshopInfo(
+      name: prefs.getString('workshop_name') ?? 'ورشتي',
+      phone: prefs.getString('phone') ?? '',
+      address: prefs.getString('workshop_address') ?? '',
+      rc: prefs.getString('workshop_rc') ?? '',
+      nif: prefs.getString('workshop_nif') ?? '',
+      nis: prefs.getString('workshop_nis') ?? '',
+      ai: prefs.getString('workshop_ai') ?? '',
+      rib: prefs.getString('workshop_rib') ?? '',
+      logoBase64: prefs.getString('workshop_logo_base64') ?? '',
+    );
   }
 
   static Future<DevisData> build({
@@ -986,7 +916,10 @@ class DevisBuilder {
       }
 
       return DevisLineItem(
-        imagePath: 'assets/Icon/caisson_tunnel.jpg',
+        // The drawing saved with the order is the source of truth.  The
+        // official tunnel asset is used only by old rendering fallbacks when
+        // no drawing path exists.
+        imagePath: item['drawing_image_path']?.toString().trim(),
         title: title,
         details: details,
         unitPrice: unitPrice,

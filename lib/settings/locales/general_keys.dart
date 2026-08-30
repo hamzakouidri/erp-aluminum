@@ -350,6 +350,38 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Annuler',
     AppLanguage.english: 'Cancel',
   },
+  'تأكيد الخروج': {
+    AppLanguage.arabic: 'تأكيد الخروج',
+    AppLanguage.french: 'Confirmation de sortie',
+    AppLanguage.english: 'Confirm Exit',
+  },
+  'هل تريد الخروج من صفحة الرسم؟': {
+    AppLanguage.arabic: 'هل تريد الخروج من صفحة الرسم؟',
+    AppLanguage.french: 'Voulez-vous quitter la page de dessin ?',
+    AppLanguage.english: 'Do you want to leave the drawing page?',
+  },
+  'خروج': {
+    AppLanguage.arabic: 'خروج',
+    AppLanguage.french: 'Quitter',
+    AppLanguage.english: 'Exit',
+  },
+  'تم تحويل القياس الحالي إلى ستار': {
+    AppLanguage.arabic: 'تم تحويل القياس الحالي إلى ستار',
+    AppLanguage.french: 'La mesure actuelle a été convertie en volet',
+    AppLanguage.english: 'The current measurement was converted to a shutter',
+  },
+  'إعدادات القص والفضلات': {
+    AppLanguage.arabic: 'إعدادات القص والفضلات',
+    AppLanguage.french: 'Paramètres de coupe et de chutes',
+    AppLanguage.english: 'Cutting and Remnant Settings',
+  },
+  'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.': {
+    AppLanguage.arabic: 'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
+    AppLanguage.french:
+        'Perte de scie et minimum de chute selon le type de pièce.',
+    AppLanguage.english:
+        'Saw kerf and minimum remnant by part type.',
+  },
   'اختر نظام العمل': {
     AppLanguage.arabic: 'اختر نظام العمل',
     AppLanguage.french: 'Sélectionnez le système de travail',

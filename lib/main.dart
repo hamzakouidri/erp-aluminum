@@ -18,7 +18,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
 import 'package:database_data/Commande/texture_cache.dart';
+import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:window_manager/window_manager.dart';
 
@@ -98,6 +100,16 @@ void main() async {
     await TextureCache.init();
   } catch (e) {
     debugPrint('TextureCache init warning: $e');
+  }
+
+  // Load the last saved kerf before any synchronous BOM is generated.
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    CuttingSettings.setSawKerfMm(
+      prefs.getDouble('saw_kerf_mm') ?? CuttingSettings.defaultSawKerfMm,
+    );
+  } catch (e) {
+    debugPrint('Cutting settings cache warning: $e');
   }
 
   String? firebaseError;

@@ -40,6 +40,12 @@ class AppSettingsProvider extends ChangeNotifier {
   StreamSubscription<DocumentSnapshot>? _permSubscription;
   StreamSubscription<Map<String, dynamic>>? _supabasePermSubscription;
   String? _permissionListenerUid;
+  // Firestore is the authoritative source for the signed-in user's role.
+  // Supabase can refresh permissions at the same time, but its first row may
+  // briefly be stale while a workshop sync is starting.  Do not let that
+  // transient row downgrade a manager and cause open screens to close.
+  bool _firestoreRoleLoaded = false;
+  bool _firestorePermissionsAvailable = false;
 
   @override
   void dispose() {
@@ -96,13 +102,17 @@ class AppSettingsProvider extends ChangeNotifier {
     }
 
     _permSubscription?.cancel();
+    _firestoreRoleLoaded = false;
+    _firestorePermissionsAvailable = false;
     _permissionListenerUid = user.uid;
     _permSubscription = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .snapshots()
         .listen((docSnap) {
+          _firestoreRoleLoaded = true;
           final data = docSnap.data();
+          _firestorePermissionsAvailable = docSnap.exists && data != null;
           if (!docSnap.exists || data == null) {
             _userRole = 'worker';
             _workerPermissions = {};
@@ -122,8 +132,13 @@ class AppSettingsProvider extends ChangeNotifier {
           }
 
           Map<String, dynamic> cloudPermissions = {};
+          // The Map is the current Firestore field. The JSON field is only a
+          // legacy fallback; preferring it could reapply an older snapshot.
+          final rawPermissions = data['permissions'];
           final permissionsJson = data['permissions_json'];
-          if (permissionsJson is String && permissionsJson.isNotEmpty) {
+          if (rawPermissions is Map) {
+            cloudPermissions = Map<String, dynamic>.from(rawPermissions);
+          } else if (permissionsJson is String && permissionsJson.isNotEmpty) {
             try {
               final decoded = jsonDecode(permissionsJson);
               if (decoded is Map) {
@@ -156,7 +171,11 @@ class AppSettingsProvider extends ChangeNotifier {
         .listen((payload) {
           final role = payload['role']?.toString() ?? '';
           final rawPermissions = payload['permissions'];
-          if (!isAdmin && role.isNotEmpty) {
+          // Firebase owns permissions for accounts that have a Firebase user
+          // document. Supabase refreshes can be briefly behind a manager's
+          // latest save, so never let them overwrite that authoritative value.
+          if (_firestorePermissionsAvailable) return;
+          if (!isAdmin && role.isNotEmpty && !_firestorePermissionsAvailable) {
             _userRole = role;
           }
           if (rawPermissions is Map) {
@@ -184,7 +203,8 @@ class AppSettingsProvider extends ChangeNotifier {
     final cached = _decodeCachedPermissions(
       prefs.getString('permissions_json'),
     );
-    if (cached.isNotEmpty || _workerPermissions.isEmpty) {
+    if (!_firestorePermissionsAvailable &&
+        (cached.isNotEmpty || _workerPermissions.isEmpty)) {
       _workerPermissions = cached;
     }
 
@@ -197,6 +217,8 @@ class AppSettingsProvider extends ChangeNotifier {
       _permSubscription?.cancel();
       _permSubscription = null;
       _permissionListenerUid = null;
+      _firestoreRoleLoaded = false;
+      _firestorePermissionsAvailable = false;
       _userRole = prefs.getString('user_role') ?? 'worker';
     } else {
       if (isApplicationAdminEmail(user.email)) {
@@ -206,7 +228,9 @@ class AppSettingsProvider extends ChangeNotifier {
       } else {
         // Never grant manager access merely because this computer has no
         // cached role yet. The first Firestore snapshot is authoritative.
-        _userRole = prefs.getString('user_role') ?? 'worker';
+        if (!_firestoreRoleLoaded) {
+          _userRole = prefs.getString('user_role') ?? 'worker';
+        }
       }
 
       try {

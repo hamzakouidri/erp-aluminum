@@ -52,6 +52,14 @@ class SqlDatabase {
   static Database? _db;
   static Future<Database>? _openingDb;
   static Future<void>? _databaseReopenTask;
+  // Schema checks are required when the database is opened, but running the
+  // same CREATE/ALTER/INDEX statements before every catalogue query makes
+  // the material table unnecessarily slow (especially on older databases).
+  // Keep one in-flight/completed task per open database connection.
+  static Object? _seriesDesignSchemaOwner;
+  static Future<void>? _seriesDesignSchemaTask;
+  static Object? _advancedKitSchemaOwner;
+  static Future<void>? _advancedKitSchemaTask;
   static bool _knownColorsRepaired = false;
   static final Random _distributedIdRandom = Random.secure();
   static int _lastDistributedId = 0;
@@ -256,6 +264,10 @@ class SqlDatabase {
   static void resetDb() {
     _db = null;
     _openingDb = null;
+    _seriesDesignSchemaOwner = null;
+    _seriesDesignSchemaTask = null;
+    _advancedKitSchemaOwner = null;
+    _advancedKitSchemaTask = null;
   }
 
   static Future<void> clearAllLocalData() async {
@@ -1578,7 +1590,18 @@ class SqlDatabase {
   /// screen.  The renderer and the material calculator read the same rows;
   /// a series is therefore identified by component roles, never by a name or
   /// by a hard-coded section number.
-  Future<void> _ensureSeriesDesignTables(DatabaseExecutor db) async {
+  Future<void> _ensureSeriesDesignTables(DatabaseExecutor db) {
+    final cachedTask = _seriesDesignSchemaTask;
+    if (identical(_seriesDesignSchemaOwner, db) && cachedTask != null) {
+      return cachedTask;
+    }
+    final task = _ensureSeriesDesignTablesImpl(db);
+    _seriesDesignSchemaOwner = db;
+    _seriesDesignSchemaTask = task;
+    return task;
+  }
+
+  Future<void> _ensureSeriesDesignTablesImpl(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS SeriesDesignConfig (
         series_id INTEGER PRIMARY KEY,
@@ -1738,7 +1761,18 @@ class SqlDatabase {
     );
   }
 
-  Future<void> _ensureAdvancedKitCompatibilitySchema(
+  Future<void> _ensureAdvancedKitCompatibilitySchema(DatabaseExecutor db) {
+    final cachedTask = _advancedKitSchemaTask;
+    if (identical(_advancedKitSchemaOwner, db) && cachedTask != null) {
+      return cachedTask;
+    }
+    final task = _ensureAdvancedKitCompatibilitySchemaImpl(db);
+    _advancedKitSchemaOwner = db;
+    _advancedKitSchemaTask = task;
+    return task;
+  }
+
+  Future<void> _ensureAdvancedKitCompatibilitySchemaImpl(
     DatabaseExecutor db,
   ) async {
     for (final statement in const [
@@ -12916,7 +12950,7 @@ class SqlDatabase {
     ''');
   }
 
-  Future<double?> readMinimumReusableLengthMm() async {
+  Future<double?> _readInventorySettingNumber(String key) async {
     final myDb = await db;
     if (myDb == null) return null;
     await _ensureRemnantInventorySchema(myDb);
@@ -12924,7 +12958,7 @@ class SqlDatabase {
       'InventorySettings',
       columns: const ['numeric_value'],
       where: 'setting_key = ?',
-      whereArgs: const ['minimum_reusable_length_mm'],
+      whereArgs: [key],
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -12932,9 +12966,9 @@ class SqlDatabase {
     return value != null && value > 0 ? value : null;
   }
 
-  Future<void> saveMinimumReusableLengthMm(double lengthMm) async {
-    if (lengthMm <= 0) {
-      throw ArgumentError.value(lengthMm, 'lengthMm', 'Must be positive');
+  Future<void> _saveInventorySettingNumber(String key, double value) async {
+    if (value <= 0) {
+      throw ArgumentError.value(value, 'value', 'Must be positive');
     }
     final myDb = await db;
     if (myDb == null) return;
@@ -12943,20 +12977,17 @@ class SqlDatabase {
       'InventorySettings',
       columns: const ['id'],
       where: 'setting_key = ?',
-      whereArgs: const ['minimum_reusable_length_mm'],
+      whereArgs: [key],
       limit: 1,
     );
     final values = {
-      'numeric_value': lengthMm,
+      'numeric_value': value,
       'updated_at': DateTime.now().toIso8601String(),
     };
     if (rows.isEmpty) {
       await myDb.insert(
         'InventorySettings',
-        _withDistributedId({
-          'setting_key': 'minimum_reusable_length_mm',
-          ...values,
-        }),
+        _withDistributedId({'setting_key': key, ...values}),
       );
     } else {
       await myDb.update(
@@ -12968,6 +12999,50 @@ class SqlDatabase {
     }
     CloudSyncService().notifyChange();
   }
+
+  Future<double?> readSawKerfMm() =>
+      _readInventorySettingNumber('saw_kerf_mm');
+
+  Future<void> saveSawKerfMm(double kerfMm) =>
+      _saveInventorySettingNumber('saw_kerf_mm', kerfMm);
+
+  String _minimumReusableLengthSettingKey(String? itemKey) {
+    final normalized = itemKey?.trim().toLowerCase() ?? '';
+    return normalized.isEmpty
+        ? 'minimum_reusable_length_mm'
+        : 'minimum_reusable_length_mm:$normalized';
+  }
+
+  Future<double?> readMinimumReusableLengthMm({String? itemKey}) =>
+      _readInventorySettingNumber(_minimumReusableLengthSettingKey(itemKey));
+
+  Future<Map<String, double>> readMinimumReusableLengthsMm() async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureRemnantInventorySchema(myDb);
+    final rows = await myDb.query(
+      'InventorySettings',
+      columns: const ['setting_key', 'numeric_value'],
+      where: "setting_key LIKE 'minimum_reusable_length_mm:%'",
+    );
+    final result = <String, double>{};
+    for (final row in rows) {
+      final key = row['setting_key']?.toString();
+      final value = _readStoredNumber(row['numeric_value']);
+      if (key != null && key.isNotEmpty && value != null && value > 0) {
+        result[key.substring('minimum_reusable_length_mm:'.length)] = value;
+      }
+    }
+    return result;
+  }
+
+  Future<void> saveMinimumReusableLengthMm(
+    double lengthMm, {
+    String? itemKey,
+  }) => _saveInventorySettingNumber(
+    _minimumReusableLengthSettingKey(itemKey),
+    lengthMm,
+  );
 
   String _materialTicketCode(String prefix, int orderId, int barIndex, int id) {
     final suffix = id.toString();
@@ -13032,6 +13107,10 @@ class SqlDatabase {
         final barIndex = (bar['bar_index'] as num?)?.toInt() ?? 0;
         final remainderMm = _readStoredNumber(bar['remainder_mm']) ?? 0;
         final kerfLossMm = _readStoredNumber(bar['kerf_loss_mm']) ?? 0;
+        final barMinimum = _readStoredNumber(
+              bar['minimum_reusable_length_mm'],
+            ) ??
+            minimumReusableLengthMm;
         if (itemId == null || itemType.isEmpty) continue;
 
         final common = <String, dynamic>{
@@ -13050,7 +13129,7 @@ class SqlDatabase {
         };
 
         if (remainderMm > 0.5) {
-          final reusable = remainderMm + 0.01 >= minimumReusableLengthMm;
+          final reusable = remainderMm + 0.01 >= barMinimum;
           final id = _nextDistributedId();
           final ticket = _materialTicketCode(
             reusable ? 'REM' : 'SCR',

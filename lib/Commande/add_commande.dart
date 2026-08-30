@@ -3950,21 +3950,7 @@ class _CommandePageState extends State<CommandePage> {
                                 border: Border.all(color: Colors.grey.shade300),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: isCaisson
-                                  ? Image.asset(
-                                      'Icon/caisson_tunnel.jpg',
-                                      fit: BoxFit.contain,
-                                      errorBuilder:
-                                          (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) => Image.asset(
-                                            'assets/Icon/caisson_tunnel.jpg',
-                                            fit: BoxFit.contain,
-                                          ),
-                                    )
-                                  : isMoustiquaire
+                              child: isMoustiquaire
                                   ? Image.asset(
                                       'Icon/media.webp',
                                       fit: BoxFit.contain,

@@ -93,23 +93,7 @@ class PdfInvoiceApi {
         final item = data.items[i];
         final path = item.imagePath;
 
-        if (item.title.contains('Caisson Tunnel') ||
-            item.title.contains('Caisson Tunnel') ||
-            (path != null && path.contains('caisson_tunnel'))) {
-          try {
-            final bytes = (await rootBundle.load(
-              'Icon/caisson_tunnel.jpg',
-            )).buffer.asUint8List();
-            imageWidgets[i] = pw.MemoryImage(bytes);
-          } catch (_) {
-            try {
-              final bytes = (await rootBundle.load(
-                'assets/Icon/caisson_tunnel.jpg',
-              )).buffer.asUint8List();
-              imageWidgets[i] = pw.MemoryImage(bytes);
-            } catch (_) {}
-          }
-        } else if (item.title.contains('Moustiquaire') ||
+        if (item.title.contains('Moustiquaire') ||
             item.title.contains('موستيكير') ||
             (path != null && path.contains('moustiquaire'))) {
           try {
@@ -127,11 +111,37 @@ class PdfInvoiceApi {
           }
         } else if (path != null && path.isNotEmpty) {
           try {
-            final file = File(path);
-            if (file.existsSync()) {
-              imageWidgets[i] = pw.MemoryImage(file.readAsBytesSync());
+            if (path.startsWith('assets/') || path.startsWith('Icon/')) {
+              final bytes = (await rootBundle.load(path)).buffer.asUint8List();
+              imageWidgets[i] = pw.MemoryImage(bytes);
+            } else {
+              final file = File(path);
+              if (await file.exists()) {
+                imageWidgets[i] = pw.MemoryImage(await file.readAsBytes());
+              }
             }
-          } catch (_) {}
+          }
+          catch (_) {}
+        }
+
+        // Compatibility fallback for old tunnel rows whose only image was
+        // the official asset. New rows reach the branches above first.
+        if (!imageWidgets.containsKey(i) &&
+            (item.title.contains('Caisson Tunnel') ||
+                (path != null && path.contains('caisson_tunnel')))) {
+          try {
+            final bytes = (await rootBundle.load(
+              'Icon/caisson_tunnel.jpg',
+            )).buffer.asUint8List();
+            imageWidgets[i] = pw.MemoryImage(bytes);
+          } catch (_) {
+            try {
+              final bytes = (await rootBundle.load(
+                'assets/Icon/caisson_tunnel.jpg',
+              )).buffer.asUint8List();
+              imageWidgets[i] = pw.MemoryImage(bytes);
+            } catch (_) {}
+          }
         }
       }
     }

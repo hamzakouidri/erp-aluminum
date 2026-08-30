@@ -3585,8 +3585,12 @@ class WindowModel extends ChangeNotifier {
 
   double get plintheHeight {
     if (componentOverrides.containsKey('بلانت (Plinthe)')) {
-      return (componentOverrides['بلانت (Plinthe)']['visible_width'] ?? 0.0)
-          .toDouble();
+      final rawWidth = componentOverrides['بلانت (Plinthe)']['visible_width'] ??
+          componentOverrides['بلانت (Plinthe)']['thickness'];
+      final width = rawWidth is num
+          ? rawWidth.toDouble()
+          : double.tryParse(rawWidth?.toString() ?? '') ?? 0.0;
+      if (width > 0) return width;
     }
     final s = getSectionByType('plinthe');
     if (s != null) return s.visibleWidth;
@@ -6261,6 +6265,13 @@ class WindowModel extends ChangeNotifier {
     if (normalizedType == 'sash') {
       final ov = useSliding ? slidingSashOverride : sashOverride;
       if (ov != null) result = AluminumSection.fromMap(ov);
+    } else if (normalizedType == 'plinthe' ||
+        normalizedType == 'plinth' ||
+        normalizedType == 'plant') {
+      final ov = componentOverrides['بلانت (Plinthe)'];
+      if (ov is Map) {
+        result = AluminumSection.fromMap(Map<String, dynamic>.from(ov));
+      }
     } else if (normalizedType == 'frame') {
       final ov = useSliding ? slidingFrameOverride : frameOverride;
       if (ov != null) result = AluminumSection.fromMap(ov);
@@ -6306,7 +6317,20 @@ class WindowModel extends ChangeNotifier {
               !sectionType.contains('sash') &&
               !sectionType.contains('ouvrant') &&
               !sectionType.contains('ضلفة');
+          final isPlinthe =
+              (normalizedType == 'plinthe' ||
+                  normalizedType == 'plinth' ||
+                  normalizedType == 'plant') &&
+              (sectionType.contains('plinthe') ||
+                  sectionType.contains('plinth') ||
+                  sectionType.contains('plant') ||
+                  sectionType.contains('بلانت') ||
+                  sectionName.contains('plinthe') ||
+                  sectionName.contains('plinth') ||
+                  sectionName.contains('plant') ||
+                  sectionName.contains('بلانت'));
           if (sectionType == normalizedType ||
+              isPlinthe ||
               isMullion ||
               (normalizedType == 'frame' && sec.isFrame)) {
             result = sec;
@@ -6639,7 +6663,15 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    final reducers = configuredSectionsFor(const ['reducer']);
+      // Plant/Plinthe is an independent series role. Do not derive it from
+      // the selected sash: a thin or thick sash may use the same plant.
+      final configuredPlinthes = configuredSectionsFor(const ['plant']);
+      if (configuredPlinthes.isNotEmpty &&
+          !componentOverrides.containsKey('بلانت (Plinthe)')) {
+        componentOverrides['بلانت (Plinthe)'] = configuredPlinthes.first.toMap();
+      }
+
+      final reducers = configuredSectionsFor(const ['reducer']);
     if (reducers.isNotEmpty &&
         hasSimpleGlassForReducer &&
         !hasDoubleGlassForRules) {
@@ -8343,7 +8375,8 @@ class WindowModel extends ChangeNotifier {
 
       if (series != null) {
         for (final s in series.sections) {
-          final isParclose = s.code.trim() == '514' ||
+          final isParclose =
+              s.code.trim() == '514' ||
               s.type.toLowerCase().contains('parclose') ||
               s.name.toLowerCase().contains('parclose') ||
               s.type.contains('باكيت') ||
@@ -8382,7 +8415,8 @@ class WindowModel extends ChangeNotifier {
         }
 
         for (final s in series.sections) {
-          final isParclose = s.type.toLowerCase().contains('parclose') ||
+          final isParclose =
+              s.type.toLowerCase().contains('parclose') ||
               s.name.toLowerCase().contains('parclose') ||
               s.type.contains('باكيت') ||
               s.name.contains('باكيت');
@@ -8633,16 +8667,18 @@ class WindowModel extends ChangeNotifier {
     }
 
     final joints = await dbInstance.readJoints();
-    final candidates = joints
-        .map((row) => Map<String, dynamic>.from(row))
-        .where(_isVitrageJointRow)
-        .where(
-          (joint) => _catalogRowMatchesSeriesScope(joint, activeSeriesForSash),
-        )
-        .map((joint) => _readPositiveDouble(joint['thickness']))
-        .where((thickness) => thickness > 0)
-        .toList()
-      ..sort();
+    final candidates =
+        joints
+            .map((row) => Map<String, dynamic>.from(row))
+            .where(_isVitrageJointRow)
+            .where(
+              (joint) =>
+                  _catalogRowMatchesSeriesScope(joint, activeSeriesForSash),
+            )
+            .map((joint) => _readPositiveDouble(joint['thickness']))
+            .where((thickness) => thickness > 0)
+            .toList()
+          ..sort();
     final resolved = candidates.isEmpty ? 0.0 : candidates.first;
     _lastResolvedVitrageJointThickness = resolved;
     return resolved;
@@ -12564,7 +12600,6 @@ class WindowModel extends ChangeNotifier {
       for (final z in zones) {
         z.hasSashPlintheBottom = sashZones.any((sash) => sash.id == z.id);
       }
-      _autoSelectSash(thick: true);
     } else {
       hasFramePlintheBottom = false;
       hasBottomFrame = true;
@@ -12572,7 +12607,6 @@ class WindowModel extends ChangeNotifier {
       for (final z in zones) {
         z.hasSashPlintheBottom = false;
       }
-      _autoSelectSash(thick: false);
     }
 
     _hideBottomCoverWhenBottomFrameIsMissing();
@@ -12596,100 +12630,15 @@ class WindowModel extends ChangeNotifier {
       hasFramePlintheBottom = true;
       hasBottomFrame = false;
       showBottomWall = false;
-      _autoSelectSash(thick: true);
     } else {
       hasFramePlintheBottom = false;
       hasBottomFrame = true;
       showBottomWall = true;
-      _autoSelectSash(thick: false);
     }
 
     _hideBottomCoverWhenBottomFrameIsMissing();
     updateBottomZoneBoundaries();
     notifyListeners();
-  }
-
-  void _autoSelectSash({required bool thick}) {
-    final series = (systemMode == 'sliding' && activeSlidingSeries != null)
-        ? activeSlidingSeries!
-        : activeSeries;
-    if (series == null) return;
-
-    final sashes = series.sections.where((sec) {
-      final ty = sec.type.toLowerCase().trim();
-      return ty.contains('sash') ||
-          ty.contains('ouvrant') ||
-          ty.contains('ضلفة') ||
-          ty.contains('ساش');
-    }).toList();
-
-    if (sashes.isEmpty) return;
-
-    AluminumSection? target;
-    if (thick) {
-      for (var sec in sashes) {
-        final n = sec.name.toLowerCase();
-        final c = sec.code.toLowerCase();
-        final isThick =
-            n.contains('porte') ||
-            n.contains('door') ||
-            n.contains('grand') ||
-            n.contains('large') ||
-            n.contains('عريضة') ||
-            n.contains('كبيرة') ||
-            n.contains('باب') ||
-            n.contains('غليظة') ||
-            c.contains('porte') ||
-            c.contains('door') ||
-            c.contains('grand') ||
-            c.contains('large') ||
-            c.contains('عريضة') ||
-            c.contains('كبيرة') ||
-            c.contains('باب') ||
-            c.contains('غليظة');
-        if (isThick) {
-          target = sec;
-          break;
-        }
-      }
-      if (target == null && sashes.length > 1) {
-        final sorted = List<AluminumSection>.from(sashes);
-        sorted.sort((a, b) => b.visibleWidth.compareTo(a.visibleWidth));
-        target = sorted.first;
-      }
-    } else {
-      for (var sec in sashes) {
-        final n = sec.name.toLowerCase();
-        final c = sec.code.toLowerCase();
-        final isThin =
-            n.contains('fenetre') ||
-            n.contains('window') ||
-            n.contains('petit') ||
-            n.contains('رقيقة') ||
-            n.contains('نافذة') ||
-            n.contains('صغيرة') ||
-            c.contains('fenetre') ||
-            c.contains('window') ||
-            c.contains('petit') ||
-            c.contains('رقيقة') ||
-            c.contains('نافذة') ||
-            c.contains('صغيرة');
-        if (isThin) {
-          target = sec;
-          break;
-        }
-      }
-      if (target == null && sashes.length > 1) {
-        final sorted = List<AluminumSection>.from(sashes);
-        sorted.sort((a, b) => a.visibleWidth.compareTo(b.visibleWidth));
-        target = sorted.first;
-      }
-    }
-
-    target ??= sashes.first;
-
-    sashOverride = target.toMap();
-    updateAllSashThicknesses();
   }
 
   void updateBottomZoneBoundaries() {
@@ -12879,6 +12828,7 @@ class WindowModel extends ChangeNotifier {
         : 0.0;
     isCaissonTunnel = value;
     if (isCaissonTunnel) {
+      hasShutter = true;
       shutterMechanism = 'محرك';
       showWall = true;
       componentOverrides['الصندوق (Caisson)'] = {
@@ -13955,6 +13905,7 @@ class WindowModel extends ChangeNotifier {
     componentOverrides.remove('الأسطوانة (Canon)');
     componentOverrides.remove('قفل الباب (Serrure)');
     componentOverrides.remove('كريمون (Cremone)');
+    componentOverrides.remove('تراينغل الكريمون (Triangle)');
     componentOverrides.remove('بوشون بارك لوز (Bouchon Parclose)');
     componentOverrides.remove('أونتروماتيك (Entrematique)');
     componentOverrides.remove('كيت 67000 (Kit 67000)');
@@ -14129,6 +14080,73 @@ class WindowModel extends ChangeNotifier {
         // color-price table is not available yet.
         return readPrice(accessory['price_dzd'] ?? accessory['price']);
       }
+    }
+
+    String? ruleKeyForAccessoryDefault(String key) {
+      final lower = key.toLowerCase();
+      if (lower.contains('tringle') ||
+          lower.contains('tangle') ||
+          lower.contains('triangle') ||
+          key.contains('تراينغل') ||
+          key.contains('تريانغل')) {
+        return 'tringle';
+      }
+      if (key == 'كريمون (Cremone)' ||
+          lower.contains('cremone') ||
+          lower.contains('crémone') ||
+          key.contains('كريمون')) {
+        return 'cremone';
+      }
+      if (key == 'الفيرو (Verrou)' ||
+          (lower.contains('verrou') && !lower.contains('central')) ||
+          key.contains('فيرو')) {
+        return 'verrou';
+      }
+      if (key == 'كاش كوليسون (Gache coulissant)' ||
+          key == 'Gâche coulissant TPR') {
+        return 'sliding_lock';
+      }
+      if (key.contains('قاش دوبل')) return 'gache_double';
+      if (key.contains('قاش بورت')) return 'gache_door';
+      if (key.contains('قاش') || lower.contains('gache')) {
+        return 'gache_simple';
+      }
+      if (lower.contains('espagnolette') ||
+          key.contains('اسبانيول') ||
+          key.contains('إسبانيول')) {
+        return 'espagnolette';
+      }
+      if (lower.contains('poignée porte') || lower.contains('poignee porte')) {
+        return lower.contains('condamnation')
+            ? 'door_handle_condamnation'
+            : 'door_handle_key';
+      }
+      if ((lower.contains('poignée') || lower.contains('poignee')) &&
+          lower.contains('condamnation')) {
+        return 'door_handle_condamnation';
+      }
+      if (lower.contains('condamnation')) return 'lock_condamnation';
+      if (lower.contains('poignée') ||
+          lower.contains('poignee') ||
+          lower.contains('handle') ||
+          key.contains('مقبض')) {
+        return 'handle';
+      }
+      if (lower.contains('paumelle') || key.contains('مفاصل')) return 'hinge';
+      if (lower.contains('canon') || key.contains('أسطوانة')) return 'canon';
+      if (lower.contains('serrure') || key.contains('قفل')) return 'lock_clef';
+      if (lower.contains('roulette') || key.contains('عجلات')) {
+        return 'roulette';
+      }
+      if (lower.contains('tasso') || key.contains('الطاسو')) return 'tasso';
+      if (lower.contains('entrematique') || key.contains('أونتروماتيك')) {
+        return 'entrematique';
+      }
+      if (lower.contains('kit') || key.contains('كيت')) return 'sliding_kit';
+      if (lower.contains('clam') || key.contains('كلام')) {
+        return 'sliding_clamp';
+      }
+      return null;
     }
 
     Future<void> loadAccessory(String key, List<String> searchPatterns) async {
@@ -14356,6 +14374,32 @@ class WindowModel extends ChangeNotifier {
         }
 
         return true;
+      }
+
+      final ruleKey = ruleKeyForAccessoryDefault(key);
+      if (ruleKey != null) {
+        final ruleRows = await db.getCatalogItemRules(
+          itemTable: 'Accessories',
+          seriesId: seriesId,
+          roleKeys: [ruleKey],
+        );
+        for (final rule in ruleRows) {
+          if (rule['show_in_quantity'] == 0) continue;
+          final itemId = (rule['item_id'] as num?)?.toInt();
+          if (itemId == null) continue;
+          final rows = await d.query(
+            'Accessories',
+            where: 'id = ? AND (is_active = 1 OR is_active IS NULL)',
+            whereArgs: [itemId],
+            limit: 1,
+          );
+          if (rows.isEmpty) continue;
+          if (!isAccessoryValid(rows.first)) continue;
+          final selected = Map<String, dynamic>.from(rows.first);
+          selected['calculated_price'] = await resolveAccessoryPrice(selected);
+          componentOverrides[key] = selected;
+          return;
+        }
       }
 
       String kitClampExclude = '';
@@ -14671,6 +14715,13 @@ class WindowModel extends ChangeNotifier {
       '%lock%',
     ]);
     await loadAccessory('كريمون (Cremone)', ['%كريمون%', '%cremone%']);
+    await loadAccessory('تراينغل الكريمون (Triangle)', [
+      '%tringle%',
+      '%tangle%',
+      '%triangle%',
+      '%تراينغل%',
+      '%تريانغل%',
+    ]);
     await loadAccessory('بوشون بارك لوز (Bouchon Parclose)', [
       '%بوشون بارك لوز%',
       '%bouchon parclose%',
@@ -14818,9 +14869,12 @@ class WindowModel extends ChangeNotifier {
             double thick = _readPositiveDouble(row['thickness']);
             if (thick <= 0) {
               final code = (row['code'] ?? '').toString().trim();
-              if (code.contains('52034')) thick = 2.0;
-              else if (code.contains('52035')) thick = 4.0;
-              else if (code.contains('52036')) thick = 6.0;
+              if (code.contains('52034'))
+                thick = 2.0;
+              else if (code.contains('52035'))
+                thick = 4.0;
+              else if (code.contains('52036'))
+                thick = 6.0;
             }
             if (thick <= 0) continue;
             final diff = (thick - target).abs();
@@ -14834,14 +14888,20 @@ class WindowModel extends ChangeNotifier {
 
         final bestForDouble = findClosest(2.0);
         if (bestForDouble != null &&
-            !componentOverrides.containsKey('جوان البوراج للزجاج المزدوج (Joint Bourrage Double)')) {
-          componentOverrides['جوان البوراج للزجاج المزدوج (Joint Bourrage Double)'] = bestForDouble;
+            !componentOverrides.containsKey(
+              'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
+            )) {
+          componentOverrides['جوان البوراج للزجاج المزدوج (Joint Bourrage Double)'] =
+              bestForDouble;
         }
 
         final bestForSimple = findClosest(4.0);
         if (bestForSimple != null &&
-            !componentOverrides.containsKey('جوان البوراج للزجاج المفرد (Joint Bourrage Simple)')) {
-          componentOverrides['جوان البوراج للزجاج المفرد (Joint Bourrage Simple)'] = bestForSimple;
+            !componentOverrides.containsKey(
+              'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
+            )) {
+          componentOverrides['جوان البوراج للزجاج المفرد (Joint Bourrage Simple)'] =
+              bestForSimple;
         }
 
         final bestGeneral = findClosest(6.0);
@@ -15134,6 +15194,38 @@ class WindowModel extends ChangeNotifier {
     drawingCurrent = null;
     selection = SelectionInfo.none;
     activeSubZone = null;
+    notifyListeners();
+  }
+
+  /// Converts the current drawing into a shutter while preserving its
+  /// measured size and position on the canvas.
+  void convertCurrentDrawingToShutter() {
+    final currentWidth = width;
+    final currentHeight = height;
+    if (currentWidth <= 0 || currentHeight <= 0) {
+      prepareShutterOnlyDrawing();
+      return;
+    }
+
+    final currentLeft = drawnLeft;
+    final currentTop = drawnTop;
+
+    // Reuse the same cleanup used when starting a new shutter drawing, then
+    // restore the existing dimensions instead of asking the user to redraw.
+    prepareShutterOnlyDrawing();
+    width = currentWidth;
+    height = currentHeight;
+    drawnLeft = currentLeft;
+    drawnTop = currentTop;
+    isShutterOnly = true;
+    hasShutter = true;
+    drawNextShapeAsShutterOnly = false;
+    isDrawingMode = true;
+    drawingMode = 'shutter_only';
+    drawingStart = null;
+    drawingCurrent = null;
+    pendingDrawStart = null;
+    unawaited(updateShutterDefaultsIfNeeded());
     notifyListeners();
   }
 

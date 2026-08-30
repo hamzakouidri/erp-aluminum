@@ -1010,11 +1010,7 @@ class CloudSyncService {
           }
           await prefs.setString('workshop_code', _workshopId!);
           await prefs.setString('user_role', role);
-          final workshopName = data['workshopName']?.toString().trim() ?? '';
           final displayName = data['displayName']?.toString().trim() ?? '';
-          if (workshopName.isNotEmpty) {
-            await prefs.setString('workshop_name', workshopName);
-          }
           if (displayName.isNotEmpty) {
             await prefs.setString('user_display_name', displayName);
           }

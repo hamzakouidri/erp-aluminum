@@ -252,16 +252,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     super.dispose();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!context.watch<AppSettingsProvider>().isManager) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-      });
-    }
-  }
-
   Future<void> _loadProfiles() async {
     setState(() => _loadingProfiles = true);
     final profiles = await widget.db.readProfile();
@@ -653,7 +643,26 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<AppSettingsProvider>();
-    if (!settings.isManager) return const Scaffold(body: SizedBox.shrink());
+    if (!settings.isManager) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            _t(
+              'مكوّنات وحسابات السلسلة',
+              'Composants et calculs de la série',
+            ),
+          ),
+        ),
+        body: Center(
+          child: Text(
+            _t(
+              'ليس لديك صلاحية للوصول إلى إعدادات السلسلة.',
+              'Vous n\'avez pas accès aux réglages de la série.',
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(
