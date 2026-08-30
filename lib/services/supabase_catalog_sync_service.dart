@@ -65,6 +65,24 @@ class SupabaseCatalogSyncService {
     }
   }
 
+  Future<void> signInWithGoogleIdToken({
+    required String idToken,
+    String? accessToken,
+  }) async {
+    try {
+      final response = await _client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+      if (response.user == null) {
+        throw Exception('تعذر تسجيل الدخول إلى Supabase عبر Google.');
+      }
+    } on AuthException catch (error) {
+      throw Exception(_describeAuthError(error));
+    }
+  }
+
   String _describeAuthError(AuthException error) {
     final message = error.message.toLowerCase();
     if (message.contains('invalid login credentials')) {

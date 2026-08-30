@@ -446,8 +446,17 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canAccessSettings() =>
       isManager || _isPermissionTrue(_workerPermissions['settings']);
 
+  /// Subscription details are visible to managers by default. A normal worker
+  /// only sees them when the workshop manager explicitly grants this permission.
+  bool canViewSubscription() =>
+      isManager || _isPermissionTrue(_workerPermissions['view_subscription']);
+
+  /// The general application administrator and workshop managers always have
+  /// access. Other workers need the explicit workshop permission.
   bool canSelectSystems() =>
-      isManager || _isPermissionTrue(_workerPermissions['select_systems']);
+      isAdmin ||
+      isManager ||
+      _isPermissionTrue(_workerPermissions['select_systems']);
 
   bool canChangePrices() =>
       isManager || _isPermissionTrue(_workerPermissions['change_prices']);
@@ -461,6 +470,20 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canChangeTransactionDates() =>
       isManager ||
       _isPermissionTrue(_workerPermissions['change_transaction_dates']);
+
+  /// Date permissions are separated by business area. Keep the old treasury
+  /// permission as a compatibility fallback for existing workers.
+  bool canChangeOrderDates() =>
+      isManager || _isPermissionTrue(_workerPermissions['change_order_dates']);
+
+  bool canChangePaymentDates() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['change_payment_dates']) ||
+      _isPermissionTrue(_workerPermissions['change_transaction_dates']);
+
+  bool canChangePurchaseDates() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['change_purchase_dates']);
 
   bool canManageWorkers() =>
       isManager || _isPermissionTrue(_workerPermissions['manage_workers']);

@@ -555,11 +555,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     : (savedName?.isNotEmpty == true
                           ? savedName!
                           : 'ورشة النجارة');
-                final nextPhone =
-                    (data['phone'] ?? data['phoneNumber'] ?? '').toString();
+                final nextPhone = (data['phone'] ?? data['phoneNumber'] ?? '')
+                    .toString();
                 final nextEmail = data['email']?.toString() ?? _userEmail;
 
-                final hasChanged = _workshopName != nextName ||
+                final hasChanged =
+                    _workshopName != nextName ||
                     _workshopPhone != nextPhone ||
                     _userEmail != nextEmail ||
                     _logoUrl != newLogoUrl;
@@ -812,15 +813,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
                               ),
                               const SizedBox(height: 24),
 
-                              // ── بيانات الاشتراك ──────────────────────────────
-                              _sectionLabel(
-                                Localization.translate(
-                                  'الاشتراك والمدة المتبقية',
-                                  lang,
+                              if (settings.canViewSubscription()) ...[
+                                // ── بيانات الاشتراك ──────────────────────────────
+                                _sectionLabel(
+                                  Localization.translate(
+                                    'الاشتراك والمدة المتبقية',
+                                    lang,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
-                              const SubscriptionOverviewCard(),
+                                const SizedBox(height: 12),
+                                const SubscriptionOverviewCard(),
+                              ],
                             ]),
                           ),
                         ),
@@ -1295,8 +1298,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     return orders;
                   },
                 ),
-                const SizedBox(height: 18),
-                const SubscriptionOverviewCard(),
+                if (settings.canViewSubscription()) ...[
+                  const SizedBox(height: 18),
+                  const SubscriptionOverviewCard(),
+                ],
               ],
             ),
           ),

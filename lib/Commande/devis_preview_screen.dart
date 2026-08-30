@@ -826,6 +826,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             );
           },
         ),
+        _buildFooter(),
       ],
     );
   }
@@ -1523,16 +1524,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildAmountInWords() {
-    final note = data.invoiceNote.trim();
-    String noteLabel;
-    if (_invoiceLanguage == AppLanguage.french) {
-      noteLabel = 'Remarque';
-    } else if (_invoiceLanguage == AppLanguage.english) {
-      noteLabel = 'Note';
-    } else {
-      noteLabel = 'ملاحظة';
-    }
-    final noteText = '$noteLabel: $note';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1540,21 +1531,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           'Arrêtée la présente facture à la somme de: ${data.amountInWords}.',
           style: const TextStyle(fontSize: 12, color: Colors.black87),
         ),
-        if (note.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            noteText,
-            textDirection: _containsArabic(noteText)
-                ? TextDirection.rtl
-                : TextDirection.ltr,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.black87,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Cairo',
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -1593,40 +1569,65 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildFooter() {
     final isOfficial = _isOfficial;
-    if (!isOfficial) return const SizedBox.shrink();
+    final note = data.invoiceNote.trim();
+    if (!isOfficial && note.isEmpty) return const SizedBox.shrink();
 
     final parts = <String>[];
-    if (data.workshop.name.isNotEmpty) {
-      parts.add(data.workshop.name);
+    if (isOfficial) {
+      if (data.workshop.name.isNotEmpty) {
+        parts.add(data.workshop.name);
+      }
+      if (data.workshop.address.isNotEmpty) {
+        parts.add('Adresse: ${data.workshop.address}');
+      }
+      if (data.workshop.rc.isNotEmpty) parts.add('RC: ${data.workshop.rc}');
+      if (data.workshop.nif.isNotEmpty) parts.add('NIF: ${data.workshop.nif}');
+      if (data.workshop.nis.isNotEmpty) parts.add('NIS: ${data.workshop.nis}');
+      if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
+      if (data.workshop.phone.isNotEmpty) {
+        parts.add('Tél: ${data.workshop.phone}');
+      }
     }
-    if (data.workshop.address.isNotEmpty) {
-      parts.add('Adresse: ${data.workshop.address}');
-    }
-    if (data.workshop.rc.isNotEmpty) parts.add('RC: ${data.workshop.rc}');
-    if (data.workshop.nif.isNotEmpty) parts.add('NIF: ${data.workshop.nif}');
-    if (data.workshop.nis.isNotEmpty) parts.add('NIS: ${data.workshop.nis}');
-    if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
-    if (data.workshop.phone.isNotEmpty)
-      parts.add('Tél: ${data.workshop.phone}');
-
-    if (parts.isEmpty) return const SizedBox.shrink();
 
     final footerText = parts.join(' | ');
+    String noteLabel;
+    if (_invoiceLanguage == AppLanguage.french) {
+      noteLabel = 'Remarque';
+    } else if (_invoiceLanguage == AppLanguage.english) {
+      noteLabel = 'Note';
+    } else {
+      noteLabel = 'ملاحظة';
+    }
+    final noteText = note.isEmpty ? '' : '$noteLabel: $note';
 
     return Column(
       children: [
         const SizedBox(height: 16),
         const Divider(height: 1, thickness: 0.8, color: Colors.black12),
         const SizedBox(height: 10),
-        Text(
-          footerText,
-          style: const TextStyle(
-            fontSize: 9,
-            color: Colors.black54,
-            fontFamily: 'Cairo',
+        if (noteText.isNotEmpty)
+          Text(
+            noteText,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.black87,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Cairo',
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
+        if (noteText.isNotEmpty && footerText.isNotEmpty)
+          const SizedBox(height: 5),
+        if (footerText.isNotEmpty)
+          Text(
+            footerText,
+            style: const TextStyle(
+              fontSize: 9,
+              color: Colors.black54,
+              fontFamily: 'Cairo',
+            ),
+            textAlign: TextAlign.center,
+          ),
       ],
     );
   }

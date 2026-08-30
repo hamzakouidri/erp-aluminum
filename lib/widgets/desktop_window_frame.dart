@@ -5,8 +5,9 @@ import 'package:window_manager/window_manager.dart';
 /// visible even when the pointer is not hovering over the title bar.
 class DesktopWindowFrame extends StatefulWidget {
   final Widget child;
+  final Widget? topBar;
 
-  const DesktopWindowFrame({super.key, required this.child});
+  const DesktopWindowFrame({super.key, required this.child, this.topBar});
 
   @override
   State<DesktopWindowFrame> createState() => _DesktopWindowFrameState();
@@ -55,7 +56,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
           ),
           child: Row(
             children: [
-              Expanded(
+              SizedBox(
+                width: 132,
                 child: DragToMoveArea(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -85,6 +87,10 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                   ),
                 ),
               ),
+              if (widget.topBar != null)
+                Expanded(child: widget.topBar!)
+              else
+                Expanded(child: DragToMoveArea(child: const SizedBox.expand())),
               _CaptionButton(
                 tooltip: 'تصغير',
                 icon: Icons.remove_rounded,

@@ -131,6 +131,7 @@ class TreasuryScreen extends StatefulWidget {
     required ValueChanged<NumericFilterState> onNumericFilterChanged,
     required Map<String, TextEditingController> columnControllers,
     required Map<String, NumericFilterState> columnNumericFilters,
+    required String Function(Map<String, dynamic>) payerNameForTransaction,
     required VoidCallback onFiltersUpdated,
     required VoidCallback onClearAllFilters,
   }) {
@@ -139,7 +140,8 @@ class TreasuryScreen extends StatefulWidget {
     final headerColor = isDark ? Colors.teal.shade900 : Colors.teal.shade50;
     final borderColor = isDark ? Colors.grey.shade800 : Colors.teal.shade100;
 
-    final hasActiveColumnFilters = dateRange.isActive ||
+    final hasActiveColumnFilters =
+        dateRange.isActive ||
         numericFilter.isActive ||
         columnNumericFilters.values.any((f) => f.isActive) ||
         columnControllers.values.any((c) => c.text.trim().isNotEmpty);
@@ -149,7 +151,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'date',
         label: Text(
           Localization.translate('التاريخ', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'تاريخ...',
@@ -165,7 +171,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'entered_by',
         label: Text(
           Localization.translate('أدخلها', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'المُدخل...',
@@ -178,10 +188,34 @@ class TreasuryScreen extends StatefulWidget {
         maxWidth: 220,
       ),
       ResizableTableColumn(
+        id: 'payer_name',
+        label: Text(
+          Localization.translate('اسم الدافع', lang),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'اسم الدافع...',
+          controller: columnControllers['payer_name'],
+          lang: lang,
+          onTextChanged: (_) => onFiltersUpdated(),
+        ),
+        initialWidth: 150,
+        minWidth: 100,
+        maxWidth: 280,
+      ),
+      ResizableTableColumn(
         id: 'type',
         label: Text(
           Localization.translate('نوع العملية', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'النوع...',
@@ -197,7 +231,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'relation',
         label: Text(
           Localization.translate('الارتباط', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'الارتباط...',
@@ -213,7 +251,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'method',
         label: Text(
           Localization.translate('طريقة الدفع', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'طريقة الدفع...',
@@ -229,7 +271,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'desc',
         label: Text(
           Localization.translate('البيان', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'البيان...',
@@ -245,13 +291,18 @@ class TreasuryScreen extends StatefulWidget {
         id: 'income',
         label: Text(
           Localization.translate('الدفع', lang),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.green),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: Colors.green,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'الدفع...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: columnNumericFilters['income'] ?? const NumericFilterState(),
+          initialNumericState:
+              columnNumericFilters['income'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) {
             columnNumericFilters['income'] = f;
             onFiltersUpdated();
@@ -265,13 +316,18 @@ class TreasuryScreen extends StatefulWidget {
         id: 'expense',
         label: Text(
           Localization.translate('السحب', lang),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.red),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: Colors.red,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'السحب...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: columnNumericFilters['expense'] ?? const NumericFilterState(),
+          initialNumericState:
+              columnNumericFilters['expense'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) {
             columnNumericFilters['expense'] = f;
             onFiltersUpdated();
@@ -285,7 +341,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'caisse',
         label: Text(
           Localization.translate('الصندوق', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         filter: CompactTableFilterField(
           hintText: 'الصندوق...',
@@ -301,7 +361,11 @@ class TreasuryScreen extends StatefulWidget {
         id: 'receipt',
         label: Text(
           Localization.translate('الإيصال', lang),
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: textColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
         initialWidth: 85,
         minWidth: 65,
@@ -319,7 +383,10 @@ class TreasuryScreen extends StatefulWidget {
                   onTap: onClearAllFilters,
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.red.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -327,11 +394,19 @@ class TreasuryScreen extends StatefulWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.clear_all, size: 13, color: Colors.red),
+                        const Icon(
+                          Icons.clear_all,
+                          size: 13,
+                          color: Colors.red,
+                        ),
                         const SizedBox(width: 2),
                         Text(
                           Localization.translate('مسح', lang),
-                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -350,6 +425,7 @@ class TreasuryScreen extends StatefulWidget {
       final amount = (item['amount'] as num?)?.toDouble() ?? 0.0;
       final type = item['transaction_type']?.toString() ?? '';
       final recordedBy = item['recorded_by']?.toString().trim() ?? '';
+      final payerName = payerNameForTransaction(item);
       final method = _readableText(item['payment_method']).trim();
       final cashbox = _readableText(item['caisse_name']).trim();
       final description = _readableText(item['description']).trim();
@@ -366,21 +442,41 @@ class TreasuryScreen extends StatefulWidget {
           // Date
           Text(
             _transactionDate(item),
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: mutedColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: mutedColor,
+            ),
           ),
           // Entered by
           Text(
             recordedBy.isEmpty || recordedBy == 'system'
                 ? Localization.translate('النظام', lang)
                 : recordedBy,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12.5, color: textColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12.5,
+              color: textColor,
+            ),
+          ),
+          // Client who paid, or supplier/worker involved in the movement.
+          Text(
+            payerName.isEmpty
+                ? Localization.translate('غير محدد', lang)
+                : payerName,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12.5,
+              color: textColor,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
           // Type
           Text(
             type.isEmpty
                 ? (isIncome
-                    ? Localization.translate('دفع', lang)
-                    : Localization.translate('سحب', lang))
+                      ? Localization.translate('دفع', lang)
+                      : Localization.translate('سحب', lang))
                 : type,
             style: TextStyle(
               fontFamily: 'Cairo',
@@ -392,7 +488,11 @@ class TreasuryScreen extends StatefulWidget {
           // Relation
           Text(
             _transactionRelation(item, lang),
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12.5, color: textColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12.5,
+              color: textColor,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
           // Method
@@ -400,14 +500,22 @@ class TreasuryScreen extends StatefulWidget {
             method.isEmpty
                 ? Localization.translate('نقداً / Espèce', lang)
                 : method,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: textColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: textColor,
+            ),
           ),
           // Description
           Text(
             description.isEmpty
                 ? Localization.translate('بدون بيان', lang)
                 : description,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: textColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: textColor,
+            ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -433,8 +541,14 @@ class TreasuryScreen extends StatefulWidget {
           ),
           // Caisse
           Text(
-            cashbox.isEmpty ? Localization.translate('الصندوق الرئيسي', lang) : cashbox,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: textColor),
+            cashbox.isEmpty
+                ? Localization.translate('الصندوق الرئيسي', lang)
+                : cashbox,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              color: textColor,
+            ),
           ),
           // Receipt
           IconButton(
@@ -483,7 +597,9 @@ class TreasuryScreen extends StatefulWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: headerColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(14),
+              ),
             ),
             child: Wrap(
               alignment: WrapAlignment.spaceBetween,
@@ -493,7 +609,11 @@ class TreasuryScreen extends StatefulWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.table_chart_rounded, size: 20, color: Colors.teal),
+                    const Icon(
+                      Icons.table_chart_rounded,
+                      size: 20,
+                      color: Colors.teal,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       Localization.translate('سجل عمليات الصندوق', lang),
@@ -501,7 +621,9 @@ class TreasuryScreen extends StatefulWidget {
                         fontFamily: 'Cairo',
                         fontWeight: FontWeight.bold,
                         fontSize: 13.5,
-                        color: isDark ? Colors.tealAccent : Colors.teal.shade900,
+                        color: isDark
+                            ? Colors.tealAccent
+                            : Colors.teal.shade900,
                       ),
                     ),
                   ],
@@ -544,7 +666,10 @@ class TreasuryScreen extends StatefulWidget {
 
                 // Numeric Amount Search with Comparison Operators
                 NumericFilterSearchField(
-                  hintText: Localization.translate('بحث بالمبلغ (=, >, <, ≥, ≤, ≠)...', lang),
+                  hintText: Localization.translate(
+                    'بحث بالمبلغ (=, >, <, ≥, ≤, ≠)...',
+                    lang,
+                  ),
                   lang: lang,
                   initialState: numericFilter,
                   width: 300,
@@ -563,11 +688,21 @@ class TreasuryScreen extends StatefulWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.search_off_rounded, size: 48, color: mutedColor),
+                          Icon(
+                            Icons.search_off_rounded,
+                            size: 48,
+                            color: mutedColor,
+                          ),
                           const SizedBox(height: 8),
                           Text(
-                            Localization.translate('لا توجد عمليات مطابقة لشروط الفلترة الحالية', lang),
-                            style: TextStyle(fontFamily: 'Cairo', color: mutedColor),
+                            Localization.translate(
+                              'لا توجد عمليات مطابقة لشروط الفلترة الحالية',
+                              lang,
+                            ),
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              color: mutedColor,
+                            ),
                           ),
                         ],
                       ),
@@ -582,9 +717,13 @@ class TreasuryScreen extends StatefulWidget {
                         columns: columns,
                         rows: rows,
                         headerColor: headerColor,
-                        filterRowColor: isDark ? const Color(0xFF1A1A26) : const Color(0xFFF1F5F9),
+                        filterRowColor: isDark
+                            ? const Color(0xFF1A1A26)
+                            : const Color(0xFFF1F5F9),
                         borderColor: borderColor,
-                        rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+                        rowColor: isDark
+                            ? const Color(0xFF171721)
+                            : Colors.white,
                         horizontalController: horizontalScrollController,
                         headerMinHeight: 40,
                         filterRowMinHeight: 34,
@@ -597,6 +736,7 @@ class TreasuryScreen extends StatefulWidget {
       ),
     );
   }
+
   @override
   State<TreasuryScreen> createState() => _TreasuryScreenState();
 }
@@ -618,6 +758,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   final Map<String, TextEditingController> _treasuryColumnControllers = {
     'date': TextEditingController(),
     'entered_by': TextEditingController(),
+    'payer_name': TextEditingController(),
     'type': TextEditingController(),
     'relation': TextEditingController(),
     'method': TextEditingController(),
@@ -657,6 +798,52 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         _suppliers = suppliers;
       });
     }
+  }
+
+  /// Resolve the client, supplier or worker attached to a treasury movement.
+  /// The movement stores the entity type/id, while the display name remains
+  /// in the corresponding local table.
+  String _transactionPayerName(Map<String, dynamic> item) {
+    final storedName = item['payer_name'] ?? item['entity_name'];
+    if (storedName != null && storedName.toString().trim().isNotEmpty) {
+      return widget._readableText(storedName).trim();
+    }
+
+    final rawId = item['entity_id'];
+    final entityId = rawId is num
+        ? rawId.toInt()
+        : int.tryParse(rawId?.toString() ?? '');
+    if (entityId == null || entityId <= 0) return '';
+
+    final entityType = item['entity_type']?.toString().toLowerCase().trim();
+    final List<Map<String, dynamic>> source;
+    if (entityType == 'client') {
+      source = _clients;
+    } else if (entityType == 'supplier') {
+      source = _suppliers;
+    } else if (entityType == 'worker' || entityType == 'employee') {
+      source = _workers;
+    } else {
+      return '';
+    }
+
+    for (final row in source) {
+      final rowId = row['id'] is num
+          ? (row['id'] as num).toInt()
+          : int.tryParse(row['id']?.toString() ?? '');
+      if (rowId != entityId) continue;
+
+      final directName = row['name']?.toString().trim() ?? '';
+      if (directName.isNotEmpty) return widget._readableText(directName);
+      final first = (row['firstname'] ?? row['first_name'] ?? '')
+          .toString()
+          .trim();
+      final last = (row['lastname'] ?? row['last_name'] ?? '')
+          .toString()
+          .trim();
+      return widget._readableText('$first $last'.trim());
+    }
+    return '';
   }
 
   Future<void> _loadData() async {
@@ -796,14 +983,18 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       filtered = filtered.where((t) {
         final isInc = widget._isIncomeTransaction(t);
         final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
-        return isInc ? _treasuryNumericFilters['income']!.matches(amt) : _treasuryNumericFilters['income']!.matches(0);
+        return isInc
+            ? _treasuryNumericFilters['income']!.matches(amt)
+            : _treasuryNumericFilters['income']!.matches(0);
       }).toList();
     }
     if (_treasuryNumericFilters['expense']?.isActive == true) {
       filtered = filtered.where((t) {
         final isInc = widget._isIncomeTransaction(t);
         final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
-        return !isInc ? _treasuryNumericFilters['expense']!.matches(amt) : _treasuryNumericFilters['expense']!.matches(0);
+        return !isInc
+            ? _treasuryNumericFilters['expense']!.matches(amt)
+            : _treasuryNumericFilters['expense']!.matches(0);
       }).toList();
     }
 
@@ -813,25 +1004,78 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       if (val.isEmpty) continue;
       switch (entry.key) {
         case 'date':
-          filtered = filtered.where((t) => widget._transactionDate(t).toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => widget._transactionDate(t).toLowerCase().contains(val),
+              )
+              .toList();
           break;
         case 'entered_by':
-          filtered = filtered.where((t) => (t['recorded_by'] ?? '').toString().toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => (t['recorded_by'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .contains(val),
+              )
+              .toList();
+          break;
+        case 'payer_name':
+          filtered = filtered
+              .where(
+                (t) => _transactionPayerName(t).toLowerCase().contains(val),
+              )
+              .toList();
           break;
         case 'type':
-          filtered = filtered.where((t) => (t['transaction_type'] ?? '').toString().toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => (t['transaction_type'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .contains(val),
+              )
+              .toList();
           break;
         case 'relation':
-          filtered = filtered.where((t) => widget._transactionRelation(t, AppLanguage.arabic).toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => widget
+                    ._transactionRelation(t, AppLanguage.arabic)
+                    .toLowerCase()
+                    .contains(val),
+              )
+              .toList();
           break;
         case 'method':
-          filtered = filtered.where((t) => (t['payment_method'] ?? '').toString().toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => (t['payment_method'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .contains(val),
+              )
+              .toList();
           break;
         case 'desc':
-          filtered = filtered.where((t) => (t['description'] ?? '').toString().toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => (t['description'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .contains(val),
+              )
+              .toList();
           break;
         case 'caisse':
-          filtered = filtered.where((t) => (t['caisse_name'] ?? '').toString().toLowerCase().contains(val)).toList();
+          filtered = filtered
+              .where(
+                (t) => (t['caisse_name'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .contains(val),
+              )
+              .toList();
           break;
       }
     }
@@ -844,6 +1088,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         final amount = (t['amount'] ?? '').toString().toLowerCase();
         final phone = (t['phone'] ?? '').toString().toLowerCase();
         final recorded = (t['recorded_by'] ?? '').toString().toLowerCase();
+        final payerName = _transactionPayerName(t).toLowerCase();
         final date = (t['created_at'] ?? '').toString().toLowerCase();
         final tType = (t['transaction_type'] ?? '').toString().toLowerCase();
         final pMethod = (t['payment_method'] ?? '').toString().toLowerCase();
@@ -853,6 +1098,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             amount.contains(search) ||
             phone.contains(search) ||
             recorded.contains(search) ||
+            payerName.contains(search) ||
             date.contains(search) ||
             tType.contains(search) ||
             pMethod.contains(search) ||
@@ -1049,7 +1295,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                     final canChangeDate = Provider.of<AppSettingsProvider>(
                       context,
                       listen: false,
-                    ).canChangeTransactionDates();
+                    ).canChangePaymentDates();
                     return InkWell(
                       onTap: canChangeDate
                           ? () async {
@@ -2185,7 +2431,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                       final canChangeDate = Provider.of<AppSettingsProvider>(
                         context,
                         listen: false,
-                      ).canChangeTransactionDates();
+                      ).canChangePaymentDates();
                       return InkWell(
                         onTap: canChangeDate
                             ? () async {
@@ -2843,10 +3089,13 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                             },
                             columnControllers: _treasuryColumnControllers,
                             columnNumericFilters: _treasuryNumericFilters,
-                            onFiltersUpdated: () => setState(() => _applyFilter()),
+                            payerNameForTransaction: _transactionPayerName,
+                            onFiltersUpdated: () =>
+                                setState(() => _applyFilter()),
                             onClearAllFilters: () {
                               setState(() {
-                                for (final c in _treasuryColumnControllers.values) {
+                                for (final c
+                                    in _treasuryColumnControllers.values) {
                                   c.clear();
                                 }
                                 _treasuryNumericFilters.clear();
@@ -2925,6 +3174,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                               final newBal = (item['new_balance'] as num?)
                                   ?.toDouble();
                               final phone = item['phone']?.toString() ?? '';
+                              final payerName = _transactionPayerName(item);
 
                               return Card(
                                 margin: const EdgeInsets.symmetric(
@@ -3014,6 +3264,37 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                         ],
                                       ),
                                       const SizedBox(height: 6),
+
+                                      if (payerName.isNotEmpty) ...[
+                                        Row(
+                                          children: [
+                                            Text(
+                                              '${Localization.translate('اسم الدافع', lang)}: ',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark
+                                                    ? Colors.white60
+                                                    : Colors.grey,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: _highlightText(
+                                                payerName,
+                                                _searchQuery,
+                                                TextStyle(
+                                                  fontSize: 11,
+                                                  color: isDark
+                                                      ? Colors.white70
+                                                      : Colors.black87,
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                      ],
 
                                       if (phone.isNotEmpty) ...[
                                         Row(

@@ -115,6 +115,37 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _registerWorkshopSession(BuildContext context) async {
+    try {
+      final ready = await _ensureSupabaseCatalogLogin(context);
+      if (!ready) return;
+
+      final workshopSync = SupabaseWorkshopSyncService();
+      final started = await workshopSync.ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!started) return;
+
+      await CloudSyncService().init();
+      CloudSyncService().startListeningForUpdates(() {});
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.',
+              style: TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (error) {
+      // Session registration is optional for opening the local app. Keep the
+      // technical reason in logs without showing another red sync message.
+      debugPrint('Workshop session registration failed: $error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
@@ -585,7 +616,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 10),
           ],
 
-          if (settings.isManager || settings.canBackupToCloud()) ...[
+          if (settings.isManager || settings.canAccessSettings()) ...[
             Card(
               elevation: 2,
               child: Padding(
@@ -595,22 +626,19 @@ class SettingsScreen extends StatelessWidget {
                   children: [
                     ListTile(
                       leading: const Icon(
-                        Icons.sync_alt_rounded,
+                        Icons.lock_clock_rounded,
                         color: Colors.deepPurple,
                       ),
-                      title: Text(
-                        Localization.translate('مزامنة Supabase السريعة', lang),
-                        style: const TextStyle(
+                      title: const Text(
+                        'جلسة الورشة',
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Cairo',
                         ),
                       ),
-                      subtitle: Text(
-                        Localization.translate(
-                          'ارفع بيانات الورشة كاملة أول مرة، وبعدها يتم رفع وتنزيل التغييرات فقط بشكل خفيف.',
-                          lang,
-                        ),
-                        style: const TextStyle(fontFamily: 'Cairo'),
+                      subtitle: const Text(
+                        'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.',
+                        style: TextStyle(fontFamily: 'Cairo'),
                       ),
                     ),
                     Center(
@@ -619,200 +647,17 @@ class SettingsScreen extends StatelessWidget {
                           horizontal: 16.0,
                           vertical: 8.0,
                         ),
-                        child: Wrap(
-                          spacing: 16,
-                          runSpacing: 12,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? Colors.black
-                                    : Colors.deepPurple,
-                                foregroundColor: Colors.white,
-                                side: isDark
-                                    ? const BorderSide(
-                                        color: Colors.white,
-                                        width: 1.5,
-                                      )
-                                    : BorderSide.none,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                              icon: const Icon(Icons.cloud_upload_rounded),
-                              label: const Text(
-                                'رفع بيانات الورشة كاملة',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
-                                ),
-                              ),
-                              onPressed: () async {
-                                try {
-                                  final ready =
-                                      await _ensureSupabaseCatalogLogin(
-                                        context,
-                                      );
-                                  if (!ready || !context.mounted) return;
-                                } catch (e) {
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'تعذر تسجيل دخول Supabase: ${e.toString().replaceAll('Exception: ', '')}',
-                                        style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                showDialog(
-                                  context: context,
-                                  useRootNavigator: true,
-                                  barrierDismissible: false,
-                                  builder: (_) => const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                );
-                                bool success = false;
-                                String errorMsg = '';
-                                try {
-                                  await SupabaseWorkshopSyncService()
-                                      .uploadFullWorkshopData();
-                                  SupabaseWorkshopSyncService().start();
-                                  success = true;
-                                } catch (e) {
-                                  errorMsg = e.toString().replaceAll(
-                                    'Exception: ',
-                                    '',
-                                  );
-                                } finally {
-                                  if (context.mounted) {
-                                    Navigator.of(
-                                      context,
-                                      rootNavigator: true,
-                                    ).pop();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          success
-                                              ? SupabaseWorkshopSyncService()
-                                                    .lastUploadSummary
-                                              : 'فشل رفع بيانات الورشة: $errorMsg',
-                                          style: const TextStyle(
-                                            fontFamily: 'Cairo',
-                                          ),
-                                        ),
-                                        backgroundColor: success
-                                            ? Colors.green
-                                            : Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? Colors.black
-                                    : Colors.indigo,
-                                foregroundColor: Colors.white,
-                                side: isDark
-                                    ? const BorderSide(
-                                        color: Colors.white,
-                                        width: 1.5,
-                                      )
-                                    : BorderSide.none,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                              icon: const Icon(Icons.cloud_download_rounded),
-                              label: const Text(
-                                'تنزيل بيانات الورشة',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
-                                ),
-                              ),
-                              onPressed: () async {
-                                try {
-                                  final ready =
-                                      await _ensureSupabaseCatalogLogin(
-                                        context,
-                                      );
-                                  if (!ready || !context.mounted) return;
-                                } catch (e) {
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'تعذر تسجيل دخول Supabase: ${e.toString().replaceAll('Exception: ', '')}',
-                                        style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                showDialog(
-                                  context: context,
-                                  useRootNavigator: true,
-                                  barrierDismissible: false,
-                                  builder: (_) => const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                );
-                                bool success = false;
-                                String errorMsg = '';
-                                try {
-                                  await SupabaseWorkshopSyncService()
-                                      .downloadWorkshopData(full: true);
-                                  SupabaseWorkshopSyncService().start();
-                                  success = true;
-                                } catch (e) {
-                                  errorMsg = e.toString().replaceAll(
-                                    'Exception: ',
-                                    '',
-                                  );
-                                } finally {
-                                  if (context.mounted) {
-                                    Navigator.of(
-                                      context,
-                                      rootNavigator: true,
-                                    ).pop();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          success
-                                              ? SupabaseWorkshopSyncService()
-                                                    .lastDownloadSummary
-                                              : 'فشل تنزيل بيانات الورشة: $errorMsg',
-                                          style: const TextStyle(
-                                            fontFamily: 'Cairo',
-                                          ),
-                                        ),
-                                        backgroundColor: success
-                                            ? Colors.green
-                                            : Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                            ),
-                          ],
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.login_rounded),
+                          label: Text(
+                            SupabaseCatalogSyncService().isSignedIn
+                                ? 'جلسة الورشة مسجلة'
+                                : 'تسجيل جلسة الورشة',
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          onPressed: SupabaseCatalogSyncService().isSignedIn
+                              ? null
+                              : () => _registerWorkshopSession(context),
                         ),
                       ),
                     ),
@@ -1555,6 +1400,12 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Opens the one-time Supabase workshop-session dialog for any screen that
+/// needs to guide the user to the automatic workshop synchronization.
+Future<bool> openSupabaseWorkshopSession(BuildContext context) {
+  return const SettingsScreen()._ensureSupabaseCatalogLogin(context);
 }
 
 class DisplaySettingsScreen extends StatelessWidget {

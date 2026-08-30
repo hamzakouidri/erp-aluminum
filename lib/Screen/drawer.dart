@@ -23,6 +23,7 @@ import 'app_workspace_shell.dart';
 import 'distribution_tracking_screen.dart';
 import 'external_operations_hub_screen.dart';
 import 'client_chrono_search_screen.dart';
+import '../login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -909,17 +910,18 @@ class _AppDrawerState extends State<AppDrawer> {
     }
 
     final accountItems = <Widget>[
-      _desktopMenuItem(
-        title: _desktopLabel(
-          lang,
-          arabic: 'مراجعة الاشتراك',
-          french: 'Mon abonnement',
-          english: 'Subscription review',
+      if (settings.canViewSubscription())
+        _desktopMenuItem(
+          title: _desktopLabel(
+            lang,
+            arabic: 'مراجعة الاشتراك',
+            french: 'Mon abonnement',
+            english: 'Subscription review',
+          ),
+          icon: Icons.card_membership_rounded,
+          onTap: () => showSubscriptionReviewDialog(context),
+          color: Colors.amber,
         ),
-        icon: Icons.card_membership_rounded,
-        onTap: () => showSubscriptionReviewDialog(context),
-        color: Colors.amber,
-      ),
       _desktopMenuItem(
         title: _desktopLabel(
           lang,
@@ -1717,18 +1719,23 @@ class _AppDrawerState extends State<AppDrawer> {
               },
             ),
 
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.card_membership_rounded, color: Color(0xFF2563EB)),
-            title: Text(
-              Localization.translate('مراجعة الاشتراك', lang),
-              style: const TextStyle(fontWeight: FontWeight.bold),
+          if (settings.canViewSubscription()) ...[
+            const Divider(),
+            ListTile(
+              leading: const Icon(
+                Icons.card_membership_rounded,
+                color: Color(0xFF2563EB),
+              ),
+              title: Text(
+                Localization.translate('مراجعة الاشتراك', lang),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                showSubscriptionReviewDialog(context);
+              },
             ),
-            onTap: () {
-              Navigator.pop(context);
-              showSubscriptionReviewDialog(context);
-            },
-          ),
+          ],
           ListTile(
             leading: const Icon(Icons.support_agent, color: Colors.green),
             title: Text(
@@ -1739,26 +1746,45 @@ class _AppDrawerState extends State<AppDrawer> {
               showDialog(context: context, builder: (_) => SupportDialog());
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: Text(
-              Localization.translate('deconnexion', lang),
-              style: const TextStyle(color: Colors.red),
+          if (FirebaseAuth.instance.currentUser == null)
+            ListTile(
+              leading: const Icon(Icons.login_rounded, color: Colors.green),
+              title: Text(
+                Localization.translate('تسجيل الدخول / فتح الجلسة', lang),
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+              },
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: Text(
+                Localization.translate('deconnexion', lang),
+                style: const TextStyle(color: Colors.red),
+              ),
+              onTap: () async {
+                // إغلاق القائمة الجانبية أولاً
+                Navigator.pop(context);
+                // تسجيل الخروج من Firebase و Google
+                try {
+                  CloudSyncService().reset();
+                  await FirebaseAuth.instance.signOut();
+                  await GoogleSignIn().signOut();
+                  await SqlDatabase.clearAllLocalData();
+                } catch (e) {
+                  debugPrint('Sign out error: $e');
+                }
+              },
             ),
-            onTap: () async {
-              // إغلاق القائمة الجانبية أولاً
-              Navigator.pop(context);
-              // تسجيل الخروج من Firebase و Google
-              try {
-                CloudSyncService().reset();
-                await FirebaseAuth.instance.signOut();
-                await GoogleSignIn().signOut();
-                await SqlDatabase.clearAllLocalData();
-              } catch (e) {
-                debugPrint('Sign out error: $e');
-              }
-            },
-          ),
         ],
       ),
     );

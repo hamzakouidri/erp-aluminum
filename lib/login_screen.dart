@@ -173,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   Future<void> _syncSupabasePasswordSession() async {
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) return;
 
     try {
@@ -195,8 +195,29 @@ class _LoginScreenState extends State<LoginScreen>
         return;
       }
     }
-
+    // Firebase auth can rebuild SubscriptionChecker before this method
+    // returns. Start workshop sync again after the Supabase session is really
+    // available, so the first login never depends on the manual Settings
+    // download button.
     SupabaseWorkshopSyncService().start();
+  }
+
+  Future<void> _syncSupabaseGoogleSession({
+    required String? idToken,
+    required String? accessToken,
+  }) async {
+    if (idToken == null || idToken.trim().isEmpty) return;
+    try {
+      await SupabaseCatalogSyncService().signInWithGoogleIdToken(
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+      SupabaseWorkshopSyncService().start();
+    } catch (error) {
+      // Firebase remains the authentication gate. Log the Supabase bridge
+      // failure, but do not prevent the user from opening the local app.
+      debugPrint('Supabase Google session was not opened: $error');
+    }
   }
 
   Future<void> _login() async {
@@ -492,6 +513,7 @@ class _LoginScreenState extends State<LoginScreen>
           'view_order_details': true,
           'view_my_tasks': true,
           'view_my_accreditations': true,
+          'view_subscription': false,
           'isBlocked': false,
         };
 
@@ -641,8 +663,12 @@ class _LoginScreenState extends State<LoginScreen>
       // 2. Trigger Google Sign-In. The mobile implementation remains exactly
       // the same; Windows uses the system browser and a PKCE OAuth callback.
       late final OAuthCredential credential;
+      String? googleIdToken;
+      String? googleAccessToken;
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
         final tokens = await WindowsGoogleSignIn().signIn();
+        googleIdToken = tokens.idToken;
+        googleAccessToken = tokens.accessToken;
         credential = GoogleAuthProvider.credential(
           accessToken: tokens.accessToken,
           idToken: tokens.idToken,
@@ -659,6 +685,8 @@ class _LoginScreenState extends State<LoginScreen>
 
         final GoogleSignInAuthentication googleAuth =
             await googleUser.authentication;
+        googleIdToken = googleAuth.idToken;
+        googleAccessToken = googleAuth.accessToken;
         credential = GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
@@ -808,6 +836,7 @@ class _LoginScreenState extends State<LoginScreen>
             'view_order_details': true,
             'view_my_tasks': true,
             'view_my_accreditations': true,
+            'view_subscription': false,
             'isBlocked': false,
           };
 
@@ -869,6 +898,11 @@ class _LoginScreenState extends State<LoginScreen>
           }
         }
       }
+
+      await _syncSupabaseGoogleSession(
+        idToken: googleIdToken,
+        accessToken: googleAccessToken,
+      );
 
       // Firebase auth state changes will handle transitioning the screen automatically
     } on WindowsGoogleSignInException catch (e) {

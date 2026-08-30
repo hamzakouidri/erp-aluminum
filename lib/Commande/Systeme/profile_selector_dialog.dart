@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite_sqlcipher/sqflite.dart';
 import '../../widgets/section_image.dart';
 import '../../sql_database.dart';
 import 'model.dart';
@@ -726,13 +725,10 @@ class CatalogCandidateResolver {
         .whereType<int>()
         .toList();
 
-    final typedRows = await _readTypedCatalogRows(
-      dbInstance,
-      table,
-      query,
-      roleKeys,
-    );
-    if (ruleIds.isEmpty) return typedRows;
+    // CatalogItemRules is authoritative. Do not append rows discovered by
+    // name/type matching: that old fallback bypasses show_in_dialog,
+    // show_in_quantity and the administrator's selected role.
+    if (ruleIds.isEmpty) return const <Map<String, dynamic>>[];
 
     final rows = await dbInstance.query(
       table,
@@ -762,10 +758,6 @@ class CatalogCandidateResolver {
         result.add(row);
       }
     }
-    for (final row in typedRows) {
-      final itemId = _catalogInt(row['id']);
-      if (itemId != null && seen.add(itemId)) result.add(row);
-    }
     _sortByTargetThicknessIfNeeded(result, query);
     return result;
   }
@@ -785,38 +777,6 @@ class CatalogCandidateResolver {
       if (aFits) return aThickness.compareTo(bThickness);
       return bThickness.compareTo(aThickness);
     });
-  }
-
-  Future<List<Map<String, dynamic>>> _readTypedCatalogRows(
-    Database dbInstance,
-    String table,
-    CatalogCandidateQuery query,
-    List<String> roleKeys,
-  ) async {
-    final where = <String>[];
-    final args = <Object?>[];
-    if (query.seriesId != null) {
-      where.add(
-        "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?))",
-      );
-      args.add(query.seriesId);
-      args.add('%,${query.seriesId},%');
-    } else {
-      where.add(
-        "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
-      );
-    }
-    final rows = await dbInstance.query(
-      table,
-      where: _activeWhereClause(table, where.join(' AND ')),
-      whereArgs: args,
-      orderBy: 'id ASC',
-    );
-    return rows
-        .map((row) => Map<String, dynamic>.from(row))
-        .where((row) => _catalogRowMatchesRole(row, table, roleKeys))
-        .where((row) => _catalogRowMatchesMaterial(row, query, roleKeys))
-        .toList();
   }
 
   String _activeWhereClause(String table, String base) {
@@ -851,33 +811,6 @@ class CatalogCandidateResolver {
       return query.hasDoubleGlassForRules == true;
     }
     return true;
-  }
-
-  bool _catalogRowMatchesMaterial(
-    Map<String, dynamic> row,
-    CatalogCandidateQuery query,
-    List<String> roleKeys,
-  ) {
-    final isGlobalShutterScrew = roleKeys.any(catalogRuleAllowsGlobalFallback);
-    if (isGlobalShutterScrew) return true;
-    final seriesId = query.seriesId;
-    if (seriesId != null && !catalogItemMatchesSeries(row, seriesId)) {
-      return false;
-    }
-    if (seriesId == null && catalogItemHasSeriesScope(row)) {
-      return false;
-    }
-    if (query.category == 'joint') return true;
-    final requested = (query.materialType ?? '').toLowerCase().trim();
-    if (requested.isEmpty || requested == 'shutter') return true;
-    final rawMaterial = row['material_type'];
-    final material = (rawMaterial ?? '').toString().toLowerCase().trim();
-    if (requested == 'pvc') return material == 'pvc' || material == 'both';
-    return material == 'aluminium' ||
-        material == 'aluminum' ||
-        material == 'both' ||
-        material == 'global' ||
-        material.isEmpty;
   }
 
   bool _catalogRuleRowMatchesMaterial(
@@ -2214,7 +2147,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                             leading: SectionImageWidget(
                               code: item['code']?.toString(),
                               imagePath: item['image_path']?.toString(),
-                              size: 40.0,
+                              // The profile cross-section is the key part of
+                              // this dialog; 40 px made plinths practically
+                              // impossible to distinguish.
+                              size: 72.0,
                             ),
                             title: Text('$codeStr$nameStr'),
                             onTap: () => Navigator.pop(context, item),

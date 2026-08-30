@@ -191,10 +191,6 @@ class PdfInvoiceApi {
               'Arrêtée la présente facture à la somme de: ${data.amountInWords}.',
               style: const pw.TextStyle(fontSize: 10),
             ),
-            if (data.invoiceNote.trim().isNotEmpty) ...[
-              pw.SizedBox(height: 5),
-              _buildInvoiceNote(data.invoiceNote.trim()),
-            ],
             pw.SizedBox(height: 10),
             _buildTotals(data),
           ] else ...[
@@ -226,50 +222,7 @@ class PdfInvoiceApi {
             ),
           ],
         ],
-        footer: (context) {
-          final isOfficial =
-              data.isProForma ||
-              data.documentTitleKey == 'FACTURE_VENTE' ||
-              data.documentTitleKey == 'BON_ROUTE';
-          if (!isOfficial) return pw.SizedBox();
-
-          final parts = <String>[];
-          if (data.workshop.name.isNotEmpty) {
-            parts.add(data.workshop.name);
-          }
-          if (data.workshop.address.isNotEmpty) {
-            parts.add('Adresse: ${data.workshop.address}');
-          }
-          if (data.workshop.rc.isNotEmpty) parts.add('RC: ${data.workshop.rc}');
-          if (data.workshop.nif.isNotEmpty)
-            parts.add('NIF: ${data.workshop.nif}');
-          if (data.workshop.nis.isNotEmpty)
-            parts.add('NIS: ${data.workshop.nis}');
-          if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
-          if (data.workshop.phone.isNotEmpty)
-            parts.add('Tél: ${data.workshop.phone}');
-
-          final footerText = parts.join(' | ');
-
-          return pw.Container(
-            alignment: pw.Alignment.center,
-            padding: const pw.EdgeInsets.only(top: 8),
-            decoration: const pw.BoxDecoration(
-              border: pw.Border(
-                top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-              ),
-            ),
-            child: pw.Text(
-              _ar(footerText),
-              textDirection: _dir(footerText),
-              style: const pw.TextStyle(
-                fontSize: 7.5,
-                color: PdfColors.grey700,
-              ),
-              textAlign: pw.TextAlign.center,
-            ),
-          );
-        },
+        footer: (context) => _buildDocumentFooter(data),
       ),
     );
 
@@ -1314,6 +1267,63 @@ class PdfInvoiceApi {
     );
   }
 
+  /// Put the order note at the bottom of every document. Official documents
+  /// also keep the workshop legal/contact line in the same footer.
+  static pw.Widget _buildDocumentFooter(DevisData data) {
+    final isOfficial =
+        data.isProForma ||
+        data.documentTitleKey == 'FACTURE_VENTE' ||
+        data.documentTitleKey == 'BON_ROUTE';
+    final note = data.invoiceNote.trim();
+    if (!isOfficial && note.isEmpty) return pw.SizedBox();
+
+    final parts = <String>[];
+    if (isOfficial) {
+      if (data.workshop.name.isNotEmpty) parts.add(data.workshop.name);
+      if (data.workshop.address.isNotEmpty) {
+        parts.add('Adresse: ${data.workshop.address}');
+      }
+      if (data.workshop.rc.isNotEmpty) parts.add('RC: ${data.workshop.rc}');
+      if (data.workshop.nif.isNotEmpty) parts.add('NIF: ${data.workshop.nif}');
+      if (data.workshop.nis.isNotEmpty) parts.add('NIS: ${data.workshop.nis}');
+      if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
+      if (data.workshop.phone.isNotEmpty) {
+        parts.add('Tél: ${data.workshop.phone}');
+      }
+    }
+
+    final footerText = parts.join(' | ');
+    final children = <pw.Widget>[];
+    if (note.isNotEmpty) children.add(_buildInvoiceNote(note));
+    if (note.isNotEmpty && footerText.isNotEmpty) {
+      children.add(pw.SizedBox(height: 4));
+    }
+    if (footerText.isNotEmpty) {
+      children.add(
+        pw.Text(
+          _ar(footerText),
+          textDirection: _dir(footerText),
+          style: const pw.TextStyle(
+            fontSize: 7.5,
+            color: PdfColors.grey700,
+          ),
+          textAlign: pw.TextAlign.center,
+        ),
+      );
+    }
+
+    return pw.Container(
+      alignment: pw.Alignment.center,
+      padding: const pw.EdgeInsets.only(top: 8),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+        ),
+      ),
+      child: pw.Column(children: children),
+    );
+  }
+
   static pw.Widget _detailRichText(
     String text, {
     PdfColor color = PdfColors.grey800,
@@ -1648,6 +1658,7 @@ class PdfInvoiceApi {
             ],
           ),
         ],
+        footer: (context) => _buildDocumentFooter(data),
       ),
     );
 

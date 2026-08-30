@@ -332,7 +332,12 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
         final qtyNow = _deliverQtys[id] ?? 0;
         if (qtyNow > 0) {
           final path = item['drawing_image_path']?.toString() ?? '';
-          if (path.isEmpty || !File(path).existsSync()) {
+          if (path.isEmpty ||
+              !File(path).existsSync() ||
+              storedOrderDetailColorDiffersFromModel(
+                item,
+                savedWindowModelMap(item['partitions_json']),
+              )) {
             final jsonRaw = item['partitions_json'];
             if (jsonRaw != null) {
               try {
@@ -350,6 +355,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                 if (modelMap.isNotEmpty) {
                   final model = WindowModel(db: _db);
                   await applyWindowModelAndLoadCatalog(model, modelMap);
+                  applyStoredOrderDetailColorToWindowModel(model, item);
                   final newPath = await saveWindowImageToDisk(model);
                   if (newPath.isNotEmpty) {
                     await _db.updateCommandeDetailImagePath(id, newPath);
@@ -469,7 +475,12 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
           await _db.updateCommandeDetailDeliveredQty(id, newDelivered);
           
           final path = item['drawing_image_path']?.toString() ?? '';
-          if (path.isEmpty || !File(path).existsSync()) {
+          if (path.isEmpty ||
+              !File(path).existsSync() ||
+              storedOrderDetailColorDiffersFromModel(
+                item,
+                savedWindowModelMap(item['partitions_json']),
+              )) {
             final jsonRaw = item['partitions_json'];
             if (jsonRaw != null) {
               try {
@@ -487,6 +498,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                 if (modelMap.isNotEmpty) {
                   final model = WindowModel(db: _db);
                   await applyWindowModelAndLoadCatalog(model, modelMap);
+                  applyStoredOrderDetailColorToWindowModel(model, item);
                   final newPath = await saveWindowImageToDisk(model);
                   if (newPath.isNotEmpty) {
                     await _db.updateCommandeDetailImagePath(id, newPath);

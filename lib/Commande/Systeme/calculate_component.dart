@@ -490,6 +490,12 @@ class ComponentCalculator {
     ])) {
       return 'sash_traverse';
     }
+    // A sash plinthe is also named "بلانت الظلفة".  Check it before the
+    // generic sash matcher, otherwise the BOM stores it as a sash and the
+    // swap dialog opens the wrong catalogue.
+    if (_textHasAny(originalName, const ['plinthe', 'بلانت'])) {
+      return 'plant';
+    }
     if (_textHasAny(originalName, const ['الظلفة', 'sash', 'ouvrant'])) {
       return 'sash';
     }
@@ -506,9 +512,6 @@ class ComponentCalculator {
     }
     if (_textHasAny(originalName, const ['batmo', 'باتمو'])) {
       return 'batmo';
-    }
-    if (_textHasAny(originalName, const ['plinthe', 'بلانت'])) {
-      return 'plant';
     }
     if (_textHasAny(originalName, const [
       'porte-joint',
@@ -1632,7 +1635,12 @@ class ComponentCalculator {
         priceByWholeBar: priceByWholeBar,
         catalogItemId: catalogueId(selectedOverride),
         colorId: catalogueColorId(color),
-        overrideKey: originalName,
+        // Keep the plinthe override independent from the displayed row name.
+        // This prevents a later sash change from replacing the selected
+        // plinthe profile during BOM rebuilds.
+        overrideKey: resolvedSelectorType == 'plant'
+            ? 'بلانت (Plinthe)'
+            : originalName,
         selectorCategory: 'profile',
         selectorType: resolvedSelectorType,
         roleKey: _roleKeyForProfileSelector(resolvedSelectorType),
@@ -2981,6 +2989,46 @@ class ComponentCalculator {
       List<double> slidingSashLateralPieces = [];
       List<double> slidingSashCentralPieces = [];
       List<double> sashPlinthePieces = [];
+
+      // The plinthe is cut inside the sash, not across the complete sash
+      // outside width.  Use the visible width of the selected opening sash
+      // on both sides; this is the same inner-opening principle used by the
+      // glass calculation, without inventing a fixed 10 mm deduction.
+      double plintheSashVisibleWidth = 0.0;
+      final selectedOpeningSash = window.sashOverride;
+      final rawVisibleWidth = selectedOpeningSash?['visible_width'];
+      plintheSashVisibleWidth = rawVisibleWidth is num
+          ? rawVisibleWidth.toDouble()
+          : double.tryParse(rawVisibleWidth?.toString() ?? '') ?? 0.0;
+      if (plintheSashVisibleWidth <= 0) {
+        // In a mixed drawing the active primary series can be sliding while
+        // this plinthe still belongs to the opening series.
+        final openingSeries = window.activeSeries;
+        if (openingSeries != null) {
+          for (final section in openingSeries.sections) {
+            final type = section.type.toLowerCase();
+            final name = section.name.toLowerCase();
+            if (section.isSash ||
+                type == 'sash' ||
+                type.contains('ouvrant') ||
+                name.contains('sash') ||
+                name.contains('ouvrant') ||
+                name.contains('ظلفة')) {
+              plintheSashVisibleWidth = section.visibleWidth;
+              if (plintheSashVisibleWidth > 0) break;
+            }
+          }
+        }
+      }
+      if (plintheSashVisibleWidth <= 0) {
+        plintheSashVisibleWidth = window.profileThickness;
+      }
+
+      double plintheCutWidth(double sashOuterWidth) => math.max(
+        0.0,
+        sashOuterWidth - (plintheSashVisibleWidth * 2.0),
+      );
+
       for (var zone in window.zones) {
         final double overlap = seriesSashOverlap;
         double clearW = zone.boundary.width;
@@ -3001,7 +3049,7 @@ class ComponentCalculator {
           double sashH = clearH + overlap * 2;
           if (zone.hasSashPlintheBottom) {
             sashPieces.addAll([sashW / 1000.0, sashH / 1000.0, sashH / 1000.0]);
-            sashPlinthePieces.add(sashW / 1000.0);
+            sashPlinthePieces.add(plintheCutWidth(sashW) / 1000.0);
           } else {
             sashPieces.addAll([
               sashW / 1000.0,
@@ -3025,13 +3073,13 @@ class ComponentCalculator {
               sashH / 1000.0,
               sashH / 1000.0,
             ]);
-            sashPlinthePieces.add(sashWLeft / 1000.0);
+            sashPlinthePieces.add(plintheCutWidth(sashWLeft) / 1000.0);
             sashPieces.addAll([
               sashWRight / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
             ]);
-            sashPlinthePieces.add(sashWRight / 1000.0);
+            sashPlinthePieces.add(plintheCutWidth(sashWRight) / 1000.0);
           } else {
             sashPieces.addAll([
               sashWLeft / 1000.0,
@@ -3922,7 +3970,9 @@ class ComponentCalculator {
           ),
         );
       }
-      if (totalHandles > 0 && window.systemMode != 'sliding') {
+      // Cremone is the complete locking/handle assembly for this aluminium
+      // opening. It must never be shown together with the standalone handle.
+      if (totalHandles > 0 && !useCremone && window.systemMode != 'sliding') {
         if (window.isPVC) {
           items.add(
             createAccessory(
@@ -4195,16 +4245,9 @@ class ComponentCalculator {
             ),
           );
         }
-        if (!useCremone &&
-            window.componentOverrides.containsKey('كريمون (Cremone)')) {
-          items.add(
-            createAccessory(
-              'كريمون (Cremone)',
-              color: accessoryColorName,
-              qty: 0,
-            ),
-          );
-        }
+        // Do not add a zero-quantity Cremone placeholder merely because a
+        // selection is saved in componentOverrides. A dormant selection must
+        // not appear beside the real standalone handle in the quantity table.
       }
     }
 

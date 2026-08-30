@@ -208,10 +208,13 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      // Let Windows finish its normal activation/foreground processing.
+      // The old handler returned 0 here after changing focus, which could
+      // make the first taskbar click fail to bring the app to the front.
+      if (LOWORD(wparam) != WA_INACTIVE && child_content_ != nullptr) {
         SetFocus(child_content_);
       }
-      return 0;
+      break;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);

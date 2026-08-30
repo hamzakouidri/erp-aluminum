@@ -12,7 +12,6 @@ import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/desktop_window_frame.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/firebase_options.dart';
-import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
@@ -169,15 +168,11 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
-  StreamSubscription<CloudSyncFeedback>? _syncFeedbackSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _syncFeedbackSubscription = CloudSyncService().syncFeedbackStream.listen(
-      _showCloudSyncFeedback,
-    );
 
     // [إضافة هامة]: تهيئة خدمة المزامنة السحابية وبدء الاستماع بمجرد فتح التطبيق مع حماية ضد الانهيار
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -196,67 +191,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _syncFeedbackSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  void _showCloudSyncFeedback(CloudSyncFeedback feedback) {
-    // Cloud sync now runs quietly in the background. Only real failures stay
-    // visible so the user is not interrupted by routine upload/download
-    // progress and success messages.
-    if (feedback.type != CloudSyncFeedbackType.uploadFailed &&
-        feedback.type != CloudSyncFeedbackType.downloadFailed) {
-      return;
-    }
-
-    final messenger = _scaffoldMessengerKey.currentState;
-    if (messenger == null) return;
-
-    final isFailure =
-        feedback.type == CloudSyncFeedbackType.uploadFailed ||
-        feedback.type == CloudSyncFeedbackType.downloadFailed;
-    final isSuccess =
-        feedback.type == CloudSyncFeedbackType.uploadSucceeded ||
-        feedback.type == CloudSyncFeedbackType.downloadSucceeded;
-    final color = isFailure
-        ? Colors.red
-        : isSuccess
-        ? Colors.green
-        : feedback.type == CloudSyncFeedbackType.uploadStarted ||
-              feedback.type == CloudSyncFeedbackType.downloadStarted
-        ? Colors.blue
-        : Colors.orange;
-
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(
-          seconds: isFailure
-              ? 15
-              : feedback.type == CloudSyncFeedbackType.uploadStarted ||
-                    feedback.type == CloudSyncFeedbackType.downloadStarted
-              ? 5
-              : 7,
-        ),
-        backgroundColor: color,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(feedback.message, style: const TextStyle(fontFamily: 'Cairo')),
-            if (feedback.details.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                feedback.details,
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -315,7 +251,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           );
         }
         if (!kIsWeb && Platform.isWindows) {
-          content = DesktopWindowFrame(child: content);
+          content = DesktopWindowFrame(
+            topBar: const WorkspaceTabStrip(),
+            child: content,
+          );
         }
         return MediaQuery(
           data: MediaQuery.of(

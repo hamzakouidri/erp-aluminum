@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
-import 'package:database_data/Commande/Systeme/volet.dart';
 import 'package:database_data/Commande/Systeme/show_system_francais.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -276,7 +275,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         ItemBuildSystem(
           width: 60,
           height: 60,
-          title: 'System Mixed (مختلط)',
+          title: 'Conception (التصميم)',
           iconPath: 'Icon/french.png',
           onTap: () => _navigateToSystem(context, 'mixed'),
         ),
@@ -633,7 +632,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         targetPage = WindowView(model: _makeModel(thickness: 30));
         break;
       default:
-        targetPage = SystemRoling(model: _makeModel());
+        targetPage = WindowView(systemMode: 'mixed', model: _makeModel());
         break;
     }
 

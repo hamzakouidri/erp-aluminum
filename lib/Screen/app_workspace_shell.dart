@@ -11,12 +11,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_catalog_sync_service.dart';
+import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../widgets/desktop_command_bar.dart';
 import 'drawer.dart';
 import 'settings_screen.dart';
 import 'welcom_screen.dart';
+import '../login_screen.dart';
 
 const double _workspaceHeaderHeight = 110;
 
@@ -272,6 +275,110 @@ class WorkspaceController extends ChangeNotifier {
   }
 }
 
+/// Permanent desktop document tabs. This strip is supplied to the native
+/// caption area so the tabs remain visible while every opened page keeps the
+/// full application canvas below it.
+class WorkspaceTabStrip extends StatelessWidget {
+  const WorkspaceTabStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final workspace = context.watch<WorkspaceController>();
+    final language = context.watch<AppSettingsProvider>().language;
+
+    return SizedBox(
+      height: 42,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(
+          scrollbars: false,
+          dragDevices: const {
+            PointerDeviceKind.touch,
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.trackpad,
+          },
+        ),
+        child: ListView.builder(
+          padding: const EdgeInsetsDirectional.only(start: 4, end: 8),
+          scrollDirection: Axis.horizontal,
+          itemCount: workspace.entries.length,
+          itemBuilder: (context, index) {
+            final entry = workspace.entries[index];
+            final active = index == workspace.activeIndex;
+            final title = entry.id == 'home'
+                ? 'الرئيسية'
+                : Localization.translate(entry.title, language);
+
+            return Padding(
+              padding: const EdgeInsetsDirectional.only(end: 5, top: 4, bottom: 3),
+              child: Material(
+                color: active
+                    ? const Color(0xFFF1F5F9)
+                    : const Color(0xFFE2E8F0),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(9),
+                  bottom: Radius.circular(4),
+                ),
+                child: InkWell(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(9),
+                    bottom: Radius.circular(4),
+                  ),
+                  onTap: () => workspace.activate(index),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 11, end: 7),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          entry.icon,
+                          size: 16,
+                          color: active
+                              ? const Color(0xFF2563EB)
+                              : const Color(0xFF475569),
+                        ),
+                        const SizedBox(width: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 170),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF172033),
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        if (entry.id != 'home') ...[
+                          const SizedBox(width: 5),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => workspace.close(index),
+                            child: const Padding(
+                              padding: EdgeInsets.all(2),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 14,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 WorkspaceEntry _fitEntryToCanvas(WorkspaceEntry entry, Size canvasSize) {
   const edgeInset = 4.0;
   final maxWidth = canvasSize.width <= 420
@@ -324,44 +431,105 @@ void openAdaptiveScreen(
   workspace.open(title: title, icon: icon, content: liveScreen);
 }
 
-/// Keeps the current route open but recreates its data screen after a complete
-/// cloud restore.  A catalogue download is handled by the screen itself: it
-/// must refresh its data without resetting its current tab, form, or scroll
-/// position.
-class _CloudDataRefreshBoundary extends StatefulWidget {
+/// Keeps the current route identity stable while cloud data is applied in the
+/// background. Individual data screens may subscribe to targeted local change
+/// events, but the shell itself must never repaint the whole route for a cloud
+/// restore.
+class _CloudDataRefreshBoundary extends StatelessWidget {
   const _CloudDataRefreshBoundary({required this.child});
 
   final Widget child;
 
   @override
-  State<_CloudDataRefreshBoundary> createState() =>
-      _CloudDataRefreshBoundaryState();
+  Widget build(BuildContext context) {
+    return child;
+  }
 }
 
-class _CloudDataRefreshBoundaryState extends State<_CloudDataRefreshBoundary> {
-  StreamSubscription<String>? _subscription;
+/// Shows the only manual action that can be needed for workshop data sync.
+/// Upload and download controls stay out of the dashboard; once the session
+/// is opened, the service restores data and listens through Supabase Realtime.
+class _WorkshopSessionNotice extends StatefulWidget {
+  const _WorkshopSessionNotice({required this.child});
+
+  final Widget child;
 
   @override
-  void initState() {
-    super.initState();
-    _subscription = CloudSyncService().dbUpdateStream.listen((event) {
-      if (event == 'cloud_restored' && mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
-        });
-      }
-    });
-  }
+  State<_WorkshopSessionNotice> createState() => _WorkshopSessionNoticeState();
+}
 
-  @override
-  void dispose() {
-    _subscription?.cancel();
-    super.dispose();
+class _WorkshopSessionNoticeState extends State<_WorkshopSessionNotice> {
+  bool _opening = false;
+
+  Future<void> _openSession() async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      final signedIn = await openSupabaseWorkshopSession(context);
+      if (!signedIn) return;
+
+      final workshopSync = SupabaseWorkshopSyncService();
+      final ready = await workshopSync.ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) return;
+
+      await CloudSyncService().init();
+      CloudSyncService().startListeningForUpdates(() {});
+    } catch (error) {
+      // Do not interrupt the user with a red error bar. The notice remains
+      // available so the session can be opened again after fixing credentials.
+      debugPrint('Workshop session notice login failed: $error');
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return widget.child;
+    if (SupabaseCatalogSyncService().isSignedIn) return widget.child;
+
+    return Column(
+      children: [
+        Material(
+          color: const Color(0xFFFFF7E0),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 12, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.cloud_off_rounded, color: Colors.orange),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'جلسة قاعدة بيانات الورشة غير مفتوحة. افتحها لتعمل المزامنة تلقائياً.',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _opening ? null : _openSession,
+                    icon: _opening
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.login_rounded),
+                    label: Text(
+                      _opening ? 'جاري الفتح...' : 'فتح جلسة الورشة',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: widget.child),
+      ],
+    );
   }
 }
 
@@ -371,23 +539,26 @@ class AppWorkspaceShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
+    late final Widget workspace;
 
     // The Windows shell is intentionally unified: permanent document tabs on
     // the first row and the command menu on the second row.
     if (_isWindowsDesktop) {
-      return const _TabbedWorkspaceView();
+      workspace = const _TabbedWorkspaceView();
+    } else {
+      switch (settings.viewMode) {
+        case AppViewMode.classic:
+          workspace = const WelcomScreen();
+        case AppViewMode.tabs:
+          workspace = const _TabbedWorkspaceView();
+        case AppViewMode.windows:
+          workspace = const _FloatingWorkspaceView();
+        default:
+          workspace = const WelcomScreen();
+      }
     }
 
-    switch (settings.viewMode) {
-      case AppViewMode.classic:
-        return const WelcomScreen();
-      case AppViewMode.tabs:
-        return const _TabbedWorkspaceView();
-      case AppViewMode.windows:
-        return const _FloatingWorkspaceView();
-      default:
-        return const WelcomScreen();
-    }
+    return _WorkshopSessionNotice(child: workspace);
   }
 }
 
@@ -556,6 +727,59 @@ class _WorkspaceHeader extends StatelessWidget {
                           ],
                         ),
                       ),
+                      if (user == null)
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const LoginScreen(),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFFF59E0B),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.cloud_off_rounded,
+                                  size: 16,
+                                  color: Color(0xFFB45309),
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'الجلسة مغلقة - اضغط لتسجيل الدخول',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF92400E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       IconButton(
                         onPressed: () {
                           openAdaptiveScreen(
@@ -626,11 +850,23 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
   String _workshopName = 'ورشة الألمنيوم';
   String? _logoUrl;
   ImageProvider? _cachedLogo;
+  StreamSubscription<String>? _workshopSyncSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadLocalProfile();
+    _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
+      event,
+    ) {
+      if (event == 'cloud_restored' && mounted) _loadLocalProfile();
+    });
+  }
+
+  @override
+  void dispose() {
+    _workshopSyncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadLocalProfile() async {
@@ -638,14 +874,17 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
       final prefs = await SharedPreferences.getInstance();
       final savedName = prefs.getString('workshop_name');
       final savedLogo = prefs.getString('workshop_logo_base64');
-      if (mounted) {
+      final nextName = savedName != null && savedName.isNotEmpty
+          ? savedName
+          : _workshopName;
+      final nextLogo = savedLogo != null && savedLogo.isNotEmpty
+          ? savedLogo
+          : _logoUrl;
+      if (mounted && (nextName != _workshopName || nextLogo != _logoUrl)) {
         setState(() {
-          if (savedName != null && savedName.isNotEmpty)
-            _workshopName = savedName;
-          if (savedLogo != null && savedLogo.isNotEmpty) {
-            _logoUrl = savedLogo;
-            _updateLogoProvider(savedLogo);
-          }
+          _workshopName = nextName;
+          _logoUrl = nextLogo;
+          _updateLogoProvider(nextLogo);
         });
       }
     } catch (_) {}
@@ -761,11 +1000,23 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
   String _workshopName = 'ورشة الألمنيوم';
   String? _logoUrl;
   ImageProvider? _cachedLogo;
+  StreamSubscription<String>? _workshopSyncSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadLocalProfile();
+    _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
+      event,
+    ) {
+      if (event == 'cloud_restored' && mounted) _loadLocalProfile();
+    });
+  }
+
+  @override
+  void dispose() {
+    _workshopSyncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadLocalProfile() async {
@@ -773,14 +1024,17 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
       final prefs = await SharedPreferences.getInstance();
       final savedName = prefs.getString('workshop_name');
       final savedLogo = prefs.getString('workshop_logo_base64');
-      if (mounted) {
+      final nextName = savedName != null && savedName.isNotEmpty
+          ? savedName
+          : _workshopName;
+      final nextLogo = savedLogo != null && savedLogo.isNotEmpty
+          ? savedLogo
+          : _logoUrl;
+      if (mounted && (nextName != _workshopName || nextLogo != _logoUrl)) {
         setState(() {
-          if (savedName != null && savedName.isNotEmpty)
-            _workshopName = savedName;
-          if (savedLogo != null && savedLogo.isNotEmpty) {
-            _logoUrl = savedLogo;
-            _updateLogoProvider(savedLogo);
-          }
+          _workshopName = nextName;
+          _logoUrl = nextLogo;
+          _updateLogoProvider(nextLogo);
         });
       }
     } catch (_) {}
@@ -1006,9 +1260,10 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     final workspace = Provider.of<WorkspaceController>(context);
     final isDesktop =
         _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
-    // The dashboard owns its own light header on desktop.  Keep the document
-    // tabs and command bar for every other workspace screen.
-    final showWorkspaceChrome = !_isWindowsDesktop || !workspace.isHomeActive;
+    // Keep the desktop tab bar visible even on the dashboard. The workshop
+    // brand is the first tab, and all opened pages remain beside it in the
+    // same top application bar.
+    const showWorkspaceChrome = true;
     final activeEntryId = workspace.entries[workspace.activeIndex].id;
     if (_lastEnsuredActiveTabId != activeEntryId) {
       _lastEnsuredActiveTabId = activeEntryId;
@@ -1026,7 +1281,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
         drawer: isDesktop ? null : const AppDrawer(),
         body: Column(
           children: [
-            if (showWorkspaceChrome)
+            if (showWorkspaceChrome && !isDesktop)
               Container(
                 color: const Color(0xFF0F172A),
                 child: SafeArea(

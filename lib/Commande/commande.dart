@@ -1577,7 +1577,12 @@ class _CommandeState extends State<Commande> {
                         for (var item in items) {
                           final path =
                               item['drawing_image_path']?.toString() ?? '';
-                          if (path.isEmpty || !File(path).existsSync()) {
+                          if (path.isEmpty ||
+                              !File(path).existsSync() ||
+                              storedOrderDetailColorDiffersFromModel(
+                                item,
+                                savedWindowModelMap(item['partitions_json']),
+                              )) {
                             final jsonRaw = item['partitions_json'];
                             if (jsonRaw != null) {
                               try {
@@ -1598,6 +1603,10 @@ class _CommandeState extends State<Commande> {
                                   await applyWindowModelAndLoadCatalog(
                                     model,
                                     modelMap,
+                                  );
+                                  applyStoredOrderDetailColorToWindowModel(
+                                    model,
+                                    item,
                                   );
                                   final newPath = await saveWindowImageToDisk(
                                     model,
@@ -1677,7 +1686,12 @@ class _CommandeState extends State<Commande> {
                         for (var item in items) {
                           final path =
                               item['drawing_image_path']?.toString() ?? '';
-                          if (path.isEmpty || !File(path).existsSync()) {
+                          if (path.isEmpty ||
+                              !File(path).existsSync() ||
+                              storedOrderDetailColorDiffersFromModel(
+                                item,
+                                savedWindowModelMap(item['partitions_json']),
+                              )) {
                             final jsonRaw = item['partitions_json'];
                             if (jsonRaw != null) {
                               try {
@@ -1698,6 +1712,10 @@ class _CommandeState extends State<Commande> {
                                   await applyWindowModelAndLoadCatalog(
                                     model,
                                     modelMap,
+                                  );
+                                  applyStoredOrderDetailColorToWindowModel(
+                                    model,
+                                    item,
                                   );
                                   final newPath = await saveWindowImageToDisk(
                                     model,
@@ -2113,7 +2131,14 @@ class _CommandeState extends State<Commande> {
                             for (var item in items) {
                               final path =
                                   item['drawing_image_path']?.toString() ?? '';
-                              if (path.isEmpty || !File(path).existsSync()) {
+                              if (path.isEmpty ||
+                                  !File(path).existsSync() ||
+                                  storedOrderDetailColorDiffersFromModel(
+                                    item,
+                                    savedWindowModelMap(
+                                      item['partitions_json'],
+                                    ),
+                                  )) {
                                 final jsonRaw = item['partitions_json'];
                                 if (jsonRaw != null) {
                                   try {
@@ -2137,6 +2162,10 @@ class _CommandeState extends State<Commande> {
                                       await applyWindowModelAndLoadCatalog(
                                         model,
                                         modelMap,
+                                      );
+                                      applyStoredOrderDetailColorToWindowModel(
+                                        model,
+                                        item,
                                       );
                                       final newPath =
                                           await saveWindowImageToDisk(model);
@@ -2207,7 +2236,12 @@ class _CommandeState extends State<Commande> {
                         for (var item in items) {
                           final path =
                               item['drawing_image_path']?.toString() ?? '';
-                          if (path.isEmpty || !File(path).existsSync()) {
+                          if (path.isEmpty ||
+                              !File(path).existsSync() ||
+                              storedOrderDetailColorDiffersFromModel(
+                                item,
+                                savedWindowModelMap(item['partitions_json']),
+                              )) {
                             final jsonRaw = item['partitions_json'];
                             if (jsonRaw != null) {
                               try {
@@ -2228,6 +2262,10 @@ class _CommandeState extends State<Commande> {
                                   await applyWindowModelAndLoadCatalog(
                                     model,
                                     modelMap,
+                                  );
+                                  applyStoredOrderDetailColorToWindowModel(
+                                    model,
+                                    item,
                                   );
                                   final newPath = await saveWindowImageToDisk(
                                     model,
@@ -2309,13 +2347,12 @@ class _CommandeState extends State<Commande> {
                         final items = await db.readCommandeDetails(
                           orderData['id'],
                         );
-                        final prefs = await SharedPreferences.getInstance();
-                        final workshopName =
-                            prefs.getString('workshop_name') ?? 'ورشتي';
+                        final workshop =
+                            await DevisBuilder.loadWorkshopInfo();
                         await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
                           order: orderData,
                           items: items,
-                          workshopName: workshopName,
+                          workshopName: workshop.name,
                           db: db,
                         );
                       } catch (e) {
@@ -4147,18 +4184,33 @@ class _OrderPicturePdfPreviewPageState
   }
 
   Future<Uint8List?> _readPreviewImageBytes(Map<String, dynamic> item) async {
-    // Prefer the exact image saved with the order. Rebuilding the model first
-    // can change the drawing after a catalogue/defaults update.
+    Map<String, dynamic> modelMap = const <String, dynamic>{};
+    final jsonRaw = item['partitions_json'];
+    if (jsonRaw != null) {
+      try {
+        modelMap = jsonRaw is Map
+            ? Map<String, dynamic>.from(jsonRaw)
+            : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
+      } catch (_) {}
+    }
+
+    // An old image can carry a different colour than the durable detail row.
+    // Repair that image before returning it; otherwise the preview keeps
+    // showing (for example) antique while the order says white.
     final path = item['drawing_image_path']?.toString().trim() ?? '';
     if (path.isNotEmpty) {
       try {
         final file = File(path);
-        if (await file.exists()) return file.readAsBytes();
+        if (await file.exists() &&
+            !storedOrderDetailColorDiffersFromModel(item, modelMap)) {
+          return file.readAsBytes();
+        }
       } catch (_) {}
     }
 
     final raw = item['drawing_image_base64']?.toString().trim() ?? '';
-    if (raw.isNotEmpty) {
+    if (raw.isNotEmpty &&
+        !storedOrderDetailColorDiffersFromModel(item, modelMap)) {
       try {
         final separator = raw.indexOf(',');
         final encoded = raw.startsWith('data:image') && separator >= 0
@@ -4168,19 +4220,28 @@ class _OrderPicturePdfPreviewPageState
       } catch (_) {}
     }
 
-    final jsonRaw = item['partitions_json'];
-    if (jsonRaw != null) {
+    if (modelMap.isNotEmpty) {
       try {
-        final decoded = jsonRaw is Map
-            ? Map<String, dynamic>.from(jsonRaw)
-            : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
         final model = WindowModel(db: widget.db);
-        await applyWindowModelAndLoadCatalog(model, decoded);
-        return captureWindowImage(
+        await applyWindowModelAndLoadCatalog(model, modelMap);
+        applyStoredOrderDetailColorToWindowModel(model, item);
+        final image = await captureWindowImage(
           model,
           maxSide: 3200,
           showDrawingDimensions: true,
         );
+        final repairedPath = await saveWindowImageToDisk(model, maxSide: 1800);
+        if (repairedPath.isNotEmpty) {
+          final detailId = (item['id'] as num?)?.toInt();
+          if (detailId != null) {
+            await widget.db.updateCommandeDetailImagePath(
+              detailId,
+              repairedPath,
+            );
+          }
+          item['drawing_image_path'] = repairedPath;
+        }
+        return image;
       } catch (_) {}
     }
     return null;

@@ -381,6 +381,12 @@ class SqlDatabase {
       );
     } catch (_) {}
     try {
+      // Preserve the order chosen by the user when an order is edited.
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
       // A purchase invoice can contain several glass rows with the same
       // catalogue id when their measurements or glazing composition differ.
       await db.execute('DROP INDEX IF EXISTS idx_achat_items_unique;');
@@ -3106,6 +3112,7 @@ class SqlDatabase {
     drawing_image_base64 TEXT,
     delivered_qty INTEGER DEFAULT 0,
     instances_json TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT,
     FOREIGN KEY (id_commandes) REFERENCES Commandes(id) ON DELETE CASCADE
   )
@@ -5066,14 +5073,14 @@ class SqlDatabase {
         'Commandes_details',
         where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
         whereArgs: [parsedInt, strVal],
-        orderBy: 'id ASC',
+        orderBy: 'sort_order ASC, id ASC',
       );
     }
     return await myDb.query(
       'Commandes_details',
       where: 'CAST(id_commandes AS TEXT) = ?',
       whereArgs: [strVal],
-      orderBy: 'id ASC',
+      orderBy: 'sort_order ASC, id ASC',
     );
   }
 
@@ -7344,12 +7351,14 @@ class SqlDatabase {
     }
 
     final preparedDetails = await Future.wait(
-      details.map((rawDetail) async {
+      details.asMap().entries.map((entry) async {
+        final rawDetail = entry.value;
         // Keep the detail ID while editing.  It is the cloud-sync identity of
         // this drawing; replacing it would allow an old copy (and its old
         // colour) to be merged back into the order.
         final detail = Map<String, dynamic>.from(rawDetail)
-          ..remove('id_commandes');
+          ..remove('id_commandes')
+          ..['sort_order'] = entry.key;
         final drawingPath = detail['drawing_image_path']?.toString() ?? '';
         if (drawingPath.isNotEmpty &&
             (detail['drawing_image_base64']?.toString().isEmpty ?? true)) {
@@ -8181,6 +8190,7 @@ class SqlDatabase {
     int? locationId,
     String? imagePath,
     String? pdfPath,
+    String? createdAt,
   }) async {
     Database? myDb = await db;
     try {
@@ -8199,6 +8209,7 @@ class SqlDatabase {
       );
     }
 
+    final now = DateTime.now().toIso8601String();
     var res = await myDb.insert(
       'Achats',
       _withDistributedId({
@@ -8210,8 +8221,8 @@ class SqlDatabase {
         'total': total,
         'image_path': imagePath,
         'pdf_path': pdfPath,
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
+        'created_at': createdAt ?? now,
+        'updated_at': now,
       }),
     );
     CloudSyncService().notifyChange();
@@ -8364,6 +8375,18 @@ class SqlDatabase {
         'supplier_name': supplierName,
         'updated_at': DateTime.now().toIso8601String(),
       },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
+  Future<int> updateAchatDate(int id, String createdAt) async {
+    Database? myDb = await db;
+    final res = await myDb!.update(
+      'Achats',
+      {'created_at': createdAt, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -11644,6 +11667,7 @@ class SqlDatabase {
         window_type TEXT,
         partitions_json TEXT,
         drawing_image_path TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
         delivered_qty INTEGER DEFAULT 0,
         instances_json TEXT
       )
@@ -11779,6 +11803,7 @@ class SqlDatabase {
       "ALTER TABLE Commandes_details ADD COLUMN window_type TEXT",
       "ALTER TABLE Commandes_details ADD COLUMN partitions_json TEXT",
       "ALTER TABLE Commandes_details ADD COLUMN updated_at TEXT",
+      "ALTER TABLE Commandes_details ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE Client ADD COLUMN creation_platform TEXT NOT NULL DEFAULT 'unknown'",
       "ALTER TABLE Accessories ADD COLUMN material_type TEXT NOT NULL DEFAULT 'Aluminium'",
       "ALTER TABLE Accessories ADD COLUMN scope TEXT NOT NULL DEFAULT 'Global'",
@@ -13000,8 +13025,7 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  Future<double?> readSawKerfMm() =>
-      _readInventorySettingNumber('saw_kerf_mm');
+  Future<double?> readSawKerfMm() => _readInventorySettingNumber('saw_kerf_mm');
 
   Future<void> saveSawKerfMm(double kerfMm) =>
       _saveInventorySettingNumber('saw_kerf_mm', kerfMm);
@@ -13107,9 +13131,8 @@ class SqlDatabase {
         final barIndex = (bar['bar_index'] as num?)?.toInt() ?? 0;
         final remainderMm = _readStoredNumber(bar['remainder_mm']) ?? 0;
         final kerfLossMm = _readStoredNumber(bar['kerf_loss_mm']) ?? 0;
-        final barMinimum = _readStoredNumber(
-              bar['minimum_reusable_length_mm'],
-            ) ??
+        final barMinimum =
+            _readStoredNumber(bar['minimum_reusable_length_mm']) ??
             minimumReusableLengthMm;
         if (itemId == null || itemType.isEmpty) continue;
 
@@ -15371,7 +15394,23 @@ class SqlDatabase {
       args.add(itemId);
     }
     if (seriesId != null) {
-      where.add('(series_id = ? OR series_id IS NULL)');
+      // A series-specific rule always overrides the global rule for the same
+      // catalogue item. This includes an explicit disabled rule: otherwise a
+      // disabled local rule would silently fall back to the global one.
+      where.add('''(
+        series_id = ?
+        OR (
+          series_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM CatalogItemRules scoped_rule
+            WHERE scoped_rule.item_table = CatalogItemRules.item_table
+              AND scoped_rule.item_id = CatalogItemRules.item_id
+              AND scoped_rule.series_id = ?
+          )
+        )
+      )''');
+      args.add(seriesId);
       args.add(seriesId);
     }
     final keys = roleKeys

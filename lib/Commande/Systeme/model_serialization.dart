@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'model.dart';
 
@@ -53,6 +54,136 @@ String? _savedColorHex(Map<String, dynamic>? color) {
   final hex = color?['hex_code'] ?? color?['hex'];
   final value = hex?.toString().trim() ?? '';
   return value.isEmpty ? null : value;
+}
+
+String _normalizedPersistedColorName(Object? raw) {
+  return (raw?.toString() ?? '')
+      .trim()
+      .toLowerCase()
+      .replaceAll('أ', 'ا')
+      .replaceAll('إ', 'ا')
+      .replaceAll('آ', 'ا')
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
+
+String? _persistedColorFamily(Object? raw) {
+  final value = _normalizedPersistedColorName(raw);
+  if (value.isEmpty) return null;
+  if (value.contains('white') ||
+      value.contains('blanc') ||
+      value.contains('ابيض')) {
+    return 'white';
+  }
+  if (value.contains('antique') ||
+      value.contains('wood') ||
+      value.contains('bois') ||
+      value.contains('خشبي') ||
+      value.contains('faux bois')) {
+    return 'wood';
+  }
+  if (value.contains('gray') ||
+      value.contains('grey') ||
+      value.contains('gris') ||
+      value.contains('رمادي')) {
+    return 'gray';
+  }
+  if (value.contains('black') ||
+      value.contains('noir') ||
+      value.contains('اسود')) {
+    return 'black';
+  }
+  if (value.contains('brown') || value.contains('marron') || value.contains('بني')) {
+    return 'brown';
+  }
+  if (value.contains('beige') || value.contains('بيج') || value.contains('باج')) {
+    return 'beige';
+  }
+  return null;
+}
+
+String? _colorNameFromMap(Map<String, dynamic>? color) {
+  final value = color?['name'] ?? color?['color_name'];
+  final name = value?.toString().trim() ?? '';
+  return name.isEmpty ? null : name;
+}
+
+/// Returns the durable colour saved on the order detail row.  The row is the
+/// source of truth for an order; `partitions_json` may contain an older model
+/// snapshot from before the user changed the colour.
+String? storedOrderDetailColor(Map<String, dynamic> detail) {
+  for (final key in const ['color', 'color_name']) {
+    final value = detail[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return null;
+}
+
+/// True when a saved drawing model carries a different profile colour from
+/// the order detail row.  This lets old image files repair themselves once
+/// the order is opened or a document is generated.
+bool storedOrderDetailColorDiffersFromModel(
+  Map<String, dynamic> detail,
+  Map<String, dynamic> modelMap,
+) {
+  final rowColor = storedOrderDetailColor(detail);
+  if (rowColor == null) return false;
+  final rawModelColor = modelMap['selectedDbColor'];
+  final modelColor = rawModelColor is Map
+      ? _colorNameFromMap(Map<String, dynamic>.from(rawModelColor))
+      : rawModelColor?.toString().trim();
+  final savedColor = (modelColor == null || modelColor.isEmpty)
+      ? modelMap['selectedColorName']?.toString().trim()
+      : modelColor;
+  if (savedColor == null || savedColor.isEmpty) return false;
+
+  final rowNormalized = _normalizedPersistedColorName(rowColor);
+  final modelNormalized = _normalizedPersistedColorName(savedColor);
+  if (rowNormalized == modelNormalized) return false;
+  final rowFamily = _persistedColorFamily(rowColor);
+  final modelFamily = _persistedColorFamily(savedColor);
+  return rowFamily == null || modelFamily == null || rowFamily != modelFamily;
+}
+
+Map<String, dynamic> savedWindowModelMap(Object? raw) {
+  if (raw is Map<String, dynamic>) return raw;
+  if (raw is Map) return Map<String, dynamic>.from(raw);
+  final text = raw?.toString().trim() ?? '';
+  if (text.length < 5) return const <String, dynamic>{};
+  try {
+    final decoded = jsonDecode(text);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+  } catch (_) {}
+  return const <String, dynamic>{};
+}
+
+/// Apply the order-row colour after the catalogue has restored a model.  The
+/// model setter also propagates it to every zone, which is important because
+/// the painter uses zone colours for sash/frame sections.
+void applyStoredOrderDetailColorToWindowModel(
+  WindowModel model,
+  Map<String, dynamic> detail,
+) {
+  final rowColor = storedOrderDetailColor(detail);
+  if (rowColor == null) return;
+
+  final normalized = _normalizedPersistedColorName(rowColor);
+  Map<String, dynamic>? matchingColor;
+  for (final color in model.availableColors) {
+    final name = _colorNameFromMap(color);
+    if (name == null) continue;
+    final candidate = _normalizedPersistedColorName(name);
+    if (candidate == normalized ||
+        (candidate.contains(normalized) || normalized.contains(candidate)) ||
+        (_persistedColorFamily(name) != null &&
+            _persistedColorFamily(name) == _persistedColorFamily(rowColor))) {
+      matchingColor = color;
+      break;
+    }
+  }
+
+  model.selectedDbColor = matchingColor ?? {'name': rowColor};
 }
 
 // Extension for GlassSpecification

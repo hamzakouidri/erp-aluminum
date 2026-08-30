@@ -6,6 +6,7 @@ import '../settings/localization.dart';
 import '../settings/app_settings.dart';
 import 'order_date_utils.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:flutter/foundation.dart';
 
 class DevisLineItem {
@@ -157,13 +158,34 @@ class DevisBuilder {
 
   static double _toDouble(dynamic value) => (value as num?)?.toDouble() ?? 0.0;
 
+  static bool _isUsableWorkshopName(String value, String code) {
+    final name = value.trim();
+    return name.isNotEmpty && name != code;
+  }
+
   static Future<DevisWorkshopInfo> loadWorkshopInfo() async {
     // Workshop information is owned by Supabase. The sync service writes the
     // latest profile into these local preferences on every device, so PDFs
     // must never fall back to a duplicated Firestore profile document.
     final prefs = await SharedPreferences.getInstance();
+    var workshopName = (prefs.getString('workshop_name') ?? '').trim();
+    final workshopCode = (prefs.getString('workshop_code') ?? '').trim();
+    if (!_isUsableWorkshopName(workshopName, workshopCode)) {
+      try {
+        final syncedName = await SupabaseWorkshopSyncService()
+            .readWorkshopDisplayName();
+        if (syncedName != null &&
+            _isUsableWorkshopName(syncedName, workshopCode)) {
+          workshopName = syncedName;
+          await prefs.setString('workshop_name', syncedName);
+        }
+      } catch (_) {}
+    }
     return DevisWorkshopInfo(
-      name: prefs.getString('workshop_name') ?? 'ورشتي',
+      // A workshop code is an internal identifier, never a printable name.
+      name: _isUsableWorkshopName(workshopName, workshopCode)
+          ? workshopName
+          : 'ورشتي',
       phone: prefs.getString('phone') ?? '',
       address: prefs.getString('workshop_address') ?? '',
       rc: prefs.getString('workshop_rc') ?? '',
@@ -189,7 +211,11 @@ class DevisBuilder {
     final prefs = await SharedPreferences.getInstance();
     final langIndex = prefs.getInt('app_language') ?? 0;
     _currentLang = overrideLang ?? AppLanguage.values[langIndex];
-    final supplier = workshop ?? await loadWorkshopInfo();
+    final candidate = workshop ?? await loadWorkshopInfo();
+    final workshopCode = (prefs.getString('workshop_code') ?? '').trim();
+    final supplier = _isUsableWorkshopName(candidate.name, workshopCode)
+        ? candidate
+        : await loadWorkshopInfo();
     final orderDate = _formatDisplayDate(order);
     final validUntil = _formatValidUntil(order);
 
@@ -681,10 +707,10 @@ class DevisBuilder {
       }
     }
 
-    final itemColor = item['color']?.toString();
-    final itemRawProfColor =
-        map['selectedDbColor']?['name']?.toString() ??
-        _colorLabel(itemColor ?? '');
+    final itemColor = item['color']?.toString().trim() ?? '';
+    final itemRawProfColor = itemColor.isNotEmpty
+        ? _colorLabel(itemColor)
+        : (map['selectedDbColor']?['name']?.toString() ?? '');
     final itemProfColor = _localizedColorLabel(itemRawProfColor);
     final detailId = item['id'] as int? ?? 0;
 
@@ -1463,9 +1489,10 @@ class DevisBuilder {
     }
 
     // 6. Colors (Profile Color & Accessory Color & Shutter Color)
-    final color = item['color']?.toString();
-    final rawProfColor =
-        map['selectedDbColor']?['name']?.toString() ?? _colorLabel(color ?? '');
+    final color = item['color']?.toString().trim() ?? '';
+    final rawProfColor = color.isNotEmpty
+        ? _colorLabel(color)
+        : (map['selectedDbColor']?['name']?.toString() ?? '');
     final rawAccColor =
         map['selectedAccessoryColor']?['name']?.toString() ?? rawProfColor;
 
@@ -1838,8 +1865,9 @@ class DevisBuilder {
       if (handleLine != null) details.add(handleLine);
     }
 
-    final rawProfColor =
-        map['selectedDbColor']?['name']?.toString() ?? itemProfColor;
+    final rawProfColor = itemProfColor.trim().isNotEmpty
+        ? itemProfColor
+        : (map['selectedDbColor']?['name']?.toString() ?? '');
     final rawAccColor =
         map['selectedAccessoryColor']?['name']?.toString() ?? rawProfColor;
     final profColor = _localizedColorLabel(rawProfColor);

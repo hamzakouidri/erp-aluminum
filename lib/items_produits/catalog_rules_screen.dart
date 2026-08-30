@@ -22,11 +22,13 @@ class _RuleRole {
 }
 
 class _CatalogRulesScreenState extends State<CatalogRulesScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+    {
   late final Map<String, TextEditingController> _searchControllers;
 
-  final _tables = const ['ShutterComponents', 'Accessories', 'Joints'];
+  // Shutters and side covers are intentionally not removed from the database
+  // or from the calculation engine. They have dedicated profile/shutter
+  // rules; this screen is only the grouped accessory-rules editor.
+  final _tables = const ['Accessories'];
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
   final Map<String, Map<String, dynamic>> _rulesByItem = {};
   bool _loading = true;
@@ -39,7 +41,6 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tables.length, vsync: this);
     _searchControllers = {
       for (final table in _tables) table: TextEditingController(),
     };
@@ -48,7 +49,6 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
     for (final controller in _searchControllers.values) {
       controller.dispose();
     }
@@ -58,29 +58,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   Future<void> _load() async {
     setState(() => _loading = true);
     final results = await Future.wait<dynamic>([
-      widget.db.readShutterComponents(),
       widget.db.readAccessories(),
-      widget.db.readJoints(),
-      widget.db.getCatalogItemRules(itemTable: 'ShutterComponents'),
       widget.db.getCatalogItemRules(itemTable: 'Accessories'),
-      widget.db.getCatalogItemRules(itemTable: 'Joints'),
     ]);
     if (!mounted) return;
     _itemsByTable
       ..clear()
       ..addAll({
-        'ShutterComponents': results[0] as List<Map<String, dynamic>>,
-        'Accessories': results[1] as List<Map<String, dynamic>>,
-        'Joints': results[2] as List<Map<String, dynamic>>,
+        'Accessories': results[0] as List<Map<String, dynamic>>,
       });
     _rulesByItem.clear();
-    for (final tableRules in results.skip(3)) {
-      for (final raw in tableRules as List<Map<String, dynamic>>) {
-        final table = raw['item_table']?.toString() ?? '';
-        final itemId = (raw['item_id'] as num?)?.toInt();
-        if (table.isEmpty || itemId == null) continue;
-        _rulesByItem[_itemKey(table, itemId)] = Map<String, dynamic>.from(raw);
-      }
+    for (final raw in results[1] as List<Map<String, dynamic>>) {
+      final table = raw['item_table']?.toString() ?? '';
+      final itemId = (raw['item_id'] as num?)?.toInt();
+      if (table.isEmpty || itemId == null) continue;
+      _rulesByItem[_itemKey(table, itemId)] = Map<String, dynamic>.from(raw);
     }
     for (final table in _tables) {
       for (final item
@@ -493,15 +485,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(_t('قواعد الكتالوج العامة', 'Règles du catalogue')),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: _t('الستار', 'Volet')),
-            Tab(text: _t('الأكسسوارات', 'Accessoires')),
-            Tab(text: _t('الجوانات', 'Joints')),
-          ],
-        ),
+        title: Text(_t('قواعد الأكسسوارات', 'Règles des accessoires')),
         actions: [
           IconButton(
             tooltip: _t('حفظ', 'Enregistrer'),
@@ -518,10 +502,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: _tables.map(_tableView).toList(),
-            ),
+          : _tableView('Accessories'),
     );
   }
 
@@ -531,110 +512,199 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       return Center(child: Text(_t('لا توجد عناصر.', 'Aucun élément.')));
     }
     final searchController = _searchControllers[table]!;
+    final query = searchController.text;
     final filteredItems = items
-        .where((item) => _matchesSearch(table, item, searchController.text))
+        .where((item) => _matchesSearch(table, item, query))
         .toList(growable: false);
-    return ListView.separated(
+    final categories = _rolesForTable(table)
+        .where((role) => role.key != 'other')
+        .toList(growable: false);
+
+    return ListView(
       padding: const EdgeInsets.all(14),
-      itemCount: filteredItems.isEmpty ? 2 : filteredItems.length + 1,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return TextField(
-            controller: searchController,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: searchController.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: _t('مسح البحث', 'Effacer la recherche'),
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () {
-                        searchController.clear();
-                        setState(() {});
-                      },
-                    ),
-              hintText: _t(
-                'بحث بالكود، الاسم، النوع أو الدور...',
-                'Rechercher code, nom, type ou rôle...',
-              ),
-              border: const OutlineInputBorder(),
-            ),
-            onChanged: (_) => setState(() {}),
-          );
-        }
-        if (filteredItems.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(_t('لا توجد نتائج.', 'Aucun résultat.')),
-            ),
-          );
-        }
-        final item = filteredItems[index - 1];
-        final itemId = _itemId(item);
-        if (itemId == null) return const SizedBox.shrink();
-        final rule = _ruleFor(table, itemId);
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _itemTitle(item),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                if (_itemSubtitle(item).isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    _itemSubtitle(item),
-                    style: Theme.of(context).textTheme.bodySmall,
+      children: [
+        TextField(
+          controller: searchController,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: _t('مسح البحث', 'Effacer la recherche'),
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () {
+                      searchController.clear();
+                      setState(() {});
+                    },
                   ),
-                ],
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: rule['role_key']?.toString(),
-                  isExpanded: true,
-                  decoration: InputDecoration(labelText: _t('الدور', 'Rôle')),
-                  items: _rolesForTable(table)
-                      .map(
-                        (role) => DropdownMenuItem(
-                          value: role.key,
-                          child: Text(_t(role.ar, role.fr)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => rule['role_key'] = value);
-                  },
+            hintText: _t(
+              'بحث بالكود، الاسم، النوع أو العنوان...',
+              'Rechercher code, nom, type ou rubrique...',
+            ),
+            border: const OutlineInputBorder(),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _t(
+            'اختر عنوان الإكسسوار لعرض أنواعه وقواعده',
+            'Choisissez une rubrique pour afficher ses articles et règles',
+          ),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        if (filteredItems.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              query.trim().isEmpty
+                  ? _t('لا توجد إكسسوارات.', 'Aucun accessoire.')
+                  : _t('لا توجد نتائج.', 'Aucun résultat.'),
+              textAlign: TextAlign.center,
+            ),
+          )
+        else
+          ...categories.map((category) {
+            final categoryItems = filteredItems.where((item) {
+              final itemId = _itemId(item);
+              if (itemId == null) return false;
+              final rule = _ruleFor(table, itemId);
+              return rule['role_key']?.toString() == category.key;
+            }).toList(growable: false);
+            if (query.trim().isNotEmpty && categoryItems.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ExpansionTile(
+                leading: Icon(_categoryIcon(category.key)),
+                title: Text(_t(category.ar, category.fr)),
+                subtitle: Text(
+                  _t(
+                    '${categoryItems.length} نوع',
+                    '${categoryItems.length} article(s)',
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut')),
-                    _ruleChip(
-                      rule,
-                      'show_in_quantity',
-                      _t('جدول الكمية', 'Quantité'),
-                    ),
-                    _ruleChip(
-                      rule,
-                      'show_in_dialog',
-                      _t('نافذة التغيير', 'Choix'),
-                    ),
-                    _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
-                  ],
+                children: categoryItems.isEmpty
+                    ? [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: Text(
+                            _t(
+                              'لا توجد عناصر مربوطة بهذا العنوان بعد.',
+                              'Aucun article n’est encore rattaché à cette rubrique.',
+                            ),
+                          ),
+                        ),
+                      ]
+                    : categoryItems
+                        .map((item) => _buildRuleCard(table, item))
+                        .toList(),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  IconData _categoryIcon(String roleKey) {
+    switch (roleKey) {
+      case 'hinge':
+        return Icons.settings_input_component_outlined;
+      case 'sliding_clamp':
+      case 'sliding_lock':
+        return Icons.view_carousel_outlined;
+      case 'handle':
+      case 'door_handle_key':
+      case 'door_handle_condamnation':
+        return Icons.pan_tool_outlined;
+      case 'espagnolette':
+      case 'cremone':
+      case 'tringle':
+        return Icons.linear_scale_outlined;
+      case 'verrou':
+      case 'lock_clef':
+      case 'lock_condamnation':
+        return Icons.lock_outline;
+      case 'gache_simple':
+      case 'gache_double':
+      case 'gache_door':
+        return Icons.toggle_on_outlined;
+      case 'tasso':
+      case 'roulette':
+        return Icons.circle_outlined;
+      default:
+        return Icons.extension_outlined;
+    }
+  }
+
+  Widget _buildRuleCard(String table, Map<String, dynamic> item) {
+    final itemId = _itemId(item);
+    if (itemId == null) return const SizedBox.shrink();
+    final rule = _ruleFor(table, itemId);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: Card(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _itemTitle(item),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              if (_itemSubtitle(item).isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  _itemSubtitle(item),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
-            ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: rule['role_key']?.toString(),
+                isExpanded: true,
+                decoration: InputDecoration(labelText: _t('العنوان', 'Rubrique')),
+                items: _rolesForTable(table)
+                    .map(
+                      (role) => DropdownMenuItem(
+                        value: role.key,
+                        child: Text(_t(role.ar, role.fr)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => rule['role_key'] = value);
+                },
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut')),
+                  _ruleChip(
+                    rule,
+                    'show_in_quantity',
+                    _t('جدول الكمية', 'Quantité'),
+                  ),
+                  _ruleChip(
+                    rule,
+                    'show_in_dialog',
+                    _t('نافذة التغيير', 'Choix'),
+                  ),
+                  _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
+                ],
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 

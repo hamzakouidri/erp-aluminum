@@ -497,6 +497,19 @@ exception
 end
 $$;
 
+-- Broadcast every workshop row/profile change so connected phones and the
+-- Windows client update immediately. The client still keeps incremental
+-- downloads on app resume as a recovery path if a Realtime connection is
+-- interrupted; it does not poll continuously while the app is idle.
+do $$
+begin
+  alter publication supabase_realtime add table public.workshop_sync_rows;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end
+$$;
+
 drop policy if exists "app admins read own row" on public.app_admins;
 drop policy if exists "app admins manage admins" on public.app_admins;
 drop policy if exists "app admins insert app admin" on public.app_admins;

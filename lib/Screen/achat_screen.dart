@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 
 class AchatScreen extends StatefulWidget {
   final SqlDatabase db;
+
   /// وضع العرض فقط — يخفي FAB وأزرار التعديل/الحذف
   final bool readOnly;
 
@@ -37,7 +38,8 @@ class _AchatScreenState extends State<AchatScreen>
   static const _red = Color(0xFFEF4444);
   static const _orange = Color(0xFFF59E0B);
   Color get _text => Theme.of(context).colorScheme.onSurface;
-  Color get _textDim => Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
+  Color get _textDim =>
+      Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
   Color get _divider => Theme.of(context).dividerColor;
 
   @override
@@ -217,7 +219,8 @@ class _AchatScreenState extends State<AchatScreen>
           ],
         ),
         floatingActionButton:
-            (!widget.readOnly && Provider.of<AppSettingsProvider>(context).canAddPurchases())
+            (!widget.readOnly &&
+                Provider.of<AppSettingsProvider>(context).canAddPurchases())
             ? FloatingActionButton.extended(
                 onPressed: _showAddAchatDialog,
                 backgroundColor: _blue,
@@ -271,7 +274,10 @@ class _AchatScreenState extends State<AchatScreen>
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [_blue, _cyan], begin: Alignment.topLeft,
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? [Color(0xFF111827), Color(0xFF070E1D)]
+                  : [_blue, _cyan],
+              begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
           ),
@@ -316,7 +322,10 @@ class _AchatScreenState extends State<AchatScreen>
 
   // ── Stats Row ──────────────────────────────────────────────────────────────
   Widget _buildStatsRow(Map<String, dynamic> stats) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final currencyFormat = NumberFormat('#,##0.00', 'en_US');
     return Row(
       children: [
@@ -418,15 +427,15 @@ class _AchatScreenState extends State<AchatScreen>
 
   // ── Search & Section Title ──────────────────────────────────────────────────
   Widget _buildSearchAndTitle() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          Localization.translate(
-            'فواتير الشراء المستوردة',
-            lang,
-          ),
+          Localization.translate('فواتير الشراء المستوردة', lang),
           style: TextStyle(
             fontFamily: 'Cairo',
             fontWeight: FontWeight.bold,
@@ -456,7 +465,10 @@ class _AchatScreenState extends State<AchatScreen>
               });
             },
             decoration: InputDecoration(
-              hintText: Localization.translate('البحث برقم الفاتورة أو اسم المورد...', lang),
+              hintText: Localization.translate(
+                'البحث برقم الفاتورة أو اسم المورد...',
+                lang,
+              ),
               hintStyle: TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 13,
@@ -485,7 +497,10 @@ class _AchatScreenState extends State<AchatScreen>
 
   // ── Achat Card ─────────────────────────────────────────────────────────────
   Widget _buildAchatCard(Map<String, dynamic> item) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final id = item['id'] as int;
     final invoiceNumber = item['invoice_number'] ?? '';
     final supplierName = item['supplier_name'] ?? '';
@@ -711,10 +726,11 @@ class _AchatScreenState extends State<AchatScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (!widget.readOnly && Provider.of<AppSettingsProvider>(
-                          context,
-                          listen: false,
-                        ).canEditPurchases())
+                        if (!widget.readOnly &&
+                            Provider.of<AppSettingsProvider>(
+                              context,
+                              listen: false,
+                            ).canEditPurchases())
                           TextButton.icon(
                             style: TextButton.styleFrom(foregroundColor: _blue),
                             onPressed: () async {
@@ -737,10 +753,11 @@ class _AchatScreenState extends State<AchatScreen>
                             ),
                           ),
                         const SizedBox(width: 8),
-                        if (!widget.readOnly && Provider.of<AppSettingsProvider>(
-                          context,
-                          listen: false,
-                        ).canDeletePurchases())
+                        if (!widget.readOnly &&
+                            Provider.of<AppSettingsProvider>(
+                              context,
+                              listen: false,
+                            ).canDeletePurchases())
                           IconButton(
                             style: IconButton.styleFrom(
                               foregroundColor: Colors.red,
@@ -763,7 +780,10 @@ class _AchatScreenState extends State<AchatScreen>
 
   // ── Filter Chips ─────────────────────────────────────────────────────────
   Widget _buildFilterChips() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final filters = ['الكل', 'نشطة', 'مدفوعة', 'مردودة', 'ملغاة'];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -856,6 +876,7 @@ class _AchatScreenState extends State<AchatScreen>
 
     bool isLoaded = false;
     bool invoiceGenerated = false;
+    DateTime selectedDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -898,10 +919,7 @@ class _AchatScreenState extends State<AchatScreen>
                 borderRadius: BorderRadius.circular(18),
               ),
               title: Text(
-                Localization.translate(
-                  'تسجيل فاتورة مشتريات جديدة',
-                  lang,
-                ),
+                Localization.translate('تسجيل فاتورة مشتريات جديدة', lang),
                 style: const TextStyle(
                   fontFamily: 'Cairo',
                   fontWeight: FontWeight.bold,
@@ -917,10 +935,19 @@ class _AchatScreenState extends State<AchatScreen>
                       TextFormField(
                         controller: invoiceCtrl,
                         decoration: InputDecoration(
-                          labelText: Localization.translate('رقم الفاتورة *', lang),
+                          labelText: Localization.translate(
+                            'رقم الفاتورة *',
+                            lang,
+                          ),
                           helperText: invoiceGenerated
-                              ? Localization.translate('يتم إنشاؤه تلقائياً ويمكنك تعديله', lang)
-                              : Localization.translate('جارٍ توليد رقم الفاتورة...', lang),
+                              ? Localization.translate(
+                                  'يتم إنشاؤه تلقائياً ويمكنك تعديله',
+                                  lang,
+                                )
+                              : Localization.translate(
+                                  'جارٍ توليد رقم الفاتورة...',
+                                  lang,
+                                ),
                           labelStyle: const TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 13,
@@ -930,21 +957,88 @@ class _AchatScreenState extends State<AchatScreen>
                         ),
                         validator: (value) =>
                             (value == null || value.trim().isEmpty)
-                            ? Localization.translate('يرجى إدخال رقم الفاتورة', lang)
+                            ? Localization.translate(
+                                'يرجى إدخال رقم الفاتورة',
+                                lang,
+                              )
                             : null,
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (dateContext) {
+                          final canChangeDate =
+                              Provider.of<AppSettingsProvider>(
+                                dateContext,
+                                listen: false,
+                              ).canChangePurchaseDates();
+                          return InkWell(
+                            onTap: canChangeDate
+                                ? () async {
+                                    final picked = await showDatePicker(
+                                      context: dateContext,
+                                      initialDate: selectedDate,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2030),
+                                    );
+                                    if (picked != null) {
+                                      setDialogState(() {
+                                        selectedDate = DateTime(
+                                          picked.year,
+                                          picked.month,
+                                          picked.day,
+                                          selectedDate.hour,
+                                          selectedDate.minute,
+                                        );
+                                      });
+                                    }
+                                  }
+                                : null,
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: Localization.translate(
+                                  'تاريخ المشتريات',
+                                  lang,
+                                ),
+                                prefixIcon: const Icon(Icons.calendar_today),
+                                suffixIcon: Icon(
+                                  canChangeDate
+                                      ? Icons.edit_calendar_outlined
+                                      : Icons.lock_outline,
+                                  color: canChangeDate ? _blue : _textDim,
+                                ),
+                                border: const OutlineInputBorder(),
+                              ),
+                              child: Text(
+                                DateFormat('dd/MM/yyyy').format(selectedDate),
+                                style: TextStyle(
+                                  color: canChangeDate ? _text : _textDim,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12),
                       suppliers.isEmpty
                           ? Text(
-                              Localization.translate('لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.', lang),
-                              style: const TextStyle(color: Colors.red, fontSize: 12),
+                              Localization.translate(
+                                'لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
                             )
                           : DropdownButtonFormField<int>(
                               isExpanded: true,
                               // 🟢 منع الأوفر فلو لأسماء الموردين الطويلة
                               initialValue: selectedSupplierId,
                               decoration: InputDecoration(
-                                labelText: Localization.translate('المورد *', lang),
+                                labelText: Localization.translate(
+                                  'المورد *',
+                                  lang,
+                                ),
                                 prefixIcon: const Icon(Icons.business_rounded),
                                 border: const OutlineInputBorder(),
                               ),
@@ -965,21 +1059,33 @@ class _AchatScreenState extends State<AchatScreen>
                                   )['name'];
                                 });
                               },
-                              validator: (value) =>
-                                  value == null ? Localization.translate('اختر مورد', lang) : null,
+                              validator: (value) => value == null
+                                  ? Localization.translate('اختر مورد', lang)
+                                  : null,
                             ),
                       const SizedBox(height: 12),
                       locations.isEmpty
                           ? Text(
-                              Localization.translate('لا توجد مستودعات مسجلة.', lang),
-                              style: const TextStyle(color: Colors.red, fontSize: 12),
+                              Localization.translate(
+                                'لا توجد مستودعات مسجلة.',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
                             )
                           : DropdownButtonFormField<int>(
                               isExpanded: true,
                               initialValue: selectedLocationId,
                               decoration: InputDecoration(
-                                labelText: Localization.translate('مكان التخزين (المستودع) *', lang),
-                                prefixIcon: const Icon(Icons.storefront_rounded),
+                                labelText: Localization.translate(
+                                  'مكان التخزين (المستودع) *',
+                                  lang,
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.storefront_rounded,
+                                ),
                                 border: const OutlineInputBorder(),
                               ),
                               items: locations.map((loc) {
@@ -999,8 +1105,12 @@ class _AchatScreenState extends State<AchatScreen>
                                   )['name'];
                                 });
                               },
-                              validator: (value) =>
-                                  value == null ? Localization.translate('اختر مكان التخزين', lang) : null,
+                              validator: (value) => value == null
+                                  ? Localization.translate(
+                                      'اختر مكان التخزين',
+                                      lang,
+                                    )
+                                  : null,
                             ),
                     ],
                   ),
@@ -1010,10 +1120,7 @@ class _AchatScreenState extends State<AchatScreen>
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: Text(
-                    Localization.translate(
-                      'إلغاء',
-                      lang,
-                    ),
+                    Localization.translate('إلغاء', lang),
                     style: TextStyle(fontFamily: 'Cairo', color: _textDim),
                   ),
                 ),
@@ -1028,14 +1135,26 @@ class _AchatScreenState extends State<AchatScreen>
                     if (!formKey.currentState!.validate()) return;
                     if (selectedSupplierId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(Localization.translate('الرجاء اختيار المورد', lang))),
+                        SnackBar(
+                          content: Text(
+                            Localization.translate(
+                              'الرجاء اختيار المورد',
+                              lang,
+                            ),
+                          ),
+                        ),
                       );
                       return;
                     }
                     if (selectedLocationId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(Localization.translate('الرجاء اختيار مكان التخزين', lang)),
+                          content: Text(
+                            Localization.translate(
+                              'الرجاء اختيار مكان التخزين',
+                              lang,
+                            ),
+                          ),
                         ),
                       );
                       return;
@@ -1048,6 +1167,7 @@ class _AchatScreenState extends State<AchatScreen>
                         0.0, // Initial total is 0 until items are added
                         supplierId: selectedSupplierId,
                         locationId: selectedLocationId,
+                        createdAt: selectedDate.toIso8601String(),
                       );
 
                       _refreshList();
@@ -1067,7 +1187,11 @@ class _AchatScreenState extends State<AchatScreen>
                     } catch (e) {
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${Localization.translate('حدث خطأ أثناء الحفظ: ', lang)}$e')),
+                        SnackBar(
+                          content: Text(
+                            '${Localization.translate('حدث خطأ أثناء الحفظ: ', lang)}$e',
+                          ),
+                        ),
                       );
                     }
                   },
@@ -1103,10 +1227,7 @@ class _AchatScreenState extends State<AchatScreen>
               borderRadius: BorderRadius.circular(16),
             ),
             title: Text(
-              Localization.translate(
-                'حذف نهائي للفاتورة',
-                lang,
-              ),
+              Localization.translate('حذف نهائي للفاتورة', lang),
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontWeight: FontWeight.bold,
@@ -1116,58 +1237,62 @@ class _AchatScreenState extends State<AchatScreen>
             ),
             content: Text(
               "${Localization.translate('هل أنت متأكد من رغبتك في حذف الفاتورة رقم: ', lang)}$invoiceNumber${Localization.translate(' نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.', lang)}",
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.5),
-            ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                Localization.translate(
-                  'تراجع',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
-                style: TextStyle(fontFamily: 'Cairo', color: _textDim),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                height: 1.5,
               ),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _red,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  Localization.translate(
+                    'تراجع',
+                    Provider.of<AppSettingsProvider>(context).language,
+                  ),
+                  style: TextStyle(fontFamily: 'Cairo', color: _textDim),
                 ),
               ),
-              onPressed: () async {
-                await widget.db.deleteAchat(id);
-                _refreshList();
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        Localization.translate(
-                          'تم حذف الفاتورة نهائياً',
-                          Provider.of<AppSettingsProvider>(context).language,
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _red,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () async {
+                  await widget.db.deleteAchat(id);
+                  _refreshList();
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          Localization.translate(
+                            'تم حذف الفاتورة نهائياً',
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
+                          style: TextStyle(fontFamily: 'Cairo'),
                         ),
-                        style: TextStyle(fontFamily: 'Cairo'),
+                        backgroundColor: Colors.black87,
+                        behavior: SnackBarBehavior.floating,
                       ),
-                      backgroundColor: Colors.black87,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              },
-              child: Text(
-                Localization.translate(
-                  'حذف نهائي',
-                  Provider.of<AppSettingsProvider>(context).language,
+                    );
+                  }
+                },
+                child: Text(
+                  Localization.translate(
+                    'حذف نهائي',
+                    Provider.of<AppSettingsProvider>(context).language,
+                  ),
+                  style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
                 ),
-                style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
               ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

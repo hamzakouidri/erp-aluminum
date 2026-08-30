@@ -499,6 +499,7 @@ class _OrderMeasurementsConfirmScreenState
       // Load full model with catalog data (series, profiles from DB)
       final model = WindowModel(db: widget.db);
       await applyWindowModelAndLoadCatalog(model, map);
+      applyStoredOrderDetailColorToWindowModel(model, detail);
 
       // Run the same BOM computation used by material_consumption_screen
       final bomItems = ComponentCalculator.generateBom(model, {});

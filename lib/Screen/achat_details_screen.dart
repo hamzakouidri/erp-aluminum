@@ -41,6 +41,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
   double _paidAmount = 0.0;
   double _remainingAmount = 0.0;
   String _status = 'Active';
+  DateTime _purchaseDate = DateTime.now();
   String? _imagePath;
   String? _pdfPath;
 
@@ -94,7 +95,22 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     final newInvoice = _invoiceController.text.trim();
     final newSupplier = _supplierController.text.trim();
 
-    final paymentChoice = await _showPaymentOptionDialog();
+    final myDb = await _db.db;
+    final existingTx = await myDb!.query(
+      'Treasury',
+      where: "reference_id = ? AND entity_type = 'Supplier'",
+      whereArgs: [widget.achatId],
+    );
+
+    DateTime? existingPaymentDate;
+    if (existingTx.isNotEmpty) {
+      existingPaymentDate = DateTime.tryParse(
+        existingTx.first['created_at']?.toString() ?? '',
+      );
+    }
+    final paymentChoice = await _showPaymentOptionDialog(
+      initialPaymentDate: existingPaymentDate,
+    );
     if (paymentChoice == null) return;
 
     await _db.updateAchatInfo(widget.achatId, newInvoice, newSupplier);
@@ -121,13 +137,6 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     final achat = await _db.readAchatById(widget.achatId);
     final supplierId = achat?['supplier_id'] as int?;
 
-    final myDb = await _db.db;
-    final List<Map<String, dynamic>> existingTx = await myDb!.query(
-      'Treasury',
-      where: "reference_id = ? AND entity_type = 'Supplier'",
-      whereArgs: [widget.achatId],
-    );
-
     if (status == 'Confirmed' && paidAmount > 0) {
       final desc = 'دفع للمورد: $newSupplier - الفاتورة: $newInvoice';
       final recordedBy = settings.userDisplayName;
@@ -138,11 +147,14 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           txId,
           newAmount: paidAmount,
           newDescription: desc,
-          newCaisse: existingTx.first['caisse_name'] ?? 'الصندوق الرئيسي',
+          newCaisse:
+              existingTx.first['caisse_name']?.toString() ?? 'الصندوق الرئيسي',
           newPaymentMethod:
-              existingTx.first['payment_method'] ?? 'نقداً / Espèce',
+              existingTx.first['payment_method']?.toString() ??
+              'نقداً / Espèce',
           newCreatedAt:
-              existingTx.first['created_at'] ??
+              paymentChoice['payment_date']?.toString() ??
+              existingTx.first['created_at']?.toString() ??
               DateTime.now().toIso8601String(),
         );
       } else {
@@ -154,6 +166,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           entityType: 'Supplier',
           entityId: supplierId,
           recordedBy: recordedBy,
+          createdAt: paymentChoice['payment_date']?.toString(),
         );
       }
     } else {
@@ -181,10 +194,17 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     }
   }
 
-  Future<Map<String, dynamic>?> _showPaymentOptionDialog() async {
+  Future<Map<String, dynamic>?> _showPaymentOptionDialog({
+    DateTime? initialPaymentDate,
+  }) async {
     final amountController = TextEditingController();
     String selectedOption = 'confirmed_paid';
     String? errorText;
+    DateTime selectedPaymentDate = initialPaymentDate ?? DateTime.now();
+    final canChangePaymentDate = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).canChangePaymentDates();
 
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -243,6 +263,50 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: canChangePaymentDate
+                          ? () async {
+                              final picked = await showDatePicker(
+                                context: dialogContext,
+                                initialDate: selectedPaymentDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked == null) return;
+                              setState(() {
+                                selectedPaymentDate = DateTime(
+                                  picked.year,
+                                  picked.month,
+                                  picked.day,
+                                  selectedPaymentDate.hour,
+                                  selectedPaymentDate.minute,
+                                );
+                              });
+                            }
+                          : null,
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'تاريخ دفعة المورد',
+                          prefixIcon: const Icon(Icons.calendar_today),
+                          suffixIcon: Icon(
+                            canChangePaymentDate
+                                ? Icons.edit_calendar_outlined
+                                : Icons.lock_outline,
+                            color: canChangePaymentDate
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          border: const OutlineInputBorder(),
+                        ),
+                        child: Text(
+                          DateFormat('dd/MM/yyyy').format(selectedPaymentDate),
+                          style: TextStyle(
+                            color: canChangePaymentDate ? null : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -298,6 +362,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                       'paid_amount': newPaid,
                       'remaining_amount': newRemaining,
                       'status': newStatus,
+                      'payment_date': selectedPaymentDate.toIso8601String(),
                     });
                   },
                   child: const Text('حفظ'),
@@ -392,8 +457,39 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           (_itemsTotal - _paidAmount).clamp(0.0, double.infinity);
       _imagePath = achat?['image_path'] as String?;
       _pdfPath = achat?['pdf_path'] as String?;
+      _purchaseDate =
+          DateTime.tryParse(achat?['created_at']?.toString() ?? '') ??
+          DateTime.now();
       _isLoading = false;
     });
+  }
+
+  Future<void> _changePurchaseDate() async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    if (!settings.canChangePurchaseDates()) return;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _purchaseDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked == null || !mounted) return;
+
+    final nextDate = DateTime(
+      picked.year,
+      picked.month,
+      picked.day,
+      _purchaseDate.hour,
+      _purchaseDate.minute,
+      _purchaseDate.second,
+    );
+    await _db.updateAchatDate(widget.achatId, nextDate.toIso8601String());
+    if (!mounted) return;
+    setState(() => _purchaseDate = nextDate);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('تم تغيير تاريخ المشتريات')));
   }
 
   Future<void> _pickInvoiceImage(ImageSource source) async {
@@ -1451,6 +1547,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     final canEditInvoice =
         _status != 'Confirmed' ||
         settings.isManager; // التعديل بعد التأكيد فقط للمديرين
+    final canChangePurchaseDate = settings.canChangePurchaseDates();
     final statusText = _status == 'Confirmed'
         ? Localization.translate('مؤكدة', lang)
         : _status == 'Returned'
@@ -1519,6 +1616,37 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                           lang,
                                         )
                                       : null,
+                                ),
+                                const SizedBox(height: 12),
+                                InkWell(
+                                  onTap: canChangePurchaseDate
+                                      ? _changePurchaseDate
+                                      : null,
+                                  child: InputDecorator(
+                                    decoration: InputDecoration(
+                                      labelText: Localization.translate(
+                                        'تاريخ المشتريات',
+                                        lang,
+                                      ),
+                                      prefixIcon: const Icon(
+                                        Icons.calendar_today,
+                                      ),
+                                      suffixIcon: Icon(
+                                        canChangePurchaseDate
+                                            ? Icons.edit_calendar_outlined
+                                            : Icons.lock_outline,
+                                        color: canChangePurchaseDate
+                                            ? Colors.blue
+                                            : Colors.grey,
+                                      ),
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                    child: Text(
+                                      DateFormat(
+                                        'dd/MM/yyyy',
+                                      ).format(_purchaseDate),
+                                    ),
+                                  ),
                                 ),
                                 const SizedBox(height: 16),
                                 Row(

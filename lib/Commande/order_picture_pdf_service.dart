@@ -197,14 +197,17 @@ class OrderPicturePdfService {
     List<Map<String, dynamic>> items,
   ) async {
     for (final item in items) {
-      if (await _hasReadableImage(item)) continue;
-
       final modelMap = _decodeModelMap(item['partitions_json']);
       if (modelMap.isEmpty) continue;
+      if (await _hasReadableImage(item) &&
+          !storedOrderDetailColorDiffersFromModel(item, modelMap)) {
+        continue;
+      }
 
       try {
         final model = WindowModel(db: db);
         await applyWindowModelAndLoadCatalog(model, modelMap);
+        applyStoredOrderDetailColorToWindowModel(model, item);
         final path = await saveWindowImageToDisk(model, maxSide: 1800);
         if (path.isEmpty) continue;
 
@@ -277,6 +280,7 @@ class OrderPicturePdfService {
       try {
         final model = WindowModel(db: db);
         await applyWindowModelAndLoadCatalog(model, modelMap);
+        applyStoredOrderDetailColorToWindowModel(model, rawItem);
         return captureWindowImage(
           model,
           maxSide: 3200,

@@ -1119,7 +1119,15 @@ class CloudSyncService {
   void startListeningForUpdates(Function() onUpdateCallback) {
     onDataRestored = onUpdateCallback;
     final supabaseWorkshopSync = SupabaseWorkshopSyncService();
-    supabaseWorkshopSync.start(onDataChanged: onUpdateCallback);
+    // Supabase downloads use their own Realtime channel. Forward its event
+    // through the same local stream used by screens, so an incoming order or
+    // workshop-profile change is painted without reopening the page.
+    void onSupabaseDataChanged() {
+      _dbUpdateController.add('cloud_restored');
+      onUpdateCallback();
+    }
+
+    supabaseWorkshopSync.start(onDataChanged: onSupabaseDataChanged);
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -1161,7 +1169,7 @@ class CloudSyncService {
       _orderDeletionsListener = null;
       unawaited(
         supabaseWorkshopSync
-            .ensureStarted(onDataChanged: onUpdateCallback)
+            .ensureStarted(onDataChanged: onSupabaseDataChanged)
             .then((ready) {
               if (!ready) {
                 _sendSyncFeedback(
@@ -4729,92 +4737,29 @@ class CloudSyncService {
   // إعدادات الورشة — الأنظمة
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// يحفظ إعدادات الأنظمة في Firestore تحت:
-  /// workshops/{workshopId}/settings  →  { systems: {...}, active_profiles: [...] }
+  /// يحفظ إعدادات الأنظمة في ملف إعدادات الورشة في Supabase.
+  /// القائمة كاملة، لذلك يصل الحذف أيضًا إلى أجهزة العمال.
   Future<void> saveWorkshopSystems({
     required Map<String, bool> systemModes,
     required List<int> activeProfileIds,
   }) async {
-    if (_workshopId == null || _workshopId!.isEmpty) return;
     try {
-      await _firestore.collection('workshops').doc(_workshopId).set({
-        'settings': {
-          'systems': systemModes,
-          'active_profiles': activeProfileIds,
-          'updated_at': FieldValue.serverTimestamp(),
-        },
-      }, SetOptions(merge: true));
-      print('--- CloudSyncService: Workshop systems saved to Firestore ---');
+      await SupabaseWorkshopSyncService().saveWorkshopSystems(
+        systemModes: systemModes,
+        activeProfileIds: activeProfileIds,
+      );
+      print('--- CloudSyncService: Workshop systems saved to Supabase ---');
     } catch (e) {
       print('Error saving workshop systems: $e');
     }
   }
 
-  /// يجلب إعدادات الأنظمة من Firestore ويكتبها في SharedPreferences المحلي
-  /// يُستدعى عند init() لكل مستخدم (مدير أو عامل)
+  /// يجلب إعدادات الأنظمة من Supabase ويكتبها في التخزين المحلي.
   Future<void> loadAndApplyWorkshopSystems() async {
-    if (_workshopId == null || _workshopId!.isEmpty) return;
     try {
-      final doc = await _firestore
-          .collection('workshops')
-          .doc(_workshopId)
-          .get()
-          .timeout(const Duration(seconds: 8));
-
-      if (!doc.exists) return;
-      final data = doc.data();
-      if (data == null) return;
-
-      final settings = data['settings'] as Map<String, dynamic>?;
-      if (settings == null) return;
-
-      final prefs = await SharedPreferences.getInstance();
-
-      // 1. تطبيق System Modes
-      final systemsMap = settings['systems'] as Map<String, dynamic>?;
-      if (systemsMap != null) {
-        for (var entry in systemsMap.entries) {
-          await prefs.setBool(
-            'system_active_${entry.key}',
-            entry.value as bool? ?? true,
-          );
-        }
-        print(
-          '--- CloudSyncService: Workshop system modes applied from Firestore ---',
-        );
-      }
-
-      // 2. تطبيق Active Profiles على SQLite
-      final activeProfiles = settings['active_profiles'];
-      if (activeProfiles != null) {
-        final List<int> activeIds = (activeProfiles as List)
-            .map((e) => (e as num).toInt())
-            .toList();
-        final dbInstance = await _db.db;
-        if (dbInstance != null) {
-          // أوقف الكل أولاً
-          await dbInstance.update('Profile', {'is_active': 0});
-          await dbInstance.update('Series', {'is_active': 0});
-          // فعّل المختارين
-          for (final id in activeIds) {
-            await dbInstance.update(
-              'Profile',
-              {'is_active': 1},
-              where: 'id = ?',
-              whereArgs: [id],
-            );
-            await dbInstance.update(
-              'Series',
-              {'is_active': 1},
-              where: 'profile_id = ? OR id = ?',
-              whereArgs: [id, id],
-            );
-          }
-          print(
-            '--- CloudSyncService: Workshop active profiles applied (${activeIds.length} active) ---',
-          );
-        }
-      }
+      final supabase = SupabaseWorkshopSyncService();
+      await supabase.ensureStarted(timeout: const Duration(seconds: 12));
+      await supabase.loadAndApplyWorkshopSystems();
     } catch (e) {
       print('Error loading workshop systems: $e');
     }

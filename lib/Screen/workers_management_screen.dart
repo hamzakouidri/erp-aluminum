@@ -621,6 +621,7 @@ class _WorkerCardState extends State<WorkerCard> {
       'worker_settlement': false,
       'create_orders': false,
       'edit_orders': false,
+      'change_order_dates': false,
       'delete_orders': false,
       'view_client_details': false,
       'view_order_details': false,
@@ -647,10 +648,12 @@ class _WorkerCardState extends State<WorkerCard> {
       'external_operations': false,
       'order_allocation': false,
       'settings': false,
+      'view_subscription': false,
       'select_systems': false,
       'change_prices': false,
       'view_cost_price': false,
       'change_transaction_dates': false,
+      'change_payment_dates': false,
       'treasury': false,
       'manage_workers': false,
       'edit_worker': false,
@@ -658,6 +661,7 @@ class _WorkerCardState extends State<WorkerCard> {
       'purchases': false,
       'add_purchases': false,
       'edit_purchases': false,
+      'change_purchase_dates': false,
       'delete_purchases': false,
       'edit_payments': false,
       'delete_payments': false,
@@ -1822,6 +1826,7 @@ class _WorkerCardState extends State<WorkerCard> {
                     'sales',
                     'create_orders',
                     'edit_orders',
+                    'change_order_dates',
                     'delete_orders',
                     'view_order_details',
                     'view_order_documents',
@@ -1921,6 +1926,29 @@ class _WorkerCardState extends State<WorkerCard> {
                   ),
                   value: perms['edit_orders'] ?? false,
                   onChanged: (val) => _updatePermission('edit_orders', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'تغيير تاريخ الطلبيات والفواتير التابعة لها',
+                      'Modifier la date des commandes et de leurs factures',
+                      'Change order and related invoice dates',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'السماح بتغيير تاريخ الطلبية وتاريخ التسعيرة/الفاتورة المرتبط بها',
+                      'Autoriser la modification des dates de commande et de devis',
+                      'Allows changing order, quote, and related invoice dates',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['change_order_dates'] ?? false,
+                  onChanged: (val) =>
+                      _updatePermission('change_order_dates', val),
                 ),
                 SwitchListTile(
                   title: Text(
@@ -2553,8 +2581,12 @@ class _WorkerCardState extends State<WorkerCard> {
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
-                  allKeys: const ['settings', 'select_systems'],
-                  viewOnlyKeys: const ['settings'],
+                  allKeys: const [
+                    'settings',
+                    'view_subscription',
+                    'select_systems',
+                  ],
+                  viewOnlyKeys: const ['settings', 'view_subscription'],
                 ),
                 SwitchListTile(
                   title: Text(
@@ -2568,6 +2600,29 @@ class _WorkerCardState extends State<WorkerCard> {
                   ),
                   value: perms['settings'] ?? false,
                   onChanged: (val) => _updatePermission('settings', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'رؤية الاشتراك ومدة الصلاحية',
+                      'Voir l’abonnement et sa durée',
+                      'View subscription and expiry',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'السماح للعامل برؤية معلومات اشتراك الورشة فقط',
+                      'Autoriser l’ouvrier à voir les informations de l’abonnement',
+                      'Allow the worker to view workshop subscription details',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['view_subscription'] ?? false,
+                  onChanged: (val) =>
+                      _updatePermission('view_subscription', val),
                 ),
                 SwitchListTile(
                   title: Text(
@@ -2607,7 +2662,7 @@ class _WorkerCardState extends State<WorkerCard> {
                   allKeys: const [
                     'change_prices',
                     'view_cost_price',
-                    'change_transaction_dates',
+                    'change_payment_dates',
                     'treasury',
                     'manage_caisses',
                     'edit_payments',
@@ -2651,25 +2706,25 @@ class _WorkerCardState extends State<WorkerCard> {
                 SwitchListTile(
                   title: Text(
                     _tr(
-                      'تغيير تواريخ المعاملات (الصندوق والمالية)',
-                      'Modifier la date des transactions (Trésorerie)',
-                      'Change transaction dates (Treasury & Finances)',
+                      'تغيير تواريخ الدفعات والمعاملات (الصندوق)',
+                      'Modifier les dates des paiements (Trésorerie)',
+                      'Change payment and treasury transaction dates',
                       lang,
                     ),
                     style: switchTitleStyle,
                   ),
                   subtitle: Text(
                     _tr(
-                      'السماح للعامل بتغيير وتعديل تاريخ المعاملات والمدفوعات',
+                      'السماح للعامل بتغيير تاريخ الدفعات والإدخالات والإخراجات المالية',
                       'Autoriser la modification de la date des opérations',
                       'Allows changing dates of financial transactions',
                       lang,
                     ),
                     style: switchSubTitleStyle,
                   ),
-                  value: perms['change_transaction_dates'] ?? false,
+                  value: perms['change_payment_dates'] ?? false,
                   onChanged: (val) =>
-                      _updatePermission('change_transaction_dates', val),
+                      _updatePermission('change_payment_dates', val),
                 ),
                 SwitchListTile(
                   title: Text(
@@ -2779,6 +2834,7 @@ class _WorkerCardState extends State<WorkerCard> {
                     'purchases',
                     'add_purchases',
                     'edit_purchases',
+                    'change_purchase_dates',
                     'delete_purchases',
                     'global_consumption',
                   ],
@@ -2913,6 +2969,29 @@ class _WorkerCardState extends State<WorkerCard> {
                   ),
                   value: perms['edit_purchases'] ?? false,
                   onChanged: (val) => _updatePermission('edit_purchases', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'تغيير تاريخ المشتريات والفواتير',
+                      'Modifier la date des achats et factures',
+                      'Change purchase and invoice dates',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'السماح بتعديل التاريخ المحاسبي للشراء دون تغيير بياناته الأخرى',
+                      'Autoriser la modification de la date comptable de l’achat',
+                      'Allows changing the accounting date of a purchase',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['change_purchase_dates'] ?? false,
+                  onChanged: (val) =>
+                      _updatePermission('change_purchase_dates', val),
                 ),
                 SwitchListTile(
                   title: Text(

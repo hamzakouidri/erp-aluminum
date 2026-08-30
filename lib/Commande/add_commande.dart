@@ -12,7 +12,6 @@ import 'package:flutter/services.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/show_system_francais.dart';
-import 'package:database_data/Commande/Systeme/volet.dart' show SystemRoling;
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/order_date_utils.dart';
@@ -194,6 +193,18 @@ class _CommandePageState extends State<CommandePage> {
         status == 'en attente' ||
         status == 'en_attente' ||
         status == 'في الانتظار';
+  }
+
+  void _moveProductToPosition(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex < 0 || oldIndex >= addedProducts.length) return;
+    newIndex = newIndex.clamp(0, addedProducts.length - 1).toInt();
+    if (oldIndex == newIndex) return;
+
+    setState(() {
+      final product = addedProducts.removeAt(oldIndex);
+      addedProducts.insert(newIndex, product);
+    });
   }
 
   bool get _showEditPaymentSummary =>
@@ -737,10 +748,9 @@ class _CommandePageState extends State<CommandePage> {
         if (desc.isNotEmpty) {
           model.description = desc;
         }
-        model.persistedDrawingImagePath =
-            row['drawing_image_path']?.toString();
-        model.persistedDrawingImageBase64 =
-            row['drawing_image_base64']?.toString();
+        model.persistedDrawingImagePath = row['drawing_image_path']?.toString();
+        model.persistedDrawingImageBase64 = row['drawing_image_base64']
+            ?.toString();
         final detailId = readInt(row['id']);
         if (!mounted) return;
         setState(() {
@@ -1188,8 +1198,22 @@ class _CommandePageState extends State<CommandePage> {
         final drawingPath = newImagePath.isNotEmpty
             ? newImagePath
             : previous?['drawing_image_path']?.toString() ?? '';
+        final selectedColor = p.selectedDbColor;
+        final selectedColorName =
+            (selectedColor?['name'] ?? selectedColor?['color_name'])
+                ?.toString()
+                .trim();
+        final persistedModel = p.toMap();
+        if (selectedColorName != null && selectedColorName.isNotEmpty) {
+          persistedModel['selectedDbColor'] = <String, dynamic>{
+            ...Map<String, dynamic>.from(selectedColor ?? const {}),
+            'name': selectedColorName,
+          };
+          persistedModel['selectedColorName'] = selectedColorName;
+        }
         preparedDetails.add({
           if (persistedDetailId != null) 'id': persistedDetailId,
+          'sort_order': index,
           'largeur': p.width.toInt(),
           'hauteur': p.height.toInt(),
           'game': p.isShutterOnly
@@ -1203,10 +1227,8 @@ class _CommandePageState extends State<CommandePage> {
                         p.zones.first.glass.structure == GlassStructure.double
                     ? 'Double'
                     : 'Single'),
-          'color': p.selectedDbColor != null
-              ? (p.selectedDbColor!['name']?.toString() ??
-                    p.selectedDbColor!['color_name']?.toString() ??
-                    '')
+          'color': selectedColorName != null && selectedColorName.isNotEmpty
+              ? selectedColorName
               : (p.isGlassWork
                     ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
                     : p.frameColor.toString().split('.').last),
@@ -1222,7 +1244,7 @@ class _CommandePageState extends State<CommandePage> {
                     : 'Single Sash'),
           'partitions_json': () {
             try {
-              return jsonEncode(p.toMap());
+              return jsonEncode(persistedModel);
             } catch (e) {
               debugPrint('Error encoding p.toMap(): $e');
               return '{}';
@@ -2404,6 +2426,9 @@ class _CommandePageState extends State<CommandePage> {
         .where((p) => !p.isReplaced)
         .fold(0, (sum, p) => sum + p.quantity);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final canChangeOrderDates = Provider.of<AppSettingsProvider>(
+      context,
+    ).canChangeOrderDates();
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
@@ -2421,6 +2446,28 @@ class _CommandePageState extends State<CommandePage> {
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         actions: [
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            iconSize: 22,
+            icon: const Icon(Icons.add_box_outlined, color: Colors.indigo),
+            onPressed: _isLoadingEditProducts ? null : _showAddNormalProduct,
+            tooltip: Localization.translate(
+              'Add Product',
+              Provider.of<AppSettingsProvider>(context).language,
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            iconSize: 22,
+            icon: const Icon(Icons.playlist_add, color: Colors.deepOrange),
+            onPressed: _isLoadingEditProducts
+                ? null
+                : () => _showAddSpecialProductDialog(),
+            tooltip: Localization.translate(
+              'Add Product Special',
+              Provider.of<AppSettingsProvider>(context).language,
+            ),
+          ),
           if (addedProducts.length > 1)
             IconButton(
               icon: Icon(
@@ -2540,7 +2587,10 @@ class _CommandePageState extends State<CommandePage> {
               label: "Quote date *",
               controller: quoteDateController,
               icon: Icons.calendar_today,
-              onTap: () => pickDate(quoteDateController),
+              suffix: canChangeOrderDates ? null : Icons.lock_outline,
+              onTap: canChangeOrderDates
+                  ? () => pickDate(quoteDateController)
+                  : null,
             ),
 
             const SizedBox(height: 15),
@@ -2549,7 +2599,10 @@ class _CommandePageState extends State<CommandePage> {
               label: "Valid till Date *",
               controller: validDateController,
               icon: Icons.calendar_today,
-              onTap: () => pickDate(validDateController),
+              suffix: canChangeOrderDates ? null : Icons.lock_outline,
+              onTap: canChangeOrderDates
+                  ? () => pickDate(validDateController)
+                  : null,
             ),
             const SizedBox(height: 15),
 
@@ -2594,96 +2647,56 @@ class _CommandePageState extends State<CommandePage> {
                 ),
               ),
               const SizedBox(height: 10),
-              ...List.generate(addedProducts.length, (index) {
-                final p = addedProducts[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 6),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      child: Text('${index + 1}'),
-                    ),
-                    title: Text(
-                      p.manualNameOverride?.trim().isNotEmpty == true
-                          ? p.manualNameOverride!.trim()
-                          : (p.isShutterOnly
-                                ? 'Volet roulant'
-                                : (p.isDoor
-                                      ? (p.zones.any(
-                                              (z) =>
-                                                  z.content ==
-                                                  ZoneContent.doubleSash,
-                                            )
-                                            ? t('باب بضلفتين')
-                                            : t('باب بضلفة واحدة'))
-                                      : (p.zones.any(
-                                              (z) =>
-                                                  z.content ==
-                                                  ZoneContent.doubleSash,
-                                            )
-                                            ? t('نافذة بضلفتين')
-                                            : t('نافذة بضلفة واحدة')))),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: addedProducts.length,
+                onReorder: _moveProductToPosition,
+                proxyDecorator: (child, index, animation) {
+                  return AnimatedBuilder(
+                    animation: animation,
+                    builder: (context, child) {
+                      final elevation = Tween<double>(
+                        begin: 4,
+                        end: 14,
+                      ).evaluate(animation);
+                      return Material(
+                        color: Colors.transparent,
+                        elevation: elevation,
+                        borderRadius: BorderRadius.circular(15),
+                        child: child,
+                      );
+                    },
+                    child: child,
+                  );
+                },
+                itemBuilder: (context, index) {
+                  final product = addedProducts[index];
+                  return KeyedSubtree(
+                    key: ObjectKey(product),
+                    child: ReorderableDelayedDragStartListener(
+                      index: index,
+                      child: Stack(
+                        children: [
+                          _buildProductCard(product),
+                          PositionedDirectional(
+                            top: 10,
+                            end: 10,
+                            child: IgnorePointer(
+                              child: Icon(
+                                Icons.drag_indicator_rounded,
+                                color: Colors.blue.shade600,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    subtitle: Text(
-                      '${p.width.toInt()}x${p.height.toInt()} mm - ${p.quantity} Pcs',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.arrow_upward,
-                            color: Colors.blue,
-                          ),
-                          onPressed: index > 0
-                              ? () {
-                                  setState(() {
-                                    final temp = addedProducts[index];
-                                    addedProducts[index] =
-                                        addedProducts[index - 1];
-                                    addedProducts[index - 1] = temp;
-                                  });
-                                }
-                              : null,
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.arrow_downward,
-                            color: Colors.blue,
-                          ),
-                          onPressed: index < addedProducts.length - 1
-                              ? () {
-                                  setState(() {
-                                    final temp = addedProducts[index];
-                                    addedProducts[index] =
-                                        addedProducts[index + 1];
-                                    addedProducts[index + 1] = temp;
-                                  });
-                                }
-                              : null,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
+                  );
+                },
+              ),
               const SizedBox(height: 15),
             ] else ...[
               if (addedProducts.isNotEmpty)
@@ -2725,82 +2738,56 @@ class _CommandePageState extends State<CommandePage> {
               if (addedProducts.isNotEmpty) const SizedBox(height: 15),
             ],
 
-            ElegantAnimatedButton(
-              gradientColors: const [Colors.indigoAccent, Colors.blueAccent],
-              onPressed: () async {
-                if (selectedClient == null || selectedClient!.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        Localization.translate(
-                          "Please select a client",
-                          Provider.of<AppSettingsProvider>(
-                            context,
-                            listen: false,
-                          ).language,
-                        ),
+            Row(
+              children: [
+                Expanded(
+                  child: ElegantAnimatedButton(
+                    gradientColors: const [
+                      Colors.indigoAccent,
+                      Colors.blueAccent,
+                    ],
+                    onPressed: _showAddNormalProduct,
+                    icon: const Icon(Icons.add, color: Colors.white, size: 20),
+                    label: Text(
+                      Localization.translate(
+                        'Add Product',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  );
-                } else {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ChooseSysteme(initialSettings: _lastUsedSettings),
+                    height: 46,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElegantAnimatedButton(
+                    gradientColors: const [
+                      Colors.orangeAccent,
+                      Colors.deepOrangeAccent,
+                    ],
+                    onPressed: () => _showAddSpecialProductDialog(),
+                    icon: const Icon(Icons.add, color: Colors.white, size: 20),
+                    label: Text(
+                      Localization.translate(
+                        'Add Product Special',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  );
-                  if (result is WindowModel) {
-                    _saveLastSettings(result);
-                    setState(() {
-                      addedProducts.add(result);
-                      _highlightedProduct = result;
-                    });
-                    _scrollToHighlightedProduct();
-                  } else if (result is List<WindowModel> && result.isNotEmpty) {
-                    _saveLastSettings(result.last);
-                    setState(() {
-                      addedProducts.addAll(result);
-                      _highlightedProduct = result.last;
-                    });
-                    _scrollToHighlightedProduct();
-                  }
-                }
-              },
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: Text(
-                Localization.translate(
-                  'Add Product',
-                  Provider.of<AppSettingsProvider>(context).language,
+                    height: 46,
+                  ),
                 ),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              height: 60,
-            ),
-            const SizedBox(height: 15),
-            ElegantAnimatedButton(
-              gradientColors: const [
-                Colors.orangeAccent,
-                Colors.deepOrangeAccent,
               ],
-              onPressed: () => _showAddSpecialProductDialog(),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: Text(
-                Localization.translate(
-                  'Add Product Special',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              height: 55,
             ),
             const SizedBox(height: 15),
 
@@ -3160,6 +3147,46 @@ class _CommandePageState extends State<CommandePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showAddNormalProduct() async {
+    if (selectedClient == null || selectedClient!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              "Please select a client",
+              Provider.of<AppSettingsProvider>(context, listen: false).language,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChooseSysteme(initialSettings: _lastUsedSettings),
+      ),
+    );
+    if (!mounted) return;
+
+    if (result is WindowModel) {
+      _saveLastSettings(result);
+      setState(() {
+        addedProducts.add(result);
+        _highlightedProduct = result;
+      });
+      _scrollToHighlightedProduct();
+    } else if (result is List<WindowModel> && result.isNotEmpty) {
+      _saveLastSettings(result.last);
+      setState(() {
+        addedProducts.addAll(result);
+        _highlightedProduct = result.last;
+      });
+      _scrollToHighlightedProduct();
+    }
   }
 
   void _showAddSpecialProductDialog([WindowModel? existingProduct]) {
@@ -3750,26 +3777,20 @@ class _CommandePageState extends State<CommandePage> {
                                     return;
                                   }
 
-                                  // العودة إلى الرسم لتعديل النافذة أو الستار
-                                  if (p.isShutterOnly) {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            SystemRoling(model: p),
+                                  // Every drawing, including a shutter, is
+                                  // edited in the design page. The shutter
+                                  // options remain available in its bottom
+                                  // panel; the old standalone shutter page is
+                                  // no longer part of the edit flow.
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => WindowView(
+                                        model: p,
+                                        systemMode: 'mixed',
                                       ),
-                                    );
-                                  } else {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => WindowView(
-                                          model: p,
-                                          systemMode: 'mixed',
-                                        ),
-                                      ),
-                                    );
-                                  }
+                                    ),
+                                  );
                                   _saveLastSettings(p);
                                   // بمجرد العودة (حتى لو لم يضغط إضافة للطلبية، فالمودل يعدل مباشرة في الذاكرة)
                                   // نعمل setState لتحديث الصورة والتكلفة ونحدد الإضاءة والتحريك
@@ -4202,27 +4223,19 @@ class _CommandePageState extends State<CommandePage> {
                   });
                 }
 
-                // 4. Directly open the window view to edit the clone
-                if (cloned.isShutterOnly) {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => SystemRoling(model: cloned),
+                // 4. Open the design page for both windows and shutters.
+                // The shutter controls are provided by its bottom panel.
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WindowView(
+                      model: cloned,
+                      // Editing an existing drawing must expose the full
+                      // design tools, whatever its original mode.
+                      systemMode: 'mixed',
                     ),
-                  );
-                } else {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => WindowView(
-                        model: cloned,
-                        // Editing an existing window must always expose both
-                        // French and sliding tools, whatever its original mode.
-                        systemMode: 'mixed',
-                      ),
-                    ),
-                  );
-                }
+                  ),
+                );
                 _saveLastSettings(cloned);
 
                 // 5. Trigger calculation and refresh UI

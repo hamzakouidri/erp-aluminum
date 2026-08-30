@@ -12,6 +12,7 @@ import '../settings/app_settings.dart';
 import 'app_workspace_shell.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
 class SubscriptionChecker extends StatefulWidget {
   const SubscriptionChecker({super.key});
@@ -553,6 +554,10 @@ class _SyncGatewayState extends State<SyncGateway> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await _primeCloudIdentity(prefs);
+      // Start Supabase only after the workshop code has been primed. Starting
+      // it earlier from the login screen could bind the desktop to the
+      // account uid before the real workshop identity was known.
+      SupabaseWorkshopSyncService().start();
       final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
       final activeUid = prefs.getString('active_cloud_user_uid') ?? '';
       final activeWorkshop = _storedActiveWorkshop(prefs);
@@ -592,61 +597,55 @@ class _SyncGatewayState extends State<SyncGateway> {
         throw StateError('تعذر فتح قاعدة البيانات المحلية.');
       }
 
-      final userRole = prefs.getString('user_role') ?? 'worker';
-      final isWorker = userRole == 'worker';
-
       final hasEffectiveLocalData = await _hasLocalBusinessData(effectiveMyDb);
 
-      if (hasEffectiveLocalData) {
-        // ✅ إذا كانت قاعدة البيانات تحتوي على بيانات: الدخول فوراً للتطبيق بدون انتظار!
-        _enterApp();
-        // تشغيل المزامنة في الخلفية بصمت
-        CloudSyncService()
-            .fullRecoverySync()
-            .timeout(const Duration(seconds: 45), onTimeout: () {})
-            .catchError((_) {});
-        CloudSyncService()
-            .loadAndApplyWorkshopSystems()
-            .timeout(const Duration(seconds: 20), onTimeout: () {})
-            .catchError((_) {});
-      } else {
-        // ⏳ عند تثبيت جديد قد توجد السلاسل الافتراضية فقط. ننتظر هنا حتى
-        // تنتهي استعادة بيانات الورشة، حتى لا تظهر الواجهة فارغة مؤقتاً.
-        setState(() {
-          _isSyncing = true;
-          _syncStatus = isWorker
-              ? 'جاري تهيئة بيانات الورشة لأول مرة...'
-              : 'جاري مزامنة بيانات الورشة...';
-        });
-        // A newly installed phone has no business records to protect yet.
-        // Download first; attempting an upload before this restore can block
-        // the initial import (or publish an empty local snapshot).
-        await CloudSyncService().fullRecoverySync(initialRestore: true);
-        await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
-          const Duration(seconds: 20),
-          onTimeout: () {},
-        );
-        _enterApp();
-      }
+      // The dashboard must never be blocked by a cloud restore. This is
+      // especially important on a worker's first login: Supabase can take a
+      // moment to resolve the workshop membership, while the local database
+      // is already safe to open. The restore continues in the background and
+      // the realtime listener applies later changes automatically.
+      _enterApp();
       effectiveDb.runAutoDailyBackup().catchError((_) {});
       await _rememberActiveWorkshop();
+      _startBackgroundWorkshopSync(hasLocalData: hasEffectiveLocalData);
     } catch (e) {
       debugPrint('Sync gateway error: $e');
       if (!mounted) return;
-      final failureReason = e
-          .toString()
-          .replaceFirst('Exception: ', '')
-          .trim();
-      final restoreSummary = CloudSyncService().lastRestoreSummary.trim();
-      setState(() {
-        _isSyncing = false;
-        _syncError =
-            'تعذر تنزيل بيانات الورشة. لم يتم إنشاء أو حذف أي بيانات.\n'
-            'تحقق من الاتصال ثم اضغط «إعادة المحاولة».\n\n'
-            'السبب: $failureReason'
-            '${restoreSummary.isEmpty ? '' : '\n\n$restoreSummary'}';
-      });
+      // A cloud outage must not lock the worker out of the local app. Keep
+      // the dashboard usable and let the realtime/background retry recover
+      // the workshop data when connectivity or membership becomes available.
+      _enterApp();
     }
+  }
+
+  void _startBackgroundWorkshopSync({required bool hasLocalData}) {
+    () async {
+      try {
+        final supabase = SupabaseWorkshopSyncService();
+        // The restore is deliberately silent. Do not call setState from a
+        // realtime callback: SyncGateway remains mounted while it hosts the
+        // dashboard, so that would repaint the whole app on every row change.
+        await supabase.ensureStarted(timeout: const Duration(seconds: 20));
+        await CloudSyncService().init();
+        CloudSyncService().startListeningForUpdates(() {});
+
+        // Use the protected restore path even on a fresh device. If the worker
+        // creates or edits something while the first download is running, its
+        // pending local rows are merged before the cloud rows are applied.
+        await CloudSyncService()
+            .fullRecoverySync(initialRestore: false)
+            .timeout(const Duration(seconds: 90), onTimeout: () {});
+        await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {},
+        );
+      } catch (error) {
+        debugPrint(
+          'Background workshop sync skipped '
+          '(local data: $hasLocalData): $error',
+        );
+      }
+    }();
   }
 
   Future<void> _primeCloudIdentity(SharedPreferences prefs) async {
@@ -657,8 +656,16 @@ class _SyncGatewayState extends State<SyncGateway> {
     if (workshopId.isNotEmpty) {
       await prefs.setString('workshop_code', workshopId);
     }
-    if (workshopName.isNotEmpty) {
+    // The workshop id/code is an internal identifier. It must never be
+    // copied into workshop_name, because that value is printed on documents.
+    if (workshopName.isNotEmpty &&
+        (workshopId.isEmpty || workshopName != workshopId)) {
       await prefs.setString('workshop_name', workshopName);
+    } else if (workshopId.isNotEmpty && workshopName == workshopId) {
+      final savedName = (prefs.getString('workshop_name') ?? '').trim();
+      if (savedName == workshopId) {
+        await prefs.remove('workshop_name');
+      }
     }
     if (userRole.isNotEmpty) {
       await prefs.setString('user_role', userRole);

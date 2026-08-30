@@ -258,27 +258,27 @@ class _WindowViewState extends State<WindowView> {
       final myDb = await db.db;
       if (myDb == null) return;
 
-      final frames = await _loadFrameProfilesForSeries(db, myDb, seriesId);
-      final sashes = await _loadSashProfilesForSeries(db, myDb, seriesId);
+      final frames = await _loadFrameProfilesForSeries(db, seriesId);
+      final sashes = await _loadSashProfilesForSeries(db, seriesId);
       final openingFrames = needsOpeningFrames
           ? (openingSeriesId == seriesId
                 ? frames
-                : await _loadFrameProfilesForSeries(db, myDb, openingSeriesId))
+                : await _loadFrameProfilesForSeries(db, openingSeriesId))
           : <Map<String, dynamic>>[];
       final slidingFrames = needsSlidingFrames
           ? (slidingSeriesId == seriesId
                 ? frames
-                : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId))
+                : await _loadFrameProfilesForSeries(db, slidingSeriesId))
           : <Map<String, dynamic>>[];
       final openingSashes = needsOpeningFrames
           ? (openingSeriesId == seriesId
                 ? sashes
-                : await _loadSashProfilesForSeries(db, myDb, openingSeriesId))
+                : await _loadSashProfilesForSeries(db, openingSeriesId))
           : <Map<String, dynamic>>[];
       final slidingSashes = needsSlidingFrames
           ? (slidingSeriesId == seriesId
                 ? sashes
-                : await _loadSashProfilesForSeries(db, myDb, slidingSeriesId))
+                : await _loadSashProfilesForSeries(db, slidingSeriesId))
           : <Map<String, dynamic>>[];
       final montantRoleSeriesId = slidingSeriesId ?? seriesId;
       final lateralRoleProfiles = await db.getDesignSectionsForRoles(
@@ -346,71 +346,27 @@ class _WindowViewState extends State<WindowView> {
 
   Future<List<Map<String, dynamic>>> _loadFrameProfilesForSeries(
     SqlDatabase db,
-    dynamic myDb,
     int seriesId,
   ) async {
-    final allSections = await myDb.query(
-      'Sections',
-      where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [seriesId],
-    );
-    final legacyFrames = allSections
-        .where((s) {
-          final ty = s['type'].toString().toLowerCase().trim();
-          return ty.contains('frame') ||
-              ty.contains('cadre') ||
-              ty.contains('إطار') ||
-              ty.contains('فريم');
-        })
-        .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
-        .toList();
-    final configuredFrames = await db.getDesignSectionsForRoles(
+    // SeriesDesignRoles is the only source for profiles on the drawing page.
+    return db.getDesignSectionsForRoles(
       seriesId,
       const ['frame', 'frame_extension'],
     );
-    return configuredFrames.isEmpty ? legacyFrames : configuredFrames;
   }
 
   Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
     SqlDatabase db,
-    dynamic myDb,
     int seriesId,
   ) async {
-    final allSections = await myDb.query(
-      'Sections',
-      where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [seriesId],
-    );
-    final legacySashes = allSections
-        .where((s) {
-          final ty = s['type'].toString().toLowerCase().trim();
-          final name = s['name'].toString().toLowerCase().trim();
-          return ty.contains('sash') ||
-              ty.contains('ouvrant') ||
-              ty.contains('lateral') ||
-              ty.contains('central') ||
-              ty.contains('chicane') ||
-              ty.contains('traverse') ||
-              ty.contains('ضلفة') ||
-              ty.contains('ساش') ||
-              name.contains('lateral') ||
-              name.contains('central') ||
-              name.contains('chicane') ||
-              name.contains('جانبي') ||
-              name.contains('وسطي');
-        })
-        .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
-        .toList();
-    final configuredSashes = await db
-        .getDesignSectionsForRoles(seriesId, const [
-          'sash',
-          'sash_extension',
-          'sash_lateral',
-          'sash_central',
-          'sash_traverse',
-          'chicane',
-        ]);
-    return configuredSashes.isEmpty ? legacySashes : configuredSashes;
+    return db.getDesignSectionsForRoles(seriesId, const [
+      'sash',
+      'sash_extension',
+      'sash_lateral',
+      'sash_central',
+      'sash_traverse',
+      'chicane',
+    ]);
   }
 
   bool _seriesIsPvc(AluminumSeries? series) {
@@ -2817,6 +2773,13 @@ class _WindowViewState extends State<WindowView> {
                                 _isLeftDrawerOpen = true;
                               });
                             }
+                          },
+                          onSecondaryTapDown: (details) async {
+                            await _showDesktopContextMenu(
+                              context,
+                              details.globalPosition,
+                              details.localPosition,
+                            );
                           },
                           onLongPressStart: (details) async {
                             final modelPos = _getModelPos(
@@ -8437,6 +8400,350 @@ class _WindowViewState extends State<WindowView> {
           ],
         );
       },
+    );
+  }
+
+  Future<void> _showDesktopContextMenu(
+    BuildContext context,
+    Offset globalPosition,
+    Offset localPosition,
+  ) async {
+    final modelPos = _getModelPos(localPosition);
+
+    // 1. Check if shutter is clicked
+    if (widget.model.hasShutter) {
+      final double shutterTop = -widget.model.shutterBoxHeight;
+      final double shutterBottom = widget.model.topSlantLeftY;
+      if (modelPos.dy >= shutterTop - 20 &&
+          modelPos.dy <= shutterBottom + 10 &&
+          modelPos.dx >= -20 &&
+          modelPos.dx <= widget.model.width + 20) {
+        setState(() {
+          _isShutterSelected = true;
+          _activeShutterTab = 0;
+          widget.model.clearSelection();
+        });
+      }
+    }
+
+    final frameAtBorder = _frameAtBorder(modelPos);
+    if (frameAtBorder != null) {
+      setState(() {
+        _isShutterSelected = false;
+      });
+      widget.model.selectFrameByIndex(frameAtBorder);
+    } else if (!_isShutterSelected) {
+      setState(() {
+        _isShutterSelected = false;
+      });
+      widget.model.selectAt(modelPos, isLongPress: false);
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedZone = widget.model.selectedZone;
+    final isFrame = widget.model.selection.type == SelectionType.frame;
+
+    final selectedValue = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx + 1,
+        globalPosition.dy + 1,
+      ),
+      color: isDark ? const Color(0xFF252536) : Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isDark ? Colors.white24 : Colors.grey.shade300,
+          width: 0.8,
+        ),
+      ),
+      items: <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          enabled: false,
+          height: 32,
+          child: Row(
+            children: [
+              Icon(
+                _isShutterSelected
+                    ? Icons.menu_rounded
+                    : (isFrame ? Icons.crop_square_rounded : Icons.window_rounded),
+                size: 16,
+                color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _isShutterSelected
+                    ? 'خصائص الستار'
+                    : (isFrame ? 'خصائص الإطار' : 'خصائص المنطقة والضلفة'),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+
+        if (selectedZone != null && !_isShutterSelected && !isFrame) ...[
+          _buildContextMenuItem(
+            value: 'content_fixe',
+            icon: Icons.crop_landscape_rounded,
+            label: 'زجاج ثابت (Fixe)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'content_single_sash',
+            icon: Icons.sensor_door_outlined,
+            label: 'ضلفة عادية (Ouvrant Simple)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'content_double_sash',
+            icon: Icons.door_sliding_outlined,
+            label: 'ضلفة فرنسية مزدوجة (Double Ouvrant)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'content_sliding_2',
+            icon: Icons.compare_arrows_rounded,
+            label: 'منزلق 2 ضلف (Coulissant 2 Vantaux)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'content_sliding_3',
+            icon: Icons.view_column_rounded,
+            label: 'منزلق 3 ضلف (Coulissant 3 Vantaux)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'content_sliding_4',
+            icon: Icons.grid_view_rounded,
+            label: 'منزلق 4 ضلف (Coulissant 4 Vantaux)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'content_vide',
+            icon: Icons.check_box_outline_blank_rounded,
+            label: 'تفريغ (Vide)',
+            isDark: isDark,
+          ),
+          const PopupMenuDivider(height: 1),
+
+          _buildContextMenuItem(
+            value: 'add_h_division',
+            icon: Icons.border_horizontal_rounded,
+            label: 'إضافة قاطع أفقي (+ Traverse)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'add_v_division',
+            icon: Icons.border_vertical_rounded,
+            label: 'إضافة قاطع عمودي (+ Montant)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'clear_divisions',
+            icon: Icons.layers_clear_rounded,
+            label: 'مسح القواطع الداخلية',
+            isDark: isDark,
+          ),
+          const PopupMenuDivider(height: 1),
+
+          _buildContextMenuItem(
+            value: 'customize_glass',
+            icon: Icons.view_in_ar_rounded,
+            label: 'تخصيص نوع الزجاج والبانو...',
+            isDark: isDark,
+          ),
+
+          if (selectedZone.content == ZoneContent.singleSash) ...[
+            _buildContextMenuItem(
+              value: 'sash_dir_right',
+              icon: Icons.arrow_forward_rounded,
+              label: 'فتح إلى اليمين (Droite)',
+              isDark: isDark,
+            ),
+            _buildContextMenuItem(
+              value: 'sash_dir_left',
+              icon: Icons.arrow_back_rounded,
+              label: 'فتح إلى اليسار (Gauche)',
+              isDark: isDark,
+            ),
+            _buildContextMenuItem(
+              value: 'sash_dir_top',
+              icon: Icons.arrow_upward_rounded,
+              label: 'سوفلي / فتح لأعلى (Vasistas/Haut)',
+              isDark: isDark,
+            ),
+            _buildContextMenuItem(
+              value: 'sash_dir_bottom',
+              icon: Icons.arrow_downward_rounded,
+              label: 'فتح لأسفل (Bas)',
+              isDark: isDark,
+            ),
+          ],
+        ],
+
+        if (isFrame) ...[
+          _buildContextMenuItem(
+            value: 'frame_delete',
+            icon: Icons.delete_outline_rounded,
+            label: 'حذف هذا الإطار',
+            color: Colors.redAccent,
+            isDark: isDark,
+          ),
+        ],
+
+        if (_isShutterSelected) ...[
+          _buildContextMenuItem(
+            value: 'shutter_open_options',
+            icon: Icons.tune_rounded,
+            label: 'إعدادات الستار والمحرك...',
+            isDark: isDark,
+          ),
+        ],
+
+        const PopupMenuDivider(height: 1),
+
+        _buildContextMenuItem(
+          value: 'undo',
+          icon: Icons.undo_rounded,
+          label: 'تراجع (Undo)',
+          enabled: widget.model.canUndo,
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'redo',
+          icon: Icons.redo_rounded,
+          label: 'إعادة (Redo)',
+          enabled: widget.model.canRedo,
+          isDark: isDark,
+        ),
+      ],
+    );
+
+    if (selectedValue == null) return;
+
+    switch (selectedValue) {
+      case 'content_fixe':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.fixedGlass);
+        break;
+      case 'content_single_sash':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.singleSash);
+        break;
+      case 'content_double_sash':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.doubleSash);
+        break;
+      case 'content_sliding_2':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.slidingSash, slidingSashesCount: 2);
+        break;
+      case 'content_sliding_3':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.slidingSash, slidingSashesCount: 3);
+        break;
+      case 'content_sliding_4':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.slidingSash, slidingSashesCount: 4);
+        break;
+      case 'content_vide':
+        if (selectedZone != null) _paintZoneContentFromUi(selectedZone, ZoneContent.empty);
+        break;
+      case 'add_h_division':
+        if (selectedZone != null) {
+          selectedZone.innerH += 1;
+          selectedZone.innerHPositions = const [];
+          widget.model.refreshUI();
+        }
+        break;
+      case 'add_v_division':
+        if (selectedZone != null) {
+          selectedZone.innerV += 1;
+          selectedZone.innerVPositions = const [];
+          widget.model.refreshUI();
+        }
+        break;
+      case 'clear_divisions':
+        if (selectedZone != null) {
+          selectedZone.innerH = 0;
+          selectedZone.innerV = 0;
+          selectedZone.rightInnerH = 0;
+          selectedZone.rightInnerV = 0;
+          selectedZone.innerHPositions = const [];
+          selectedZone.innerVPositions = const [];
+          selectedZone.rightInnerHPositions = const [];
+          selectedZone.rightInnerVPositions = const [];
+          widget.model.refreshUI();
+        }
+        break;
+      case 'customize_glass':
+        setState(() {
+          _isBottomPanelExpanded = true;
+          _activeBottomTab = 2;
+        });
+        break;
+      case 'sash_dir_right':
+        widget.model.setSelectedZoneOpenDirection(OpenDirection.right);
+        break;
+      case 'sash_dir_left':
+        widget.model.setSelectedZoneOpenDirection(OpenDirection.left);
+        break;
+      case 'sash_dir_top':
+        widget.model.setSelectedZoneOpenDirection(OpenDirection.top);
+        break;
+      case 'sash_dir_bottom':
+        widget.model.setSelectedZoneOpenDirection(OpenDirection.bottom);
+        break;
+      case 'frame_delete':
+        widget.model.deleteSelectedFrame();
+        break;
+      case 'shutter_open_options':
+        setState(() {
+          _isShutterSelected = true;
+          _isBottomPanelExpanded = true;
+          _activeShutterTab = 0;
+        });
+        break;
+      case 'undo':
+        widget.model.undo();
+        break;
+      case 'redo':
+        widget.model.redo();
+        break;
+    }
+  }
+
+  PopupMenuItem<String> _buildContextMenuItem({
+    required String value,
+    required IconData icon,
+    required String label,
+    required bool isDark,
+    bool enabled = true,
+    Color? color,
+  }) {
+    final itemColor = color ?? (enabled ? (isDark ? Colors.white : Colors.black87) : Colors.grey);
+    return PopupMenuItem<String>(
+      value: value,
+      enabled: enabled,
+      height: 36,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: itemColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: itemColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

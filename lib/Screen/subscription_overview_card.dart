@@ -10,6 +10,9 @@ class SubscriptionOverviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.canViewSubscription()) {
+      return const SizedBox.shrink();
+    }
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -35,10 +38,10 @@ class SubscriptionOverviewCard extends StatelessWidget {
         final (statusText, statusColor) = details.isLifetime
             ? ('دائم', Colors.purple.shade600)
             : (details.isExpired
-                ? ('منتهي', Colors.red)
-                : (details.canRenew
-                    ? ('يقارب على الانتهاء', Colors.orange.shade800)
-                    : ('نشط', Colors.green)));
+                  ? ('منتهي', Colors.red)
+                  : (details.canRenew
+                        ? ('يقارب على الانتهاء', Colors.orange.shade800)
+                        : ('نشط', Colors.green)));
 
         return Container(
           width: double.infinity,
@@ -93,7 +96,9 @@ class SubscriptionOverviewCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF0F172A),
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -103,14 +108,19 @@ class SubscriptionOverviewCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
                             ),
                           ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: statusColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
@@ -171,7 +181,9 @@ class SubscriptionOverviewCard extends StatelessWidget {
                                 : Icons.timer_outlined,
                             color: details.isLifetime
                                 ? Colors.purple.shade600
-                                : (details.isExpired ? Colors.red : const Color(0xFF2563EB)),
+                                : (details.isExpired
+                                      ? Colors.red
+                                      : const Color(0xFF2563EB)),
                             size: 20,
                           ),
                           const SizedBox(width: 10),
@@ -183,7 +195,9 @@ class SubscriptionOverviewCard extends StatelessWidget {
                                   'المدة المتبقية:',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                    color: isDark
+                                        ? Colors.grey.shade400
+                                        : Colors.grey.shade600,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -195,8 +209,10 @@ class SubscriptionOverviewCard extends StatelessWidget {
                                     color: details.isLifetime
                                         ? Colors.purple.shade600
                                         : (details.isExpired
-                                            ? Colors.red
-                                            : (isDark ? Colors.white : const Color(0xFF0F172A))),
+                                              ? Colors.red
+                                              : (isDark
+                                                    ? Colors.white
+                                                    : const Color(0xFF0F172A))),
                                   ),
                                 ),
                               ],
@@ -204,9 +220,14 @@ class SubscriptionOverviewCard extends StatelessWidget {
                           ),
                           if (!details.isExpired && !details.isLifetime)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                                color: const Color(
+                                  0xFF2563EB,
+                                ).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -268,10 +289,10 @@ class SubscriptionOverviewCard extends StatelessWidget {
                           details.isLifetime
                               ? Colors.purple.shade600
                               : (details.isExpired
-                                  ? Colors.red
-                                  : (details.canRenew
-                                      ? Colors.orange.shade700
-                                      : const Color(0xFF2563EB))),
+                                    ? Colors.red
+                                    : (details.canRenew
+                                          ? Colors.orange.shade700
+                                          : const Color(0xFF2563EB))),
                         ),
                       ),
                     ),
@@ -292,20 +313,25 @@ class SubscriptionOverviewCard extends StatelessWidget {
                           details.canRenew
                               ? 'مراجعة وتجديد الاشتراك'
                               : 'مراجعة تفاصيل الاشتراك',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: details.isLifetime
                               ? Colors.purple.shade700
                               : (details.canRenew
-                                  ? Colors.green.shade700
-                                  : const Color(0xFF2563EB)),
+                                    ? Colors.green.shade700
+                                    : const Color(0xFF2563EB)),
                           side: BorderSide(
                             color: details.isLifetime
                                 ? Colors.purple.withValues(alpha: 0.4)
                                 : (details.canRenew
-                                    ? Colors.green.withValues(alpha: 0.5)
-                                    : const Color(0xFF2563EB).withValues(alpha: 0.35)),
+                                      ? Colors.green.withValues(alpha: 0.5)
+                                      : const Color(
+                                          0xFF2563EB,
+                                        ).withValues(alpha: 0.35)),
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -352,7 +378,9 @@ class SubscriptionOverviewCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.bold,
-                  color: dateColor ?? (isDark ? Colors.white : const Color(0xFF0F172A)),
+                  color:
+                      dateColor ??
+                      (isDark ? Colors.white : const Color(0xFF0F172A)),
                 ),
               ),
             ],

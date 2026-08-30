@@ -14,7 +14,6 @@ class SupabaseWorkshopSyncService {
 
   factory SupabaseWorkshopSyncService() => _instance;
 
-  static const Duration _pollInterval = Duration(seconds: 2);
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
   static const int _batchSize = 200;
   static const int _downloadPageSize = 500;
@@ -26,7 +25,6 @@ class SupabaseWorkshopSyncService {
   final StreamController<Map<String, dynamic>> _permissionsController =
       StreamController<Map<String, dynamic>>.broadcast();
 
-  Timer? _pollTimer;
   Timer? _uploadTimer;
   RealtimeChannel? _permissionsChannel;
   Future<void>? _startTask;
@@ -37,6 +35,8 @@ class SupabaseWorkshopSyncService {
   String? _workshopUuid;
   String? _workshopCode;
   String? _permissionsChannelName;
+  RealtimeChannel? _workshopDataChannel;
+  String? _workshopDataChannelName;
   String _deviceId = '';
   void Function()? _onDataChanged;
 
@@ -73,16 +73,20 @@ class SupabaseWorkshopSyncService {
   }
 
   void stop() {
-    _pollTimer?.cancel();
     _uploadTimer?.cancel();
     final permissionsChannel = _permissionsChannel;
     if (permissionsChannel != null) {
       unawaited(_client.removeChannel(permissionsChannel));
     }
-    _pollTimer = null;
+    final workshopDataChannel = _workshopDataChannel;
+    if (workshopDataChannel != null) {
+      unawaited(_client.removeChannel(workshopDataChannel));
+    }
     _uploadTimer = null;
     _permissionsChannel = null;
     _permissionsChannelName = null;
+    _workshopDataChannel = null;
+    _workshopDataChannelName = null;
   }
 
   void notifyLocalChange({bool immediate = false}) {
@@ -105,28 +109,32 @@ class SupabaseWorkshopSyncService {
     final user = _client.auth.currentUser!;
     final pendingBeforeUpload = await _db.exportPendingCloudChanges();
     final data = await _db.exportWorkshopData();
+    final uploadData = <String, dynamic>{...data};
+    final pendingTombstones = pendingBeforeUpload.data['SyncTombstones'];
+    if (pendingTombstones is List && pendingTombstones.isNotEmpty) {
+      uploadData['SyncTombstones'] = pendingTombstones;
+    }
     final rows = _flattenDataForUpload(
-      data,
+      uploadData,
       workshopUuid: workshopUuid,
       userId: user.id,
-      fullUpload: true,
+      fullUpload: false,
     );
 
     if (rows.isEmpty) {
       throw Exception('لا توجد بيانات ورشة محلية لرفعها.');
     }
 
-    await _client
-        .from('workshop_sync_rows')
-        .delete()
-        .eq('workshop_id', workshopUuid);
-    await _upsertRows(rows);
+    // A full backup must never erase the remote workshop based on one phone's
+    // incomplete local snapshot. Merge the local rows and protect remote rows
+    // that were modified more recently on another device.
+    await _upsertRows(rows, preserveNewerRemote: true);
 
     await _acknowledgeSyncedChanges(pendingBeforeUpload);
     await _saveLastSyncAt(DateTime.now().toUtc().toIso8601String());
 
     lastUploadSummary =
-        'تم رفع ${rows.length} سجل: '
+        'تم دمج ${rows.length} سجل بأمان في Supabase: '
         '${_countRows(data, 'Client')} زبون، '
         '${_countRows(data, 'Commandes')} طلبية، '
         '${_countRows(data, 'Commandes_details')} تفاصيل.';
@@ -148,13 +156,15 @@ class SupabaseWorkshopSyncService {
     if (rows.isEmpty) return;
 
     final remoteKeys = await _fetchRemoteLiveRowKeys(workshopUuid);
-    final missingRows = rows.where((row) {
-      final table = row['table_name']?.toString() ?? '';
-      final rowId = row['row_id']?.toString() ?? '';
-      return table.isNotEmpty &&
-          rowId.isNotEmpty &&
-          !remoteKeys.contains(_rowKey(table, rowId));
-    }).toList(growable: false);
+    final missingRows = rows
+        .where((row) {
+          final table = row['table_name']?.toString() ?? '';
+          final rowId = row['row_id']?.toString() ?? '';
+          return table.isNotEmpty &&
+              rowId.isNotEmpty &&
+              !remoteKeys.contains(_rowKey(table, rowId));
+        })
+        .toList(growable: false);
 
     if (missingRows.isEmpty) {
       lastUploadSummary =
@@ -203,6 +213,26 @@ class SupabaseWorkshopSyncService {
     }, onConflict: 'workshop_id,table_name,row_id');
   }
 
+  /// Saves the complete list of systems selected for this workshop.
+  ///
+  /// System selection is workshop configuration, not a local device setting.
+  /// Keep it in the same Supabase profile row so Realtime can deliver both
+  /// additions and removals to every member of the workshop.
+  Future<void> saveWorkshopSystems({
+    required Map<String, bool> systemModes,
+    required List<int> activeProfileIds,
+  }) async {
+    await _ensureReady();
+    final currentProfile = await readWorkshopProfile();
+    await saveWorkshopProfile({
+      ...currentProfile,
+      'workshop_systems': {
+        'modes': <String, bool>{...systemModes},
+        'active_profile_ids': activeProfileIds.toList(growable: false),
+      },
+    });
+  }
+
   Future<Map<String, dynamic>> readWorkshopProfile() async {
     await _ensureReady();
     final row = await _client
@@ -216,6 +246,60 @@ class SupabaseWorkshopSyncService {
     return payload is Map
         ? Map<String, dynamic>.from(payload)
         : <String, dynamic>{};
+  }
+
+  /// Applies the latest workshop system selection immediately on this device.
+  /// This is used by the manual refresh button; normal devices receive the
+  /// same profile automatically through the Realtime download listener.
+  Future<void> loadAndApplyWorkshopSystems() async {
+    await _ensureReady();
+    final profile = await readWorkshopProfile();
+    final systems = profile['workshop_systems'];
+    if (systems is Map) {
+      await _applyWorkshopSystems(Map<String, dynamic>.from(systems));
+    }
+  }
+
+  /// Returns the real workshop display name, never the workshop code.
+  ///
+  /// Older workshop rows used the code as their name. Documents must not
+  /// expose that technical identifier, so check the synced profile and the
+  /// workshop identity separately and return null when neither has a real
+  /// human-readable name.
+  Future<String?> readWorkshopDisplayName() async {
+    await _ensureReady();
+    final prefs = await SharedPreferences.getInstance();
+    final code = (_workshopCode ?? prefs.getString('workshop_code') ?? '')
+        .trim();
+
+    bool isUsable(String value) => value.isNotEmpty && value != code;
+
+    final cachedName = (prefs.getString('workshop_name') ?? '').trim();
+    if (isUsable(cachedName)) return cachedName;
+
+    try {
+      final profile = await readWorkshopProfile();
+      final profileName = profile['workshop_name']?.toString().trim() ?? '';
+      if (isUsable(profileName)) {
+        await prefs.setString('workshop_name', profileName);
+        return profileName;
+      }
+    } catch (_) {}
+
+    try {
+      final row = await _client
+          .from('workshops')
+          .select('name')
+          .eq('id', _workshopUuid!)
+          .maybeSingle();
+      final remoteName = row?['name']?.toString().trim() ?? '';
+      if (isUsable(remoteName)) {
+        await prefs.setString('workshop_name', remoteName);
+        return remoteName;
+      }
+    } catch (_) {}
+
+    return null;
   }
 
   Future<void> downloadWorkshopData({bool full = false}) {
@@ -234,6 +318,7 @@ class SupabaseWorkshopSyncService {
   Future<void> _startAsync() async {
     try {
       await _ensureReady();
+      _subscribeToWorkshopDataChanges();
       _subscribeToPermissionChanges();
       await refreshCurrentPermissions();
       final needsFullBootstrap = await _needsFullBootstrapDownload();
@@ -247,11 +332,6 @@ class SupabaseWorkshopSyncService {
         await _markFullBootstrapComplete();
       }
       await uploadPendingChanges();
-      _pollTimer?.cancel();
-      _pollTimer = Timer.periodic(_pollInterval, (_) {
-        unawaited(downloadWorkshopData());
-        unawaited(refreshCurrentPermissions());
-      });
     } catch (error) {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
@@ -334,6 +414,43 @@ class SupabaseWorkshopSyncService {
         .subscribe();
   }
 
+  void _subscribeToWorkshopDataChanges() {
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null || workshopUuid.isEmpty) return;
+
+    final channelName = 'workshop_data_$workshopUuid';
+    if (_workshopDataChannelName == channelName &&
+        _workshopDataChannel != null) {
+      return;
+    }
+
+    final oldChannel = _workshopDataChannel;
+    if (oldChannel != null) {
+      unawaited(_client.removeChannel(oldChannel));
+    }
+
+    _workshopDataChannelName = channelName;
+    _workshopDataChannel = _client
+        .channel(channelName)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'workshop_sync_rows',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'workshop_id',
+            value: workshopUuid,
+          ),
+          callback: (_) {
+            // Realtime carries only the change notification. The normal
+            // incremental downloader remains the single place that applies
+            // rows, tombstones, and workshop profile values safely.
+            unawaited(downloadWorkshopData());
+          },
+        )
+        .subscribe();
+  }
+
   Future<void> updateMemberPermissionsByEmail({
     required String email,
     required String role,
@@ -404,7 +521,10 @@ class SupabaseWorkshopSyncService {
 
     if (rows.isEmpty) return;
 
-    await _upsertRows(rows);
+    // A status/payment change can bundle the order's detail rows for
+    // consistency.  Those details may be older on this device, so never let
+    // them overwrite a newer copy already stored in Supabase.
+    await _upsertRows(rows, preserveNewerRemote: true);
     await _acknowledgeSyncedChanges(pending);
 
     lastUploadSummary =
@@ -418,6 +538,7 @@ class SupabaseWorkshopSyncService {
     final since = full ? null : await _readLastSyncAt();
     final data = <String, dynamic>{};
     final tombstones = <Map<String, dynamic>>[];
+    var profileChanged = false;
     var start = 0;
     var downloadedRows = 0;
     String? newestUpdate;
@@ -472,6 +593,7 @@ class SupabaseWorkshopSyncService {
         if (table == _workshopProfileTable) {
           if (rowId == _workshopProfileRowId && payload is Map) {
             await _applyWorkshopProfile(Map<String, dynamic>.from(payload));
+            profileChanged = true;
             downloadedRows++;
           }
           continue;
@@ -518,6 +640,12 @@ class SupabaseWorkshopSyncService {
       } finally {
         _isApplyingRemoteData = false;
       }
+      _onDataChanged?.call();
+    }
+
+    // A profile-only update has no business-table rows, but it still must
+    // refresh the visible workshop name/logo/address on every device.
+    if (profileChanged && data.isEmpty) {
       _onDataChanged?.call();
     }
 
@@ -591,7 +719,11 @@ class SupabaseWorkshopSyncService {
     final user = _client.auth.currentUser!;
     final inserted = await _client
         .from('workshops')
-        .insert({'code': code, 'name': code, 'owner_uid': user.id})
+        .insert({
+          'code': code,
+          'name': workshopName.trim().isEmpty ? code : workshopName.trim(),
+          'owner_uid': user.id,
+        })
         .select('id')
         .single();
     final id = inserted['id']?.toString() ?? '';
@@ -622,29 +754,100 @@ class SupabaseWorkshopSyncService {
 
       final code = row['code']?.toString().trim() ?? '';
       final name = row['name']?.toString().trim() ?? '';
+      final cachedName = (prefs.getString('workshop_name') ?? '').trim();
       if (code.isNotEmpty) {
         await prefs.setString('workshop_code', code);
         _workshopCode = code;
       }
       if (name.isNotEmpty) {
-        await prefs.setString('workshop_name', name);
-        await prefs.setString('user_display_name', name);
+        // A legacy fallback could have stored the workshop code in the
+        // workshops.name column. Never let that overwrite the real local
+        // workshop name used by document headers.
+        final remoteNameIsCode = code.isNotEmpty && name == code;
+        final usableName = remoteNameIsCode
+            ? (cachedName.isNotEmpty && cachedName != code ? cachedName : '')
+            : name;
+        if (usableName.isNotEmpty && usableName != code) {
+          await prefs.setString('workshop_name', usableName);
+          await prefs.setString('user_display_name', usableName);
+        } else if (remoteNameIsCode) {
+          // Do not leave the technical code in the local display-name slot.
+          await prefs.remove('workshop_name');
+        }
       }
     } catch (error) {
       print('Supabase workshop identity cache skipped: $error');
     }
   }
 
-  Future<void> _upsertRows(List<Map<String, dynamic>> rows) async {
-    for (var start = 0; start < rows.length; start += _batchSize) {
-      final end = min(start + _batchSize, rows.length);
+  Future<void> _upsertRows(
+    List<Map<String, dynamic>> rows, {
+    bool preserveNewerRemote = false,
+  }) async {
+    var rowsToUpload = rows;
+    if (preserveNewerRemote && rows.isNotEmpty) {
+      final remoteUpdatedAt = await _fetchRemoteUpdatedAt();
+      rowsToUpload = rows
+          .where((row) {
+            final table = row['table_name']?.toString() ?? '';
+            final rowId = row['row_id']?.toString() ?? '';
+            final incoming = DateTime.tryParse(
+              row['updated_at']?.toString() ?? '',
+            );
+            final remote = remoteUpdatedAt[_rowKey(table, rowId)];
+            // Rows without a valid timestamp are retained for compatibility with
+            // old databases.  A valid remote timestamp still protects against a
+            // clearly older incoming row.
+            if (incoming == null || remote == null) return true;
+            return !remote.isAfter(incoming);
+          })
+          .toList(growable: false);
+    }
+
+    if (rowsToUpload.isEmpty) return;
+    for (var start = 0; start < rowsToUpload.length; start += _batchSize) {
+      final end = min(start + _batchSize, rowsToUpload.length);
       await _client
           .from('workshop_sync_rows')
           .upsert(
-            rows.sublist(start, end),
+            rowsToUpload.sublist(start, end),
             onConflict: 'workshop_id,table_name,row_id',
           );
     }
+  }
+
+  Future<Map<String, DateTime>> _fetchRemoteUpdatedAt() async {
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null || workshopUuid.isEmpty) {
+      return <String, DateTime>{};
+    }
+
+    final result = <String, DateTime>{};
+    var start = 0;
+    while (true) {
+      final rows = await _client
+          .from('workshop_sync_rows')
+          .select('table_name,row_id,updated_at')
+          .eq('workshop_id', workshopUuid)
+          .order('table_name', ascending: true)
+          .order('row_id', ascending: true)
+          .range(start, start + _downloadPageSize - 1);
+      if (rows.isEmpty) break;
+      for (final rawRow in rows) {
+        final row = Map<String, dynamic>.from(rawRow);
+        final table = row['table_name']?.toString() ?? '';
+        final rowId = row['row_id']?.toString() ?? '';
+        final updatedAt = DateTime.tryParse(
+          row['updated_at']?.toString() ?? '',
+        );
+        if (table.isNotEmpty && rowId.isNotEmpty && updatedAt != null) {
+          result[_rowKey(table, rowId)] = updatedAt;
+        }
+      }
+      if (rows.length < _downloadPageSize) break;
+      start += _downloadPageSize;
+    }
+    return result;
   }
 
   Future<Set<String>> _fetchRemoteLiveRowKeys(String workshopUuid) async {
@@ -716,12 +919,16 @@ class SupabaseWorkshopSyncService {
         final row = Map<String, dynamic>.from(rawRow);
         final rowId = row['id']?.toString() ?? '';
         if (rowId.isEmpty) continue;
+        final storedUpdatedAt = row['updated_at']?.toString().trim() ?? '';
         rows.add({
           'workshop_id': workshopUuid,
           'table_name': table,
           'row_id': rowId,
           'payload': row,
-          'updated_at': now,
+          // Keep the row's own modification time.  Using the upload time here
+          // made an old bundled detail look newer than the manager's detail
+          // and could restore quantity/price as zero on other devices.
+          'updated_at': storedUpdatedAt.isNotEmpty ? storedUpdatedAt : now,
           'deleted_at': null,
           'device_id': _deviceId,
           'revision': DateTime.now().microsecondsSinceEpoch,
@@ -794,7 +1001,16 @@ class SupabaseWorkshopSyncService {
       await prefs.setString(key, text);
     }
 
-    await saveString('workshop_name', profile['workshop_name']);
+    final incomingName = profile['workshop_name']?.toString().trim() ?? '';
+    final currentName = (prefs.getString('workshop_name') ?? '').trim();
+    final code = (_workshopCode ?? prefs.getString('workshop_code') ?? '')
+        .trim();
+    if (incomingName.isNotEmpty && incomingName != code) {
+      await saveString('workshop_name', incomingName);
+    } else if (currentName == code) {
+      // Do not replace an existing real name with an empty value or a code.
+      await prefs.remove('workshop_name');
+    }
     await saveString('workshop_address', profile['workshop_address']);
     await saveString('phone', profile['phone']);
     await saveString('workshop_specialties', profile['workshop_specialties']);
@@ -806,6 +1022,60 @@ class SupabaseWorkshopSyncService {
     await saveString('workshop_rib', profile['rib']);
     await saveString('workshop_logo_base64', profile['logo']);
     await saveString('workshop_worker_count', profile['worker_count']);
+
+    final systems = profile['workshop_systems'];
+    if (systems is Map) {
+      await _applyWorkshopSystems(Map<String, dynamic>.from(systems));
+    }
+  }
+
+  Future<void> _applyWorkshopSystems(Map<String, dynamic> systems) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final rawModes = systems['modes'];
+    if (rawModes is Map) {
+      for (final entry in rawModes.entries) {
+        final value = entry.value;
+        final enabled = value is bool
+            ? value
+            : value is num
+            ? value != 0
+            : value?.toString().toLowerCase() == 'true';
+        await prefs.setBool('system_active_${entry.key}', enabled);
+      }
+    }
+
+    final rawActiveProfiles = systems['active_profile_ids'];
+    if (rawActiveProfiles is! List) return;
+
+    final activeIds = rawActiveProfiles
+        .map(
+          (value) =>
+              value is num ? value.toInt() : int.tryParse(value.toString()),
+        )
+        .whereType<int>()
+        .toSet();
+    final dbInstance = await _db.db;
+    if (dbInstance == null) return;
+
+    // Replace the complete selection, so a system removed by the manager is
+    // also disabled on every worker device.
+    await dbInstance.update('Profile', {'is_active': 0});
+    await dbInstance.update('Series', {'is_active': 0});
+    for (final id in activeIds) {
+      await dbInstance.update(
+        'Profile',
+        {'is_active': 1},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await dbInstance.update(
+        'Series',
+        {'is_active': 1},
+        where: 'profile_id = ? OR id = ?',
+        whereArgs: [id, id],
+      );
+    }
   }
 
   Future<bool> _needsFullBootstrapDownload() async {

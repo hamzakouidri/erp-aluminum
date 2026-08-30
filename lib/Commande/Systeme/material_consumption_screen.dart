@@ -162,6 +162,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     bool isSash = false,
     bool isSideCover = false,
   }) {
+    final rowText =
+        '${item.originalName} ${item.selectorType ?? ''} ${item.roleKey ?? ''}'
+            .toLowerCase();
+    if (rowText.contains('plinthe') || rowText.contains('بلانت')) {
+      // A sash plinthe belongs to the opening sash catalogue even when the
+      // drawing also contains sliding zones.
+      return AccessoryDrawingMode.opening;
+    }
+
     final rowMode = isSideCover
         ? null
         : _drawingModeFromProfileText(_bomRowSearchText(item));
@@ -410,6 +419,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final isExplicitFrame = category == 'profile' && type == 'frame';
       final isExplicitSash = category == 'profile' && type == 'sash';
       final isExplicitSideCover = category == 'profile' && type == 'side_cover';
+      final originalLooksPlinthe =
+          lower.contains('plinthe') || lower.contains('بلانت');
+      final isExplicitPlinthe =
+          category == 'profile' &&
+          (originalLooksPlinthe ||
+              type.toLowerCase() == 'plant' ||
+              type.toLowerCase().contains('plinthe') ||
+              type.contains('بلانت'));
       if (isExplicitFrame || isExplicitSash || isExplicitSideCover) {
         drawingMode = _profileDrawingModeForItem(
           item,
@@ -418,15 +435,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           isSideCover: isExplicitSideCover,
         );
       }
+      if (isExplicitPlinthe) {
+        drawingMode = AccessoryDrawingMode.opening;
+      }
       return _BomSwapTarget(
-        profileType: type,
+        profileType: isExplicitPlinthe ? 'plant' : type,
         category: category,
         drawingMode: drawingMode,
         isFrame: isExplicitFrame,
         isSash: isExplicitSash,
         isSideCover: isExplicitSideCover,
         seriesId: _seriesIdForItem(item),
-        overrideKey: item.overrideKey ?? original,
+        overrideKey: isExplicitPlinthe
+            ? 'بلانت (Plinthe)'
+            : item.overrideKey ?? original,
       );
     }
 
@@ -1581,7 +1603,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (_isFetchingDefaults) return;
     if (mounted) setState(() => _isFetchingDefaults = true);
     _accessoryPriceCache.clear();
-    var visibleBomItems = _visibleBomItems;
+    // Never publish the preliminary/raw BOM. The table is published only
+    // after defaults, catalogue links and the strict visibility check finish.
+    var visibleBomItems = const <BomItem>[];
     try {
       await widget.model.updateShutterDefaultsIfNeeded();
       _refreshStrictActiveVariants();
@@ -1658,11 +1682,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       'أغطية الشفرات (Bouchons Lames)': widget.model.componentOverrides
           .containsKey('أغطية الشفرات (Bouchons Lames)'),
     };
-    // اعرض نسخة أولية من الجدول فورًا. الجلب الذكي للأسعار والاختيارات
-    // يستمر في الخلفية ويستبدل هذه النسخة عند اكتماله.
-    _visibleBomItems = _generateRawBomItems();
-    _hasFetchedDefaults = true;
-    // استدعاء الجلب الذكي فور فتح الشاشة (لملء كل المكونات المفقودة)
+    // لا تعرض نسخة BOM أولية؛ انشر فقط النتيجة بعد اكتمال الفحص الصارم.
+    _visibleBomItems = const <BomItem>[];
+    _hasFetchedDefaults = false;
+    // استدعاء الجلب الذكي فور فتح الشاشة (لملء كل المكونات والفحص الصارم)
     _fetchDefaults();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
     widget.model.addListener(_onModelChanged);
@@ -4985,7 +5008,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final usesExplicitCatalogSelector =
         pCategory != 'shutter' &&
         (explicitRoleKey.isNotEmpty || explicitSelectorType.isNotEmpty);
-    final dialogRoleKeys = explicitRoleKey.isEmpty
+    final rowLooksPlinthe =
+        item.originalName.toLowerCase().contains('plinthe') ||
+        item.originalName.contains('بلانت') ||
+        pType.toLowerCase().contains('plinthe') ||
+        pType.contains('بلانت');
+    final dialogRoleKeys = rowLooksPlinthe
+        ? const <String>['plant']
+        : explicitRoleKey.isEmpty
         ? const <String>[]
         : <String>[explicitRoleKey];
     final espagnoletteLengthMatch = RegExp(

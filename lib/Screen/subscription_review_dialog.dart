@@ -7,6 +7,12 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 
 void showSubscriptionReviewDialog(BuildContext context) {
+  if (!Provider.of<AppSettingsProvider>(
+    context,
+    listen: false,
+  ).canViewSubscription()) {
+    return;
+  }
   showDialog(
     context: context,
     barrierDismissible: true,
@@ -24,14 +30,18 @@ class SubscriptionReviewDialog extends StatelessWidget {
     BuildContext context,
     SubscriptionDetails details,
   ) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final planName = switch (lang) {
       AppLanguage.french => details.planType.displayNameFr,
       AppLanguage.english => details.planType.displayNameEn,
       _ => details.planType.displayNameAr,
     };
 
-    final message = '''
+    final message =
+        '''
 مرحباً إدارة التطبيق،
 أرغب في طلب تجديد اشتراكي في نظام إدارة الورش.
 • نوع الباقة: $planName
@@ -42,19 +52,28 @@ class SubscriptionReviewDialog extends StatelessWidget {
 ''';
 
     final encodedMessage = Uri.encodeComponent(message.trim());
-    final uri = Uri.parse('https://wa.me/$adminWhatsAppNumber?text=$encodedMessage');
+    final uri = Uri.parse(
+      'https://wa.me/$adminWhatsAppNumber?text=$encodedMessage',
+    );
 
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
       if (!launched) {
-        final fallbackUri = Uri.parse('whatsapp://send?phone=$adminWhatsAppNumber&text=$encodedMessage');
+        final fallbackUri = Uri.parse(
+          'whatsapp://send?phone=$adminWhatsAppNumber&text=$encodedMessage',
+        );
         await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تعذر فتح تطبيق واتساب. يرجى التواصل على الرقم: 0554301484'),
+            content: Text(
+              'تعذر فتح تطبيق واتساب. يرجى التواصل على الرقم: 0554301484',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -94,7 +113,8 @@ class SubscriptionReviewDialog extends StatelessWidget {
         child: StreamBuilder<SubscriptionDetails>(
           stream: SubscriptionService().getSubscriptionStream(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
               return const SizedBox(
                 height: 250,
                 child: Center(child: CircularProgressIndicator()),
@@ -118,10 +138,10 @@ class SubscriptionReviewDialog extends StatelessWidget {
             final (statusText, statusColor) = details.isLifetime
                 ? ('دائم (مدير التطبيق)', Colors.purple.shade600)
                 : (details.isExpired
-                    ? ('منتهي الصلاحية', Colors.red)
-                    : (details.canRenew
-                        ? ('يقارب على الانتهاء', Colors.amber.shade800)
-                        : ('سارٍ ونشط', Colors.green)));
+                      ? ('منتهي الصلاحية', Colors.red)
+                      : (details.canRenew
+                            ? ('يقارب على الانتهاء', Colors.amber.shade800)
+                            : ('سارٍ ونشط', Colors.green)));
 
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
@@ -160,7 +180,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 19,
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -168,7 +190,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               details.workshopName,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600,
                               ),
                             ),
                           ],
@@ -177,7 +201,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.close_rounded),
-                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
                       ),
                     ],
                   ),
@@ -190,11 +216,17 @@ class SubscriptionReviewDialog extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: details.isLifetime
                             ? (isDark
-                                ? const [Color(0xFF3B0764), Color(0xFF1E1B4B)]
-                                : const [Color(0xFFF5F3FF), Color(0xFFEDE9FE)])
+                                  ? const [Color(0xFF3B0764), Color(0xFF1E1B4B)]
+                                  : const [
+                                      Color(0xFFF5F3FF),
+                                      Color(0xFFEDE9FE),
+                                    ])
                             : (isDark
-                                ? const [Color(0xFF1E3A8A), Color(0xFF0F172A)]
-                                : const [Color(0xFFEFF6FF), Color(0xFFDBEAFE)]),
+                                  ? const [Color(0xFF1E3A8A), Color(0xFF0F172A)]
+                                  : const [
+                                      Color(0xFFEFF6FF),
+                                      Color(0xFFDBEAFE),
+                                    ]),
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -231,14 +263,17 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                     color: isDark
                                         ? Colors.white
                                         : (details.isLifetime
-                                            ? const Color(0xFF581C87)
-                                            : const Color(0xFF1E3A8A)),
+                                              ? const Color(0xFF581C87)
+                                              : const Color(0xFF1E3A8A)),
                                   ),
                                 ),
                               ],
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: statusColor.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
@@ -262,9 +297,14 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         // Time remaining highlight
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                            color: isDark
+                                ? const Color(0xFF0F172A)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
@@ -282,7 +322,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                     : Icons.hourglass_top_rounded,
                                 color: details.isLifetime
                                     ? Colors.purple.shade600
-                                    : (details.isExpired ? Colors.red : const Color(0xFF2563EB)),
+                                    : (details.isExpired
+                                          ? Colors.red
+                                          : const Color(0xFF2563EB)),
                                 size: 22,
                               ),
                               const SizedBox(width: 10),
@@ -294,20 +336,28 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                       'المدة المتبقية:',
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                        color: isDark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
                                       ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      details.formatRemainingDuration(lang: lang),
+                                      details.formatRemainingDuration(
+                                        lang: lang,
+                                      ),
                                       style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
                                         color: details.isLifetime
                                             ? Colors.purple.shade600
                                             : (details.isExpired
-                                                ? Colors.red
-                                                : (isDark ? Colors.white : const Color(0xFF0F172A))),
+                                                  ? Colors.red
+                                                  : (isDark
+                                                        ? Colors.white
+                                                        : const Color(
+                                                            0xFF0F172A,
+                                                          ))),
                                       ),
                                     ),
                                   ],
@@ -340,10 +390,10 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               details.isLifetime
                                   ? Colors.purple.shade600
                                   : (details.isExpired
-                                      ? Colors.red
-                                      : (details.canRenew
-                                          ? Colors.amber.shade700
-                                          : const Color(0xFF2563EB))),
+                                        ? Colors.red
+                                        : (details.canRenew
+                                              ? Colors.amber.shade700
+                                              : const Color(0xFF2563EB))),
                             ),
                           ),
                         ),
@@ -356,7 +406,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                      color: isDark
+                          ? const Color(0xFF0F172A)
+                          : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isDark ? Colors.white10 : Colors.grey.shade200,
@@ -407,7 +459,11 @@ class SubscriptionReviewDialog extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.verified_rounded, color: Colors.purple, size: 26),
+                          const Icon(
+                            Icons.verified_rounded,
+                            color: Colors.purple,
+                            size: 26,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -416,7 +472,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                 fontSize: 13,
                                 height: 1.4,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.grey.shade200 : Colors.black87,
+                                color: isDark
+                                    ? Colors.grey.shade200
+                                    : Colors.black87,
                               ),
                             ),
                           ),
@@ -438,7 +496,11 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         children: [
                           Row(
                             children: const [
-                              Icon(Icons.autorenew_rounded, color: Colors.green, size: 22),
+                              Icon(
+                                Icons.autorenew_rounded,
+                                color: Colors.green,
+                                size: 22,
+                              ),
                               SizedBox(width: 8),
                               Text(
                                 'تجديد الاشتراك متاح الآن',
@@ -457,32 +519,46 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                 : 'يمكنك تجديد اشتراكك الآن نظراً لاقتراب موعد الانتهاء بأقل من أسبوع.',
                             style: TextStyle(
                               fontSize: 12.5,
-                              color: isDark ? Colors.grey.shade300 : Colors.black87,
+                              color: isDark
+                                  ? Colors.grey.shade300
+                                  : Colors.black87,
                             ),
                           ),
                           const SizedBox(height: 12),
 
                           // BaridiMob Info
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                              color: isDark
+                                  ? const Color(0xFF1E293B)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.blue.shade200),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.payment_rounded, color: Color(0xFF2563EB), size: 20),
+                                const Icon(
+                                  Icons.payment_rounded,
+                                  color: Color(0xFF2563EB),
+                                  size: 20,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'الدفع عبر BaridiMob (RIP):',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                          color: isDark
+                                              ? Colors.grey.shade400
+                                              : Colors.grey.shade600,
                                         ),
                                       ),
                                       Text(
@@ -498,7 +574,11 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                 ),
                                 IconButton(
                                   tooltip: 'نسخ رقم RIP',
-                                  icon: const Icon(Icons.copy_rounded, color: Color(0xFF2563EB), size: 20),
+                                  icon: const Icon(
+                                    Icons.copy_rounded,
+                                    color: Color(0xFF2563EB),
+                                    size: 20,
+                                  ),
                                   onPressed: () => _copyRip(context),
                                 ),
                               ],
@@ -509,7 +589,11 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           // WhatsApp Contact Button
                           ElevatedButton.icon(
                             onPressed: () => _launchWhatsApp(context, details),
-                            icon: const Icon(Icons.wechat_rounded, color: Colors.white, size: 22),
+                            icon: const Icon(
+                              Icons.wechat_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                             label: const Text(
                               'طلب تجديد الاشتراك عبر واتساب',
                               style: TextStyle(
@@ -571,7 +655,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12.5,
                               height: 1.4,
-                              color: isDark ? Colors.grey.shade300 : Colors.black87,
+                              color: isDark
+                                  ? Colors.grey.shade300
+                                  : Colors.black87,
                             ),
                           ),
                         ],
@@ -611,7 +697,8 @@ class SubscriptionReviewDialog extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
-            color: valueColor ?? (isDark ? Colors.white : const Color(0xFF0F172A)),
+            color:
+                valueColor ?? (isDark ? Colors.white : const Color(0xFF0F172A)),
           ),
         ),
       ],

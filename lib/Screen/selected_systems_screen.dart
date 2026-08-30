@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,13 +53,15 @@ class SelectedSystemsScreen extends StatefulWidget {
   State<SelectedSystemsScreen> createState() => _SelectedSystemsScreenState();
 }
 
-class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with SingleTickerProviderStateMixin {
+class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
+    with SingleTickerProviderStateMixin {
   final SqlDatabase _db = SqlDatabase();
   final CloudSyncService _cloudSync = CloudSyncService();
   bool _isLoading = true;
   bool _isSyncing = false;
   String _searchQuery = '';
   late TabController _tabController;
+  StreamSubscription<String>? _syncSubscription;
 
   List<SystemModeItem> _systemModes = [];
   List<ProfileSystemItem> _profileSystems = [];
@@ -94,11 +98,13 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     },
     {
       'id': 'mixed',
-      'title': 'System Mixed (النظام المختلط)',
-      'subtitle': 'نظام يجمع بين التثبيت والفتح والجرار',
+      // Keep the internal id for compatibility with saved drawings. The
+      // user-facing name is Conception (design), not "mixed system".
+      'title': 'Conception (التصميم)',
+      'subtitle': 'صفحة الرسم والتصميم للنوافذ والأبواب',
       'iconPath': 'Icon/french.png',
       'defaultIcon': Icons.dashboard_customize_rounded,
-      'category': 'مختلط',
+      'category': 'تصميم',
     },
     {
       'id': 'rolling',
@@ -119,7 +125,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     {
       'id': 'moustiquaire',
       'title': 'Moustiquaire (موستيكير / الناموسية)',
-      'subtitle': 'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
+      'subtitle':
+          'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
       'iconPath': 'Icon/media.webp',
       'defaultIcon': Icons.grid_4x4_rounded,
       'category': 'ناموسية',
@@ -147,16 +154,23 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
+    _syncSubscription = _cloudSync.dbUpdateStream.listen((event) {
+      if (event != 'cloud_restored' || !mounted) return;
+      // Realtime already applied the profile to local storage. Refresh only
+      // this screen silently so the counters change without a page spinner.
+      _loadData(showLoading: false);
+    });
   }
 
   @override
   void dispose() {
+    _syncSubscription?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool showLoading = true}) async {
+    if (showLoading && mounted) setState(() => _isLoading = true);
     final prefs = await SharedPreferences.getInstance();
 
     // 1. Load System Modes preferences
@@ -182,7 +196,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     try {
       final dbInstance = await _db.db;
       if (dbInstance != null) {
-        final profileRows = await dbInstance.query('Profile', orderBy: 'name ASC');
+        final profileRows = await dbInstance.query(
+          'Profile',
+          orderBy: 'name ASC',
+        );
         if (profileRows.isNotEmpty) {
           for (var row in profileRows) {
             loadedProfiles.add(
@@ -198,7 +215,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
           }
         } else {
           // Fallback: Query Series if Profile table is empty
-          final seriesRows = await dbInstance.query('Series', orderBy: 'name ASC');
+          final seriesRows = await dbInstance.query(
+            'Series',
+            orderBy: 'name ASC',
+          );
           for (var row in seriesRows) {
             loadedProfiles.add(
               ProfileSystemItem(
@@ -233,7 +253,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     // ✅ حفظ في السحابة
     await _syncToCloud();
     if (!mounted) return;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -244,7 +267,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         duration: const Duration(seconds: 2),
-        backgroundColor: newValue ? Colors.green.shade700 : Colors.orange.shade800,
+        backgroundColor: newValue
+            ? Colors.green.shade700
+            : Colors.orange.shade800,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -276,7 +301,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     // ✅ حفظ في السحابة
     await _syncToCloud();
     if (!mounted) return;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -287,7 +315,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         duration: const Duration(seconds: 2),
-        backgroundColor: newValue ? Colors.green.shade700 : Colors.orange.shade800,
+        backgroundColor: newValue
+            ? Colors.green.shade700
+            : Colors.orange.shade800,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -326,7 +356,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     setState(() => _isSyncing = false);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('تم تحديث الأنظمة من السحابة', style: TextStyle(fontFamily: 'Cairo')),
+        content: Text(
+          'تم تحديث الأنظمة من السحابة',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
         backgroundColor: Colors.teal,
         behavior: SnackBarBehavior.floating,
       ),
@@ -377,7 +410,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     final activeProfilesCount = _profileSystems.where((p) => p.isActive).length;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F7FA),
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: Text(
           Localization.translate('تحديد الأنظمة المستعملة', lang),
@@ -388,14 +423,23 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade700,
+        backgroundColor: isDark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
           // زر المزامنة من السحابة (مدير أو عامل)
           _isSyncing
               ? const Padding(
                   padding: EdgeInsets.all(12),
-                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  ),
                 )
               : IconButton(
                   icon: const Icon(Icons.cloud_download_rounded),
@@ -407,18 +451,27 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
           controller: _tabController,
           indicatorColor: Colors.amberAccent,
           indicatorWeight: 3,
-          labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-          unselectedLabelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+          labelStyle: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 13,
+          ),
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           tabs: [
             Tab(
               icon: const Icon(Icons.dashboard_customize_rounded),
-              text: '${Localization.translate("أنظمة العمل", lang)} ($activeModesCount/${_systemModes.length})',
+              text:
+                  '${Localization.translate("أنظمة العمل", lang)} ($activeModesCount/${_systemModes.length})',
             ),
             Tab(
               icon: const Icon(Icons.view_in_ar_rounded),
-              text: '${Localization.translate("أنظمة الألمنيوم", lang)} ($activeProfilesCount/${_profileSystems.length})',
+              text:
+                  '${Localization.translate("أنظمة الألمنيوم", lang)} ($activeProfilesCount/${_profileSystems.length})',
             ),
           ],
         ),
@@ -434,7 +487,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                     color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.2 : 0.05,
+                        ),
                         blurRadius: 6,
                         offset: const Offset(0, 3),
                       ),
@@ -450,21 +505,35 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                           color: isDark ? Colors.white : Colors.black87,
                         ),
                         decoration: InputDecoration(
-                          hintText: Localization.translate('بحث عن نظام أو بروفيل...', lang),
+                          hintText: Localization.translate(
+                            'بحث عن نظام أو بروفيل...',
+                            lang,
+                          ),
                           hintStyle: TextStyle(
                             fontFamily: 'Cairo',
-                            color: isDark ? Colors.white38 : Colors.grey.shade500,
+                            color: isDark
+                                ? Colors.white38
+                                : Colors.grey.shade500,
                           ),
-                          prefixIcon: Icon(Icons.search, color: isDark ? Colors.blue.shade300 : Colors.blue),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: isDark ? Colors.blue.shade300 : Colors.blue,
+                          ),
                           suffixIcon: _searchQuery.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear),
-                                  onPressed: () => setState(() => _searchQuery = ''),
+                                  onPressed: () =>
+                                      setState(() => _searchQuery = ''),
                                 )
                               : null,
                           filled: true,
-                          fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade100,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          fillColor: isDark
+                              ? const Color(0xFF2C2C2C)
+                              : Colors.grey.shade100,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -480,14 +549,28 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                           Expanded(
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: isDark ? Colors.blue.shade400 : Colors.blue),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                side: BorderSide(
+                                  color: isDark
+                                      ? Colors.blue.shade400
+                                      : Colors.blue,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                               ),
-                              icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                              icon: const Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 18,
+                              ),
                               label: Text(
                                 Localization.translate('تفعيل الكل', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                ),
                               ),
                               onPressed: () {
                                 if (_tabController.index == 0) {
@@ -502,15 +585,28 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                           Expanded(
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: isDark ? Colors.orange.shade400 : Colors.orange),
-                                foregroundColor: isDark ? Colors.orange.shade300 : Colors.orange.shade900,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                side: BorderSide(
+                                  color: isDark
+                                      ? Colors.orange.shade400
+                                      : Colors.orange,
+                                ),
+                                foregroundColor: isDark
+                                    ? Colors.orange.shade300
+                                    : Colors.orange.shade900,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                               ),
                               icon: const Icon(Icons.cancel_outlined, size: 18),
                               label: Text(
                                 Localization.translate('إلغاء الكل', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                ),
                               ),
                               onPressed: () {
                                 if (_tabController.index == 0) {
@@ -545,7 +641,11 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     );
   }
 
-  Widget _buildModesTab(List<SystemModeItem> modes, bool isDark, AppLanguage lang) {
+  Widget _buildModesTab(
+    List<SystemModeItem> modes,
+    bool isDark,
+    AppLanguage lang,
+  ) {
     if (modes.isEmpty) {
       return Center(
         child: Text(
@@ -567,7 +667,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
           margin: const EdgeInsets.only(bottom: 10),
           elevation: item.isActive ? 2 : 0,
           color: isDark
-              ? (item.isActive ? const Color(0xFF1E1E1E) : const Color(0xFF161616))
+              ? (item.isActive
+                    ? const Color(0xFF1E1E1E)
+                    : const Color(0xFF161616))
               : (item.isActive ? Colors.white : Colors.grey.shade100),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -588,8 +690,12 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                   height: 50,
                   decoration: BoxDecoration(
                     color: item.isActive
-                        ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.5) : Colors.blue.shade50)
-                        : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                        ? (isDark
+                              ? Colors.blue.shade900.withValues(alpha: 0.5)
+                              : Colors.blue.shade50)
+                        : (isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade200),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
@@ -600,7 +706,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                       errorBuilder: (context, error, stackTrace) => Icon(
                         item.defaultIcon,
                         color: item.isActive
-                            ? (isDark ? Colors.blue.shade300 : Colors.blue.shade700)
+                            ? (isDark
+                                  ? Colors.blue.shade300
+                                  : Colors.blue.shade700)
                             : Colors.grey,
                         size: 26,
                       ),
@@ -625,16 +733,23 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                                 fontSize: 15,
                                 color: item.isActive
                                     ? (isDark ? Colors.white : Colors.black87)
-                                    : (isDark ? Colors.white38 : Colors.grey.shade600),
+                                    : (isDark
+                                          ? Colors.white38
+                                          : Colors.grey.shade600),
                               ),
                             ),
                           ),
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: item.isActive
-                                  ? (isDark ? Colors.blue.shade900 : Colors.blue.shade100)
+                                  ? (isDark
+                                        ? Colors.blue.shade900
+                                        : Colors.blue.shade100)
                                   : Colors.grey.shade300,
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -645,7 +760,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 color: item.isActive
-                                    ? (isDark ? Colors.blue.shade200 : Colors.blue.shade800)
+                                    ? (isDark
+                                          ? Colors.blue.shade200
+                                          : Colors.blue.shade800)
                                     : Colors.grey.shade700,
                               ),
                             ),
@@ -679,11 +796,18 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     );
   }
 
-  Widget _buildProfilesTab(List<ProfileSystemItem> profiles, bool isDark, AppLanguage lang) {
+  Widget _buildProfilesTab(
+    List<ProfileSystemItem> profiles,
+    bool isDark,
+    AppLanguage lang,
+  ) {
     if (profiles.isEmpty) {
       return Center(
         child: Text(
-          Localization.translate('لا توجد أنظمة ألمنيوم مسجلة أو مطابقة للبحث', lang),
+          Localization.translate(
+            'لا توجد أنظمة ألمنيوم مسجلة أو مطابقة للبحث',
+            lang,
+          ),
           style: TextStyle(
             fontFamily: 'Cairo',
             color: isDark ? Colors.white60 : Colors.grey.shade600,
@@ -701,7 +825,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
           margin: const EdgeInsets.only(bottom: 10),
           elevation: item.isActive ? 2 : 0,
           color: isDark
-              ? (item.isActive ? const Color(0xFF1E1E1E) : const Color(0xFF161616))
+              ? (item.isActive
+                    ? const Color(0xFF1E1E1E)
+                    : const Color(0xFF161616))
               : (item.isActive ? Colors.white : Colors.grey.shade100),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -721,8 +847,12 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                   height: 48,
                   decoration: BoxDecoration(
                     color: item.isActive
-                        ? (isDark ? Colors.teal.shade900.withValues(alpha: 0.5) : Colors.teal.shade50)
-                        : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                        ? (isDark
+                              ? Colors.teal.shade900.withValues(alpha: 0.5)
+                              : Colors.teal.shade50)
+                        : (isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade200),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -750,16 +880,23 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                                 fontSize: 15,
                                 color: item.isActive
                                     ? (isDark ? Colors.white : Colors.black87)
-                                    : (isDark ? Colors.white38 : Colors.grey.shade600),
+                                    : (isDark
+                                          ? Colors.white38
+                                          : Colors.grey.shade600),
                               ),
                             ),
                           ),
                           if (item.code.isNotEmpty) ...[
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
-                                color: isDark ? Colors.blueGrey.shade800 : Colors.blueGrey.shade100,
+                                color: isDark
+                                    ? Colors.blueGrey.shade800
+                                    : Colors.blueGrey.shade100,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -768,7 +905,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                                   fontFamily: 'Cairo',
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
-                                  color: isDark ? Colors.blueGrey.shade200 : Colors.blueGrey.shade800,
+                                  color: isDark
+                                      ? Colors.blueGrey.shade200
+                                      : Colors.blueGrey.shade800,
                                 ),
                               ),
                             ),
@@ -779,9 +918,14 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                              color: isDark
+                                  ? Colors.grey.shade800
+                                  : Colors.grey.shade200,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -789,7 +933,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 11,
-                                color: isDark ? Colors.white70 : Colors.grey.shade700,
+                                color: isDark
+                                    ? Colors.white70
+                                    : Colors.grey.shade700,
                               ),
                             ),
                           ),

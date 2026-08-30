@@ -262,6 +262,7 @@ class PdfFicheCoupeApi {
           : Map<String, dynamic>.from(jsonDecode(raw.toString()) as Map);
       final model = WindowModel(db: db);
       await applyWindowModelAndLoadCatalog(model, decoded);
+      applyStoredOrderDetailColorToWindowModel(model, item);
       model.quantity = (_number(
         item['quantity'],
         fallback: model.quantity.toDouble(),
