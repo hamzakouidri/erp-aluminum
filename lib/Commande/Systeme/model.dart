@@ -533,7 +533,13 @@ bool isSlidingSeriesForDrawing(AluminumSeries series) {
       value.contains('sliding') ||
       value.contains('منزلق') ||
       value.contains('جرار') ||
-      value.contains('كوليس');
+      value.contains('كوليس') ||
+      // TPR/HPS are commercial names for sliding systems. Some catalogue
+      // rows store only "Aluminium" in type, so the series name must also be
+      // accepted when classifying the drawing mode.
+      value.contains('tpr') ||
+      value.contains('tpi') ||
+      value.contains('hps');
 }
 
 bool isOpeningSeriesForDrawing(
@@ -6724,10 +6730,15 @@ class WindowModel extends ChangeNotifier {
       final ids = configuredRoleRows
           .where(
             (row) =>
-                roleKeys.contains(row['role_key']) &&
+                roleKeys.contains(row['role_key']?.toString().trim()) &&
                 configuredRoleRowAllowed(row),
           )
-          .map((row) => (row['section_id'] as num?)?.toInt())
+          .map((row) {
+            final rawId = row['section_id'];
+            return rawId is num
+                ? rawId.toInt()
+                : int.tryParse(rawId?.toString() ?? '');
+          })
           .whereType<int>()
           .toSet();
       if (ids.isEmpty) return <AluminumSection>[];
@@ -6758,6 +6769,7 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('حديد الإطار (Renfort Frame)');
       componentOverrides.remove('حديد الظلفة (Renfort Sash)');
       componentOverrides.remove('حديد الظلفة الخاص بالمفاصل');
+      componentOverrides.remove('البارداج (Bardage)');
       _clearAccessoryOverrides();
 
       // Profile identifiers from another series (for example TPR) cannot be
@@ -7652,7 +7664,9 @@ class WindowModel extends ChangeNotifier {
       componentOverrides['الشيكان (Chicane)'] = rMap;
     }
 
-    var bardages = series.sections.where((s) {
+    var bardages = configuredSectionsFor(const ['bardage']);
+    if (bardages.isEmpty && !strictProfileRoles) {
+      bardages = series.sections.where((s) {
       final t = s.type.toLowerCase().trim();
       final n = s.name.toLowerCase().trim();
       return t == 'bardage' ||
@@ -7662,9 +7676,9 @@ class WindowModel extends ChangeNotifier {
           n.contains('bardage') ||
           n.contains('بارداج') ||
           n.contains('بارداش');
-    }).toList();
-    if (!strictProfileRoles &&
-        bardages.isNotEmpty &&
+      }).toList();
+    }
+    if (bardages.isNotEmpty &&
         !componentOverrides.containsKey('البارداج (Bardage)')) {
       final rMap = Map<String, dynamic>.from(bardages.first.toMap());
       final rId = rMap['id'] as int;
@@ -7742,10 +7756,15 @@ class WindowModel extends ChangeNotifier {
       final ids = configuredRoleRows
           .where(
             (row) =>
-                roleKeys.contains(row['role_key']) &&
+                roleKeys.contains(row['role_key']?.toString().trim()) &&
                 configuredRoleRowAllowed(row),
           )
-          .map((row) => (row['section_id'] as num?)?.toInt())
+          .map((row) {
+            final rawId = row['section_id'];
+            return rawId is num
+                ? rawId.toInt()
+                : int.tryParse(rawId?.toString() ?? '');
+          })
           .whereType<int>()
           .toSet();
       if (ids.isEmpty) return <AluminumSection>[];
@@ -7764,6 +7783,7 @@ class WindowModel extends ChangeNotifier {
       internalSlidingSideCoverOverride = null;
       _clearSlidingProfileOverrides();
       _clearAccessoryOverrides();
+      componentOverrides.remove('البارداج (Bardage)');
 
       if (affectsVisibleDivisions) {
         mullionProfiles.clear();
@@ -7897,6 +7917,33 @@ class WindowModel extends ChangeNotifier {
         sideCoverOverride = sideCovers.first.toMap();
         selectedSideCover = sideCovers.first;
       }
+    }
+
+    var bardages = configuredSectionsFor(const ['bardage']);
+    if (bardages.isEmpty && !strictProfileRoles) {
+      bardages = series.sections.where((s) {
+        final t = s.type.toLowerCase().trim();
+        final n = s.name.toLowerCase().trim();
+        return t == 'bardage' ||
+            t.contains('bardage') ||
+            t.contains('بارداج') ||
+            t.contains('بارداش') ||
+            n.contains('bardage') ||
+            n.contains('بارداج') ||
+            n.contains('بارداش');
+      }).toList();
+    }
+    if (bardages.isNotEmpty &&
+        !componentOverrides.containsKey('البارداج (Bardage)')) {
+      final rMap = Map<String, dynamic>.from(bardages.first.toMap());
+      final rId = rMap['id'] as int;
+      final colorId = selectedDbColor?['id'] as int?;
+      double price = await db.getSectionPrice(rId, colorId);
+      if (price <= 0) {
+        price = ((rMap['price_dzd'] ?? rMap['price'] ?? 0.0) as num).toDouble();
+      }
+      rMap['calculated_price'] = price;
+      componentOverrides['البارداج (Bardage)'] = rMap;
     }
 
     var rails = configuredSectionsFor(const ['rail']);
@@ -14498,7 +14545,7 @@ class WindowModel extends ChangeNotifier {
       'joint_bourrage',
     );
     await loadJoint('جوان الضرب (Joint Frappe)', 'joint_frappe');
-    await loadJoint('جوان الوسط (Joint Central)', 'joint_central');
+    await loadJoint('N 245', 'joint_central');
     await loadJoint('جوان بروس للظلفة (Joint Brosse Sash)', 'joint_brosse');
     await loadJoint(
       'جوان بروس للستار (Joint Brosse Shutter)',

@@ -18,12 +18,31 @@ class SupabaseCatalogSyncService {
 
   Future<void>? _activeUpload;
   bool _uploadQueued = false;
+  Future<void>? _activeDownload;
+  RealtimeChannel? _catalogChannel;
+  String? _catalogChannelName;
+  void Function()? _onCatalogChanged;
 
   String lastCatalogUploadSummary = '';
+  String lastCatalogDownloadSummary = '';
 
   SupabaseClient get _client => Supabase.instance.client;
 
   bool get isSignedIn => _client.auth.currentUser != null;
+
+  /// This is checked against Supabase itself. A local Firebase role or a
+  /// locally edited preference is not sufficient to publish the shared
+  /// catalogue.
+  Future<bool> isCurrentUserAppAdmin() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+    final row = await _client
+        .from('app_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+    return row != null;
+  }
 
   Future<void> signInWithPassword({
     required String email,
@@ -129,6 +148,13 @@ class SupabaseCatalogSyncService {
     if (user == null) {
       throw Exception('يجب تسجيل الدخول إلى Supabase قبل رفع الكتالوج.');
     }
+    if (!await isCurrentUserAppAdmin()) {
+      throw Exception('رفع الكتالوج المركزي متاح لمدير التطبيق فقط.');
+    }
+
+    // Keep the local SQLite change log clean after the central upload. These
+    // rows are deliberately not part of workshop_sync_rows anymore.
+    final pendingBeforeUpload = await _db.exportPendingCloudChanges();
 
     final catalogData = await _db.exportGlobalCatalog();
     for (final requiredTable in const ['Colors', 'ShutterComponents']) {
@@ -226,10 +252,184 @@ class SupabaseCatalogSyncService {
 
     await _client.from('catalog_chunks').delete().neq('version_id', versionId);
 
+    final catalogAcknowledgements = pendingBeforeUpload.acknowledgements
+        .where((ack) => SqlDatabase.catalogTables.contains(ack.table))
+        .toList(growable: false);
+    await _db.acknowledgePendingCloudChanges(catalogAcknowledgements);
+
     lastCatalogUploadSummary =
         'الألوان: ${tableRowCounts['Colors'] ?? 0}، '
         'البروفيلات: ${tableRowCounts['Sections'] ?? 0}، '
         'مركبات الستائر: ${tableRowCounts['ShutterComponents'] ?? 0}';
+  }
+
+  Future<void> downloadGlobalCatalog({bool allowMissing = false}) {
+    final activeDownload = _activeDownload;
+    if (activeDownload != null) return activeDownload;
+
+    final task = _performDownload(allowMissing: allowMissing);
+    _activeDownload = task;
+    unawaited(task.whenComplete(() {
+      if (identical(_activeDownload, task)) _activeDownload = null;
+    }));
+    return task;
+  }
+
+  Future<void> _performDownload({required bool allowMissing}) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw Exception('يجب تسجيل الدخول إلى Supabase قبل تنزيل الكتالوج.');
+    }
+
+    final manifest = await _client
+        .from('catalog_manifest')
+        .select()
+        .eq('id', 'latest')
+        .maybeSingle();
+    if (manifest == null) {
+      if (allowMissing) return;
+      throw Exception('لم ينشر مدير التطبيق الكتالوج المركزي بعد.');
+    }
+
+    if (manifest['status']?.toString() != 'completed') {
+      throw Exception(
+        'الكتالوج المركزي قيد الرفع أو غير مكتمل؛ لن يتم تنزيل بيانات جزئية.',
+      );
+    }
+
+    final versionId = manifest['version_id']?.toString() ?? '';
+    if (versionId.isEmpty) {
+      throw StateError('مؤشر الكتالوج المركزي لا يحتوي على نسخة صالحة.');
+    }
+
+    final tables = _readStringList(manifest['tables']);
+    final expectedRows = _readIntMap(manifest['table_row_counts']);
+    final expectedChunks = _readIntMap(manifest['chunk_counts']);
+    if (tables.isEmpty || expectedRows.isEmpty) {
+      throw StateError('بيانات تعريف الكتالوج المركزي فارغة.');
+    }
+    for (final table in tables) {
+      if (!SqlDatabase.catalogTables.contains(table)) {
+        throw StateError('الكتالوج المركزي يحتوي على جدول غير مسموح: $table');
+      }
+    }
+
+    final chunks = <Map<String, dynamic>>[];
+    const pageSize = 500;
+    var offset = 0;
+    while (true) {
+      final page = await _client
+          .from('catalog_chunks')
+          .select('table_name,chunk_index,total_chunks,row_count,payload')
+          .eq('version_id', versionId)
+          .order('table_name')
+          .order('chunk_index')
+          .range(offset, offset + pageSize - 1);
+      final pageRows = List<Map<String, dynamic>>.from(page);
+      chunks.addAll(pageRows);
+      if (pageRows.length < pageSize) break;
+      offset += pageRows.length;
+    }
+    if (chunks.isEmpty) throw StateError('الكتالوج المركزي لا يحتوي على أجزاء.');
+
+    final catalogData = <String, dynamic>{
+      for (final table in tables) table: <dynamic>[],
+    };
+    final actualChunks = <String, int>{};
+    for (final chunk in chunks) {
+      final table = chunk['table_name']?.toString() ?? '';
+      final payload = chunk['payload'];
+      if (!catalogData.containsKey(table) || payload is! List) {
+        throw StateError('جزء غير صالح في الكتالوج المركزي.');
+      }
+      final rowCount = (chunk['row_count'] as num?)?.toInt();
+      if (rowCount == null || rowCount != payload.length) {
+        throw StateError('عدد سجلات جزء الكتالوج غير صحيح في جدول $table.');
+      }
+      final totalChunks = (chunk['total_chunks'] as num?)?.toInt();
+      if (totalChunks == null || totalChunks != (expectedChunks[table] ?? -1)) {
+        throw StateError('عدد أجزاء الكتالوج غير صحيح في جدول $table.');
+      }
+      (catalogData[table] as List).addAll(payload);
+      actualChunks[table] = (actualChunks[table] ?? 0) + 1;
+    }
+
+    for (final table in tables) {
+      final actualRows = (catalogData[table] as List).length;
+      if (actualRows != (expectedRows[table] ?? -1) ||
+          (actualChunks[table] ?? 0) != (expectedChunks[table] ?? -1)) {
+        throw StateError('الكتالوج المركزي غير مكتمل في جدول $table.');
+      }
+    }
+
+    await _db.importGlobalCatalog(catalogData);
+    lastCatalogDownloadSummary =
+        'تم تنزيل الكتالوج المركزي: ${expectedRows['Colors'] ?? 0} لونًا، '
+        '${expectedRows['Sections'] ?? 0} بروفايل.';
+  }
+
+  List<String> _readStringList(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => item.toString())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Map<String, int> _readIntMap(dynamic value) {
+    if (value is! Map) return const {};
+    final result = <String, int>{};
+    for (final entry in value.entries) {
+      final number = entry.value;
+      if (number is num) result[entry.key.toString()] = number.toInt();
+    }
+    return result;
+  }
+
+  void startRealtime({void Function()? onDataChanged}) {
+    _onCatalogChanged = onDataChanged;
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+
+    const channelName = 'global_catalog_manifest';
+    if (_catalogChannelName == channelName && _catalogChannel != null) return;
+    final oldChannel = _catalogChannel;
+    if (oldChannel != null) unawaited(_client.removeChannel(oldChannel));
+
+    _catalogChannelName = channelName;
+    _catalogChannel = _client
+        .channel(channelName)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'catalog_manifest',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: 'latest',
+          ),
+          callback: (_) => unawaited(_refreshAfterRealtimeChange()),
+        )
+        .subscribe();
+  }
+
+  Future<void> _refreshAfterRealtimeChange() async {
+    try {
+      await downloadGlobalCatalog();
+      _onCatalogChanged?.call();
+    } catch (error) {
+      // A transient event during an upload must not terminate the Realtime
+      // listener. The next manifest event or app resume retries the download.
+      print('Central catalog realtime refresh failed: $error');
+    }
+  }
+
+  void stopRealtime() {
+    final channel = _catalogChannel;
+    if (channel != null) unawaited(_client.removeChannel(channel));
+    _catalogChannel = null;
+    _catalogChannelName = null;
+    _onCatalogChanged = null;
   }
 
   List<List<dynamic>> _chunkRows(List<dynamic> rows) {

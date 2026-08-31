@@ -4490,6 +4490,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   String _actualRequiredLabel(AggregatedGoodItem item) {
+    final isBardage = item.category == 'profile' &&
+        (item.unit.trim().toLowerCase() == 'قطعة' ||
+            item.originalName.toLowerCase().contains('bardage') ||
+            item.originalName.contains('بارداج') ||
+            item.originalName.contains('بارداش'));
+    if (isBardage) return _purchaseQuantityLabel(item);
     if (item.cuttingPieces.isNotEmpty) {
       final actualMeters = item.cuttingPieces.fold<double>(
         0,

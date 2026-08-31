@@ -411,7 +411,7 @@ class SettingsScreen extends StatelessWidget {
                                   cloudSync.lastBackupUploadSummary = '';
                                   cloudSync.lastCatalogUploadSummary = '';
                                   await cloudSync.backupToCloud();
-                                  if (settings.userRole == 'admin' || isAdmin) {
+                                  if (isAdmin) {
                                     await cloudSync.backupGlobalCatalog();
                                   }
                                   success = true;
@@ -1020,7 +1020,7 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // Global Catalog Sync
-          if (settings.isManager || settings.canSyncGlobalCatalog())
+          if (settings.canSyncGlobalCatalog())
             Card(
               elevation: 4,
               child: Padding(
@@ -1149,7 +1149,7 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 10),
-          if (settings.userRole == 'admin' || isAdmin)
+          if (isAdmin)
             Card(
               color: Theme.of(context).cardColor,
               elevation: 2,

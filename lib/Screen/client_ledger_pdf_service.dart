@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,11 +10,20 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:database_data/arabic_reshaper/arabic_reshaper.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
+import '../services/pdf_font_cache.dart';
 
 class ClientLedgerPdfService {
+  static String _safeFilePart(Object? value, {String fallback = 'client'}) {
+    final cleaned = (value?.toString() ?? '')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .trim();
+    return cleaned.isEmpty ? fallback : cleaned;
+  }
+
   static bool _hasArabic(String text) {
     return text.runes.any(
       (r) =>
@@ -56,11 +65,9 @@ class ClientLedgerPdfService {
       } catch (_) {}
     }
 
-    // Load fonts
-    final cairoRegular = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final cairoBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-    final fontRegular = pw.Font.ttf(cairoRegular);
-    final fontBold = pw.Font.ttf(cairoBold);
+    final fonts = await PdfFontCache.load();
+    final fontRegular = fonts.regular;
+    final fontBold = fonts.bold;
 
     final formatter = NumberFormat('#,##0.00');
     final clientName = '${client['lastname'] ?? ''} ${client['firstname'] ?? ''}'.trim();
@@ -384,7 +391,9 @@ class ClientLedgerPdfService {
     AppLanguage lang = AppLanguage.arabic,
   }) async {
     final bytes = await generateLedgerPdfBytes(client, items, detailed: detailed, lang: lang);
-    final clientName = '${client['lastname'] ?? ''}_${client['firstname'] ?? ''}'.trim();
+    final clientName = _safeFilePart(
+      '${client['lastname'] ?? ''}_${client['firstname'] ?? ''}',
+    );
     await Printing.layoutPdf(
       onLayout: (_) async => bytes,
       name: 'fiche_client_$clientName.pdf',
@@ -399,7 +408,20 @@ class ClientLedgerPdfService {
   }) async {
     final bytes = await generateLedgerPdfBytes(client, items, detailed: detailed, lang: lang);
     final clientName = '${client['lastname'] ?? ''}_${client['firstname'] ?? ''}'.trim();
-    await Printing.sharePdf(bytes: bytes, filename: 'fiche_client_$clientName.pdf');
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/fiche_client_$clientName.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'كشف حساب الزبون $clientName',
+      );
+    } catch (_) {
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'fiche_client_$clientName.pdf',
+      );
+    }
   }
 
   static Future<void> saveClientLedger(
@@ -411,7 +433,9 @@ class ClientLedgerPdfService {
   }) async {
     try {
       final bytes = await generateLedgerPdfBytes(client, items, detailed: detailed, lang: lang);
-      final clientName = '${client['lastname'] ?? ''}_${client['firstname'] ?? ''}'.trim();
+      final clientName = _safeFilePart(
+        '${client['lastname'] ?? ''}_${client['firstname'] ?? ''}',
+      );
       final filename = 'fiche_client_$clientName.pdf';
       String? finalPath;
 

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import '../settings/app_settings.dart';
+import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 
 enum SubscriptionPlanType {
   yearly,
@@ -197,52 +197,16 @@ class SubscriptionService {
 
   /// Stream subscription details for the currently logged in user
   Stream<SubscriptionDetails> getSubscriptionStream() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return Stream.value(_createDefaultFallback(''));
-    }
+    return Stream.fromFuture(_loadSupabaseSubscription());
+  }
 
-    return FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .snapshots()
-        .asyncMap((userDoc) async {
-      if (!userDoc.exists || userDoc.data() == null) {
-        return _createDefaultFallback(user.email ?? '');
-      }
+  Future<SubscriptionDetails> _loadSupabaseSubscription() async {
+    final user = AppAuthService().currentUser;
+    if (user == null) return _createDefaultFallback('');
 
-      var data = userDoc.data()!;
-      final role = data['role']?.toString() ?? 'worker';
-      final workshopId = data['workshopId']?.toString();
-
-      // If worker, fetch manager data to get workshop subscription
-      if ((role == 'worker' || role == 'co_manager') &&
-          workshopId != null &&
-          workshopId.isNotEmpty &&
-          workshopId != user.uid) {
-        try {
-          final managerDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(workshopId)
-              .get();
-          if (managerDoc.exists && managerDoc.data() != null) {
-            final mData = managerDoc.data()!;
-            // Merge manager's subscription fields into current view
-            data = {
-              ...mData,
-              'role': role,
-              'email': data['email'] ?? user.email,
-              'displayName': data['displayName'] ?? user.displayName,
-              'workshopName': data['workshopName'] ?? mData['workshopName'] ?? '',
-            };
-          }
-        } catch (e) {
-          debugPrint('SubscriptionService: Error fetching manager doc: $e');
-        }
-      }
-
-      return _parseSubscriptionData(data, user.email ?? '');
-    });
+    final account = await SupabaseAccountService().loadCurrentAccount();
+    if (account == null) return _createDefaultFallback(user.email ?? '');
+    return _parseSubscriptionData(account.subscriptionData, account.email);
   }
 
   SubscriptionDetails _parseSubscriptionData(Map<String, dynamic> data, String fallbackEmail) {
@@ -251,7 +215,7 @@ class SubscriptionService {
     final role = data['role']?.toString() ?? 'worker';
     final isAppAdmin = isApplicationAdminEmail(userEmail) ||
         role == 'admin' ||
-        isApplicationAdminEmail(FirebaseAuth.instance.currentUser?.email);
+        isApplicationAdminEmail(AppAuthService().currentUser?.email);
 
     // 1. Determine Start Date (Always accurately tracks from the beginning of subscription / account creation)
     DateTime startDate = _parseDate(data['subscriptionStartDate']) ??

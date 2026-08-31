@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
-import 'dart:ui' show PointerDeviceKind;
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/app_theme.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_config.dart';
 import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/desktop_window_frame.dart';
+import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/firebase_options.dart';
 import 'dart:io' show Platform;
@@ -21,6 +20,7 @@ import 'package:database_data/Commande/texture_cache.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:database_data/services/auth_service.dart';
 
 import 'package:window_manager/window_manager.dart';
 
@@ -225,20 +225,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       title: Localization.translate('ورشتي', settings.language),
       themeMode: settings.themeMode,
-      // Desktop scroll views should respond naturally to the mouse and
-      // trackpad wherever the pointer is positioned.  Individual widgets
-      // can still provide their own axis-specific controllers when a card
-      // contains both vertical rows and horizontal columns.
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        dragDevices: {
-          PointerDeviceKind.touch,
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.trackpad,
-          PointerDeviceKind.stylus,
-          PointerDeviceKind.invertedStylus,
-          PointerDeviceKind.unknown,
-        },
-      ),
+      scrollBehavior: const DesktopScrollBehavior(),
       theme: AppTheme.lightTheme(
         settings.fontSizeScale,
         fontFamily: uiFontFamily,
@@ -265,12 +252,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           );
         }
-        if (!kIsWeb && Platform.isWindows) {
-          content = DesktopWindowFrame(
-            topBar: const WorkspaceTabStrip(),
-            child: content,
-          );
-        }
         return MediaQuery(
           data: MediaQuery.of(
             context,
@@ -295,12 +276,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 ),
               ),
             )
-          : StreamBuilder<User?>(
-              stream: FirebaseAuth.instance.authStateChanges(),
-              initialData: FirebaseAuth.instance.currentUser,
+          : StreamBuilder<AppAuthUser?>(
+              stream: AppAuthService().authStateChanges,
+              initialData: AppAuthService().currentUser,
               builder: (context, snapshot) {
                 if (snapshot.hasData) {
-                  return const SubscriptionChecker();
+                  const authenticatedContent = SubscriptionChecker();
+                  if (!kIsWeb && Platform.isWindows) {
+                    return DesktopWindowFrame(
+                      topBar: const WorkspaceTabStrip(),
+                      child: authenticatedContent,
+                    );
+                  }
+                  return authenticatedContent;
                 }
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Scaffold(

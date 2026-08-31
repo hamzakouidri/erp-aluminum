@@ -14767,10 +14767,8 @@ class _WindowViewState extends State<WindowView> {
   }
 }
 
-/// A horizontal scroll area that works with touch, mouse dragging, trackpads,
-/// and the vertical mouse wheel on desktop.  Flutter normally sends the wheel
-/// to the nearest vertical scroll view, which made hidden drawer options
-/// (such as Manivelle and Moteur) unreachable on Windows.
+/// A horizontal scroll area with its own controller so the application-wide
+/// Windows scroll behavior can expose and operate its horizontal scrollbar.
 class _HorizontalWheelScrollArea extends StatefulWidget {
   final Widget Function(BuildContext context, ScrollController controller)
   builder;
@@ -14785,27 +14783,6 @@ class _HorizontalWheelScrollArea extends StatefulWidget {
 class _HorizontalWheelScrollAreaState
     extends State<_HorizontalWheelScrollArea> {
   final ScrollController _controller = ScrollController();
-
-  void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent || !_controller.hasClients) return;
-
-    final delta = event.scrollDelta.dx.abs() > event.scrollDelta.dy.abs()
-        ? event.scrollDelta.dx
-        : event.scrollDelta.dy;
-    if (delta == 0) return;
-
-    final position = _controller.position;
-    final target = (position.pixels + delta)
-        .clamp(position.minScrollExtent, position.maxScrollExtent)
-        .toDouble();
-    if ((target - position.pixels).abs() < 0.5) return;
-
-    // Claim the wheel signal so an enclosing vertical ListView does not
-    // consume it before this horizontal row can move.
-    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-      if (_controller.hasClients) _controller.jumpTo(target);
-    });
-  }
 
   @override
   void dispose() {
@@ -14827,17 +14804,7 @@ class _HorizontalWheelScrollAreaState
           PointerDeviceKind.unknown,
         },
       ),
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerSignal: _handlePointerSignal,
-        child: Scrollbar(
-          controller: _controller,
-          interactive: true,
-          thumbVisibility:
-              !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
-          child: widget.builder(context, _controller),
-        ),
-      ),
+      child: widget.builder(context, _controller),
     );
   }
 }
@@ -15002,6 +14969,10 @@ class _ShutterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final foreground = enabled
         ? (selected ? color : Colors.grey.shade600)
         : Colors.grey.shade400;
@@ -15009,7 +14980,12 @@ class _ShutterChip extends StatelessWidget {
         ? (selected ? color.withOpacity(0.12) : Colors.grey.shade100)
         : Colors.grey.shade200;
     return Tooltip(
-      message: enabled ? label : (disabledHint ?? 'غير متاح لهذا المقاس'),
+      message: enabled
+          ? Localization.translate(label, lang)
+          : Localization.translate(
+              disabledHint ?? 'غير متاح لهذا المقاس',
+              lang,
+            ),
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         child: AnimatedContainer(
@@ -15030,7 +15006,7 @@ class _ShutterChip extends StatelessWidget {
               Icon(icon, size: 18, color: foreground),
               const SizedBox(height: 3),
               Text(
-                label,
+                Localization.translate(label, lang),
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: selected ? FontWeight.bold : FontWeight.normal,

@@ -33,6 +33,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   // moved to the workshop settings screen without changing the drawing code.
   static const _defaultHoleDiameterMm = 20.0;
   static const _defaultDoorHeightIncreaseMm = 30.0;
+  static const _defaultFixedWidthIncreaseMm = 30.0;
+  static const _freehandMaxWidthMm = 3000.0;
+  static const _freehandMaxHeightMm = 3500.0;
+  static const _slidingVisualGapPx = 2.0;
   static const _doorTopHoleSideOffsetMm = 80.0;
   static const _doorTopHoleTopOffsetMm = 35.0;
   static const _handleHoleEdgeOffsetMm = 50.0;
@@ -41,8 +45,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   GlassWorkType _workType = GlassWorkType.vitrineSingleDoor;
   final List<_GlassPanel> _panels = [];
+  final Map<String, _HoleOverride> _holeOverrides = {};
   int? _selectedPanelIndex;
   final _doorWidthController = TextEditingController(text: '800');
+  bool _doorWidthCustomized = false;
   final _sablageBandWidthController = TextEditingController(text: '40');
   final _sablageTransparentWidthController = TextEditingController(text: '40');
   final _sablageCountController = TextEditingController(text: '3');
@@ -72,9 +78,29 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   bool _sablageRangeMode = false;
   bool _sablageFromBottom = false;
   double _glassThicknessMm = 10.0;
+  String _glassType = 'normal';
+  bool _glassTempered = true;
+  String _edgeFinish = 'smooth';
   bool _doorOnLeft = true;
 
   bool get _isSlidingStraight => _workType == GlassWorkType.slidingShowerCabin;
+
+  bool _isCompactLayout(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 700.0;
+
+  String _edgeFinishLabel(String value) {
+    return switch (value) {
+      'sharp' => _tr('حواف حادة', 'Bords vifs', 'Sharp edges'),
+      _ => _tr('حواف ناعمة', 'Bords adoucis', 'Smooth edges'),
+    };
+  }
+
+  String _glassTypeLabel(String value) {
+    return switch (value) {
+      'mirror' => _tr('زجاج مرآة', 'Verre miroir', 'Mirror glass'),
+      _ => _tr('زجاج عادي', 'Verre normal', 'Standard glass'),
+    };
+  }
 
   Offset _canvasPosition(Offset screenPosition) {
     if (_canvasSize == Size.zero || _zoom == 1.0) return screenPosition;
@@ -98,6 +124,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         towelCenterFromTopMm: _towelCenterFromTopMm,
         towelSpacingMm: _towelSpacingMm,
         holeDiameterMm: _holeDiameterMm,
+        holeOverrides: _holeOverrides,
         sablageMode: _sablageMode,
         sablageRangeMode: _sablageRangeMode,
         sablageFromBottom: _sablageFromBottom,
@@ -126,6 +153,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     _towelCenterFromTopMm = snapshot.towelCenterFromTopMm;
     _towelSpacingMm = snapshot.towelSpacingMm;
     _holeDiameterMm = snapshot.holeDiameterMm;
+    _holeOverrides
+      ..clear()
+      ..addAll(snapshot.holeOverrides.map((key, value) => MapEntry(key, value.copy())));
     _sablageMode = snapshot.sablageMode;
     _sablageRangeMode = snapshot.sablageRangeMode;
     _sablageFromBottom = snapshot.sablageFromBottom;
@@ -151,6 +181,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           towelCenterFromTopMm: _towelCenterFromTopMm,
           towelSpacingMm: _towelSpacingMm,
           holeDiameterMm: _holeDiameterMm,
+          holeOverrides: _holeOverrides,
           sablageMode: _sablageMode,
           sablageRangeMode: _sablageRangeMode,
           sablageFromBottom: _sablageFromBottom,
@@ -180,6 +211,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           towelCenterFromTopMm: _towelCenterFromTopMm,
           towelSpacingMm: _towelSpacingMm,
           holeDiameterMm: _holeDiameterMm,
+          holeOverrides: _holeOverrides,
           sablageMode: _sablageMode,
           sablageRangeMode: _sablageRangeMode,
           sablageFromBottom: _sablageFromBottom,
@@ -372,19 +404,31 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       );
       return;
     }
+    final pixelsPerMillimeter = _freehandPixelsPerMillimeter();
+    final widthMm = _freehandMillimetersFromPixels(
+      panel.width,
+      pixelsPerMillimeter,
+      _freehandMaxWidthMm,
+    );
+    final heightMm = _freehandMillimetersFromPixels(
+      panel.height,
+      pixelsPerMillimeter,
+      _freehandMaxHeightMm,
+    );
     _pushHistory();
     setState(() {
       if (_isSlidingStraight) {
         _overallDrawingRect = panel;
-        _overallWidthMmValue = panel.width;
-        _overallHeightMmValue = panel.height;
+        _overallWidthMmValue = widthMm;
+        _overallHeightMmValue = heightMm;
+        _setDefaultSlidingDoorWidth(widthMm);
         _applySlidingLayout();
       } else {
         _panels.add(
           _GlassPanel(
             rect: panel,
-            widthMm: panel.width,
-            heightMm: panel.height,
+            widthMm: widthMm,
+            heightMm: heightMm,
           ),
         );
       }
@@ -432,7 +476,45 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           panel.rect.left + hole.xMm * scaleX,
           panel.rect.top + hole.yMm * scaleY,
         );
-        if ((holePosition - position).distance <= 28) {
+        final holeLabelHitBox = Rect.fromCenter(
+          center: holePosition + const Offset(0, 14),
+          width: 110,
+          height: 32,
+        );
+        final holeRadius = math.max(
+          6.0,
+          hole.diameterMm * math.min(scaleX, scaleY) / 2,
+        );
+        final fromLeft = hole.xMm <= panel.widthMm / 2;
+        final horizontalHoleEdge = holePosition.dx +
+            (fromLeft ? -holeRadius : holeRadius);
+        final horizontalGlassEdge = fromLeft
+            ? panel.rect.left
+            : panel.rect.right;
+        final horizontalDimensionHitBox = Rect.fromCenter(
+          center: Offset(
+            (horizontalGlassEdge + horizontalHoleEdge) / 2,
+            holePosition.dy - 11,
+          ),
+          width: 110,
+          height: 30,
+        );
+        final fromTop = hole.yMm <= panel.heightMm / 2;
+        final verticalHoleEdge = holePosition.dy +
+            (fromTop ? -holeRadius : holeRadius);
+        final verticalGlassEdge = fromTop ? panel.rect.top : panel.rect.bottom;
+        final verticalDimensionHitBox = Rect.fromCenter(
+          center: Offset(
+            holePosition.dx + 13,
+            (verticalGlassEdge + verticalHoleEdge) / 2,
+          ),
+          width: 42,
+          height: 110,
+        );
+        if ((holePosition - position).distance <= 28 ||
+            holeLabelHitBox.contains(position) ||
+            horizontalDimensionHitBox.contains(position) ||
+            verticalDimensionHitBox.contains(position)) {
           return _MovableHoleTarget(
             panelIndex: panelIndex,
             holeIndex: holeIndex,
@@ -454,56 +536,72 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         : panel.rect.height / panel.heightMm;
     final dxMm = delta.dx / scaleX;
     final dyMm = delta.dy / scaleY;
-    final isHandle = target.purpose.startsWith('handle_');
-    final isTowel = target.purpose.startsWith('towel_');
-    if (!isHandle && !isTowel) return;
+    final hole = panel.holes[target.holeIndex];
+    final diameter = hole.diameterMm.clamp(
+      1.0,
+      math.min(panel.widthMm, panel.heightMm),
+    );
 
     setState(() {
-      if (isHandle) {
-        _handleEdgeOffsetMm = (_handleEdgeOffsetMm + dxMm)
-            .clamp(0.0, math.max(0.0, panel.widthMm - _holeDiameterMm))
-            .toDouble();
-        _handleCenterFromTopMm =
-            ((_handleCenterFromTopMm ?? panel.heightMm / 2) + dyMm)
-                .clamp(
-                  _handleSpacingMm / 2,
-                  math.max(
-                    _handleSpacingMm / 2,
-                    panel.heightMm - _handleSpacingMm / 2,
-                  ),
-                )
-                .toDouble();
-      } else {
-        _towelCenterFromLeftMm =
-            ((_towelCenterFromLeftMm ?? panel.widthMm / 2) + dxMm)
-                .clamp(0.0, panel.widthMm)
-                .toDouble();
-        _towelCenterFromTopMm =
-            ((_towelCenterFromTopMm ?? panel.heightMm / 2) + dyMm)
-                .clamp(
-                  _towelSpacingMm / 2,
-                  math.max(
-                    _towelSpacingMm / 2,
-                    panel.heightMm - _towelSpacingMm / 2,
-                  ),
-                )
-                .toDouble();
-      }
-      _applySlidingLayout();
+      hole.xMm = (hole.xMm + dxMm)
+          .clamp(diameter / 2, panel.widthMm - diameter / 2)
+          .toDouble();
+      hole.yMm = (hole.yMm + dyMm)
+          .clamp(diameter / 2, panel.heightMm - diameter / 2)
+          .toDouble();
+      _holeOverrides[hole.purpose] = _HoleOverride(
+        xMm: hole.xMm,
+        yMm: hole.yMm,
+        diameterMm: hole.diameterMm,
+      );
     });
   }
 
   void _handleCanvasTap(TapUpDetails details) {
-    final target = _findMovableHole(_canvasPosition(details.localPosition));
+    final position = _canvasPosition(details.localPosition);
+    final target = _findMovableHole(position);
     if (target != null) {
-      _editMovableHole(target.purpose);
+      _editMovableHole(target);
       return;
     }
-    final position = _canvasPosition(details.localPosition);
+    if (_isExternalDimensionTap(position)) {
+      _editMeasurements();
+      return;
+    }
     final panelIndex = _panels.lastIndexWhere(
       (panel) => panel.rect.contains(position),
     );
     setState(() => _selectedPanelIndex = panelIndex < 0 ? null : panelIndex);
+  }
+
+  bool _isExternalDimensionTap(Offset position) {
+    for (final panel in _panels) {
+      final horizontalDimensionHitBox = Rect.fromLTRB(
+        panel.rect.left - 24,
+        panel.rect.top - 44,
+        panel.rect.right + 24,
+        panel.rect.top - 4,
+      );
+      if (horizontalDimensionHitBox.contains(position)) return true;
+
+      final verticalOnLeft = panel.role == 'door' &&
+          _panels.any(
+            (other) =>
+                other.role == 'fixed' &&
+                panel.rect.center.dx < other.rect.center.dx,
+          );
+      final dimensionX = verticalOnLeft
+          ? panel.rect.left - 18
+          : panel.rect.right + 18;
+      final verticalDimensionHitBox = Rect.fromLTRB(
+        dimensionX - 36,
+        panel.rect.top - 20,
+        dimensionX + 36,
+        panel.rect.bottom + 20,
+      );
+      if (verticalDimensionHitBox.contains(position)) return true;
+    }
+    return false;
   }
 
   bool get _sablageEnabled => _sablageMode == _SablageMode.decorative;
@@ -511,7 +609,59 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   double _number(TextEditingController controller, double fallback) =>
       _parseMillimeters(controller.text) ?? fallback;
 
+  // A phone pixel is not a millimeter. Use the drawing area as a scaled
+  // work surface so a full-screen gesture can represent large glass pieces.
+  double _freehandPixelsPerMillimeter() {
+    if (_canvasSize == Size.zero) return 1.0;
+    final usableWidth = math.max(1.0, _canvasSize.width - 16.0);
+    final usableHeight = math.max(1.0, _canvasSize.height - 16.0);
+    return math
+        .min(
+          usableWidth / _freehandMaxWidthMm,
+          usableHeight / _freehandMaxHeightMm,
+        )
+        .clamp(0.05, 1.0)
+        .toDouble();
+  }
+
+  double _freehandMillimetersFromPixels(
+    double pixels,
+    double pixelsPerMillimeter,
+    double maximum,
+  ) {
+    return (pixels / pixelsPerMillimeter).clamp(1.0, maximum).toDouble();
+  }
+
+  double _freehandWidthMmFromPixels(double pixels) =>
+      _freehandMillimetersFromPixels(
+        pixels,
+        _freehandPixelsPerMillimeter(),
+        _freehandMaxWidthMm,
+      );
+
+  double _freehandHeightMmFromPixels(double pixels) =>
+      _freehandMillimetersFromPixels(
+        pixels,
+        _freehandPixelsPerMillimeter(),
+        _freehandMaxHeightMm,
+      );
+
   double _workshopCompensation() => _defaultDoorHeightIncreaseMm;
+
+  // For a sliding cabin, the fixed panel receives the 30 mm workshop
+  // allowance in width. The door keeps the exact width entered by the user.
+  double _fixedWidthCompensation() => _defaultFixedWidthIncreaseMm;
+
+  double _defaultSlidingDoorWidth(double overallWidthMm) {
+    return overallWidthMm <= 1700.0 ? overallWidthMm / 2 : 800.0;
+  }
+
+  void _setDefaultSlidingDoorWidth(double overallWidthMm) {
+    if (_doorWidthCustomized || overallWidthMm <= 0) return;
+    _doorWidthController.text = _defaultSlidingDoorWidth(
+      overallWidthMm,
+    ).toStringAsFixed(0);
+  }
 
   double _doorWidth() => _number(_doorWidthController, 800.0);
 
@@ -525,9 +675,12 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     if (overall == null) return;
     final drawnWidthMm = _overallWidthMm;
     final drawnHeightMm = _overallHeightMm;
-    final practicalWidth = drawnWidthMm + _workshopCompensation();
+    // The door keeps the entered width. The remaining width belongs to the
+    // fixed panel, plus the workshop's 30 mm width allowance.
+    final practicalWidth = drawnWidthMm;
     final doorWidth = _doorWidth();
-    final fixedWidth = practicalWidth - doorWidth;
+    final fixedWidth =
+        practicalWidth - doorWidth + _fixedWidthCompensation();
     if (fixedWidth <= 0) {
       _panels
         ..clear()
@@ -543,8 +696,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     }
 
     final physicalPanelsWidth = math.max(1.0, doorWidth + fixedWidth);
-    // The separation is visual only and intentionally fixed at two pixels.
-    const gap = 2.0;
+    // The real panels include the 30 mm workshop overlap in their dimensions.
+    // Only a tiny visual gap is shown so the drawing stays clean.
+    const gap = _slidingVisualGapPx;
     final doorHeightMm = drawnHeightMm + _workshopCompensation();
     final doorDisplayHeight = drawnHeightMm <= 0
         ? overall.height
@@ -580,7 +734,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           widthMm: doorWidth,
           heightMm: doorHeightMm,
           role: 'door',
-          holes: _doorHoles(doorWidth, doorHeightMm),
+          holes: _doorHoles(
+            doorWidth,
+            doorHeightMm,
+            referenceHeightMm: drawnHeightMm,
+          ),
         ),
         _GlassPanel(
           rect: fixedRect,
@@ -593,39 +751,73 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     _selectedPanelIndex = 0;
   }
 
-  List<_GlassHole> _doorHoles(double widthMm, double heightMm) {
-    final middleY = (_handleCenterFromTopMm ?? heightMm / 2)
+  List<_GlassHole> _doorHoles(
+    double widthMm,
+    double heightMm, {
+    double? referenceHeightMm,
+  }) {
+    // A taller sliding door is extended upward. Use the fixed panel's top as
+    // the measurement origin so the door holes stay level with the fixed
+    // panel. The extra 30 mm is deliberately excluded from this reference.
+    final alignedHeightMm = (referenceHeightMm ?? heightMm)
+        .clamp(0.0, heightMm)
+        .toDouble();
+    final topAllowanceMm = math.max(0.0, heightMm - alignedHeightMm);
+    final middleY = (_handleCenterFromTopMm ?? alignedHeightMm / 2)
         .clamp(
           _handleSpacingMm / 2,
-          math.max(_handleSpacingMm / 2, heightMm - _handleSpacingMm / 2),
+          math.max(
+            _handleSpacingMm / 2,
+            alignedHeightMm - _handleSpacingMm / 2,
+          ),
+        )
+        .toDouble();
+    double safeX(double value) => value
+        .clamp(
+          _holeDiameterMm / 2,
+          math.max(_holeDiameterMm / 2, widthMm - _holeDiameterMm / 2),
+        )
+        .toDouble();
+    double safeY(double value) => value
+        .clamp(
+          _holeDiameterMm / 2,
+          math.max(_holeDiameterMm / 2, heightMm - _holeDiameterMm / 2),
         )
         .toDouble();
     return [
       _GlassHole(
-        xMm: _doorTopHoleSideOffsetMm,
-        yMm: _doorTopHoleTopOffsetMm,
+        xMm: safeX(_doorTopHoleSideOffsetMm),
+        yMm: safeY(topAllowanceMm + _doorTopHoleTopOffsetMm),
         diameterMm: _holeDiameterMm,
         purpose: 'door_top_left',
       ),
       _GlassHole(
-        xMm: widthMm - _doorTopHoleSideOffsetMm,
-        yMm: _doorTopHoleTopOffsetMm,
+        xMm: safeX(widthMm - _doorTopHoleSideOffsetMm),
+        yMm: safeY(topAllowanceMm + _doorTopHoleTopOffsetMm),
         diameterMm: _holeDiameterMm,
         purpose: 'door_top_right',
       ),
       _GlassHole(
-        xMm: _handleEdgeOffsetMm,
-        yMm: middleY - _handleSpacingMm / 2,
+        xMm: safeX(_handleEdgeOffsetMm),
+        yMm: safeY(topAllowanceMm + middleY - _handleSpacingMm / 2),
         diameterMm: _holeDiameterMm,
         purpose: 'handle_top',
       ),
       _GlassHole(
-        xMm: _handleEdgeOffsetMm,
-        yMm: middleY + _handleSpacingMm / 2,
+        xMm: safeX(_handleEdgeOffsetMm),
+        yMm: safeY(topAllowanceMm + middleY + _handleSpacingMm / 2),
         diameterMm: _holeDiameterMm,
         purpose: 'handle_bottom',
       ),
-    ];
+    ]
+        .map(
+          (hole) => _applyHoleOverride(
+            hole,
+            widthMm: widthMm,
+            heightMm: heightMm,
+          ),
+        )
+        .toList();
   }
 
   List<_GlassHole> _fixedHoles(double widthMm, double heightMm) {
@@ -638,198 +830,188 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           math.max(_towelSpacingMm / 2, heightMm - _towelSpacingMm / 2),
         )
         .toDouble();
+    double safeX(double value) => value
+        .clamp(
+          _holeDiameterMm / 2,
+          math.max(_holeDiameterMm / 2, widthMm - _holeDiameterMm / 2),
+        )
+        .toDouble();
+    double safeY(double value) => value
+        .clamp(
+          _holeDiameterMm / 2,
+          math.max(_holeDiameterMm / 2, heightMm - _holeDiameterMm / 2),
+        )
+        .toDouble();
     return [
       _GlassHole(
-        xMm: middleX - _towelSpacingMm / 2,
-        yMm: middleY,
+        xMm: safeX(middleX - _towelSpacingMm / 2),
+        yMm: safeY(middleY),
         diameterMm: _holeDiameterMm,
         purpose: 'towel_left',
       ),
       _GlassHole(
-        xMm: middleX + _towelSpacingMm / 2,
-        yMm: middleY,
+        xMm: safeX(middleX + _towelSpacingMm / 2),
+        yMm: safeY(middleY),
         diameterMm: _holeDiameterMm,
         purpose: 'towel_right',
       ),
-    ];
+    ]
+        .map(
+          (hole) => _applyHoleOverride(
+            hole,
+            widthMm: widthMm,
+            heightMm: heightMm,
+          ),
+        )
+        .toList();
   }
 
-  Future<void> _editMovableHole(String purpose) async {
-    final isHandle = purpose.startsWith('handle_');
-    final edgeController = TextEditingController(
-      text:
-          (isHandle
-                  ? _handleEdgeOffsetMm
-                  : (_towelCenterFromLeftMm ?? _overallWidthMm / 2))
-              .toStringAsFixed(0),
-    );
-    final centerController = TextEditingController(
-      text:
-          (isHandle
-                  ? (_handleCenterFromTopMm ?? _overallHeightMm / 2)
-                  : (_towelCenterFromTopMm ?? _overallHeightMm / 2))
-              .toStringAsFixed(0),
-    );
-    final spacingController = TextEditingController(
-      text: (isHandle ? _handleSpacingMm : _towelSpacingMm).toStringAsFixed(0),
-    );
+  _GlassHole _applyHoleOverride(
+    _GlassHole hole, {
+    required double widthMm,
+    required double heightMm,
+  }) {
+    final override = _holeOverrides[hole.purpose];
+    if (override == null) return hole;
+    final diameter = override.diameterMm
+        .clamp(1.0, math.min(widthMm, heightMm))
+        .toDouble();
+    hole.diameterMm = diameter;
+    hole.xMm = override.xMm
+        .clamp(diameter / 2, math.max(diameter / 2, widthMm - diameter / 2))
+        .toDouble();
+    hole.yMm = override.yMm
+        .clamp(diameter / 2, math.max(diameter / 2, heightMm - diameter / 2))
+        .toDouble();
+    return hole;
+  }
+
+  Future<void> _editMovableHole(_MovableHoleTarget target) async {
+    if (target.panelIndex >= _panels.length) return;
+    final panel = _panels[target.panelIndex];
+    if (target.holeIndex >= panel.holes.length) return;
+    final hole = panel.holes[target.holeIndex];
+    final xController = TextEditingController(text: hole.xMm.toStringAsFixed(0));
+    final yController = TextEditingController(text: hole.yMm.toStringAsFixed(0));
     final diameterController = TextEditingController(
-      text: _holeDiameterMm.toStringAsFixed(0),
+      text: hole.diameterMm.toStringAsFixed(0),
     );
     String? error;
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(
-            _tr(
-              isHandle ? 'مقابض الباب' : 'علاقة المنشفة',
-              isHandle ? 'Poignée de porte' : 'Porte-serviettes',
-              isHandle ? 'Door handle' : 'Towel hanger',
+        builder: (context, setDialogState) {
+          final dialogWidth = (MediaQuery.sizeOf(context).width - 80.0)
+              .clamp(240.0, 420.0)
+              .toDouble();
+          TextField field(TextEditingController controller, String label) {
+            return TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: label,
+                suffixText: 'mm',
+                border: const OutlineInputBorder(),
+              ),
+            );
+          }
+
+          return AlertDialog(
+            title: Text(
+              _tr('تعديل الثقب', 'Modifier le trou', 'Edit hole'),
             ),
-          ),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: edgeController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      isHandle ? 'البعد عن الحافة' : 'البعد عن اليسار',
-                      isHandle
-                          ? 'Distance du bord'
-                          : 'Distance depuis la gauche',
-                      isHandle ? 'Distance from edge' : 'Distance from left',
+            content: SizedBox(
+              width: dialogWidth,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    field(
+                      xController,
+                      _tr('المسافة عن اليسار', 'Distance depuis la gauche', 'Distance from left'),
                     ),
-                    suffixText: 'mm',
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: centerController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      'بعد المركز عن الأعلى',
-                      'Centre depuis le haut',
-                      'Center from top',
+                    const SizedBox(height: 8),
+                    field(
+                      yController,
+                      _tr('المسافة عن الأعلى', 'Distance depuis le haut', 'Distance from top'),
                     ),
-                    suffixText: 'mm',
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: spacingController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      'المسافة بين الثقبين',
-                      'Distance entre les trous',
-                      'Distance between holes',
+                    const SizedBox(height: 8),
+                    field(
+                      diameterController,
+                      _tr('قطر الثقب', 'Diamètre du trou', 'Hole diameter'),
                     ),
-                    suffixText: 'mm',
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: diameterController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      'قطر الثقب',
-                      'Diamètre du trou',
-                      'Hole diameter',
-                    ),
-                    suffixText: 'mm',
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
-            ),
-            FilledButton(
-              onPressed: () {
-                final edge = _parseMillimeters(edgeController.text);
-                final center = _parseMillimeters(centerController.text);
-                final spacing = _parseMillimeters(spacingController.text);
-                final diameter = _parseMillimeters(diameterController.text);
-                if (edge == null ||
-                    center == null ||
-                    spacing == null ||
-                    diameter == null ||
-                    edge < 0 ||
-                    center < 0 ||
-                    spacing <= 0 ||
-                    diameter <= 0) {
-                  setDialogState(
-                    () => error = _tr(
-                      'أدخل أرقامًا صحيحة.',
-                      'Saisissez des valeurs valides.',
-                      'Enter valid values.',
-                    ),
-                  );
-                  return;
-                }
-                Navigator.pop(dialogContext, true);
-              },
-              child: Text(_tr('حفظ', 'Enregistrer', 'Save')),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final x = _parseMillimeters(xController.text);
+                  final y = _parseMillimeters(yController.text);
+                  final diameter = _parseMillimeters(diameterController.text);
+                  final maxDiameter = math.min(panel.widthMm, panel.heightMm);
+                  final valid = x != null &&
+                      y != null &&
+                      diameter != null &&
+                      diameter > 0 &&
+                      diameter <= maxDiameter &&
+                      x >= diameter / 2 &&
+                      x <= panel.widthMm - diameter / 2 &&
+                      y >= diameter / 2 &&
+                      y <= panel.heightMm - diameter / 2;
+                  if (!valid) {
+                    setDialogState(
+                      () => error = _tr(
+                        'يجب أن يبقى الثقب كاملًا داخل الزجاج.',
+                        'Le trou doit rester entièrement dans le verre.',
+                        'The hole must remain completely inside the glass.',
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext, true);
+                },
+                child: Text(_tr('حفظ', 'Enregistrer', 'Save')),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (saved == true && mounted) {
-      final edge = _parseMillimeters(edgeController.text)!;
-      final center = _parseMillimeters(centerController.text)!;
-      final spacing = _parseMillimeters(spacingController.text)!;
+      final x = _parseMillimeters(xController.text)!;
+      final y = _parseMillimeters(yController.text)!;
       final diameter = _parseMillimeters(diameterController.text)!;
       _pushHistory();
       setState(() {
-        _holeDiameterMm = diameter;
-        if (isHandle) {
-          _handleEdgeOffsetMm = edge;
-          _handleCenterFromTopMm = center;
-          _handleSpacingMm = spacing;
-        } else {
-          _towelCenterFromLeftMm = edge;
-          _towelCenterFromTopMm = center;
-          _towelSpacingMm = spacing;
-        }
-        _applySlidingLayout();
+        final updatedHole = _panels[target.panelIndex].holes[target.holeIndex];
+        updatedHole.xMm = x;
+        updatedHole.yMm = y;
+        updatedHole.diameterMm = diameter;
+        _holeOverrides[updatedHole.purpose] = _HoleOverride(
+          xMm: x,
+          yMm: y,
+          diameterMm: diameter,
+        );
       });
     }
-    edgeController.dispose();
-    centerController.dispose();
-    spacingController.dispose();
+    xController.dispose();
+    yController.dispose();
     diameterController.dispose();
   }
 
@@ -848,7 +1030,24 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       );
       return;
     }
-    await _editMovableHole('handle_top');
+    final target = _findHoleByPurpose('handle_top');
+    if (target != null) await _editMovableHole(target);
+  }
+
+  _MovableHoleTarget? _findHoleByPurpose(String purpose) {
+    for (var panelIndex = 0; panelIndex < _panels.length; panelIndex++) {
+      final holeIndex = _panels[panelIndex].holes.indexWhere(
+        (hole) => hole.purpose == purpose,
+      );
+      if (holeIndex >= 0) {
+        return _MovableHoleTarget(
+          panelIndex: panelIndex,
+          holeIndex: holeIndex,
+          purpose: purpose,
+        );
+      }
+    }
+    return null;
   }
 
   double _sablageOffsetFromPosition(double y) {
@@ -927,7 +1126,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     final selectedPanel = _panels[selectedIndex];
     final selectedRect = selectedPanel.rect;
     if (type == GlassWorkType.slidingShowerCabin) {
-      final practicalWidth = selectedPanel.widthMm + _workshopCompensation();
+      final practicalWidth = selectedPanel.widthMm;
       if (_doorWidth() >= practicalWidth) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -951,6 +1150,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         _overallDrawingRect = selectedRect;
         _overallWidthMmValue = selectedPanel.widthMm;
         _overallHeightMmValue = selectedPanel.heightMm;
+        _setDefaultSlidingDoorWidth(selectedPanel.widthMm);
         _applySlidingLayout();
         return;
       }
@@ -1032,6 +1232,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   Future<void> _editMeasurements() async {
     final editOverall = _isSlidingStraight;
+    if (editOverall) _setDefaultSlidingDoorWidth(_overallWidthMm);
+    final doorWidthDraft = editOverall
+        ? TextEditingController(text: _doorWidth().toStringAsFixed(0))
+        : null;
     late final List<_GlassMeasurementDraft> drafts;
     if (editOverall) {
       drafts = [
@@ -1059,6 +1263,44 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         String? error;
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final screenWidth = MediaQuery.sizeOf(context).width;
+            final compact = screenWidth < 600.0;
+            final dialogWidth = (screenWidth - 80.0)
+                .clamp(240.0, 520.0)
+                .toDouble();
+
+            TextField measurementField(
+              TextEditingController controller,
+              String label,
+              {
+                ValueChanged<String>? onChanged,
+              }
+            ) {
+              return TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  labelText: label,
+                  suffixText: 'mm',
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: onChanged,
+              );
+            }
+
+            final overallWidth = _parseMillimeters(
+              drafts.first.widthController.text,
+            );
+            final doorWidth = doorWidthDraft == null
+                ? null
+                : _parseMillimeters(doorWidthDraft.text);
+            final fixedWidth = overallWidth == null || doorWidth == null
+                ? null
+                : overallWidth - doorWidth + _fixedWidthCompensation();
+
             return AlertDialog(
               title: Text(
                 _tr(
@@ -1068,72 +1310,185 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 ),
               ),
               content: SizedBox(
-                width: 520,
+                width: dialogWidth,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (editOverall) ...[
+                        measurementField(
+                          doorWidthDraft!,
+                          _tr(
+                            'عرض الباب',
+                            'Largeur de la porte',
+                            'Door width',
+                          ),
+                          onChanged: (_) {
+                            _doorWidthCustomized = true;
+                            setDialogState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            fixedWidth == null
+                                ? _tr(
+                                    'أدخل عرض الباب لحساب عرض الثابت.',
+                                    'Saisissez la largeur de la porte pour calculer le fixe.',
+                                    'Enter the door width to calculate the fixed panel.',
+                                  )
+                                : _tr(
+                                    'عرض الثابت المحسوب: ${fixedWidth.toStringAsFixed(0)} مم',
+                                    'Largeur du fixe calculée : ${fixedWidth.toStringAsFixed(0)} mm',
+                                    'Calculated fixed width: ${fixedWidth.toStringAsFixed(0)} mm',
+                                  ),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       for (var index = 0; index < drafts.length; index++)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: drafts[index].widthController,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                          child: compact
+                              ? Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    measurementField(
+                                      drafts[index].widthController,
+                                      _tr(
+                                        editOverall
+                                            ? 'العرض الإجمالي'
+                                            : 'العرض ${index + 1}',
+                                        editOverall
+                                            ? 'Largeur totale'
+                                            : 'Largeur ${index + 1}',
+                                        editOverall
+                                            ? 'Overall width'
+                                            : 'Width ${index + 1}',
                                       ),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    labelText: _tr(
-                                      'العرض ${index + 1}',
-                                      'Largeur ${index + 1}',
-                                      'Width ${index + 1}',
+                                      onChanged: editOverall
+                                          ? (_) {
+                                              if (!_doorWidthCustomized) {
+                                                final width = _parseMillimeters(
+                                                  drafts[index]
+                                                      .widthController
+                                                      .text,
+                                                );
+                                                if (width != null &&
+                                                    width > 0) {
+                                                  doorWidthDraft!.text =
+                                                      _defaultSlidingDoorWidth(
+                                                        width,
+                                                      ).toStringAsFixed(0);
+                                                }
+                                              }
+                                              setDialogState(() {});
+                                            }
+                                          : null,
                                     ),
-                                    suffixText: 'mm',
-                                    border: const OutlineInputBorder(),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: drafts[index].heightController,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                                    const SizedBox(height: 8),
+                                    measurementField(
+                                      drafts[index].heightController,
+                                      _tr(
+                                        'الطول ${index + 1}',
+                                        'Hauteur ${index + 1}',
+                                        'Height ${index + 1}',
                                       ),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    labelText: _tr(
-                                      'الطول ${index + 1}',
-                                      'Hauteur ${index + 1}',
-                                      'Height ${index + 1}',
                                     ),
-                                    suffixText: 'mm',
-                                    border: const OutlineInputBorder(),
-                                  ),
+                                    if (drafts.length > 1)
+                                      Align(
+                                        alignment: AlignmentDirectional
+                                            .centerEnd,
+                                        child: IconButton(
+                                          tooltip: _tr(
+                                            'حذف القياس',
+                                            'Supprimer',
+                                            'Delete',
+                                          ),
+                                          onPressed: () {
+                                            setDialogState(() {
+                                              drafts[index].dispose();
+                                              drafts.removeAt(index);
+                                            });
+                                          },
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                )
+                              : Row(
+                                  children: [
+                                    Expanded(
+                                      child: measurementField(
+                                        drafts[index].widthController,
+                                        _tr(
+                                          editOverall
+                                              ? 'العرض الإجمالي'
+                                              : 'العرض ${index + 1}',
+                                          editOverall
+                                              ? 'Largeur totale'
+                                              : 'Largeur ${index + 1}',
+                                          editOverall
+                                              ? 'Overall width'
+                                              : 'Width ${index + 1}',
+                                        ),
+                                        onChanged: editOverall
+                                            ? (_) {
+                                                if (!_doorWidthCustomized) {
+                                                  final width =
+                                                      _parseMillimeters(
+                                                        drafts[index]
+                                                            .widthController
+                                                            .text,
+                                                      );
+                                                  if (width != null &&
+                                                      width > 0) {
+                                                    doorWidthDraft!.text =
+                                                        _defaultSlidingDoorWidth(
+                                                          width,
+                                                        ).toStringAsFixed(0);
+                                                  }
+                                                }
+                                                setDialogState(() {});
+                                              }
+                                            : null,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: measurementField(
+                                        drafts[index].heightController,
+                                        _tr(
+                                          'الطول ${index + 1}',
+                                          'Hauteur ${index + 1}',
+                                          'Height ${index + 1}',
+                                        ),
+                                      ),
+                                    ),
+                                    if (drafts.length > 1)
+                                      IconButton(
+                                        tooltip: _tr(
+                                          'حذف القياس',
+                                          'Supprimer',
+                                          'Delete',
+                                        ),
+                                        onPressed: () {
+                                          setDialogState(() {
+                                            drafts[index].dispose();
+                                            drafts.removeAt(index);
+                                          });
+                                        },
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                              ),
-                              if (drafts.length > 1)
-                                IconButton(
-                                  tooltip: _tr(
-                                    'حذف القياس',
-                                    'Supprimer',
-                                    'Delete',
-                                  ),
-                                  onPressed: () {
-                                    setDialogState(() {
-                                      drafts[index].dispose();
-                                      drafts.removeAt(index);
-                                    });
-                                  },
-                                  icon: const Icon(Icons.delete_outline),
-                                ),
-                            ],
-                          ),
                         ),
                       if (error != null)
                         Align(
@@ -1145,22 +1500,23 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                             ),
                           ),
                         ),
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: TextButton.icon(
-                          onPressed: () => setDialogState(
-                            () => drafts.add(_GlassMeasurementDraft()),
-                          ),
-                          icon: const Icon(Icons.add),
-                          label: Text(
-                            _tr(
-                              'إضافة قياس',
-                              'Ajouter une mesure',
-                              'Add measurement',
+                      if (!editOverall)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: () => setDialogState(
+                              () => drafts.add(_GlassMeasurementDraft()),
+                            ),
+                            icon: const Icon(Icons.add),
+                            label: Text(
+                              _tr(
+                                'إضافة قياس',
+                                'Ajouter une mesure',
+                                'Add measurement',
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1184,12 +1540,33 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                           width > 0 &&
                           height > 0;
                     });
-                    if (!valid || drafts.isEmpty) {
+                    final overallWidth = editOverall
+                        ? _parseMillimeters(drafts.first.widthController.text)
+                        : null;
+                    final doorWidth = editOverall
+                        ? _parseMillimeters(doorWidthDraft!.text)
+                        : null;
+                    final validDoorWidth = !editOverall ||
+                        (overallWidth != null &&
+                            doorWidth != null &&
+                            doorWidth > 0 &&
+                            doorWidth < overallWidth &&
+                            overallWidth -
+                                    doorWidth +
+                                    _fixedWidthCompensation() >
+                                0);
+                    if (!valid || drafts.isEmpty || !validDoorWidth) {
                       setDialogState(
                         () => error = _tr(
-                          'أدخل قياسات صحيحة لكل القطع.',
-                          'Saisissez des mesures valides pour chaque panneau.',
-                          'Enter valid measurements for every panel.',
+                          editOverall
+                              ? 'أدخل قياسات صحيحة، ويجب أن يكون عرض الباب أصغر من العرض الإجمالي.'
+                              : 'أدخل قياسات صحيحة لكل القطع.',
+                          editOverall
+                              ? 'Saisissez des mesures valides ; la porte doit être moins large que la largeur totale.'
+                              : 'Saisissez des mesures valides pour chaque panneau.',
+                          editOverall
+                              ? 'Enter valid measurements; the door must be narrower than the overall width.'
+                              : 'Enter valid measurements for every panel.',
                         ),
                       );
                       return;
@@ -1211,6 +1588,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         if (editOverall) {
           final width = _parseMillimeters(drafts.first.widthController.text)!;
           final height = _parseMillimeters(drafts.first.heightController.text)!;
+          final doorWidth = _parseMillimeters(doorWidthDraft!.text)!;
+          _doorWidthController.text = doorWidth.toStringAsFixed(0);
           _overallDrawingRect = _rectForMeasurement(
             width,
             height,
@@ -1247,33 +1626,24 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     for (final draft in drafts) {
       draft.dispose();
     }
+    doorWidthDraft?.dispose();
   }
 
-  void _calculateQuantityAndCost() {
-    if (_panels.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _tr(
-              'ارسم في مساحة الرسم أولاً.',
-              'Dessinez d’abord dans la zone de dessin.',
-              'Draw in the canvas first.',
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-
+  Map<String, dynamic> _buildManufacturingPayload() {
     final area = _panels.fold<double>(
       0,
       (sum, panel) => sum + (panel.widthMm / 1000) * (panel.heightMm / 1000),
     );
 
-    Navigator.pop(context, <String, dynamic>{
+    return {
       'type': 'tempered_glass_work',
       'workType': _workType.name,
       'workTypeLabel': _workTypeLabel(_workType),
+      'glassType': _glassType,
+      'glassTypeLabel': _glassTypeLabel(_glassType),
+      'glassTempered': _glassTempered,
+      'edgeFinish': _edgeFinish,
+      'edgeFinishLabel': _edgeFinishLabel(_edgeFinish),
       'glassThicknessMm': _glassThicknessMm,
       'overallWidthMm': _overallWidthMm,
       'overallHeightMm': _overallHeightMm,
@@ -1283,11 +1653,12 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       'slidingRule': _isSlidingStraight
           ? {
               'drawnWidthMm': _overallWidthMm,
-              'practicalWidthMm': _overallWidthMm + _workshopCompensation(),
+              'practicalWidthMm': _overallWidthMm,
               'doorWidthMm': _doorWidth(),
               'fixedWidthMm':
-                  _overallWidthMm + _workshopCompensation() - _doorWidth(),
+                  _overallWidthMm - _doorWidth() + _fixedWidthCompensation(),
               'workshopCompensationMm': _workshopCompensation(),
+              'fixedWidthIncreaseMm': _fixedWidthCompensation(),
               'doorOnLeft': _doorOnLeft,
             }
           : null,
@@ -1339,6 +1710,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               'widthMm': entry.value.widthMm,
               'heightMm': entry.value.heightMm,
               'thicknessMm': _glassThicknessMm,
+              'glassType': _glassType,
+              'glassTypeLabel': _glassTypeLabel(_glassType),
+              'tempered': _glassTempered,
+              'edgeFinish': _edgeFinish,
+              'edgeFinishLabel': _edgeFinishLabel(_edgeFinish),
               'role': entry.value.role,
               'holes': entry.value.holes
                   .map(
@@ -1363,7 +1739,42 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       'totalQuantity': _panels.length,
       'grandTotalAreaSqm': area,
       'grandTotalPrice': 0.0,
-    });
+    };
+  }
+
+  Future<void> _showManufacturingSheet() async {
+    if (_panels.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'ارسم في مساحة الرسم أولاً.',
+              'Dessinez d’abord dans la zone de dessin.',
+              'Draw in the canvas first.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final payload = _buildManufacturingPayload();
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _GlassManufacturingSheet(
+          payload: payload,
+          panels: _panels.map((panel) => panel.copy()).toList(),
+          drawingCanvasSize: _canvasSize,
+          sablageBands: List.of(_sablageBands),
+          sablageBandWidthMm: _sablageBandWidth(),
+          overallHeightMm: _overallHeightMm,
+          sablageMode: _sablageMode,
+          workTypeLabel: _workTypeLabel(_workType),
+        ),
+      ),
+    );
+    if (result != null && mounted) Navigator.pop(context, result);
   }
 
   Future<void> _showWorkTypeSheet() async {
@@ -1799,7 +2210,152 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     }
   }
 
+  Future<void> _confirmClearDrawing() async {
+    if (_panels.isEmpty &&
+        _sablageBands.isEmpty &&
+        _draftPanel == null &&
+        _overallDrawingRect == null) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_tr('مسح الرسم؟', 'Effacer le dessin ?', 'Clear drawing?')),
+        content: Text(
+          _tr(
+            'سيتم حذف الرسم والصبلاج الحاليين.',
+            'Le dessin et le sablage actuels seront supprimés.',
+            'The current drawing and frosting will be deleted.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_tr('مسح', 'Effacer', 'Clear')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _pushHistory();
+    setState(() {
+      _panels.clear();
+      _holeOverrides.clear();
+      _sablageBands.clear();
+      _overallDrawingRect = null;
+      _overallWidthMmValue = null;
+      _overallHeightMmValue = null;
+      _selectedPanelIndex = null;
+      _drawStart = null;
+      _draftPanel = null;
+      _draftSablageOffsetMm = null;
+      _handleCenterFromTopMm = null;
+      _towelCenterFromLeftMm = null;
+      _towelCenterFromTopMm = null;
+      _sablageMode = _SablageMode.none;
+    });
+  }
+
+  Future<void> _showEdgeFinishSheet() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.crop_square),
+              title: Text(
+                _tr('حواف حادة', 'Bords vifs', 'Sharp edges'),
+              ),
+              trailing: _edgeFinish == 'sharp'
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.pop(sheetContext, 'sharp'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.rounded_corner),
+              title: Text(
+                _tr('حواف ناعمة', 'Bords adoucis', 'Smooth edges'),
+              ),
+              trailing: _edgeFinish == 'smooth'
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.pop(sheetContext, 'smooth'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && mounted && selected != _edgeFinish) {
+      setState(() => _edgeFinish = selected);
+    }
+  }
+
+  Future<void> _showMobileToolsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        void open(Future<void> Function() action) {
+          Navigator.pop(sheetContext);
+          Future.microtask(() {
+            if (mounted) action();
+          });
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.pan_tool_outlined),
+                title: Text(_tr('المقبض', 'Poignée', 'Handle')),
+                onTap: () => open(_editHandleFromToolbar),
+              ),
+              ListTile(
+                leading: const Icon(Icons.brush_outlined),
+                title: Text(_tr('الصبلاج', 'Sablage', 'Frosting')),
+                onTap: () => open(_showSablageSheet),
+              ),
+              ListTile(
+                leading: const Icon(Icons.content_cut),
+                title: Text(
+                  _tr('خيارات نظام الزجاج', 'Système de vitrage', 'Glass system'),
+                ),
+                onTap: () => open(_showWorkTypeSheet),
+              ),
+              ListTile(
+                leading: const Icon(Icons.rounded_corner),
+                title: Text(
+                  _tr('نوع الحواف', 'Type de chants', 'Edge type'),
+                ),
+                onTap: () => open(_showEdgeFinishSheet),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildDrawingToolbar() {
+    if (_isCompactLayout(context)) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: _editMeasurements,
+          icon: const Icon(Icons.straighten),
+          label: Text(_measurementSummary()),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -1861,6 +2417,72 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          SizedBox(
+            width: 150,
+            child: DropdownButtonFormField<String>(
+              value: _glassType,
+              isDense: true,
+              decoration: InputDecoration(
+                labelText: _tr('نوع الزجاج', 'Type de verre', 'Glass type'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                border: const OutlineInputBorder(),
+              ),
+              items: const ['شفاف', 'ملون', 'عاكس', 'مصفح', 'معتّم']
+                  .map(
+                    (type) => DropdownMenuItem<String>(
+                      value: type,
+                      child: Text(type),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null || value == _glassType) return;
+                setState(() => _glassType = value);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilterChip(
+            selected: _glassTempered,
+            label: Text(
+              _tr('مقسّى', 'Trempé', 'Tempered'),
+              style: TextStyle(
+                color: _glassTempered ? Colors.white : null,
+              ),
+            ),
+            selectedColor: Colors.cyan.shade700,
+            onSelected: (value) => setState(() => _glassTempered = value),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 150,
+            child: DropdownButtonFormField<String>(
+              value: _edgeFinish,
+              isDense: true,
+              decoration: InputDecoration(
+                labelText: _tr(
+                  'نوع الحواف',
+                  'Type de chants',
+                  'Edge type',
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                border: const OutlineInputBorder(),
+              ),
+              items: const ['sharp', 'smooth']
+                  .map(
+                    (finish) => DropdownMenuItem<String>(
+                      value: finish,
+                      child: Text(_edgeFinishLabel(finish)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null || value == _edgeFinish) return;
+                setState(() => _edgeFinish = value);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: _showSablageSheet,
             icon: Icon(
@@ -1907,7 +2529,22 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             onPressed: () => _changeZoom(0.1),
             icon: const Icon(Icons.zoom_in),
           ),
-          const VerticalDivider(width: 12),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final compact = _isCompactLayout(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_tr('رسم الزجاج', 'Dessin du verre', 'Glass drawing')),
+        backgroundColor: Colors.cyan.shade800,
+        foregroundColor: Colors.white,
+        actions: [
           IconButton(
             tooltip: _tr('تراجع', 'Annuler', 'Undo'),
             onPressed: _undoStack.isEmpty ? null : _undo,
@@ -1918,21 +2555,20 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             onPressed: _redoStack.isEmpty ? null : _redo,
             icon: const Icon(Icons.redo),
           ),
+          IconButton(
+            tooltip: _tr('مسح الرسم', 'Effacer le dessin', 'Clear drawing'),
+            onPressed: _confirmClearDrawing,
+            icon: const Icon(Icons.delete_sweep_outlined),
+          ),
         ],
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_tr('رسم الزجاج', 'Dessin du verre', 'Glass drawing')),
-        backgroundColor: Colors.cyan.shade800,
-        foregroundColor: Colors.white,
-      ),
+      floatingActionButton: compact
+          ? FloatingActionButton.small(
+              tooltip: _tr('أدوات الرسم', 'Outils de dessin', 'Drawing tools'),
+              onPressed: _showMobileToolsSheet,
+              child: const Icon(Icons.tune),
+            )
+          : null,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1950,6 +2586,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                           decimal: true,
                         ),
                         onChanged: (_) {
+                          _doorWidthCustomized = true;
                           if (_overallDrawingRect != null) {
                             setState(_applySlidingLayout);
                           }
@@ -2008,6 +2645,16 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                           painter: _GlassPanelDrawingPainter(
                             panels: _panels,
                             draftPanel: _draftPanel,
+                            draftWidthMm: _draftPanel == null
+                                ? null
+                                : _freehandWidthMmFromPixels(
+                                    _draftPanel!.width,
+                                  ),
+                            draftHeightMm: _draftPanel == null
+                                ? null
+                                : _freehandHeightMmFromPixels(
+                                    _draftPanel!.height,
+                                  ),
                             sablageBands: _sablageBands,
                             draftSablageOffsetMm: _draftSablageOffsetMm,
                             sablageBandWidthMm: _sablageBandWidth(),
@@ -2015,7 +2662,6 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                             sablageMode: _sablageMode,
                             zoom: _zoom,
                             selectedPanelIndex: _selectedPanelIndex,
-                            centerLabel: _tr('مركز', 'Centre', 'Center'),
                             color: isDark
                                 ? Colors.cyan.shade200
                                 : Colors.cyan.shade800,
@@ -2027,7 +2673,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                   ),
                 ),
               ),
-              if (_selectedPanelIndex != null) ...[
+              if (_selectedPanelIndex != null && !compact) ...[
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -2049,13 +2695,13 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _calculateQuantityAndCost,
-                  icon: const Icon(Icons.calculate_outlined),
+                  onPressed: _showManufacturingSheet,
+                  icon: const Icon(Icons.description_outlined),
                   label: Text(
                     _tr(
-                      'حساب الكمية والتكلفة',
-                      'Calculer quantité et coût',
-                      'Calculate quantity and cost',
+                      'عرض ورقة التصنيع',
+                      'Afficher la fiche de fabrication',
+                      'Show manufacturing sheet',
                     ),
                   ),
                 ),
@@ -2068,10 +2714,270 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   }
 }
 
+class _GlassManufacturingSheet extends StatelessWidget {
+  const _GlassManufacturingSheet({
+    required this.payload,
+    required this.panels,
+    required this.drawingCanvasSize,
+    required this.sablageBands,
+    required this.sablageBandWidthMm,
+    required this.overallHeightMm,
+    required this.sablageMode,
+    required this.workTypeLabel,
+  });
+
+  final Map<String, dynamic> payload;
+  final List<_GlassPanel> panels;
+  final Size drawingCanvasSize;
+  final List<_SablageBand> sablageBands;
+  final double sablageBandWidthMm;
+  final double overallHeightMm;
+  final _SablageMode sablageMode;
+  final String workTypeLabel;
+
+  String _value(Object? value, [String fallback = '—']) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _mm(Object? value) {
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    if (number == null) return '—';
+    return '${number.toStringAsFixed(0)} mm';
+  }
+
+  String _role(String role) {
+    switch (role) {
+      case 'door':
+        return 'باب';
+      case 'fixed':
+        return 'ثابت';
+      default:
+        return 'لوح زجاج';
+    }
+  }
+
+  Widget _spec(String label, String value) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.all(4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.blueGrey.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _panelDetails(_GlassPanel panel, int index) {
+    final holes = panel.holes
+        .map(
+          (hole) =>
+              'Ø${hole.diameterMm.toStringAsFixed(0)} mm (${hole.xMm.toStringAsFixed(0)} × ${hole.yMm.toStringAsFixed(0)} mm)',
+        )
+        .join('، ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.22)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 15,
+            backgroundColor: Colors.cyan.shade700,
+            foregroundColor: Colors.white,
+            child: Text('${index + 1}'),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_role(panel.role)} — ${_mm(panel.widthMm)} × ${_mm(panel.heightMm)}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  panel.holes.isEmpty ? 'بدون ثقوب' : 'الثقوب: $holes',
+                  style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxCanvasWidth = math.max(drawingCanvasSize.width, 420.0).toDouble();
+    final maxCanvasHeight = math.max(
+      drawingCanvasSize.height,
+      300.0,
+    ).toDouble();
+    final isFrosted = sablageMode != _SablageMode.none;
+    final tempered = payload['glassTempered'] == true ? 'نعم' : 'لا';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ورقة تصنيع الزجاج'),
+        backgroundColor: Colors.cyan.shade800,
+        foregroundColor: Colors.white,
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.pop(context, payload),
+            icon: const Icon(Icons.check, color: Colors.white),
+            label: const Text(
+              'اعتماد',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'طلب تصنيع الزجاج',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${panels.length} قطعة',
+                  style: const TextStyle(color: Colors.blueGrey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              workTypeLabel,
+              style: const TextStyle(color: Colors.blueGrey),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              elevation: 0,
+              clipBehavior: Clip.antiAlias,
+              child: Container(
+                height: 430,
+                padding: const EdgeInsets.all(8),
+                color: Colors.white,
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                    width: maxCanvasWidth,
+                    height: maxCanvasHeight,
+                    child: CustomPaint(
+                      painter: _GlassPanelDrawingPainter(
+                        panels: panels,
+                        draftPanel: null,
+                        sablageBands: sablageBands,
+                        draftSablageOffsetMm: null,
+                        sablageBandWidthMm: sablageBandWidthMm,
+                        overallHeightMm: overallHeightMm,
+                        sablageMode: sablageMode,
+                        zoom: 1.0,
+                        selectedPanelIndex: null,
+                        color: Colors.cyan.shade800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'مواصفات الزجاج',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _spec('نوع الزجاج', _value(payload['glassType'])),
+                _spec('السمك', _mm(payload['glassThicknessMm'])),
+              ],
+            ),
+            Row(
+              children: [
+                _spec('مقسّى', tempered),
+                _spec(
+                  'نوع الحواف',
+                  _value(payload['edgeFinishLabel'] ?? payload['edgeFinish']),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                _spec('العرض الإجمالي', _mm(payload['overallWidthMm'])),
+                _spec('الارتفاع الإجمالي', _mm(payload['overallHeightMm'])),
+              ],
+            ),
+            if (isFrosted)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Text(
+                  sablageMode == _SablageMode.full
+                      ? 'الصابلاج: تعتيم كامل'
+                      : 'الصابلاج: ${sablageBands.length} باندات، عرض الباندة ${_mm(sablageBandWidthMm)}',
+                  style: const TextStyle(color: Colors.blueGrey),
+                ),
+              ),
+            const SizedBox(height: 6),
+            const Text(
+              'تفاصيل القطع والثقوب',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            for (var index = 0; index < panels.length; index++)
+              _panelDetails(panels[index], index),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, payload),
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('اعتماد وإضافة إلى الطلب'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _GlassPanelDrawingPainter extends CustomPainter {
   const _GlassPanelDrawingPainter({
     required this.panels,
     required this.draftPanel,
+    this.draftWidthMm,
+    this.draftHeightMm,
     required this.sablageBands,
     required this.draftSablageOffsetMm,
     required this.sablageBandWidthMm,
@@ -2079,12 +2985,13 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     required this.sablageMode,
     required this.zoom,
     required this.selectedPanelIndex,
-    required this.centerLabel,
     required this.color,
   });
 
   final List<_GlassPanel> panels;
   final Rect? draftPanel;
+  final double? draftWidthMm;
+  final double? draftHeightMm;
   final List<_SablageBand> sablageBands;
   final double? draftSablageOffsetMm;
   final double sablageBandWidthMm;
@@ -2092,7 +2999,6 @@ class _GlassPanelDrawingPainter extends CustomPainter {
   final _SablageMode sablageMode;
   final double zoom;
   final int? selectedPanelIndex;
-  final String centerLabel;
   final Color color;
 
   @override
@@ -2107,7 +3013,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     final glassBorderPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+      ..strokeWidth = 1;
     final reflectionPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.60)
       ..strokeWidth = 5
@@ -2135,8 +3041,8 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       _paintPanel(
         canvas,
         draftPanel!,
-        draftPanel!.width,
-        draftPanel!.height,
+        draftWidthMm ?? draftPanel!.width,
+        draftHeightMm ?? draftPanel!.height,
         glassPaint,
         glassBorderPaint,
         reflectionPaint,
@@ -2147,7 +3053,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     _paintSablage(canvas);
     for (final panel in panels) {
       _paintHoles(canvas, panel);
-      _paintHoleDimensions(canvas, panel, size);
+      _paintHoleDimensions(canvas, panel);
     }
     if (selectedPanelIndex != null &&
         selectedPanelIndex! >= 0 &&
@@ -2155,7 +3061,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       final selectionPaint = Paint()
         ..color = Colors.deepOrange
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3;
+        ..strokeWidth = 1.5;
       canvas.drawRect(panels[selectedPanelIndex!].rect, selectionPaint);
     }
     canvas.restore();
@@ -2172,34 +3078,80 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       ..strokeWidth = 1.5;
     final scaleX = panel.rect.width / panel.widthMm;
     final scaleY = panel.rect.height / panel.heightMm;
+    canvas.save();
+    canvas.clipRect(panel.rect);
     for (final hole in panel.holes) {
+      final diameterMm = _safeHoleDiameterMm(panel, hole);
       final center = Offset(
-        panel.rect.left + hole.xMm * scaleX,
-        panel.rect.top + hole.yMm * scaleY,
+        panel.rect.left + _safeHoleXMm(panel, hole, diameterMm) * scaleX,
+        panel.rect.top + _safeHoleYMm(panel, hole, diameterMm) * scaleY,
       );
       final radius = math
-          .max(3.0, hole.diameterMm * math.min(scaleX, scaleY) / 2)
+          .max(3.0, diameterMm * math.min(scaleX, scaleY) / 2)
           .toDouble();
       canvas.drawCircle(center, radius, fill);
       canvas.drawCircle(center, radius, border);
     }
+    canvas.restore();
   }
 
-  void _paintHoleDimensions(Canvas canvas, _GlassPanel panel, Size size) {
+  double _safeHoleDiameterMm(_GlassPanel panel, _GlassHole hole) {
+    final maxDiameter = math.min(panel.widthMm, panel.heightMm);
+    return hole.diameterMm.clamp(0.0, maxDiameter).toDouble();
+  }
+
+  double _safeHoleXMm(
+    _GlassPanel panel,
+    _GlassHole hole,
+    double diameterMm,
+  ) {
+    final minimum = diameterMm / 2;
+    final maximum = math.max(minimum, panel.widthMm - minimum);
+    return hole.xMm.clamp(minimum, maximum).toDouble();
+  }
+
+  double _safeHoleYMm(
+    _GlassPanel panel,
+    _GlassHole hole,
+    double diameterMm,
+  ) {
+    final minimum = diameterMm / 2;
+    final maximum = math.max(minimum, panel.heightMm - minimum);
+    return hole.yMm.clamp(minimum, maximum).toDouble();
+  }
+
+  void _paintHoleDimensions(Canvas canvas, _GlassPanel panel) {
     if (panel.widthMm <= 0 || panel.heightMm <= 0) return;
     final scaleX = panel.rect.width / panel.widthMm;
     final scaleY = panel.rect.height / panel.heightMm;
-    final guidePaint = Paint()
-      ..color = Colors.deepOrange.shade700.withValues(alpha: 0.72)
+    final dimensionPaint = Paint()
+      ..color = Colors.blueGrey.shade700.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final textStyle = TextStyle(fontSize: 9, color: Colors.black);
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    final labelBackgroundPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.94)
+      ..style = PaintingStyle.fill;
+    final textStyle = const TextStyle(
+      fontSize: 9,
+      color: Colors.black,
+      fontWeight: FontWeight.w600,
+    );
 
     void drawLabel(String value, Offset position) {
       final painter = TextPainter(
         text: TextSpan(text: value, style: textStyle),
         textDirection: TextDirection.ltr,
       )..layout();
+      final labelRect = Rect.fromCenter(
+        center: position,
+        width: painter.width + 8,
+        height: painter.height + 4,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(labelRect, const Radius.circular(4)),
+        labelBackgroundPaint,
+      );
       painter.paint(
         canvas,
         position - Offset(painter.width / 2, painter.height / 2),
@@ -2207,113 +3159,100 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     }
 
     void drawArrowDimension(Offset from, Offset to, String label) {
-      canvas.drawLine(from, to, guidePaint);
-      const arrowSize = 5.0;
+      if ((to - from).distance < 8) return;
+      canvas.drawLine(from, to, dimensionPaint);
+      const arrowSize = 5.5;
       final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
-      final startHead = Offset(
-        from.dx + arrowSize * math.cos(angle - math.pi / 6),
-        from.dy + arrowSize * math.sin(angle - math.pi / 6),
-      );
-      final startHeadOther = Offset(
-        from.dx + arrowSize * math.cos(angle + math.pi / 6),
-        from.dy + arrowSize * math.sin(angle + math.pi / 6),
-      );
-      final endHead = Offset(
-        to.dx - arrowSize * math.cos(angle - math.pi / 6),
-        to.dy - arrowSize * math.sin(angle - math.pi / 6),
-      );
-      final endHeadOther = Offset(
-        to.dx - arrowSize * math.cos(angle + math.pi / 6),
-        to.dy - arrowSize * math.sin(angle + math.pi / 6),
-      );
-      canvas
-        ..drawLine(from, startHead, guidePaint)
-        ..drawLine(from, startHeadOther, guidePaint)
-        ..drawLine(to, endHead, guidePaint)
-        ..drawLine(to, endHeadOther, guidePaint);
-      drawLabel(label, Offset((from.dx + to.dx) / 2, (from.dy + to.dy) / 2));
+      void drawHead(Offset point, double direction) {
+        final first = Offset(
+          point.dx + arrowSize * math.cos(direction + math.pi - math.pi / 6),
+          point.dy + arrowSize * math.sin(direction + math.pi - math.pi / 6),
+        );
+        final second = Offset(
+          point.dx + arrowSize * math.cos(direction + math.pi + math.pi / 6),
+          point.dy + arrowSize * math.sin(direction + math.pi + math.pi / 6),
+        );
+        canvas
+          ..drawLine(point, first, dimensionPaint)
+          ..drawLine(point, second, dimensionPaint);
+      }
+
+      drawHead(from, angle);
+      drawHead(to, angle + math.pi);
+      final middle = Offset((from.dx + to.dx) / 2, (from.dy + to.dy) / 2);
+      final labelOffset = (to.dx - from.dx).abs() >= (to.dy - from.dy).abs()
+          ? const Offset(0, -11)
+          : const Offset(13, 0);
+      drawLabel(label, middle + labelOffset);
     }
 
+    double holeDiameter(_GlassHole hole) => _safeHoleDiameterMm(panel, hole);
+
+    double holeX(_GlassHole hole) =>
+        _safeHoleXMm(panel, hole, holeDiameter(hole));
+
+    double holeY(_GlassHole hole) =>
+        _safeHoleYMm(panel, hole, holeDiameter(hole));
+
     Offset holeCenter(_GlassHole hole) => Offset(
-      panel.rect.left + hole.xMm * scaleX,
-      panel.rect.top + hole.yMm * scaleY,
+      panel.rect.left + holeX(hole) * scaleX,
+      panel.rect.top + holeY(hole) * scaleY,
+    );
+
+    double holeRadius(_GlassHole hole) => math.max(
+      3.0,
+      holeDiameter(hole) * math.min(scaleX, scaleY) / 2,
     );
 
     for (var index = 0; index < panel.holes.length; index++) {
       final hole = panel.holes[index];
       final center = holeCenter(hole);
-      final leftMm = hole.xMm.clamp(0.0, panel.widthMm).toDouble();
-      final rightMm = (panel.widthMm - hole.xMm)
-          .clamp(0.0, panel.widthMm)
-          .toDouble();
-      final topMm = hole.yMm.clamp(0.0, panel.heightMm).toDouble();
-      final bottomMm = (panel.heightMm - hole.yMm)
-          .clamp(0.0, panel.heightMm)
-          .toDouble();
-      final isHorizontallyCentered = (leftMm - rightMm).abs() <= 0.1;
-      final isVerticallyCentered = (topMm - bottomMm).abs() <= 0.1;
+      final radius = holeRadius(hole);
+      final diameterMm = holeDiameter(hole);
+      final xMm = holeX(hole);
+      final yMm = holeY(hole);
+      final leftMm = (xMm - diameterMm / 2).clamp(0.0, panel.widthMm);
+      final rightMm = (panel.widthMm - xMm - diameterMm / 2)
+          .clamp(0.0, panel.widthMm);
+      final sharedTop = _sharedSlidingTop();
+      final measurementTop =
+          sharedTop != null && panel.role == 'door'
+              ? sharedTop
+              : panel.rect.top;
+      final measurementHeightMm =
+          sharedTop != null && panel.role == 'door'
+              ? overallHeightMm
+              : panel.heightMm;
+      final topAllowanceMm = (measurementTop - panel.rect.top) / scaleY;
+      final alignedYMm = yMm - topAllowanceMm;
+      final topMm = (alignedYMm - diameterMm / 2)
+          .clamp(0.0, measurementHeightMm);
+      final bottomMm = (measurementHeightMm - alignedYMm - diameterMm / 2)
+          .clamp(0.0, measurementHeightMm);
 
-      // Give every hole its own horizontal and vertical annotation lanes.
-      // This keeps the dimensions outside the glass instead of stacking all
-      // labels on top of the hole markers.
-      final laneOffset = 52.0 + index * 22.0;
-      final canUseTopLane = panel.rect.top - laneOffset >= 8;
-      final xLaneY = canUseTopLane
-          ? panel.rect.top - laneOffset
-          : panel.rect.bottom + laneOffset;
-      final xExtensionY = canUseTopLane ? panel.rect.top : panel.rect.bottom;
+      // Direct edge-to-edge dimensions. There are no projection lines or
+      // remote annotation lanes: each arrow starts at the glass edge and
+      // stops exactly at the nearest edge of the hole.
+      final fromLeft = leftMm <= rightMm;
+      final holeEdgeX = fromLeft ? center.dx - radius : center.dx + radius;
+      final glassEdgeX = fromLeft ? panel.rect.left : panel.rect.right;
+      drawArrowDimension(
+        Offset(glassEdgeX, center.dy),
+        Offset(holeEdgeX, center.dy),
+        '${(fromLeft ? leftMm : rightMm).toStringAsFixed(0)} mm',
+      );
 
-      if (isHorizontallyCentered) {
-        drawLabel(centerLabel, Offset(center.dx, xLaneY));
-      } else {
-        final fromLeft = leftMm <= rightMm;
-        final edgeX = fromLeft ? panel.rect.left : panel.rect.right;
-        final edgePoint = Offset(edgeX, xExtensionY);
-        final centerPoint = Offset(center.dx, xExtensionY);
-        canvas
-          ..drawLine(Offset(edgeX, center.dy), edgePoint, guidePaint)
-          ..drawLine(center, centerPoint, guidePaint);
-        drawArrowDimension(
-          fromLeft ? edgePoint : centerPoint,
-          fromLeft ? centerPoint : edgePoint,
-          fromLeft
-              ? '← ${leftMm.toStringAsFixed(0)} mm'
-              : '→ ${rightMm.toStringAsFixed(0)} mm',
-        );
-      }
-
-      final neededSideOffset = 34.0 + index * 24.0;
-      var yOnLeft = leftMm <= rightMm;
-      if (yOnLeft && panel.rect.left - neededSideOffset < 8) yOnLeft = false;
-      if (!yOnLeft && panel.rect.right + neededSideOffset > size.width - 8) {
-        yOnLeft = true;
-      }
-      final yLaneX = yOnLeft
-          ? panel.rect.left - neededSideOffset
-          : panel.rect.right + neededSideOffset;
-      final yExtensionX = yOnLeft ? panel.rect.left : panel.rect.right;
-
-      if (isVerticallyCentered) {
-        drawLabel(centerLabel, Offset(yLaneX, center.dy));
-      } else {
-        final fromTop = topMm <= bottomMm;
-        final edgeY = fromTop ? panel.rect.top : panel.rect.bottom;
-        final edgePoint = Offset(yExtensionX, edgeY);
-        final centerPoint = Offset(yExtensionX, center.dy);
-        canvas
-          ..drawLine(Offset(center.dx, edgeY), edgePoint, guidePaint)
-          ..drawLine(center, centerPoint, guidePaint);
-        drawArrowDimension(
-          fromTop ? edgePoint : centerPoint,
-          fromTop ? centerPoint : edgePoint,
-          fromTop
-              ? '↑ ${topMm.toStringAsFixed(0)} mm'
-              : '↓ ${bottomMm.toStringAsFixed(0)} mm',
-        );
-      }
+      final fromTop = topMm <= bottomMm;
+      final holeEdgeY = fromTop ? center.dy - radius : center.dy + radius;
+      final glassEdgeY = fromTop ? measurementTop : panel.rect.bottom;
+      drawArrowDimension(
+        Offset(center.dx, glassEdgeY),
+        Offset(center.dx, holeEdgeY),
+        '${(fromTop ? topMm : bottomMm).toStringAsFixed(0)} mm',
+      );
 
       drawLabel(
-        '#${index + 1} Ø ${hole.diameterMm.toStringAsFixed(0)} mm',
+        '#${index + 1} Ø ${diameterMm.toStringAsFixed(0)} mm',
         center + const Offset(0, 14),
       );
     }
@@ -2329,7 +3268,6 @@ class _GlassPanelDrawingPainter extends CustomPainter {
           : hole.purpose;
       groupedHoles.putIfAbsent(group, () => []).add(hole);
     }
-    var spacingIndex = 0;
     for (final entry in groupedHoles.entries) {
       if (entry.value.length != 2) continue;
       final first = holeCenter(entry.value[0]);
@@ -2337,34 +3275,42 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       final isHorizontal =
           (second.dx - first.dx).abs() >= (second.dy - first.dy).abs();
       final distanceMm = isHorizontal
-          ? (entry.value[1].xMm - entry.value[0].xMm).abs()
-          : (entry.value[1].yMm - entry.value[0].yMm).abs();
-      final laneOffset = 30.0 + spacingIndex * 18.0;
-      spacingIndex++;
+          ? ((holeX(entry.value[1]) - holeX(entry.value[0])).abs() -
+                  (holeDiameter(entry.value[0]) +
+                          holeDiameter(entry.value[1])) /
+                      2)
+              .clamp(0.0, double.infinity)
+          : ((holeY(entry.value[1]) - holeY(entry.value[0])).abs() -
+                  (holeDiameter(entry.value[0]) +
+                          holeDiameter(entry.value[1])) /
+                      2)
+              .clamp(0.0, double.infinity);
       if (isHorizontal) {
-        final useTopLane = panel.rect.top - laneOffset >= 8;
-        final laneY = useTopLane
-            ? panel.rect.top - laneOffset
-            : panel.rect.bottom + laneOffset;
-        canvas
-          ..drawLine(first, Offset(first.dx, laneY), guidePaint)
-          ..drawLine(second, Offset(second.dx, laneY), guidePaint);
+        final leftHole = entry.value[0].xMm <= entry.value[1].xMm
+            ? entry.value[0]
+            : entry.value[1];
+        final rightHole = identical(leftHole, entry.value[0])
+            ? entry.value[1]
+            : entry.value[0];
+        final leftEdge = holeCenter(leftHole).dx + holeRadius(leftHole);
+        final rightEdge = holeCenter(rightHole).dx - holeRadius(rightHole);
         drawArrowDimension(
-          Offset(first.dx, laneY),
-          Offset(second.dx, laneY),
+          Offset(leftEdge, holeCenter(leftHole).dy),
+          Offset(rightEdge, holeCenter(rightHole).dy),
           '${distanceMm.toStringAsFixed(0)} mm',
         );
       } else {
-        final useLeftLane = panel.rect.left - laneOffset >= 8;
-        final laneX = useLeftLane
-            ? panel.rect.left - laneOffset
-            : panel.rect.right + laneOffset;
-        canvas
-          ..drawLine(first, Offset(laneX, first.dy), guidePaint)
-          ..drawLine(second, Offset(laneX, second.dy), guidePaint);
+        final topHole = entry.value[0].yMm <= entry.value[1].yMm
+            ? entry.value[0]
+            : entry.value[1];
+        final bottomHole = identical(topHole, entry.value[0])
+            ? entry.value[1]
+            : entry.value[0];
+        final topEdge = holeCenter(topHole).dy + holeRadius(topHole);
+        final bottomEdge = holeCenter(bottomHole).dy - holeRadius(bottomHole);
         drawArrowDimension(
-          Offset(laneX, first.dy),
-          Offset(laneX, second.dy),
+          Offset(holeCenter(topHole).dx, topEdge),
+          Offset(holeCenter(bottomHole).dx, bottomEdge),
           '${distanceMm.toStringAsFixed(0)} mm',
         );
       }
@@ -2378,7 +3324,11 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     if (sablageMode == _SablageMode.full) {
       for (final panel in panels) {
-        canvas.drawRect(panel.rect, paint);
+        final glassRect = _glassContentRect(panel.rect);
+        canvas.save();
+        canvas.clipRect(glassRect);
+        canvas.drawRect(glassRect, paint);
+        canvas.restore();
       }
       return;
     }
@@ -2397,20 +3347,45 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     ];
     if (bands.isEmpty) return;
 
+    // In a sliding cabin the door is intentionally 30 mm taller than the
+    // fixed panel. Frosting measurements use the fixed panel's top as the
+    // common reference, so both pieces receive the motif at the same level.
+    final sharedTop = _sharedSlidingTop();
+
     for (final band in bands) {
       for (final panel in panels) {
-        final scale = panel.rect.height / overallHeightMm;
+        // Convert the band thickness using the physical height of the panel
+        // that is actually being painted. Using the overall drawing height
+        // here made a 40 mm band look much thicker when a panel's drawing
+        // rectangle and the global measurement were not identical.
+        final panelHeightMm = panel.heightMm > 0
+            ? panel.heightMm
+            : overallHeightMm;
+        final scale = panel.rect.height / panelHeightMm;
+        final measurementTop = sharedTop ?? panel.rect.top;
+        final glassRect = _glassContentRect(panel.rect);
         final bandRect = Rect.fromLTWH(
-          panel.rect.left,
-          panel.rect.top + band.offsetMm * scale,
-          panel.rect.width,
-          band.widthMm * scale,
-        ).intersect(panel.rect);
+          glassRect.left,
+          measurementTop + band.offsetMm * scale,
+          glassRect.width,
+          band.widthMm.clamp(0.0, panelHeightMm) * scale,
+        ).intersect(glassRect);
         if (bandRect.width <= 0 || bandRect.height <= 0) continue;
+        canvas.save();
+        canvas.clipRect(glassRect);
         canvas.drawRect(bandRect, paint);
         canvas.drawRect(bandRect, labelPaint);
+        canvas.restore();
       }
     }
+  }
+
+  double? _sharedSlidingTop() {
+    final fixedPanels = panels.where((panel) => panel.role == 'fixed');
+    if (fixedPanels.isEmpty) return null;
+    return fixedPanels
+        .map((panel) => panel.rect.top)
+        .reduce((a, b) => a > b ? a : b);
   }
 
   void _paintPanel(
@@ -2424,9 +3399,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     bool verticalDimensionOnLeft = false,
   }) {
     if (panel.width < 2 || panel.height < 2) return;
-    final shortSide = panel.width < panel.height ? panel.width : panel.height;
-    final inset = (shortSide * 0.04).clamp(2.0, 6.0).toDouble();
-    final glassRect = panel.deflate(inset);
+    final glassRect = _glassContentRect(panel);
 
     canvas.drawRect(glassRect, glassPaint);
     canvas.drawRect(glassRect, glassBorderPaint);
@@ -2464,6 +3437,12 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       horizontal: false,
       paint: dimensionPaint,
     );
+  }
+
+  Rect _glassContentRect(Rect panel) {
+    final shortSide = panel.width < panel.height ? panel.width : panel.height;
+    final inset = (shortSide * 0.04).clamp(2.0, 6.0).toDouble();
+    return panel.deflate(inset);
   }
 
   void _drawDimension(
@@ -2571,8 +3550,9 @@ class _GlassHole {
   double diameterMm;
   String purpose;
 
-  bool get isMovable =>
-      purpose.startsWith('handle_') || purpose.startsWith('towel_');
+  // Until the kit rules are introduced, every generated hole can be moved
+  // and edited individually.
+  bool get isMovable => true;
 }
 
 class _MovableHoleTarget {
@@ -2585,6 +3565,24 @@ class _MovableHoleTarget {
   final int panelIndex;
   final int holeIndex;
   final String purpose;
+}
+
+class _HoleOverride {
+  const _HoleOverride({
+    required this.xMm,
+    required this.yMm,
+    required this.diameterMm,
+  });
+
+  final double xMm;
+  final double yMm;
+  final double diameterMm;
+
+  _HoleOverride copy() => _HoleOverride(
+    xMm: xMm,
+    yMm: yMm,
+    diameterMm: diameterMm,
+  );
 }
 
 class _SablageBand {
@@ -2609,6 +3607,7 @@ class _GlassDrawingSnapshot {
     required this.towelCenterFromTopMm,
     required this.towelSpacingMm,
     required this.holeDiameterMm,
+    required this.holeOverrides,
     required this.sablageMode,
     required this.sablageRangeMode,
     required this.sablageFromBottom,
@@ -2630,6 +3629,7 @@ class _GlassDrawingSnapshot {
     required double? towelCenterFromTopMm,
     required double towelSpacingMm,
     required double holeDiameterMm,
+    required Map<String, _HoleOverride> holeOverrides,
     required _SablageMode sablageMode,
     required bool sablageRangeMode,
     required bool sablageFromBottom,
@@ -2650,6 +3650,9 @@ class _GlassDrawingSnapshot {
       towelCenterFromTopMm: towelCenterFromTopMm,
       towelSpacingMm: towelSpacingMm,
       holeDiameterMm: holeDiameterMm,
+      holeOverrides: holeOverrides.map(
+        (key, value) => MapEntry(key, value.copy()),
+      ),
       sablageMode: sablageMode,
       sablageRangeMode: sablageRangeMode,
       sablageFromBottom: sablageFromBottom,
@@ -2671,6 +3674,7 @@ class _GlassDrawingSnapshot {
   final double? towelCenterFromTopMm;
   final double towelSpacingMm;
   final double holeDiameterMm;
+  final Map<String, _HoleOverride> holeOverrides;
   final _SablageMode sablageMode;
   final bool sablageRangeMode;
   final bool sablageFromBottom;

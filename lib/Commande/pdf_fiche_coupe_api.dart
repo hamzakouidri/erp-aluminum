@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'order_date_utils.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/pdf_font_cache.dart';
 
 class PdfFicheCoupeApi {
   static Future<void> generateAndPrintFicheCoupe({
@@ -19,8 +20,9 @@ class PdfFicheCoupeApi {
     required SqlDatabase db,
   }) async {
     final pdf = pw.Document();
-    final font = await PdfGoogleFonts.cairoRegular();
-    final fontBold = await PdfGoogleFonts.cairoBold();
+    final fonts = await PdfFontCache.load();
+    final font = fonts.regular;
+    final fontBold = fonts.bold;
     final prefs = await SharedPreferences.getInstance();
     final logoBase64 = prefs.getString('workshop_logo_base64') ?? '';
     final savedLanguage = prefs.getString('app_language') ?? 'arabic';

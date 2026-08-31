@@ -6,10 +6,10 @@ import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/pdf_font_cache.dart';
 
 class GlobalConsumptionReportScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -102,8 +102,9 @@ class _GlobalConsumptionReportScreenState
     );
 
     final pdf = pw.Document();
-    final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final ttf = pw.Font.ttf(fontData);
+    final fonts = await PdfFontCache.load();
+    final ttf = fonts.regular;
+    final bold = fonts.bold;
 
     List<CuttingItem> missingAlum = report.aluminumItems.where((i) => i.isMissing).toList();
     List<CuttingItem> missingGlass = report.glassItems.where((i) => i.isMissing).toList();
@@ -131,7 +132,7 @@ class _GlobalConsumptionReportScreenState
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(_t('قائمة شراء النواقص الشاملة'), style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, font: ttf)),
+                  pw.Text(_t('قائمة شراء النواقص الشاملة'), style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, font: bold)),
                   pw.Text(_t('لكل الطلبيات النشطة'), style: pw.TextStyle(fontSize: 16, font: ttf)),
                 ]
               ),
@@ -153,8 +154,9 @@ class _GlobalConsumptionReportScreenState
       ),
     );
 
+    final bytes = await pdf.save();
     await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
+      onLayout: (PdfPageFormat format) async => bytes,
       name: 'Global_Purchase_List.pdf',
     );
   }
@@ -202,8 +204,18 @@ class _GlobalConsumptionReportScreenState
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () async {
-              final report = await _reportFuture;
-              _generatePurchasePdf(report);
+              try {
+                final report = await _reportFuture;
+                await _generatePurchasePdf(report);
+              } catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: Colors.red,
+                    content: Text('${_t('تعذر إنشاء ملف PDF')}: $error'),
+                  ),
+                );
+              }
             },
           ),
           const SizedBox(width: 16),

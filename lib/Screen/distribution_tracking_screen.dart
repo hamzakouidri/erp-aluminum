@@ -17,6 +17,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cloud_sync_service.dart';
 import 'map_picker_screen.dart';
+import 'package:database_data/services/auth_service.dart';
 
 class DistributionTrackingScreen extends StatefulWidget {
   const DistributionTrackingScreen({super.key});
@@ -224,7 +225,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         final workshopId =
             CloudSyncService().workshopId ??
             prefs.getString('workshop_code') ??
-            FirebaseAuth.instance.currentUser?.uid;
+            AppAuthService().currentUser?.uid;
         if (workshopId != null && workshopId.isNotEmpty) {
           try {
             final snapshot = await FirebaseFirestore.instance
@@ -273,7 +274,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         final workshopId =
             CloudSyncService().workshopId ??
             prefs.getString('workshop_code') ??
-            FirebaseAuth.instance.currentUser?.uid;
+            AppAuthService().currentUser?.uid;
         if (workshopId != null && workshopId.isNotEmpty) {
           try {
             await FirebaseFirestore.instance

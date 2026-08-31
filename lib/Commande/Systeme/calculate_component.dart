@@ -447,6 +447,9 @@ class ComponentCalculator {
   }
 
   static String _selectorTypeForProfile(String originalName) {
+    if (_textHasAny(originalName, const ['bardage', 'بارداج', 'بارداش'])) {
+      return 'bardage';
+    }
     if (_textHasAny(originalName, const [
       'إطار',
       'frame',
@@ -785,6 +788,9 @@ class ComponentCalculator {
   }
 
   static String _selectorTypeForJoint(String originalName) {
+    if (_textHasAny(originalName, const ['n245', 'n 245'])) {
+      return 'joint centrale';
+    }
     if (_textHasAny(originalName, const ['بروس', 'bross', 'brosse'])) {
       return 'Joint bross';
     }
@@ -847,6 +853,8 @@ class ComponentCalculator {
         return 'reducer';
       case 'side_cover':
         return 'side_cover';
+      case 'bardage':
+        return 'bardage';
       case 'rail':
         return 'rail';
       case 'batmo':
@@ -944,6 +952,8 @@ class ComponentCalculator {
       case 'joint frappe':
         return 'joint_frappe';
       case 'joint centrale':
+      case 'n245':
+      case 'n 245':
         return 'joint_central';
       case 'joint bross':
         return 'joint_brosse';
@@ -2479,9 +2489,17 @@ class ComponentCalculator {
       'إسبانيوليت (Espagnolette)',
       'اسبانيولات المنزلق (Espagnolette)',
     ]);
-    final activeSeriesName = (window.activeSeries?.name ?? '').toLowerCase();
+    final activeSeriesName =
+        '${window.activeSeries?.name ?? ''} '
+                '${window.activeSeries?.type ?? ''} '
+                '${window.activeSlidingSeries?.name ?? ''} '
+                '${window.activeSlidingSeries?.type ?? ''} '
+                '${window.system?.name ?? ''}'
+            .toLowerCase();
     final isTprSeries =
-        activeSeriesName.contains('tpr') || activeSeriesName.contains('tpi');
+        activeSeriesName.contains('tpr') ||
+        activeSeriesName.contains('tpi') ||
+        activeSeriesName.contains('hps');
 
     // --- 1. البروفيلات (Profiles) ---
     // ===== دالة مساعدة: تفجير مركبات Kit بناءً على قياسات الضلفة =====
@@ -3398,11 +3416,17 @@ class ComponentCalculator {
               : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
           double sashH = hForCalc + slidingOverlap * 2;
           final String seriesName =
-              window.activeSlidingSeries?.name.toLowerCase() ??
-              window.activeSeries?.name.toLowerCase() ??
-              '';
+              '${window.activeSlidingSeries?.name ?? ''} '
+                      '${window.activeSlidingSeries?.type ?? ''} '
+                      '${window.activeSeries?.name ?? ''} '
+                      '${window.activeSeries?.type ?? ''} '
+                      '${window.system?.name ?? ''}'
+                  .toLowerCase();
           final bool isTPI67000 =
-              seriesName.contains('67000') || seriesName.contains('tpi');
+              seriesName.contains('67000') ||
+              seriesName.contains('tpi') ||
+              seriesName.contains('tpr') ||
+              seriesName.contains('hps');
           bool hasThreePiece =
               !window.isSlidingPVC &&
               ((window.activeSlidingSeries?.hasThreePieceSash ?? false) ||
@@ -7231,7 +7255,7 @@ class ComponentCalculator {
       if (swingCentralFramePerim > 0) {
         items.add(
           createJoint(
-            'جوان الوسط (Joint Central)',
+            'N 245',
             qty: swingCentralFramePerim,
             unit: 'متر',
           ),
@@ -8026,7 +8050,12 @@ class ComponentCalculator {
     double? targetThicknessMm,
   }) {
     final keyToUse = overrideKey ?? originalName;
-    final ov = overrides[keyToUse] ?? overrides[originalName];
+    final ov =
+        overrides[keyToUse] ??
+        overrides[originalName] ??
+        (originalName.trim().toUpperCase() == 'N 245'
+            ? overrides['جوان الوسط (Joint Central)']
+            : null);
     bool isLinked = ov is Map;
     String name = originalName;
     double price = 0.0;
@@ -8053,11 +8082,9 @@ class ComponentCalculator {
     }
     final linkedCatalogueId =
         catalogItemId ??
-        (isLinked && overrides[originalName]['id'] is num
-            ? (overrides[originalName]['id'] as num).toInt()
-            : int.tryParse(
-                '${isLinked ? overrides[originalName]['id'] ?? '' : ''}',
-              ));
+        (isLinked && ov['id'] is num
+            ? (ov['id'] as num).toInt()
+            : int.tryParse('${isLinked ? ov['id'] ?? '' : ''}'));
     return BomItem(
       category: 'joint',
       originalName: originalName,

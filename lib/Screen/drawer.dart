@@ -36,6 +36,8 @@ import 'dart:convert';
 import 'worker_tasks_screen.dart';
 import 'worker_weekly_settlement_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 
 class AppDrawer extends StatefulWidget {
   /// Used by the permanent desktop sidebar.  Mobile drawers still close with
@@ -52,8 +54,11 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   SqlDatabase db = SqlDatabase();
+  final ScrollController _drawerScrollController = ScrollController();
   String? _savedLogoBase64;
   String? _savedWorkshopName;
+  String? _savedWorkshopCode;
+  String? _savedUserRole;
 
   @override
   void initState() {
@@ -67,8 +72,24 @@ class _AppDrawerState extends State<AppDrawer> {
       setState(() {
         _savedLogoBase64 = prefs.getString('workshop_logo_base64');
         _savedWorkshopName = prefs.getString('workshop_name');
+        _savedWorkshopCode = prefs.getString('workshop_code');
+        _savedUserRole = prefs.getString('user_role');
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _drawerScrollController.dispose();
+    super.dispose();
+  }
+
+  /// Only the public workshop join code belongs in the menu. Internal
+  /// Supabase UUIDs (or any other long identifier) must never be displayed as
+  /// the worker-facing workshop code.
+  String _shortWorkshopCode(String? value) {
+    final code = value?.trim() ?? '';
+    return RegExp(r'^[A-Za-z0-9]{1,7}$').hasMatch(code) ? code : '';
   }
 
   void _openScreen(
@@ -136,7 +157,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   try {
                     await FirebaseFirestore.instance
                         .collection('users')
-                        .doc(FirebaseAuth.instance.currentUser!.uid)
+                        .doc(AppAuthService().currentUser!.uid)
                         .update({'displayName': newName});
                     if (context.mounted) {
                       Navigator.pop(ctx);
@@ -242,29 +263,36 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Widget _buildWindowsHeader(AppLanguage lang) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseAuth.instance.currentUser != null
-          ? FirebaseFirestore.instance
-                .collection('users')
-                .doc(FirebaseAuth.instance.currentUser!.uid)
-                .snapshots()
-          : null,
+    return FutureBuilder<SupabaseAccountSnapshot?>(
+      future: SupabaseAccountService().loadCurrentAccount(),
       builder: (context, snapshot) {
-        final data = snapshot.hasData && snapshot.data!.exists
-            ? snapshot.data!.data() as Map<String, dynamic>
-            : <String, dynamic>{};
-        final workshopName =
-            (data['workshopName'] as String?)?.trim().isNotEmpty == true
-            ? data['workshopName'] as String
-            : (_savedWorkshopName?.trim().isNotEmpty == true
-                  ? _savedWorkshopName!
+        final account = snapshot.data;
+        final accountName = account?.workshopName.trim() ?? '';
+        final savedName = _savedWorkshopName?.trim() ?? '';
+        final savedCode = _shortWorkshopCode(_savedWorkshopCode);
+        final rawAccountCode = account?.workshopCode.trim() ?? '';
+        final accountCode = _shortWorkshopCode(rawAccountCode);
+        final isSyntheticAdminAccount = account != null &&
+            account.workshopId == account.userId &&
+            rawAccountCode == account.userId;
+        final workshopCode = isSyntheticAdminAccount
+            ? savedCode
+            : (accountCode.isNotEmpty ? accountCode : savedCode);
+        final workshopName = accountName.isNotEmpty &&
+                accountName != account?.workshopCode.trim()
+            ? accountName
+            : (savedName.isNotEmpty && savedName != savedCode
+                  ? savedName
                   : _desktopLabel(
                       lang,
                       arabic: 'القائمة الرئيسية',
                       french: 'Menu principal',
                       english: 'Main menu',
                     ));
-        final role = data['role'] as String?;
+        final role = account?.role ??
+            (isApplicationAdminEmail(AppAuthService().currentUser?.email)
+                ? 'admin'
+                : (_savedUserRole ?? 'worker'));
         final roleLabel = role == 'admin'
             ? _desktopLabel(
                 lang,
@@ -350,7 +378,7 @@ class _AppDrawerState extends State<AppDrawer> {
                       ),
                     ),
                     Text(
-                      FirebaseAuth.instance.currentUser?.email ?? '',
+                      AppAuthService().currentUser?.email ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -358,6 +386,17 @@ class _AppDrawerState extends State<AppDrawer> {
                         fontSize: 11,
                       ),
                     ),
+                    if (workshopCode.isNotEmpty)
+                      Text(
+                        '${_desktopLabel(lang, arabic: 'كود الورشة', french: "Code de l'atelier", english: 'Workshop code')}: $workshopCode',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFE0F2FE),
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -369,24 +408,28 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Widget _buildWindowsWorkshopCode(AppLanguage lang) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseAuth.instance.currentUser != null
-          ? FirebaseFirestore.instance
-                .collection('users')
-                .doc(FirebaseAuth.instance.currentUser!.uid)
-                .snapshots()
-          : null,
+    return FutureBuilder<SupabaseAccountSnapshot?>(
+      future: SupabaseAccountService().loadCurrentAccount(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const SizedBox.shrink();
-        }
-        final data = snapshot.data!.data() as Map<String, dynamic>;
-        final role = data['role'] as String?;
+        final account = snapshot.data;
+        final role = account?.role ??
+            (isApplicationAdminEmail(AppAuthService().currentUser?.email)
+                ? 'admin'
+                : (_savedUserRole ?? 'worker'));
         if (role != 'manager' && role != 'admin') {
           return const SizedBox.shrink();
         }
-        final joinCode = data['joinCode'] as String?;
-        final hasCode = joinCode != null && joinCode.isNotEmpty;
+        final rawAccountCode = account?.workshopCode.trim() ?? '';
+        final accountCode = _shortWorkshopCode(rawAccountCode);
+        final isSyntheticAdminAccount = account != null &&
+            account.workshopId == account.userId &&
+            rawAccountCode == account.userId;
+        final joinCode = isSyntheticAdminAccount
+            ? _shortWorkshopCode(_savedWorkshopCode)
+            : (accountCode.isNotEmpty
+                  ? accountCode
+                  : _shortWorkshopCode(_savedWorkshopCode));
+        final hasCode = joinCode.isNotEmpty;
 
         return ListTile(
           dense: true,
@@ -450,7 +493,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 )
               : TextButton(
                   onPressed: () async {
-                    final user = FirebaseAuth.instance.currentUser;
+                    final user = AppAuthService().currentUser;
                     if (user == null) return;
                     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                     final random = dart_math.Random();
@@ -520,9 +563,10 @@ class _AppDrawerState extends State<AppDrawer> {
   Future<void> _signOut() async {
     Navigator.pop(context);
     try {
+      context.read<WorkspaceController>().resetForSignedOut();
       CloudSyncService().reset();
-      await FirebaseAuth.instance.signOut();
-      await GoogleSignIn().signOut();
+      await AppAuthService().signOut();
+      await AppAuthService().signOutGoogleSession();
       await SqlDatabase.clearAllLocalData();
     } catch (error) {
       debugPrint('Sign out error: $error');
@@ -1119,7 +1163,12 @@ class _AppDrawerState extends State<AppDrawer> {
               dense: true,
             ),
           ),
-          child: ListView(padding: EdgeInsets.zero, children: menu),
+          child: ListView(
+            controller: _drawerScrollController,
+            primary: false,
+            padding: EdgeInsets.zero,
+            children: menu,
+          ),
         ),
       ),
     );
@@ -1135,13 +1184,15 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     return Drawer(
       child: ListView(
+        controller: _drawerScrollController,
+        primary: false,
         padding: EdgeInsets.zero,
         children: [
           StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseAuth.instance.currentUser != null
+            stream: AppAuthService().currentUser != null
                 ? FirebaseFirestore.instance
                       .collection('users')
-                      .doc(FirebaseAuth.instance.currentUser!.uid)
+                      .doc(AppAuthService().currentUser!.uid)
                       .snapshots()
                 : null,
             builder: (context, snapshot) {
@@ -1149,7 +1200,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 'menu_principal',
                 lang,
               );
-              String userEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+              String userEmail = AppAuthService().currentUser?.email ?? '';
               String? logoBase64;
               String? joinCode;
               String? role;
@@ -1244,20 +1295,32 @@ class _AppDrawerState extends State<AppDrawer> {
             },
           ),
           StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseAuth.instance.currentUser != null
+            stream: AppAuthService().currentUser != null
                 ? FirebaseFirestore.instance
                       .collection('users')
-                      .doc(FirebaseAuth.instance.currentUser!.uid)
+                      .doc(AppAuthService().currentUser!.uid)
                       .snapshots()
                 : null,
             builder: (context, snapshot) {
+              String? joinCode = _shortWorkshopCode(_savedWorkshopCode);
+              String? role = isApplicationAdminEmail(
+                    AppAuthService().currentUser?.email,
+                  )
+                  ? 'admin'
+                  : _savedUserRole;
+
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                String? joinCode = data['joinCode'];
-                String? role = data['role'];
+                final firebaseCode = _shortWorkshopCode(
+                  data['joinCode']?.toString(),
+                );
+                if (firebaseCode.isNotEmpty) joinCode = firebaseCode;
+                if (role != 'admin') role = data['role']?.toString() ?? role;
+              }
 
-                if (role == 'manager' || role == 'admin') {
+              if (role == 'manager' || role == 'admin') {
                   if (joinCode != null && joinCode.isNotEmpty) {
+                    final visibleCode = joinCode;
                     final isDark =
                         Theme.of(context).brightness == Brightness.dark;
                     return Container(
@@ -1281,7 +1344,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           ),
                         ),
                         subtitle: Text(
-                          joinCode,
+                          visibleCode,
                           style: TextStyle(
                             fontSize: 18,
                             letterSpacing: 2,
@@ -1297,7 +1360,9 @@ class _AppDrawerState extends State<AppDrawer> {
                                 : Colors.blue,
                           ),
                           onPressed: () {
-                            Clipboard.setData(ClipboardData(text: joinCode));
+                            Clipboard.setData(
+                              ClipboardData(text: visibleCode),
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
@@ -1332,7 +1397,7 @@ class _AppDrawerState extends State<AppDrawer> {
                         ),
                         trailing: ElevatedButton(
                           onPressed: () async {
-                            final uid = FirebaseAuth.instance.currentUser!.uid;
+                            final uid = AppAuthService().currentUser!.uid;
                             const chars =
                                 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                             final rnd = dart_math.Random();
@@ -1379,7 +1444,6 @@ class _AppDrawerState extends State<AppDrawer> {
                       ),
                     );
                   }
-                }
               }
               return const SizedBox.shrink();
             },
@@ -1757,7 +1821,7 @@ class _AppDrawerState extends State<AppDrawer> {
               showDialog(context: context, builder: (_) => SupportDialog());
             },
           ),
-          if (FirebaseAuth.instance.currentUser == null)
+          if (AppAuthService().currentUser == null)
             ListTile(
               leading: const Icon(Icons.login_rounded, color: Colors.green),
               title: Text(
@@ -1787,9 +1851,10 @@ class _AppDrawerState extends State<AppDrawer> {
                 Navigator.pop(context);
                 // تسجيل الخروج من Firebase و Google
                 try {
+                  context.read<WorkspaceController>().resetForSignedOut();
                   CloudSyncService().reset();
-                  await FirebaseAuth.instance.signOut();
-                  await GoogleSignIn().signOut();
+                  await AppAuthService().signOut();
+                  await AppAuthService().signOutGoogleSession();
                   await SqlDatabase.clearAllLocalData();
                 } catch (e) {
                   debugPrint('Sign out error: $e');

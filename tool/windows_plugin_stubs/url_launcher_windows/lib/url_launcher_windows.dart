@@ -34,7 +34,12 @@ class UrlLauncherWindows extends UrlLauncherPlatform {
     String? webOnlyWindowName,
   }) async {
     try {
-      final result = await Process.run('cmd', ['/c', 'start', '', url]);
+      // Do not pass URLs through `cmd /c start`. Query separators such as
+      // `&` can be interpreted by cmd.exe as command separators, truncating
+      // OAuth URLs (for example, dropping response_type from Google OAuth).
+      // explorer.exe receives the URL as one process argument and delegates
+      // it to the user's default browser without shell parsing.
+      final result = await Process.run('explorer.exe', [url]);
       return result.exitCode == 0;
     } catch (_) {
       return false;

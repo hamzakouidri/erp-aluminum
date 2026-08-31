@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/pdf_font_cache.dart';
 
 class ReceiptPdfService {
   static String formatReceiptNumber(Map<String, dynamic> transaction) {
@@ -57,30 +58,9 @@ class ReceiptPdfService {
       } catch (_) {}
     }
 
-    // تحميل الخط العربي بشكل آمن
-    pw.Font fontRegular;
-    pw.Font fontBold;
-    try {
-      final cairoRegular = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-      fontRegular = pw.Font.ttf(cairoRegular);
-    } catch (_) {
-      try {
-        fontRegular = await PdfGoogleFonts.cairoRegular();
-      } catch (_) {
-        fontRegular = pw.Font.helvetica();
-      }
-    }
-
-    try {
-      final cairoBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-      fontBold = pw.Font.ttf(cairoBold);
-    } catch (_) {
-      try {
-        fontBold = await PdfGoogleFonts.cairoBold();
-      } catch (_) {
-        fontBold = pw.Font.helveticaBold();
-      }
-    }
+    final fonts = await PdfFontCache.load();
+    final fontRegular = fonts.regular;
+    final fontBold = fonts.bold;
 
     final formatter = NumberFormat('#,##0.00');
     final isEncaissement =

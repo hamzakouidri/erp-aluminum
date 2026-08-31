@@ -65,8 +65,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   List<BomItem> _visibleBomItems = const [];
   final Map<String, double> _accessoryPriceCache = {};
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
-  String get _lang =>
-      Provider.of<AppSettingsProvider>(context, listen: false).language.name;
+  String get _lang {
+    final language = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    // BomItem.getLocalizedName uses the stable short codes below.  Passing
+    // AppLanguage.name ("french"/"english") silently fell through to Arabic.
+    switch (language) {
+      case AppLanguage.arabic:
+        return 'ar';
+      case AppLanguage.french:
+        return 'fr';
+      case AppLanguage.english:
+        return 'en';
+    }
+  }
+
+  String _localizedBomUnit(String unit, AppLanguage language) {
+    final trimmed = unit.trim();
+    if (trimmed.isEmpty) return trimmed;
+    return Localization.translate(trimmed, language);
+  }
   // دالة مساعدة: تتحقق إذا كان النص يحتوي حروف عربية (لتقرير هل نعرض الاسم الثانوي أو لا)
   bool _hasArabic(String text) {
     return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
@@ -3979,6 +3999,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // صف مصغّر يعرض فقط اسم العنصر (وربما اسمه الفرعي وقائمة القص) في العمود الثابت
   Widget _minimalRow(BomItem item) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isScrews =
         item.name.contains('براغي') ||
         item.originalName.contains('حديد') ||
@@ -4000,7 +4024,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ),
       ),
       child: Text(
-        item.getLocalizedName(_lang),
+        item.kitGroupName != null
+            ? Localization.translate(item.name, lang)
+            : item.getLocalizedName(_lang),
         maxLines: 3, // Allow up to 3 lines for name if it's long
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -4649,6 +4675,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       context,
       listen: false,
     ).language;
+    final localizedUnit = _localizedBomUnit(item.unit, lang);
     final currency = Localization.translate('دج', lang);
     final inactive = !item.isActive; // العنصر معطّل حاليًا
     final warning =
@@ -4681,8 +4708,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
 
     final quantityLabel = isGlassSquareMeter
-        ? '${item.quantity.toStringAsFixed(2)} ${item.unit}'
-        : '${formatQuantity(item.quantity)} ${item.unit}';
+        ? '${item.quantity.toStringAsFixed(2)} $localizedUnit'
+        : '${formatQuantity(item.quantity)} $localizedUnit';
     return Container(
       decoration: BoxDecoration(
         color: inactive
@@ -4740,10 +4767,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       children: [
                         Text(
                           isKitElement
-                              ? item.name
-                              : item.getLocalizedName(
-                                  _lang,
-                                ), // عناصر الكيت تعرض اسمها الأصلي دائمًا
+                              ? Localization.translate(item.name, lang)
+                              : item.getLocalizedName(_lang),
                           style: TextStyle(
                             fontSize: isKitElement ? 13.5 : 12,
                             fontWeight: FontWeight.bold,
@@ -4764,7 +4789,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         // لعناصر الكيت: عرض الكمية والوحدة تحت الاسم مباشرة
                         if (isKitElement)
                           Text(
-                            'الكمية: ${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity} ${item.unit}',
+                            '${Localization.translate('الكمية:', lang)} ${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity} $localizedUnit',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,

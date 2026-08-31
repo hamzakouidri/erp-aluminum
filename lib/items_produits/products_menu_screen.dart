@@ -203,7 +203,7 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               ],
               // Keep this administrator setup close to the catalogue entry so
               // it is visible immediately in the desktop products screen.
-              if (settings.isManager) ...[
+              if (settings.isAdmin) ...[
                 _buildMenuCard(
                   context,
                   title: _seriesDesignTitle(lang),

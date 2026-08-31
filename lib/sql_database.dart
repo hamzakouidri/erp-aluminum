@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/services/auth_service.dart';
 
 class CloudChangeAcknowledgement {
   const CloudChangeAcknowledgement({
@@ -77,6 +78,53 @@ class SqlDatabase {
     } catch (_) {
       return value;
     }
+  }
+
+  static const String _mainCaisseName = 'الصندوق الرئيسي';
+  static const String _secondCaisseName = 'الصندوق الثاني';
+  static const String _bankCaisseName = 'البنك';
+
+  static String? _canonicalCaisseName(String value) {
+    final normalized = value.trim().toLowerCase().replaceAll('é', 'e');
+    switch (normalized) {
+      case _mainCaisseName:
+      case 'caisse principale':
+        return _mainCaisseName;
+      case _secondCaisseName:
+      case 'deuxieme caisse':
+        return _secondCaisseName;
+      case _bankCaisseName:
+      case 'banque':
+        return _bankCaisseName;
+      default:
+        return null;
+    }
+  }
+
+  static bool _looksLikeUnreadableCaisseName(String value) {
+    final name = value.trim();
+    if (name.isEmpty || name.contains('�') || name.contains('ï¿½')) {
+      return true;
+    }
+    if (name.contains('Ø') ||
+        name.contains('Ù') ||
+        name.contains('Ã') ||
+        name.contains('Â') ||
+        name.contains('Ð') ||
+        name.contains('Ñ')) {
+      return true;
+    }
+    if (name.codeUnits.any((unit) => unit < 32 || unit == 127)) return true;
+    if (RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(name)) {
+      return true;
+    }
+    return RegExp(
+      r'^(caisse|cashbox)[_-][a-z0-9_-]{12,}$',
+      caseSensitive: false,
+    ).hasMatch(name);
   }
 
   static final DatabaseFactory _webDbFactory = createDatabaseFactoryFfiWeb(
@@ -232,37 +280,10 @@ class SqlDatabase {
   ];
 
   static const List<String> workshopTables = [
-    // The workshop catalogue is part of the workshop state as well. Keeping
-    // these tables here makes rules, profiles, accessories, colours, kits and
-    // prices follow the same Supabase Realtime path as orders and payments.
-    'Profile',
-    'Series',
-    'Sections',
-    'SeriesTableConfig',
-    'SeriesDesignConfig',
-    'SeriesDesignRoles',
-    'CatalogItemRules',
-    'SectionJointLinks',
-    'SeriesShutterRules',
-    'Colors',
-    'Accessories',
-    'Joints',
-    'Glass',
-    'ShutterComponents',
-    'ShutterColorPrices',
-    'ShutterComponentColors',
-    'ShutterSqmPrices',
-    'ShutterBoxLimits',
-    'CaissonTunnelPrices',
-    'SeriesColorPrices',
-    'SectionColorPrices',
-    'AccessoryColorPrices',
-    'ProfileColors',
-    'ProfileColorConfig',
-    'KitBundles',
-    'KitBundleItems',
-    'KitItemRanges',
-    'KitItemVariants',
+    // The catalogue is global and is synced through catalog_manifest and
+    // catalog_chunks in Supabase. It must never be copied into a workshop
+    // backup, otherwise one workshop could overwrite every other workshop's
+    // catalogue.
     'ClientCodeSequence',
     'Client',
     'Projects',
@@ -4316,7 +4337,7 @@ class SqlDatabase {
   }
 
   String get _currentCreationPlatform {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     final email = user?.email ?? '';
     final platformStr = kIsWeb
         ? 'ÙˆÙŠØ¨'
@@ -5995,7 +6016,7 @@ class SqlDatabase {
   /// Ø±Ø¨Ø· Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø§Ù„Ø¹Ø§Ù…Ù„ Ø¨Ù€ UID Ø§Ù„ØµØ­ÙŠØ­ Ø¨Ø¹Ø¯ Ø§Ù„Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø©
   Future<void> relinkCurrentWorkerAllocations() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = AppAuthService().currentUser;
       if (user == null) return;
 
       Database? myDb = await db;
@@ -7791,7 +7812,7 @@ class SqlDatabase {
             'id': orderId,
             'deleted_at': FieldValue.serverTimestamp(),
             'device_at': DateTime.now().toUtc().toIso8601String(),
-            'deleted_by': FirebaseAuth.instance.currentUser?.uid,
+            'deleted_by': AppAuthService().currentUser?.uid,
           }, SetOptions(merge: true))
           .timeout(const Duration(seconds: 3));
     } catch (e) {
@@ -7981,32 +8002,40 @@ class SqlDatabase {
         )
       ''');
 
+      // Repair/remove old caisse rows before ensuring the three defaults. This
+      // prevents a repaired legacy row from colliding with a newly inserted
+      // canonical row because of the UNIQUE(name) constraint.
+      await readCaisses();
+
       final checkMain = await myDb.query(
         'Caisses',
-        where: "name = 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ'",
+        where: 'name = ?',
+        whereArgs: [_mainCaisseName],
       );
       if (checkMain.isEmpty)
         await myDb.insert(
           'Caisses',
-          _withDistributedId({'name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ'}),
+          _withDistributedId({'name': _mainCaisseName}),
         );
       final checkSecond = await myDb.query(
         'Caisses',
-        where: "name = 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø«Ø§Ù†ÙŠ'",
+        where: 'name = ?',
+        whereArgs: [_secondCaisseName],
       );
       if (checkSecond.isEmpty)
         await myDb.insert(
           'Caisses',
-          _withDistributedId({'name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø«Ø§Ù†ÙŠ'}),
+          _withDistributedId({'name': _secondCaisseName}),
         );
       final checkBank = await myDb.query(
         'Caisses',
-        where: "name = 'Ø§Ù„Ø¨Ù†Ùƒ'",
+        where: 'name = ?',
+        whereArgs: [_bankCaisseName],
       );
       if (checkBank.isEmpty) {
         await myDb.insert(
           'Caisses',
-          _withDistributedId({'name': 'Ø§Ù„Ø¨Ù†Ùƒ'}),
+          _withDistributedId({'name': _bankCaisseName}),
         );
       }
 
@@ -8096,28 +8125,103 @@ class SqlDatabase {
       ''');
     } catch (_) {}
     var rows = await myDb.query('Caisses', orderBy: 'id ASC');
-    var repairedAnyName = false;
+    var changedAnyName = false;
+    final canonicalIds = <String, dynamic>{};
     for (final row in rows) {
       final rawName = row['name']?.toString() ?? '';
-      final repairedName = _repairLegacyTextEncoding(rawName);
-      if (rawName.isEmpty || repairedName == rawName) continue;
       final id = row['id'];
       if (id == null) continue;
-      await myDb.update(
-        'Caisses',
-        {'name': repairedName},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      await myDb.update(
-        'Treasury',
-        {'caisse_name': repairedName},
-        where: 'caisse_name = ?',
-        whereArgs: [rawName],
-      );
-      repairedAnyName = true;
+      final repairedName = _repairLegacyTextEncoding(rawName).trim();
+      final canonicalName = _canonicalCaisseName(repairedName);
+
+      if (canonicalName != null) {
+        final firstId = canonicalIds[canonicalName];
+        if (firstId != null) {
+          // Old launches could create the same default caisse more than once.
+          // Keep the first row and move its movements before removing the
+          // duplicate, so the financial history is preserved.
+          await myDb.update(
+            'Treasury',
+            {'caisse_name': canonicalName},
+            where: 'caisse_name = ?',
+            whereArgs: [rawName],
+          );
+          await myDb.delete('Caisses', where: 'id = ?', whereArgs: [id]);
+          changedAnyName = true;
+          continue;
+        }
+        final existingCanonical = await myDb.query(
+          'Caisses',
+          columns: ['id'],
+          where: 'name = ?',
+          whereArgs: [canonicalName],
+          limit: 1,
+        );
+        final existingCanonicalId = existingCanonical.isEmpty
+            ? null
+            : existingCanonical.first['id'];
+        if (existingCanonicalId != null && existingCanonicalId != id) {
+          await myDb.update(
+            'Treasury',
+            {'caisse_name': canonicalName},
+            where: 'caisse_name = ?',
+            whereArgs: [rawName],
+          );
+          await myDb.delete('Caisses', where: 'id = ?', whereArgs: [id]);
+          changedAnyName = true;
+          continue;
+        }
+        canonicalIds[canonicalName] = id;
+        if (rawName != canonicalName) {
+          await myDb.update(
+            'Caisses',
+            {'name': canonicalName},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          await myDb.update(
+            'Treasury',
+            {'caisse_name': canonicalName},
+            where: 'caisse_name = ?',
+            whereArgs: [rawName],
+          );
+          changedAnyName = true;
+        }
+        continue;
+      }
+
+      if (_looksLikeUnreadableCaisseName(rawName) ||
+          _looksLikeUnreadableCaisseName(repairedName)) {
+        // These rows are encoding/identifier artefacts, not a user-created
+        // caisse. Reassign their movements before removing the artefact.
+        await myDb.update(
+          'Treasury',
+          {'caisse_name': _mainCaisseName},
+          where: 'caisse_name = ?',
+          whereArgs: [rawName],
+        );
+        await myDb.delete('Caisses', where: 'id = ?', whereArgs: [id]);
+        changedAnyName = true;
+        continue;
+      }
+
+      if (rawName != repairedName && repairedName.isNotEmpty) {
+        await myDb.update(
+          'Caisses',
+          {'name': repairedName},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        await myDb.update(
+          'Treasury',
+          {'caisse_name': repairedName},
+          where: 'caisse_name = ?',
+          whereArgs: [rawName],
+        );
+        changedAnyName = true;
+      }
     }
-    if (repairedAnyName) {
+    if (changedAnyName) {
       CloudSyncService().notifyChange();
       rows = await myDb.query('Caisses', orderBy: 'id ASC');
     }

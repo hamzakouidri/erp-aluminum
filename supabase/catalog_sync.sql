@@ -3,6 +3,10 @@ create table if not exists public.app_admins (
   created_at timestamptz not null default now()
 );
 
+-- Add the UUID of the application-admin Supabase Auth user here after the
+-- first account is created. Do not use a workshop role or a client-side email
+-- check as a substitute: RLS uses this table as the server-side authority.
+
 create or replace function public.is_app_admin()
 returns boolean
 language sql
@@ -14,7 +18,9 @@ as $$
     select 1
     from public.app_admins
     where user_id = auth.uid()
-  );
+  ) or lower(coalesce((
+    select email from auth.users where id = auth.uid()
+  ), '')) = 'kouidrihamza45@gmail.com';
 $$;
 
 create table if not exists public.catalog_manifest (
@@ -45,11 +51,35 @@ on public.catalog_chunks (version_id);
 create table if not exists public.workshops (
   id uuid primary key default gen_random_uuid(),
   code text unique not null,
+  join_code text unique not null default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6)),
   name text not null default '',
   owner_uid uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- The internal workshop code and the code shared with workers are different
+-- values. Add the public registration code to existing installations too.
+alter table public.workshops
+add column if not exists join_code text;
+
+alter table public.workshops
+alter column join_code set default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+
+update public.workshops
+set join_code = upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6))
+where join_code is null or trim(join_code) = '';
+
+create unique index if not exists workshops_join_code_key
+on public.workshops (join_code);
+
+-- Legacy Firebase identity is kept only as migration metadata. It must not be
+-- placed in owner_uid/user_id because those columns reference Supabase Auth.
+alter table public.workshops
+add column if not exists legacy_owner_uid text;
+
+alter table public.workshops
+add column if not exists legacy_owner_email text;
 
 create table if not exists public.workshop_members (
   workshop_id uuid not null references public.workshops(id) on delete cascade,
@@ -112,6 +142,112 @@ begin
 end
 $$;
 
+-- -------------------------------------------------------------------------
+-- Supabase-authoritative workshop subscriptions
+-- -------------------------------------------------------------------------
+-- Subscription state belongs to the workshop, not to an individual device
+-- or a Firebase user document.  A worker therefore inherits exactly the
+-- same limits and expiry as the workshop owner.
+create table if not exists public.workshop_subscriptions (
+  workshop_id uuid primary key references public.workshops(id) on delete cascade,
+  status text not null default 'trialing',
+  plan_type text not null default 'trial',
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz,
+  max_users integer not null default 4,
+  max_systems integer not null default 999,
+  max_profiles integer not null default 999,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists workshop_subscriptions_status_idx
+on public.workshop_subscriptions (status, ends_at);
+
+create or replace function public.create_default_workshop_subscription()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.workshop_subscriptions (
+    workshop_id, status, plan_type, starts_at, ends_at,
+    max_users, max_systems, max_profiles
+  )
+  values (
+    new.id, 'trialing', 'trial', now(), now() - interval '1 day',
+    4, 999, 999
+  )
+  on conflict (workshop_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists workshops_create_default_subscription
+on public.workshops;
+create trigger workshops_create_default_subscription
+after insert on public.workshops
+for each row execute function public.create_default_workshop_subscription();
+
+insert into public.workshop_subscriptions (workshop_id, status, plan_type, starts_at, ends_at)
+select id, 'trialing', 'trial', created_at, created_at - interval '1 day'
+from public.workshops
+where not exists (
+  select 1 from public.workshop_subscriptions s
+  where s.workshop_id = public.workshops.id
+);
+
+alter table public.workshop_subscriptions enable row level security;
+
+create or replace function public.admin_set_workshop_subscription(
+  target_workshop_id uuid,
+  new_status text,
+  new_plan_type text default 'yearly',
+  new_ends_at timestamptz default null,
+  new_max_users integer default 4,
+  new_max_systems integer default 999,
+  new_max_profiles integer default 999
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_app_admin() then
+    raise exception 'Only application administrators can change subscriptions';
+  end if;
+
+  insert into public.workshop_subscriptions (
+    workshop_id, status, plan_type, starts_at, ends_at,
+    max_users, max_systems, max_profiles, updated_at
+  )
+  values (
+    target_workshop_id,
+    coalesce(nullif(trim(new_status), ''), 'expired'),
+    coalesce(nullif(trim(new_plan_type), ''), 'yearly'),
+    now(), new_ends_at,
+    greatest(coalesce(new_max_users, 4), 0),
+    greatest(coalesce(new_max_systems, 999), 0),
+    greatest(coalesce(new_max_profiles, 999), 0),
+    now()
+  )
+  on conflict (workshop_id) do update set
+    status = excluded.status,
+    plan_type = excluded.plan_type,
+    starts_at = excluded.starts_at,
+    ends_at = excluded.ends_at,
+    max_users = excluded.max_users,
+    max_systems = excluded.max_systems,
+    max_profiles = excluded.max_profiles,
+    updated_at = now();
+end;
+$$;
+
+grant execute on function public.admin_set_workshop_subscription(
+  uuid, text, text, timestamptz, integer, integer, integer
+) to authenticated;
+
 create or replace function public.is_workshop_member(target_workshop_id uuid)
 returns boolean
 language sql
@@ -168,7 +304,7 @@ begin
   select *
   into existing_workshop
   from public.workshops
-  where code = clean_code
+  where code = clean_code or join_code = clean_code
   limit 1;
 
   if found then
@@ -228,8 +364,8 @@ begin
       end if;
     end if;
   else
-    insert into public.workshops (code, name, owner_uid)
-    values (clean_code, clean_name, auth.uid())
+    insert into public.workshops (code, join_code, name, owner_uid)
+    values (auth.uid()::text, clean_code, clean_name, auth.uid())
     returning id into workshop_uuid;
     workshop_was_created := true;
   end if;
@@ -251,6 +387,87 @@ end;
 $$;
 
 grant execute on function public.ensure_my_workshop(text, text) to authenticated;
+
+-- One-time bridge for workshops created before the move from Firebase Auth.
+-- The caller must be logged into Supabase with the same email as the old
+-- Firebase owner. Firebase UIDs remain text metadata only; the active member
+-- row always uses the new Supabase auth.uid().
+create or replace function public.claim_legacy_workshop(
+  target_code text,
+  target_name text default '',
+  legacy_owner_email text default ''
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  clean_code text;
+  clean_name text;
+  old_email text;
+  current_email text;
+  workshop_uuid uuid;
+  existing_workshop public.workshops%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  clean_code := nullif(trim(coalesce(target_code, '')), '');
+  if clean_code is null then
+    raise exception 'Workshop code is required';
+  end if;
+  clean_name := nullif(trim(coalesce(target_name, '')), '');
+  current_email := lower(coalesce((select email from auth.users where id = auth.uid()), ''));
+  old_email := lower(nullif(trim(coalesce(legacy_owner_email, '')), ''));
+
+  if old_email is null or current_email = '' or old_email <> current_email then
+    raise exception 'The Supabase email must match the legacy workshop owner email';
+  end if;
+
+  select * into existing_workshop
+  from public.workshops
+  where code = clean_code
+     or join_code = clean_code
+     or lower(coalesce(legacy_owner_email, '')) = current_email
+  limit 1;
+
+  if found then
+    if not (
+      public.is_app_admin()
+      or existing_workshop.owner_uid = auth.uid()
+      or lower(coalesce(existing_workshop.legacy_owner_email, '')) = current_email
+    ) then
+      raise exception 'This workshop is already owned by another account';
+    end if;
+
+    update public.workshops
+    set name = case
+          when clean_name is null or clean_name = '' then name
+          else clean_name
+        end,
+        owner_uid = coalesce(owner_uid, auth.uid()),
+        legacy_owner_email = current_email,
+        updated_at = now()
+    where id = existing_workshop.id
+    returning id into workshop_uuid;
+  else
+    insert into public.workshops (code, name, owner_uid, legacy_owner_email)
+    values (clean_code, coalesce(clean_name, clean_code), auth.uid(), current_email)
+    returning id into workshop_uuid;
+  end if;
+
+  insert into public.workshop_members (workshop_id, user_id, role, updated_at)
+  values (workshop_uuid, auth.uid(), 'owner', now())
+  on conflict (workshop_id, user_id) do update
+  set role = 'owner', blocked = false, updated_at = now();
+
+  return workshop_uuid;
+end;
+$$;
+
+grant execute on function public.claim_legacy_workshop(text, text, text) to authenticated;
 
 create or replace function public.update_workshop_member_permissions(
   target_code text,
@@ -284,7 +501,7 @@ begin
   select id
   into workshop_uuid
   from public.workshops
-  where code = clean_code
+  where code = clean_code or join_code = clean_code
   limit 1;
 
   if workshop_uuid is null then
@@ -404,7 +621,7 @@ begin
   select id
   into workshop_uuid
   from public.workshops
-  where code = clean_code
+  where code = clean_code or join_code = clean_code
   limit 1;
 
   if workshop_uuid is null then
@@ -462,6 +679,55 @@ $$;
 
 grant execute on function public.list_workshop_members(text) to authenticated;
 
+create or replace function public.list_admin_workshops()
+returns table (
+  workshop_id uuid,
+  code text,
+  name text,
+  owner_uid uuid,
+  owner_email text,
+  status text,
+  plan_type text,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  max_users integer,
+  max_systems integer,
+  max_profiles integer,
+  member_count bigint
+)
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  if not public.is_app_admin() then
+    raise exception 'Only application administrators can list workshops';
+  end if;
+
+  return query
+  select
+    w.id,
+    coalesce(w.join_code, w.code)::text,
+    w.name,
+    w.owner_uid,
+    coalesce(owner_user.email, '')::text,
+    coalesce(s.status, 'expired')::text,
+    coalesce(s.plan_type, 'trial')::text,
+    s.starts_at,
+    s.ends_at,
+    coalesce(s.max_users, 4),
+    coalesce(s.max_systems, 999),
+    coalesce(s.max_profiles, 999),
+    (select count(*) from public.workshop_members m where m.workshop_id = w.id)
+  from public.workshops w
+  left join public.workshop_subscriptions s on s.workshop_id = w.id
+  left join auth.users owner_user on owner_user.id = w.owner_uid
+  order by w.created_at desc;
+end;
+$$;
+
+grant execute on function public.list_admin_workshops() to authenticated;
+
 create table if not exists public.workshop_sync_rows (
   workshop_id uuid not null references public.workshops(id) on delete cascade,
   table_name text not null,
@@ -497,6 +763,22 @@ exception
 end
 $$;
 
+do $$
+begin
+  alter publication supabase_realtime add table public.catalog_manifest;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end
+$$;
+
+drop policy if exists workshop_subscriptions_read_members
+on public.workshop_subscriptions;
+create policy workshop_subscriptions_read_members
+on public.workshop_subscriptions
+for select to authenticated
+using (public.is_workshop_member(workshop_id));
+
 -- Broadcast every workshop row/profile change so connected phones and the
 -- Windows client update immediately. The client still keeps incremental
 -- downloads on app resume as a recovery path if a Realtime connection is
@@ -504,6 +786,15 @@ $$;
 do $$
 begin
   alter publication supabase_realtime add table public.workshop_sync_rows;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.workshop_subscriptions;
 exception
   when duplicate_object then null;
   when undefined_object then null;

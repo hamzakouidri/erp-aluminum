@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/subscription_service.dart';
+import 'package:database_data/services/auth_service.dart';
 
 class SubscriptionExpiredScreen extends StatelessWidget {
   const SubscriptionExpiredScreen({super.key});
@@ -119,8 +120,8 @@ class SubscriptionExpiredScreen extends StatelessWidget {
               TextButton.icon(
                 onPressed: () async {
                   try {
-                    await FirebaseAuth.instance.signOut();
-                    await GoogleSignIn().signOut();
+                    await AppAuthService().signOut();
+                    await AppAuthService().signOutGoogleSession();
                     await SqlDatabase.clearAllLocalData();
                   } catch (e) {
                     debugPrint('Sign out error: $e');

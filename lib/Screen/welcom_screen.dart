@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb, mapEquals;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:database_data/services/auth_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -528,7 +529,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user != null) {
       await _userSub?.cancel();
       setState(() {
@@ -855,7 +856,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color contentColor,
     Color mutedColor,
   ) {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
+    final firebaseUser = AppAuthService().currentUser;
     final email = _userEmail == 'جاري التحميل...'
         ? (firebaseUser?.email ?? '')
         : _userEmail;
@@ -2302,7 +2303,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         raw != 'كمبيوتر') {
       return raw;
     }
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user != null) {
       final emailName = user.email?.contains('@') == true
           ? user.email!.split('@').first

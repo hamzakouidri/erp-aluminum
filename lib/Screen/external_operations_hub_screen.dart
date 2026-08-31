@@ -6,6 +6,7 @@ import '../settings/app_settings.dart';
 import 'glass_order_reception_screen.dart';
 import 'achat_screen.dart';
 import '../widgets/lazy_window_image.dart';
+import 'package:database_data/services/auth_service.dart';
 
 import 'dart:async';
 import '../services/cloud_sync_service.dart';
@@ -186,7 +187,7 @@ class _ExternalOperationsHubScreenState
   }
 
   bool _isInstallationAssignedToCurrentUser(Map<String, dynamic> allocation) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user == null) return false;
     final uid = user.uid.trim().toLowerCase();
     final email = (user.email ?? '').trim().toLowerCase();

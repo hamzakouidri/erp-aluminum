@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/services/supabase_catalog_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -93,7 +97,7 @@ class CloudSyncService {
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
-  FirebaseAuth get _auth => FirebaseAuth.instance;
+  AppAuthService get _auth => AppAuthService();
   final SqlDatabase _db = SqlDatabase();
 
   String _deviceId = '';
@@ -951,6 +955,49 @@ class CloudSyncService {
     final user = _auth.currentUser;
     print("--- CloudSyncService: currentUser = ${user?.uid} ---");
     if (user != null) {
+      // Supabase owns the identity and workshop context in the active
+      // production path. Do not query Firebase users or let an old Firebase
+      // workshopId overwrite the verified Supabase workshop code.
+      if (AppAuthService().usesSupabase) {
+        try {
+          final account = await SupabaseAccountService().loadCurrentAccount();
+          if (account == null) {
+            _workshopId = prefs.getString('workshop_code') ?? '';
+          } else {
+            _workshopId = account.workshopCode;
+            await prefs.setString('workshop_code', account.workshopCode);
+            final accountName = account.workshopName.trim();
+            final accountCode = account.workshopCode.trim();
+            if (accountName.isNotEmpty && accountName != accountCode) {
+              await prefs.setString('workshop_name', accountName);
+            } else if ((prefs.getString('workshop_name') ?? '').trim() ==
+                accountCode) {
+              await prefs.remove('workshop_name');
+            }
+            await prefs.setString('user_role', account.role);
+            await prefs.setString(
+              'permissions_json',
+              jsonEncode(account.permissions),
+            );
+            await _applyPermissionsUpdate({
+              'role': account.role,
+              'permissions': account.permissions,
+              'isBlocked': account.blocked,
+            });
+          }
+        } catch (error) {
+          print('Supabase account context could not be loaded: $error');
+          _workshopId = prefs.getString('workshop_code') ?? '';
+        }
+        _lastHandledBackupFingerprint = _workshopId == null || _workshopId!.isEmpty
+            ? null
+            : prefs.getString(_handledBackupPreferenceKey(_workshopId!));
+        print(
+          "--- CloudSyncService: Supabase init finished. workshopId = $_workshopId ---",
+        );
+        return;
+      }
+
       try {
         final doc = await _firestore
             .collection('users')
@@ -1042,6 +1089,7 @@ class CloudSyncService {
 
   void reset() {
     SupabaseWorkshopSyncService().stop();
+    SupabaseCatalogSyncService().stopRealtime();
     _workshopId = null;
     _debounceTimer?.cancel();
     _backupRetryTimer?.cancel();
@@ -1119,15 +1167,19 @@ class CloudSyncService {
   void startListeningForUpdates(Function() onUpdateCallback) {
     onDataRestored = onUpdateCallback;
     final supabaseWorkshopSync = SupabaseWorkshopSyncService();
-    // Supabase downloads use their own Realtime channel. Forward its event
-    // through the same local stream used by screens, so an incoming order or
-    // workshop-profile change is painted without reopening the page.
+    // Supabase downloads use their own Realtime channel. Apply incoming rows
+    // in the background, but keep the visible page stable. A page can reload
+    // deliberately when the user reopens it or presses its own refresh action.
     void onSupabaseDataChanged() {
-      _dbUpdateController.add('cloud_restored');
-      onUpdateCallback();
+      debugPrint('CloudSyncService: background data applied silently.');
     }
 
     supabaseWorkshopSync.start(onDataChanged: onSupabaseDataChanged);
+    if (supabaseWorkshopSync.isSignedIn) {
+      SupabaseCatalogSyncService().startRealtime(
+        onDataChanged: onSupabaseDataChanged,
+      );
+    }
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -1185,6 +1237,9 @@ class CloudSyncService {
                 );
                 return;
               }
+              SupabaseCatalogSyncService().startRealtime(
+                onDataChanged: onSupabaseDataChanged,
+              );
               if (_lastAnnouncedListenerWorkshopId != 'supabase:$_workshopId') {
                 _lastAnnouncedListenerWorkshopId = 'supabase:$_workshopId';
                 _sendSyncFeedback(
@@ -1349,7 +1404,7 @@ class CloudSyncService {
               await _db.syncWorkerAllocationsStatusFromCloud(
                 changedRows: changedRows,
               );
-              _dbUpdateController.add('status_updated');
+              // Keep the local database current without repainting the page.
             } catch (e) {
               print('Error syncing allocation status real-time: $e');
             }
@@ -1366,10 +1421,7 @@ class CloudSyncService {
         .listen((snapshot) async {
           if (_isRestoring) return;
           try {
-            final didChange = await _db.syncOrdersStatusFromCloud();
-            if (didChange) {
-              _dbUpdateController.add('order_status_updated');
-            }
+            await _db.syncOrdersStatusFromCloud();
             // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
           } catch (e) {
             print('Error syncing order status real-time: $e');
@@ -1387,7 +1439,7 @@ class CloudSyncService {
           if (_isRestoring) return;
           try {
             await _db.syncConfirmedMeasurementsFromCloud();
-            _dbUpdateController.add('measurements_updated');
+            // Keep the local database current without repainting the page.
             // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
           } catch (e) {
             print('Error syncing confirmed measurements real-time: $e');
@@ -1421,7 +1473,7 @@ class CloudSyncService {
               }
             }
           }
-          _dbUpdateController.add('allocation_deleted');
+          // Keep the local database current without repainting the page.
         }, onError: _scheduleRealtimeListenerRetry);
 
     // 6. ⚡ الاستماع اللحظي لحذف الطلبيات. هذا مسار صغير ومباشر مثل
@@ -1434,7 +1486,6 @@ class CloudSyncService {
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
-          var didDelete = false;
           for (final change in snapshot.docChanges) {
             if (change.type != DocumentChangeType.added) continue;
             try {
@@ -1444,15 +1495,10 @@ class CloudSyncService {
                   int.tryParse(change.doc.id) ??
                   0;
               if (id <= 0) continue;
-              final deleted = await _db.deleteCommandeLocalOnly(id);
-              didDelete = didDelete || deleted > 0;
+              await _db.deleteCommandeLocalOnly(id);
             } catch (e) {
               print('Error applying order deletion tombstone real-time: $e');
             }
-          }
-          if (didDelete) {
-            _dbUpdateController.add('order_deleted');
-            onDataRestored?.call();
           }
         }, onError: _scheduleRealtimeListenerRetry);
 
@@ -1702,8 +1748,7 @@ class CloudSyncService {
     try {
       await _db.importAllData(data, mergeAllData: true);
       await _markLiveEventHandled(document.id);
-      _dbUpdateController.add('live_event_applied');
-      onDataRestored?.call();
+      // The remote event is applied silently; the current page is not rebuilt.
       if (await _hasPendingTransactions()) {
         _localSyncQueuedAfterRestore = true;
       }
@@ -1829,8 +1874,7 @@ class CloudSyncService {
 
       await _db.importAllData(assembledData, mergeAllData: true);
       await _markDeltaHandled(document.id);
-      _dbUpdateController.add('cloud_delta_applied');
-      onDataRestored?.call();
+      // The remote delta is applied silently; the current page is not rebuilt.
       if (await _hasPendingTransactions()) {
         _localSyncQueuedAfterRestore = true;
       }
@@ -2089,13 +2133,11 @@ class CloudSyncService {
         publishPendingChangesFirst: false,
       );
       await _rememberHandledBackupFingerprint(fingerprint);
-      _dbUpdateController.add('cloud_restored');
       _sendSyncFeedback(
         CloudSyncFeedbackType.downloadSucceeded,
         'تم استلام تحديث جديد من السحابة.',
         details: 'الورشة: $_workshopId',
       );
-      onDataRestored?.call();
       if (hasPendingLocalChanges) {
         // importAllData merges transactional tables. Publish that merged local
         // result only after the incoming snapshot has been applied.
@@ -2466,6 +2508,7 @@ class CloudSyncService {
     _deletionsListener?.cancel();
     _orderDeletionsListener?.cancel();
     _permissionsListener?.cancel();
+    SupabaseCatalogSyncService().stopRealtime();
     _listener = null;
     _catalogListener = null;
     _deltaListener = null;
@@ -2603,18 +2646,14 @@ class CloudSyncService {
     _silentBackup();
   }
 
-  /// Saves every local catalogue edit to the workshop backup. Publishing to
-  /// the central catalogue is an additional, admin-only operation.
+  /// Publishes a local catalogue edit only to the central Supabase catalogue.
+  /// Catalogue tables are intentionally excluded from workshop_sync_rows.
   Future<void> notifyCatalogChange({bool uploadImmediately = false}) async {
-    // Catalogue tables are database tables too, so every editor's changes
-    // belong in their workshop backup, regardless of role.
-    notifyChange();
     _dbUpdateController.add('catalog_changed');
 
-    // With an active Supabase workshop session, the catalogue is already part
-    // of workshopTables and is uploaded through workshop_sync_rows. Do not
-    // send the same data to the legacy Firebase global_catalog path.
-    if (SupabaseWorkshopSyncService().isSignedIn) {
+    final catalogSync = SupabaseCatalogSyncService();
+    if (!catalogSync.isSignedIn) {
+      print('Skipping catalog sync because Supabase is not signed in.');
       return;
     }
 
@@ -2622,10 +2661,18 @@ class CloudSyncService {
       await init();
       final prefs = await SharedPreferences.getInstance();
       if (!_canPublishGlobalCatalog(prefs.getString('user_role') ?? 'worker')) {
-        // Non-admin edits are already queued above, but must not overwrite
-        // the application-wide catalogue.
+        // A non-admin must not leave catalog rows in the local generic change
+        // log; otherwise the workshop uploader would retry them forever.
+        final pending = await _db.exportPendingCloudChanges();
+        final acknowledgements = pending.acknowledgements
+            .where((ack) => SqlDatabase.catalogTables.contains(ack.table))
+            .toList(growable: false);
+        await _db.acknowledgePendingCloudChanges(acknowledgements);
         print('Skipping central catalog publish for a non-admin account.');
         return;
+      }
+      if (!await catalogSync.isCurrentUserAppAdmin()) {
+        throw Exception('رفع الكتالوج المركزي متاح لمدير التطبيق فقط.');
       }
     } catch (e) {
       print('Failed to schedule catalog sync: $e');
@@ -3046,8 +3093,7 @@ class CloudSyncService {
         publishPendingChangesFirst: false,
       );
       _lastHandledBackupFingerprint = _backupFingerprint(payload);
-      _dbUpdateController.add('cloud_restored');
-      onDataRestored?.call();
+      // The merged cloud snapshot is applied silently; do not repaint pages.
     } finally {
       _endRestore();
     }
@@ -3729,6 +3775,24 @@ class CloudSyncService {
       final supabaseWorkshopSync = SupabaseWorkshopSyncService();
       if (supabaseWorkshopSync.isSignedIn) {
         try {
+          // The central catalogue is independent from workshop data. An
+          // application-admin edit that was interrupted is published first;
+          // every other account only downloads the confirmed central copy.
+          final centralCatalogSync = SupabaseCatalogSyncService();
+          if (await _hasUnpublishedCatalogChanges()) {
+            final prefs = await SharedPreferences.getInstance();
+            if (!_canPublishGlobalCatalog(
+              prefs.getString('user_role') ?? 'worker',
+            )) {
+              throw Exception(
+                'يوجد تعديل كتالوج محلي غير مصرح به؛ لن يتم استبدال النسخة المحلية.',
+              );
+            }
+            await centralCatalogSync.uploadGlobalCatalog();
+            await _markCatalogUploadConfirmed(_catalogChangeGeneration);
+          }
+          await centralCatalogSync.downloadGlobalCatalog(allowMissing: true);
+
           if (initialRestore) {
             await supabaseWorkshopSync.downloadWorkshopData(full: true);
           } else {
@@ -3831,7 +3895,6 @@ class CloudSyncService {
       if (!restoreSuccess && restoreError != null) {
         Error.throwWithStackTrace(restoreError, restoreStackTrace!);
       }
-      _dbUpdateController.add('');
     } finally {
       _endRestore();
       _activeFullRecovery = null;
@@ -4237,8 +4300,6 @@ class CloudSyncService {
         lastRestoreSummary = 'مسترجع:\n' + summaryList.join('\n');
       }
       await _rememberHandledBackupFingerprint(_backupFingerprint(payload));
-      _dbUpdateController.add('');
-      onDataRestored?.call();
       if (!effectiveKeepPendingChanges) {
         try {
           final prefs = await SharedPreferences.getInstance();
@@ -4346,11 +4407,13 @@ class CloudSyncService {
 
   Future<void> _performGlobalCatalogBackup() async {
     await init();
-    if (SupabaseWorkshopSyncService().isSignedIn) {
-      // Supabase is the only data backend. The normal pending-row uploader
-      // includes catalogue tables now, so this legacy API becomes a safe
-      // compatibility alias instead of writing to Firebase.
-      await SupabaseWorkshopSyncService().uploadPendingChanges();
+    final catalogSync = SupabaseCatalogSyncService();
+    if (!catalogSync.isSignedIn) {
+      throw Exception('يجب فتح جلسة Supabase لرفع الكتالوج المركزي.');
+    }
+    if (catalogSync.isSignedIn) {
+      await catalogSync.uploadGlobalCatalog();
+      await _markCatalogUploadConfirmed(_catalogChangeGeneration);
       return;
     }
     await _hasUnpublishedCatalogChanges();
@@ -4544,8 +4607,12 @@ class CloudSyncService {
     print("--- CloudSyncService: downloadGlobalCatalog() started ---");
     await init();
 
-    if (SupabaseWorkshopSyncService().isSignedIn) {
-      await SupabaseWorkshopSyncService().downloadWorkshopData(full: true);
+    final catalogSync = SupabaseCatalogSyncService();
+    if (!catalogSync.isSignedIn) {
+      throw Exception('يجب فتح جلسة Supabase لتنزيل الكتالوج المركزي.');
+    }
+    if (catalogSync.isSignedIn) {
+      await catalogSync.downloadGlobalCatalog();
       return;
     }
 
@@ -4696,7 +4763,90 @@ class CloudSyncService {
       _endRestore();
     }
     _lastHandledCatalogFingerprint = _catalogFingerprint(payload);
-    _dbUpdateController.add('catalog_downloaded');
+  }
+
+  /// Reads an old Firebase workshop backup without changing the current
+  /// workshop context. It is used only while a legacy account is being moved
+  /// to Supabase.
+  Future<Map<String, dynamic>?> readLegacyWorkshopBackup(
+    String legacyWorkshopId,
+  ) async {
+    final cleanId = legacyWorkshopId.trim();
+    if (cleanId.isEmpty) return null;
+
+    final latestDocRef = _firestore
+        .collection('workshops')
+        .doc(cleanId)
+        .collection('backups')
+        .doc('latest');
+    DocumentSnapshot<Map<String, dynamic>> latest;
+    try {
+      latest = await latestDocRef
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      latest = await latestDocRef.get().timeout(const Duration(seconds: 20));
+    }
+    final payload = latest.data();
+    if (!latest.exists || payload == null) return null;
+    if (payload['status']?.toString() != 'completed') {
+      throw StateError('نسخة الورشة القديمة غير مكتملة.');
+    }
+
+    final activeSnapshotId = payload['activeSnapshotId']?.toString() ?? '';
+    if (activeSnapshotId.isEmpty && payload['data'] is Map) {
+      return Map<String, dynamic>.from(payload['data'] as Map);
+    }
+
+    CollectionReference<Map<String, dynamic>> sourceChunkRef =
+        latestDocRef.collection('chunks');
+    if (activeSnapshotId.isNotEmpty) {
+      final activeSnapshotRef = latestDocRef.parent.doc(activeSnapshotId);
+      final activeSnapshot = await activeSnapshotRef
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
+      final activeData = activeSnapshot.data();
+      if (!activeSnapshot.exists ||
+          activeData == null ||
+          activeData['status']?.toString() != 'completed' ||
+          activeData['uploadId']?.toString() != payload['uploadId']?.toString()) {
+        throw StateError('نسخة الورشة القديمة غير صالحة أو غير مكتملة.');
+      }
+      sourceChunkRef = activeSnapshotRef.collection('chunks');
+    }
+
+    final chunks = await _fetchChunkPages(sourceChunkRef);
+    final assembled = _assembleChunkedData(
+      chunks,
+      uploadId: payload['uploadId']?.toString(),
+    );
+    final tables = payload['tables'];
+    if (tables is List) {
+      for (final table in tables) {
+        if (table is String && table.isNotEmpty) assembled.putIfAbsent(table, () => []);
+      }
+    }
+    final expectedCounts = payload['tableRowCounts'];
+    if (expectedCounts is Map) {
+      for (final entry in expectedCounts.entries) {
+        final expected = (entry.value as num?)?.toInt();
+        if (expected == null) continue;
+        final actual = assembled[entry.key.toString()]?.length ?? 0;
+        if (actual != expected) {
+          throw StateError('بيانات الورشة القديمة ناقصة في جدول ${entry.key}.');
+        }
+      }
+    }
+    return assembled;
+  }
+
+  /// Imports a verified legacy snapshot locally, then publishes it to the
+  /// already-claimed Supabase workshop using the normal merge-safe uploader.
+  Future<void> publishLegacyWorkshopBackup(
+    Map<String, dynamic> data,
+  ) async {
+    await _db.importWorkshopData(data, replaceAllData: false);
+    await SupabaseWorkshopSyncService().uploadFullWorkshopData();
   }
 
   Future<bool> hasBackup() async {

@@ -32,6 +32,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:database_data/services/auth_service.dart';
+
+import '../Screen/app_workspace_shell.dart';
 
 /// A Windows-only command bar.  It deliberately lives inside the app's
 /// navigator, below the permanent workspace tabs, so menus open like a normal
@@ -657,9 +660,10 @@ class DesktopCommandBar extends StatelessWidget {
             destructive: true,
             onSelected: () async {
               try {
+                context.read<WorkspaceController>().resetForSignedOut();
                 CloudSyncService().reset();
-                await FirebaseAuth.instance.signOut();
-                await GoogleSignIn().signOut();
+                await AppAuthService().signOut();
+                await AppAuthService().signOutGoogleSession();
                 await SqlDatabase.clearAllLocalData();
               } catch (error) {
                 debugPrint('Sign out error: $error');
@@ -722,7 +726,7 @@ class _WorkshopLogoWatermark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user == null) return const SizedBox.shrink();
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(

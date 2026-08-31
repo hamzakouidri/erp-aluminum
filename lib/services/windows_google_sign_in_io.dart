@@ -161,9 +161,9 @@ class WindowsGoogleSignIn {
         throw WindowsGoogleSignInException(userMessage);
       }
 
-      // Firebase verifies the Google ID token. The access token is useful but
-      // not required for Firebase sign-in and can be absent in an otherwise
-      // valid OpenID Connect response.
+      // Supabase verifies the Google ID token. The access token is useful but
+      // not required for the ID-token sign-in flow and can be absent in an
+      // otherwise valid OpenID Connect response.
       if (idToken == null || idToken.isEmpty) {
         debugPrint(
           'Windows Google OAuth token exchange completed without an ID token.',

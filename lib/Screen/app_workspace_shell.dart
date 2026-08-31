@@ -1,16 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
+import 'dart:ui' show PointerDeviceKind;
+import 'package:database_data/services/auth_service.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_account_service.dart';
 import '../services/supabase_catalog_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
@@ -94,6 +95,27 @@ class WorkspaceController extends ChangeNotifier {
 
   bool get isHomeActive =>
       _entries.isNotEmpty && _entries[_activeIndex].id == 'home';
+
+  /// Remove authenticated workspace pages when the session ends. Keeping
+  /// their widget instances after sign-out can leave stale pages/tabs visible
+  /// when the next account is opened on Windows.
+  void resetForSignedOut() {
+    _navigatorKeys.clear();
+    _entries
+      ..clear()
+      ..add(
+        const WorkspaceEntry(
+          id: 'home',
+          title: 'Home',
+          icon: Icons.home_rounded,
+          content: WelcomScreen(),
+          position: Offset(36, 20),
+          size: Size(1100, 720),
+        ),
+      );
+    _activeIndex = 0;
+    notifyListeners();
+  }
 
   GlobalKey<NavigatorState> navigatorKeyFor(String entryId) {
     return _navigatorKeys.putIfAbsent(
@@ -426,7 +448,10 @@ void openAdaptiveScreen(
 }) {
   final settings = Provider.of<AppSettingsProvider>(context, listen: false);
   final liveScreen = _CloudDataRefreshBoundary(child: screen);
-  if (settings.viewMode == AppViewMode.classic) {
+  // Windows always uses the desktop workspace shell.  Even when the saved
+  // preference is still `classic`, pushing on the root navigator would place
+  // the screen above DesktopWindowFrame and hide the permanent tab strip.
+  if (!_isWindowsDesktop && settings.viewMode == AppViewMode.classic) {
     Navigator.of(
       context,
       rootNavigator: true,
@@ -617,7 +642,7 @@ class _WorkspaceHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
 
     return Container(
       decoration: const BoxDecoration(
@@ -865,6 +890,7 @@ class _HomeTabBrandContent extends StatefulWidget {
 
 class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
   String _workshopName = 'ورشة الألمنيوم';
+  String _workshopCode = '';
   String? _logoUrl;
   ImageProvider? _cachedLogo;
   StreamSubscription<String>? _workshopSyncSubscription;
@@ -873,6 +899,7 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
   void initState() {
     super.initState();
     _loadLocalProfile();
+    _loadSupabaseProfile();
     _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
       event,
     ) {
@@ -889,8 +916,13 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
   Future<void> _loadLocalProfile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final savedName = prefs.getString('workshop_name');
+      final savedCode = (prefs.getString('workshop_code') ?? '').trim();
+      final rawSavedName = (prefs.getString('workshop_name') ?? '').trim();
+      final savedName = rawSavedName.isNotEmpty && rawSavedName != savedCode
+          ? rawSavedName
+          : null;
       final savedLogo = prefs.getString('workshop_logo_base64');
+      _workshopCode = savedCode;
       final nextName = savedName != null && savedName.isNotEmpty
           ? savedName
           : _workshopName;
@@ -903,6 +935,19 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
           _logoUrl = nextLogo;
           _updateLogoProvider(nextLogo);
         });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadSupabaseProfile() async {
+    try {
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      if (!mounted || account == null) return;
+      final name = account.workshopName.trim();
+      final code = account.workshopCode.trim();
+      if (code.isNotEmpty) _workshopCode = code;
+      if (name.isNotEmpty && name != code) {
+        setState(() => _workshopName = name);
       }
     } catch (_) {}
   }
@@ -927,7 +972,7 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     return StreamBuilder<DocumentSnapshot>(
       stream: user == null
           ? null
@@ -938,15 +983,13 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
       builder: (context, snapshot) {
         if (snapshot.hasData && snapshot.data?.data() != null) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
-          final firestoreName = (data['workshopName'] as String?)?.trim();
           final firestoreLogo =
               (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
               ? data['workshopLogoUrl']
               : data['logoUrl'];
 
-          if (firestoreName != null && firestoreName.isNotEmpty) {
-            _workshopName = firestoreName;
-          }
+          // Firebase is retained only for legacy compatibility here. It must
+          // not overwrite the Supabase workshop name with an internal ID.
           // A workshop document can change often during a background sync.
           // Recreating a MemoryImage on every snapshot briefly clears the
           // navigation-tab logo, even though its bytes have not changed.
@@ -1077,7 +1120,7 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     return StreamBuilder<DocumentSnapshot>(
       stream: user == null
           ? null
@@ -1172,22 +1215,29 @@ class _TabbedWorkspaceView extends StatefulWidget {
 /// that section expanded.
 class _CollapsedDesktopSidebar extends StatelessWidget {
   final ValueChanged<String?> onOpenGroup;
+  final VoidCallback? onHover;
 
-  const _CollapsedDesktopSidebar({required this.onOpenGroup});
+  const _CollapsedDesktopSidebar({
+    required this.onOpenGroup,
+    this.onHover,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final language =
         Provider.of<AppSettingsProvider>(context, listen: false).language;
-    return Material(
-      color: isDark ? const Color(0xFF172554) : const Color(0xFF3E55D9),
-      elevation: 6,
-      child: SafeArea(
-        right: false,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
+    return MouseRegion(
+      onEnter: (_) => onHover?.call(),
+      child: Material(
+        color: isDark ? const Color(0xFF172554) : const Color(0xFF3E55D9),
+        elevation: 6,
+        child: SafeArea(
+          right: false,
+          child: SingleChildScrollView(
+            primary: false,
+            child: Column(
+              children: [
               const SizedBox(height: 8),
               IconButton(
                 tooltip: Localization.translate('إظهار القائمة', language),
@@ -1266,7 +1316,8 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 8),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1294,45 +1345,6 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   }
 
   /// Phones keep swipe navigation between tabs, but do not show a horizontal
-  /// scrollbar over the top application bar.
-  Widget _wrapTabsWithDesktopScrollbar({
-    required bool isDesktop,
-    required Widget child,
-  }) {
-    if (!isDesktop) return child;
-    return Scrollbar(
-      controller: _tabsScrollController,
-      interactive: true,
-      thumbVisibility: true,
-      child: child,
-    );
-  }
-
-  void _handleTabsPointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent || !_tabsScrollController.hasClients) {
-      return;
-    }
-
-    final delta = event.scrollDelta.dx.abs() > 0
-        ? event.scrollDelta.dx
-        : event.scrollDelta.dy;
-    if (delta == 0) return;
-
-    final position = _tabsScrollController.position;
-    final target = (_tabsScrollController.offset + delta)
-        .clamp(position.minScrollExtent, position.maxScrollExtent)
-        .toDouble();
-    if ((target - _tabsScrollController.offset).abs() < 0.5) return;
-
-    // Desktop mouse wheels emit a vertical delta. Claim it here and use it to
-    // move the horizontal tab strip instead of letting a parent consume it.
-    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-      if (_tabsScrollController.hasClients) {
-        _tabsScrollController.jumpTo(target);
-      }
-    });
-  }
-
   void _ensureActiveTabVisible(String entryId) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1450,12 +1462,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                                 PointerDeviceKind.unknown,
                               },
                             ),
-                            child: Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerSignal: _handleTabsPointerSignal,
-                              child: _wrapTabsWithDesktopScrollbar(
-                                isDesktop: isDesktop,
-                                child: ListView.builder(
+                            child: ListView.builder(
                                   controller: _tabsScrollController,
                                   padding: EdgeInsetsDirectional.fromSTEB(
                                     isDesktop ? 0 : 8,
@@ -1573,10 +1580,8 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                                     );
                                   },
                                 ),
-                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -1647,7 +1652,10 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                       expandedGroup: _expandedSidebarGroup,
                     ),
                   )
-                : _CollapsedDesktopSidebar(onOpenGroup: _openSidebarGroup),
+                : _CollapsedDesktopSidebar(
+                    onOpenGroup: _openSidebarGroup,
+                    onHover: () => _openSidebarGroup(null),
+                  ),
           ),
           Expanded(child: mainContent),
         ],
@@ -1828,6 +1836,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
                   )
                 : _CollapsedDesktopSidebar(
                     onOpenGroup: (_) => setState(() => _isSidebarOpen = true),
+                    onHover: () => setState(() => _isSidebarOpen = true),
                   ),
           ),
           Expanded(child: mainContent),

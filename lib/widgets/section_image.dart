@@ -38,6 +38,13 @@ class SectionImageWidget extends StatelessWidget {
         .toUpperCase();
     final String path = (imagePath ?? '').trim();
     final String lowerPath = path.toLowerCase();
+    final bool isN245Code = cleanCode == 'N245';
+    final bool isN245Path = lowerPath
+        .replaceAll('\\', '/')
+        .split('/')
+        .last
+        .replaceFirst(RegExp(r'\.(png|jpe?g|jpeg|svg|webp)$'), '')
+        .replaceAll(RegExp(r'[\s_-]+'), '') == 'n245';
     final bool isAssetReference =
         lowerPath.startsWith('assets/') || lowerPath.startsWith('asset/');
     final String semanticLabel = '$rawCode ${name ?? ''} $path'.toLowerCase();
@@ -48,12 +55,18 @@ class SectionImageWidget extends StatelessWidget {
         (semanticLabel.contains('joint') ||
             semanticLabel.contains('جوان') ||
             semanticLabel.contains('gasket'));
+    final bool isJointSemantic =
+        semanticLabel.contains('joint') ||
+        semanticLabel.contains('جوان') ||
+        semanticLabel.contains('gasket');
     final bool isCentralJoint =
         !isFrappeJoint &&
-        (semanticLabel.contains('central') ||
-            semanticLabel.contains('سنترال') ||
-            semanticLabel.contains('سنطرال') ||
-            semanticLabel.contains('joint_central'));
+        (isN245Code ||
+            (isJointSemantic &&
+                (semanticLabel.contains('central') ||
+                    semanticLabel.contains('سنترال') ||
+                    semanticLabel.contains('سنطرال') ||
+                    semanticLabel.contains('joint_central'))));
     final bool isBourrageJoint =
         !isFrappeJoint &&
         (semanticLabel.contains('bourrage') ||
@@ -148,7 +161,13 @@ class SectionImageWidget extends StatelessWidget {
     }
 
     // 1. إحضار الصورة بناءً على المسار المربوط صراحة للمطع
-    if (loadedWidget == null && path.isNotEmpty) {
+    // N245 is the central gasket illustration. A legacy section row may have
+    // inherited N245.svg as its image_path, but a central montant/profile
+    // must never display the gasket image. Ignore that stale path unless the
+    // row is actually identified as the N245 gasket above.
+    if (loadedWidget == null &&
+        path.isNotEmpty &&
+        (!isN245Path || isCentralJoint)) {
       if (path.startsWith('data:image/')) {
         try {
           final uri = Uri.parse(path);
@@ -226,6 +245,12 @@ class SectionImageWidget extends StatelessWidget {
               '',
             )
             .toLowerCase();
+        // A stale N245 image path must not override the real image of a
+        // montant/ouvrant. N245 is reserved for the central gasket code.
+        if (stem.replaceAll(RegExp(r'[\s_-]+'), '') == 'n245' &&
+            !isCentralJoint) {
+          return;
+        }
         const imageAliases = <String, String>{
           'roulette_double': 'roulette.png',
           'roulettes': 'roulette.png',
@@ -305,9 +330,13 @@ class SectionImageWidget extends StatelessWidget {
       }
 
       if (isAssetReference) {
-        addUnique(
-          lowerPath.startsWith('asset/') ? 'assets/${path.substring(6)}' : path,
-        );
+        if (!isN245Path || isCentralJoint) {
+          addUnique(
+            lowerPath.startsWith('asset/')
+                ? 'assets/${path.substring(6)}'
+                : path,
+          );
+        }
         // A database may store only the filename or a Windows path. Also try
         // the bundled asset folders using its basename.
         addAssetFileCandidates(path);

@@ -344,6 +344,7 @@ bool catalogRuleMatchesExactScope(Map<String, dynamic> rule, int? seriesId) {
 
 List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
   final tLower = normalizeArabic(selectorType.toLowerCase().trim());
+  final compactType = tLower.replaceAll(RegExp(r'[\s_-]+'), '');
   const directRoles = {
     'joint_vitrage',
     'joint_bourrage',
@@ -354,6 +355,7 @@ List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
     'shutter_joint_brosse',
   };
   if (directRoles.contains(tLower)) return [tLower];
+  if (compactType == 'n245') return const ['joint_central'];
   if (tLower.contains('shutter') ||
       tLower.contains('volet') ||
       tLower.contains('للستار')) {
@@ -391,6 +393,9 @@ List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
 
 List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   final t = normalizeArabic(selectorType.toLowerCase().trim());
+  if (t == 'bardage' || t.contains('bardage') || t.contains('بارداج')) {
+    return const ['bardage'];
+  }
   if (t == 'frame' || t == 'cadre' || t == 'إطار') {
     return const ['frame', 'frame_extension'];
   }
@@ -559,6 +564,9 @@ bool profileSectionMatchesDrawingMode({
     'sliding',
     'منزلق',
     'جرار',
+    'tpr',
+    'tpi',
+    'hps',
   ]);
   final sectionLooksSliding = isSlidingProfileSection(section);
 
@@ -886,8 +894,13 @@ class CatalogCandidateResolver {
 
   String? _jointRoleFromRow(Map<String, dynamic> row) {
     final gasketType = normalizeArabic(
-      (row['gasket_type'] ?? '').toString().toLowerCase().trim(),
+      '${row['gasket_type'] ?? ''} ${row['name'] ?? ''} ${row['code'] ?? ''}'
+          .toLowerCase()
+          .trim(),
     );
+    if (gasketType.replaceAll(RegExp(r'[\s_-]+'), '').contains('n245')) {
+      return 'joint_central';
+    }
     if (gasketType.contains('فيتراج') || gasketType.contains('vitrage')) {
       return 'joint_vitrage';
     }

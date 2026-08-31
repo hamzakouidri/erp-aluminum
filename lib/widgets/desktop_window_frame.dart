@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/auth_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 
@@ -70,6 +71,11 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
 
   @override
   Widget build(BuildContext context) {
+    // The custom Windows caption belongs to the authenticated workspace. The
+    // login page must be allowed to occupy the whole window after sign-out;
+    // otherwise only the caption and its border remain visible above it.
+    if (AppAuthService().currentUser == null) return widget.child;
+
     final lang = Provider.of<AppSettingsProvider>(context).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : const Color(0xFF172033);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:database_data/services/auth_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -231,7 +232,7 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   Future<void> _loadSubscriptionLimits() async {
     _maxSystemModes = null;
     _maxProfiles = null;
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user == null || isApplicationAdminEmail(user.email)) return;
 
     try {

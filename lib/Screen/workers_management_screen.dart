@@ -8,6 +8,7 @@ import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
+import 'package:database_data/services/auth_service.dart';
 
 String _tr(String ar, String fr, String en, AppLanguage lang) {
   if (lang == AppLanguage.french) return fr;
@@ -81,7 +82,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
         rawData,
       );
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user = AppAuthService().currentUser;
       String? workshopId;
 
       // Remove manager if accidentally added to local DB
@@ -298,7 +299,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
         return;
       }
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user = AppAuthService().currentUser;
       if (user == null) return;
 
       final prefs = await SharedPreferences.getInstance();
@@ -703,6 +704,8 @@ class _WorkerCardState extends State<WorkerCard> {
       'edit_payments': false,
       'delete_payments': false,
       'manage_caisses': false,
+      'add_caisses': false,
+      'add_warehouses': false,
       'statistics': false,
       'accelerate_confirmed_invoices': false,
       'isBlocked': false,
@@ -2448,7 +2451,6 @@ class _WorkerCardState extends State<WorkerCard> {
                   allKeys: widget.isDeputyManager
                       ? const [
                           'cloud_backup',
-                          'sync_global_catalog',
                           'local_json_backup',
                         ]
                       : const [
@@ -2456,7 +2458,6 @@ class _WorkerCardState extends State<WorkerCard> {
                           'edit_worker',
                           'delete_worker',
                           'cloud_backup',
-                          'sync_global_catalog',
                           'local_json_backup',
                         ],
                   viewOnlyKeys: const [],
@@ -2554,29 +2555,6 @@ class _WorkerCardState extends State<WorkerCard> {
                   ),
                   value: perms['cloud_backup'] ?? false,
                   onChanged: (val) => _updatePermission('cloud_backup', val),
-                ),
-                SwitchListTile(
-                  title: Text(
-                    _tr(
-                      'مزامنة واستيراد الكتالوج العالمي',
-                      'Importer catalogue global',
-                      'Import global catalog',
-                      lang,
-                    ),
-                    style: switchTitleStyle,
-                  ),
-                  subtitle: Text(
-                    _tr(
-                      'السماح بمزامنة الأنظمة والكتالوج العالمي من السحابة',
-                      'Autoriser la synchronisation du catalogue global',
-                      'Allow syncing global systems catalog from cloud',
-                      lang,
-                    ),
-                    style: switchSubTitleStyle,
-                  ),
-                  value: perms['sync_global_catalog'] ?? false,
-                  onChanged: (val) =>
-                      _updatePermission('sync_global_catalog', val),
                 ),
                 SwitchListTile(
                   title: Text(
@@ -2707,6 +2685,7 @@ class _WorkerCardState extends State<WorkerCard> {
                     'change_payment_dates',
                     'treasury',
                     'manage_caisses',
+                    'add_caisses',
                     'edit_payments',
                     'delete_payments',
                     'worker_finances',
@@ -2797,6 +2776,28 @@ class _WorkerCardState extends State<WorkerCard> {
                 SwitchListTile(
                   title: Text(
                     _tr(
+                      'إضافة صندوق جديد',
+                      'Ajouter une caisse',
+                      'Add a cash box',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'السماح للعامل بإنشاء صندوق جديد فقط',
+                      'Autoriser l’ouvrier à créer une nouvelle caisse',
+                      'Allow the worker to create a new cash box',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['add_caisses'] ?? false,
+                  onChanged: (val) => _updatePermission('add_caisses', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
                       'تعديل المدفوعات والمعاملات',
                       'Modifier les paiements',
                       'Edit payments and transactions',
@@ -2872,6 +2873,7 @@ class _WorkerCardState extends State<WorkerCard> {
                   allKeys: const [
                     'inventory',
                     'inventory_adjustment',
+                    'add_warehouses',
                     'view_suppliers',
                     'purchases',
                     'add_purchases',
@@ -2918,6 +2920,29 @@ class _WorkerCardState extends State<WorkerCard> {
                   onChanged: (val) => val
                       ? _setInventoryAdjustmentPreset(7)
                       : _disableInventoryAdjustment(),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'إضافة مستودع جديد',
+                      'Ajouter un entrepôt',
+                      'Add a warehouse',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'السماح للعامل بإنشاء مستودع جديد فقط',
+                      'Autoriser l’ouvrier à créer un nouvel entrepôt',
+                      'Allow the worker to create a new warehouse',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['add_warehouses'] ?? false,
+                  onChanged: (val) =>
+                      _updatePermission('add_warehouses', val),
                 ),
                 if (_isPermissionEnabled(perms['inventory_adjustment']))
                   Padding(

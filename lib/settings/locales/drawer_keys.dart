@@ -101,6 +101,11 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Créer un atelier (Gérant)',
     AppLanguage.english: 'Create Workshop (Manager)',
   },
+  'الانضمام إلى ورشة موجودة': {
+    AppLanguage.arabic: 'الانضمام إلى ورشة موجودة',
+    AppLanguage.french: 'Rejoindre un atelier existant',
+    AppLanguage.english: 'Join an existing workshop',
+  },
   'اسم المصنع / الورشة': {
     AppLanguage.arabic: 'اسم المصنع / الورشة',
     AppLanguage.french: 'Nom de l\'usine / atelier',

@@ -24,6 +24,7 @@ import 'package:database_data/Commande/order_measurements_confirm_screen.dart';
 import 'package:database_data/Commande/partial_proforma_screen.dart';
 import 'package:database_data/Screen/order_allocation_screen.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
+import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
 
@@ -2875,6 +2876,100 @@ class _CommandeState extends State<Commande> {
     );
   }
 
+  Future<void> _showOrderContextMenu(
+    BuildContext context,
+    Map<String, dynamic> order,
+    Offset position,
+    AppLanguage lang,
+  ) async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final selected = await showDesktopContextMenu<String>(
+      context: context,
+      globalPosition: position,
+      items: [
+        if (settings.canEditOrders())
+          PopupMenuItem(
+            value: 'edit',
+            child: Text(Localization.translate('Edit Order', lang)),
+          ),
+        if (settings.canConfirmMeasurements())
+          PopupMenuItem(
+            value: 'measurements',
+            child: Text(
+              Localization.translate('تأكيد القياسات والملصقات (Stickers)', lang),
+            ),
+          ),
+        if (settings.canAllocateTasks())
+          PopupMenuItem(
+            value: 'allocate',
+            child: Text(
+              Localization.translate('توزيع المهام على العمال (إسناد الورشة)', lang),
+            ),
+          ),
+        if (settings.canChangeOrderStatus())
+          PopupMenuItem(
+            value: 'status',
+            child: Text(
+              Localization.translate('تغيير الحالة المخصص', lang),
+            ),
+          ),
+        if (settings.canDuplicateOrders())
+          PopupMenuItem(
+            value: 'duplicate',
+            child: Text(
+              Localization.translate('تكرار الطلبية (Duplicate)', lang),
+            ),
+          ),
+        if (settings.canDeleteOrders())
+          PopupMenuItem(
+            value: 'delete',
+            child: Text(
+              Localization.translate('مسح الطلبية (Supprimer)', lang),
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+      ],
+    );
+
+    if (!mounted || selected == null) return;
+    switch (selected) {
+      case 'edit':
+        openOrderInWorkspaceTab(
+          context,
+          db: db,
+          editCommandeId: (order['id'] as num?)?.toInt(),
+          onSaved: _fetchCommandes,
+        );
+      case 'measurements':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OrderMeasurementsConfirmScreen(
+              orderData: order,
+              db: db,
+            ),
+          ),
+        );
+      case 'allocate':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OrderAllocationScreen(
+              orderData: order,
+              db: db,
+            ),
+          ),
+        );
+      case 'status':
+        _showChangeStatusDialog(order);
+      case 'duplicate':
+        await _duplicateOrder(order);
+        if (mounted) _fetchCommandes();
+      case 'delete':
+        _showDeleteConfirmDialog(order['id']);
+    }
+  }
+
   Future<void> _duplicateOrder(Map<String, dynamic> orderData) async {
     final oldId = (orderData['id'] as num?)?.toInt();
     final clientId = (orderData['client_id'] as num?)?.toInt();
@@ -3807,6 +3902,8 @@ class _CommandeState extends State<Commande> {
 
       return ResizableTableRow(
         onTap: () => _showOrderOptions(context, order),
+        onSecondaryTapDown: (position) =>
+            _showOrderContextMenu(context, order, position, lang),
         cells: [
           // ID
           Text(

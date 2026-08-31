@@ -703,7 +703,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<AppSettingsProvider>();
-    if (!settings.isManager) {
+    if (!settings.isAdmin) {
       return Scaffold(
         appBar: AppBar(
           title: Text(_t('قواعد الكتالوج العامة', 'Règles du catalogue')),

@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/services/auth_service.dart';
 
 bool get isAdmin {
-  final user = FirebaseAuth.instance.currentUser;
+  final user = AppAuthService().currentUser;
   return isApplicationAdminEmail(user?.email);
 }
 
@@ -24,10 +24,12 @@ enum AppViewMode { classic, tabs, windows }
 
 class AppSettingsProvider extends ChangeNotifier {
   // Default values
-  AppLanguage _language = AppLanguage.arabic;
+  // French is the default application language.
+  AppLanguage _language = AppLanguage.french;
   ThemeMode _themeMode = ThemeMode.light;
   CostMethod _costMethod = CostMethod.linearMeter;
-  AppViewMode _viewMode = AppViewMode.classic;
+  // Tabs are the default workspace on phones and other non-desktop devices.
+  AppViewMode _viewMode = AppViewMode.tabs;
   double _profitMargin = 0.0;
   double _fontSizeScale = 1.0;
   String _geminiApiKey =
@@ -87,13 +89,17 @@ class AppSettingsProvider extends ChangeNotifier {
               _isPermissionTrue(_workerPermissions['co_manager']))) ||
       isAdmin;
 
+  bool get isAdmin => isApplicationAdminEmail(
+        AppAuthService().currentUser?.email,
+      );
+
   bool get isCoManager => _userRole == 'co_manager';
 
   AppSettingsProvider() {
     loadSettings();
   }
 
-  void _startPermissionListener(User user, SharedPreferences prefs) {
+  void _startPermissionListener(AppAuthUser user, SharedPreferences prefs) {
     // Keep one live listener per signed-in account. Recreating this listener
     // during every subscription snapshot could briefly miss a permission
     // change exactly while the manager was saving it.
@@ -207,9 +213,9 @@ class AppSettingsProvider extends ChangeNotifier {
       _workerPermissions = cached;
     }
 
-    User? user;
+    AppAuthUser? user;
     try {
-      user = FirebaseAuth.instance.currentUser;
+      user = AppAuthService().currentUser;
     } catch (_) {}
 
     if (user == null) {
@@ -350,6 +356,11 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canAccessInventory() =>
       isManager || _isPermissionTrue(_workerPermissions['inventory']);
 
+  /// Creating a warehouse is a separate administrative action from stock
+  /// adjustment. Managers always have it; workers need an explicit grant.
+  bool canAddWarehouses() =>
+      isManager || _isPermissionTrue(_workerPermissions['add_warehouses']);
+
   bool canAdjustInventory() =>
       isManager ||
       (canAccessInventory() &&
@@ -465,8 +476,9 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager ||
       _isPermissionTrue(_workerPermissions['select_systems']);
 
-  bool canChangePrices() =>
-      isManager || _isPermissionTrue(_workerPermissions['change_prices']);
+  /// Prices are part of the global catalogue. Only the application admin may
+  /// edit or publish them; workshop-manager permissions do not grant this.
+  bool canChangePrices() => isAdmin;
 
   bool canViewCostPrice() =>
       isManager || _isPermissionTrue(_workerPermissions['view_cost_price']);
@@ -504,8 +516,9 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canBackupToCloud() =>
       isManager || _isPermissionTrue(_workerPermissions['cloud_backup']);
 
-  bool canSyncGlobalCatalog() =>
-      isManager || _isPermissionTrue(_workerPermissions['sync_global_catalog']);
+  /// The catalogue is shared by all workshops, so synchronization is an
+  /// application-admin operation rather than a workshop permission.
+  bool canSyncGlobalCatalog() => isAdmin;
 
   bool canAccessLocalJsonBackup() =>
       isManager || _isPermissionTrue(_workerPermissions['local_json_backup']);
@@ -542,15 +555,29 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager || _isPermissionTrue(_workerPermissions['delete_payments']);
 
   bool canManageCaisses() =>
-      isManager || _workerPermissions['manage_caisses'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['manage_caisses']);
+
+  /// Creating a caisse is separately grantable from editing/deleting caisses.
+  bool canAddCaisses() =>
+      isManager || _isPermissionTrue(_workerPermissions['add_caisses']);
 
   // Load settings from SharedPreferences
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load Language
-    final langIndex = prefs.getInt('app_language') ?? 0;
-    _language = AppLanguage.values[langIndex];
+    // Load Language. Older installations used Arabic as the implicit default
+    // (without an explicit user choice), so upgrade only that old default to
+    // French while preserving a language selected by the user.
+    final langIndex = prefs.getInt('app_language');
+    final hasExplicitLanguage =
+        prefs.getBool('app_language_explicit') ?? false;
+    final effectiveLanguageIndex = langIndex == null ||
+            (!hasExplicitLanguage && langIndex == AppLanguage.arabic.index)
+        ? AppLanguage.french.index
+        : (langIndex ?? AppLanguage.french.index);
+    _language = effectiveLanguageIndex < AppLanguage.values.length
+        ? AppLanguage.values[effectiveLanguageIndex]
+        : AppLanguage.french;
 
     // Load Theme
     final isDark = prefs.getBool('app_is_dark') ?? false;
@@ -561,12 +588,21 @@ class AppSettingsProvider extends ChangeNotifier {
     _costMethod = CostMethod.values[costIndex];
     _profitMargin = prefs.getDouble('app_profit_margin') ?? 20.0; // Default 20%
 
-    // Load View Mode
-    final viewModeIndex = prefs.getInt('app_view_mode') ?? 0;
-    if (viewModeIndex < AppViewMode.values.length) {
-      _viewMode = AppViewMode.values[viewModeIndex];
+    // Load View Mode. A value of classic without the explicit-choice marker
+    // belongs to older installations where classic was the old default.
+    // Upgrade those installations to tabs once, while preserving any mode
+    // the user deliberately selected from Settings.
+    final viewModeIndex = prefs.getInt('app_view_mode');
+    final hasExplicitViewMode =
+        prefs.getBool('app_view_mode_explicit') ?? false;
+    final effectiveViewModeIndex = viewModeIndex == null ||
+        (!hasExplicitViewMode && viewModeIndex == AppViewMode.classic.index)
+        ? AppViewMode.tabs.index
+        : (viewModeIndex ?? AppViewMode.tabs.index);
+    if (effectiveViewModeIndex < AppViewMode.values.length) {
+      _viewMode = AppViewMode.values[effectiveViewModeIndex];
     } else {
-      _viewMode = AppViewMode.classic;
+      _viewMode = AppViewMode.tabs;
     }
 
     // Load Font Size
@@ -593,6 +629,7 @@ class AppSettingsProvider extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('app_language', lang.index);
+    await prefs.setBool('app_language_explicit', true);
   }
 
   Future<void> setTheme(ThemeMode mode) async {
@@ -614,6 +651,7 @@ class AppSettingsProvider extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('app_view_mode', mode.index);
+    await prefs.setBool('app_view_mode_explicit', true);
   }
 
   Future<void> setProfitMargin(double margin) async {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/Cliente/show_client.dart';
+import '../Screen/client_ledger_screen.dart';
 import 'package:flutter/material.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
@@ -11,8 +12,10 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
+import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
+import 'package:database_data/services/auth_service.dart';
 
 class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
@@ -1031,6 +1034,72 @@ class _CustomersState extends State<Customers> {
     }
   }
 
+  Future<void> _showClientContextMenu(
+    BuildContext context,
+    Map<String, dynamic> client,
+    Offset position,
+    AppLanguage lang,
+  ) async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final clientId = (client['id'] as num?)?.toInt() ?? 0;
+    final selected = await showDesktopContextMenu<String>(
+      context: context,
+      globalPosition: position,
+      items: [
+        if (settings.canViewClientLedger())
+          PopupMenuItem(
+            value: 'ledger',
+            child: Text(
+              Localization.translate(
+                'عرض كشف الحساب التفصيلي (Chrono)',
+                lang,
+              ),
+            ),
+          ),
+        if (settings.canViewClientDetails())
+          PopupMenuItem(
+            value: 'details',
+            child: Text(Localization.translate('عرض بيانات الزبون', lang)),
+          ),
+        if (settings.canEditClients())
+          PopupMenuItem(
+            value: 'edit',
+            child: Text(Localization.translate('تعديل', lang)),
+          ),
+        if (settings.canDeleteClients())
+          PopupMenuItem(
+            value: 'delete',
+            child: Text(
+              Localization.translate('حذف', lang),
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+      ],
+    );
+
+    if (!mounted || selected == null) return;
+    switch (selected) {
+      case 'ledger':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ClientLedgerScreen(clientId: clientId),
+          ),
+        );
+      case 'details':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ShowClient(clientId: clientId),
+          ),
+        ).then((_) => _refreshData());
+      case 'edit':
+        _showUpdateClientDialog(context, client);
+      case 'delete':
+        await _deleteClient(clientId);
+    }
+  }
+
   String _formatCreatorDisplay(String? rawPlatform) {
     String raw = (rawPlatform ?? '').trim();
     if (raw.isNotEmpty &&
@@ -1043,7 +1112,7 @@ class _CustomersState extends State<Customers> {
         raw != 'كمبيوتر') {
       return raw;
     }
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user != null) {
       final emailName = user.email?.contains('@') == true
           ? user.email!.split('@').first
@@ -1438,6 +1507,8 @@ class _CustomersState extends State<Customers> {
             ),
           );
         },
+        onSecondaryTapDown: (position) =>
+            _showClientContextMenu(context, client, position, lang),
         cells: [
           // ID
           Text(

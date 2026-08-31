@@ -141,6 +141,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'À choisir lorsqu’il doit apparaître pour cette série',
     ),
     _SeriesRole(
+      key: 'bardage',
+      ar: 'البرداج',
+      fr: 'Bardage',
+      descriptionAr:
+          'قطاع البرداج الذي تستعمله السلسلة. يحسب كقطع مخزون كاملة ويضاف إلى البروفيلات، وليس بالمتر المربع أو المتر الطولي.',
+      descriptionFr:
+          'Profil de bardage utilisé par la série. Il est compté comme pièce de stock complète et ajouté aux profils, jamais en m² ni au mètre linéaire.',
+    ),
+    _SeriesRole(
       key: 'batmo',
       ar: 'الباتمو',
       fr: 'Battement',
@@ -253,7 +262,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         value.contains('couliss') ||
         value.contains('منزلق') ||
         value.contains('جرار') ||
-        value.contains('كوليس');
+        value.contains('كوليس') ||
+        value.contains('tpr') ||
+        value.contains('tpi') ||
+        value.contains('hps');
   }
 
   bool get _isPvcProfile =>
@@ -678,7 +690,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<AppSettingsProvider>();
-    if (!settings.isManager) {
+    if (!settings.isAdmin) {
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -854,9 +866,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             const SizedBox(height: 14),
           ],
           for (final role in _availableRoles)
-            role.key == 'side_cover'
-                ? _sideCoverSectionsCard()
-                : _roleCard(role),
+            _roleCard(role),
           _aluminumJointLinksCard(),
           const SizedBox(height: 90),
         ],
@@ -864,8 +874,19 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     );
   }
 
+  List<Map<String, dynamic>> _sectionsForRole(_SeriesRole role) {
+    if (role.key == 'side_cover') {
+      return _sections.where(_isSideCoverSection).toList(growable: false);
+    }
+    if (role.key == 'bardage') {
+      return _sections.where(_isBardageSection).toList(growable: false);
+    }
+    return _sections;
+  }
+
   Widget _roleCard(_SeriesRole role) {
     final selectedIds = _sectionIdsByRole[role.key]!;
+    final availableSections = _sectionsForRole(role);
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ExpansionTile(
@@ -888,18 +909,22 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             child: Text(_t(role.descriptionAr, role.descriptionFr)),
           ),
           const SizedBox(height: 10),
-          if (_sections.isEmpty)
+          if (availableSections.isEmpty)
             Text(
               _t(
-                'لا توجد مقاطع فعالة في هذه السلسلة.',
-                'Aucun profil actif dans cette série.',
+                role.key == 'side_cover'
+                    ? 'لا توجد كوفرجوا فعالة في هذه السلسلة.'
+                    : 'لا توجد مقاطع فعالة في هذه السلسلة.',
+                role.key == 'side_cover'
+                    ? 'Aucun couvre-joint actif dans cette série.'
+                    : 'Aucun profil actif dans cette série.',
               ),
             )
           else
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _sections.map((section) {
+              children: availableSections.map((section) {
                 final sectionId = (section['id'] as num?)?.toInt();
                 if (sectionId == null) return const SizedBox.shrink();
                 final selected = selectedIds.contains(sectionId);
@@ -923,56 +948,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               }).toList(),
             ),
           _selectedRoleRulesList(role),
-        ],
-      ),
-    );
-  }
-
-  /// Side covers are catalogue sections, not a list of side-cover roles.
-  /// Keep this page item-first so the administrator can choose the role for
-  /// each real section without navigating through nested role cards.
-  Widget _sideCoverSectionsCard() {
-    final sideCoverSections = _sections
-        .where(_isSideCoverSection)
-        .toList(growable: false);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        leading: const Icon(Icons.view_sidebar_outlined),
-        title: Text(_t('الجوانب الموجودة', 'Couvre-joints disponibles')),
-        subtitle: Text(
-          _t(
-            '${sideCoverSections.length} جانب من قاعدة البيانات',
-            '${sideCoverSections.length} couvre-joint(s) du catalogue',
-          ),
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-        children: [
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Text(
-              _t(
-                'اختر الجانب الفعلي ثم عيّن له الدور المناسب.',
-                'Choisissez le couvre-joint réel puis attribuez-lui son rôle.',
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (sideCoverSections.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                _t(
-                  'لا توجد جوانب من نوع side_cover في قاعدة البيانات لهذا البروفيل.',
-                  'Aucun article de type side_cover dans le catalogue de ce profil.',
-                ),
-              ),
-            )
-          else
-            for (final section in sideCoverSections)
-              _sideCoverSectionTile(section),
         ],
       ),
     );
@@ -1012,94 +987,17 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     return !(isGasket && isHiddenGasketVariant);
   }
 
-  String? _assignedRoleForSection(int sectionId) {
-    for (final role in _availableRoles) {
-      if (_sectionIdsByRole[role.key]?.contains(sectionId) ?? false) {
-        return role.key;
-      }
-    }
-    return null;
-  }
-
-  _SeriesRole? _roleByKey(String? key) {
-    if (key == null || key.isEmpty) return null;
-    for (final role in _availableRoles) {
-      if (role.key == key) return role;
-    }
-    return null;
-  }
-
-  void _assignSideCoverRole(int sectionId, String? roleKey) {
-    setState(() {
-      for (final role in _roles) {
-        final selectedIds = _sectionIdsByRole[role.key]!;
-        if (role.key != roleKey) {
-          selectedIds.remove(sectionId);
-          _roleOptionsByRoleSection.remove(
-            _roleOptionKey(role.key, sectionId),
-          );
-          if (_defaultSectionByRole[role.key] == sectionId) {
-            _defaultSectionByRole[role.key] = selectedIds.isEmpty
-                ? null
-                : selectedIds.first;
-          }
-        }
-      }
-      if (roleKey == null || roleKey.isEmpty) return;
-      final selectedIds = _sectionIdsByRole[roleKey]!;
-      selectedIds.add(sectionId);
-      _defaultSectionByRole[roleKey] ??= sectionId;
-      _roleOptionsFor(roleKey, sectionId);
-    });
-  }
-
-  Widget _sideCoverSectionTile(Map<String, dynamic> section) {
-    final sectionId = (section['id'] as num?)?.toInt();
-    if (sectionId == null) return const SizedBox.shrink();
-    final assignedRole = _assignedRoleForSection(sectionId);
-    final role = _roleByKey(assignedRole);
-
-    return Card(
-      margin: const EdgeInsets.only(top: 8),
-      child: ListTile(
-        leading: Icon(
-          role == null ? Icons.radio_button_unchecked : Icons.check_circle,
-          color: role == null ? null : Theme.of(context).colorScheme.primary,
-        ),
-        title: Text(_sectionLabel(section)),
-        subtitle: Text(
-          role == null
-              ? _t('لم يُعيّن له دور بعد', 'Aucun rôle attribué')
-              : _t('الدور: ${role.ar}', 'Rôle : ${role.fr}'),
-        ),
-        trailing: SizedBox(
-          width: 210,
-          child: DropdownButtonFormField<String>(
-            initialValue: assignedRole ?? '',
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: _t('دور الجانب', 'Rôle du côté'),
-              isDense: true,
-            ),
-            items: [
-              DropdownMenuItem(
-                value: '',
-                child: Text(_t('غير محدد', 'Non défini')),
-              ),
-              for (final candidate in _availableRoles)
-                DropdownMenuItem(
-                  value: candidate.key,
-                  child: Text(_t(candidate.ar, candidate.fr)),
-                ),
-            ],
-            onChanged: (value) => _assignSideCoverRole(sectionId, value),
-          ),
-        ),
-        onTap: role == null
-            ? null
-            : () => _editRoleOptions(role, section),
-      ),
-    );
+  bool _isBardageSection(Map<String, dynamic> section) {
+    final text = [
+      section['type'],
+      section['name'],
+      section['code'],
+      section['description'],
+      section['label'],
+    ].whereType<Object>().join(' ').trim().toLowerCase();
+    return text.contains('bardage') ||
+        text.contains('بارداج') ||
+        text.contains('بارداش');
   }
 
   Widget _selectedRoleRulesList(_SeriesRole role) {
@@ -1597,6 +1495,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   String? _canonicalGasketType(Map<String, dynamic> joint) {
     final text = '${joint['gasket_type'] ?? ''} ${joint['name'] ?? ''}'
         .toLowerCase();
+    if (text.replaceAll(RegExp(r'[\s_-]+'), '').contains('n245')) {
+      return 'جوان سنترال';
+    }
     if (text.contains('فيتراج') ||
         text.contains('vitrage') ||
         text.contains('زجاج') ||

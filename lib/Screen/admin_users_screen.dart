@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/subscription_service.dart';
+import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -38,7 +39,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    if (isApplicationAdminEmail(FirebaseAuth.instance.currentUser?.email)) {
+    if (isApplicationAdminEmail(AppAuthService().currentUser?.email)) {
       _loadPaymentSettings();
     }
   }
@@ -66,7 +67,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   }
 
   Future<void> _savePaymentSettings() async {
-    if (!isApplicationAdminEmail(FirebaseAuth.instance.currentUser?.email)) {
+    if (!isApplicationAdminEmail(AppAuthService().currentUser?.email)) {
       return;
     }
     final rip = _baridiMobRipController.text.trim();
@@ -224,6 +225,26 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   ) async {
     final expiry = DateTime.now().add(Duration(days: days));
     try {
+      if (AppAuthService().usesSupabase) {
+        await SupabaseAccountService().setSubscriptionForOwnerUid(
+          ownerUid: uid,
+          status: 'trialing',
+          planType: 'trial',
+          endsAt: expiry,
+        );
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(_tf('✅ تم تفعيل {email} لمدة {days} أيام', {
+                'email': email,
+                'days': days,
+              })),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'trialEndDate': expiry.toIso8601String(),
         'subscriptionStatus': 'trial',
@@ -256,6 +277,24 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
 
   Future<void> _grantActive(BuildContext ctx, String uid, String email) async {
     try {
+      if (AppAuthService().usesSupabase) {
+        await SupabaseAccountService().setSubscriptionForOwnerUid(
+          ownerUid: uid,
+          status: 'active',
+          planType: 'lifetime',
+        );
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(_tf('✅ تم تفعيل {email} كاشتراك دائم', {
+                'email': email,
+              })),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'subscriptionStatus': 'active',
         'trialEndDate': FieldValue.delete(),
@@ -292,6 +331,20 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     String email,
   ) async {
     try {
+      if (AppAuthService().usesSupabase) {
+        await SupabaseAccountService().setSubscriptionForOwnerUid(
+          ownerUid: uid,
+          status: 'expired',
+          planType: 'trial',
+          endsAt: DateTime.now(),
+        );
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(content: Text(_tf('تم سحب اشتراك {email}', {'email': email}))),
+          );
+        }
+        return;
+      }
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'trialEndDate': FieldValue.delete(),
         'subscriptionStatus': 'expired',
@@ -320,6 +373,30 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     int limit,
   ) async {
     try {
+      if (AppAuthService().usesSupabase) {
+        await SupabaseAccountService().setSubscriptionForOwnerUid(
+          ownerUid: workshopId,
+          status: 'active',
+          planType: 'yearly',
+          maxUsers: limit,
+        );
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(
+                limit == 999
+                    ? _tf('فُتح الحد الأقصى لورشة {email}', {'email': email})
+                    : _tf('الحد الأقصى = {limit} مستخدمين لورشة {email}', {
+                        'limit': limit,
+                        'email': email,
+                      }),
+              ),
+              backgroundColor: Colors.teal,
+            ),
+          );
+        }
+        return;
+      }
       await FirebaseFirestore.instance
           .collection('workshops')
           .doc(workshopId)
@@ -357,6 +434,39 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     String label,
   ) async {
     try {
+      if (AppAuthService().usesSupabase) {
+        final maxUsers = field == 'maxUsers' ? limit : null;
+        final maxSystems = field == 'maxSystems' ? limit : null;
+        final maxProfiles = field == 'maxProfiles' ? limit : null;
+        await SupabaseAccountService().setSubscriptionForOwnerUid(
+          ownerUid: workshopId,
+          status: 'active',
+          planType: 'yearly',
+          maxUsers: maxUsers,
+          maxSystems: maxSystems,
+          maxProfiles: maxProfiles,
+        );
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(
+                limit == 999
+                    ? _tf('تم إلغاء حد {label} لورشة {email}', {
+                        'label': label,
+                        'email': email,
+                      })
+                    : _tf('حد {label} = {limit} لورشة {email}', {
+                        'label': label,
+                        'limit': limit,
+                        'email': email,
+                      }),
+              ),
+              backgroundColor: Colors.teal,
+            ),
+          );
+        }
+        return;
+      }
       await FirebaseFirestore.instance
           .collection('workshops')
           .doc(workshopId)
@@ -888,13 +998,180 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     );
   }
 
+  Map<String, dynamic> _supabaseSubscriptionData(Map<String, dynamic> row) {
+    return {
+      'subscriptionStatus': row['status'],
+      'subscriptionType': row['plan_type'],
+      'subscriptionStartDate': row['starts_at'],
+      'subscriptionEndDate': row['ends_at'],
+    };
+  }
+
+  Widget _buildSupabaseAdminBody() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: SupabaseAccountService().fetchAdminWorkshops(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('تعذر تحميل الورش من Supabase:\n${snapshot.error}'),
+          );
+        }
+        var rows = snapshot.data ?? const <Map<String, dynamic>>[];
+        if (_searchQuery.trim().isNotEmpty) {
+          final query = _searchQuery.trim().toLowerCase();
+          rows = rows.where((row) {
+            final text = '${row['name']} ${row['code']} ${row['owner_email']}'
+                .toLowerCase();
+            return text.contains(query);
+          }).toList(growable: false);
+        }
+        if (rows.isEmpty) {
+          return Center(child: Text(_t('لا يوجد مستخدمون في قاعدة البيانات')));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+          itemCount: rows.length,
+          itemBuilder: (context, index) {
+            final row = rows[index];
+            final ownerUid = row['owner_uid']?.toString() ?? '';
+            final email = row['owner_email']?.toString() ?? '';
+            final data = _supabaseSubscriptionData(row);
+            final active = _isActive(data);
+            final (statusText, statusColor) = _statusInfo(data);
+            final memberCount = row['member_count']?.toString() ?? '0';
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          active ? Icons.storefront : Icons.lock_clock,
+                          color: active ? Colors.green : Colors.red,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            row['name']?.toString().trim().isNotEmpty == true
+                                ? row['name'].toString()
+                                : row['code']?.toString() ?? 'ورشة',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text('$email  •  $memberCount مستخدمين'),
+                    Text(
+                      'الكود: ${row['code'] ?? ''}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton(
+                          onPressed: ownerUid.isEmpty
+                              ? null
+                              : () async {
+                                  await _grantDays(
+                                    context,
+                                    ownerUid,
+                                    email,
+                                    30,
+                                  );
+                                  if (mounted) setState(() {});
+                                },
+                          child: const Text('30 يومًا'),
+                        ),
+                        OutlinedButton(
+                          onPressed: ownerUid.isEmpty
+                              ? null
+                              : () async {
+                                  await _grantActive(context, ownerUid, email);
+                                  if (mounted) setState(() {});
+                                },
+                          child: const Text('تفعيل دائم'),
+                        ),
+                        TextButton(
+                          onPressed: ownerUid.isEmpty
+                              ? null
+                              : () async {
+                                  await _revokeSubscription(
+                                    context,
+                                    ownerUid,
+                                    email,
+                                  );
+                                  if (mounted) setState(() {});
+                                },
+                          child: const Text('سحب الاشتراك'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ──────────────── Build ────────────────
 
   @override
   Widget build(BuildContext context) {
     final isAppAdmin = isApplicationAdminEmail(
-      FirebaseAuth.instance.currentUser?.email,
+      AppAuthService().currentUser?.email,
     );
+    if (AppAuthService().usesSupabase && isAppAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_t('إدارة المشتركين والورشات')),
+          centerTitle: true,
+        ),
+        body: Column(
+          children: [
+            _buildPaymentSettingsCard(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: _t('بحث بالاسم أو البريد الإلكتروني...'),
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (value) =>
+                    setState(() => _searchQuery = value.toLowerCase()),
+              ),
+            ),
+            Expanded(child: _buildSupabaseAdminBody()),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(_t('إدارة المشتركين والورشات')),

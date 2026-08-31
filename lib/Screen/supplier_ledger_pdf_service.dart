@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,8 +14,16 @@ import 'package:share_plus/share_plus.dart';
 import 'package:database_data/arabic_reshaper/arabic_reshaper.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
+import '../services/pdf_font_cache.dart';
 
 class SupplierLedgerPdfService {
+  static String _safeFilePart(Object? value, {String fallback = 'supplier'}) {
+    final cleaned = (value?.toString() ?? '')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .trim();
+    return cleaned.isEmpty ? fallback : cleaned;
+  }
+
   static bool _hasArabic(String text) {
     return text.runes.any(
       (r) =>
@@ -55,29 +63,9 @@ class SupplierLedgerPdfService {
       } catch (_) {}
     }
 
-    pw.Font fontRegular;
-    pw.Font fontBold;
-    try {
-      final cairoRegular = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-      fontRegular = pw.Font.ttf(cairoRegular);
-    } catch (_) {
-      try {
-        fontRegular = await PdfGoogleFonts.cairoRegular();
-      } catch (_) {
-        fontRegular = pw.Font.helvetica();
-      }
-    }
-
-    try {
-      final cairoBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-      fontBold = pw.Font.ttf(cairoBold);
-    } catch (_) {
-      try {
-        fontBold = await PdfGoogleFonts.cairoBold();
-      } catch (_) {
-        fontBold = pw.Font.helveticaBold();
-      }
-    }
+    final fonts = await PdfFontCache.load();
+    final fontRegular = fonts.regular;
+    final fontBold = fonts.bold;
 
     final formatter = NumberFormat('#,##0.00');
     final supplierName = supplier['name']?.toString() ?? '';
@@ -327,7 +315,7 @@ class SupplierLedgerPdfService {
     AppLanguage lang = AppLanguage.arabic,
   }) async {
     final bytes = await generateSupplierLedgerPdfBytes(supplier, items, lang: lang);
-    final name = supplier['name']?.toString() ?? 'supplier';
+    final name = _safeFilePart(supplier['name']);
     await Printing.layoutPdf(
       onLayout: (_) async => bytes,
       name: 'kachef_mowarrid_$name.pdf',
@@ -341,7 +329,7 @@ class SupplierLedgerPdfService {
   }) async {
     try {
       final bytes = await generateSupplierLedgerPdfBytes(supplier, items, lang: lang);
-      final name = supplier['name']?.toString() ?? 'supplier';
+      final name = _safeFilePart(supplier['name']);
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/kachef_mowarrid_$name.pdf');
       await file.writeAsBytes(bytes);
@@ -349,7 +337,7 @@ class SupplierLedgerPdfService {
     } catch (_) {
       try {
         final bytes = await generateSupplierLedgerPdfBytes(supplier, items, lang: lang);
-        final name = supplier['name']?.toString() ?? 'supplier';
+        final name = _safeFilePart(supplier['name']);
         await Printing.sharePdf(bytes: bytes, filename: 'kachef_mowarrid_$name.pdf');
       } catch (_) {}
     }
@@ -363,7 +351,7 @@ class SupplierLedgerPdfService {
   }) async {
     try {
       final bytes = await generateSupplierLedgerPdfBytes(supplier, items, lang: lang);
-      final name = supplier['name']?.toString() ?? 'supplier';
+      final name = _safeFilePart(supplier['name']);
       final filename = 'kachef_mowarrid_$name.pdf';
       String? finalPath;
 

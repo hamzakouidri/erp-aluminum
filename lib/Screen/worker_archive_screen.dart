@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../widgets/lazy_window_image.dart';
+import 'package:database_data/services/auth_service.dart';
 
 class WorkerArchiveScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -36,7 +37,7 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
     setState(() => _isLoading = true);
     try {
       final settings = Provider.of<AppSettingsProvider>(context, listen: false);
-      final user = FirebaseAuth.instance.currentUser;
+      final user = AppAuthService().currentUser;
       List<Map<String, dynamic>> tasks = [];
 
       if (settings.isManager) {

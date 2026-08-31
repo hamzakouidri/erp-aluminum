@@ -10,6 +10,7 @@ import '../Commande/order_workspace_screen.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/lazy_window_image.dart';
 import 'worker_archive_screen.dart';
+import 'package:database_data/services/auth_service.dart';
 
 class WorkerTasksScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -107,7 +108,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       setState(() => _isLoading = true);
     }
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = AppAuthService().currentUser;
       if (user != null) {
         final settings = Provider.of<AppSettingsProvider>(context, listen: false);
 
@@ -150,7 +151,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   }
 
   bool _isTaskAssignedToCurrentUser(Map<String, dynamic> task) {
-    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUser = AppAuthService().currentUser;
     final currentUid = (currentUser?.uid ?? '').trim().toLowerCase();
     final currentEmail = (currentUser?.email ?? '').trim().toLowerCase();
 
@@ -414,25 +415,27 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          lang == AppLanguage.arabic ? 'تأكيد مسح وتصفير المهام' : 'Reset Tasks Confirmation',
+          _tr('تأكيد مسح وتصفير المهام', 'Confirmation de réinitialisation des tâches', 'Reset Tasks Confirmation'),
           style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
         ),
         content: Text(
-          lang == AppLanguage.arabic 
-            ? 'هل أنت تأكد من مسح وتصفير جميع الإسنادات والمهام المصنعة بالتطوير؟'
-            : 'Voulez-vous réinitialiser toutes les tâches et affectations ?',
+          _tr(
+            'هل أنت متأكد من مسح وتصفير جميع الإسنادات والمهام المصنعة بالتطوير؟',
+            'Voulez-vous réinitialiser toutes les tâches et affectations ?',
+            'Reset all development assignments and manufactured tasks?',
+          ),
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              lang == AppLanguage.arabic ? 'مسح كلي 🧹' : 'Effacer tout 🧹',
+              _tr('مسح كلي 🧹', 'Tout effacer 🧹', 'Clear all 🧹'),
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
@@ -454,9 +457,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: Text(
-                      lang == AppLanguage.arabic
-                          ? 'جاري تصفير ومسح جميع المهام…'
-                          : 'Réinitialisation des tâches…',
+                      _tr(
+                        'جاري تصفير ومسح جميع المهام…',
+                        'Réinitialisation des tâches…',
+                        'Resetting tasks…',
+                      ),
                       style: const TextStyle(fontFamily: 'Cairo'),
                     ),
                   ),
@@ -475,7 +480,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(lang == AppLanguage.arabic ? 'تم مسح وتصفير كافة الإسنادات والمهام بنجاح محلياً ومنا السحابة 🧹' : 'Toutes les tâches ont été réinitialisées 🧹'),
+            content: Text(_tr(
+              'تم مسح وتصفير كافة الإسنادات والمهام بنجاح محلياً ومن السحابة 🧹',
+              'Toutes les tâches ont été réinitialisées localement et dans le cloud 🧹',
+              'All assignments and tasks were reset locally and in the cloud 🧹',
+            )),
             backgroundColor: Colors.red,
           ),
         );
@@ -493,19 +502,19 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
-          lang == AppLanguage.arabic ? 'مهامي وتصنيعاتي' : 'Mes Tâches de Fabrication',
+          _tr('مهامي وتصنيعاتي', 'Mes tâches de fabrication', 'My manufacturing tasks'),
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-            tooltip: lang == AppLanguage.arabic ? 'تصفير كافة المهام والإسنادات (للتطوير)' : 'Réinitialiser toutes les tâches (Dev)',
+            tooltip: _tr('تصفير كافة المهام والإسنادات (للتطوير)', 'Réinitialiser toutes les tâches et affectations (développement)', 'Reset all tasks and assignments (development)'),
             onPressed: () => _confirmResetTasksData(context, lang),
           ),
           IconButton(
             icon: const Icon(Icons.archive_outlined),
-            tooltip: lang == AppLanguage.arabic ? 'الأرشيف' : 'Archives',
+            tooltip: _tr('الأرشيف', 'Archives', 'Archive'),
             onPressed: () {
               Navigator.push(
                 context,
@@ -531,7 +540,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  lang == AppLanguage.arabic ? '🧪 تصفير المهام (للتطوير)' : '🧪 Réinitialiser (Dev)',
+                  _tr('🧪 تصفير المهام (للتطوير)', '🧪 Réinitialiser (développement)', '🧪 Reset tasks (development)'),
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
                 ),
                 ElevatedButton.icon(
@@ -543,7 +552,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                   onPressed: () => _confirmResetTasksData(context, lang),
                   icon: const Icon(Icons.delete_sweep, size: 18),
                   label: Text(
-                    lang == AppLanguage.arabic ? 'تصفير كافة المهام 🧹' : 'Effacer Tout 🧹',
+                    _tr('تصفير كافة المهام 🧹', 'Tout effacer 🧹', 'Clear all tasks 🧹'),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
                   ),
                 ),
@@ -560,13 +569,13 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 children: [
                   _scopeFilterButton(
                     'mine',
-                    lang == AppLanguage.arabic ? 'مهامي فقط' : 'Mes tâches',
+                    _tr('مهامي فقط', 'Mes tâches', 'My tasks'),
                     Icons.person_pin_circle_rounded,
                   ),
                   const SizedBox(width: 8),
                   _scopeFilterButton(
                     'all',
-                    lang == AppLanguage.arabic ? 'كل الإسنادات' : 'Toutes',
+                    _tr('كل الإسنادات', 'Toutes les affectations', 'All assignments'),
                     Icons.groups_2_rounded,
                   ),
                   const SizedBox(width: 14),
@@ -576,13 +585,13 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                     color: isDark ? Colors.white12 : Colors.black12,
                   ),
                   const SizedBox(width: 14),
-                  _filterButton('all', lang == AppLanguage.arabic ? 'الكل' : 'Tout', Icons.list),
+                  _filterButton('all', _tr('الكل', 'Tout', 'All'), Icons.list),
                   const SizedBox(width: 8),
-                  _filterButton('pending', lang == AppLanguage.arabic ? 'قيد التصنيع' : 'En fabrication', Icons.hourglass_empty_rounded),
+                  _filterButton('pending', _tr('قيد التصنيع', 'En fabrication', 'In production'), Icons.hourglass_empty_rounded),
                   const SizedBox(width: 8),
-                  _filterButton('manufactured', lang == AppLanguage.arabic ? 'تم الصنع (بدون زجاج)' : 'Prêt (Sans vitrage)', Icons.build_circle_outlined),
+                  _filterButton('manufactured', _tr('تم الصنع (بدون زجاج)', 'Fabriqué (sans vitrage)', 'Manufactured (without glazing)'), Icons.build_circle_outlined),
                   const SizedBox(width: 8),
-                  _filterButton('glass', lang == AppLanguage.arabic ? 'منتهي بالزجاج' : 'Terminé avec vitrage', Icons.check_circle_outline_rounded),
+                  _filterButton('glass', _tr('منتهي بالزجاج', 'Terminé avec vitrage', 'Finished with glazing'), Icons.check_circle_outline_rounded),
                 ],
               ),
             ),
@@ -603,9 +612,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
               },
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
               decoration: InputDecoration(
-                hintText: lang == AppLanguage.arabic
-                    ? 'بحث شامل (اسم الزبون، العامل، رقم الطلبية، النافذة، اللون...)'
-                    : 'Recherche globale (Client, Ouvrier, Commande, Fenêtre...)',
+                hintText: _tr(
+                  'بحث شامل (اسم الزبون، العامل، رقم الطلبية، النافذة، اللون...)',
+                  'Recherche globale (client, ouvrier, commande, fenêtre, couleur...)',
+                  'Global search (client, worker, order, window, color...)',
+                ),
                 hintStyle: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 12,
@@ -649,7 +660,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                               Icon(Icons.assignment_turned_in_outlined, size: 64, color: Colors.grey.shade400),
                               const SizedBox(height: 12),
                               Text(
-                                lang == AppLanguage.arabic ? 'لا توجد مهام مطابقة للفلتر المختار' : 'Aucune tâche correspondante',
+                                _tr('لا توجد مهام مطابقة للفلتر المختار', 'Aucune tâche correspondante', 'No tasks match the selected filter'),
                                 style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey, fontSize: 14),
                               ),
                               // 🔍 معلومات التشخيص (تُزال لاحقاً)
@@ -693,6 +704,18 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         ],
       ),
     );
+  }
+
+  String _tr(String arabic, String french, String english) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    switch (lang) {
+      case AppLanguage.arabic:
+        return arabic;
+      case AppLanguage.french:
+        return french;
+      case AppLanguage.english:
+        return english;
+    }
   }
 
   int _taskOrderNumber(Map<String, dynamic> task, int fallback) {

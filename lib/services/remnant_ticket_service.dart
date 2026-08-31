@@ -1,7 +1,7 @@
-import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'pdf_font_cache.dart';
 
 class RemnantTicketService {
   static String _value(Map<String, dynamic> row, String key) =>
@@ -22,12 +22,9 @@ class RemnantTicketService {
 
   static Future<void> printTickets(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
-    final regular = pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
-    );
-    final bold = pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
-    );
+    final fonts = await PdfFontCache.load();
+    final regular = fonts.regular;
+    final bold = fonts.bold;
     final document = pw.Document();
 
     for (final row in rows) {

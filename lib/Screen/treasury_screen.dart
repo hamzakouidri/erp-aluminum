@@ -1612,6 +1612,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       context,
       listen: false,
     ).language;
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final canManageCaisses = settings.canManageCaisses();
+    final canAddCaisse = settings.canAddCaisses();
     showDialog(
       context: context,
       builder: (context) {
@@ -1631,36 +1634,38 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: nameCtrl,
-                            decoration: InputDecoration(
-                              labelText: Localization.translate(
-                                'اسم صندوق جديد',
-                                lang,
+                    if (canAddCaisse) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: nameCtrl,
+                              decoration: InputDecoration(
+                                labelText: Localization.translate(
+                                  'اسم صندوق جديد',
+                                  lang,
+                                ),
+                                border: const OutlineInputBorder(),
                               ),
-                              border: const OutlineInputBorder(),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            final name = nameCtrl.text.trim();
-                            if (name.isNotEmpty) {
-                              await widget.db.insertCaisse(name);
-                              nameCtrl.clear();
-                              setStateDialog(() {});
-                              _loadData();
-                            }
-                          },
-                          child: Text(Localization.translate('إضافة', lang)),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 24),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () async {
+                              final name = nameCtrl.text.trim();
+                              if (name.isNotEmpty) {
+                                await widget.db.insertCaisse(name);
+                                nameCtrl.clear();
+                                setStateDialog(() {});
+                                _loadData();
+                              }
+                            },
+                            child: Text(Localization.translate('إضافة', lang)),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 24),
+                    ],
                     Text(
                       Localization.translate(
                         'الصناديق الحالية (اضغط للتعديل أو الحذف):',
@@ -1697,10 +1702,11 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                     Localization.translate(name, lang),
                                     style: const TextStyle(fontFamily: 'Cairo'),
                                   ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                      if (canManageCaisses)
+                                        IconButton(
                                         icon: const Icon(
                                           Icons.edit,
                                           color: Colors.blue,
@@ -1769,7 +1775,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                           }
                                         },
                                       ),
-                                      if (list.length > 1 && !widget.readOnly)
+                                      if (canManageCaisses &&
+                                          list.length > 1 &&
+                                          !widget.readOnly)
                                         IconButton(
                                           icon: const Icon(
                                             Icons.delete,
@@ -2796,7 +2804,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                           ),
                         ],
                         const SizedBox(width: 4),
-                        if (settingsProvider.canManageCaisses())
+                        if (settingsProvider.canManageCaisses() ||
+                            settingsProvider.canAddCaisses())
                           IconButton(
                             icon: Icon(
                               Icons.settings,

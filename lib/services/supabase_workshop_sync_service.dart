@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -213,6 +214,38 @@ class SupabaseWorkshopSyncService {
     }, onConflict: 'workshop_id,table_name,row_id');
   }
 
+  /// Claims an old Firebase workshop using the stable legacy code. The SQL
+  /// function validates the current Supabase email and creates the owner
+  /// membership without ever storing a Firebase UID in a Supabase FK.
+  Future<String> claimLegacyWorkshopOwner({
+    required String code,
+    required String name,
+    required String legacyOwnerEmail,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw Exception('يجب تسجيل الدخول إلى Supabase أولاً.');
+
+    final result = await _client.rpc(
+      'claim_legacy_workshop',
+      params: {
+        'target_code': code.trim(),
+        'target_name': name.trim(),
+        'legacy_owner_email': legacyOwnerEmail.trim().toLowerCase(),
+      },
+    );
+    final workshopUuid = result?.toString().trim() ?? '';
+    if (workshopUuid.isEmpty) {
+      throw Exception('تعذر ربط الورشة القديمة في Supabase.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    _workshopUuid = workshopUuid;
+    _workshopCode = code.trim();
+    await prefs.setString('supabase_workshop_uuid_${code.trim()}', workshopUuid);
+    await _cacheWorkshopIdentity(workshopUuid, prefs);
+    return workshopUuid;
+  }
+
   /// Saves the complete list of systems selected for this workshop.
   ///
   /// System selection is workshop configuration, not a local device setting.
@@ -353,6 +386,12 @@ class SupabaseWorkshopSyncService {
 
     if (row == null) return;
 
+    final adminRow = await _client
+        .from('app_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
     final rawPermissions = row['permissions'];
     final permissions = rawPermissions is Map
         ? Map<String, dynamic>.from(rawPermissions)
@@ -361,10 +400,12 @@ class SupabaseWorkshopSyncService {
       permissions['isBlocked'] = true;
     }
 
-    final appRole = _mapSupabaseRoleToAppRole(
-      row['role']?.toString() ?? 'worker',
-      permissions,
-    );
+    final appRole = adminRow != null || isApplicationAdminEmail(user.email)
+        ? 'admin'
+        : _mapSupabaseRoleToAppRole(
+            row['role']?.toString() ?? 'worker',
+            permissions,
+          );
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_role', appRole);
     await prefs.setString('permissions_json', jsonEncode(permissions));
@@ -708,24 +749,53 @@ class SupabaseWorkshopSyncService {
       print('Supabase ensure_my_workshop RPC failed, trying tables: $error');
     }
 
-    final existing = await _client
-        .from('workshops')
-        .select('id')
-        .eq('code', code)
-        .maybeSingle();
+    Map<String, dynamic>? existing;
+    try {
+      final result = await _client
+          .from('workshops')
+          .select('id')
+          .or('code.eq.$code,join_code.eq.$code')
+          .maybeSingle();
+      existing = result == null ? null : Map<String, dynamic>.from(result);
+    } catch (_) {
+      final result = await _client
+          .from('workshops')
+          .select('id')
+          .eq('code', code)
+          .maybeSingle();
+      existing = result == null ? null : Map<String, dynamic>.from(result);
+    }
     final existingId = existing?['id']?.toString() ?? '';
     if (existingId.isNotEmpty) return existingId;
 
     final user = _client.auth.currentUser!;
-    final inserted = await _client
-        .from('workshops')
-        .insert({
-          'code': code,
-          'name': workshopName.trim().isEmpty ? code : workshopName.trim(),
-          'owner_uid': user.id,
-        })
-        .select('id')
-        .single();
+    Map<String, dynamic> inserted;
+    try {
+      inserted = Map<String, dynamic>.from(
+        await _client
+            .from('workshops')
+            .insert({
+              'code': user.id,
+              'join_code': code,
+              'name': workshopName.trim().isEmpty ? '' : workshopName.trim(),
+              'owner_uid': user.id,
+            })
+            .select('id')
+            .single(),
+      );
+    } catch (_) {
+      inserted = Map<String, dynamic>.from(
+        await _client
+            .from('workshops')
+            .insert({
+              'code': code,
+              'name': workshopName.trim().isEmpty ? code : workshopName.trim(),
+              'owner_uid': user.id,
+            })
+            .select('id')
+            .single(),
+      );
+    }
     final id = inserted['id']?.toString() ?? '';
     if (id.isEmpty) {
       throw Exception('تعذر إنشاء ورشة Supabase.');
@@ -745,14 +815,28 @@ class SupabaseWorkshopSyncService {
     SharedPreferences prefs,
   ) async {
     try {
-      final row = await _client
-          .from('workshops')
-          .select('code,name')
-          .eq('id', workshopUuid)
-          .maybeSingle();
+      Map<String, dynamic>? row;
+      try {
+        final result = await _client
+            .from('workshops')
+            .select('code,name,join_code')
+            .eq('id', workshopUuid)
+            .maybeSingle();
+        row = result == null ? null : Map<String, dynamic>.from(result);
+      } catch (_) {
+        final result = await _client
+            .from('workshops')
+            .select('code,name')
+            .eq('id', workshopUuid)
+            .maybeSingle();
+        row = result == null ? null : Map<String, dynamic>.from(result);
+      }
       if (row == null) return;
 
-      final code = row['code']?.toString().trim() ?? '';
+      final internalCode = row['code']?.toString().trim() ?? '';
+      final code = row['join_code']?.toString().trim().isNotEmpty == true
+          ? row['join_code'].toString().trim()
+          : internalCode;
       final name = row['name']?.toString().trim() ?? '';
       final cachedName = (prefs.getString('workshop_name') ?? '').trim();
       if (code.isNotEmpty) {

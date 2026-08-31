@@ -1,9 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
+import 'package:database_data/services/auth_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'subscription_expired_screen.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +13,7 @@ import 'app_workspace_shell.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 
 class SubscriptionChecker extends StatefulWidget {
   const SubscriptionChecker({super.key});
@@ -23,26 +23,10 @@ class SubscriptionChecker extends StatefulWidget {
 }
 
 class _SubscriptionCheckerState extends State<SubscriptionChecker> {
-  Timer? _subscriptionClock;
-
   String _t(String key) => Localization.translate(
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
-
-  @override
-  void initState() {
-    super.initState();
-    _subscriptionClock = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _subscriptionClock?.cancel();
-    super.dispose();
-  }
 
   DateTime? _cloudDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
@@ -81,13 +65,19 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     if (user == null) {
       return Scaffold(
         body: Center(child: Text(_t('عذراً، يجب تسجيل الدخول.'))),
       );
     }
 
+    // Supabase is the only active gate. The legacy Firestore branch below is
+    // intentionally retained as a rollback reference, but is unreachable in
+    // the production path.
+    return const SupabaseSubscriptionGate();
+
+    // ignore: dead_code
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
@@ -186,8 +176,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                       ),
                       onPressed: () async {
                         try {
-                          await FirebaseAuth.instance.signOut();
-                          await GoogleSignIn().signOut();
+                          context.read<WorkspaceController>().resetForSignedOut();
+                          await AppAuthService().signOut();
+                          await AppAuthService().signOutGoogleSession();
                           await SqlDatabase.clearAllLocalData();
                         } catch (e) {
                           debugPrint('Sign out error: $e');
@@ -326,8 +317,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                       ),
                       onPressed: () async {
                         try {
-                          await FirebaseAuth.instance.signOut();
-                          await GoogleSignIn().signOut();
+                          context.read<WorkspaceController>().resetForSignedOut();
+                          await AppAuthService().signOut();
+                      await AppAuthService().signOutGoogleSession();
                           await SqlDatabase.clearAllLocalData();
                         } catch (e) {
                           debugPrint('Sign out error: $e');
@@ -423,8 +415,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                             ),
                             onPressed: () async {
                               try {
-                                await FirebaseAuth.instance.signOut();
-                                await GoogleSignIn().signOut();
+                                context.read<WorkspaceController>().resetForSignedOut();
+                                await AppAuthService().signOut();
+                                await AppAuthService().signOutGoogleSession();
                                 await SqlDatabase.clearAllLocalData();
                               } catch (e) {
                                 debugPrint('Sign out error: $e');
@@ -496,8 +489,8 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                             ),
                             onPressed: () async {
                               try {
-                                await FirebaseAuth.instance.signOut();
-                                await GoogleSignIn().signOut();
+                                await AppAuthService().signOut();
+                  await AppAuthService().signOutGoogleSession();
                                 await SqlDatabase.clearAllLocalData();
                               } catch (e) {
                                 debugPrint('Sign out error: $e');
@@ -529,6 +522,146 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 
         return const SubscriptionExpiredScreen();
       },
+    );
+  }
+}
+
+class SupabaseSubscriptionGate extends StatelessWidget {
+  const SupabaseSubscriptionGate({super.key});
+
+  bool _isActive(SupabaseAccountSnapshot account) {
+    if (account.role == 'admin') return true;
+    final status = account.subscription['status']?.toString().toLowerCase().trim();
+    if (status == 'expired' ||
+        status == 'blocked' ||
+        status == 'cancelled' ||
+        status == 'canceled') {
+      return false;
+    }
+    final rawEndsAt = account.subscription['ends_at']?.toString();
+    final endsAt = rawEndsAt == null ? null : DateTime.tryParse(rawEndsAt);
+    if (endsAt != null) return DateTime.now().toUtc().isBefore(endsAt.toUtc());
+    return status == 'active';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<SupabaseAccountSnapshot?>(
+      future: SupabaseAccountService().loadCurrentAccount(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'تعذر تحميل بيانات الحساب من Supabase:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final account = snapshot.data;
+        if (account == null) {
+          return _message(
+            context,
+            icon: Icons.error_outline,
+            color: Colors.red,
+            title: 'الحساب غير مرتبط بورشة',
+            body: 'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.',
+          );
+        }
+        if (account.blocked) {
+          return _message(
+            context,
+            icon: Icons.block,
+            color: Colors.red,
+            title: 'تم إيقاف حسابك',
+            body: 'تم منعك من الدخول إلى هذه الورشة من قبل المدير.',
+          );
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('workshop_code', account.workshopCode);
+          final accountName = account.workshopName.trim();
+          final accountCode = account.workshopCode.trim();
+          if (accountName.isNotEmpty && accountName != accountCode) {
+            await prefs.setString('workshop_name', accountName);
+          } else if ((prefs.getString('workshop_name') ?? '').trim() ==
+              accountCode) {
+            await prefs.remove('workshop_name');
+          }
+          await prefs.setString('user_role', account.role);
+          await prefs.setString(
+            'permissions_json',
+            jsonEncode(account.permissions),
+          );
+          if (context.mounted) {
+            await Provider.of<AppSettingsProvider>(
+              context,
+              listen: false,
+            ).reloadPermissions();
+          }
+        });
+
+        if (_isActive(account)) {
+          return SyncGateway(
+            key: const ValueKey('supabase_sync_gateway'),
+            initialWorkshopId: account.workshopCode,
+            initialWorkshopName: account.workshopName,
+            initialUserRole: account.role,
+          );
+        }
+        return const SubscriptionExpiredScreen();
+      },
+    );
+  }
+
+  Widget _message(
+    BuildContext context, {
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String body,
+  }) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 72),
+              const SizedBox(height: 20),
+              Text(title, style: TextStyle(color: color, fontSize: 22)),
+              const SizedBox(height: 12),
+              Text(body, textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () async {
+                  context.read<WorkspaceController>().resetForSignedOut();
+                  await AppAuthService().signOut();
+                  await SqlDatabase.clearAllLocalData();
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('تسجيل الخروج'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -571,7 +704,7 @@ class _SyncGatewayState extends State<SyncGateway> {
       // it earlier from the login screen could bind the desktop to the
       // account uid before the real workshop identity was known.
       SupabaseWorkshopSyncService().start();
-      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final currentUid = AppAuthService().currentUser?.uid ?? '';
       final activeUid = prefs.getString('active_cloud_user_uid') ?? '';
       final activeWorkshop = _storedActiveWorkshop(prefs);
       final db = SqlDatabase();
@@ -710,7 +843,7 @@ class _SyncGatewayState extends State<SyncGateway> {
   }
 
   Future<String> _currentWorkshopKey() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AppAuthService().currentUser;
     final prefs = await SharedPreferences.getInstance();
     return CloudSyncService().workshopId ??
         prefs.getString('workshop_code') ??
@@ -740,7 +873,7 @@ class _SyncGatewayState extends State<SyncGateway> {
     );
     await prefs.setString(
       'active_cloud_user_uid',
-      FirebaseAuth.instance.currentUser?.uid ?? '',
+      AppAuthService().currentUser?.uid ?? '',
     );
   }
 

@@ -6,14 +6,23 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
-import 'package:database_data/services/supabase_catalog_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/services/legacy_workshop_migration_service.dart';
 import 'package:database_data/services/windows_google_sign_in.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'settings/app_settings.dart';
 import 'settings/localization.dart';
+
+// Explicitly provide the OAuth web client used to request the Google ID
+// token. This avoids relying on a generated Android resource, which can be
+// missing or stale after a Gradle clean and causes DEVELOPER_ERROR.
+const _googleServerClientId =
+    '538203167181-18nhgclrpei204tcop0ih09g6pnoc465.apps.googleusercontent.com';
 
 int _readWorkshopMaxUsers(Map<String, dynamic> workshopData) {
   final hasNewLimit = workshopData['maxUsers'] != null;
@@ -49,7 +58,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _workshopNameController = TextEditingController();
-  final _auth = FirebaseAuth.instance;
+  final _auth = AppAuthService();
   bool _isLoading = false;
   String _errorMessage = '';
   bool _obscurePassword = true;
@@ -95,6 +104,26 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   String _getFriendlyErrorMessage(Object e) {
+    if (e is AppAuthException) {
+      final code = e.code.toLowerCase().trim();
+      final msg = e.message.toLowerCase();
+      if (code.contains('invalid') || msg.contains('invalid login')) {
+        return 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.';
+      }
+      if (code.contains('not-found') || msg.contains('not found')) {
+        return 'لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.';
+      }
+      if (code.contains('already') || msg.contains('already registered')) {
+        return 'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.';
+      }
+      if (code.contains('confirmed') || msg.contains('confirm')) {
+        return 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.';
+      }
+      if (code.contains('weak') || msg.contains('weak password')) {
+        return 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.';
+      }
+      return e.message;
+    }
     if (e is FirebaseAuthException) {
       final code = e.code.replaceAll('auth/', '').toLowerCase().trim();
       final msg = (e.message ?? '').toLowerCase();
@@ -162,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen>
       _errorMessage = '';
     });
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      await _auth.sendPasswordResetEmail(email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -192,33 +221,8 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _syncSupabasePasswordSession() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    if (email.isEmpty || password.isEmpty) return;
-
-    try {
-      await SupabaseCatalogSyncService().signInWithPassword(
-        email: email,
-        password: password,
-      );
-    } catch (signInError) {
-      try {
-        await SupabaseCatalogSyncService().signUpWithPassword(
-          email: email,
-          password: password,
-        );
-      } catch (signUpError) {
-        debugPrint(
-          'Supabase password session was not opened: '
-          '$signInError / $signUpError',
-        );
-        return;
-      }
-    }
-    // Firebase auth can rebuild SubscriptionChecker before this method
-    // returns. Start workshop sync again after the Supabase session is really
-    // available, so the first login never depends on the manual Settings
-    // download button.
+    // Supabase is now the authentication session itself. This method remains
+    // as a small compatibility hook for older call sites.
     SupabaseWorkshopSyncService().start();
   }
 
@@ -227,16 +231,281 @@ class _LoginScreenState extends State<LoginScreen>
     required String? accessToken,
   }) async {
     if (idToken == null || idToken.trim().isEmpty) return;
+    SupabaseWorkshopSyncService().start();
+  }
+
+  Future<void> _saveSupabaseAccountContext(
+    SupabaseAccountSnapshot account,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('workshop_code', account.workshopCode);
+    final accountName = account.workshopName.trim();
+    final accountCode = account.workshopCode.trim();
+    if (accountName.isNotEmpty && accountName != accountCode) {
+      await prefs.setString('workshop_name', accountName);
+    } else if ((prefs.getString('workshop_name') ?? '').trim() == accountCode) {
+      await prefs.remove('workshop_name');
+    }
+    await prefs.setString('user_role', account.role);
+    await prefs.setString('permissions_json', jsonEncode(account.permissions));
+    await CloudSyncService().init();
+    SupabaseWorkshopSyncService().start();
+  }
+
+  /// Completes the one-time bridge after the old Firebase identity has been
+  /// verified. Existing workshop codes stay unchanged, so all old members
+  /// can be invited into the same Supabase workshop.
+  Future<SupabaseAccountSnapshot> _completeLegacyWorkshopMigration(
+    LegacyWorkshopContext legacy,
+  ) async {
+    final workshopSync = SupabaseWorkshopSyncService();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('workshop_code', legacy.workshopCode);
+
+    if (legacy.isManager) {
+      // Read the backup before claiming the workshop so an older Firebase
+      // installation that kept the display name only in its profile snapshot
+      // can still provide the real name to Supabase.
+      final legacyBackup = await CloudSyncService().readLegacyWorkshopBackup(
+        legacy.legacyWorkshopId,
+      );
+      final migratedName = _legacyDisplayName(
+        legacy,
+        legacyBackup,
+      );
+      if (migratedName.isNotEmpty && migratedName != legacy.workshopCode) {
+        await prefs.setString('workshop_name', migratedName);
+      } else {
+        await prefs.remove('workshop_name');
+      }
+
+      await workshopSync.claimLegacyWorkshopOwner(
+        code: legacy.workshopCode,
+        name: migratedName,
+        legacyOwnerEmail: legacy.email,
+      );
+
+      if (legacyBackup != null && legacyBackup.isNotEmpty) {
+        await CloudSyncService().publishLegacyWorkshopBackup(legacyBackup);
+        // The profile is metadata, not a business table, so persist its
+        // display name explicitly for every device in the workshop.
+        if (migratedName.isNotEmpty && migratedName != legacy.workshopCode) {
+          await workshopSync.saveWorkshopProfile({
+            'workshop_name': migratedName,
+          });
+        }
+      } else {
+        // Some old installations have only a complete local database and no
+        // Firestore snapshot. Preserve that data by publishing the local
+        // workshop after the claim; an empty local database is harmless.
+        try {
+          await workshopSync.uploadFullWorkshopData();
+        } catch (error) {
+          debugPrint('No local legacy workshop data to publish: $error');
+        }
+      }
+
+      // Workers are migrated by email. If they do not yet have a Supabase
+      // account, this creates a pending invite; their first login consumes it.
+      for (final member in legacy.members) {
+        try {
+          await workshopSync.updateMemberPermissionsByEmail(
+            email: member.email,
+            role: member.role,
+            permissions: {
+              ...member.permissions,
+              'isBlocked': member.blocked,
+            },
+          );
+        } catch (error) {
+          debugPrint(
+            'Legacy member invite skipped for ${member.email}: $error',
+          );
+        }
+      }
+    } else {
+      // A worker can join only after the manager has claimed the workshop and
+      // created the email invite. This prevents a worker from claiming a code.
+      final ready = await workshopSync.ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) {
+        throw const AppAuthException(
+          'legacy-worker-not-invited',
+          'تم العثور على الحساب القديم، لكن لم تتم دعوته إلى الورشة بعد. يجب على المدير ترحيل الورشة أولاً.',
+        );
+      }
+    }
+
+    final account = await SupabaseAccountService().loadCurrentAccount();
+    if (account == null) {
+      throw const AppAuthException(
+        'legacy-membership-not-created',
+        'تم إنشاء حساب Supabase، لكن تعذر إنشاء عضوية الورشة القديمة.',
+      );
+    }
+    await _saveSupabaseAccountContext(account);
+    return account;
+  }
+
+  String _legacyDisplayName(
+    LegacyWorkshopContext legacy,
+    Map<String, dynamic>? backup,
+  ) {
+    String clean(dynamic value) => value?.toString().trim() ?? '';
+    final direct = clean(legacy.workshopName);
+    if (direct.isNotEmpty && direct != legacy.workshopCode) return direct;
+
+    String? findNestedName(dynamic value) {
+      if (value is Map) {
+        for (final field in const [
+          'workshop_name',
+          'workshopName',
+          'workshop_display_name',
+        ]) {
+          final candidate = clean(value[field]);
+          if (candidate.isNotEmpty && candidate != legacy.workshopCode) {
+            return candidate;
+          }
+        }
+        for (final nested in value.values) {
+          final candidate = findNestedName(nested);
+          if (candidate != null) return candidate;
+        }
+      } else if (value is List) {
+        for (final nested in value) {
+          final candidate = findNestedName(nested);
+          if (candidate != null) return candidate;
+        }
+      }
+      return null;
+    }
+
+    if (backup != null) {
+      for (final key in const [
+        '__WorkshopProfile',
+        'WorkshopProfile',
+        'workshop_profile',
+      ]) {
+        final raw = backup[key];
+        final rows = raw is List ? raw : [raw];
+        for (final row in rows) {
+          if (row is! Map) continue;
+          for (final field in const [
+            'workshop_name',
+            'workshopName',
+            'name',
+            'title',
+          ]) {
+            final value = clean(row[field]);
+            if (value.isNotEmpty && value != legacy.workshopCode) return value;
+          }
+        }
+      }
+
+      // Some very old backups wrapped the profile inside another object.
+      // Walk only profile-name fields so a client or product name can never
+      // be mistaken for the workshop name.
+      final nestedName = findNestedName(backup);
+      if (nestedName != null) return nestedName;
+    }
+    return '';
+  }
+
+  bool _isSyntheticApplicationAdminAccount(
+    AppAuthUser user,
+    SupabaseAccountSnapshot? account,
+  ) {
+    return account != null &&
+        account.role == 'admin' &&
+        account.workshopId == user.uid &&
+        account.workshopCode == user.uid;
+  }
+
+  bool _needsWorkshopNameRepair(SupabaseAccountSnapshot account) {
+    final name = account.workshopName.trim();
+    final code = account.workshopCode.trim();
+    return name.isEmpty || (code.isNotEmpty && name == code);
+  }
+
+  Future<AppAuthUser> _createOrSignInSupabasePasswordAccount({
+    required String email,
+    required String password,
+  }) async {
     try {
-      await SupabaseCatalogSyncService().signInWithGoogleIdToken(
+      return await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+    } catch (error) {
+      // The account may already have been created by an earlier interrupted
+      // migration. Reuse it instead of creating another identity.
+      try {
+        return await _auth.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } catch (_) {
+        rethrow;
+      }
+    }
+  }
+
+  Future<bool> _tryLegacyPasswordMigration() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    AppAuthUser? legacyUser;
+    try {
+      legacyUser = await _auth.signInLegacyFirebaseWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+    } catch (_) {
+      return false;
+    }
+
+    try {
+      final legacy = await LegacyWorkshopMigrationService()
+          .readCurrentUserContext();
+      if (legacy == null) {
+        await _auth.signOutLegacyFirebase();
+        return false;
+      }
+      await _createOrSignInSupabasePasswordAccount(
+        email: email,
+        password: password,
+      );
+      await _completeLegacyWorkshopMigration(legacy);
+      await _auth.signOutLegacyFirebase();
+      debugPrint(
+        'Legacy password workshop migrated: ${legacy.workshopCode}, '
+        'firebaseUid=${legacyUser.uid}',
+      );
+      return true;
+    } catch (_) {
+      await _auth.signOutLegacyFirebase();
+      rethrow;
+    }
+  }
+
+  Future<SupabaseAccountSnapshot?> _tryLegacyGoogleWorkshopMigration({
+    required String idToken,
+    String? accessToken,
+  }) async {
+    try {
+      await _auth.signInLegacyFirebaseWithGoogleToken(
         idToken: idToken,
         accessToken: accessToken,
       );
-      SupabaseWorkshopSyncService().start();
+      final legacy = await LegacyWorkshopMigrationService()
+          .readCurrentUserContext();
+      if (legacy == null) return null;
+      return await _completeLegacyWorkshopMigration(legacy);
     } catch (error) {
-      // Firebase remains the authentication gate. Log the Supabase bridge
-      // failure, but do not prevent the user from opening the local app.
-      debugPrint('Supabase Google session was not opened: $error');
+      debugPrint('Legacy Google workshop migration skipped: $error');
+      return null;
+    } finally {
+      await _auth.signOutLegacyFirebase();
     }
   }
 
@@ -246,49 +515,56 @@ class _LoginScreenState extends State<LoginScreen>
       _errorMessage = '';
     });
     try {
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .get();
-
-      if (isApplicationAdminEmail(userCredential.user!.email)) {
-        // Ensure Admin doc exists and is active
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .set({
-              'email': userCredential.user!.email,
-              'role': 'admin',
-              'subscriptionStatus': 'active',
-              'isBlocked': false,
-              // The cloud backup is stored under the manager's real UID.
-              // Using a fixed id here made a freshly installed phone look in
-              // an empty workshop and therefore restore no data.
-              'workshopId': userCredential.user!.uid,
-            }, SetOptions(merge: true));
-      } else {
-        if (!doc.exists || (doc.data()?['isBlocked'] == true)) {
-          await _auth.signOut();
-          if (mounted) {
-            setState(() {
-              _errorMessage =
-                  'عذراً، هذا الحساب محذوف أو تم إيقافه من قبل المدير.';
-              _isLoading = false;
-            });
-          }
-          return;
+      AppAuthUser user;
+      try {
+        user = await _auth.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      } catch (supabaseError) {
+        // Old Firebase accounts are bridged once, then all future sessions
+        // use Supabase and the same workshop code.
+        final migrated = await _tryLegacyPasswordMigration();
+        if (migrated) return;
+        throw supabaseError;
+      }
+      var account = await SupabaseAccountService().loadCurrentAccount();
+      if (account == null ||
+          _isSyntheticApplicationAdminAccount(user, account)) {
+        await _auth.signOut();
+        final migrated = await _tryLegacyPasswordMigration();
+        if (migrated) return;
+        account = await SupabaseAccountService().loadCurrentAccount();
+      }
+      if (account == null) {
+        throw const AppAuthException(
+          'account-not-configured',
+          'لم يتم ربط الحساب بورشة في Supabase بعد.',
+        );
+      }
+      if (account.role == 'admin' && _needsWorkshopNameRepair(account)) {
+        // Older migrations could transfer all business rows but miss the
+        // workshop profile. Retry the legacy read once while the user has
+        // supplied the old manager credentials, without blocking normal login
+        // if the old Firebase account is no longer available.
+        final repaired = await _tryLegacyPasswordMigration();
+        if (repaired) {
+          account = await SupabaseAccountService().loadCurrentAccount() ??
+              account;
         }
       }
-      await CloudSyncService().init();
-      await _syncSupabasePasswordSession();
+      if (account.blocked) {
+        await _auth.signOut();
+        throw const AppAuthException(
+          'user-disabled',
+          'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
+        );
+      }
+
+      await _saveSupabaseAccountContext(account);
 
       debugPrint(
-        'LOGIN SYNC: uid=${userCredential.user!.uid}, '
+        'LOGIN SYNC: uid=${user.uid}, '
         'workshopId=${CloudSyncService().workshopId}',
       );
       // Firebase auth state changes will handle transitioning the screen automatically
@@ -318,6 +594,81 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _register() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final workshopName = _workshopNameController.text.trim();
+      final workshopCode = _workshopCodeController.text.trim();
+      if (!_isWorkerSignup && workshopName.isEmpty) {
+        throw const AppAuthException(
+          'workshop-name-required',
+          'يرجى إدخال اسم المصنع أو الورشة.',
+        );
+      }
+      if (_isWorkerSignup && workshopCode.isEmpty) {
+        throw const AppAuthException(
+          'workshop-code-required',
+          'يرجى إدخال كود الورشة.',
+        );
+      }
+      if (_passwordController.text != _confirmPasswordController.text) {
+        throw const AppAuthException(
+          'password-mismatch',
+          'كلمتا المرور غير متطابقتين. يرجى التأكد.',
+        );
+      }
+
+      final user = await _auth.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      await _auth.updateProfile(
+        displayName: _nameController.text.trim().isEmpty
+            ? (_isWorkerSignup ? 'عامل' : 'مدير الورشة')
+            : _nameController.text.trim(),
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final code = _isWorkerSignup ? workshopCode : _generateJoinCode();
+      await prefs.setString('workshop_code', code);
+      if (!_isWorkerSignup) {
+        await prefs.setString('workshop_name', workshopName);
+      }
+      final ready = await SupabaseWorkshopSyncService().ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) {
+        await _auth.signOut();
+        throw const AppAuthException(
+          'workshop-not-configured',
+          'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.',
+        );
+      }
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      if (account == null || account.userId != user.uid) {
+        await _auth.signOut();
+        throw const AppAuthException(
+          'membership-not-created',
+          'تم إنشاء الحساب، لكن لم يتم إنشاء عضوية الورشة.',
+        );
+      }
+      await prefs.setString('workshop_code', account.workshopCode);
+      await prefs.setString('workshop_name', account.workshopName);
+      await prefs.setString('user_role', account.role);
+      await prefs.setString('permissions_json', jsonEncode(account.permissions));
+      SupabaseWorkshopSyncService().start();
+    } catch (error) {
+      if (mounted) setState(() => _errorMessage = _getFriendlyErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Legacy Firebase registration retained only as a rollback reference.
+  Future<void> _registerLegacy() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -364,7 +715,7 @@ class _LoginScreenState extends State<LoginScreen>
       }
     }
 
-    UserCredential? userCredential;
+    AppAuthUser? userCredential;
     bool isNewAuthUser = false;
     try {
       userCredential = await _auth.createUserWithEmailAndPassword(
@@ -379,20 +730,13 @@ class _LoginScreenState extends State<LoginScreen>
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
           );
-          // Check if they already exist in Firestore
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userCredential.user!.uid)
-              .get();
-          if (doc.exists) {
-            setState(() {
-              _errorMessage =
-                  'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.';
-              _isLoading = false;
-            });
-            return;
-          }
-          // If doc DOES NOT exist, it means Admin deleted them! We proceed to recreate their data.
+          await _auth.signOut();
+          setState(() {
+            _errorMessage =
+                'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.';
+            _isLoading = false;
+          });
+          return;
         } catch (signInErr) {
           setState(() {
             _errorMessage =
@@ -418,9 +762,11 @@ class _LoginScreenState extends State<LoginScreen>
 
     String? targetWorkshopId;
     String? workshopNameForWorker;
+    String? registrationWorkshopCode;
 
     if (_isWorkerSignup) {
       final code = _workshopCodeController.text.trim();
+      registrationWorkshopCode = code;
       try {
         final querySnapshot = await FirebaseFirestore.instance
             .collection('workshops')
@@ -430,7 +776,7 @@ class _LoginScreenState extends State<LoginScreen>
 
         if (querySnapshot.docs.isEmpty) {
           if (isNewAuthUser) {
-            await userCredential.user!.delete();
+            await _auth.signOut();
           } else {
             await _auth.signOut();
           }
@@ -464,7 +810,7 @@ class _LoginScreenState extends State<LoginScreen>
 
           if (currentUsers >= maxUsers) {
             if (isNewAuthUser) {
-              await userCredential.user!.delete();
+              await _auth.signOut();
             } else {
               await _auth.signOut();
             }
@@ -478,7 +824,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
       } catch (e) {
         if (isNewAuthUser) {
-          await userCredential.user!.delete();
+          await _auth.signOut();
         } else {
           await _auth.signOut();
         }
@@ -491,7 +837,7 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     try {
-      final uid = userCredential.user!.uid;
+      final uid = userCredential!.uid;
 
       String? logoUrl;
       if (!_isWorkerSignup) {
@@ -541,6 +887,7 @@ class _LoginScreenState extends State<LoginScreen>
         });
       } else {
         final joinCode = _generateJoinCode();
+        registrationWorkshopCode = joinCode;
         // Create workshop doc
         await FirebaseFirestore.instance
             .collection('workshops')
@@ -590,8 +937,38 @@ class _LoginScreenState extends State<LoginScreen>
         }
       }
 
+      // The Supabase workshop membership is the source of truth. The
+      // Firestore writes above are kept only as a migration bridge for old
+      // installations and are not used by the app gate anymore.
+      final prefs = await SharedPreferences.getInstance();
+      final code = registrationWorkshopCode?.trim() ?? '';
+      if (code.isEmpty) {
+        await _auth.signOut();
+        throw const AppAuthException(
+          'workshop-code-missing',
+          'تعذر إنشاء كود الورشة.',
+        );
+      }
+      await prefs.setString('workshop_code', code);
+      if (!_isWorkerSignup) {
+        await prefs.setString(
+          'workshop_name',
+          _workshopNameController.text.trim(),
+        );
+      }
+      final ready = await SupabaseWorkshopSyncService().ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) {
+        await _auth.signOut();
+        throw const AppAuthException(
+          'workshop-not-configured',
+          'تعذر ربط الحساب بالورشة في Supabase.',
+        );
+      }
+
       await CloudSyncService().init();
-      await _syncSupabasePasswordSession();
+      SupabaseWorkshopSyncService().start();
 
       // Firebase auth state changes will handle transitioning the screen automatically
     } on FirebaseAuthException catch (e) {
@@ -640,6 +1017,133 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
+      String? idToken;
+      String? accessToken;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        final tokens = await WindowsGoogleSignIn().signIn();
+        idToken = tokens.idToken;
+        accessToken = tokens.accessToken;
+      } else {
+        final googleUser = await GoogleSignIn(
+          serverClientId: _googleServerClientId,
+        ).signIn();
+        if (googleUser == null) return;
+        final googleAuth = await googleUser.authentication;
+        idToken = googleAuth.idToken;
+        accessToken = googleAuth.accessToken;
+      }
+      if (idToken == null || idToken.trim().isEmpty) {
+        throw const AppAuthException(
+          'google-token-missing',
+          'لم يتم الحصول على رمز Google صالح.',
+        );
+      }
+
+      final user = await _auth.signInWithGoogleIdToken(
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+      var account = await SupabaseAccountService().loadCurrentAccount();
+      if (_isLoginMode) {
+        if (account == null ||
+            _isSyntheticApplicationAdminAccount(user, account)) {
+          account = await _tryLegacyGoogleWorkshopMigration(
+            idToken: idToken,
+            accessToken: accessToken,
+          );
+          if (account == null) {
+            await _auth.signOut();
+            throw const AppAuthException(
+              'account-not-configured',
+              'لم يتم العثور على حساب مرتبط بورشة. يجب ترحيل الورشة القديمة أولاً.',
+            );
+          }
+        }
+        if (account.role == 'admin' && _needsWorkshopNameRepair(account)) {
+          final repaired = await _tryLegacyGoogleWorkshopMigration(
+            idToken: idToken,
+            accessToken: accessToken,
+          );
+          if (repaired != null) account = repaired;
+        }
+        if (account.blocked) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'user-disabled',
+            'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
+          );
+        }
+      } else {
+        if (account != null) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'already-registered',
+            'هذا البريد الإلكتروني مسجل بالفعل. توجه إلى تسجيل الدخول.',
+          );
+        }
+        final prefs = await SharedPreferences.getInstance();
+        final code = _isWorkerSignup
+            ? _workshopCodeController.text.trim()
+            : _generateJoinCode();
+        if (_isWorkerSignup && code.isEmpty) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'workshop-code-required',
+            'يرجى إدخال كود الورشة.',
+          );
+        }
+        await prefs.setString('workshop_code', code);
+        if (!_isWorkerSignup) {
+          final name = _workshopNameController.text.trim();
+          if (name.isEmpty) {
+            await _auth.signOut();
+            throw const AppAuthException(
+              'workshop-name-required',
+              'يرجى إدخال اسم المصنع أو الورشة.',
+            );
+          }
+          await prefs.setString('workshop_name', name);
+        }
+        final ready = await SupabaseWorkshopSyncService().ensureStarted(
+          timeout: const Duration(seconds: 20),
+        );
+        if (!ready) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'workshop-not-configured',
+            'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.',
+          );
+        }
+        account = await SupabaseAccountService().loadCurrentAccount();
+      }
+
+      if (account == null) {
+        await _auth.signOut();
+        throw const AppAuthException(
+          'membership-not-created',
+          'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.',
+        );
+      }
+      await _saveSupabaseAccountContext(account);
+      SupabaseWorkshopSyncService().start();
+      debugPrint('Google Supabase login completed for ${user.email}');
+    } on WindowsGoogleSignInException catch (error) {
+      if (mounted) setState(() => _errorMessage = error.userMessage);
+    } catch (error) {
+      if (mounted) setState(() => _errorMessage = _getFriendlyErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Legacy Firebase/Firestore Google flow retained as a rollback reference.
+  Future<void> _signInWithGoogleLegacy() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
       // 1. Validation check for signup before authentication
       if (!_isLoginMode) {
         if (!_isWorkerSignup && _workshopNameController.text.trim().isEmpty) {
@@ -675,19 +1179,16 @@ class _LoginScreenState extends State<LoginScreen>
 
       // 2. Trigger Google Sign-In. The mobile implementation remains exactly
       // the same; Windows uses the system browser and a PKCE OAuth callback.
-      late final OAuthCredential credential;
       String? googleIdToken;
       String? googleAccessToken;
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
         final tokens = await WindowsGoogleSignIn().signIn();
         googleIdToken = tokens.idToken;
         googleAccessToken = tokens.accessToken;
-        credential = GoogleAuthProvider.credential(
-          accessToken: tokens.accessToken,
-          idToken: tokens.idToken,
-        );
       } else {
-        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+        final GoogleSignInAccount? googleUser = await GoogleSignIn(
+          serverClientId: _googleServerClientId,
+        ).signIn();
         if (googleUser == null) {
           // User cancelled the sign-in.
           setState(() {
@@ -700,27 +1201,88 @@ class _LoginScreenState extends State<LoginScreen>
             await googleUser.authentication;
         googleIdToken = googleAuth.idToken;
         googleAccessToken = googleAuth.accessToken;
-        credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
       }
 
-      // 3. Sign in to Firebase with the credential
-      final UserCredential userCredential = await _auth.signInWithCredential(
-        credential,
+      // 3. Google is exchanged directly for a Supabase Auth session.
+      if (googleIdToken == null || googleIdToken!.trim().isEmpty) {
+        throw const AppAuthException(
+          'google-token-missing',
+          'لم يتم الحصول على رمز Google صالح.',
+        );
+      }
+      final user = await _auth.signInWithGoogleIdToken(
+        idToken: googleIdToken!,
+        accessToken: googleAccessToken,
       );
-      final User? user = userCredential.user;
-
-      if (user == null) {
-        throw FirebaseAuthException(
-          code: 'null-user',
-          message: 'فشل الحصول على بيانات المستخدم من Google.',
-        );
-      }
 
       final uid = user.uid;
       final email = user.email ?? '';
+
+      // Supabase owns account existence, membership and blocking. Firebase
+      // is not consulted here, so Google and password login follow one path.
+      var account = await SupabaseAccountService().loadCurrentAccount();
+      if (_isLoginMode) {
+        if (account == null) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'account-not-configured',
+            'لم يتم العثور على حساب مرتبط بورشة. أنشئ الحساب أولاً.',
+          );
+        }
+        if (account.blocked) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'user-disabled',
+            'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
+          );
+        }
+      } else {
+        if (account != null) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'already-registered',
+            'هذا البريد الإلكتروني مسجل بالفعل. توجه إلى تسجيل الدخول.',
+          );
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        final code = _isWorkerSignup
+            ? _workshopCodeController.text.trim()
+            : _generateJoinCode();
+        final workshopName = _isWorkerSignup
+            ? ''
+            : _workshopNameController.text.trim();
+        await prefs.setString('workshop_code', code);
+        if (workshopName.isNotEmpty) {
+          await prefs.setString('workshop_name', workshopName);
+        }
+        final ready = await SupabaseWorkshopSyncService().ensureStarted(
+          timeout: const Duration(seconds: 20),
+        );
+        if (!ready) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'workshop-not-configured',
+            'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.',
+          );
+        }
+        account = await SupabaseAccountService().loadCurrentAccount();
+        if (account == null) {
+          await _auth.signOut();
+          throw const AppAuthException(
+            'membership-not-created',
+            'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.',
+          );
+        }
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('workshop_code', account!.workshopCode);
+      await prefs.setString('workshop_name', account.workshopName);
+      await prefs.setString('user_role', account.role);
+      await prefs.setString('permissions_json', jsonEncode(account.permissions));
+      SupabaseWorkshopSyncService().start();
+      return;
 
       // 4. Firestore checking and logic
       final doc = await FirebaseFirestore.instance
@@ -737,7 +1299,7 @@ class _LoginScreenState extends State<LoginScreen>
             'role': 'admin',
             'subscriptionStatus': 'active',
             'isBlocked': false,
-            'workshopId': userCredential.user!.uid,
+            'workshopId': user.uid,
           }, SetOptions(merge: true));
         } else {
           if (!doc.exists) {
@@ -949,7 +1511,7 @@ class _LoginScreenState extends State<LoginScreen>
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       return;
     }
-    await GoogleSignIn().signOut();
+    await _auth.signOutGoogleSession();
   }
 
   @override
@@ -1079,19 +1641,22 @@ class _LoginScreenState extends State<LoginScreen>
                                   spacing: 10,
                                   children: [
                                     ChoiceChip(
-                                      label: const Text(
-                                        'إنشاء ورشة (مدير)',
-                                        style: TextStyle(fontFamily: 'Cairo'),
+                                      label: Text(
+                                        Localization.translate(
+                                          'إنشاء ورشة (مدير)',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                        ),
                                       ),
                                       selected: !_isWorkerSignup,
                                       selectedColor: Colors.blueAccent,
-                                      backgroundColor: Colors.white.withOpacity(
-                                        0.08,
-                                      ),
+                                      backgroundColor: Colors.white,
                                       labelStyle: TextStyle(
                                         color: !_isWorkerSignup
                                             ? Colors.white
-                                            : Colors.white70,
+                                            : Colors.black87,
                                       ),
                                       onSelected: (val) {
                                         setState(() {
@@ -1100,19 +1665,22 @@ class _LoginScreenState extends State<LoginScreen>
                                       },
                                     ),
                                     ChoiceChip(
-                                      label: const Text(
-                                        'تسجيل كمستخدم',
-                                        style: TextStyle(fontFamily: 'Cairo'),
+                                      label: Text(
+                                        Localization.translate(
+                                          'الانضمام إلى ورشة موجودة',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                        ),
                                       ),
                                       selected: _isWorkerSignup,
                                       selectedColor: Colors.blueAccent,
-                                      backgroundColor: Colors.white.withOpacity(
-                                        0.08,
-                                      ),
+                                      backgroundColor: Colors.white,
                                       labelStyle: TextStyle(
                                         color: _isWorkerSignup
                                             ? Colors.white
-                                            : Colors.white70,
+                                            : Colors.black87,
                                       ),
                                       onSelected: (val) {
                                         setState(() {

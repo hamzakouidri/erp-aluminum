@@ -104,7 +104,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Future<void> _showAddLocationDialog() async {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
-    if (!settings.canAdjustInventory()) return;
+    if (!settings.canAddWarehouses()) return;
 
     final controller = TextEditingController();
     final name = await showDialog<String>(
@@ -252,7 +252,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final canAddLocation = settings.canAdjustInventory();
+    final canAddLocation = settings.canAddWarehouses();
 
     return Directionality(
       textDirection: TextDirection.rtl,
