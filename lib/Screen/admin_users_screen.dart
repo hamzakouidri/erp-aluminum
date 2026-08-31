@@ -911,38 +911,42 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           ],
         ),
       ),
-      body: Column(
-        children: [
-          if (isAppAdmin) _buildPaymentSettingsCard(),
-          // Search bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: _t('بحث بالاسم أو البريد الإلكتروني...'),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: NestedScrollView(
+        // The payment card and search field must be part of the outer scroll
+        // view so the CCP field can be brought above the on-screen keyboard.
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          if (isAppAdmin)
+            SliverToBoxAdapter(child: _buildPaymentSettingsCard()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: _t('بحث بالاسم أو البريد الإلكتروني...'),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  isDense: true,
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                isDense: true,
+                onChanged: (v) =>
+                    setState(() => _searchQuery = v.toLowerCase()),
               ),
-              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
             ),
           ),
-          // Tab content
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
+        ],
+        body: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
                   .snapshots(),
@@ -1150,8 +1154,6 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                 );
               },
             ),
-          ),
-        ],
       ),
     );
   }

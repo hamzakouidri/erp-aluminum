@@ -383,7 +383,58 @@ class _CommandePageState extends State<CommandePage> {
 
   /// تحديث حفظ الخصائص من نموذج نافذة
   void _saveLastSettings(WindowModel m) {
-    final glassSpec = m.zones.isNotEmpty ? m.zones.first.glass.toMap() : null;
+    final glassSpec = WindowZone.globalDefaultGlass.toMap();
+    final modelMap = m.toMap();
+    const defaultKeys = {
+      'hasBottomFrame',
+      'hasFramePlintheBottom',
+      'isInternalView',
+      'hasShutter',
+      'shutterIntercalaireRatio',
+      'shutterMechanism',
+      'motorHasInterrupteur',
+      'motorHasTelecommande',
+      'shutterLame',
+      'shutterGlissiere',
+      'shutterPosition',
+      'shutterDriveSide',
+      'customShutterBoxHeight',
+      'selectedShutterLameId',
+      'selectedShutterKitId',
+      'selectedShutterMotorId',
+      'useSystemOB',
+      'useDemiOB',
+      'useVerrouCentral',
+      'hasSideCovers',
+      'sideCoverUseSecondWidth',
+      'hasInternalSlidingSideCover',
+      'useCustomSideCoverLayout',
+      'sideCoverSegments',
+      'hiddenSideCoverSegments',
+      'isFrame140',
+      'removedShutterSides',
+      'frameColor',
+      'selectedDbColor',
+      'selectedColorName',
+      'selectedColorHex',
+      'selectedAccessoryColor',
+      'primaryMullionAxis',
+      'mullionProfiles',
+      'groovedMullionCavityOnPositiveSide',
+      'mullionSectionOverrides',
+      'componentOverrides',
+      'frameOverride',
+      'sashOverride',
+      'sideCoverOverride',
+      'internalSlidingSideCoverOverride',
+      'slidingFrameOverride',
+      'slidingSashOverride',
+    };
+    final drawingDefaults = <String, dynamic>{
+      for (final key in defaultKeys)
+        if (modelMap.containsKey(key)) key: modelMap[key],
+      'glassSpec': glassSpec,
+    };
     _lastUsedSettings = {
       'activeSeries': m.activeSeries,
       'activeSlidingSeries': m.activeSlidingSeries,
@@ -401,6 +452,7 @@ class _CommandePageState extends State<CommandePage> {
           ? Map<String, dynamic>.from(m.selectedAccessoryColor!)
           : null,
       'glassSpec': glassSpec,
+      'drawingDefaults': drawingDefaults,
       'hasShutter': m.hasShutter,
       'shutterLame': m.shutterLame,
       'shutterGlissiere': m.shutterGlissiere,
@@ -503,8 +555,7 @@ class _CommandePageState extends State<CommandePage> {
       final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
       final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
       final shapeLabel = payload['panelShapeLabel']?.toString() ?? 'مستقيم (I)';
-      final operationLabel =
-          payload['operationLabel']?.toString() ?? 'منزلق';
+      final operationLabel = payload['operationLabel']?.toString() ?? 'منزلق';
       final kitLabel = payload['selectedKitLabel']?.toString() ?? '';
       final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
       final notes = payload['notes']?.toString() ?? '';
@@ -604,6 +655,18 @@ class _CommandePageState extends State<CommandePage> {
     } else if (widget.initialProducts != null &&
         widget.initialProducts!.isNotEmpty) {
       addedProducts.addAll(widget.initialProducts!);
+      final drawingProducts = addedProducts
+          .where(
+            (product) =>
+                !product.isCustomProduct &&
+                !product.isGlassWork &&
+                !product.isMoustiquaire &&
+                !product.isCaissonTunnel,
+          )
+          .toList();
+      if (drawingProducts.isNotEmpty) {
+        _saveLastSettings(drawingProducts.last);
+      }
     }
   }
 
@@ -832,6 +895,14 @@ class _CommandePageState extends State<CommandePage> {
           addedProducts.add(model);
           _editProductsLoaded = addedProducts.length;
         });
+        if (!model.isCustomProduct &&
+            !model.isGlassWork &&
+            !model.isMoustiquaire &&
+            !model.isCaissonTunnel) {
+          // Editing an existing order must use its last drawing as the
+          // starting defaults when the user adds another drawing.
+          _saveLastSettings(model);
+        }
         // Give Flutter a paint opportunity after each local row.  This makes
         // the first items visible immediately instead of waiting for the full
         // order to finish decoding.

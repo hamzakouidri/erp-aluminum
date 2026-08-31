@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 100" width="160px" height="100px">
+  <defs>
+    <!-- Metallic gradients for realistic industrial render -->
+    <linearGradient id="headGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="30%" stop-color="#e0e4e8" />
+      <stop offset="70%" stop-color="#b0b8c0" />
+      <stop offset="100%" stop-color="#7a8490" />
+    </linearGradient>
+    
+    <linearGradient id="shaftGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f2f4f7" />
+      <stop offset="50%" stop-color="#c8d0d8" />
+      <stop offset="100%" stop-color="#8a94a0" />
+    </linearGradient>
+    
+    <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="60%" stop-color="#a0abb8" />
+      <stop offset="100%" stop-color="#556070" />
+    </linearGradient>
+  </defs>
+
+  <!-- Transform to match the 30-degree angle -->
+  <g transform="rotate(-30, 80, 50)">
+    <!-- Drill Point (Self-drilling tip) -->
+    <path d="M 20 47 L 28 44 L 28 56 L 20 53 Z" fill="url(#shaftGrad)" stroke="#2c3e50" stroke-width="1.2" />
+    <path d="M 20 47 L 28 50 L 20 53 Z" fill="#95a5a6" opacity="0.6" />
+    
+    <!-- Screw Body / Core -->
+    <rect x="28" y="44" width="76" height="12" fill="url(#shaftGrad)" stroke="#2c3e50" stroke-width="1.2" />
+
+    <!-- Threads (Helical ridges) -->
+    <!-- Ridge 1 -->
+    <path d="M 32 42 L 36 44 L 33 56 L 29 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 2 -->
+    <path d="M 40 42 L 44 44 L 41 56 L 37 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 3 -->
+    <path d="M 48 42 L 52 44 L 49 56 L 45 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 4 -->
+    <path d="M 56 42 L 60 44 L 57 56 L 53 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 5 -->
+    <path d="M 64 42 L 68 44 L 65 56 L 61 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 6 -->
+    <path d="M 72 42 L 76 44 L 73 56 L 69 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 7 -->
+    <path d="M 80 42 L 84 44 L 81 56 L 77 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 8 -->
+    <path d="M 88 42 L 92 44 L 89 56 L 85 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+    <!-- Ridge 9 -->
+    <path d="M 96 42 L 100 44 L 97 56 L 93 54 Z" fill="url(#threadGrad)" stroke="#2c3e50" stroke-width="1" />
+
+    <!-- Washer / Collar Base -->
+    <path d="M 104 38 L 108 38 L 108 62 L 104 62 Z" fill="url(#headGrad)" stroke="#2c3e50" stroke-width="1.2" />
+
+    <!-- Hex Head (Tête hexagonale) -->
+    <!-- Top Chamfer -->
+    <polygon points="108,40 122,43 122,57 108,60" fill="url(#headGrad)" stroke="#2c3e50" stroke-width="1.5" stroke-linejoin="round" />
+    <!-- Hex Head Facets -->
+    <line x1="108" y1="46" x2="122" y2="48" stroke="#ffffff" stroke-width="1.2" />
+    <line x1="108" y1="54" x2="122" y2="52" stroke="#556070" stroke-width="1.2" />
+    <polygon points="122,43 126,45 126,55 122,57" fill="#7a8490" stroke="#2c3e50" stroke-width="1.2" />
+  </g>
+</svg>

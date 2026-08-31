@@ -40,6 +40,47 @@ class SectionImageWidget extends StatelessWidget {
     final String lowerPath = path.toLowerCase();
     final bool isAssetReference =
         lowerPath.startsWith('assets/') || lowerPath.startsWith('asset/');
+    final String semanticLabel = '$rawCode ${name ?? ''} $path'.toLowerCase();
+    final bool isFrappeJoint =
+        (semanticLabel.contains('frappe') ||
+            semanticLabel.contains('فراب') ||
+            semanticLabel.contains('ضرب')) &&
+        (semanticLabel.contains('joint') ||
+            semanticLabel.contains('جوان') ||
+            semanticLabel.contains('gasket'));
+    final bool isCentralJoint =
+        !isFrappeJoint &&
+        (semanticLabel.contains('central') ||
+            semanticLabel.contains('سنترال') ||
+            semanticLabel.contains('سنطرال') ||
+            semanticLabel.contains('joint_central'));
+    final bool isBourrageJoint =
+        !isFrappeJoint &&
+        (semanticLabel.contains('bourrage') ||
+            semanticLabel.contains('بوراج') ||
+            semanticLabel.contains('joint_bourrage'));
+    final bool isScrew =
+        semanticLabel.contains('visse') ||
+        semanticLabel.contains('screw') ||
+        semanticLabel.contains('برغي') ||
+        semanticLabel.contains('براغ') ||
+        semanticLabel.contains('فيس');
+    final bool isSashReinforcement =
+        semanticLabel.contains('sash') ||
+        semanticLabel.contains('ouvrant') ||
+        semanticLabel.contains('battant') ||
+        semanticLabel.contains('ظرفة') ||
+        semanticLabel.contains('ضلفة') ||
+        semanticLabel.contains('ظرفه') ||
+        semanticLabel.contains('تدعيم الظ') ||
+        semanticLabel.contains('حديد الظ');
+    final bool isGeneralReinforcement =
+        !isSashReinforcement &&
+        (semanticLabel.contains('renfort') ||
+            semanticLabel.contains('reinforc') ||
+            semanticLabel.contains('حديد الدعم') ||
+            semanticLabel.contains('حديد التدعيم') ||
+            semanticLabel.contains('تدعيم'));
 
     Widget fallbackWidget = Icon(
       fallbackIcon ?? Icons.image_not_supported_rounded,
@@ -49,8 +90,65 @@ class SectionImageWidget extends StatelessWidget {
 
     Widget? loadedWidget;
 
+    // Joint Frappe has one canonical image. Catalogue rows may carry an old
+    // code or an incorrect image path, so the semantic joint type wins here
+    // and every screen displays the same photo.
+    if (isFrappeJoint) {
+      loadedWidget = Image.asset(
+        'assets/sections/joint_frappe.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => fallbackWidget,
+      );
+    }
+
+    if (loadedWidget == null && isCentralJoint) {
+      loadedWidget = SvgPicture.asset(
+        'assets/sections/N245.svg',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholderBuilder: (context) => fallbackWidget,
+      );
+    }
+
+    if (loadedWidget == null && isBourrageJoint) {
+      loadedWidget = SvgPicture.asset(
+        'assets/sections/N52034.svg',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholderBuilder: (context) => fallbackWidget,
+      );
+    }
+
+    // All screw catalogue items share the supplied canonical illustration,
+    // regardless of their individual code or legacy image filename.
+    if (loadedWidget == null && isScrew) {
+      loadedWidget = SvgPicture.asset(
+        'assets/sections/vis.svg',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholderBuilder: (context) => fallbackWidget,
+      );
+    }
+
+    // Show the U-channel illustration for general reinforcements. Sash
+    // reinforcement is intentionally excluded because it has its own role.
+    if (loadedWidget == null && isGeneralReinforcement) {
+      loadedWidget = SvgPicture.asset(
+        'assets/sections/renfort_u.svg',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholderBuilder: (context) => fallbackWidget,
+      );
+    }
+
     // 1. إحضار الصورة بناءً على المسار المربوط صراحة للمطع
-    if (path.isNotEmpty) {
+    if (loadedWidget == null && path.isNotEmpty) {
       if (path.startsWith('data:image/')) {
         try {
           final uri = Uri.parse(path);
@@ -141,6 +239,12 @@ class SectionImageWidget extends StatelessWidget {
           'joint_bross': 'joint_brosse.png',
           'joint_brosse_sash': 'joint_brosse.png',
           'joint_brosse_shutter': 'joint_brosse.png',
+          'joint frappe': 'joint_frappe.png',
+          'joint_frappe': 'joint_frappe.png',
+          'joint_frappe_sash': 'joint_frappe.png',
+          'joint_frappe_frame': 'joint_frappe.png',
+          'جوان فراب': 'joint_frappe.png',
+          'جوان الضرب': 'joint_frappe.png',
           'entrematique': 'intramatique.png',
           'أونتروماتيك': 'intramatique.png',
           'انتروماتيك': 'intramatique.png',
@@ -151,8 +255,16 @@ class SectionImageWidget extends StatelessWidget {
           'gache colissante tpr': 'gache_colissante_tpr.png',
           'gache_coulissant_tpr': 'gache_colissante_tpr.png',
           'joint_vitrage': 'N242.png',
-          'vis': 'visse.png',
-          'براغي': 'visse.png',
+          'vis': 'vis.svg',
+          'visse': 'vis.svg',
+          'براغي': 'vis.svg',
+          'فيس': 'vis.svg',
+          'renfort': 'renfort_u.svg',
+          'reinforcement': 'renfort_u.svg',
+          'حديد الدعم': 'renfort_u.svg',
+          'تدعيم': 'renfort_u.svg',
+          'n245': 'N245.svg',
+          'n52034': 'N52034.svg',
         };
         final canonicalFilename = imageAliases[stem];
         if (canonicalFilename != null) {

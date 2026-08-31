@@ -57,6 +57,145 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     });
   }
 
+  void _applyDrawingDefaults(WindowModel model, Map<String, dynamic> defaults) {
+    bool readBool(String key, bool fallback) {
+      final value = defaults[key];
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) return value.trim().toLowerCase() == 'true';
+      return fallback;
+    }
+
+    int? readInt(String key) {
+      final value = defaults[key];
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '');
+    }
+
+    double? readDouble(String key) {
+      final value = defaults[key];
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '');
+    }
+
+    model.hasBottomFrame = readBool('hasBottomFrame', model.hasBottomFrame);
+    model.hasFramePlintheBottom = readBool(
+      'hasFramePlintheBottom',
+      model.hasFramePlintheBottom,
+    );
+    model.isInternalView = readBool('isInternalView', model.isInternalView);
+    model.hasShutter = readBool('hasShutter', model.hasShutter);
+    model.shutterIntercalaireRatio =
+        readInt('shutterIntercalaireRatio') ?? model.shutterIntercalaireRatio;
+    model.shutterMechanism =
+        defaults['shutterMechanism']?.toString() ?? model.shutterMechanism;
+    model.motorHasInterrupteur = readBool(
+      'motorHasInterrupteur',
+      model.motorHasInterrupteur,
+    );
+    model.motorHasTelecommande = readBool(
+      'motorHasTelecommande',
+      model.motorHasTelecommande,
+    );
+    model.shutterLame =
+        defaults['shutterLame']?.toString() ?? model.shutterLame;
+    model.shutterGlissiere =
+        defaults['shutterGlissiere']?.toString() ?? model.shutterGlissiere;
+    model.shutterPosition =
+        readDouble('shutterPosition') ?? model.shutterPosition;
+    model.shutterDriveSide =
+        defaults['shutterDriveSide']?.toString() ?? model.shutterDriveSide;
+    model.customShutterBoxHeight =
+        readDouble('customShutterBoxHeight') ?? model.customShutterBoxHeight;
+    model.selectedShutterLameId =
+        readInt('selectedShutterLameId') ?? model.selectedShutterLameId;
+    model.selectedShutterKitId =
+        readInt('selectedShutterKitId') ?? model.selectedShutterKitId;
+    model.selectedShutterMotorId =
+        readInt('selectedShutterMotorId') ?? model.selectedShutterMotorId;
+    model.useSystemOB = readBool('useSystemOB', model.useSystemOB);
+    model.useDemiOB = readBool('useDemiOB', model.useDemiOB);
+    model.useVerrouCentral = readBool(
+      'useVerrouCentral',
+      model.useVerrouCentral,
+    );
+    model.hasSideCovers = readBool('hasSideCovers', model.hasSideCovers);
+    model.sideCoverUseSecondWidth = readBool(
+      'sideCoverUseSecondWidth',
+      model.sideCoverUseSecondWidth,
+    );
+    model.hasInternalSlidingSideCover = readBool(
+      'hasInternalSlidingSideCover',
+      model.hasInternalSlidingSideCover,
+    );
+    model.useCustomSideCoverLayout = readBool(
+      'useCustomSideCoverLayout',
+      model.useCustomSideCoverLayout,
+    );
+    if (defaults['sideCoverSegments'] is List) {
+      model.sideCoverSegments = (defaults['sideCoverSegments'] as List)
+          .whereType<Map>()
+          .map(
+            (raw) => SideCoverSegment.fromMap(Map<String, dynamic>.from(raw)),
+          )
+          .toList();
+    }
+    if (defaults['hiddenSideCoverSegments'] is List) {
+      model.hiddenSideCoverSegments =
+          (defaults['hiddenSideCoverSegments'] as List)
+              .map((side) => side.toString().toLowerCase())
+              .toSet();
+    }
+    model.isFrame140 = readBool('isFrame140', model.isFrame140);
+    if (defaults['removedShutterSides'] is List) {
+      model.removedShutterSides = (defaults['removedShutterSides'] as List)
+          .map((side) => side.toString().toLowerCase())
+          .toSet();
+    }
+    model.primaryMullionAxis = defaults['primaryMullionAxis']?.toString();
+
+    final frameColorName = defaults['frameColor']?.toString();
+    if (frameColorName != null) {
+      model.frameColor = FrameColor.values.firstWhere(
+        (color) => color.name == frameColorName,
+        orElse: () => FrameColor.white,
+      );
+    }
+    if (defaults['selectedDbColor'] is Map) {
+      model.selectedDbColor = Map<String, dynamic>.from(
+        defaults['selectedDbColor'] as Map,
+      );
+    }
+    if (defaults['selectedAccessoryColor'] is Map) {
+      model.selectedAccessoryColor = Map<String, dynamic>.from(
+        defaults['selectedAccessoryColor'] as Map,
+      );
+    }
+
+    Map<String, dynamic>? copyMap(String key) {
+      final value = defaults[key];
+      return value is Map ? Map<String, dynamic>.from(value) : null;
+    }
+
+    model.frameOverride = copyMap('frameOverride');
+    model.sashOverride = copyMap('sashOverride');
+    model.sideCoverOverride = copyMap('sideCoverOverride');
+    model.internalSlidingSideCoverOverride = copyMap(
+      'internalSlidingSideCoverOverride',
+    );
+    model.slidingFrameOverride = copyMap('slidingFrameOverride');
+    model.slidingSashOverride = copyMap('slidingSashOverride');
+    final componentOverrides = defaults['componentOverrides'];
+    if (componentOverrides is Map) {
+      model.componentOverrides = {
+        for (final entry in componentOverrides.entries)
+          entry.key.toString(): entry.value is Map
+              ? Map<String, dynamic>.from(entry.value as Map)
+              : entry.value,
+      };
+    }
+  }
+
   WindowModel _makeModel({double w = 0, double h = 0, double thickness = 60}) {
     final m = WindowModel(
       width: w,
@@ -81,7 +220,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       m.loadedSlidingSeriesId = readInt(s['loadedSlidingSeriesId']);
       m.loadedSeriesName = s['loadedSeriesName']?.toString();
       m.loadedSlidingSeriesName = s['loadedSlidingSeriesName']?.toString();
-      if (s['selectedDbColor'] is Map) {
+      final drawingDefaults = s['drawingDefaults'];
+      if (drawingDefaults is Map) {
+        _applyDrawingDefaults(m, Map<String, dynamic>.from(drawingDefaults));
+      } else if (s['selectedDbColor'] is Map) {
         m.selectedDbColor = Map<String, dynamic>.from(
           s['selectedDbColor'] as Map,
         );
@@ -95,7 +237,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       if (s['shutterMechanism'] != null)
         m.shutterMechanism = s['shutterMechanism'];
 
-      final glassSpec = s['glassSpec'];
+      final glassSpec =
+          s['glassSpec'] ??
+          (drawingDefaults is Map ? drawingDefaults['glassSpec'] : null);
       if (glassSpec is Map) {
         WindowZone.globalDefaultGlass = glassSpecificationFromMap(
           Map<String, dynamic>.from(glassSpec),
@@ -197,8 +341,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
       final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
       final shapeLabel = payload['panelShapeLabel']?.toString() ?? 'مستقيم (I)';
-      final operationLabel =
-          payload['operationLabel']?.toString() ?? 'منزلق';
+      final operationLabel = payload['operationLabel']?.toString() ?? 'منزلق';
       final kitLabel = payload['selectedKitLabel']?.toString() ?? '';
       final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
       final notes = payload['notes']?.toString() ?? '';

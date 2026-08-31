@@ -1516,9 +1516,8 @@ class ComponentCalculator {
     }
 
     Map<String, dynamic>? getSlidingFrameSection() {
-      if (window.slidingFrameOverride != null) {
-        return window.slidingFrameOverride;
-      }
+      final selectedBase = window.getSlidingBaseFrameSection();
+      if (selectedBase != null) return selectedBase.toMap();
       final series = window.activeSlidingSeries ?? window.activeSeries;
       if (series == null) return null;
       var slidingFrames = series.sections.where((s) {
@@ -2277,6 +2276,7 @@ class ComponentCalculator {
 
     List<double> slidingChicanePieces = [];
     List<double> slidingRailPieces = [];
+    List<double> slidingMonorailPieces = [];
     List<double> internalSlidingSideCoverPieces = [];
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
@@ -2982,6 +2982,22 @@ class ComponentCalculator {
       );
     }
 
+    if (slidingMonorailPieces.isNotEmpty) {
+      final monorailSection = window.getSlidingFrameExtensionSection();
+      if (monorailSection != null) {
+        items.add(
+          createProfile(
+            'سكة واحدة (Monorail)',
+            colorName,
+            pieces: slidingMonorailPieces,
+            unit: 'قطاع',
+            overrideMap: monorailSection.toMap(),
+            preferOverrideMap: true,
+          ),
+        );
+      }
+    }
+
     if (window.isPVC) {
       items.add(
         createProfile(
@@ -3002,28 +3018,89 @@ class ComponentCalculator {
       List<double> sideCoverPieces = [];
 
       if (customSideCoverLayout) {
-        // The input length is the covered span on the frame. For a standalone
-        // custom piece, add its visible width for each outer edge it reaches
-        // because every outside corner is cut at 45 degrees. A piece whose
-        // start and end are both in the middle gets no visible-width extension.
-        for (final segment in window.effectiveSideCoverSegments) {
-          if (segment.side == 'bottom' && !window.hasBottomFrame) continue;
-          final sideLength = window.sideCoverSideLength(segment.side);
-          if (sideLength <= 0) continue;
-          final start = segment.startOffset.clamp(0.0, sideLength).toDouble();
-          final end = segment.endOffset.clamp(0.0, sideLength).toDouble();
-          if (end <= start) continue;
-          final visible = segment.visibleWidth > 0
-              ? segment.visibleWidth
-              : separateCoverWidth;
-          final cutLength = standaloneSideCoverSegmentCutLength(
-            sideLength: sideLength,
-            start: start,
-            end: end,
-            visibleWidth: visible,
-            weldingAllowance: pvcWeldingAllowance,
-          );
-          sideCoverPieces.add(cutLength / 1000.0);
+        if (frameRects.length > 1) {
+          // A customised cover still follows the real outside perimeter of
+          // every physical frame. The old branch used the four global side
+          // lengths, so a partial upper frame or a recessed corner was
+          // missing from the cover quantity even when it was drawn.
+          final exposedEdges = window.getExposedFrameEdgeSegments();
+          bool isHorizontal(String side) =>
+              side == 'top' || side == 'bottom';
+
+          bool isEndpointAt(FrameEdgeSegment edge, double x, double y) {
+            final startX = isHorizontal(edge.side) ? edge.start : edge.coordinate;
+            final startY = isHorizontal(edge.side) ? edge.coordinate : edge.start;
+            final endX = isHorizontal(edge.side) ? edge.end : edge.coordinate;
+            final endY = isHorizontal(edge.side) ? edge.coordinate : edge.end;
+            return (startX - x).abs() <= 2.0 &&
+                    (startY - y).abs() <= 2.0 ||
+                (endX - x).abs() <= 2.0 && (endY - y).abs() <= 2.0;
+          }
+
+          bool hasMiterAt(FrameEdgeSegment edge, double axis) {
+            final x = isHorizontal(edge.side) ? axis : edge.coordinate;
+            final y = isHorizontal(edge.side) ? edge.coordinate : axis;
+            return exposedEdges.any(
+              (other) =>
+                  isHorizontal(other.side) != isHorizontal(edge.side) &&
+                  isEndpointAt(other, x, y),
+            );
+          }
+
+          for (final edge in exposedEdges) {
+            if (window.hiddenSideCoverSegments.contains(edge.side) ||
+                window.removedShutterSides.contains(edge.side) ||
+                (edge.side == 'bottom' && !window.hasBottomFrame)) {
+              continue;
+            }
+            for (final segment in window.effectiveSideCoverSegments.where(
+              (segment) => segment.side == edge.side,
+            )) {
+              final start = math.max(edge.start, segment.startOffset);
+              final end = math.min(edge.end, segment.endOffset);
+              if (end <= start) continue;
+              final visible = segment.visibleWidth > 0
+                  ? segment.visibleWidth
+                  : separateCoverWidth;
+              final miterCount =
+                  ((start - edge.start).abs() <= 2.0 &&
+                          hasMiterAt(edge, start)
+                      ? 1
+                      : 0) +
+                  ((end - edge.end).abs() <= 2.0 && hasMiterAt(edge, end)
+                      ? 1
+                      : 0);
+              sideCoverPieces.add(
+                ((end - start) + visible * miterCount + pvcWeldingAllowance) /
+                    1000.0,
+              );
+            }
+          }
+        } else {
+          // The input length is the covered span on the frame. For a
+          // standalone custom piece, add its visible width for each outer
+          // corner it reaches because every outside corner is cut at 45
+          // degrees. A piece whose ends are both in the middle gets no
+          // visible-width extension.
+          for (final segment in window.effectiveSideCoverSegments) {
+            if (segment.side == 'bottom' && !window.hasBottomFrame) continue;
+            final sideLength = window.sideCoverSideLength(segment.side);
+            if (sideLength <= 0) continue;
+            final start = segment.startOffset.clamp(0.0, sideLength).toDouble();
+            final end = segment.endOffset.clamp(0.0, sideLength).toDouble();
+            if (end <= start) continue;
+            final visible = segment.visibleWidth > 0
+                ? segment.visibleWidth
+                : separateCoverWidth;
+            final cutLength = standaloneSideCoverSegmentCutLength(
+              sideLength: sideLength,
+              start: start,
+              end: end,
+              visibleWidth: visible,
+              weldingAllowance: pvcWeldingAllowance,
+            );
+            sideCoverPieces.add(cutLength / 1000.0);
+          }
         }
       } else {
         final double w = separateCoverWidth;
@@ -3425,22 +3502,11 @@ class ComponentCalculator {
           }
 
           double frameT = window.profileThickness;
-          if (window.slidingFrameOverride != null) {
-            frameT =
-                ((window.slidingFrameOverride!['visible_width'] ??
-                            window.slidingFrameOverride!['thickness'])
-                        as num?)
-                    ?.toDouble() ??
-                window.profileThickness;
-          } else {
-            final frameSection = window.getSlidingSectionByType('frame');
-            if (frameSection != null) {
-              frameT =
-                  ((frameSection.visibleWidth ?? frameSection.thickness)
-                          as num?)
-                      ?.toDouble() ??
-                  window.profileThickness;
-            }
+          final frameSection = window.getSlidingBaseFrameSection();
+          if (frameSection != null) {
+            frameT = frameSection.visibleWidth > 0
+                ? frameSection.visibleWidth
+                : frameSection.thickness;
           }
           final railFrameWidth = isNestedSliding
               ? (slidingFrame == null
@@ -3458,6 +3524,19 @@ class ComponentCalculator {
           if (railLen < 0) railLen = 0;
           slidingRailPieces.add(railLen);
           slidingRailPieces.add(railLen);
+
+          // The selected sliding frame is always the two-track base. For a
+          // 3/4/5-leaf drawing, add one cut of the configured one-track
+          // extension for every track beyond those first two.
+          final monorailSection =
+              window.getSlidingFrameExtensionSection();
+          final additionalTracks =
+              window.slidingSingleTrackAdditionCount(sashes);
+          if (monorailSection != null && additionalTracks > 0) {
+            for (var track = 0; track < additionalTracks; track++) {
+              slidingMonorailPieces.add(railLen);
+            }
+          }
         }
       }
 

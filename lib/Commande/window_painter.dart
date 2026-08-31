@@ -690,7 +690,6 @@ class WindowPainter extends CustomPainter {
   Color get _fb =>
       getEffectiveBorderColor(model.frameColor, model.selectedDbColor);
 
-  Color get _mc => Color.lerp(_fc.last, Colors.black, 0.4)!;
 
   bool _isWoodColor([Map<String, dynamic>? dbColor]) {
     // If checking specifically for a different color, run standard check
@@ -1827,11 +1826,12 @@ class WindowPainter extends CustomPainter {
 
   void _drawMiterCorners(Canvas canvas, Rect outer, Rect inner, double t) {
     final p = Paint()
-      ..color = _mc
-      ..strokeWidth = 1.8
+      ..color = _fb
+      ..strokeWidth = 1.55
       ..style = PaintingStyle.stroke;
 
-    // 45-degree miter joints (outer frame is always 45 degrees, even for 90-degree sliding sashes)
+    // Every closed frame corner is a visible 45-degree welding cut. The same
+    // diagonal is used at the outside and inside edge of the profile.
     canvas.drawLine(outer.topLeft, inner.topLeft, p);
     canvas.drawLine(outer.topRight, inner.topRight, p);
     if (_hasEffectiveBottomFrame) {
@@ -2056,64 +2056,6 @@ class WindowPainter extends CustomPainter {
     final edges = model.getExposedFrameEdgeSegments();
     if (edges.isEmpty) return;
 
-    // With the normal layout, draw one continuous ring around the union of
-    // all touching frames. Inflating that union follows steps and raised
-    // frames without filling the empty area beside a partial upper frame.
-    // Custom/hidden sides keep the segmented path below so those explicit
-    // user choices remain respected.
-    if (!model.useCustomSideCoverLayout &&
-        model.hiddenSideCoverSegments.isEmpty &&
-        model.removedShutterSides.isEmpty &&
-        _hasEffectiveBottomFrame) {
-      Path? frameUnion;
-      for (final frameRect in model.getFrameRects()) {
-        final framePath = Path()..addRect(frameRect);
-        frameUnion = frameUnion == null
-            ? framePath
-            : Path.combine(PathOperation.union, frameUnion!, framePath);
-      }
-      if (frameUnion == null) return;
-
-      Path? expandedUnion;
-      for (final frameRect in model.getFrameRects()) {
-        final expandedPath = Path()..addRect(frameRect.inflate(coverWidth));
-        expandedUnion = expandedUnion == null
-            ? expandedPath
-            : Path.combine(PathOperation.union, expandedUnion!, expandedPath);
-      }
-      if (expandedUnion == null) return;
-
-      final coverPath = Path.combine(
-        PathOperation.difference,
-        expandedUnion,
-        frameUnion,
-      );
-      final paint = Paint();
-      if (_isWoodColor() && TextureCache.woodTexture != null) {
-        _applyWoodShader(
-          paint,
-          model
-              .getFrameRects()
-              .fold<Rect>(
-                model.getFrameRects().first,
-                (bounds, rect) => bounds.expandToInclude(rect),
-              )
-              .inflate(coverWidth),
-        );
-      } else {
-        paint.color = _fc[1];
-      }
-      canvas.drawPath(coverPath, paint);
-      canvas.drawPath(
-        coverPath,
-        Paint()
-          ..color = _fb
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0,
-      );
-      return;
-    }
-
     final paint = Paint();
     if (_isWoodColor() && TextureCache.woodTexture != null) {
       _applyWoodShader(
@@ -2133,9 +2075,13 @@ class WindowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
+    // Keep the real exposed perimeter, including custom side selections.
+    // Each piece carries its own visible width because a side may have been
+    // edited independently from the other sides.
     final customSegments = model.useCustomSideCoverLayout
         ? model.effectiveSideCoverSegments
         : const <SideCoverSegment>[];
+    final pieces = <({FrameEdgeSegment edge, double visible})>[];
 
     for (final edge in edges) {
       if (model.hiddenSideCoverSegments.contains(edge.side) ||
@@ -2153,7 +2099,9 @@ class WindowPainter extends CustomPainter {
                 visibleWidth: coverWidth,
               ),
             ]
-          : customSegments.where((segment) => segment.side == edge.side);
+          : customSegments
+                .where((segment) => segment.side == edge.side)
+                .toList();
 
       for (final span in spans) {
         final start = math.max(edge.start, span.startOffset);
@@ -2163,37 +2111,229 @@ class WindowPainter extends CustomPainter {
             .clamp(0.0, coverWidth)
             .toDouble();
         if (visible <= 0) continue;
+        pieces.add(
+          (
+            edge: FrameEdgeSegment(
+              side: edge.side,
+              start: start,
+              end: end,
+              coordinate: edge.coordinate,
+            ),
+            visible: visible,
+          ),
+        );
+      }
+    }
+    if (pieces.isEmpty) return;
 
-        final rect = switch (edge.side) {
-          'top' => Rect.fromLTRB(
-            start,
-            edge.coordinate - visible,
-            end,
-            edge.coordinate,
-          ),
-          'bottom' => Rect.fromLTRB(
-            start,
-            edge.coordinate,
-            end,
-            edge.coordinate + visible,
-          ),
-          'left' => Rect.fromLTRB(
-            edge.coordinate - visible,
-            start,
-            edge.coordinate,
-            end,
-          ),
-          'right' => Rect.fromLTRB(
-            edge.coordinate,
-            start,
-            edge.coordinate + visible,
-            end,
-          ),
-          _ => Rect.zero,
-        };
-        if (rect.isEmpty) continue;
-        canvas.drawRect(rect, paint);
-        canvas.drawRect(rect, borderPaint);
+    const tolerance = 2.0;
+    bool isHorizontal(String side) => side == 'top' || side == 'bottom';
+
+    Offset endpointOf(({FrameEdgeSegment edge, double visible}) piece,
+        bool atStart) {
+      final edge = piece.edge;
+      final axis = atStart ? edge.start : edge.end;
+      return isHorizontal(edge.side)
+          ? Offset(axis, edge.coordinate)
+          : Offset(edge.coordinate, axis);
+    }
+
+    bool pointTouchesEdge(Offset point, FrameEdgeSegment edge) {
+      if (isHorizontal(edge.side)) {
+        return (point.dy - edge.coordinate).abs() <= tolerance &&
+            point.dx >= edge.start - tolerance &&
+            point.dx <= edge.end + tolerance;
+      }
+      return (point.dx - edge.coordinate).abs() <= tolerance &&
+          point.dy >= edge.start - tolerance &&
+          point.dy <= edge.end + tolerance;
+    }
+
+    bool isEdgeEndpoint(Offset point, FrameEdgeSegment edge) {
+      final startPoint = isHorizontal(edge.side)
+          ? Offset(edge.start, edge.coordinate)
+          : Offset(edge.coordinate, edge.start);
+      final endPoint = isHorizontal(edge.side)
+          ? Offset(edge.end, edge.coordinate)
+          : Offset(edge.coordinate, edge.end);
+      return (point - startPoint).distance <= tolerance ||
+          (point - endPoint).distance <= tolerance;
+    }
+
+    Offset rayIntoEdge(FrameEdgeSegment edge, Offset point) {
+      final startPoint = isHorizontal(edge.side)
+          ? Offset(edge.start, edge.coordinate)
+          : Offset(edge.coordinate, edge.start);
+      final isAtStart = (point - startPoint).distance <= tolerance;
+      if (isHorizontal(edge.side)) {
+        return Offset(isAtStart ? 1.0 : -1.0, 0.0);
+      }
+      return Offset(0.0, isAtStart ? 1.0 : -1.0);
+    }
+
+    // Do not inflate the rectangles here.  The sample is deliberately taken
+    // inside the quadrant formed by the two edge rays; expanding the frame
+    // would incorrectly turn a narrow recessed corner into an outside one.
+    bool frameContains(Offset point) =>
+        model.getFrameRects().any((rect) => rect.contains(point));
+
+    // Return the common width and the corner direction.  The old code
+    // treated every perpendicular meeting as an outside corner and extended
+    // both covers past it.  At a recessed/inside corner that creates the
+    // wrong diagonal.  Looking at the quadrant immediately inside the two
+    // edge rays tells us which miter is needed:
+    //   - occupied quadrant: normal outside (convex) miter;
+    //   - empty quadrant: inverse (concave) 45-degree miter.
+    ({double width, bool isConvex})? jointAt(
+      ({FrameEdgeSegment edge, double visible}) piece,
+      bool atStart,
+    ) {
+      final point = endpointOf(piece, atStart);
+      var result = double.infinity;
+      for (final other in pieces) {
+        if (identical(other, piece) ||
+            isHorizontal(other.edge.side) == isHorizontal(piece.edge.side)) {
+          continue;
+        }
+        if (!pointTouchesEdge(point, other.edge) ||
+            !isEdgeEndpoint(point, other.edge)) {
+          continue;
+        }
+
+        final rayA = rayIntoEdge(piece.edge, point);
+        final rayB = rayIntoEdge(other.edge, point);
+        const sampleDistance = 1.0;
+        final cornerSample = point +
+            Offset(
+              rayA.dx + rayB.dx,
+              rayA.dy + rayB.dy,
+            ) *
+                sampleDistance;
+        result = math.min(result, other.visible);
+        return (
+          width: math.min(result, piece.visible),
+          isConvex: frameContains(cornerSample),
+        );
+      }
+      return null;
+    }
+
+    Path piecePath(({FrameEdgeSegment edge, double visible}) piece) {
+      final edge = piece.edge;
+      final visible = piece.visible;
+      final startCorner = jointAt(piece, true);
+      final endCorner = jointAt(piece, false);
+      // Outside corners extend away from the endpoint.  Inside corners use
+      // the opposite sign, trimming the two covers into a true 45-degree
+      // joint instead of producing a square/extra piece in the empty area.
+      final startJoint = startCorner == null
+          ? 0.0
+          : (startCorner.isConvex ? 1.0 : -1.0) * startCorner.width;
+      final endJoint = endCorner == null
+          ? 0.0
+          : (endCorner.isConvex ? 1.0 : -1.0) * endCorner.width;
+
+      switch (edge.side) {
+        case 'top':
+          return Path()
+            ..moveTo(edge.start, edge.coordinate)
+            ..lineTo(edge.end, edge.coordinate)
+            ..lineTo(edge.end + endJoint, edge.coordinate - visible)
+            ..lineTo(edge.start - startJoint, edge.coordinate - visible)
+            ..close();
+        case 'bottom':
+          return Path()
+            ..moveTo(edge.start, edge.coordinate)
+            ..lineTo(edge.end, edge.coordinate)
+            ..lineTo(edge.end + endJoint, edge.coordinate + visible)
+            ..lineTo(edge.start - startJoint, edge.coordinate + visible)
+            ..close();
+        case 'left':
+          return Path()
+            ..moveTo(edge.coordinate, edge.start)
+            ..lineTo(edge.coordinate, edge.end)
+            ..lineTo(edge.coordinate - visible, edge.end + endJoint)
+            ..lineTo(edge.coordinate - visible, edge.start - startJoint)
+            ..close();
+        case 'right':
+          return Path()
+            ..moveTo(edge.coordinate, edge.start)
+            ..lineTo(edge.coordinate, edge.end)
+            ..lineTo(edge.coordinate + visible, edge.end + endJoint)
+            ..lineTo(edge.coordinate + visible, edge.start - startJoint)
+            ..close();
+        default:
+          return Path();
+      }
+    }
+
+    // The union removes seams between cover pieces, but a welded corner must
+    // still remain visible. Draw the 45-degree cut line for every joined
+    // endpoint, including recessed (inside) corners. The sign is the same
+    // sign used by piecePath, so an inside corner is the inverse diagonal of
+    // an outside corner rather than a square cut.
+    Offset miterOuterPoint(
+      ({FrameEdgeSegment edge, double visible}) piece,
+      bool atStart,
+      ({double width, bool isConvex}) joint,
+    ) {
+      final edge = piece.edge;
+      final point = endpointOf(piece, atStart);
+      final signedWidth =
+          (joint.isConvex ? 1.0 : -1.0) * joint.width;
+      switch (edge.side) {
+        case 'top':
+          return Offset(
+            point.dx + (atStart ? -signedWidth : signedWidth),
+            point.dy - piece.visible,
+          );
+        case 'bottom':
+          return Offset(
+            point.dx + (atStart ? -signedWidth : signedWidth),
+            point.dy + piece.visible,
+          );
+        case 'left':
+          return Offset(
+            point.dx - piece.visible,
+            point.dy + (atStart ? -signedWidth : signedWidth),
+          );
+        case 'right':
+          return Offset(
+            point.dx + piece.visible,
+            point.dy + (atStart ? -signedWidth : signedWidth),
+          );
+        default:
+          return point;
+      }
+    }
+
+    // Union the pieces before painting. This removes internal seams between
+    // neighbouring sides and makes the cover behave as one surrounding strip.
+    Path? coverPath;
+    for (final piece in pieces) {
+      final path = piecePath(piece);
+      coverPath = coverPath == null
+          ? path
+          : Path.combine(PathOperation.union, coverPath, path);
+    }
+    if (coverPath == null) return;
+
+    canvas.drawPath(coverPath, paint);
+    canvas.drawPath(coverPath, borderPaint);
+
+    final miterPaint = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.35;
+    for (final piece in pieces) {
+      for (final atStart in [true, false]) {
+        final joint = jointAt(piece, atStart);
+        if (joint == null || joint.width <= 0) continue;
+        canvas.drawLine(
+          endpointOf(piece, atStart),
+          miterOuterPoint(piece, atStart, joint),
+          miterPaint,
+        );
       }
     }
   }

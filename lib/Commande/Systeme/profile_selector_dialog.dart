@@ -595,7 +595,13 @@ bool profileHasIntegratedSideCover(Map<String, dynamic> item) {
       name.contains('intégré') ||
       name.contains('integre') ||
       name.contains('monobloc') ||
-      type.contains('monobloc');
+      name.contains('sunset') ||
+      name.contains('sontara') ||
+      name.contains('suntara') ||
+      type.contains('monobloc') ||
+      type.contains('sunset') ||
+      type.contains('sontara') ||
+      type.contains('suntara');
 }
 
 class CatalogCandidateQuery {
@@ -606,6 +612,7 @@ class CatalogCandidateQuery {
     this.seriesId,
     this.materialType,
     this.hasShutter = false,
+    this.multiFrameDrawing = false,
     this.drawingMode,
     this.requireDialog = true,
     this.requireQuantity = true,
@@ -620,6 +627,7 @@ class CatalogCandidateQuery {
   final int? seriesId;
   final String? materialType;
   final bool hasShutter;
+  final bool multiFrameDrawing;
   final AccessoryDrawingMode? drawingMode;
   final bool requireDialog;
   final bool requireQuantity;
@@ -680,6 +688,13 @@ class CatalogCandidateResolver {
     return sections
         .where((section) {
           if (!_designRoleMatchesGlass(section, query)) {
+            return false;
+          }
+          final isPvc = normalizedMaterial == 'pvc';
+          if (isFrameSelector &&
+              query.multiFrameDrawing &&
+              isPvc &&
+              profileHasIntegratedSideCover(section)) {
             return false;
           }
           if (query.hasShutter &&
@@ -1048,6 +1063,7 @@ class ProfileSelectorDialog extends StatefulWidget {
   final int? seriesId;
   final String? materialType;
   final bool hasShutter;
+  final bool multiFrameDrawing;
   final double? windowHeight;
   final double? targetSize;
   final String? kitDescriptionCode;
@@ -1080,6 +1096,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.seriesId,
     this.materialType,
     this.hasShutter = false,
+    this.multiFrameDrawing = false,
     this.windowHeight,
     this.targetSize,
     this.kitDescriptionCode,
@@ -1146,6 +1163,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           seriesId: widget.seriesId,
           materialType: widget.materialType,
           hasShutter: widget.hasShutter,
+          multiFrameDrawing: widget.multiFrameDrawing,
           drawingMode: widget.accessoryDrawingMode,
           requireDialog: true,
           requireQuantity: true,

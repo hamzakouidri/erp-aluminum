@@ -29,6 +29,18 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
 
+  String _withoutQualityLabel(String value) {
+    return value
+        .replaceAll(
+          RegExp(
+            r'\s*\(\s*(?:جودة\s+(?:رفيعة|قياسية|تجارية)|qualité\s+(?:haute|standard|commerciale)|(?:premium|standard|commercial)\s+quality)\s*\)',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+  }
+
   String? _accessoryImagePath(Map<String, dynamic> item) {
     final savedPath = item['image_path']?.toString().trim() ?? '';
     if (savedPath.isNotEmpty) return savedPath;
@@ -2648,10 +2660,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
               ),
 
               title: Text(
-                item['name']
-                    .toString()
-                    .replaceAll(RegExp(r'\s*\(\s*جودة[^)]*\)'), '')
-                    .trim(),
+                _withoutQualityLabel(item['name'].toString()),
 
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -2678,10 +2687,6 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                         final typeStr = parts[0].trim();
 
-                        final qualityStr = parts.length > 1
-                            ? parts[1].trim()
-                            : '';
-
                         if (typeStr == 'البراغي')
                           return const SizedBox.shrink();
 
@@ -2689,11 +2694,6 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                             Localization.translate('النوع:', lang) +
                             ' ' +
                             Localization.translate(typeStr, lang);
-
-                        if (qualityStr.isNotEmpty) {
-                          label +=
-                              ' | ' + Localization.translate(qualityStr, lang);
-                        }
 
                         return Text(
                           label,

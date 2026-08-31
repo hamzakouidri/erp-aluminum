@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100px" height="100px">
+  <defs>
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0f0f0" />
+      <stop offset="50%" stop-color="#b0b5ba" />
+      <stop offset="100%" stop-color="#7a8288" />
+    </linearGradient>
+  </defs>
+  <!-- Background transparent -->
+  <!-- U-Channel cross-section path: outer 70x60, wall thickness 8 -->
+  <!-- Outer: (15,20) -> (15,80) -> (85,80) -> (85,20) -> (77,20) -> (77,72) -> (23,72) -> (23,20) -> Z -->
+  <path d="M 18 20 
+           L 18 78 
+           Q 18 82 22 82 
+           L 78 82 
+           Q 82 82 82 78 
+           L 82 20 
+           L 74 20 
+           L 74 74 
+           L 26 74 
+           L 26 20 
+           Z" 
+        fill="url(#metalGrad)" 
+        stroke="#2c3e50" 
+        stroke-width="2.5" 
+        stroke-linejoin="round" 
+        stroke-linecap="round" />
+</svg>

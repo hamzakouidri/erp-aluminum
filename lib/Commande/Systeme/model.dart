@@ -2714,6 +2714,7 @@ class WindowModel extends ChangeNotifier {
   int? loadedSlidingSeriesId;
   Map<String, dynamic>? seriesDesignConfig;
   final Map<int, Set<String>> _seriesDesignRoleKeys = {};
+  final Map<int, Map<String, Set<int>>> _seriesDesignRoleSectionIds = {};
 
   // Cutting rules are catalog data, separate from the drawing definition.
   // Keep the sliding copy distinct so a mixed drawing never applies an
@@ -2832,6 +2833,17 @@ class WindowModel extends ChangeNotifier {
         .whereType<String>()
         .where((role) => role.isNotEmpty)
         .toSet();
+    final roleIds = <String, Set<int>>{};
+    for (final row in rows) {
+      final role = row['role_key']?.toString().trim();
+      final rawId = row['section_id'];
+      final sectionId = rawId is num
+          ? rawId.toInt()
+          : int.tryParse(rawId?.toString() ?? '');
+      if (role == null || role.isEmpty || sectionId == null) continue;
+      roleIds.putIfAbsent(role, () => <int>{}).add(sectionId);
+    }
+    _seriesDesignRoleSectionIds[series.id] = roleIds;
   }
 
   bool seriesHasConfiguredRoles(AluminumSeries? series) {
@@ -2852,7 +2864,13 @@ class WindowModel extends ChangeNotifier {
         name.contains('intégré') ||
         name.contains('integre') ||
         name.contains('monobloc') ||
-        type.contains('monobloc');
+        name.contains('sunset') ||
+        name.contains('sontara') ||
+        name.contains('suntara') ||
+        type.contains('monobloc') ||
+        type.contains('sunset') ||
+        type.contains('sontara') ||
+        type.contains('suntara');
   }
 
   bool _sectionIsSideCover(AluminumSection section) {
@@ -3032,7 +3050,13 @@ class WindowModel extends ChangeNotifier {
         name.contains('intégré') ||
         name.contains('integre') ||
         name.contains('monobloc') ||
-        type.contains('monobloc');
+        name.contains('sunset') ||
+        name.contains('sontara') ||
+        name.contains('suntara') ||
+        type.contains('monobloc') ||
+        type.contains('sunset') ||
+        type.contains('sontara') ||
+        type.contains('suntara');
   }
 
   bool get isPVC => _isPvcSeries(
@@ -3053,7 +3077,9 @@ class WindowModel extends ChangeNotifier {
       : activeSeries;
 
   Map<String, dynamic>? get activeFrameOverride =>
-      usesSlidingPrimaryProfiles ? slidingFrameOverride : frameOverride;
+      usesSlidingPrimaryProfiles
+          ? (getSlidingBaseFrameSection()?.toMap() ?? slidingFrameOverride)
+          : frameOverride;
 
   /// Maximum length of one frame profile piece, in millimetres.
   ///
@@ -3105,7 +3131,11 @@ class WindowModel extends ChangeNotifier {
     final frameSeries = sliding ? activeSlidingSeries : activeSeries;
     final isAluminiumShutterFrame =
         hasShutter && frameSeries != null && !_isPvcSeries(frameSeries);
-    if (isAluminiumShutterFrame) {
+    final isMultiFramePvc =
+        getFrameRects().length > 1 &&
+        frameSeries != null &&
+        _isPvcSeries(frameSeries);
+    if (isAluminiumShutterFrame || isMultiFramePvc) {
       if (_overrideHasIntegratedSideCover(mutable)) {
         final frames = frameSeries.sections.where((section) {
           final type = section.type.toLowerCase();
@@ -3125,7 +3155,9 @@ class WindowModel extends ChangeNotifier {
           mutable['manual_selection'] = true;
         }
       }
-      if (manualSelection && !_overrideAllowsStandaloneSideCover(mutable)) {
+      if (manualSelection &&
+          !isMultiFramePvc &&
+          !_overrideAllowsStandaloneSideCover(mutable)) {
         hasSideCovers = false;
         useCustomSideCoverLayout = false;
         sideCoverSegments = [];
@@ -4265,7 +4297,7 @@ class WindowModel extends ChangeNotifier {
     final storedSegments = sideCoverSegments
         .where(
           (segment) =>
-              segment.side != 'bottom' || (hasBottomFrame && showBottomWall),
+              segment.side != 'bottom' || hasBottomFrame,
         )
         .toList();
     if (!useCustomSideCoverLayout) {
@@ -4275,7 +4307,7 @@ class WindowModel extends ChangeNotifier {
     final segments = storedSegments;
     const sides = ['top', 'left', 'right', 'bottom'];
     for (final side in sides) {
-      if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) continue;
+      if (side == 'bottom' && !hasBottomFrame) continue;
       if (hiddenSideCoverSegments.contains(side) ||
           removedShutterSides.contains(side) ||
           segments.any((segment) => segment.side == side)) {
@@ -4297,7 +4329,7 @@ class WindowModel extends ChangeNotifier {
 
   bool isSideCoverSegmentEnabled(String side) {
     final normalized = side.toLowerCase();
-    if (normalized == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
+    if (normalized == 'bottom' && !hasBottomFrame) {
       return false;
     }
     if (!useCustomSideCoverLayout) {
@@ -4318,7 +4350,7 @@ class WindowModel extends ChangeNotifier {
     const sides = ['top', 'left', 'right', 'bottom'];
     final segments = <SideCoverSegment>[];
     for (final side in sides) {
-      if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) continue;
+      if (side == 'bottom' && !hasBottomFrame) continue;
       if (removedShutterSides.contains(side)) continue;
       final length = sideCoverSideLength(side);
       if (length <= 0) continue;
@@ -4342,7 +4374,7 @@ class WindowModel extends ChangeNotifier {
     const allowedSides = {'left', 'right', 'top', 'bottom'};
     final normalized = side.toLowerCase();
     if (!allowedSides.contains(normalized)) return;
-    if (normalized == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
+    if (normalized == 'bottom' && !hasBottomFrame) {
       return;
     }
 
@@ -4376,7 +4408,7 @@ class WindowModel extends ChangeNotifier {
     const allowedSides = {'left', 'right', 'top', 'bottom'};
     final side = segment.side.toLowerCase();
     if (!allowedSides.contains(side)) return;
-    if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) return;
+    if (side == 'bottom' && !hasBottomFrame) return;
 
     final sideLength = sideCoverSideLength(side);
     if (sideLength <= 0) return;
@@ -6138,6 +6170,18 @@ class WindowModel extends ChangeNotifier {
           (seriesId, roles) => MapEntry(seriesId, Set<String>.from(roles)),
         ),
       );
+    _seriesDesignRoleSectionIds
+      ..clear()
+      ..addAll(
+        source._seriesDesignRoleSectionIds.map(
+          (seriesId, roles) => MapEntry(
+            seriesId,
+            roles.map(
+              (role, ids) => MapEntry(role, Set<int>.from(ids)),
+            ),
+          ),
+        ),
+      );
     sectionPricesForSelectedColor
       ..clear()
       ..addAll(source.sectionPricesForSelectedColor);
@@ -6482,8 +6526,9 @@ class WindowModel extends ChangeNotifier {
     if (normalizedType == 'sash' && slidingSashOverride != null) {
       return AluminumSection.fromMap(slidingSashOverride!);
     }
-    if (normalizedType == 'frame' && slidingFrameOverride != null) {
-      return AluminumSection.fromMap(slidingFrameOverride!);
+    if (normalizedType == 'frame') {
+      final base = getSlidingBaseFrameSection();
+      if (base != null) return base;
     }
 
     for (final section in series.sections) {
@@ -6493,6 +6538,108 @@ class WindowModel extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  bool _looksLikeSlidingOneTrack(Map<String, dynamic> section) {
+    final text = '${section['type'] ?? ''} ${section['name'] ?? ''}'
+        .toLowerCase();
+    return text.contains('frame_extension') ||
+        text.contains('monorail') ||
+        text.contains('mono rail') ||
+        text.contains('سكة واحدة') ||
+        text.contains('سكة 1');
+  }
+
+  /// Returns true when a catalogue row is the one-track extension assigned
+  /// to a sliding series. This is used by the selector to keep the mandatory
+  /// two-track base frame separate from its automatic additions.
+  bool isSlidingFrameExtension(Map<String, dynamic> section) {
+    final series = activeSlidingSeries ?? activeSeries;
+    final rawId = section['id'];
+    final id = rawId is num
+        ? rawId.toInt()
+        : int.tryParse(rawId?.toString() ?? '');
+    final configuredIds = series == null
+        ? const <int>{}
+        : (_seriesDesignRoleSectionIds[series.id]?['frame_extension'] ??
+              const <int>{});
+    return (id != null && configuredIds.contains(id)) ||
+        _looksLikeSlidingOneTrack(section);
+  }
+
+  /// Resolves the physical two-track base frame even when an old drawing or
+  /// an overly broad catalogue role contains a one-track profile.
+  AluminumSection? getSlidingBaseFrameSection() {
+    final series = activeSlidingSeries ?? activeSeries;
+    if (series == null) return null;
+
+    if (slidingFrameOverride != null &&
+        !isSlidingFrameExtension(slidingFrameOverride!)) {
+      return AluminumSection.fromMap(slidingFrameOverride!);
+    }
+
+    final configuredIds =
+        _seriesDesignRoleSectionIds[series.id]?['frame'] ?? const <int>{};
+    for (final section in series.sections) {
+      if (configuredIds.contains(section.id) &&
+          !isSlidingFrameExtension(section.toMap())) {
+        return section;
+      }
+    }
+
+    for (final section in series.sections) {
+      final text = '${section.type} ${section.name}'.toLowerCase();
+      final isFrame = section.isFrame ||
+          text.contains('frame') ||
+          text.contains('cadre') ||
+          text.contains('إطار') ||
+          text.contains('فريم');
+      if (isFrame && !isSlidingFrameExtension(section.toMap())) {
+        return section;
+      }
+    }
+
+    return slidingFrameOverride == null
+        ? null
+        : AluminumSection.fromMap(slidingFrameOverride!);
+  }
+
+  /// The sliding frame is always the two-track base frame.  Additional
+  /// tracks are represented by the section assigned to `frame_extension` in
+  /// the series rules, rather than by selecting a fictitious three/four-track
+  /// frame from the catalogue.
+  AluminumSection? getSlidingFrameExtensionSection() {
+    final series = activeSlidingSeries ?? activeSeries;
+    if (series == null) return null;
+
+    final configuredIds =
+        _seriesDesignRoleSectionIds[series.id]?['frame_extension'] ??
+        const <int>{};
+    if (configuredIds.isNotEmpty) {
+      for (final section in series.sections) {
+        if (configuredIds.contains(section.id)) return section;
+      }
+    }
+
+    // Legacy catalogues may not have a SeriesDesignRoles row yet.  Keep a
+    // narrow fallback for existing names so old data also receives the new
+    // quantity calculation without changing the user's catalogue.
+    for (final section in series.sections) {
+      if (isSlidingFrameExtension(section.toMap()) &&
+          !_sectionHasIntegratedSideCover(section)) {
+        return section;
+      }
+    }
+    return null;
+  }
+
+  /// Number of one-track additions needed after the mandatory two-track
+  /// base.  A sliding drawing with N leaves needs N physical tracks, so the
+  /// two-track frame supplies the first two and each remaining track is one
+  /// monorail section.
+  int slidingSingleTrackAdditionCount(int sashCount) {
+    final safeCount = sashCount.clamp(2, 4).toInt();
+    return math.max(0, safeCount - 2);
   }
 
   /// Returns a manually selected sliding profile only when it belongs to the
@@ -7688,14 +7835,18 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (slidingFrameOverride == null) {
-      var frames = configuredSectionsFor(const ['frame', 'frame_extension']);
-      if (frames.isEmpty && !strictProfileRoles) {
+      // `frame` is the mandatory two-track base.  `frame_extension` is a
+      // separate one-track profile and must never replace the base frame.
+      var frames = configuredSectionsFor(const ['frame']);
+      if (frames.isEmpty) {
         frames = series.sections.where((s) {
           final t = s.type.toLowerCase().trim();
-          return t.contains('frame') ||
+          final isFrame = s.isFrame ||
+              t.contains('frame') ||
               t.contains('cadre') ||
               t.contains('إطار') ||
               t.contains('فريم');
+          return isFrame && !isSlidingFrameExtension(s.toMap());
         }).toList();
       }
 
@@ -10566,6 +10717,9 @@ class WindowModel extends ChangeNotifier {
     String? cellId,
   }) {
     _saveSnapshot();
+    // The last glazing choice in the current order becomes the default for
+    // the next drawing added to that order, including a cell-level choice.
+    WindowZone.globalDefaultGlass = spec;
     try {
       final zone = zones.firstWhere((z) => z.id == zoneId);
 
@@ -11658,6 +11812,98 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Snaps a physical frame edge to the outside edge of the next touching
+  /// frame when the dragged edge is within 100 mm. This lets an upper frame
+  /// grow from one lower frame to two, three, or more frames without requiring
+  /// millimetre-perfect dragging.
+  double _snapPhysicalFrameEdge({
+    required int frameIndex,
+    required Rect current,
+    required List<Rect> rects,
+    required String side,
+    required double proposed,
+  }) {
+    const threshold = 100.0;
+
+    // Snapping is for extension toward a neighbouring frame. It must not
+    // pull an edge back when the user is deliberately reducing its size.
+    if ((side == 'right' && proposed <= current.right) ||
+        (side == 'left' && proposed >= current.left) ||
+        (side == 'bottom' && proposed <= current.bottom) ||
+        (side == 'top' && proposed >= current.top)) {
+      return proposed;
+    }
+
+    bool overlap(
+      double firstStart,
+      double firstEnd,
+      double secondStart,
+      double secondEnd,
+    ) {
+      return math.min(firstEnd, secondEnd) -
+              math.max(firstStart, secondStart) >
+          2.0;
+    }
+
+    bool nearPerpendicularEdge(Rect candidate) {
+      if (side == 'left' || side == 'right') {
+        return overlap(current.top, current.bottom, candidate.top, candidate.bottom) ||
+            (candidate.top - current.bottom).abs() <= threshold ||
+            (candidate.bottom - current.top).abs() <= threshold;
+      }
+      return overlap(current.left, current.right, candidate.left, candidate.right) ||
+          (candidate.left - current.right).abs() <= threshold ||
+          (candidate.right - current.left).abs() <= threshold;
+    }
+
+    double? best;
+    var bestDistance = threshold + 0.001;
+    for (var index = 0; index < rects.length; index++) {
+      if (index == frameIndex) continue;
+      final candidate = rects[index];
+      if (!nearPerpendicularEdge(candidate)) continue;
+
+      double? target;
+      switch (side) {
+        case 'right':
+          if (candidate.right <= current.right + 2.0 ||
+              candidate.left > proposed + threshold) {
+            continue;
+          }
+          target = candidate.right;
+          break;
+        case 'left':
+          if (candidate.left >= current.left - 2.0 ||
+              candidate.right < proposed - threshold) {
+            continue;
+          }
+          target = candidate.left;
+          break;
+        case 'bottom':
+          if (candidate.bottom <= current.bottom + 2.0 ||
+              candidate.top > proposed + threshold) {
+            continue;
+          }
+          target = candidate.bottom;
+          break;
+        case 'top':
+          if (candidate.top >= current.top - 2.0 ||
+              candidate.bottom < proposed - threshold) {
+            continue;
+          }
+          target = candidate.top;
+          break;
+      }
+      if (target == null) continue;
+      final distance = (target - proposed).abs();
+      if (distance <= threshold && distance < bestDistance) {
+        best = target;
+        bestDistance = distance;
+      }
+    }
+    return best ?? proposed;
+  }
+
   void _resizePhysicalFrameFromHandles(
     int frameIndex, {
     required bool moveLeft,
@@ -11720,6 +11966,45 @@ class WindowModel extends ChangeNotifier {
         bottom + deltaY,
         top + minInnerSize + (2 * profileThickness),
         top + maximumFrameBarLengthMm,
+      );
+    }
+
+    // Magnetic extension: when a frame edge approaches the next physical
+    // frame, lock it to that frame's outside edge within 100 mm.
+    if (moveRight) {
+      right = _snapPhysicalFrameEdge(
+        frameIndex: frameIndex,
+        current: currentOuter,
+        rects: rects,
+        side: 'right',
+        proposed: right,
+      );
+    }
+    if (moveLeft) {
+      left = _snapPhysicalFrameEdge(
+        frameIndex: frameIndex,
+        current: currentOuter,
+        rects: rects,
+        side: 'left',
+        proposed: left,
+      );
+    }
+    if (moveBottom) {
+      bottom = _snapPhysicalFrameEdge(
+        frameIndex: frameIndex,
+        current: currentOuter,
+        rects: rects,
+        side: 'bottom',
+        proposed: bottom,
+      );
+    }
+    if (moveTop) {
+      top = _snapPhysicalFrameEdge(
+        frameIndex: frameIndex,
+        current: currentOuter,
+        rects: rects,
+        side: 'top',
+        proposed: top,
       );
     }
 
@@ -12643,7 +12928,9 @@ class WindowModel extends ChangeNotifier {
 
   void toggleBottomFrame(bool value) {
     if (systemMode == 'sliding' || (!value && !canDisableBottomFrame)) {
+      final wasBottomFrame = hasBottomFrame;
       hasBottomFrame = true;
+      if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
       hasFramePlintheBottom = false;
       for (var z in zones) {
         z.hasSashPlintheBottom = false;
@@ -12654,7 +12941,11 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     _saveSnapshot();
+    final wasBottomFrame = hasBottomFrame;
     hasBottomFrame = value;
+    if (hasBottomFrame && !wasBottomFrame) {
+      _restoreBottomSideCoverWhenFrameReturns();
+    }
     _hideBottomCoverWhenBottomFrameIsMissing();
     if (hasBottomFrame) {
       hasFramePlintheBottom = false;
@@ -12692,11 +12983,13 @@ class WindowModel extends ChangeNotifier {
 
   void toggleFramePlintheBottom(bool value) {
     if (value && !canUseOpeningOnlyOptions) {
+      final wasBottomFrame = hasBottomFrame;
       hasFramePlintheBottom = false;
       for (final zone in zones) {
         zone.hasSashPlintheBottom = false;
       }
       hasBottomFrame = true;
+      if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
       showBottomWall = true;
       updateBottomZoneBoundaries();
       notifyListeners();
@@ -12704,6 +12997,7 @@ class WindowModel extends ChangeNotifier {
     }
     if (hasFramePlintheBottom == value) return;
     _saveSnapshot();
+    final wasBottomFrame = hasBottomFrame;
 
     if (value) {
       final sashZones = zones
@@ -12716,6 +13010,7 @@ class WindowModel extends ChangeNotifier {
       if (sashZones.isEmpty) {
         hasFramePlintheBottom = false;
         hasBottomFrame = true;
+        if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
         notifyListeners();
         return;
       }
@@ -12728,6 +13023,7 @@ class WindowModel extends ChangeNotifier {
     } else {
       hasFramePlintheBottom = false;
       hasBottomFrame = true;
+      if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
       showBottomWall = true;
       for (final z in zones) {
         z.hasSashPlintheBottom = false;
@@ -12756,8 +13052,10 @@ class WindowModel extends ChangeNotifier {
       hasBottomFrame = false;
       showBottomWall = false;
     } else {
+      final wasBottomFrame = hasBottomFrame;
       hasFramePlintheBottom = false;
       hasBottomFrame = true;
+      if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
       showBottomWall = true;
     }
 
@@ -13348,7 +13646,9 @@ class WindowModel extends ChangeNotifier {
     double oldThickness = profileThickness;
     final useSliding =
         usesSlidingPrimaryProfiles && activeSlidingSeries != null;
-    final activeFrame = useSliding ? slidingFrameOverride : frameOverride;
+    final activeFrame = useSliding
+        ? (getSlidingBaseFrameSection()?.toMap() ?? slidingFrameOverride)
+        : frameOverride;
     final series = useSliding ? activeSlidingSeries : activeSeries;
 
     if (activeFrame != null) {
@@ -13416,7 +13716,7 @@ class WindowModel extends ChangeNotifier {
 
   void toggleShutterSide(String side) {
     _saveSnapshot();
-    if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
+    if (side == 'bottom' && !hasBottomFrame) {
       removedShutterSides.add('bottom');
       notifyListeners();
       return;
@@ -13434,11 +13734,22 @@ class WindowModel extends ChangeNotifier {
     enforceBottomSideCoverConstraint();
   }
 
+  /// Re-enable a bottom cover after the drawing returns from a plinthe/open
+  /// bottom to a real bottom frame. The missing-frame constraint intentionally
+  /// stores the old state as hidden; clear only that stale state on this
+  /// transition, without changing a user's deliberate hide action while the
+  /// frame is already present.
+  void _restoreBottomSideCoverWhenFrameReturns() {
+    if (!hasBottomFrame) return;
+    removedShutterSides.remove('bottom');
+    hiddenSideCoverSegments.remove('bottom');
+  }
+
   /// Normalises the bottom cover after a drawing is restored or altered.
-  /// The cover is not restored automatically when the frame/wall returns;
-  /// the user deliberately re-enables it from the side-cover controls.
+  /// A bottom cover requires a bottom frame; visibility of the background
+  /// wall is independent from the cover and must not hide it.
   void enforceBottomSideCoverConstraint() {
-    if (!hasBottomFrame || !showBottomWall) {
+    if (!hasBottomFrame) {
       removedShutterSides.add('bottom');
       hiddenSideCoverSegments.add('bottom');
       sideCoverSegments = sideCoverSegments
@@ -15810,83 +16121,64 @@ class WindowModel extends ChangeNotifier {
         final drawnY2 = math.max(drawingStart!.dy, drawingCurrent!.dy);
         final tThickness = divisionThickness;
 
-        // 🟢 10cm (100mm) Magnetic Snapping & Column detection
-        final vJoints = <double>{0.0, width};
-        for (final z in zones) {
-          if (z.boundary.left <= profileThickness + 2.0) {
-            vJoints.add(0.0);
-          } else {
-            vJoints.add(z.boundary.left - tThickness / 2);
-          }
-          if (z.boundary.right >= width - profileThickness - 2.0) {
-            vJoints.add(width);
-          } else {
-            vJoints.add(z.boundary.right + tThickness / 2);
-          }
-        }
-        final sortedVJoints =
-            vJoints.where((x) => x >= -1.0 && x <= width + 1.0).toList()
-              ..sort();
-
         double spanLeft = 0.0;
         double spanRight = width;
-        if (sortedVJoints.length > 2) {
-          final matchedCols = <int>[];
-          for (int i = 0; i < sortedVJoints.length - 1; i++) {
-            double cLeft = sortedVJoints[i];
-            double cRight = sortedVJoints[i + 1];
-            if (cRight - cLeft < 30.0) continue;
-
-            // 10cm (100mm) magnetic snap threshold
-            double hitLeft = cLeft - 100.0;
-            double hitRight = cRight + 100.0;
-            if (drawnX2 >= hitLeft && drawnX1 <= hitRight) {
-              matchedCols.add(i);
-            }
-          }
-          if (matchedCols.isNotEmpty) {
-            spanLeft = sortedVJoints[matchedCols.first];
-            spanRight = sortedVJoints[matchedCols.last + 1];
-          }
-        }
-
-        // 🟢 10cm (100mm) Magnetic Snapping & Row detection
-        final hJoints = <double>{0.0, height};
-        for (final z in zones) {
-          if (z.boundary.top <= topOffset + profileThickness + 2.0) {
-            hJoints.add(0.0);
-          } else {
-            hJoints.add(z.boundary.top - tThickness / 2);
-          }
-          if (z.boundary.bottom >= height - bottomOffset - pHeight - 2.0) {
-            hJoints.add(height);
-          } else {
-            hJoints.add(z.boundary.bottom + tThickness / 2);
-          }
-        }
-        final sortedHJoints =
-            hJoints.where((y) => y >= -1.0 && y <= height + 1.0).toList()
-              ..sort();
-
         double spanTop = 0.0;
         double spanBottom = height;
-        if (sortedHJoints.length > 2) {
-          final matchedRows = <int>[];
-          for (int j = 0; j < sortedHJoints.length - 1; j++) {
-            double rTop = sortedHJoints[j];
-            double rBottom = sortedHJoints[j + 1];
-            if (rBottom - rTop < 30.0) continue;
+        // Select only the physical frames in the row/column nearest to the
+        // side where the new frame is being drawn. The old joint-based
+        // implementation treated every interval touched by a 100 mm halo as
+        // selected, so a drag over one column could unexpectedly span several
+        // columns (or the full drawing).
+        final frameRects = getFrameRects();
+        final addingTop = minVal == dyTop;
+        final addingBottom = minVal == dyBottom;
+        final addingLeft = minVal == dxLeft;
+        final addingRight = minVal == dxRight;
 
-            // 10cm (100mm) magnetic snap threshold
-            double hitTop = rTop - 100.0;
-            double hitBottom = rBottom + 100.0;
-            if (drawnY2 >= hitTop && drawnY1 <= hitBottom) {
-              matchedRows.add(j);
-            }
+        double distanceToDrawnSide(Rect frame) {
+          if (addingTop) return math.max(0.0, frame.top - drawnRect.bottom);
+          if (addingBottom) return math.max(0.0, drawnRect.top - frame.bottom);
+          if (addingLeft) return math.max(0.0, frame.left - drawnRect.right);
+          if (addingRight) return math.max(0.0, drawnRect.left - frame.right);
+          return 0.0;
+        }
+
+        final nearestDistance = frameRects.isEmpty
+            ? double.infinity
+            : frameRects.map(distanceToDrawnSide).reduce(math.min);
+        final referenceFrames = frameRects
+            .where(
+              (frame) =>
+                  (distanceToDrawnSide(frame) - nearestDistance).abs() <= 2.0,
+            )
+            .toList();
+
+        if (addingTop || addingBottom) {
+          final matched = referenceFrames
+              .where(
+                (frame) =>
+                    math.min(frame.right, drawnX2) -
+                        math.max(frame.left, drawnX1) >
+                    5.0,
+              )
+              .toList();
+          if (matched.isNotEmpty) {
+            spanLeft = matched.map((frame) => frame.left).reduce(math.min);
+            spanRight = matched.map((frame) => frame.right).reduce(math.max);
           }
-          if (matchedRows.isNotEmpty) {
-            spanTop = sortedHJoints[matchedRows.first];
-            spanBottom = sortedHJoints[matchedRows.last + 1];
+        } else if (addingLeft || addingRight) {
+          final matched = referenceFrames
+              .where(
+                (frame) =>
+                    math.min(frame.bottom, drawnY2) -
+                        math.max(frame.top, drawnY1) >
+                    5.0,
+              )
+              .toList();
+          if (matched.isNotEmpty) {
+            spanTop = matched.map((frame) => frame.top).reduce(math.min);
+            spanBottom = matched.map((frame) => frame.bottom).reduce(math.max);
           }
         }
 

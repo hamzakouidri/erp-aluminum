@@ -1238,6 +1238,16 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         : Colors.grey.shade800;
     final priceColor = item.isReplaced ? Colors.grey.shade500 : _blue;
     final hidePrices = data.hidePrices;
+    final List<String> displayDetails = _isOfficial
+        ? [
+            if (_invoiceLanguage == AppLanguage.french)
+              'Largeur: ${item.width} mm | Hauteur: ${item.height} mm'
+            else if (_invoiceLanguage == AppLanguage.english)
+              'Width: ${item.width} mm | Height: ${item.height} mm'
+            else
+              'العرض: ${item.width} مم | الارتفاع: ${item.height} مم',
+          ]
+        : item.details;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -1280,29 +1290,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      ...() {
-                        if (_isOfficial) {
-                          if (_invoiceLanguage == AppLanguage.french) {
-                            return [
-                              'Largeur: ${item.width} mm | Hauteur: ${item.height} mm',
-                            ];
-                          } else if (_invoiceLanguage == AppLanguage.english) {
-                            return [
-                              'Width: ${item.width} mm | Height: ${item.height} mm',
-                            ];
-                          } else {
-                            return [
-                              'العرض: ${item.width} مم | الارتفاع: ${item.height} مم',
-                            ];
-                          }
-                        } else {
-                          return item.details;
-                        }
-                      }().map(
-                        (d) => _detailRichText(
-                          d,
-                          style: TextStyle(fontSize: 11, color: detailColor),
-                        ),
+                      _detailsBlock(
+                        displayDetails,
+                        detailColor,
+                        twoColumns: hidePrices,
                       ),
                     ],
                   ),
@@ -1387,6 +1378,38 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           ? TextDirection.rtl
           : TextDirection.ltr,
       text: TextSpan(children: _detailTextSpans(text, style, labelStyle)),
+    );
+  }
+
+  Widget _detailsBlock(
+    List<String> details,
+    Color color, {
+    required bool twoColumns,
+  }) {
+    final clean = details.where((item) => item.trim().isNotEmpty).toList();
+    if (clean.isEmpty) return const SizedBox.shrink();
+
+    Widget column(List<String> values) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final value in values)
+          _detailRichText(
+            value,
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+      ],
+    );
+
+    if (!twoColumns || clean.length < 2) return column(clean);
+
+    final split = (clean.length + 1) ~/ 2;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: column(clean.sublist(0, split))),
+        const SizedBox(width: 8),
+        Expanded(child: column(clean.sublist(split))),
+      ],
     );
   }
 

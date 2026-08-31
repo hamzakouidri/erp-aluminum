@@ -522,11 +522,14 @@ class PdfInvoiceApi {
         .join('\n');
   }
 
-  static List<int> _arSingleLine(String text) {
+  static String _arSingleLine(String text) {
     // Shape Arabic glyphs first, then resolve mixed RTL/LTR runs (Arabic,
     // French, numbers and paired punctuation) with the real UBA algorithm.
     final reshaped = ArabicReshaper.instance.reshape(text);
-    return bidi.logicalToVisual(reshaped);
+    // bidi.logicalToVisual returns Unicode code points.  Returning that list
+    // directly makes String interpolation print `[82, 101, ...]` in the PDF
+    // instead of the actual text.
+    return String.fromCharCodes(bidi.logicalToVisual(reshaped));
   }
 
   // Always LTR: _ar() already produced visual-order text.
@@ -693,8 +696,9 @@ class PdfInvoiceApi {
                 ),
               ),
               pw.SizedBox(height: 2),
-              ...displayDetails.map(
-                (d) => _detailRichText(d, color: PdfColors.grey800),
+              _detailsBlock(
+                displayDetails,
+                twoColumns: hidePrices,
               ),
             ],
           ),
@@ -1257,17 +1261,35 @@ class PdfInvoiceApi {
     } else {
       label = 'ملاحظة';
     }
-    final text = '$label: $note';
-    return pw.Container(
-      width: double.infinity,
+    final labelText = '$label:';
+    final noteText = _ar(note);
+    final labelWidget = pw.Text(
+      labelText,
+      textDirection: pw.TextDirection.ltr,
+      style: pw.TextStyle(
+        fontSize: 10,
+        fontWeight: pw.FontWeight.bold,
+        color: PdfColors.grey900,
+      ),
+    );
+    final noteWidget = pw.Expanded(
       child: pw.Text(
-        _ar(text),
-        textDirection: _dir(text),
+        noteText,
+        textDirection: _dir(note),
         style: pw.TextStyle(
           fontSize: 10,
           fontWeight: pw.FontWeight.bold,
           color: PdfColors.grey900,
         ),
+      ),
+    );
+    return pw.Container(
+      width: double.infinity,
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: _currentLang == AppLanguage.arabic
+            ? [noteWidget, pw.SizedBox(width: 5), labelWidget]
+            : [labelWidget, pw.SizedBox(width: 5), noteWidget],
       ),
     );
   }
@@ -1353,6 +1375,39 @@ class PdfInvoiceApi {
     return pw.RichText(
       textDirection: _dir(text),
       text: pw.TextSpan(children: _detailSpans(text, normalStyle, labelStyle)),
+    );
+  }
+
+  /// No-price delivery documents are primarily used as workshop sheets.
+  /// Their window details are therefore split into two columns to reduce the
+  /// number of printed pages while preserving the original detail order.
+  static pw.Widget _detailsBlock(
+    List<String> details, {
+    required bool twoColumns,
+  }) {
+    final clean = details.where((item) => item.trim().isNotEmpty).toList();
+    if (clean.isEmpty) return pw.SizedBox();
+
+    pw.Widget column(List<String> values) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        for (final value in values)
+          _detailRichText(value, color: PdfColors.grey800),
+      ],
+    );
+
+    if (!twoColumns || clean.length < 2) return column(clean);
+
+    final split = (clean.length + 1) ~/ 2;
+    final first = clean.sublist(0, split);
+    final second = clean.sublist(split);
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Expanded(child: column(first)),
+        pw.SizedBox(width: 8),
+        pw.Expanded(child: column(second)),
+      ],
     );
   }
 

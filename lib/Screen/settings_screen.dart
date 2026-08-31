@@ -121,6 +121,10 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _registerWorkshopSession(BuildContext context) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     try {
       final ready = await _ensureSupabaseCatalogLogin(context);
       if (!ready) return;
@@ -135,10 +139,13 @@ class SettingsScreen extends StatelessWidget {
       CloudSyncService().startListeningForUpdates(() {});
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.',
-              style: TextStyle(fontFamily: 'Cairo'),
+              Localization.translate(
+                'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.',
+                lang,
+              ),
+              style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
           ),
@@ -634,15 +641,18 @@ class SettingsScreen extends StatelessWidget {
                         Icons.lock_clock_rounded,
                         color: Colors.deepPurple,
                       ),
-                      title: const Text(
-                        'جلسة الورشة',
+                      title: Text(
+                        Localization.translate('جلسة الورشة', lang),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Cairo',
                         ),
                       ),
-                      subtitle: const Text(
-                        'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.',
+                      subtitle: Text(
+                        Localization.translate(
+                          'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.',
+                          lang,
+                        ),
                         style: TextStyle(fontFamily: 'Cairo'),
                       ),
                     ),
@@ -655,9 +665,12 @@ class SettingsScreen extends StatelessWidget {
                         child: ElevatedButton.icon(
                           icon: const Icon(Icons.login_rounded),
                           label: Text(
-                            SupabaseCatalogSyncService().isSignedIn
-                                ? 'جلسة الورشة مسجلة'
-                                : 'تسجيل جلسة الورشة',
+                            Localization.translate(
+                              SupabaseCatalogSyncService().isSignedIn
+                                  ? 'جلسة الورشة مسجلة'
+                                  : 'تسجيل جلسة الورشة',
+                              lang,
+                            ),
                             style: const TextStyle(fontFamily: 'Cairo'),
                           ),
                           onPressed: SupabaseCatalogSyncService().isSignedIn

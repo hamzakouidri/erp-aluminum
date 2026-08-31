@@ -21,6 +21,22 @@ class _RuleRole {
   final String fr;
 }
 
+class _CatalogGroup {
+  const _CatalogGroup({
+    required this.key,
+    required this.ar,
+    required this.fr,
+    required this.icon,
+    required this.roleKeys,
+  });
+
+  final String key;
+  final String ar;
+  final String fr;
+  final IconData icon;
+  final Set<String> roleKeys;
+}
+
 class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
@@ -185,9 +201,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   int? _itemId(Map<String, dynamic> item) =>
       (item['id'] as num?)?.toInt() ?? int.tryParse('${item['id']}');
 
+  String _withoutQualityLabel(String value) {
+    return value
+        .replaceAll(
+          RegExp(
+            r'\s*\(\s*(?:جودة\s+(?:رفيعة|قياسية|تجارية)|qualité\s+(?:haute|standard|commerciale)|(?:premium|standard|commercial)\s+quality)\s*\)',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+  }
+
   String _itemTitle(Map<String, dynamic> item) {
     final code = item['code']?.toString().trim() ?? '';
-    final name = item['name']?.toString().trim() ?? '';
+    final name = _withoutQualityLabel(item['name']?.toString() ?? '');
     if (code.isEmpty) return name;
     return '$code - $name';
   }
@@ -202,7 +230,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'gasket_type',
     ]) {
       final value = item[key]?.toString().trim() ?? '';
-      if (value.isNotEmpty) parts.add(value);
+      if (value.isNotEmpty) {
+        // Accessory types are stored as category|quality|usage.  Quality is
+        // retained as metadata but is not part of the visible rule label.
+        parts.add(
+          key == 'type' ? _withoutQualityLabel(value.split('|').first) : value,
+        );
+      }
     }
     return parts.join(' • ');
   }
@@ -258,18 +292,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Map<String, dynamic> _defaultRule(String table, int itemId) {
-    final tableItems = _itemsByTable[table] ?? const <Map<String, dynamic>>[];
-    Map<String, dynamic>? item;
-    for (final candidate in tableItems) {
-      if (_itemId(candidate) == itemId) {
-        item = candidate;
-        break;
-      }
-    }
     return {
       'item_table': table,
       'item_id': itemId,
-      'role_key': _guessRole(table, item),
+      // An item is enabled only after the administrator activates its button.
+      // The old guessed role is still used as a convenient first suggestion
+      // when the button is activated, but is not enabled silently.
+      'role_key': '',
       'usage_scope': 'global',
       'show_when_glass': 'any',
       'selection_mode': 'always',
@@ -283,8 +312,194 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'height_adjust_mm': 0.0,
       'formula_note': '',
       'is_default': false,
-      'is_active': true,
+      'is_active': false,
     };
+  }
+
+  bool _truthy(dynamic value, {bool fallback = false}) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value.toString().trim().toLowerCase();
+    return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
+  }
+
+  bool _itemRuleEnabled(String table, Map<String, dynamic> item) {
+    final itemId = _itemId(item);
+    if (itemId == null) return false;
+    return _truthy(_ruleFor(table, itemId)['is_active']);
+  }
+
+  void _toggleItem(String table, Map<String, dynamic> item, bool enabled) {
+    final itemId = _itemId(item);
+    if (itemId == null) return;
+    final rule = _ruleFor(table, itemId);
+    setState(() {
+      rule['is_active'] = enabled;
+      if (enabled && (rule['role_key']?.toString().trim().isEmpty ?? true)) {
+        rule['role_key'] = _guessRole(table, item);
+      }
+    });
+  }
+
+  List<_CatalogGroup> _groupsForTable(String table) {
+    if (table == 'Joints') {
+      return const [
+        _CatalogGroup(
+          key: 'joints',
+          ar: 'الجوان',
+          fr: 'Joints',
+          icon: Icons.linear_scale_outlined,
+          roleKeys: {
+            'joint_vitrage',
+            'joint_bourrage',
+            'joint_frappe',
+            'joint_central',
+            'joint_brosse',
+            'joint_bronze',
+            'shutter_joint_brosse',
+            'other',
+          },
+        ),
+      ];
+    }
+    return const [
+      _CatalogGroup(
+        key: 'screws',
+        ar: 'الفيس',
+        fr: 'Vis',
+        icon: Icons.build_outlined,
+        roleKeys: {
+          'kit_screw',
+          'box_screw',
+          'motor_screw',
+          'batmo_screw',
+          'bouchon_batmo_screw',
+          'renfort_screw',
+          'manivelle_screw',
+          'assembly_screw',
+          'installation_screw',
+          'accessory_screw',
+        },
+      ),
+      _CatalogGroup(
+        key: 'gaches',
+        ar: 'القاش',
+        fr: 'Gâches',
+        icon: Icons.toggle_on_outlined,
+        roleKeys: {
+          'gache_simple',
+          'gache_double',
+          'gache_door',
+          'sliding_lock',
+        },
+      ),
+      _CatalogGroup(
+        key: 'locks',
+        ar: 'الأقفال',
+        fr: 'Serrures et verrous',
+        icon: Icons.lock_outline,
+        roleKeys: {
+          'lock_clef',
+          'lock_condamnation',
+          'verrou',
+          'canon',
+        },
+      ),
+      _CatalogGroup(
+        key: 'handles',
+        ar: 'المقابض والكريمون',
+        fr: 'Poignées et crémone',
+        icon: Icons.pan_tool_outlined,
+        roleKeys: {
+          'handle',
+          'door_handle_key',
+          'door_handle_condamnation',
+          'cremone',
+          'tringle',
+        },
+      ),
+      _CatalogGroup(
+        key: 'hinges',
+        ar: 'المفصلات',
+        fr: 'Paumelles',
+        icon: Icons.settings_input_component_outlined,
+        roleKeys: {'hinge'},
+      ),
+      _CatalogGroup(
+        key: 'moving',
+        ar: 'الطاسو والإيكار والعجلات',
+        fr: 'Tasso, Ekar et roulettes',
+        icon: Icons.circle_outlined,
+        roleKeys: {'tasso', 'ekar', 'roulette', 'sliding_kit', 'sliding_clamp'},
+      ),
+      _CatalogGroup(
+        key: 'other',
+        ar: 'أكسسوارات أخرى',
+        fr: 'Autres accessoires',
+        icon: Icons.extension_outlined,
+        roleKeys: {'other', 'entrematique'},
+      ),
+    ];
+  }
+
+  String _groupRoleForItem(String table, Map<String, dynamic> item) {
+    final guessed = _guessRole(table, item);
+    if (table == 'Accessories' &&
+        guessed == 'other' &&
+        _isScrewItem(item)) {
+      return 'accessory_screw';
+    }
+    return guessed;
+  }
+
+  bool _isScrewItem(Map<String, dynamic> item) {
+    final text = '${item['name'] ?? ''} ${item['type'] ?? ''}'.toLowerCase();
+    return text.contains('vis') ||
+        text.contains('screw') ||
+        text.contains('برغ') ||
+        _truthy(item['is_kit_screw']) ||
+        _truthy(item['is_caisson_screw']) ||
+        _truthy(item['is_moteur_screw']) ||
+        _truthy(item['is_batmo_screw']) ||
+        _truthy(item['is_bouchon_batmo_screw']) ||
+        _truthy(item['is_renfort_screw']) ||
+        _truthy(item['is_manivelle_screw']) ||
+        _truthy(item['is_assembly_screw']) ||
+        _truthy(item['is_installation_screw']) ||
+        _truthy(item['is_accessory_screw']);
+  }
+
+  bool _itemBelongsToGroup(
+    String table,
+    Map<String, dynamic> item,
+    _CatalogGroup group,
+  ) {
+    return group.roleKeys.contains(_groupRoleForItem(table, item));
+  }
+
+  List<_RuleRole> _rolesForItem(
+    String table,
+    Map<String, dynamic> item,
+  ) {
+    final group = _groupsForTable(table).firstWhere(
+      (candidate) => _itemBelongsToGroup(table, item, candidate),
+      orElse: () => _groupsForTable(table).last,
+    );
+    final roles = _rolesForTable(table)
+        .where((role) => group.roleKeys.contains(role.key))
+        .toList();
+    final itemId = _itemId(item);
+    final currentKey = itemId == null
+        ? ''
+        : _ruleFor(table, itemId)['role_key']?.toString() ?? '';
+    if (currentKey.isNotEmpty && !roles.any((role) => role.key == currentKey)) {
+      final currentRole = _rolesForTable(table).where(
+        (role) => role.key == currentKey,
+      );
+      if (currentRole.isNotEmpty) roles.add(currentRole.first);
+    }
+    return roles;
   }
 
   String _guessRole(String table, Map<String, dynamic>? item) {
@@ -452,7 +667,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         final rules = _rulesByItem.entries
             .where((entry) => entry.key.startsWith('$table:'))
             .map((entry) => entry.value)
-            .where((rule) => (rule['role_key']?.toString().isNotEmpty ?? false))
+            .where(
+              (rule) =>
+                  _truthy(rule['is_active']) &&
+                  (rule['role_key']?.toString().isNotEmpty ?? false),
+            )
             .toList();
         await widget.db.saveCatalogItemRules(itemTable: table, rules: rules);
       }
@@ -550,10 +769,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final filteredItems = items
         .where((item) => _matchesSearch(table, item, query))
         .toList(growable: false);
-    final categories = _rolesForTable(table)
-        .where((role) => role.key != 'other')
-        .toList(growable: false);
     final isJoints = table == 'Joints';
+    final groups = _groupsForTable(table);
 
     return ListView(
       padding: const EdgeInsets.all(14),
@@ -585,11 +802,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         Text(
           _t(
             isJoints
-                ? 'اختر عنوان الجوان لعرض أنواعه وقواعده'
-                : 'اختر عنوان الإكسسوار لعرض أنواعه وقواعده',
+                ? 'اختر عنوان الجوان ثم فعّل النوع الذي تريد تخصيصه'
+                : 'اختر عنوان الإكسسوار ثم فعّل النوع الذي تريد تخصيصه',
             isJoints
-                ? 'Choisissez une rubrique de joints pour afficher ses articles et règles'
-                : 'Choisissez une rubrique pour afficher ses articles et règles',
+                ? 'Ouvrez la rubrique des joints puis activez les articles à configurer'
+                : 'Ouvrez une rubrique puis activez les articles à configurer',
           ),
           style: Theme.of(context).textTheme.titleMedium,
         ),
@@ -608,42 +825,61 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ),
           )
         else
-          ...categories.map((category) {
-            final categoryItems = filteredItems.where((item) {
-              final itemId = _itemId(item);
-              if (itemId == null) return false;
-              final rule = _ruleFor(table, itemId);
-              return rule['role_key']?.toString() == category.key;
-            }).toList(growable: false);
-            if (query.trim().isNotEmpty && categoryItems.isEmpty) {
-              return const SizedBox.shrink();
-            }
+          ...groups.map((group) {
+            final groupItems = filteredItems
+                .where((item) => _itemBelongsToGroup(table, item, group))
+                .toList(growable: false);
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ExpansionTile(
-                leading: Icon(_categoryIcon(category.key)),
-                title: Text(_t(category.ar, category.fr)),
+                leading: Icon(group.icon),
+                title: Text(_t(group.ar, group.fr)),
                 subtitle: Text(
                   _t(
-                    '${categoryItems.length} نوع',
-                    '${categoryItems.length} article(s)',
+                    '${groupItems.length} نوع موجود',
+                    '${groupItems.length} article(s) disponible(s)',
                   ),
                 ),
-                children: categoryItems.isEmpty
+                children: groupItems.isEmpty
                     ? [
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                           child: Text(
                             _t(
-                              'لا توجد عناصر مربوطة بهذا العنوان بعد.',
-                              'Aucun article n’est encore rattaché à cette rubrique.',
+                              'لا توجد عناصر لهذا العنوان في قاعدة البيانات.',
+                              'Aucun article de cette rubrique dans la base de données.',
                             ),
                           ),
                         ),
                       ]
-                    : categoryItems
-                        .map((item) => _buildRuleCard(table, item))
-                        .toList(),
+                    : [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                          child: Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: Text(
+                              _t(
+                                'فعّل الزر لفتح تخصيص العنصر ودوره.',
+                                'Activez le bouton pour ouvrir la configuration et le rôle.',
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: groupItems
+                                .map((item) => _itemToggleChip(table, item))
+                                .toList(growable: false),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...groupItems
+                            .where((item) => _itemRuleEnabled(table, item))
+                            .map((item) => _buildRuleCard(table, item)),
+                      ],
               ),
             );
           }),
@@ -651,42 +887,29 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     );
   }
 
-  IconData _categoryIcon(String roleKey) {
-    switch (roleKey) {
-      case 'hinge':
-        return Icons.settings_input_component_outlined;
-      case 'sliding_clamp':
-      case 'sliding_lock':
-        return Icons.view_carousel_outlined;
-      case 'handle':
-      case 'door_handle_key':
-      case 'door_handle_condamnation':
-        return Icons.pan_tool_outlined;
-      case 'espagnolette':
-      case 'cremone':
-      case 'tringle':
-        return Icons.linear_scale_outlined;
-      case 'verrou':
-      case 'lock_clef':
-      case 'lock_condamnation':
-        return Icons.lock_outline;
-      case 'gache_simple':
-      case 'gache_double':
-      case 'gache_door':
-        return Icons.toggle_on_outlined;
-      case 'tasso':
-      case 'ekar':
-      case 'roulette':
-        return Icons.circle_outlined;
-      default:
-        return Icons.extension_outlined;
-    }
+  Widget _itemToggleChip(String table, Map<String, dynamic> item) {
+    final enabled = _itemRuleEnabled(table, item);
+    final itemId = _itemId(item);
+    final role = itemId == null
+        ? null
+        : _rolesForTable(table).where(
+            (candidate) =>
+                candidate.key == _ruleFor(table, itemId)['role_key'],
+          ).firstOrNull;
+    return FilterChip(
+      avatar: enabled ? const Icon(Icons.check_rounded, size: 17) : null,
+      label: Text(_itemTitle(item)),
+      selected: enabled,
+      onSelected: (value) => _toggleItem(table, item, value),
+      tooltip: role == null ? null : _t('الدور: ${role.ar}', 'Rôle : ${role.fr}'),
+    );
   }
 
   Widget _buildRuleCard(String table, Map<String, dynamic> item) {
     final itemId = _itemId(item);
     if (itemId == null) return const SizedBox.shrink();
     final rule = _ruleFor(table, itemId);
+    final itemRoles = _rolesForItem(table, item);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Card(
@@ -711,8 +934,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               DropdownButtonFormField<String>(
                 initialValue: rule['role_key']?.toString(),
                 isExpanded: true,
-                decoration: InputDecoration(labelText: _t('العنوان', 'Rubrique')),
-                items: _rolesForTable(table)
+                decoration: InputDecoration(
+                  labelText: _t('الدور / العنوان', 'Rôle / rubrique'),
+                ),
+                items: itemRoles
                     .map(
                       (role) => DropdownMenuItem(
                         value: role.key,
@@ -725,6 +950,40 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   setState(() => rule['role_key'] = value);
                 },
               ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _validUsageScope(rule['usage_scope']),
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: _t('مجال استعمال العنصر', 'Domaine d’utilisation'),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'global',
+                    child: Text(_t('كل الحالات', 'Tous les cas')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'opening',
+                    child: Text(_t('فتح فقط', 'Ouvrant seulement')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'sliding',
+                    child: Text(_t('منزلق فقط', 'Coulissant seulement')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'both',
+                    child: Text(_t('فتح ومنزلق', 'Ouvrant et coulissant')),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => rule['usage_scope'] = value);
+                },
+              ),
+              if (table == 'Accessories') ...[
+                const SizedBox(height: 10),
+                _accessoryRelationEditor(item),
+              ],
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -747,6 +1006,167 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  String _validUsageScope(dynamic value) {
+    const values = {'global', 'opening', 'sliding', 'both'};
+    final normalized = value?.toString().trim().toLowerCase() ?? '';
+    return values.contains(normalized) ? normalized : 'global';
+  }
+
+  List<Map<String, dynamic>> _accessoriesForRoles(Set<String> roles) {
+    final items = _itemsByTable['Accessories'] ?? const [];
+    return items
+        .where((item) => roles.contains(_groupRoleForItem('Accessories', item)))
+        .toList(growable: false);
+  }
+
+  Future<void> _updateAccessoryFields(
+    Map<String, dynamic> item,
+    Map<String, dynamic> values,
+  ) async {
+    final itemId = _itemId(item);
+    if (itemId == null) return;
+    try {
+      await widget.db.updateAccessory(itemId, values);
+      if (!mounted) return;
+      setState(() => item.addAll(values));
+    } catch (error) {
+      if (!mounted) return;
+      _showError('${_t('تعذر حفظ ارتباط الأكسسوار', 'Lien impossible à enregistrer')}: $error');
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
+    );
+  }
+
+  Widget _accessoryRelationEditor(Map<String, dynamic> item) {
+    final screwItems = _accessoriesForRoles(const {
+      'kit_screw',
+      'box_screw',
+      'motor_screw',
+      'batmo_screw',
+      'bouchon_batmo_screw',
+      'renfort_screw',
+      'manivelle_screw',
+      'assembly_screw',
+      'installation_screw',
+      'accessory_screw',
+    });
+    final gacheItems = _accessoriesForRoles(const {
+      'gache_simple',
+      'gache_double',
+      'gache_door',
+      'sliding_lock',
+    });
+    final itemId = _itemId(item);
+    final screwIds = screwItems
+        .map(_itemId)
+        .whereType<int>()
+        .where((id) => id != itemId)
+        .toSet();
+    final gacheIds = gacheItems
+        .map(_itemId)
+        .whereType<int>()
+        .where((id) => id != itemId)
+        .toSet();
+    final rawScrewId = (item['screw_accessory_id'] as num?)?.toInt();
+    final rawGacheId = (item['gache_accessory_id'] as num?)?.toInt();
+    final screwId = screwIds.contains(rawScrewId) ? rawScrewId : 0;
+    final gacheId = gacheIds.contains(rawGacheId) ? rawGacheId : 0;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _t('الروابط الحسابية', 'Liens de calcul'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (screwItems.isNotEmpty)
+            DropdownButtonFormField<int>(
+              initialValue: screwId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _t('الفيس المرتبط بهذا العنصر', 'Vis liées à cet élément'),
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: 0,
+                  child: Text(_t('بدون فيس مرتبط', 'Aucune vis liée')),
+                ),
+                for (final screw in screwItems)
+                  if (_itemId(screw) != itemId)
+                    DropdownMenuItem(
+                      value: _itemId(screw),
+                      child: Text(_itemTitle(screw)),
+                    ),
+              ],
+              onChanged: (value) => _updateAccessoryFields(item, {
+                'screw_accessory_id': value == null || value == 0 ? null : value,
+              }),
+            ),
+          if (screwItems.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            TextFormField(
+              initialValue: '${(item['screw_count'] as num?)?.toInt() ?? 0}',
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: _t('عدد الفيس لهذا العنصر', 'Nombre de vis pour cet élément'),
+              ),
+              onFieldSubmitted: (value) => _updateAccessoryFields(item, {
+                'screw_count': int.tryParse(value.trim()) ?? 0,
+              }),
+            ),
+          ],
+          if (gacheItems.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              initialValue: gacheId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _t('القاش المرتبط بهذا القفل/الأكسسوار', 'Gâche liée à cet élément'),
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: 0,
+                  child: Text(_t('بدون قاش مرتبط', 'Aucune gâche liée')),
+                ),
+                for (final gache in gacheItems)
+                  if (_itemId(gache) != itemId)
+                    DropdownMenuItem(
+                      value: _itemId(gache),
+                      child: Text(_itemTitle(gache)),
+                    ),
+              ],
+              onChanged: (value) => _updateAccessoryFields(item, {
+                'gache_accessory_id': value == null || value == 0 ? null : value,
+              }),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              initialValue: '${(item['gache_count'] as num?)?.toInt() ?? 0}',
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: _t('عدد القاش المرتبط', 'Nombre de gâches liées'),
+              ),
+              onFieldSubmitted: (value) => _updateAccessoryFields(item, {
+                'gache_count': int.tryParse(value.trim()) ?? 0,
+              }),
+            ),
+          ],
+        ],
       ),
     );
   }

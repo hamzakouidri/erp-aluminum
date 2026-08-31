@@ -722,13 +722,22 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
 
     // 7. Couvre-joint (Side Covers) — window only, never for standalone volet
     if (!p.isShutterOnly && p.hasSideCovers) {
+      final isMultiFrame = p.getFrameRects().length > 1;
       final removed = p.removedShutterSides.map((s) => s.toLowerCase()).toSet();
       final hasL = !removed.contains('left');
       final hasR = !removed.contains('right');
       final hasT = !removed.contains('top');
       final hasB = !removed.contains('bottom') && p.hasBottomFrame;
 
-      if (curLang == AppLanguage.french) {
+      if (isMultiFrame) {
+        if (curLang == AppLanguage.french) {
+          details.add('Couvre-joint: périmètre extérieur de tous les cadres');
+        } else if (curLang == AppLanguage.english) {
+          details.add('Cover joint: outer perimeter of all frames');
+        } else {
+          details.add('كوفرو جوان: المحيط الخارجي لجميع الإطارات');
+        }
+      } else if (curLang == AppLanguage.french) {
         final sides = <String>[];
         if (hasL) sides.add('Gauche');
         if (hasR) sides.add('Droite');

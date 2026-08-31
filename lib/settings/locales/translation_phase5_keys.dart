@@ -109,6 +109,36 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'Session fermée – cliquez pour vous connecter',
     AppLanguage.english: 'Session closed – click to sign in',
   },
+  'جلسة الورشة': {
+    AppLanguage.arabic: 'جلسة الورشة',
+    AppLanguage.french: 'Session de l’atelier',
+    AppLanguage.english: 'Workshop session',
+  },
+  'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.': {
+    AppLanguage.arabic:
+        'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.',
+    AppLanguage.french:
+        'Connectez la session Supabase une seule fois si nécessaire ; la synchronisation fonctionnera ensuite automatiquement en arrière-plan.',
+    AppLanguage.english:
+        'Sign in to the Supabase session once when needed; synchronization will then run automatically in the background.',
+  },
+  'جلسة الورشة مسجلة': {
+    AppLanguage.arabic: 'جلسة الورشة مسجلة',
+    AppLanguage.french: 'Session de l’atelier enregistrée',
+    AppLanguage.english: 'Workshop session registered',
+  },
+  'تسجيل جلسة الورشة': {
+    AppLanguage.arabic: 'تسجيل جلسة الورشة',
+    AppLanguage.french: 'Enregistrer la session de l’atelier',
+    AppLanguage.english: 'Register workshop session',
+  },
+  'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.': {
+    AppLanguage.arabic: 'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.',
+    AppLanguage.french:
+        'La session de l’atelier est enregistrée. La synchronisation fonctionnera automatiquement en arrière-plan.',
+    AppLanguage.english:
+        'The workshop session is registered. Synchronization will run automatically in the background.',
+  },
   'إظهار القائمة': {
     AppLanguage.arabic: 'إظهار القائمة',
     AppLanguage.french: 'Afficher le menu',

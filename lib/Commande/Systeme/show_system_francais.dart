@@ -403,6 +403,13 @@ class _WindowViewState extends State<WindowView> {
         drawingMode: drawingMode,
       );
     }).toList();
+    final isMultiFramePvc =
+        widget.model.getFrameRects().length > 1 && _seriesIsPvc(series);
+    if (isMultiFramePvc) {
+      return filtered
+          .where((profile) => !profileHasIntegratedSideCover(profile))
+          .toList();
+    }
     if (!widget.model.hasShutter || _seriesIsPvc(series)) return filtered;
     return filtered
         .where((profile) => !profileHasIntegratedSideCover(profile))
@@ -9783,9 +9790,8 @@ class _WindowViewState extends State<WindowView> {
               label: Text(Localization.translate('سفلية', lang)),
               selected:
                   model.hasBottomFrame &&
-                  model.showBottomWall &&
                   !model.removedShutterSides.contains('bottom'),
-              onSelected: model.hasBottomFrame && model.showBottomWall
+              onSelected: model.hasBottomFrame
                   ? (_) => model.toggleShutterSide('bottom')
                   : null,
             ),
@@ -10961,6 +10967,11 @@ class _WindowViewState extends State<WindowView> {
                                     : 'Aluminium')
                               : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
                           hasShutter: widget.model.hasShutter,
+                          multiFrameDrawing:
+                              widget.model.getFrameRects().length > 1 &&
+                              (useSlidingProfiles
+                                  ? widget.model.isSlidingPVC
+                                  : widget.model.isPVC),
                           accessoryDrawingMode: useSlidingProfiles
                               ? AccessoryDrawingMode.sliding
                               : AccessoryDrawingMode.opening,
@@ -13012,10 +13023,18 @@ class _WindowViewState extends State<WindowView> {
                   : _frameProfilesFromSeries(widget.model.activeSlidingSeries))
             : <Map<String, dynamic>>[];
         final slidingProfiles = _filterFrameProfilesForDrawingRules(
-          rawSlidingProfiles,
-          series: widget.model.activeSlidingSeries,
-          drawingMode: AccessoryDrawingMode.sliding,
-        );
+              rawSlidingProfiles,
+              series: widget.model.activeSlidingSeries,
+              drawingMode: AccessoryDrawingMode.sliding,
+            )
+            // The one-track profile is an automatic extension selected from
+            // the series rules; it is not a replacement for the two-track
+            // base frame and therefore must not be shown in this picker.
+            .where(
+              (profile) =>
+                  !widget.model.isSlidingFrameExtension(profile),
+            )
+            .toList();
 
         Future<void> selectFrameProfile(
           Map<String, dynamic> item, {
@@ -13052,7 +13071,7 @@ class _WindowViewState extends State<WindowView> {
                 ? '$codeStr$nameStr'
                 : '$prefix: $codeStr$nameStr';
             final selectedMap = sliding
-                ? widget.model.slidingFrameOverride
+                ? widget.model.getSlidingBaseFrameSection()?.toMap()
                 : widget.model.frameOverride;
             final isSelected =
                 selectedMap != null && selectedMap['id'] == item['id'];

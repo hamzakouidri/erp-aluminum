@@ -31,6 +31,22 @@ class _SeriesAccessoriesScreenState extends State<SeriesAccessoriesScreen> {
   static const Color _linkedColor = Color(0xFF4CAF50);
   static const Color _globalColor = Color(0xFF9C27B0);
 
+  String _withoutQualityLabel(String value) {
+    return value
+        .replaceAll(
+          RegExp(
+            r'\s*\(\s*(?:جودة\s+(?:رفيعة|قياسية|تجارية)|qualité\s+(?:haute|standard|commerciale)|(?:premium|standard|commercial)\s+quality)\s*\)',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+  }
+
+  String _visibleType(String value) {
+    return _withoutQualityLabel(value.split('|').first.trim());
+  }
+
   @override
   void initState() { super.initState(); _loadProfiles(); }
 
@@ -354,13 +370,13 @@ class _SeriesAccessoriesScreenState extends State<SeriesAccessoriesScreen> {
           child: Icon(_typeIcon(acc), color: sc, size: 21)),
         const SizedBox(width: 11),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(acc['name'] ?? '', style: GoogleFonts.cairo(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+          Text(_withoutQualityLabel('${acc['name'] ?? ''}'), style: GoogleFonts.cairo(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
           const SizedBox(height: 4),
           Wrap(spacing: 5, runSpacing: 3, children: [
             if (acc['isJoint'] == true)
               _chip(Localization.translate('جوان', lang), Colors.purple.shade50, Colors.purple.shade700)
             else
-              _chip(Localization.translate(type, lang), Colors.blue.shade50, Colors.blue.shade700),
+              _chip(Localization.translate(_visibleType(type), lang), Colors.blue.shade50, Colors.blue.shade700),
             _chip('${price.toStringAsFixed(0)} دج', Colors.green.shade50, Colors.green.shade700),
             if (acc['isJoint'] == true && (acc['thickness'] as num?) != null && (acc['thickness'] as num) > 0)
               _chip('${acc['thickness']} مم', Colors.teal.shade50, Colors.teal.shade700),

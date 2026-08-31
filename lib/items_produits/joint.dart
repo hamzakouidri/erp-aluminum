@@ -767,11 +767,20 @@ class _JointsScreenState extends State<JointsScreen> {
   /// code/image_path column. Bourrage joints use the catalogue codes 52034,
   /// 52035 and 52036 according to their nominal thickness.
   String? _jointAssetCode(Map<String, dynamic> item, double thickness) {
-    final explicitCode = item['code']?.toString().trim() ?? '';
-    if (explicitCode.isNotEmpty) return explicitCode;
-
     final label = '${item['name'] ?? ''} ${item['gasket_type'] ?? ''}'
         .toLowerCase();
+
+    // Joint Frappe always uses the canonical image supplied by the catalogue,
+    // regardless of an old code or image name stored on the row.
+    final isFrappe =
+        (label.contains('فراب') ||
+            label.contains('ضرب') ||
+            label.contains('frappe')) &&
+        (label.contains('جوان') || label.contains('joint'));
+    if (isFrappe) return 'joint_frappe.png';
+
+    final explicitCode = item['code']?.toString().trim() ?? '';
+    if (explicitCode.isNotEmpty) return explicitCode;
 
     final isBrush =
         label.contains('بروس') ||
