@@ -2641,6 +2641,21 @@ class _CommandeState extends State<Commande> {
                           }
                         }
 
+                        if (nextStatus == 'Partial Manufacturing' ||
+                            nextStatus == 'Full Manufacturing') {
+                          final inventoryIssued = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderRequiredGoodsScreen(
+                                orderData: orderData,
+                                db: db,
+                                issueAtManufacturingStart: true,
+                              ),
+                            ),
+                          );
+                          if (inventoryIssued != true || !mounted) return;
+                        }
+
                         if (!mounted) return;
                         showDialog(
                           context: context,
@@ -3402,7 +3417,23 @@ class _CommandeState extends State<Commande> {
                           }
                         }
 
-                        Navigator.pop(dialogContext);
+                        if (stageKey == 'Partial Manufacturing' ||
+                            stageKey == 'Full Manufacturing') {
+                          Navigator.pop(dialogContext);
+                          final inventoryIssued = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderRequiredGoodsScreen(
+                                orderData: orderData,
+                                db: db,
+                                issueAtManufacturingStart: true,
+                              ),
+                            ),
+                          );
+                          if (inventoryIssued != true || !mounted) return;
+                        } else {
+                          Navigator.pop(dialogContext);
+                        }
                         await db.updateCommandeStatus(
                           orderData['id'],
                           stageKey,

@@ -67,6 +67,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   Map<int, Map<String, double>> glassColorPrices = {};
   Map<String, Map<int, double>> shutterSqmPrices = {};
   Map<int, List<int>> profileColorsMap = {};
+  Map<int, Map<String, dynamic>> profileCalculationRules = {};
   List<String> shutterLamesList = [];
   List<String> shutterGlissieresList = [];
   int _shutterPricingMode = 0; // 0: Components, 1: Square Meter Prices
@@ -209,6 +210,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final requestId = ++_loadRequestId;
     await db.ensureShutterComponentsUseGreyPrice();
     await db.ensureProfileColorDefaults();
+    await db.ensureProfileCalculationRulesTable();
+    await db.seedDefaultProfileCalculationRules();
     final dbInstance = (await db.db)!;
 
     Future<List<Map<String, dynamic>>> safeQuery(String table) async {
@@ -495,6 +498,17 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       print("Error parsing ShutterSqmPrices: $e");
     }
 
+    final tempProfileCalculationRules = <int, Map<String, dynamic>>{};
+    try {
+      final rules = await db.getProfileCalculationRules();
+      for (final rule in rules) {
+        final sectionId = (rule['section_id'] as num?)?.toInt();
+        if (sectionId != null) {
+          tempProfileCalculationRules[sectionId] = rule;
+        }
+      }
+    } catch (_) {}
+
     List<String> tempLames = [];
     List<String> tempGlissieres = [];
     try {
@@ -532,6 +546,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       shutterGlissieresList = tempGlissieres;
       glassColorPrices = tempGlassColorPrices;
       profileColorsMap = tempProfColors;
+      profileCalculationRules = tempProfileCalculationRules;
 
       if (seriesList.isNotEmpty) {
         if (selectedSeriesId == null ||
@@ -2776,6 +2791,34 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   Widget _buildSectionPricingTab(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          Material(
+            color: Theme.of(context).cardColor,
+            child: TabBar(
+              tabs: [
+                Tab(text: Localization.translate('أسعار البروفيلات', lang)),
+                Tab(text: Localization.translate('قواعد حساب البروفيلات', lang)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildSectionPricesList(context),
+                _buildProfileCalculationRulesList(context),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionPricesList(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     if (seriesList.isEmpty) {
       return Center(
         child: Text(Localization.translate('لا توجد سلاسل.', lang)),
@@ -2933,6 +2976,225 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                             ),
                           );
                         }),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editProfileLinearMultiplier(
+    int sectionId,
+    double currentMultiplier,
+  ) async {
+    final controller = TextEditingController(
+      text: currentMultiplier.toStringAsFixed(
+        currentMultiplier == currentMultiplier.roundToDouble() ? 0 : 2,
+      ),
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('معامل المتر الخطي'),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'مثال: 1 أو 2 للبلانت',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = double.tryParse(controller.text.trim());
+              if (parsed != null && parsed.isFinite && parsed > 0) {
+                Navigator.pop(dialogContext, parsed);
+              }
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    await db.saveProfileCalculationRule(
+      sectionId: sectionId,
+      calculationMode:
+          profileCalculationRules[sectionId]?['calculation_mode']?.toString() ??
+          'auto',
+      linearMeterMultiplier: value,
+    );
+    if (!mounted) return;
+    setState(() {
+      profileCalculationRules[sectionId] = {
+        ...?profileCalculationRules[sectionId],
+        'section_id': sectionId,
+        'calculation_mode':
+            profileCalculationRules[sectionId]?['calculation_mode'] ?? 'auto',
+        'linear_meter_multiplier': value,
+      };
+    });
+  }
+
+  Future<void> _setProfileCalculationMode(
+    int sectionId,
+    String mode,
+    double multiplier,
+  ) async {
+    await db.saveProfileCalculationRule(
+      sectionId: sectionId,
+      calculationMode: mode,
+      linearMeterMultiplier: multiplier,
+    );
+    if (!mounted) return;
+    setState(() {
+      profileCalculationRules[sectionId] = {
+        ...?profileCalculationRules[sectionId],
+        'section_id': sectionId,
+        'calculation_mode': mode,
+        'linear_meter_multiplier': multiplier,
+      };
+    });
+  }
+
+  Widget _buildProfileCalculationRulesList(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    if (seriesList.isEmpty) {
+      return Center(child: Text(Localization.translate('لا توجد سلاسل.', lang)));
+    }
+    final sections = sectionList
+        .where((s) => s['series_id'] == selectedSeriesForSections)
+        .toList();
+    if (sections.isEmpty) {
+      return Center(
+        child: Text(Localization.translate('لا توجد بروفيلات.', lang)),
+      );
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: DropdownButtonFormField<int>(
+            isExpanded: true,
+            initialValue: selectedSeriesForSections,
+            decoration: InputDecoration(
+              labelText: Localization.translate('اختر السلسلة', lang),
+              border: const OutlineInputBorder(),
+            ),
+            items: seriesList.map((s) {
+              final name = s['profile_name'] == null
+                  ? '${s['name']}'
+                  : '${s['profile_name']} - ${s['name']}';
+              return DropdownMenuItem<int>(
+                value: s['id'] as int,
+                child: Text(name, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => selectedSeriesForSections = value);
+              }
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'الافتراضي: المتر الخطي للإطار والظلفة والباتمو والتقسيمات فقط. باقي البروفيلات بسعرها الأساسي، والزجاج والبانو والإكسسوارات بأسعارها الخاصة.',
+            style: TextStyle(color: Colors.grey.shade700),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: sections.length,
+            itemBuilder: (context, index) {
+              final section = sections[index];
+              final sectionId = (section['id'] as num).toInt();
+              final rule = profileCalculationRules[sectionId];
+              final storedMode = rule?['calculation_mode']?.toString() ?? 'auto';
+              final mode = const {'auto', 'linear_meter', 'base_price'}
+                      .contains(storedMode)
+                  ? storedMode
+                  : 'auto';
+              final multiplier =
+                  (rule?['linear_meter_multiplier'] as num?)?.toDouble() ??
+                  1.0;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${section['name']}  (${section['code'] ?? ''})',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              initialValue: mode,
+                              decoration: const InputDecoration(
+                                labelText: 'طريقة الحساب',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'auto',
+                                  child: Text('تلقائي'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'linear_meter',
+                                  child: Text('متر خطي'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'base_price',
+                                  child: Text('سعر أساسي'),
+                                ),
+                              ],
+                              onChanged: canChangePrices
+                                  ? (value) {
+                                      if (value != null) {
+                                        _setProfileCalculationMode(
+                                          sectionId,
+                                          value,
+                                          multiplier,
+                                        );
+                                      }
+                                    }
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 112,
+                            child: OutlinedButton(
+                              onPressed: canChangePrices
+                                  ? () => _editProfileLinearMultiplier(
+                                      sectionId,
+                                      multiplier,
+                                    )
+                                  : null,
+                              child: Text('× ${multiplier.toStringAsFixed(2)}'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

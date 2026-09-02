@@ -6,7 +6,6 @@ import '../items_produits/products_menu_screen.dart';
 import 'admin_users_screen.dart';
 import 'projects_screen.dart';
 import 'sales_screen.dart';
-import 'dart:math' as dart_math;
 import 'package:database_data/Screen/support_dialog.dart';
 import 'package:database_data/Screen/subscription_review_dialog.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +28,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'inventory_screen.dart';
 import 'worker_archive_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -84,12 +84,56 @@ class _AppDrawerState extends State<AppDrawer> {
     super.dispose();
   }
 
+  void _handleDrawerPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        !_drawerScrollController.hasClients) {
+      return;
+    }
+
+    final delta = event.scrollDelta.dy != 0
+        ? event.scrollDelta.dy
+        : event.scrollDelta.dx;
+    if (delta == 0) return;
+
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (_drawerScrollController.hasClients) {
+        _drawerScrollController.position.pointerScroll(delta);
+      }
+    });
+  }
+
+  Widget _buildScrollableDrawerList({required List<Widget> children}) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerSignal: _handleDrawerPointerSignal,
+      child: ListView(
+        controller: _drawerScrollController,
+        primary: false,
+        padding: EdgeInsets.zero,
+        children: children,
+      ),
+    );
+  }
+
   /// Only the public workshop join code belongs in the menu. Internal
   /// Supabase UUIDs (or any other long identifier) must never be displayed as
   /// the worker-facing workshop code.
   String _shortWorkshopCode(String? value) {
     final code = value?.trim() ?? '';
     return RegExp(r'^[A-Za-z0-9]{1,7}$').hasMatch(code) ? code : '';
+  }
+
+  bool _canManageWorkshop(String? role) {
+    return const {'admin', 'manager', 'owner', 'co_manager'}
+        .contains(role?.trim().toLowerCase());
+  }
+
+  Future<String> _createWorkshopJoinCode() async {
+    final code = await SupabaseAccountService().createWorkshopJoinCode();
+    if (mounted) {
+      setState(() => _savedWorkshopCode = code);
+    }
+    return code;
   }
 
   void _openScreen(
@@ -300,7 +344,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 french: 'Administrateur',
                 english: 'Administrator',
               )
-            : role == 'manager'
+            : _canManageWorkshop(role)
             ? _desktopLabel(
                 lang,
                 arabic: 'مدير الورشة',
@@ -416,7 +460,7 @@ class _AppDrawerState extends State<AppDrawer> {
             (isApplicationAdminEmail(AppAuthService().currentUser?.email)
                 ? 'admin'
                 : (_savedUserRole ?? 'worker'));
-        if (role != 'manager' && role != 'admin') {
+        if (!_canManageWorkshop(role)) {
           return const SizedBox.shrink();
         }
         final rawAccountCode = account?.workshopCode.trim() ?? '';
@@ -492,31 +536,12 @@ class _AppDrawerState extends State<AppDrawer> {
                   },
                 )
               : TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: () async {
-                    final user = AppAuthService().currentUser;
-                    if (user == null) return;
-                    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                    final random = dart_math.Random();
-                    final newCode = String.fromCharCodes(
-                      Iterable.generate(
-                        6,
-                        (_) => characters.codeUnitAt(
-                          random.nextInt(characters.length),
-                        ),
-                      ),
-                    );
                     try {
-                      await FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(user.uid)
-                          .update({'joinCode': newCode});
-                      await FirebaseFirestore.instance
-                          .collection('workshops')
-                          .doc(user.uid)
-                          .set({
-                            'joinCode': newCode,
-                            'managerUid': user.uid,
-                          }, SetOptions(merge: true));
+                      await _createWorkshopJoinCode();
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -532,7 +557,11 @@ class _AppDrawerState extends State<AppDrawer> {
                         );
                       }
                     } catch (error) {
-                      debugPrint('Error generating workshop code: $error');
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('تعذر إنشاء كود الورشة: $error')),
+                        );
+                      }
                     }
                   },
                   child: Text(
@@ -1163,12 +1192,7 @@ class _AppDrawerState extends State<AppDrawer> {
               dense: true,
             ),
           ),
-          child: ListView(
-            controller: _drawerScrollController,
-            primary: false,
-            padding: EdgeInsets.zero,
-            children: menu,
-          ),
+          child: _buildScrollableDrawerList(children: menu),
         ),
       ),
     );
@@ -1183,10 +1207,7 @@ class _AppDrawerState extends State<AppDrawer> {
       return _buildWindowsDrawer(context, settings, lang);
     }
     return Drawer(
-      child: ListView(
-        controller: _drawerScrollController,
-        primary: false,
-        padding: EdgeInsets.zero,
+      child: _buildScrollableDrawerList(
         children: [
           StreamBuilder<DocumentSnapshot>(
             stream: AppAuthService().currentUser != null
@@ -1294,32 +1315,23 @@ class _AppDrawerState extends State<AppDrawer> {
               );
             },
           ),
-          StreamBuilder<DocumentSnapshot>(
-            stream: AppAuthService().currentUser != null
-                ? FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(AppAuthService().currentUser!.uid)
-                      .snapshots()
-                : null,
+          FutureBuilder<SupabaseAccountSnapshot?>(
+            future: SupabaseAccountService().loadCurrentAccount(),
             builder: (context, snapshot) {
-              String? joinCode = _shortWorkshopCode(_savedWorkshopCode);
-              String? role = isApplicationAdminEmail(
+              final account = snapshot.data;
+              final joinCode = _shortWorkshopCode(
+                account?.workshopCode.isNotEmpty == true
+                    ? account!.workshopCode
+                    : _savedWorkshopCode,
+              );
+              final role = isApplicationAdminEmail(
                     AppAuthService().currentUser?.email,
                   )
                   ? 'admin'
-                  : _savedUserRole;
+                  : (account?.role ?? _savedUserRole);
 
-              if (snapshot.hasData && snapshot.data!.exists) {
-                final data = snapshot.data!.data() as Map<String, dynamic>;
-                final firebaseCode = _shortWorkshopCode(
-                  data['joinCode']?.toString(),
-                );
-                if (firebaseCode.isNotEmpty) joinCode = firebaseCode;
-                if (role != 'admin') role = data['role']?.toString() ?? role;
-              }
-
-              if (role == 'manager' || role == 'admin') {
-                  if (joinCode != null && joinCode.isNotEmpty) {
+              if (_canManageWorkshop(role)) {
+                  if (joinCode.isNotEmpty) {
                     final visibleCode = joinCode;
                     final isDark =
                         Theme.of(context).brightness == Brightness.dark;
@@ -1345,6 +1357,9 @@ class _AppDrawerState extends State<AppDrawer> {
                         ),
                         subtitle: Text(
                           visibleCode,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 18,
                             letterSpacing: 2,
@@ -1396,31 +1411,14 @@ class _AppDrawerState extends State<AppDrawer> {
                           ),
                         ),
                         trailing: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: const Color(0xFF2563EB),
+                            minimumSize: const Size(118, 40),
+                          ),
                           onPressed: () async {
-                            final uid = AppAuthService().currentUser!.uid;
-                            const chars =
-                                'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                            final rnd = dart_math.Random();
-                            final newCode = String.fromCharCodes(
-                              Iterable.generate(
-                                6,
-                                (_) =>
-                                    chars.codeUnitAt(rnd.nextInt(chars.length)),
-                              ),
-                            );
-
                             try {
-                              await FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(uid)
-                                  .update({'joinCode': newCode});
-                              await FirebaseFirestore.instance
-                                  .collection('workshops')
-                                  .doc(uid)
-                                  .set({
-                                    'joinCode': newCode,
-                                    'managerUid': uid,
-                                  }, SetOptions(merge: true));
+                              await _createWorkshopJoinCode();
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -1434,11 +1432,24 @@ class _AppDrawerState extends State<AppDrawer> {
                                 );
                               }
                             } catch (e) {
-                              print('Error generating code: $e');
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'تعذر إنشاء كود الورشة: $e',
+                                    ),
+                                  ),
+                                );
+                              }
                             }
                           },
-                          child: Text(
-                            Localization.translate('توليد الآن', lang),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              Localization.translate('توليد الآن', lang),
+                              maxLines: 1,
+                              softWrap: false,
+                            ),
                           ),
                         ),
                       ),

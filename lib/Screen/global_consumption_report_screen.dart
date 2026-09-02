@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/Systeme/consumption_manager.dart';
 import 'package:database_data/sql_database.dart';
-import 'package:database_data/Commande/Systeme/cutting_calculator.dart';
+import 'package:database_data/Commande/Systeme/consumption_item.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -26,7 +26,10 @@ class _GlobalConsumptionReportScreenState
   late Future<ConsumptionReport> _reportFuture;
 
   String _t(String key) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return Localization.translate(key, lang);
   }
 
@@ -77,7 +80,7 @@ class _GlobalConsumptionReportScreenState
     Map<String, CuttingItem> map = {};
     for (var item in items) {
       String key =
-          '${item.name}_${item.width.toStringAsFixed(1)}_${item.height.toStringAsFixed(1)}';
+          '${item.name}_${item.width.toStringAsFixed(1)}_${item.height.toStringAsFixed(1)}_${item.price.toStringAsFixed(2)}';
       if (map.containsKey(key)) {
         var existing = map[key]!;
         map[key] = CuttingItem(
@@ -87,7 +90,8 @@ class _GlobalConsumptionReportScreenState
           height: existing.height,
           quantity: existing.quantity + item.quantity,
           type: existing.type,
-          isMissing: true, // Everything is missing until DB is checked
+          isMissing: existing.isMissing || item.isMissing,
+          price: existing.price,
         );
       } else {
         map[key] = item;
@@ -106,14 +110,22 @@ class _GlobalConsumptionReportScreenState
     final ttf = fonts.regular;
     final bold = fonts.bold;
 
-    List<CuttingItem> missingAlum = report.aluminumItems.where((i) => i.isMissing).toList();
-    List<CuttingItem> missingGlass = report.glassItems.where((i) => i.isMissing).toList();
-    List<CuttingItem> missingAcc = report.accessoryItems.where((i) => i.isMissing).toList();
+    List<CuttingItem> missingAlum = report.aluminumItems
+        .where((i) => i.isMissing)
+        .toList();
+    List<CuttingItem> missingGlass = report.glassItems
+        .where((i) => i.isMissing)
+        .toList();
+    List<CuttingItem> missingAcc = report.accessoryItems
+        .where((i) => i.isMissing)
+        .toList();
 
     if (missingAlum.isEmpty && missingGlass.isEmpty && missingAcc.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_t('لا توجد نواقص لشرائها! جميع المواد متوفرة.'))),
+          SnackBar(
+            content: Text(_t('لا توجد نواقص لشرائها! جميع المواد متوفرة.')),
+          ),
         );
       }
       return;
@@ -132,23 +144,44 @@ class _GlobalConsumptionReportScreenState
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(_t('قائمة شراء النواقص الشاملة'), style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, font: bold)),
-                  pw.Text(_t('لكل الطلبيات النشطة'), style: pw.TextStyle(fontSize: 16, font: ttf)),
-                ]
+                  pw.Text(
+                    _t('قائمة شراء النواقص الشاملة'),
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                      font: bold,
+                    ),
+                  ),
+                  pw.Text(
+                    _t('لكل الطلبيات النشطة'),
+                    style: pw.TextStyle(fontSize: 16, font: ttf),
+                  ),
+                ],
               ),
             ),
             pw.SizedBox(height: 20),
-            
-            if (missingAlum.isNotEmpty) _buildPdfSection(_t('قطاعات الألمنيوم (Aluminium)'), missingAlum, ttf),
-            if (missingGlass.isNotEmpty) _buildPdfSection(_t('الزجاج (Verre)'), missingGlass, ttf),
-            if (missingAcc.isNotEmpty) _buildPdfSection(_t('الإكسسوارات (Accessoires)'), missingAcc, ttf),
-            
+
+            if (missingAlum.isNotEmpty)
+              _buildPdfSection(
+                _t('قطاعات الألمنيوم (Aluminium)'),
+                missingAlum,
+                ttf,
+              ),
+            if (missingGlass.isNotEmpty)
+              _buildPdfSection(_t('الزجاج (Verre)'), missingGlass, ttf),
+            if (missingAcc.isNotEmpty)
+              _buildPdfSection(
+                _t('الإكسسوارات (Accessoires)'),
+                missingAcc,
+                ttf,
+              ),
+
             pw.SizedBox(height: 30),
             pw.Divider(),
-             pw.Text(
-               '${_t('تاريخ الإنشاء:')} ${DateTime.now().toString().substring(0, 16)}',
-               style: pw.TextStyle(fontSize: 12, font: ttf),
-             ),
+            pw.Text(
+              '${_t('تاريخ الإنشاء:')} ${DateTime.now().toString().substring(0, 16)}',
+              style: pw.TextStyle(fontSize: 12, font: ttf),
+            ),
           ];
         },
       ),
@@ -161,11 +194,22 @@ class _GlobalConsumptionReportScreenState
     );
   }
 
-  pw.Widget _buildPdfSection(String title, List<CuttingItem> items, pw.Font ttf) {
+  pw.Widget _buildPdfSection(
+    String title,
+    List<CuttingItem> items,
+    pw.Font ttf,
+  ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(title, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, font: ttf)),
+        pw.Text(
+          title,
+          style: pw.TextStyle(
+            fontSize: 18,
+            fontWeight: pw.FontWeight.bold,
+            font: ttf,
+          ),
+        ),
         pw.SizedBox(height: 10),
         pw.TableHelper.fromTextArray(
           context: null,
@@ -173,7 +217,12 @@ class _GlobalConsumptionReportScreenState
           headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, font: ttf),
           cellStyle: pw.TextStyle(font: ttf),
-          headers: [_t('الاسم'), _t('الطول'), _t('العرض'), _t('الكمية الإجمالية')],
+          headers: [
+            _t('الاسم'),
+            _t('الطول'),
+            _t('العرض'),
+            _t('الكمية الإجمالية'),
+          ],
           data: items.map((item) {
             return [
               item.name,
@@ -184,7 +233,7 @@ class _GlobalConsumptionReportScreenState
           }).toList(),
         ),
         pw.SizedBox(height: 20),
-      ]
+      ],
     );
   }
 
@@ -193,15 +242,26 @@ class _GlobalConsumptionReportScreenState
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: Text(_t('تقرير النواقص الشامل'), style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          _t('تقرير النواقص الشامل'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
         actions: [
           ElevatedButton.icon(
             icon: const Icon(Icons.shopping_cart, color: Colors.white),
-            label: Text(_t('شراء كل النواقص'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            label: Text(
+              _t('شراء كل النواقص'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             onPressed: () async {
               try {
@@ -232,8 +292,10 @@ class _GlobalConsumptionReportScreenState
           }
 
           final report = snapshot.data!;
-          
-          if (report.aluminumItems.isEmpty && report.glassItems.isEmpty && report.accessoryItems.isEmpty) {
+
+          if (report.aluminumItems.isEmpty &&
+              report.glassItems.isEmpty &&
+              report.accessoryItems.isEmpty) {
             return Center(
               child: Text(
                 _t('لا توجد نواقص في أي طلبية نشطة!'),
@@ -246,13 +308,28 @@ class _GlobalConsumptionReportScreenState
             padding: const EdgeInsets.all(16),
             children: [
               if (report.aluminumItems.isNotEmpty)
-                _buildSectionCard(_t('قطاعات الألمنيوم (Aluminium)'), Icons.straighten, Colors.blue, report.aluminumItems),
+                _buildSectionCard(
+                  _t('قطاعات الألمنيوم (Aluminium)'),
+                  Icons.straighten,
+                  Colors.blue,
+                  report.aluminumItems,
+                ),
               const SizedBox(height: 16),
               if (report.glassItems.isNotEmpty)
-                _buildSectionCard(_t('الزجاج (Verre)'), Icons.window, Colors.teal, report.glassItems),
+                _buildSectionCard(
+                  _t('الزجاج (Verre)'),
+                  Icons.window,
+                  Colors.teal,
+                  report.glassItems,
+                ),
               const SizedBox(height: 16),
               if (report.accessoryItems.isNotEmpty)
-                _buildSectionCard(_t('الإكسسوارات (Accessoires)'), Icons.build, Colors.orange, report.accessoryItems),
+                _buildSectionCard(
+                  _t('الإكسسوارات (Accessoires)'),
+                  Icons.build,
+                  Colors.orange,
+                  report.accessoryItems,
+                ),
             ],
           );
         },
@@ -260,7 +337,12 @@ class _GlobalConsumptionReportScreenState
     );
   }
 
-  Widget _buildSectionCard(String title, IconData icon, Color color, List<CuttingItem> items) {
+  Widget _buildSectionCard(
+    String title,
+    IconData icon,
+    Color color,
+    List<CuttingItem> items,
+  ) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -271,13 +353,22 @@ class _GlobalConsumptionReportScreenState
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: color.withOpacity(0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
             ),
             child: Row(
               children: [
                 Icon(icon, color: color),
                 const SizedBox(width: 8),
-                Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
               ],
             ),
           ),

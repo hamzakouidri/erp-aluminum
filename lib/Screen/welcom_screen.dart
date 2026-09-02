@@ -37,6 +37,20 @@ import '../widgets/resizable_columns_table.dart';
 bool get _isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
+class _DesktopSearchResult {
+  final String type;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _DesktopSearchResult({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+}
+
 class WelcomScreen extends StatefulWidget {
   final bool embeddedInWorkspace;
 
@@ -98,11 +112,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
   // needs a separate source of truth.
   List<Map<String, dynamic>> _desktopOrders = [];
   List<Map<String, dynamic>> _desktopClients = [];
+  List<Map<String, dynamic>> _desktopProfiles = [];
   List<Map<String, dynamic>> _desktopTreasury = [];
   Map<int, String> _assignedWorkersMap = {};
   int _selectedDesktopTableTab = 0; // 0: الطلبيات, 1: الزبائن, 2: الصندوق
   final TextEditingController _desktopTreasurySearchController =
       TextEditingController();
+  final TextEditingController _desktopGlobalSearchController =
+      TextEditingController();
+  String _desktopGlobalSearchQuery = '';
   String _desktopTreasurySearchQuery = '';
   bool _showTreasuryTotals = false;
   double _treasuryBalance = 0.0;
@@ -439,6 +457,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           _produitsCount = profiles.length.toString();
           _desktopOrders = desktopOrders;
           _desktopClients = clients;
+          _desktopProfiles = profiles;
           _desktopTreasury = treasuryRows;
           _assignedWorkersMap = assignedWorkersMap;
           _treasuryBalance = _calculateTreasuryBalance(treasuryRows);
@@ -673,6 +692,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     _databaseUpdateSub?.cancel();
     _statsDebounce?.cancel();
     _desktopTreasurySearchController.dispose();
+    _desktopGlobalSearchController.dispose();
     super.dispose();
   }
 
@@ -849,6 +869,168 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return english;
   }
 
+  String _desktopSearchable(Map<String, dynamic> row) => row.values
+      .map((value) => (value ?? '').toString().toLowerCase())
+      .join(' ');
+
+  List<_DesktopSearchResult> _desktopSearchResults(AppLanguage lang) {
+    final query = _desktopGlobalSearchQuery.trim().toLowerCase();
+    if (query.isEmpty) return const [];
+    final results = <_DesktopSearchResult>[];
+
+    for (final order in _desktopOrders) {
+      if (!_desktopSearchable(order).contains(query)) continue;
+      final number = _desktopOrderDisplayNumber(order);
+      final client = (order['client_name'] ??
+              order['client_display'] ??
+              '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}')
+          .toString()
+          .trim();
+      results.add(
+        _DesktopSearchResult(
+          type: 'order',
+          title: number > 0 ? '#$number' : 'طلبية',
+          subtitle: client.isEmpty
+              ? _desktopText(lang, 'طلبية', 'Commande', 'Order')
+              : client,
+          icon: Icons.receipt_long_rounded,
+        ),
+      );
+      if (results.length >= 8) return results;
+    }
+    for (final client in _desktopClients) {
+      if (!_desktopSearchable(client).contains(query)) continue;
+      final name = '${client['firstname'] ?? ''} ${client['lastname'] ?? ''}'
+          .trim();
+      results.add(
+        _DesktopSearchResult(
+          type: 'client',
+          title: name.isEmpty
+              ? _desktopText(lang, 'زبون', 'Client', 'Customer')
+              : name,
+          subtitle: (client['phone1'] ?? client['phone'] ?? '').toString(),
+          icon: Icons.people_alt_rounded,
+        ),
+      );
+      if (results.length >= 8) return results;
+    }
+    for (final profile in _desktopProfiles) {
+      if (!_desktopSearchable(profile).contains(query)) continue;
+      results.add(
+        _DesktopSearchResult(
+          type: 'profile',
+          title: (profile['name'] ?? profile['code'] ?? '').toString(),
+          subtitle: (profile['type'] ?? profile['code'] ?? '').toString(),
+          icon: Icons.category_rounded,
+        ),
+      );
+      if (results.length >= 8) return results;
+    }
+    return results;
+  }
+
+  List<Map<String, dynamic>> _filteredDesktopOrders() {
+    final query = _desktopGlobalSearchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _desktopOrders;
+    return _desktopOrders
+        .where((row) => _desktopSearchable(row).contains(query))
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _filteredDesktopClients() {
+    final query = _desktopGlobalSearchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _desktopClients;
+    return _desktopClients
+        .where((row) => _desktopSearchable(row).contains(query))
+        .toList();
+  }
+
+  Widget _buildDesktopSearchResults(
+    BuildContext context,
+    AppLanguage lang,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final results = _desktopSearchResults(lang);
+    if (results.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 270),
+      margin: const EdgeInsets.only(top: 5),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: mutedColor.withValues(alpha: 0.14)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: results.length,
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          indent: 46,
+          color: mutedColor.withValues(alpha: 0.10),
+        ),
+        itemBuilder: (context, index) {
+          final result = results[index];
+          return ListTile(
+            dense: true,
+            leading: Icon(result.icon, color: const Color(0xFF4D67F0), size: 20),
+            title: Text(
+              result.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: contentColor,
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            subtitle: Text(
+              result.subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: mutedColor,
+                fontFamily: 'Cairo',
+                fontSize: 10,
+              ),
+            ),
+            onTap: () {
+              setState(() {
+                _selectedDesktopTableTab = result.type == 'client' ? 1 : 0;
+                _desktopGlobalSearchController.clear();
+                _desktopGlobalSearchQuery = '';
+              });
+              if (result.type == 'profile') {
+                openAdaptiveScreen(
+                  context,
+                  title: _desktopText(lang, 'المنتجات', 'Produits', 'Products'),
+                  icon: Icons.category_rounded,
+                  screen: ProductsMenuScreen(db: db),
+                );
+              } else if (result.type == 'order') {
+                _openOrders();
+              } else {
+                _openClients();
+              }
+            },
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildDesktopTopBar(
     BuildContext context,
     AppLanguage lang,
@@ -938,44 +1120,77 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
     );
 
-    final search = Container(
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: mutedColor.withValues(alpha: 0.10)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    final search = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: mutedColor.withValues(alpha: 0.10)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.035),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.search_rounded, color: Color(0xFF4D67F0), size: 21),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              _desktopText(
+          child: TextField(
+            controller: _desktopGlobalSearchController,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) {
+              setState(() => _desktopGlobalSearchQuery = value);
+            },
+            style: TextStyle(
+              color: contentColor,
+              fontFamily: 'Cairo',
+              fontSize: 11,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: Color(0xFF4D67F0),
+                size: 21,
+              ),
+              hintText: _desktopText(
                 lang,
                 'ابحث عن طلبية أو زبون أو منتج...',
                 'Rechercher commande, client ou produit...',
                 'Search orders, clients, or products...',
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              hintStyle: TextStyle(
                 color: mutedColor,
                 fontFamily: 'Cairo',
                 fontSize: 11,
               ),
+              suffixIcon: _desktopGlobalSearchQuery.trim().isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: _desktopText(lang, 'مسح البحث', 'Effacer', 'Clear'),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () {
+                        _desktopGlobalSearchController.clear();
+                        setState(() => _desktopGlobalSearchQuery = '');
+                      },
+                    ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
-        ],
-      ),
+        ),
+        if (_desktopGlobalSearchQuery.trim().isNotEmpty)
+          _buildDesktopSearchResults(
+            context,
+            lang,
+            cardColor,
+            contentColor,
+            mutedColor,
+          ),
+      ],
     );
 
     final brand = Row(
@@ -2158,7 +2373,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
     ];
 
-    final displayOrders = _desktopOrders.take(15).toList();
+    final displayOrders = _filteredDesktopOrders().take(15).toList();
     final rows = displayOrders.map((order) {
       final orderId = (order['id'] as num?)?.toInt() ?? 0;
       final status = (order['status'] ?? 'Pending').toString();
@@ -2574,7 +2789,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
     ];
 
-    final displayClients = _desktopClients.take(15).toList();
+    final displayClients = _filteredDesktopClients().take(15).toList();
     final rows = displayClients.map((client) {
       final clientId = (client['id'] as num?)?.toInt() ?? 0;
       final clientNumber =

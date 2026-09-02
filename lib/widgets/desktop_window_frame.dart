@@ -139,19 +139,16 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                   ),
                 ),
               ),
-              if (widget.topBar != null)
-                Expanded(
-                  // The tab strip can be narrower than the caption area.
-                  // Keep the empty part of that area a native-caption-like
-                  // target so a double click toggles the window size.
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onDoubleTap: _toggleMaximize,
-                    child: widget.topBar!,
-                  ),
-                )
-              else
-                Expanded(child: DragToMoveArea(child: const SizedBox.expand())),
+              // Keep the whole remaining caption area draggable. Interactive
+              // tabs are rendered in their own row below it so a tab click can
+              // never be interpreted as a native window command.
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: _toggleMaximize,
+                  child: DragToMoveArea(child: const SizedBox.expand()),
+                ),
+              ),
               _CaptionButton(
                 tooltip: Localization.translate('تصغير', lang),
                 icon: Icons.remove_rounded,
@@ -179,6 +176,12 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
             ],
           ),
         ),
+        if (widget.topBar != null)
+          Container(
+            height: 42,
+            color: background,
+            child: widget.topBar!,
+          ),
         Expanded(child: widget.child),
       ],
     );

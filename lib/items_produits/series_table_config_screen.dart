@@ -54,6 +54,27 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           'Profil monorail ajouté automatiquement après le dormant à deux rails',
     ),
     _SeriesRole(
+      key: 'profile_angle',
+      ar: 'بروفيل زاوية',
+      fr: "Profil d'angle",
+      descriptionAr: 'بروفيل الزاوية الخاص بهذه السلسلة',
+      descriptionFr: "Profil d'angle propre à cette série",
+    ),
+    _SeriesRole(
+      key: 'caniveau',
+      ar: 'كانيڤو',
+      fr: 'Caniveau',
+      descriptionAr: 'بروفيل الكانيڤو الخاص بهذه السلسلة',
+      descriptionFr: 'Profil caniveau propre à cette série',
+    ),
+    _SeriesRole(
+      key: 'cache_caniveau',
+      ar: 'غطاء الكانيڤو',
+      fr: 'Cache-caniveau',
+      descriptionAr: 'غطاء الكانيڤو الخاص بهذه السلسلة',
+      descriptionFr: 'Cache-caniveau propre à cette série',
+    ),
+    _SeriesRole(
       key: 'sash',
       ar: 'الضلفة',
       fr: 'Ouvrant',
@@ -82,7 +103,14 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       fr: 'Montant central coulissant',
       descriptionAr: 'القطع التي يمكن أن تستبدل القائم الوسطي في المنزلق',
       descriptionFr:
-          'Profils interchangeables pour le montant central coulissant',
+        'Profils interchangeables pour le montant central coulissant',
+    ),
+    _SeriesRole(
+      key: 'montant_central_slim',
+      ar: 'قائم وسطي Slim',
+      fr: 'Montant central Slim',
+      descriptionAr: 'القائم الوسطي Slim الخاص بالسلسلة',
+      descriptionFr: 'Montant central Slim propre à cette série',
     ),
     _SeriesRole(
       key: 'sash_traverse',
@@ -90,6 +118,13 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       fr: 'Traverse ouvrant coulissant',
       descriptionAr: 'القطع العرضية الخاصة بضلفة المنزلق',
       descriptionFr: 'Profils traverses de l’ouvrant coulissant',
+    ),
+    _SeriesRole(
+      key: 'complement_haut_base',
+      ar: 'مكمل علوي وسفلي',
+      fr: 'Complément haut et bas',
+      descriptionAr: 'المكمل العلوي والسفلي الخاص بالسلسلة',
+      descriptionFr: 'Complément haut et bas propre à cette série',
     ),
     _SeriesRole(
       key: 'glazing_bead',
@@ -188,6 +223,20 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'Renforts liés aux profils de cette série',
     ),
     _SeriesRole(
+      key: 'cache_renfort',
+      ar: 'غطاء التعزيز',
+      fr: 'Chch renfort / Cache renfort',
+      descriptionAr: 'غطاء التعزيز الخاص بالسلسلة',
+      descriptionFr: 'Cache de renfort propre à cette série',
+    ),
+    _SeriesRole(
+      key: 'cache_dormant',
+      ar: 'غطاء الإطار الثابت',
+      fr: 'Cache dormant',
+      descriptionAr: 'غطاء الإطار الثابت الخاص بالسلسلة',
+      descriptionFr: 'Cache dormant propre à cette série',
+    ),
+    _SeriesRole(
       key: 'rail',
       ar: 'السكة',
       fr: 'Rail',
@@ -252,6 +301,28 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   bool get _isArabic =>
       context.read<AppSettingsProvider>().language == AppLanguage.arabic;
   String _t(String ar, String fr) => _isArabic ? ar : fr;
+
+  String _trackModeExplanation(String mode) {
+    switch (mode) {
+      case 'complete':
+        return _t(
+          'إطار كامل متعدد السكك: عدة سكك مدمجة داخل نفس البروفيل. استعمله عندما يكون القطاع نفسه إطارًا بـ 3 أو 4 أو 5 سكك، ولا توجد إضافة منفصلة.',
+          'Cadre complet multi-rails : plusieurs rails sont intégrés dans le même profil. À utiliser lorsque le profil est directement un cadre à 3, 4 ou 5 rails, sans ajout séparé.',
+        );
+      case 'addition':
+        return _t(
+          'إضافة سكة: بروفيل إضافي يركب بعد الإطار الأساسي لزيادة عدد السكك. كلمة Classic أو autre تعني «كلاسيك أو غيره» وليست نوع حساب مستقل.',
+          'Ajout de rail : profil supplémentaire monté après le cadre de base pour augmenter le nombre de rails. « Classic ou autre » signifie simplement le type de complément, pas un calcul indépendant.',
+        );
+      case 'base':
+      default:
+        return _t(
+          'إطار أساسي: البروفيل الرئيسي الذي يبدأ منه الإطار. في المنزلق هو إطار السكتين الأساسي، ثم يمكن إضافة سكة أخرى عند الحاجة.',
+          'Cadre de base : profil principal qui constitue le départ du cadre. Dans un coulissant, c’est le dormant de deux rails, auquel on peut ajouter un rail si nécessaire.',
+        );
+    }
+  }
+
   int? get _seriesId => (_selectedSeries?['id'] as num?)?.toInt();
   bool get _isSlidingSeries {
     final value =
@@ -467,6 +538,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   }
 
   Map<String, dynamic> _defaultRoleOptions(String role) {
+    final isFrameRole = role == 'frame' || role == 'frame_extension';
     return {
       'usage_scope': _isSlidingSeries ? 'sliding' : 'opening',
       'show_when_glass': role == 'reducer' ? 'simple' : 'any',
@@ -482,6 +554,20 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'skip_glazing_bead': false,
       'requires_plant': role == 'porte_joint',
       'joint_length_multiplier': role == 'porte_joint' ? 2.0 : 1.0,
+      // Frame compatibility is explicit; it is not inferred from labels
+      // such as "Classic" or "3 rails".
+      'track_mode': role == 'frame_extension'
+          ? 'addition'
+          : isFrameRole
+          ? 'base'
+          : '',
+      'track_count': role == 'frame_extension'
+          ? 1
+          : isFrameRole
+          ? 2
+          : 0,
+      'track_adds': role == 'frame_extension' ? 1 : 0,
+      'supported_track_counts': role == 'frame_extension' ? '3,4,5,6' : '2',
     };
   }
 
@@ -536,6 +622,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         row['joint_length_multiplier'],
         fallback: role == 'porte_joint' ? 2.0 : 1.0,
       ),
+      'track_mode': row['track_mode']?.toString().trim() ?? '',
+      'track_count': _number(row['track_count']).round(),
+      'track_adds': _number(row['track_adds']).round(),
+      'supported_track_counts':
+          row['supported_track_counts']?.toString().trim() ?? '',
     });
   }
 
@@ -865,8 +956,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             _slidingFormulaCard(),
             const SizedBox(height: 14),
           ],
-          for (final role in _availableRoles)
-            _roleCard(role),
+          for (final role in _availableRoles) _roleCard(role),
           _aluminumJointLinksCard(),
           const SizedBox(height: 90),
         ],
@@ -955,7 +1045,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
   bool _isSideCoverSection(Map<String, dynamic> section) {
     final type = (section['type']?.toString() ?? '').trim().toLowerCase();
-    final isSideCover = type == 'side_cover' ||
+    final isSideCover =
+        type == 'side_cover' ||
         type == 'sidecover' ||
         type == 'couvre-joint' ||
         type == 'couvre_joint' ||
@@ -971,11 +1062,13 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       section['description'],
       section['label'],
     ].whereType<Object>().join(' ').trim().toLowerCase();
-    final isGasket = text.contains('جوان') ||
+    final isGasket =
+        text.contains('جوان') ||
         text.contains('جوانب') ||
         text.contains('joint') ||
         text.contains('gasket');
-    final isHiddenGasketVariant = text.contains('بروس') ||
+    final isHiddenGasketVariant =
+        text.contains('بروس') ||
         text.contains('بروش') ||
         text.contains('brosse') ||
         text.contains('brush') ||
@@ -1100,7 +1193,20 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final noteCtrl = TextEditingController(
       text: original['formula_note']?.toString() ?? '',
     );
+    final trackCountCtrl = TextEditingController(
+      text: (_number(
+        original['track_count'],
+        fallback: role.key == 'frame_extension' ? 1 : 2,
+      )).round().toString(),
+    );
+    final trackAddsCtrl = TextEditingController(
+      text: (_number(original['track_adds'])).round().toString(),
+    );
+    final supportedTracksCtrl = TextEditingController(
+      text: original['supported_track_counts']?.toString() ?? '',
+    );
     final usesGlassRule = _roleUsesGlassRule(role.key);
+    final isFrameRole = role.key == 'frame' || role.key == 'frame_extension';
     var draft = Map<String, dynamic>.from(original);
     if (!usesGlassRule) draft['show_when_glass'] = 'any';
 
@@ -1277,6 +1383,128 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         onChanged: (value) => update('show_in_dialog', value),
                       ),
                       const Divider(height: 20),
+                      if (isFrameRole) ...[
+                        DropdownButtonFormField<String>(
+                          initialValue:
+                              const {
+                                'base',
+                                'complete',
+                                'addition',
+                              }.contains(draft['track_mode'])
+                              ? draft['track_mode']?.toString()
+                              : role.key == 'frame_extension'
+                              ? 'addition'
+                              : 'base',
+                          decoration: InputDecoration(
+                            labelText: _t(
+                              'نوع الإطار والسكك',
+                              'Type du cadre et des rails',
+                            ),
+                          ),
+                          isExpanded: true,
+                          menuMaxHeight: 320,
+                          items: [
+                            DropdownMenuItem(
+                              value: 'base',
+                              child: Text(
+                                _t('إطار أساسي', 'Cadre de base'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'complete',
+                              child: Text(
+                                _t(
+                                  'إطار كامل بعدة سكك',
+                                  'Cadre complet multi-rails',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'addition',
+                              child: Text(
+                                _t(
+                                  'إضافة سكة (كلاسيك أو غيره)',
+                                  'Ajout de rail (Classic ou autre)',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              update('track_mode', value ?? 'base'),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant,
+                            ),
+                          ),
+                          child: Text(
+                            _trackModeExplanation(
+                              draft['track_mode']?.toString() ?? 'base',
+                            ),
+                            softWrap: true,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: trackCountCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: _t(
+                                    'السكك الموجودة',
+                                    'Rails présents',
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: trackAddsCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: _t(
+                                    'السكك المضافة',
+                                    'Rails ajoutés',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: supportedTracksCtrl,
+                          decoration: InputDecoration(
+                            labelText: _t('السكك المقبولة', 'Totaux acceptés'),
+                            hintText: _t(
+                              'مثال: 3,4,5,6',
+                              'Exemple : 3,4,5,6',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       TextField(
                         controller: widthCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
@@ -1284,9 +1512,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText: _t(
-                            'تعديل العرض لهذا الدور (مم)',
-                            'Correction largeur du rôle (mm)',
+                          labelText: _t('تصحيح العرض (مم)', 'Correction largeur (mm)'),
+                          hintText: _t(
+                            'مثال: +60 أو -10',
+                            'Exemple : +60 ou -10',
                           ),
                         ),
                       ),
@@ -1298,9 +1527,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText: _t(
-                            'تعديل الطول لهذا الدور (مم)',
-                            'Correction hauteur du rôle (mm)',
+                          labelText: _t('تصحيح الارتفاع (مم)', 'Correction hauteur (mm)'),
+                          hintText: _t(
+                            'مثال: +5 أو -6',
+                            'Exemple : +5 ou -6',
                           ),
                         ),
                       ),
@@ -1311,6 +1541,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         maxLines: 4,
                         decoration: InputDecoration(
                           labelText: _t('ملاحظة حسابية', 'Note de calcul'),
+                          hintText: _t(
+                            'اكتب سبب التصحيح أو طريقة الحساب',
+                            'Indiquez la raison de la correction ou la méthode de calcul',
+                          ),
+                          alignLabelWithHint: true,
                         ),
                       ),
                     ],
@@ -1330,6 +1565,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                       'width_adjust_mm': _number(widthCtrl.text),
                       'height_adjust_mm': _number(heightCtrl.text),
                       'formula_note': noteCtrl.text.trim(),
+                      if (isFrameRole) ...{
+                        'track_mode': draft['track_mode']?.toString() ?? 'base',
+                        'track_count':
+                            int.tryParse(trackCountCtrl.text.trim()) ?? 0,
+                        'track_adds':
+                            int.tryParse(trackAddsCtrl.text.trim()) ?? 0,
+                        'supported_track_counts': supportedTracksCtrl.text
+                            .trim(),
+                      },
                     };
                     Navigator.pop(dialogContext, draft);
                   },
@@ -1346,6 +1590,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     widthCtrl.dispose();
     heightCtrl.dispose();
     noteCtrl.dispose();
+    trackCountCtrl.dispose();
+    trackAddsCtrl.dispose();
+    supportedTracksCtrl.dispose();
 
     if (!mounted) return;
     if (result == null) return;
@@ -1445,7 +1692,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         signed: true,
         decimal: !integer,
       ),
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(
+        labelText: _t('القيمة', 'Valeur'),
+        hint: Text(
+          label,
+          maxLines: 2,
+          softWrap: true,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
     ),
   );
 

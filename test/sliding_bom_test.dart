@@ -53,6 +53,18 @@ void main() {
     expect(kitItem.category, equals('other'));
     expect(kitItem.quantity, equals(1.0));
 
+    // A single sliding frame must not be emitted through the opening-frame
+    // row. This is the regression that made sliding series show opening
+    // profiles in the drawing and material table.
+    expect(
+      bom.any((item) => item.originalName == 'إطار منزلق (Cadre Coulissant)'),
+      isTrue,
+    );
+    expect(
+      bom.any((item) => item.originalName == 'الإطار (Frame)'),
+      isFalse,
+    );
+
     // 2. Verify 'براغي التجميع' is present instead of 'براغي الإكسسوارات'
     // slidingTotalRoulettes = sashes * 2. With 1 sliding zone, usually sashes = 2.
     // So assembly screws quantity = 2 sashes * 4 = 8.
@@ -66,5 +78,80 @@ void main() {
     // Verify there are no 'براغي الإكسسوارات'
     final hasGenericScrews = bom.any((item) => item.originalName == 'براغي الإكسسوارات');
     expect(hasGenericScrews, isFalse);
+  });
+
+  test('choosing a sliding leaf after drawing the frame promotes the frame', () {
+    final model = WindowModel(
+      db: FakeSqlDatabase(),
+      width: 1500,
+      height: 1200,
+      systemMode: 'mixed',
+    );
+    model.activeSeries = AluminumSeries(
+      id: 10,
+      profileId: 1,
+      name: 'Opening Series',
+      type: 'opening',
+      sections: [
+        AluminumSection(
+          id: 101,
+          seriesId: 10,
+          code: 'OF',
+          name: 'Opening Frame',
+          type: 'frame',
+          isFrame: true,
+        ),
+      ],
+    );
+    model.frameOverride = model.activeSeries!.sections.first.toMap();
+    model.activeSlidingSeries = AluminumSeries(
+      id: 20,
+      profileId: 1,
+      name: 'Sliding Series',
+      type: 'sliding',
+      sections: [
+        AluminumSection(
+          id: 201,
+          seriesId: 20,
+          code: 'SF',
+          name: 'Sliding Frame',
+          type: 'frame',
+          isFrame: true,
+        ),
+        AluminumSection(
+          id: 202,
+          seriesId: 20,
+          code: 'SS',
+          name: 'Sliding Sash',
+          type: 'sash',
+          isSash: true,
+        ),
+      ],
+    );
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.fixedGlass,
+        boundary: const Rect.fromLTWH(0, 0, 1500, 1200),
+      ),
+    ];
+    model.selection = SelectionInfo.zone('z1');
+
+    model.setSelectedZoneSlidingSashes(3);
+
+    expect(model.zones.single.content, ZoneContent.slidingSash);
+    expect(model.slidingFrameOverride?['id'], 201);
+    expect(model.slidingSashOverride?['id'], 202);
+    expect(model.activeFrameOverride?['id'], 201);
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    expect(
+      bom.any((item) => item.originalName == 'إطار منزلق (Cadre Coulissant)'),
+      isTrue,
+    );
+    expect(
+      bom.any((item) => item.originalName == 'الإطار (Frame)'),
+      isFalse,
+    );
   });
 }

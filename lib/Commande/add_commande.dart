@@ -389,6 +389,7 @@ class _CommandePageState extends State<CommandePage> {
       'hasBottomFrame',
       'hasFramePlintheBottom',
       'isInternalView',
+      'showInternalHardware',
       'hasShutter',
       'shutterIntercalaireRatio',
       'shutterMechanism',
@@ -1612,10 +1613,18 @@ class _CommandePageState extends State<CommandePage> {
 
   Future<void> _prepareBulkCatalog(Iterable<WindowModel> products) async {
     for (final product in products) {
+      final savedSlidingSelection =
+          product.loadedSlidingSeriesId != null ||
+          (product.loadedSlidingSeriesName?.trim().isNotEmpty ?? false);
+      final slidingRuntimeMissing =
+          (product.systemMode == 'mixed' || product.systemMode == 'sliding') &&
+          product.activeSlidingSeries == null &&
+          (savedSlidingSelection || product.systemMode == 'sliding');
       final needsCatalog =
           product.availableSystems.isEmpty ||
           product.allGlassCache.isEmpty ||
           product.availableColors.isEmpty ||
+          slidingRuntimeMissing ||
           (product.isShutterOnly && product.availableAccessoryColors.isEmpty);
       if (!needsCatalog) continue;
       try {
@@ -3029,6 +3038,7 @@ class _CommandePageState extends State<CommandePage> {
                   onPressed: _isLoadingEditProducts
                       ? null
                       : () async {
+                          await _prepareBulkCatalog(addedProducts);
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -3944,6 +3954,7 @@ class _CommandePageState extends State<CommandePage> {
                                   'جدول المقاسات (Edit Table Details)',
                                 ),
                                 onPressed: () async {
+                                  await _prepareBulkCatalog([p]);
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -4120,6 +4131,7 @@ class _CommandePageState extends State<CommandePage> {
                                   // options remain available in its bottom
                                   // panel; the old standalone shutter page is
                                   // no longer part of the edit flow.
+                                  await _prepareBulkCatalog([p]);
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(

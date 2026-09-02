@@ -256,6 +256,7 @@ class SqlDatabase {
     'SeriesDesignConfig',
     'SeriesDesignRoles',
     'CatalogItemRules',
+    'ProfileCalculationRules',
     'SectionJointLinks',
     'SeriesShutterRules',
     'Colors',
@@ -538,6 +539,7 @@ class SqlDatabase {
     } catch (_) {}
 
     await _ensureSeriesDesignTables(db);
+    await _ensureProfileCalculationRulesTable(db);
     await _ensureClientCodeInfrastructure(db);
     await _ensureOrderCodeInfrastructure(db);
     await _ensureRemnantInventorySchema(db);
@@ -3613,6 +3615,42 @@ class SqlDatabase {
       return (res.first['price'] as num).toDouble();
     }
     return 0.0;
+  }
+
+  Future<List<Map<String, dynamic>>> getProfileCalculationRules() async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureProfileCalculationRulesTable(myDb);
+    return myDb.query('ProfileCalculationRules');
+  }
+
+  Future<void> saveProfileCalculationRule({
+    required int sectionId,
+    required String calculationMode,
+    required double linearMeterMultiplier,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureProfileCalculationRulesTable(myDb);
+    final mode = const {'auto', 'linear_meter', 'base_price'}
+            .contains(calculationMode)
+        ? calculationMode
+        : 'auto';
+    final multiplier = linearMeterMultiplier.isFinite &&
+            linearMeterMultiplier > 0
+        ? linearMeterMultiplier
+        : 1.0;
+    await myDb.insert(
+      'ProfileCalculationRules',
+      {
+        'section_id': sectionId,
+        'calculation_mode': mode,
+        'linear_meter_multiplier': multiplier,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await CloudSyncService().notifyCatalogChange();
   }
 
   Future<double> getSectionColorPrice(int sectionId, int colorId) async {
@@ -7731,7 +7769,7 @@ class SqlDatabase {
       final result = await myDb.query(
         'InventoryTransactions',
         where:
-            "reference_id = ? AND transaction_type IN ('Sale', 'Consumption', 'Usage')",
+            "reference_id = ? AND transaction_type IN ('Sale', 'Consumption', 'Usage', 'order_issue', 'order_issue_remnant')",
         whereArgs: [commandeId],
         limit: 1,
       );
@@ -11452,21 +11490,41 @@ class SqlDatabase {
     final acknowledgements = <CloudChangeAcknowledgement>[];
     final tombstones = <Map<String, dynamic>>[];
     final orderIdsToBundle = <String>{};
+    final changedAtByRow = <String, String>{};
     var changedRows = 0;
     var deletedRows = 0;
 
+    String syncRowKey(String table, String rowId) => '$table\u0000$rowId';
+
+    for (final logRow in logRows) {
+      final table = logRow['table_name']?.toString() ?? '';
+      final rowId = logRow['row_id']?.toString() ?? '';
+      final changedAt = logRow['changed_at']?.toString().trim() ?? '';
+      if (table.isNotEmpty && rowId.isNotEmpty && changedAt.isNotEmpty) {
+        changedAtByRow[syncRowKey(table, rowId)] = changedAt;
+      }
+    }
+
     void upsertExportRow(String table, Map<String, dynamic> row) {
+      final rowId = row['id']?.toString() ?? '';
+      final changedAt = changedAtByRow[syncRowKey(table, rowId)];
+      // The row's own timestamp can be stale even though the SQLite trigger
+      // recorded a fresh change. Publish the trigger timestamp so incremental
+      // downloads on other devices cannot skip this update.
+      if (changedAt != null && row.containsKey('updated_at')) {
+        row['updated_at'] = changedAt;
+      }
       final sanitized = _sanitizeCloudExportRow(
         table,
         Map<String, dynamic>.from(row),
       );
-      final rowId = sanitized['id']?.toString();
+      final sanitizedRowId = sanitized['id']?.toString();
       final list =
           data.putIfAbsent(table, () => <Map<String, dynamic>>[])
               as List<Map<String, dynamic>>;
-      if (rowId != null && rowId.isNotEmpty) {
+      if (sanitizedRowId != null && sanitizedRowId.isNotEmpty) {
         final existingIndex = list.indexWhere(
-          (existing) => existing['id']?.toString() == rowId,
+          (existing) => existing['id']?.toString() == sanitizedRowId,
         );
         if (existingIndex >= 0) {
           list[existingIndex] = sanitized;
@@ -13153,6 +13211,7 @@ class SqlDatabase {
         color_id INTEGER,
         length_mm REAL NOT NULL,
         scrap_kind TEXT NOT NULL DEFAULT 'short_offcut',
+        status TEXT NOT NULL DEFAULT 'posted',
         source_order_id INTEGER,
         source_bar_index INTEGER,
         location_id INTEGER NOT NULL,
@@ -13164,6 +13223,11 @@ class SqlDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialScrap ADD COLUMN status TEXT NOT NULL DEFAULT 'posted';",
+      );
+    } catch (_) {}
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_material_remnants_match '
       'ON MaterialRemnants(item_type, item_id, color_id, series_id, status, length_mm)',
@@ -13191,6 +13255,20 @@ class SqlDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<bool> hasOrderInventoryIssue(int orderId) async {
+    final myDb = await db;
+    if (myDb == null) return false;
+    await _ensureOrderInventoryIssueSchema(myDb);
+    final rows = await myDb.query(
+      'OrderInventoryIssueSessions',
+      columns: const ['id'],
+      where: 'order_id = ?',
+      whereArgs: [orderId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
   }
 
   Future<double?> _readInventorySettingNumber(String key) async {
@@ -13310,11 +13388,21 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return const {'saved': false};
     await _ensureRemnantInventorySchema(myDb);
+    await _ensureOrderInventoryIssueSchema(myDb);
     final createdRemnants = <Map<String, dynamic>>[];
     var scrapRows = 0;
     var alreadySaved = false;
+    var issueAlreadyApplied = false;
 
     await myDb.transaction((txn) async {
+      final issueSession = await txn.query(
+        'OrderInventoryIssueSessions',
+        columns: const ['id'],
+        where: 'order_id = ?',
+        whereArgs: [orderId],
+        limit: 1,
+      );
+      issueAlreadyApplied = issueSession.isNotEmpty;
       final existing = await txn.query(
         'OrderCuttingSessions',
         columns: const ['id', 'plan_signature'],
@@ -13324,6 +13412,20 @@ class SqlDatabase {
       );
       if (existing.isNotEmpty) {
         alreadySaved = true;
+        if (issueAlreadyApplied) {
+          await txn.update(
+            'MaterialRemnants',
+            {'status': 'available', 'updated_at': DateTime.now().toIso8601String()},
+            where: 'source_order_id = ? AND status = ?',
+            whereArgs: [orderId, 'pending'],
+          );
+          await txn.update(
+            'MaterialScrap',
+            {'status': 'posted', 'updated_at': DateTime.now().toIso8601String()},
+            where: 'source_order_id = ? AND status = ?',
+            whereArgs: [orderId, 'pending'],
+          );
+        }
         return;
       }
 
@@ -13384,7 +13486,9 @@ class SqlDatabase {
               'ticket_code': ticket,
               ...common,
               'length_mm': remainderMm,
-              'status': 'available',
+              // A cutting plan is not inventory.  The remainder becomes
+              // available only after the order issue has consumed the bar.
+              'status': issueAlreadyApplied ? 'available' : 'pending',
             };
             await txn.insert('MaterialRemnants', row);
             createdRemnants.add(row);
@@ -13395,6 +13499,7 @@ class SqlDatabase {
               ...common,
               'length_mm': remainderMm,
               'scrap_kind': 'short_offcut',
+              'status': issueAlreadyApplied ? 'posted' : 'pending',
             });
             scrapRows++;
           }
@@ -13408,6 +13513,7 @@ class SqlDatabase {
             ...common,
             'length_mm': kerfLossMm,
             'scrap_kind': 'saw_kerf',
+            'status': issueAlreadyApplied ? 'posted' : 'pending',
           });
           scrapRows++;
         }
@@ -13460,6 +13566,62 @@ class SqlDatabase {
       ''', args);
   }
 
+  /// Marks a physical remainder as waste without deleting its audit trail.
+  /// The original ticket remains traceable in MaterialScrap.
+  Future<Map<String, dynamic>> markMaterialRemnantAsScrap({
+    required int remnantId,
+    String? note,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return const {'marked': false};
+    await _ensureRemnantInventorySchema(myDb);
+    var marked = false;
+    await myDb.transaction((txn) async {
+      final rows = await txn.query(
+        'MaterialRemnants',
+        where: 'id = ? AND status = ?',
+        whereArgs: [remnantId, 'available'],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final row = rows.first;
+      final timestamp = DateTime.now().toIso8601String();
+      await txn.insert('MaterialScrap', {
+        'id': _nextDistributedId(),
+        'ticket_code': row['ticket_code'],
+        'item_id': row['item_id'],
+        'item_type': row['item_type'],
+        'series_id': row['series_id'],
+        'color_id': row['color_id'],
+        'length_mm': row['length_mm'],
+        'scrap_kind': 'manual_waste',
+        'status': 'posted',
+        'source_order_id': row['source_order_id'],
+        'source_bar_index': row['source_bar_index'],
+        'location_id': row['location_id'],
+        'rack_code': row['rack_code'],
+        'shelf_code': row['shelf_code'],
+        'bin_code': row['bin_code'],
+        'note': note?.trim(),
+        'created_at': timestamp,
+        'updated_at': timestamp,
+      });
+      await txn.update(
+        'MaterialRemnants',
+        {
+          'status': 'scrapped',
+          'note': note?.trim(),
+          'updated_at': timestamp,
+        },
+        where: 'id = ? AND status = ?',
+        whereArgs: [remnantId, 'available'],
+      );
+      marked = true;
+    });
+    if (marked) CloudSyncService().notifyChange();
+    return {'marked': marked};
+  }
+
   Future<List<Map<String, dynamic>>> readAllAvailableMaterialRemnants({
     int? locationId,
   }) async {
@@ -13497,6 +13659,8 @@ class SqlDatabase {
     required int orderId,
     required List<int> remnantIds,
     required List<Map<String, dynamic>> stockDeductions,
+    String? customerName,
+    bool completeIssue = true,
   }) async {
     final myDb = await db;
     if (myDb == null) return const {'applied': false};
@@ -13517,41 +13681,51 @@ class SqlDatabase {
       );
       if (existing.isNotEmpty) {
         alreadyApplied = true;
+        if (completeIssue) {
+          await txn.update(
+            'MaterialRemnants',
+            {'status': 'available', 'updated_at': DateTime.now().toIso8601String()},
+            where: 'source_order_id = ? AND status = ?',
+            whereArgs: [orderId, 'pending'],
+          );
+          await txn.update(
+            'MaterialScrap',
+            {'status': 'posted', 'updated_at': DateTime.now().toIso8601String()},
+            where: 'source_order_id = ? AND status = ?',
+            whereArgs: [orderId, 'pending'],
+          );
+        }
         return;
       }
 
       final timestamp = DateTime.now().toIso8601String();
-      await txn.insert(
-        'OrderInventoryIssueSessions',
-        _withDistributedId({
-          'order_id': orderId,
-          'created_at': timestamp,
-          'updated_at': timestamp,
-        }),
-      );
 
+      // Validate the whole issue before changing anything.  Clamping a
+      // negative result to zero hides a shortage and corrupts stock totals.
+      final remnantRows = <Map<String, Object?>>[];
       for (final id in uniqueRemnantIds) {
-        consumedRemnants += await txn.update(
+        final rows = await txn.query(
           'MaterialRemnants',
-          {
-            'status': 'consumed',
-            'consumed_order_id': orderId,
-            'consumed_at': timestamp,
-            'updated_at': timestamp,
-          },
           where: 'id = ? AND status = ?',
           whereArgs: [id, 'available'],
+          limit: 1,
         );
+        if (rows.isEmpty) {
+          throw StateError('الفضلة رقم $id غير متاحة أو سبق صرفها.');
+        }
+        remnantRows.add(Map<String, Object?>.from(rows.first));
       }
 
+      final validatedDeductions = <Map<String, dynamic>>[];
+      final projectedDeductions = <String, double>{};
       for (final row in stockDeductions) {
         final itemId = (row['item_id'] as num?)?.toInt();
-        final itemType = row['item_type']?.toString();
+        final itemType = row['item_type']?.toString().trim();
         final locationId = (row['location_id'] as num?)?.toInt();
         final quantity = _readStoredNumber(row['quantity']) ?? 0;
         if (itemId == null ||
             itemType == null ||
-            itemType.trim().isEmpty ||
+            itemType.isEmpty ||
             locationId == null ||
             quantity <= 0) {
           continue;
@@ -13570,12 +13744,92 @@ class SqlDatabase {
           whereArgs: whereArgs,
           limit: 1,
         );
-        if (stockRows.isEmpty) continue;
-        final current = _readStoredNumber(stockRows.first['quantity']) ?? 0;
-        final next = max(0.0, current - quantity);
+        final current = stockRows.isEmpty
+            ? 0.0
+            : (_readStoredNumber(stockRows.first['quantity']) ?? 0);
+        final balanceKey = '$itemId|$itemType|${colorId ?? ''}|$locationId';
+        final alreadyProjected = projectedDeductions[balanceKey] ?? 0;
+        if (stockRows.isEmpty ||
+            current + 0.000001 < alreadyProjected + quantity) {
+          throw StateError(
+            'المخزون غير كافٍ للصنف $itemId ($itemType): المطلوب $quantity والمتاح $current.',
+          );
+        }
+        projectedDeductions[balanceKey] = alreadyProjected + quantity;
+        validatedDeductions.add({
+          ...row,
+          'item_id': itemId,
+          'item_type': itemType,
+          'location_id': locationId,
+          'color_id': colorId,
+          '_where': where,
+          '_whereArgs': whereArgs,
+        });
+      }
+
+      await txn.insert(
+        'OrderInventoryIssueSessions',
+        _withDistributedId({
+          'order_id': orderId,
+          'created_at': timestamp,
+          'updated_at': timestamp,
+        }),
+      );
+
+      for (final row in remnantRows) {
+        final id = (row['id'] as num).toInt();
+        consumedRemnants += await txn.update(
+          'MaterialRemnants',
+          {
+            'status': 'consumed',
+            'consumed_order_id': orderId,
+            'consumed_at': timestamp,
+            'updated_at': timestamp,
+          },
+          where: 'id = ? AND status = ?',
+          whereArgs: [id, 'available'],
+        );
+        await txn.insert(
+          'InventoryTransactions',
+          _withDistributedId({
+            'item_id': row['item_id'],
+            'item_type': row['item_type'],
+            'color_id': row['color_id'],
+            'location_id': row['location_id'],
+            'quantity': -((_readStoredNumber(row['length_mm']) ?? 0) / 1000),
+            'transaction_type': 'order_issue_remnant',
+            'reference_id': orderId,
+            'note': 'صرف فضلة ${row['ticket_code'] ?? ''} للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
+            'created_at': timestamp,
+          }),
+        );
+      }
+
+      for (final row in validatedDeductions) {
+        final itemId = row['item_id'] as int;
+        final itemType = row['item_type'] as String;
+        final locationId = row['location_id'] as int;
+        final quantity = _readStoredNumber(row['quantity']) ?? 0;
+        final where = row['_where'] as String;
+        final whereArgs = row['_whereArgs'] as List<Object?>;
+        final currentRows = await txn.query(
+          'CurrentStock',
+          columns: const ['quantity'],
+          where: where,
+          whereArgs: whereArgs,
+          limit: 1,
+        );
+        final current = currentRows.isEmpty
+            ? 0.0
+            : (_readStoredNumber(currentRows.first['quantity']) ?? 0);
+        if (current + 0.000001 < quantity) {
+          throw StateError(
+            'تغير رصيد المخزون أثناء اعتماد الصرف للصنف $itemId ($itemType). حاول مجددًا.',
+          );
+        }
         deductedRows += await txn.update(
           'CurrentStock',
-          {'quantity': next, 'updated_at': timestamp},
+          {'quantity': current - quantity, 'updated_at': timestamp},
           where: where,
           whereArgs: whereArgs,
         );
@@ -13584,14 +13838,29 @@ class SqlDatabase {
           _withDistributedId({
             'item_id': itemId,
             'item_type': itemType,
-            'color_id': colorId,
+            'color_id': row['color_id'],
             'location_id': locationId,
             'quantity': -quantity,
             'transaction_type': 'order_issue',
             'reference_id': orderId,
-            'note': 'صرف تلقائي للطلبية #$orderId',
+            'note': 'صرف تلقائي للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
             'created_at': timestamp,
           }),
+        );
+      }
+
+      if (completeIssue) {
+        await txn.update(
+          'MaterialRemnants',
+          {'status': 'available', 'updated_at': timestamp},
+          where: 'source_order_id = ? AND status = ?',
+          whereArgs: [orderId, 'pending'],
+        );
+        await txn.update(
+          'MaterialScrap',
+          {'status': 'posted', 'updated_at': timestamp},
+          where: 'source_order_id = ? AND status = ?',
+          whereArgs: [orderId, 'pending'],
         );
       }
     });
@@ -15952,6 +16221,155 @@ class SqlDatabase {
     bool requireDialog = true,
     bool requireQuantity = false,
   }) async {
+    return _getDesignSectionsForRoles(
+      seriesId,
+      roleKeys,
+      requireDialog: requireDialog,
+      requireQuantity: requireQuantity,
+    );
+  }
+
+  /// Per-profile pricing classification used by the material calculator.
+  /// A row is optional: when absent, the calculator keeps its legacy role
+  /// classification (frame/sash/mullion/plant...).
+  Future<void> _ensureProfileCalculationRulesTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ProfileCalculationRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id INTEGER NOT NULL UNIQUE,
+        calculation_mode TEXT NOT NULL DEFAULT 'auto',
+        linear_meter_multiplier REAL NOT NULL DEFAULT 1.0,
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    // Upgrade the short-lived first schema, if it was created before the
+    // table became part of the catalogue sync contract.
+    try {
+      await db.execute('ALTER TABLE ProfileCalculationRules ADD COLUMN id INTEGER;');
+      await db.execute(
+        'UPDATE ProfileCalculationRules SET id = section_id WHERE id IS NULL;',
+      );
+    } catch (_) {}
+  }
+
+  Future<void> ensureProfileCalculationRulesTable() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureProfileCalculationRulesTable(myDb);
+  }
+
+  /// Creates useful first-run values for every catalogue profile without
+  /// overwriting a rule previously customized by the administrator.
+  Future<void> seedDefaultProfileCalculationRules() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureProfileCalculationRulesTable(myDb);
+    List<Map<String, dynamic>> sections;
+    try {
+      sections = await myDb.query(
+        'Sections',
+        columns: [
+          'id',
+          'type',
+          'name',
+          'code',
+          'is_frame',
+          'is_sash',
+          'is_mullion',
+        ],
+      );
+    } catch (_) {
+      sections = await myDb.query(
+        'Sections',
+        columns: ['id', 'type', 'name', 'code'],
+      );
+    }
+    await myDb.transaction((txn) async {
+      for (final section in sections) {
+        final sectionId = (section['id'] as num?)?.toInt();
+        if (sectionId == null) continue;
+        final role = '${section['type'] ?? ''}'.trim().toLowerCase();
+        final profileText =
+            '$role ${section['name'] ?? ''} ${section['code'] ?? ''}'
+                .toLowerCase();
+        final isMainProfile =
+            section['is_frame'] == 1 ||
+            section['is_sash'] == 1 ||
+            section['is_mullion'] == 1 ||
+            profileText.contains('frame') ||
+            profileText.contains('cadre') ||
+            profileText.contains('ouvrant') ||
+            profileText.contains('sash') ||
+            profileText.contains('mullion') ||
+            profileText.contains('traverse') ||
+            profileText.contains('batmo') ||
+            profileText.contains('batbo') ||
+            profileText.contains('إطار') ||
+            profileText.contains('ظلفة') ||
+            profileText.contains('تقسيم') ||
+            profileText.contains('باتمو') ||
+            profileText.contains('باتبو') ||
+            profileText.contains('بلانت');
+        final isPlant =
+            profileText.contains('plant') ||
+            profileText.contains('plinthe') ||
+            profileText.contains('بلانت');
+        await txn.insert(
+          'ProfileCalculationRules',
+          {
+            'section_id': sectionId,
+            'calculation_mode': isMainProfile ? 'linear_meter' : 'base_price',
+            'linear_meter_multiplier': isPlant ? 2.0 : 1.0,
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
+
+  /// Resolves profiles for the drawing surface only.  The drawing must obey
+  /// both the role assignment and its opening/sliding scope; section names
+  /// are not a substitute for either rule.
+  Future<List<Map<String, dynamic>>> getDesignSectionsForDrawingRoles(
+    int seriesId,
+    Iterable<String> roleKeys, {
+    required String usageScope,
+  }) async {
+    return _getDesignSectionsForRoles(
+      seriesId,
+      roleKeys,
+      requireDialog: false,
+      requireDrawing: true,
+      usageScope: usageScope,
+    );
+  }
+
+  /// Resolves profiles for a scoped selector dialog.  This keeps a manual
+  /// replacement in the same opening/sliding catalogue scope as the drawing.
+  Future<List<Map<String, dynamic>>> getDesignSectionsForScopedDialogRoles(
+    int seriesId,
+    Iterable<String> roleKeys, {
+    required String usageScope,
+    bool requireQuantity = false,
+  }) async {
+    return _getDesignSectionsForRoles(
+      seriesId,
+      roleKeys,
+      requireDialog: true,
+      requireQuantity: requireQuantity,
+      usageScope: usageScope,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getDesignSectionsForRoles(
+    int seriesId,
+    Iterable<String> roleKeys, {
+    bool requireDialog = true,
+    bool requireQuantity = false,
+    bool requireDrawing = false,
+    String? usageScope,
+  }) async {
     final keys = roleKeys.where((key) => key.trim().isNotEmpty).toList();
     if (keys.isEmpty) return [];
     final myDb = await db;
@@ -15962,6 +16380,9 @@ class SqlDatabase {
       'r.is_visible = 1',
       if (requireDialog) 'r.show_in_dialog = 1',
       if (requireQuantity) 'r.show_in_quantity = 1',
+      if (requireDrawing) 'r.show_in_drawing = 1',
+      if (usageScope != null)
+        "r.usage_scope IN ('auto', 'both', ?)",
     ].join('\n        AND ');
     return myDb.rawQuery(
       '''
@@ -15987,7 +16408,11 @@ class SqlDatabase {
         AND (s.is_active = 1 OR s.is_active IS NULL)
       ORDER BY r.is_default DESC, r.sort_order ASC, s.name ASC
     ''',
-      [seriesId, ...keys],
+      [
+        seriesId,
+        if (usageScope != null) usageScope,
+        ...keys,
+      ],
     );
   }
 

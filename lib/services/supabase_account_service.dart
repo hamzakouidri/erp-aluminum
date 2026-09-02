@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/app_settings.dart';
+import 'dart:math' as math;
 
 /// The account/workshop record used by the application gate.
 ///
@@ -244,7 +245,14 @@ class SupabaseAccountService {
     required bool blocked,
   }) async {
     final workshopId = workshop['id']?.toString() ?? '';
-    final workshopCode = _shortPublicCode(workshop['join_code']);
+    // `code` is the internal identifier in the current schema, while
+    // `join_code` is the short value workers enter.  Older migrated rows can
+    // still have the public value in `code`, so use it only when it really is
+    // a short public code; never expose a UUID in the UI.
+    final workshopCode = _firstPublicCode(
+      workshop['join_code'],
+      workshop['code'],
+    );
     final workshopName = await _resolveDisplayName(
       workshopId: workshopId,
       workshopCode: workshopCode,
@@ -276,8 +284,93 @@ class SupabaseAccountService {
   }
 
   String _shortPublicCode(dynamic value) {
+    if (value is Map) {
+      for (final key in const [
+        'join_code',
+        'joinCode',
+        'set_my_workshop_join_code',
+      ]) {
+        final nested = _shortPublicCode(value[key]);
+        if (nested.isNotEmpty) return nested;
+      }
+    }
+    if (value is List && value.length == 1) {
+      return _shortPublicCode(value.first);
+    }
     final code = value?.toString().trim() ?? '';
     return RegExp(r'^[A-Za-z0-9]{1,7}$').hasMatch(code) ? code : '';
+  }
+
+  String _firstPublicCode(dynamic primary, dynamic fallback) {
+    final primaryCode = _shortPublicCode(primary);
+    if (primaryCode.isNotEmpty) return primaryCode;
+    return _shortPublicCode(fallback);
+  }
+
+  /// Creates the short worker-facing code on the actual Supabase workshop.
+  ///
+  /// The RPC is preferred because workshop managers are not allowed to update
+  /// the workshops table directly by the normal RLS policy.  The direct update
+  /// fallback keeps this working for the application administrator on older
+  /// installations where the RPC migration has not yet been applied.
+  Future<String> createWorkshopJoinCode() async {
+    final account = await loadCurrentAccount();
+    if (account == null || account.workshopId.isEmpty) {
+      throw Exception('لم يتم العثور على الورشة الحالية في Supabase.');
+    }
+
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = math.Random.secure();
+    final requestedCode = String.fromCharCodes(
+      Iterable.generate(
+        6,
+        (_) => characters.codeUnitAt(random.nextInt(characters.length)),
+      ),
+    );
+
+    String? resultCode;
+    Object? rpcError;
+    try {
+      final result = await _client.rpc(
+        'set_my_workshop_join_code',
+        params: {
+          'target_workshop_id': account.workshopId,
+          'requested_code': requestedCode,
+        },
+      );
+      resultCode = _shortPublicCode(result);
+    } catch (error) {
+      rpcError = error;
+    }
+
+    if (_shortPublicCode(resultCode).isEmpty) {
+      // The RPC is installed by the optional management migration.  For the
+      // application administrator, the existing RLS policy already permits
+      // this direct update, so preserve compatibility with older databases.
+      try {
+        final updated = await _client
+            .from('workshops')
+            .update({'join_code': requestedCode})
+            .eq('id', account.workshopId)
+            .select('join_code')
+            .maybeSingle();
+        resultCode = _shortPublicCode(updated?['join_code']);
+      } catch (error) {
+        throw Exception(
+          'تعذر إنشاء كود الورشة في Supabase. '
+          'طبّق ملف workshop_join_code_management.sql على قاعدة Supabase. '
+          'RPC: ${rpcError ?? 'غير متاح'}، التحديث: $error',
+        );
+      }
+    }
+
+    final code = _shortPublicCode(resultCode);
+    if (code.isEmpty) {
+      throw Exception('تعذر حفظ كود الورشة في Supabase.');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('workshop_code', code);
+    return code;
   }
 
   Future<String> _resolveDisplayName({

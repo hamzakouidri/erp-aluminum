@@ -750,6 +750,34 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         child: Text(_tr('غطاء جانبي / Couvre-joint')),
                       ),
                       DropdownMenuItem(
+                        value: 'profile_angle',
+                        child: Text("Profil d'angle"),
+                      ),
+                      DropdownMenuItem(
+                        value: 'caniveau',
+                        child: Text('Caniveau'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_caniveau',
+                        child: Text('Cache-caniveau'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_dormant',
+                        child: Text('Cache dormant'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_renfort',
+                        child: Text('Chch renfort / Cache renfort'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'montant_central_slim',
+                        child: Text('Montant central Slim'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'complement_haut_base',
+                        child: Text('Complément haut et bas'),
+                      ),
+                      DropdownMenuItem(
                         value: 'cache_rainure',
                         child: Text('Cache-rainure'),
                       ),
@@ -910,6 +938,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType != 'bouchon_batmo' &&
                       selectedType != 'renfort' &&
                       selectedType != 'side_cover' &&
+                      selectedType != 'profile_angle' &&
+                      selectedType != 'caniveau' &&
+                      selectedType != 'cache_caniveau' &&
+                      selectedType != 'cache_dormant' &&
+                      selectedType != 'cache_renfort' &&
+                      selectedType != 'montant_central_slim' &&
+                      selectedType != 'complement_haut_base' &&
                       selectedType != 'chicane' &&
                       selectedType != 'panneau' &&
                       selectedType != 'bardage' &&
@@ -973,6 +1008,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType == 'frame' ||
                       selectedType == 'mullion' ||
                       selectedType == 'side_cover' ||
+                      selectedType == 'profile_angle' ||
+                      selectedType == 'caniveau' ||
+                      selectedType == 'cache_caniveau' ||
+                      selectedType == 'cache_dormant' ||
+                      selectedType == 'cache_renfort' ||
+                      selectedType == 'montant_central_slim' ||
+                      selectedType == 'complement_haut_base' ||
                       selectedType == 'bardage' ||
                       selectedType == 'plinthe') ...[
                     TextField(
@@ -1338,6 +1380,34 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         child: Text(_tr('غطاء جانبي / Couvre-joint')),
                       ),
                       DropdownMenuItem(
+                        value: 'profile_angle',
+                        child: Text("Profil d'angle"),
+                      ),
+                      DropdownMenuItem(
+                        value: 'caniveau',
+                        child: Text('Caniveau'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_caniveau',
+                        child: Text('Cache-caniveau'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_dormant',
+                        child: Text('Cache dormant'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cache_renfort',
+                        child: Text('Chch renfort / Cache renfort'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'montant_central_slim',
+                        child: Text('Montant central Slim'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'complement_haut_base',
+                        child: Text('Complément haut et bas'),
+                      ),
+                      DropdownMenuItem(
                         value: 'cache_rainure',
                         child: Text('Cache-rainure'),
                       ),
@@ -1499,6 +1569,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType != 'bouchon_batmo' &&
                       selectedType != 'renfort' &&
                       selectedType != 'side_cover' &&
+                      selectedType != 'profile_angle' &&
+                      selectedType != 'caniveau' &&
+                      selectedType != 'cache_caniveau' &&
+                      selectedType != 'cache_dormant' &&
+                      selectedType != 'cache_renfort' &&
+                      selectedType != 'montant_central_slim' &&
+                      selectedType != 'complement_haut_base' &&
                       selectedType != 'chicane' &&
                       selectedType != 'panneau' &&
                       selectedType != 'bardage' &&
@@ -1593,6 +1670,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType == 'frame' ||
                       selectedType == 'mullion' ||
                       selectedType == 'side_cover' ||
+                      selectedType == 'profile_angle' ||
+                      selectedType == 'caniveau' ||
+                      selectedType == 'cache_caniveau' ||
+                      selectedType == 'cache_dormant' ||
+                      selectedType == 'cache_renfort' ||
+                      selectedType == 'montant_central_slim' ||
+                      selectedType == 'complement_haut_base' ||
                       selectedType == 'bardage' ||
                       selectedType == 'plinthe') ...[
                     TextField(

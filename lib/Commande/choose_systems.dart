@@ -84,6 +84,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       model.hasFramePlintheBottom,
     );
     model.isInternalView = readBool('isInternalView', model.isInternalView);
+    model.showInternalHardware = readBool(
+      'showInternalHardware',
+      model.showInternalHardware,
+    );
     model.hasShutter = readBool('hasShutter', model.hasShutter);
     model.shutterIntercalaireRatio =
         readInt('shutterIntercalaireRatio') ?? model.shutterIntercalaireRatio;

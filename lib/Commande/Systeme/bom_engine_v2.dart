@@ -43,11 +43,29 @@ class BomEngineV2 {
   }) async {
     final kept = <BomItem>[];
     for (final item in items) {
+      // A System OB definition is an explicit kit: its child rows are the
+      // complete hardware list configured on the Kits page.  They must stay
+      // visible even when a child name has no standalone CatalogItemRules
+      // entry (for example, a manufacturer-specific OB part).  Catalog rules
+      // still control all ordinary/generated accessory rows and the selector
+      // used when the user replaces a kit child.
+      if (_isExplicitObKitItem(item)) {
+        kept.add(item);
+        continue;
+      }
       if (await _itemHasRuleCandidate(window, item)) {
         kept.add(item);
       }
     }
     return kept;
+  }
+
+  bool _isExplicitObKitItem(BomItem item) {
+    final group = item.kitGroupName?.toLowerCase().replaceAll(
+      RegExp(r'[\s_-]'),
+      '',
+    );
+    return group == 'systemob' || group == 'demisystemob';
   }
 
   Future<bool> _itemHasRuleCandidate(WindowModel window, BomItem item) async {
@@ -418,6 +436,38 @@ class BomEngineV2 {
 
   AccessoryDrawingMode? _drawingModeForItem(WindowModel window, BomItem item) {
     final selectorType = item.selectorType?.toLowerCase().trim() ?? '';
+    final originalName = item.originalName.toLowerCase().trim();
+    final roleKey = item.roleKey?.toLowerCase().trim() ?? '';
+
+    // In a mixed drawing, the presence of both sash families is not enough
+    // to infer the source of generic hardware. BOM rows created for a sliding
+    // zone carry either a sliding role/name or the sliding series id; resolve
+    // those rows against the sliding catalogue explicitly.
+    final isSlidingRole = const {
+      'roulette',
+      'sliding_kit',
+      'sliding_clamp',
+      'sliding_lock',
+    }.contains(roleKey) ||
+        const {
+          'roulette',
+          'sliding_kit',
+          'sliding_clamp',
+          'sliding_lock',
+        }.contains(selectorType) ||
+        originalName.contains('منزلق') ||
+        originalName.contains('couliss') ||
+        originalName.contains('sliding');
+    if (isSlidingRole ||
+        (item.sourceSeriesId != null &&
+            item.sourceSeriesId == window.activeSlidingSeries?.id)) {
+      return AccessoryDrawingMode.sliding;
+    }
+    if (item.sourceSeriesId != null &&
+        item.sourceSeriesId == window.activeSeries?.id) {
+      return AccessoryDrawingMode.opening;
+    }
+
     if (selectorType.contains('lateral') ||
         selectorType.contains('central') ||
         selectorType.contains('sash_traverse') ||

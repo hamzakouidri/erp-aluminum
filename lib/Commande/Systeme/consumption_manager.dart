@@ -1,21 +1,21 @@
 import 'dart:convert';
+
+import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
+import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/consumption_item.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
-import 'package:database_data/Commande/Systeme/cutting_calculator.dart';
-import 'package:database_data/Commande/Systeme/cutting_optimizer.dart';
-import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
+import 'package:database_data/sql_database.dart';
 import 'package:flutter/foundation.dart';
 
 class ConsumptionReport {
   final List<CuttingItem> aluminumItems;
   final List<CuttingItem> glassItems;
   final List<CuttingItem> accessoryItems;
-
-  // المؤشرات المالية الثلاثة (لوحة التحكم المالية)
-  final double totalSellingPrice; // سعر البيع للزبون
-  final double exactCost;         // التكلفة الصافية الدقيقة (مشاريع / شونطي)
-  final double fullBarCost;       // التكلفة الإجمالية بفتح البارات (زبون فردي)
-  final int totalScrewsCount;     // 🟢 إجمالي عدد البراغي المستهلكة في الطلبية
+  final double totalSellingPrice;
+  final double exactCost;
+  final double fullBarCost;
+  final int totalScrewsCount;
 
   ConsumptionReport({
     required this.aluminumItems,
@@ -28,422 +28,181 @@ class ConsumptionReport {
   });
 }
 
+/// Keeps the old report API while using the rule-first BOM as its only source.
 class ConsumptionManager {
-  final SqlDatabase db;
-
-  // سعر افتراضي للبرغي الواحد في حال لم يكن مسجلاً في قاعدة البيانات (مثلاً 2 دج للبرغي)
-  static const double _defaultScrewCost = 2.0;
-  static const double _defaultScrewSellingPrice = 3.0;
-
-  // طول البار الافتراضي بالأمتار
-  static const double _defaultBarLength = 5.8;
-
   ConsumptionManager(this.db);
 
+  final SqlDatabase db;
+
   Future<ConsumptionReport> generateReport(int commandeId) async {
-    final List<Map<String, dynamic>> details = await db.readCommandeDetails(commandeId);
-
-    List<CuttingItem> allItems = [];
-
-    double orderSellingPrice = 0.0;
-    double orderExactCost = 0.0;
-    double orderFullBarCost = 0.0;
-    int orderTotalScrews = 0; // 🟢 عداد تراكمي للبراغي
-
-    for (var detail in details) {
-      if (detail['partitions_json'] != null && detail['partitions_json'].toString().isNotEmpty) {
-        try {
-          final Map<String, dynamic> data = jsonDecode(detail['partitions_json']);
-          WindowModel window = WindowModel(db: db);
-          applyWindowModelFromMap(window, data);
-
-          int quantity = detail['quantite'] ?? 1;
-
-          // 1. حساب القطع والإكسسوارات الديناميكية
-          List<CuttingItem> windowItems = CuttingCalculator.calculate(window);
-          List<CuttingItem> accessories = await _calculateAccessories(window);
-          windowItems.addAll(accessories);
-
-          // 2. جلب الأسعار الديناميكية من السلسلة النشطة بدلاً من القيم الثابتة
-          double seriesSellingPricePerMeter = 0.0;
-          double barCostPrice = 2000.0; // تكلفة شراء البار الكامل (قيمة افتراضية حذرة)
-
-          if (window.activeSeries != null) {
-            // جلب سعر بيع المتر المحدد في قاعدة البيانات لهذه السلسلة
-            final dbClient = await db.db;
-            final seriesRows = await dbClient!.query(
-                'Series',
-                columns: ['price_per_meter'],
-                where: 'id = ?',
-                whereArgs: [window.activeSeries!.id]
-            );
-
-            if (seriesRows.isNotEmpty) {
-              seriesSellingPricePerMeter = (seriesRows.first['price_per_meter'] as num).toDouble();
-            }
-            // محاولة جلب السعر المخصص للون السلسلة إذا توفر
-            if (window.selectedDbColor != null) {
-              double customColorPrice = await db.getSeriesColorPrice(window.activeSeries!.id, window.selectedDbColor!['id']);
-              if (customColorPrice > 0) {
-                seriesSellingPricePerMeter = customColorPrice;
-              }
-            }
-          }
-
-          double costPerMeter = barCostPrice / _defaultBarLength;
-
-          // جلب أسعار الزجاج من قاعدة البيانات بشكل ديناميكي إن وجد
-          double glassSellingPricePerSqm = 3500.0;
-          double glassCostPricePerSqm = 2800.0;
-          final dbGlass = await db.readGlass();
-          if (dbGlass.isNotEmpty) {
-            // محاولة مطابقة نوع الزجاج
-            var matchedGlass = dbGlass.first;
-            glassCostPricePerSqm = (matchedGlass['price_per_sqm'] as num).toDouble();
-            glassSellingPricePerSqm = glassCostPricePerSqm * 1.25; // هامش ربح 25% للزجاج
-          }
-
-          // 3. فصل وتصنيف القطع لحساب التكلفة والبراغي
-          List<CuttingItem> aluItemsForThisWindow = [];
-
-          for (var item in windowItems) {
-            for (int i = 0; i < (item.quantity * quantity); i++) {
-              CuttingItem singleItem = CuttingItem(
-                name: item.name,
-                description: item.description,
-                width: item.width,
-                height: item.height,
-                quantity: 1,
-                type: item.type,
-                isMissing: item.isMissing,
-              );
-
-              if (item.type != CuttingItemType.accessory) {
-                allItems.add(singleItem);
-              }
-
-              if (item.type == CuttingItemType.profileFrame || item.type == CuttingItemType.profileSash) {
-                aluItemsForThisWindow.add(singleItem);
-
-                double itemLengthInMeters = (item.width > 0 ? item.width : item.height) / 1000.0;
-                orderSellingPrice += (itemLengthInMeters * seriesSellingPricePerMeter);
-                orderExactCost += (itemLengthInMeters * costPerMeter);
-
-              } else if (item.type == CuttingItemType.glass) {
-                double sqm = (item.width / 1000.0) * (item.height / 1000.0);
-                orderSellingPrice += (sqm * glassSellingPricePerSqm);
-                orderExactCost += (sqm * glassCostPricePerSqm);
-                orderFullBarCost += (sqm * glassCostPricePerSqm);
-
-              } else if (item.type == CuttingItemType.accessory) {
-                // استخراج البيانات المتقدمة من حقل الوصف المطور
-                double accCost = _extractPriceFromDescription(item.description);
-                int screwCountPerUnit = _extractScrewsFromDescription(item.description);
-
-                // إضافة الإكسسوار الأصلي بدون حشو حقل السعر في القائمة النهائية
-                allItems.add(CuttingItem(
-                  name: item.name,
-                  description: "المادة: ${item.description.split('|').first}",
-                  width: item.width,
-                  height: item.height,
-                  quantity: 1,
-                  type: item.type,
-                  isMissing: item.isMissing,
-                ));
-
-                double accSelling = accCost * 1.3; // هامش ربح الإكسسوارات 30%
-
-                orderSellingPrice += accSelling;
-                orderExactCost += accCost;
-                orderFullBarCost += accCost;
-
-                // 🟢 حساب البراغي التراكمية المستهلكة لهذا الإكسسوار
-                orderTotalScrews += screwCountPerUnit;
-              }
-            }
-          }
-
-          // 4. تشغيل خوارزمية التقطيع في الخلفية لمعرفة عدد البارات الحقيقية للورشة
-          List<ProfileCuttingResult> optimizedBars = CuttingOptimizer.optimizeAll(aluItemsForThisWindow);
-          int totalBarsNeeded = 0;
-          for(var result in optimizedBars) {
-            totalBarsNeeded += result.bars.length;
-          }
-
-          orderFullBarCost += (totalBarsNeeded * barCostPrice);
-
-        } catch (e) {
-          debugPrint('Error parsing window model for consumption: $e');
-        }
-      }
-    }
-
-    // 🟢 5. دمج كتل البراغي المستهلكة كعنصر مادي حقيقي في التقرير لحساب تكلفته وسعره
-    if (orderTotalScrews > 0) {
-      double screwsCost = orderTotalScrews * _defaultScrewCost;
-      double screwsSelling = orderTotalScrews * _defaultScrewSellingPrice;
-
-      orderExactCost += screwsCost;
-      orderFullBarCost += screwsCost;
-      orderSellingPrice += screwsSelling;
-
-      allItems.add(CuttingItem(
-        name: "براغي تثبيت وتجميع وتثبيت الكتالوج الصافي",
-        description: "إجمالي استهلاك البراغي المخصصة للتركيب",
-        width: 0,
-        height: 0,
-        quantity: orderTotalScrews,
-        type: CuttingItemType.accessory,
-        isMissing: false,
-      ));
-    }
-
-    // 6. تجميع القطع المتشابهة لعرضها بشكل نظيف في القوائم
-    List<CuttingItem> aggregated = _aggregateItems(allItems);
-
-    return ConsumptionReport(
-      aluminumItems: aggregated.where((i) => i.type == CuttingItemType.profileFrame || i.type == CuttingItemType.profileSash).toList(),
-      glassItems: aggregated.where((i) => i.type == CuttingItemType.glass).toList(),
-      accessoryItems: aggregated.where((i) => i.type == CuttingItemType.accessory).toList(),
-      totalSellingPrice: orderSellingPrice,
-      exactCost: orderExactCost,
-      fullBarCost: orderFullBarCost,
-      totalScrewsCount: orderTotalScrews, // إرجاع إجمالي عدد البراغي المستهلكة
-    );
-  }
-  // 🟢 دالة جديدة تماماً لحساب التكلفة الفورية من الرسم مباشرة دون الحاجة لـ ID الطلبية
-  Future<ConsumptionReport> generateReportFromLiveModel(WindowModel window, int quantity) async {
-    List<CuttingItem> allItems = [];
-    double orderSellingPrice = 0.0;
-    double orderExactCost = 0.0;
-    double orderFullBarCost = 0.0;
-    int orderTotalScrews = 0;
-
-    try {
-      // 1. حساب القطع والإكسسوارات من الرسم مباشرة
-      List<CuttingItem> windowItems = CuttingCalculator.calculate(window);
-      List<CuttingItem> accessories = await _calculateAccessories(window);
-      windowItems.addAll(accessories);
-
-      // 2. جلب سعر السلسلة النشطة
-      double seriesSellingPricePerMeter = 0.0;
-      double barCostPrice = 2000.0; // تكلفة افتراضية للبار الكامل للورشة
-
-      if (window.activeSeries != null) {
-        final dbClient = await db.db;
-        final seriesRows = await dbClient!.query(
-            'Series',
-            columns: ['price_per_meter'],
-            where: 'id = ?',
-            whereArgs: [window.activeSeries!.id]
+    final details = await db.readCommandeDetails(commandeId);
+    final reports = <ConsumptionReport>[];
+    for (final detail in details) {
+      final rawJson = detail['partitions_json']?.toString() ?? '';
+      if (rawJson.trim().isEmpty) continue;
+      try {
+        final data = jsonDecode(rawJson);
+        if (data is! Map) continue;
+        final window = WindowModel(db: db);
+        applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
+        final rawQuantity = detail['quantite'];
+        final quantity = rawQuantity is num
+            ? rawQuantity.toInt()
+            : int.tryParse('$rawQuantity') ?? 1;
+        reports.add(
+          await _reportForWindow(window, quantity < 1 ? 1 : quantity),
         );
-        if (seriesRows.isNotEmpty) {
-          seriesSellingPricePerMeter = (seriesRows.first['price_per_meter'] as num).toDouble();
-        }
+      } catch (error) {
+        debugPrint('Error building catalogue consumption report: $error');
       }
+    }
+    return _mergeReports(reports);
+  }
 
-      double costPerMeter = barCostPrice / 5.8;
-      double glassSellingPricePerSqm = 3500.0;
-      double glassCostPricePerSqm = 2800.0;
+  Future<ConsumptionReport> generateReportFromLiveModel(
+    WindowModel window,
+    int quantity,
+  ) {
+    return _reportForWindow(window, quantity < 1 ? 1 : quantity);
+  }
 
-      List<CuttingItem> aluItemsForThisWindow = [];
+  Future<ConsumptionReport> _reportForWindow(
+    WindowModel window,
+    int quantity,
+  ) async {
+    final engine = BomEngineV2(database: db);
+    var bom = ComponentCalculator.generateBom(window, const {});
+    await engine.stabilizeSelections(window: window, items: bom);
+    bom = ComponentCalculator.generateBom(window, const {});
+    await engine.stabilizeSelections(window: window, items: bom);
+    bom = await engine.filterItemsByAvailableCandidates(
+      window: window,
+      items: ComponentCalculator.generateBom(window, const {}),
+    );
 
-      for (var item in windowItems) {
-        for (int i = 0; i < (item.quantity * quantity); i++) {
-          CuttingItem singleItem = CuttingItem(
-            name: item.name,
-            description: item.description,
-            width: item.width,
-            height: item.height,
-            quantity: 1,
-            type: item.type,
-            isMissing: item.isMissing,
-          );
-
-          if (item.type != CuttingItemType.accessory) {
-            allItems.add(singleItem);
-          }
-
-          if (item.type == CuttingItemType.profileFrame || item.type == CuttingItemType.profileSash) {
-            aluItemsForThisWindow.add(singleItem);
-            double itemLengthInMeters = (item.width > 0 ? item.width : item.height) / 1000.0;
-            orderSellingPrice += (itemLengthInMeters * seriesSellingPricePerMeter);
-            orderExactCost += (itemLengthInMeters * costPerMeter);
-          } else if (item.type == CuttingItemType.glass) {
-            double sqm = (item.width / 1000.0) * (item.height / 1000.0);
-            orderSellingPrice += (sqm * glassSellingPricePerSqm);
-            orderExactCost += (sqm * glassCostPricePerSqm);
-            orderFullBarCost += (sqm * glassCostPricePerSqm);
-          } else if (item.type == CuttingItemType.accessory) {
-            double accCost = _extractPriceFromDescription(item.description);
-            int screwCountPerUnit = _extractScrewsFromDescription(item.description);
-
-            allItems.add(CuttingItem(
-              name: item.name,
-              description: "المادة: ${item.description.split('|').first}",
-              width: item.width,
-              height: item.height,
-              quantity: 1,
-              type: item.type,
-              isMissing: item.isMissing,
-            ));
-
-            orderSellingPrice += (accCost * 1.3);
-            orderExactCost += accCost;
-            orderFullBarCost += accCost;
-            orderTotalScrews += screwCountPerUnit;
-          }
-        }
-      }
-
-      List<ProfileCuttingResult> optimizedBars = CuttingOptimizer.optimizeAll(aluItemsForThisWindow);
-      int totalBarsNeeded = 0;
-      for(var result in optimizedBars) {
-        totalBarsNeeded += result.bars.length;
-      }
-      orderFullBarCost += (totalBarsNeeded * barCostPrice);
-
-      if (orderTotalScrews > 0) {
-        orderExactCost += (orderTotalScrews * 2.0);
-        orderFullBarCost += (orderTotalScrews * 2.0);
-        orderSellingPrice += (orderTotalScrews * 3.0);
-
-        allItems.add(CuttingItem(
-          name: "براغي التثبيت والتجميع الإجمالية",
-          description: "استهلاك البراغي الفعلي",
-          width: 0, height: 0, quantity: orderTotalScrews,
-          type: CuttingItemType.accessory, isMissing: false,
-        ));
-      }
-    } catch (e) {
-      debugPrint("Error: $e");
+    final items = <CuttingItem>[];
+    var exactCost = 0.0;
+    var fullBarCost = 0.0;
+    for (final item in bom.where((item) => item.isActive)) {
+      final scaledRequired = item.requiredQuantity * quantity;
+      final scaledPurchase = item.purchaseQuantity * quantity;
+      if (scaledRequired <= 0 || item.catalogItemId == null) continue;
+      exactCost += scaledRequired * item.unitPrice;
+      fullBarCost += scaledPurchase * item.unitPrice;
+      items.add(_toCuttingItem(item, quantity));
     }
 
-    List<CuttingItem> aggregated = _aggregateItems(allItems);
+    final aggregated = _aggregateItems(items);
     return ConsumptionReport(
-      aluminumItems: aggregated.where((i) => i.type == CuttingItemType.profileFrame || i.type == CuttingItemType.profileSash).toList(),
-      glassItems: aggregated.where((i) => i.type == CuttingItemType.glass).toList(),
-      accessoryItems: aggregated.where((i) => i.type == CuttingItemType.accessory).toList(),
-      totalSellingPrice: orderSellingPrice,
-      exactCost: orderExactCost,
-      fullBarCost: orderFullBarCost,
-      totalScrewsCount: orderTotalScrews,
+      aluminumItems: aggregated
+          .where(
+            (item) =>
+                item.type == CuttingItemType.profileFrame ||
+                item.type == CuttingItemType.profileSash,
+          )
+          .toList(),
+      glassItems: aggregated
+          .where((item) => item.type == CuttingItemType.glass)
+          .toList(),
+      accessoryItems: aggregated
+          .where((item) => item.type == CuttingItemType.accessory)
+          .toList(),
+      // This report has no independent selling-price catalogue. Do not invent
+      // a mark-up when the only authoritative value is the catalogue price.
+      totalSellingPrice: exactCost,
+      exactCost: exactCost,
+      fullBarCost: fullBarCost,
+      totalScrewsCount: 0,
     );
   }
 
-  // 🟢 جلب وحساب الإكسسوارات ومطابقتها مع الجودة وعدد البراغي المحددة
-  Future<List<CuttingItem>> _calculateAccessories(WindowModel model) async {
-    List<CuttingItem> items = [];
-    int totalHinges = 0;
-    int totalHandles = 0;
-    int totalFlushBolts = 0;
-
-    for (var zone in model.zones) {
-      if (zone.content == ZoneContent.singleSash) {
-        totalHinges += 2;
-        totalHandles += 1;
-      } else if (zone.content == ZoneContent.doubleSash) {
-        totalHinges += 4;
-        totalHandles += zone.doubleSashHasTwoHandles ? 2 : 1;
-        totalFlushBolts += 1;
-      }
-    }
-
-    if (totalHinges == 0 && totalHandles == 0 && totalFlushBolts == 0) return items;
-
-    int? currentSeriesId = model.activeSeries?.id;
-    int? currentColorId = model.selectedDbColor?['id'];
-    List<Map<String, dynamic>> dbAccessories = await db.getAccessoriesWithPrices(currentSeriesId, currentColorId);
-
-    if (totalHinges > 0) {
-      var data = _findAccessoryByType(dbAccessories, 'Paumelle');
-      // 🟢 إذا لم يجد الإكسسوار، السعر صفر، والاسم يوضح أنه مفقود
-      double price = data != null ? (data['final_price'] ?? 0.0) : 0.0;
-      int screws = data != null ? (data['screw_count'] ?? 0) : 0;
-      items.add(CuttingItem(
-        name: data != null ? data['name'] : "⚠️ مفصلة (غير مسجلة بالقاعدة)",
-        description: "Price:$price|Screws:$screws",
-        width: 0, height: 0, quantity: totalHinges, type: CuttingItemType.accessory, isMissing: data == null,
-      ));
-    }
-
-    if (totalHandles > 0) {
-      var data = _findAccessoryByType(dbAccessories, 'Poignee');
-      double price = data != null ? (data['final_price'] ?? 0.0) : 0.0;
-      int screws = data != null ? (data['screw_count'] ?? 0) : 0;
-      items.add(CuttingItem(
-        name: data != null ? data['name'] : "⚠️ مقبض (غير مسجل بالقاعدة)",
-        description: "Price:$price|Screws:$screws",
-        width: 0, height: 0, quantity: totalHandles, type: CuttingItemType.accessory, isMissing: data == null,
-      ));
-    }
-
-    if (totalFlushBolts > 0) {
-      var data = _findAccessoryByType(dbAccessories, 'Verrou');
-      double price = data != null ? (data['final_price'] ?? 0.0) : 0.0;
-      int screws = data != null ? (data['screw_count'] ?? 0) : 0;
-      items.add(CuttingItem(
-        name: data != null ? data['name'] : "⚠️ ترباس (غير مسجل بالقاعدة)",
-        description: "Price:$price|Screws:$screws",
-        width: 0, height: 0, quantity: totalFlushBolts, type: CuttingItemType.accessory, isMissing: data == null,
-      ));
-    }
-
-    return items;
+  CuttingItem _toCuttingItem(BomItem item, int multiplier) {
+    final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
+    final type = item.category == 'profile'
+        ? (role == 'frame' || role == 'frame_extension'
+              ? CuttingItemType.profileFrame
+              : CuttingItemType.profileSash)
+        : item.category == 'glass' || item.category == 'panneau'
+        ? CuttingItemType.glass
+        : CuttingItemType.accessory;
+    final length = item.length ?? 0.0;
+    final normalizedUnit = item.unit.toLowerCase();
+    final isLinear =
+        normalizedUnit == 'متر' ||
+        normalizedUnit == 'm' ||
+        normalizedUnit == 'ml';
+    final width = isLinear ? length * 1000.0 : length;
+    final quantity = (item.purchaseQuantity * multiplier).ceil();
+    final description = [
+      if (item.profileCode?.trim().isNotEmpty == true) item.profileCode!.trim(),
+      if (item.cuttingList?.trim().isNotEmpty == true) item.cuttingList!.trim(),
+      item.unit,
+    ].join(' | ');
+    return CuttingItem(
+      name: item.name,
+      description: description,
+      width: width,
+      height: item.glassHeight ?? 0.0,
+      quantity: quantity,
+      type: type,
+      isMissing: item.isMissing || item.unitPrice <= 0,
+      price: item.unitPrice,
+    );
   }
 
-  Map<String, dynamic>? _findAccessoryByType(List<Map<String, dynamic>> accessories, String type) {
-    try {
-      return accessories.firstWhere((acc) => acc['type'].toString().toLowerCase().contains(type.toLowerCase()));
-    } catch (_) { return null; }
-  }
-
-  // دالة مساعدة مطورة لاستخراج السعر الفعلي من السلسلة النصية للوصف
-  double _extractPriceFromDescription(String description) {
-    if (description.contains("Price:")) {
-      try {
-        String segment = description.split("Price:").last;
-        String priceStr = segment.contains("|") ? segment.split("|").first : segment;
-        return double.tryParse(priceStr.trim()) ?? 0.0;
-      } catch (_) {
-        return 0.0;
-      }
+  ConsumptionReport _mergeReports(List<ConsumptionReport> reports) {
+    final aluminum = <CuttingItem>[];
+    final glass = <CuttingItem>[];
+    final accessories = <CuttingItem>[];
+    var selling = 0.0;
+    var exact = 0.0;
+    var full = 0.0;
+    var screws = 0;
+    for (final report in reports) {
+      aluminum.addAll(report.aluminumItems);
+      glass.addAll(report.glassItems);
+      accessories.addAll(report.accessoryItems);
+      selling += report.totalSellingPrice;
+      exact += report.exactCost;
+      full += report.fullBarCost;
+      screws += report.totalScrewsCount;
     }
-    return 0.0;
-  }
-
-  // 🟢 دالة مساعدة جديدة لاستخراج عدد البراغي الفعلي لكل قطعة إكسسوار
-  int _extractScrewsFromDescription(String description) {
-    if (description.contains("Screws:")) {
-      try {
-        String screwsStr = description.split("Screws:").last.trim();
-        return int.tryParse(screwsStr) ?? 0;
-      } catch (_) {
-        return 0;
-      }
-    }
-    return 0;
+    return ConsumptionReport(
+      aluminumItems: _aggregateItems(aluminum),
+      glassItems: _aggregateItems(glass),
+      accessoryItems: _aggregateItems(accessories),
+      totalSellingPrice: selling,
+      exactCost: exact,
+      fullBarCost: full,
+      totalScrewsCount: screws,
+    );
   }
 
   List<CuttingItem> _aggregateItems(List<CuttingItem> items) {
-    Map<String, CuttingItem> map = {};
-    for (var item in items) {
-      String key = '${item.name}_${item.width.toStringAsFixed(1)}_${item.height.toStringAsFixed(1)}';
-      if (map.containsKey(key)) {
-        var existing = map[key]!;
-        map[key] = CuttingItem(
-          name: existing.name,
-          description: existing.description,
-          width: existing.width,
-          height: existing.height,
-          quantity: existing.quantity + item.quantity,
-          type: existing.type,
-          isMissing: existing.isMissing,
-        );
-      } else {
-        map[key] = item;
+    final grouped = <String, CuttingItem>{};
+    for (final item in items) {
+      final key = [
+        item.name,
+        item.width.toStringAsFixed(2),
+        item.height.toStringAsFixed(2),
+        item.price.toStringAsFixed(4),
+      ].join('|');
+      final existing = grouped[key];
+      if (existing == null) {
+        grouped[key] = item;
+        continue;
       }
+      grouped[key] = CuttingItem(
+        name: existing.name,
+        description: existing.description,
+        width: existing.width,
+        height: existing.height,
+        quantity: existing.quantity + item.quantity,
+        type: existing.type,
+        isMissing: existing.isMissing || item.isMissing,
+        price: existing.price,
+      );
     }
-    return map.values.toList();
+    return grouped.values.toList();
   }
 }

@@ -63,7 +63,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   bool _isFetchingDefaults = false;
   bool _hasFetchedDefaults = false;
   List<BomItem> _visibleBomItems = const [];
+  int _bomRefreshGeneration = 0;
   final Map<String, double> _accessoryPriceCache = {};
+  Map<int, Map<String, dynamic>> _profileCalculationRules = {};
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
   String get _lang {
     final language = Provider.of<AppSettingsProvider>(
@@ -87,6 +89,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (trimmed.isEmpty) return trimmed;
     return Localization.translate(trimmed, language);
   }
+
   // دالة مساعدة: تتحقق إذا كان النص يحتوي حروف عربية (لتقرير هل نعرض الاسم الثانوي أو لا)
   bool _hasArabic(String text) {
     return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
@@ -185,6 +188,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final rowText =
         '${item.originalName} ${item.selectorType ?? ''} ${item.roleKey ?? ''}'
             .toLowerCase();
+    if (_containsAny(rowText, const [
+      'bouchon batmo',
+      'bochon batmo',
+      'بوشون باتمو',
+      'بوشون الباتمو',
+    ])) {
+      // Bouchon Batmo is an opening-system profile even when the same
+      // drawing also contains sliding zones.
+      return AccessoryDrawingMode.opening;
+    }
     if (rowText.contains('plinthe') || rowText.contains('بلانت')) {
       // A sash plinthe belongs to the opening sash catalogue even when the
       // drawing also contains sliding zones.
@@ -197,6 +210,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (rowMode != null) return rowMode;
 
     if (isFrame) {
+      // The BOM source series is authoritative for a frame. This protects
+      // the quantity/cost table from an old generic name such as "Frame"
+      // after the drawing has selected the sliding series.
+      final sourceSeriesId = item.sourceSeriesId;
+      final slidingSeriesId = widget.model.activeSlidingSeries?.id;
+      final openingSeriesId = widget.model.activeSeries?.id;
+      if (sourceSeriesId != null &&
+          sourceSeriesId == slidingSeriesId &&
+          sourceSeriesId != openingSeriesId) {
+        return AccessoryDrawingMode.sliding;
+      }
       if (_bomRowMentionsCatalog(item, widget.model.slidingFrameOverride)) {
         return AccessoryDrawingMode.sliding;
       }
@@ -416,6 +440,54 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (direct is Map) return Map<String, dynamic>.from(direct);
     final fallback = widget.model.componentOverrides[item.originalName];
     return fallback is Map ? Map<String, dynamic>.from(fallback) : null;
+  }
+
+  Map<String, dynamic>? _profileCalculationRuleFor(BomItem item) {
+    final id = item.catalogItemId;
+    return id == null ? null : _profileCalculationRules[id];
+  }
+
+  bool _profileUsesLinearMeter(BomItem item) {
+    final mode = _profileCalculationRuleFor(item)?['calculation_mode']
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (mode == 'linear_meter') return true;
+    if (mode == 'base_price') return false;
+    final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
+    return role == 'frame' ||
+        role == 'frame_extension' ||
+        role.startsWith('sash') ||
+        role == 'mullion' ||
+        role == 'traverse' ||
+        role == 'batmo' ||
+        role == 'plant';
+  }
+
+  double _profileLinearMultiplier(BomItem item) {
+    final rule = _profileCalculationRuleFor(item);
+    final mode = rule?['calculation_mode']?.toString().trim().toLowerCase();
+    if (mode == 'linear_meter') {
+      final value = rule?['linear_meter_multiplier'];
+      final parsed = value is num ? value.toDouble() : double.tryParse('$value');
+      if (parsed != null && parsed.isFinite && parsed > 0) return parsed;
+    }
+    return item.linearMeterMultiplier;
+  }
+
+  double? _actualUsedMetersFor(BomItem item) {
+    final multiplier = _profileLinearMultiplier(item);
+    if (item.category != 'profile' || !_profileUsesLinearMeter(item)) {
+      return item.actualUsedMeters;
+    }
+    if (item.pieces != null && item.pieces!.isNotEmpty) {
+      final total = item.pieces!.fold<double>(0.0, (sum, piece) => sum + piece);
+      return total > 0 ? total * multiplier : null;
+    }
+    if (item.length != null && item.requiredQuantity > 0) {
+      return (item.length! / 1000.0) * item.requiredQuantity * multiplier;
+    }
+    return null;
   }
 
   void _rebuildIfReady() {
@@ -997,6 +1069,143 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   Map<String, Map<String, dynamic>> _kitBundleMetadata = {};
   final Map<String, bool> _kitGroupExpanded =
       {}; // حالة توسعة/طي كل مجموعة كيت في الجدول
+  final Map<String, List<String>> _manualTableOrder = {};
+
+  bool get _desktopTableMode => MediaQuery.sizeOf(context).width >= 900;
+
+  bool _isBouchonLameBomItem(BomItem item) =>
+      item.originalName.contains('أغطية الشفرات') ||
+      item.originalName.toLowerCase().contains('bouchons lames') ||
+      item.originalName.toLowerCase().contains('bouchon lame');
+
+  String _tableSectionForItem(BomItem item) {
+    if (item.category == 'profile') return 'profile';
+    if (item.category == 'joint') return 'joint';
+    if (item.category == 'glass' || item.category == 'panneau') {
+      return 'glass';
+    }
+    if (item.category == 'shutter' || _isBouchonLameBomItem(item)) {
+      return 'shutter';
+    }
+    return 'accessory';
+  }
+
+  String _materialRowKey(BomItem item) => [
+    item.category,
+    item.kitGroupName ?? '',
+    item.originalName,
+    item.name,
+    item.unit,
+    item.catalogItemId ?? '',
+  ].join('|');
+
+  String _materialDragId(BomItem item) =>
+      '${_tableSectionForItem(item)}\u0000${_materialRowKey(item)}';
+
+  List<BomItem> _orderedMaterialItems(
+    String section,
+    List<BomItem> items,
+  ) {
+    final byKey = <String, BomItem>{
+      for (final item in items) _materialRowKey(item): item,
+    };
+    final stored = _manualTableOrder[section] ?? const <String>[];
+    final used = <String>{};
+    final ordered = <BomItem>[];
+    for (final key in stored) {
+      final item = byKey[key];
+      if (item != null && used.add(key)) ordered.add(item);
+    }
+    for (final item in items) {
+      final key = _materialRowKey(item);
+      if (used.add(key)) ordered.add(item);
+    }
+    return ordered;
+  }
+
+  void _moveMaterialRow(String sourceId, String targetId) {
+    final sourceSeparator = sourceId.indexOf('\u0000');
+    final targetSeparator = targetId.indexOf('\u0000');
+    if (sourceSeparator <= 0 || targetSeparator <= 0) return;
+    final sourceSection = sourceId.substring(0, sourceSeparator);
+    final targetSection = targetId.substring(0, targetSeparator);
+    if (sourceSection != targetSection) return;
+    final sourceKey = sourceId.substring(sourceSeparator + 1);
+    final targetKey = targetId.substring(targetSeparator + 1);
+    final sectionItems = _visibleBomItems
+        .where((item) => _tableSectionForItem(item) == sourceSection)
+        .toList();
+    final source = sectionItems.firstWhere(
+      (item) => _materialRowKey(item) == sourceKey,
+      orElse: () => sectionItems.first,
+    );
+    final target = sectionItems.firstWhere(
+      (item) => _materialRowKey(item) == targetKey,
+      orElse: () => sectionItems.first,
+    );
+    // Keep a kit's children together and allow independent rows to be
+    // reordered among themselves.  This prevents a child from visually
+    // escaping its kit group.
+    if ((source.kitGroupName ?? '') != (target.kitGroupName ?? '')) return;
+    final keys = _orderedMaterialItems(sourceSection, sectionItems)
+        .map(_materialRowKey)
+        .toList();
+    final oldIndex = keys.indexOf(sourceKey);
+    final targetIndex = keys.indexOf(targetKey);
+    if (oldIndex < 0 || targetIndex < 0 || oldIndex == targetIndex) return;
+    final moved = keys.removeAt(oldIndex);
+    keys.insert(targetIndex, moved);
+    setState(() => _manualTableOrder[sourceSection] = keys);
+  }
+
+  Widget _buildDraggableMaterialRow(BomItem item) {
+    if (!_desktopTableMode) return _row(item);
+    final dragId = _materialDragId(item);
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != dragId,
+      onAcceptWithDetails: (details) => _moveMaterialRow(details.data, dragId),
+      builder: (context, candidates, rejected) {
+        final isTarget = candidates.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: isTarget
+              ? BoxDecoration(
+                  border: Border.all(color: Colors.lightBlue, width: 2),
+                )
+              : null,
+          child: LongPressDraggable<String>(
+            data: dragId,
+            axis: Axis.vertical,
+            feedback: Material(
+              color: Colors.transparent,
+              elevation: 8,
+              child: SizedBox(width: _minW, child: _row(item)),
+            ),
+            childWhenDragging: Opacity(opacity: 0.28, child: _row(item)),
+            child: Stack(
+              children: [
+                _row(item),
+                const PositionedDirectional(
+                  top: 0,
+                  end: 2,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 22,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   /// Returns true only for bundles that belong to a shutter assembly.  Kit
   /// Bundles also stores window hardware (System OB, Verrou Central, ...),
@@ -1376,6 +1585,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   static const String _colImg = 'image';
   static const String _colName = 'name';
   static const String _colQty = 'quantity';
+  static const String _colActualMeters = 'actual_meters';
   static const String _colPrice = 'price';
   static const String _colEstimated = 'estimated';
   static const String _colTotal = 'total';
@@ -1387,6 +1597,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   static const double _defaultWColor = 100; // عرض عمود اللون
   static const double _defaultWLen = 100; // عرض عمود الطول
   static const double _defaultWQty = 80; // عرض عمود الكمية
+  static const double _defaultWActualMeters = 105; // الأمتار الفعلية المستعملة
   static const double _defaultWPrice = 120; // عرض عمود سعر الوحدة
   static const double _defaultWEstimated = 140; // المطلوب الفعلي × سعر الوحدة
   static const double _defaultWTotal = 140; // سعر الوحدة × المطلوب الحقيقي
@@ -1400,6 +1611,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   double get _wColor => _columnWidth(_colColor, _defaultWColor);
   double get _wLen => _columnWidth(_colLen, _defaultWLen);
   double get _wQty => _columnWidth(_colQty, _defaultWQty);
+  double get _wActualMeters =>
+      _columnWidth(_colActualMeters, _defaultWActualMeters);
   double get _wPrice => _columnWidth(_colPrice, _defaultWPrice);
   double get _wEstimated => _columnWidth(_colEstimated, _defaultWEstimated);
   double get _wTotal => _columnWidth(_colTotal, _defaultWTotal);
@@ -1410,6 +1623,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _wColor +
       _wLen +
       _wQty +
+      _wActualMeters +
       _wPrice +
       _wEstimated +
       _wTotal +
@@ -1425,6 +1639,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       case _colQty:
       case _colCheck:
         return 70;
+      case _colActualMeters:
+        return 95;
       case _colPrice:
       case _colEstimated:
       case _colTotal:
@@ -1453,6 +1669,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         return _defaultWName;
       case _colQty:
         return _defaultWQty;
+      case _colActualMeters:
+        return _defaultWActualMeters;
       case _colPrice:
         return _defaultWPrice;
       case _colEstimated:
@@ -1613,9 +1831,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   Future<void> _refreshVisibleBomItems() async {
+    final refreshGeneration = ++_bomRefreshGeneration;
     final engine = BomEngineV2(database: SqlDatabase());
     final visibleBomItems = await _generateStrictVisibleBomItems(engine);
-    if (!mounted) return;
+    if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
     setState(() => _visibleBomItems = visibleBomItems);
   }
 
@@ -1781,6 +2000,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final generation = ++_priceLoadGeneration;
     final dbInstance = await SqlDatabase().db;
     if (dbInstance == null) return;
+    await SqlDatabase().ensureProfileCalculationRulesTable();
+    await SqlDatabase().seedDefaultProfileCalculationRules();
+    final profileRuleRows = await SqlDatabase().getProfileCalculationRules();
+    final profileRules = <int, Map<String, dynamic>>{};
+    for (final row in profileRuleRows) {
+      final sectionId = (row['section_id'] as num?)?.toInt();
+      if (sectionId != null) profileRules[sectionId] = row;
+    }
     final previousLinearMeterPrice = _pricePerLinearMeterFromDb;
     final previousShutterSqmPrice = _shutterSqmPriceFromDb;
     double linearMeterPrice = 0.0;
@@ -1936,6 +2163,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         : previousShutterSqmPrice;
     // تحديث الحالة (State) بكل الأسعار المحمّلة، وتحديث نصوص الحقول إذا لم يكن هناك تعديل يدوي (override)
     setState(() {
+      _profileCalculationRules = profileRules;
       _pricePerLinearMeterFromDb = effectiveLinearMeterPrice;
       _shutterSqmPriceFromDb =
           effectiveShutterSqmPrice; // ⭐️ التحديث الحاسم لسعر الستار
@@ -2525,8 +2753,27 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 horizontal: 8.0,
                 vertical: 8.0,
               ),
-              child: _buildUnifiedTable(
-                items,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_desktopTableMode)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(
+                        start: 4,
+                        bottom: 6,
+                      ),
+                      child: Text(
+                        '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب العناصر',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white54
+                              : Colors.blueGrey.shade600,
+                        ),
+                      ),
+                    ),
+                  _buildUnifiedTable(items),
+                ],
               ), // بناء الجدول الرئيسي بكل الأقسام
             ),
             const SizedBox(
@@ -2555,7 +2802,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         0.0; // جزء من تكلفة الإكسسوارات المحدد كـ "قابل للربح" (is_selling_calculated)
     double jointCost = 0.0; // إجمالي تكلفة الجوينات
     double mainProfileMeters =
-        0.0; // إجمالي الأمتار الخطية للبروفيلات الرئيسية (إطار/ظلفة/تقسيم/باتمو)
+        0.0; // إجمالي الأمتار الخطية للبروفيلات الرئيسية (مع البلانت ×2)
     double otherProfileCost =
         0.0; // تكلفة البروفيلات الأخرى (غير محسوبة بالمتر الخطي)
     final activeItems = items
@@ -2584,43 +2831,45 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     for (var item in activeItems) {
       if (item.category == 'profile') {
         profileCost += item.total; // إضافة تكلفة كل بروفيل إلى الإجمالي العام
-        final nameLower = item.originalName.toLowerCase();
-        // تصنيف نوع البروفيل بالاعتماد على اسمه (عربي/فرنسي)
-        final isFrame =
-            nameLower.contains('إطار') ||
-            nameLower.contains('cadre') ||
-            nameLower.contains('frame');
-        final isSash =
-            nameLower.contains('درفة') ||
-            nameLower.contains('ouvrant') ||
-            nameLower.contains('sash');
-        final isMullion =
-            nameLower.contains('تقسيم') || nameLower.contains('mullion');
-        final isBatmo =
-            nameLower.contains('باتمو') ||
-            nameLower.contains('batmo') ||
-            nameLower.contains('batbo') ||
-            nameLower.contains('باتبو');
-        final isRenfort =
-            nameLower.contains('حديد') || nameLower.contains('renfort');
-        final isPareClose =
-            nameLower.contains('pare-close') ||
-            nameLower.contains('pareclose') ||
-            nameLower.contains('pare close');
-        if (isRenfort || isPareClose) {
-          // الحديد والباركلوز يُضافان فقط لإجمالي التكلفة العامة (لا يدخلان حساب الأمتار الخطية الرئيسية)
-        } else if (isFrame || isSash || isMullion || isBatmo) {
-          // البروفيلات الرئيسية: نجمع أمتارها الخطية لاستخدامها لاحقًا في طريقة "سعر المتر الخطي"
+        // The administrator may override the automatic role classification
+        // from Price Management > Profile Prices > Calculation Rules.
+        final role = (item.roleKey ?? item.selectorType ?? '')
+            .trim()
+            .toLowerCase();
+        final rule = _profileCalculationRuleFor(item);
+        final ruleMode = rule?['calculation_mode']?.toString().trim().toLowerCase();
+        final isExplicitBasePrice = ruleMode == 'base_price';
+        final isExplicitLinearMeter = ruleMode == 'linear_meter';
+        final isFrame = role == 'frame' || role == 'frame_extension';
+        final isSash = role.startsWith('sash');
+        final isMullion = role == 'mullion' || role == 'traverse';
+        final isBatmo = role == 'batmo';
+        final isPlant = role == 'plant';
+        final isRenfort = role == 'renfort' || role.contains('reinforced');
+        final isPareClose = role == 'glazing_bead' || role == 'parclose';
+        if (isExplicitBasePrice) {
+          otherProfileCost += item.total;
+        } else if (isExplicitLinearMeter ||
+            (!isRenfort &&
+                !isPareClose &&
+                _profileUsesLinearMeter(item) &&
+                (isFrame || isSash || isMullion || isBatmo || isPlant))) {
+          // المتر الخطي: يمكن فرضه من صفحة القواعد حتى على بروفيل كان
+          // مصنفًا سابقًا كحديد أو باركلوز.
           if (item.pieces != null) {
             mainProfileMeters += item.pieces!.fold<double>(
-              0.0,
-              (sum, p) => sum + p,
-            ); // جمع أطوال كل القطع المقصوصة لهذا العنصر
+                  0.0,
+                  (sum, p) => sum + p,
+                ) *
+                _profileLinearMultiplier(item);
           } else if (item.length != null) {
             mainProfileMeters +=
                 (item.length! / 1000.0) *
-                item.quantity; // تحويل من مم إلى متر × الكمية
+                item.quantity *
+                _profileLinearMultiplier(item);
           }
+        } else if (isRenfort || isPareClose) {
+          // الحديد والباركلوز يُضافان فقط لإجمالي التكلفة العامة (لا يدخلان حساب الأمتار الخطية الرئيسية)
         } else {
           otherProfileCost += item.total; // بروفيلات أخرى غير مصنّفة كرئيسية
         }
@@ -2645,22 +2894,26 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
     // أجور تركيب خاصة (System OB, Demi OB, Verrou) تُضاف مرة واحدة لكل قطعة (× الكمية الكلية)
     double specialAccessoryInstallFees = 0.0;
-    for (var item in activeItems) {
-      if (item.category == 'accessory') {
-        final nameLower = item.originalName.toLowerCase();
-        if (nameLower.contains('system ob') ||
-            item.originalName == 'System OB') {
-          specialAccessoryInstallFees += _obInstallFee * widget.model.quantity;
-        } else if (nameLower.contains('demi ob') ||
-            item.originalName == 'Demi System OB') {
-          specialAccessoryInstallFees +=
-              _demiObInstallFee * widget.model.quantity;
-        } else if (nameLower.contains('verrou') ||
-            item.originalName == 'Verrou Central') {
-          specialAccessoryInstallFees +=
-              _verrouInstallFee * widget.model.quantity;
-        }
-      }
+    bool hasActiveKit(String exactName, List<String> prefixes) => activeItems
+        .any(
+          (item) =>
+              item.isActive &&
+              item.category == 'accessory' &&
+              (item.originalName == exactName ||
+                  prefixes.any(
+                    (prefix) => item.originalName.startsWith(prefix),
+                  )),
+        );
+    if (hasActiveKit('System OB', const ['System OB_'])) {
+      specialAccessoryInstallFees += _obInstallFee * widget.model.quantity;
+    }
+    if (hasActiveKit('Demi System OB', const ['Demi System OB_'])) {
+      specialAccessoryInstallFees +=
+          _demiObInstallFee * widget.model.quantity;
+    }
+    if (hasActiveKit('Verrou Central', const ['Verrou Central_'])) {
+      specialAccessoryInstallFees +=
+          _verrouInstallFee * widget.model.quantity;
     }
     // أجرة تركيب المحرك تُضاف فقط إذا الآلية محرك ووُجد عنصر يخص المحرك مفعّل
     double motorCrankInstallFees = 0.0;
@@ -3473,6 +3726,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ),
                     _wQty,
                   ),
+                  // صف المجموعة لا يمثل طول قص حقيقيًا.
+                  _cell(
+                    Text(
+                      '-',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.grey,
+                      ),
+                    ),
+                    _wActualMeters,
+                  ),
                   // عمود سعر الوحدة: لا معنى له لصف المجموعة، يُعرض "-"
                   _cell(
                     Text(
@@ -3483,6 +3747,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       ),
                     ),
                     _wPrice,
+                  ),
+                  // السعر التقديري لا ينطبق على صف المجموعة.
+                  _cell(
+                    Text(
+                      '-',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.grey,
+                      ),
+                    ),
+                    _wEstimated,
                   ),
                   // التكلفة الفعلية للمجموعة (سعر الوحدة × المطلوب الحقيقي).
                   _cell(
@@ -3578,7 +3853,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             )
             .toList();
         widgets.addAll(
-          visibleChildren.map(_row),
+          visibleChildren.map(_buildDraggableMaterialRow),
         ); // بناء صف عادي لكل عنصر فرعي عبر _row
       }
     }
@@ -3600,26 +3875,41 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         i.originalName.toLowerCase().contains('bouchon lame');
     // تقسيم كل العناصر إلى مجموعات حسب القسم الذي ستظهر فيه بالجدول
     final Map<String, List<BomItem>> groups = {
-      'profile': items.where((i) => i.category == 'profile').toList(),
-      'accessory': items
+      'profile': _orderedMaterialItems(
+        'profile',
+        items.where((i) => i.category == 'profile').toList(),
+      ),
+      'accessory': _orderedMaterialItems(
+        'accessory',
+        items
           .where(
             (i) =>
-                (i.category == 'accessory' && !isBouchonLame(i)) ||
-                (i.category == 'other'),
+            (i.category == 'accessory' && !isBouchonLame(i)) ||
+            (i.category == 'other'),
           )
           .toList(),
-      'joint': items.where((i) => i.category == 'joint').toList(),
+      ),
+      'joint': _orderedMaterialItems(
+        'joint',
+        items.where((i) => i.category == 'joint').toList(),
+      ),
       // كل مكونات الستار (ما عدا الجوانات) تُعرض معًا في قسم واحد
-      'shutter': items
+      'shutter': _orderedMaterialItems(
+        'shutter',
+        items
           .where(
             (i) =>
                 i.category == 'shutter' ||
                 (i.category == 'accessory' && isBouchonLame(i)),
           )
           .toList(),
-      'glass': items
+      ),
+      'glass': _orderedMaterialItems(
+        'glass',
+        items
           .where((i) => i.category == 'glass' || i.category == 'panneau')
           .toList(),
+      ),
     };
     final totals = _calculateTotals(
       items,
@@ -3652,7 +3942,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     cost: totals['profile']?['cost'],
                     selling: totals['profile']?['selling'],
                   ),
-                  ...groups['profile']!.map(_row),
+                  ...groups['profile']!.map(_buildDraggableMaterialRow),
                 ],
                 // قسم الإكسسوارات (مقسّم إلى: عناصر كيت مجمّعة + عناصر عادية منفردة)
                 if (groups['accessory']!.isNotEmpty) ...[
@@ -3669,7 +3959,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   ),
                   ...groups['accessory']!
                       .where((i) => i.kitGroupName == null)
-                      .map(_row),
+                      .map(_buildDraggableMaterialRow),
                 ],
                 // قسم مكوّنات الستار (نفس منطق التقسيم: كيت مجمّع + عناصر عادية)
                 if (groups['shutter']!.isNotEmpty) ...[
@@ -3686,7 +3976,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   ),
                   ...groups['shutter']!
                       .where((i) => i.kitGroupName == null)
-                      .map(_row),
+                      .map(_buildDraggableMaterialRow),
                 ],
                 // قسم الزجاج (بدون كيتات — كل عناصره عادية)
                 if (groups['glass']!.isNotEmpty) ...[
@@ -3696,7 +3986,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     cost: totals['glass']?['cost'],
                     selling: totals['glass']?['selling'],
                   ),
-                  ...groups['glass']!.map(_row),
+                  ...groups['glass']!.map(_buildDraggableMaterialRow),
                 ],
                 // قسم الجوينات (Gaskets)
                 if (groups['joint'] != null && groups['joint']!.isNotEmpty) ...[
@@ -3706,7 +3996,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     cost: totals['joint']?['cost'],
                     selling: totals['joint']?['selling'],
                   ),
-                  ...groups['joint']!.map(_row),
+                  ...groups['joint']!.map(_buildDraggableMaterialRow),
                 ],
               ],
             ),
@@ -4491,6 +4781,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             ),
             _headerCell(Localization.translate('الكمية', lang), _colQty, _wQty),
             _headerCell(
+              Localization.translate('الأمتار الفعلية المستعملة', lang),
+              _colActualMeters,
+              _wActualMeters,
+            ),
+            _headerCell(
               Localization.translate('سعر الوحدة', lang),
               _colPrice,
               _wPrice,
@@ -4905,6 +5200,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 ),
               ),
               _wQty,
+            ),
+            // مجموع أطوال قطع القص الفعلية، وليس عدد القضبان المقرّب.
+            _cell(
+              Text(
+                _actualUsedMetersFor(item) == null
+                    ? '-'
+                    : '${formatQuantity(_actualUsedMetersFor(item)!)}m',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              _wActualMeters,
             ),
             // عمود سعر الوحدة + زر تعديل السعر يدويًا (يفتح _showEditPriceDialog)
             _cell(

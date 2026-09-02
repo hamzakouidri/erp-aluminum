@@ -514,6 +514,7 @@ extension WindowModelSerialization on WindowModel {
       'hasBottomFrame': hasBottomFrame,
       'hasFramePlintheBottom': hasFramePlintheBottom,
       'isInternalView': isInternalView,
+      'showInternalHardware': showInternalHardware,
       'isDrawingMode': isDrawingMode,
       'hasShutter': hasShutter,
       'isCaissonTunnel': isCaissonTunnel,
@@ -621,6 +622,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.hasBottomFrame = map['hasBottomFrame'] ?? true;
   model.hasFramePlintheBottom = map['hasFramePlintheBottom'] ?? false;
   model.isInternalView = map['isInternalView'] ?? false;
+  model.showInternalHardware = map['showInternalHardware'] == true;
   model.isDrawingMode = false;
   model.hasShutter = map['hasShutter'] ?? false;
   model.isCaissonTunnel = map['isCaissonTunnel'] ?? false;

@@ -1,6 +1,21 @@
 import '../app_settings.dart';
 
 const Map<String, Map<AppLanguage, String>> generalKeys = {
+  'أسعار البروفيلات': {
+    AppLanguage.arabic: 'أسعار البروفيلات',
+    AppLanguage.french: 'Prix des profilés',
+    AppLanguage.english: 'Profile Prices',
+  },
+  'قواعد حساب البروفيلات': {
+    AppLanguage.arabic: 'قواعد حساب البروفيلات',
+    AppLanguage.french: 'Règles de calcul des profilés',
+    AppLanguage.english: 'Profile Calculation Rules',
+  },
+  'لا توجد بروفيلات.': {
+    AppLanguage.arabic: 'لا توجد بروفيلات.',
+    AppLanguage.french: 'Aucun profilé.',
+    AppLanguage.english: 'No profiles.',
+  },
   'مقابض': {
     AppLanguage.arabic: 'مقابض',
     AppLanguage.french: 'Poignées',
@@ -4899,6 +4914,18 @@ This action cannot be undone!''',
     AppLanguage.french: 'Vue : Face externe',
     AppLanguage.english: 'View: Outer face',
   },
+  'إظهار المقابض والمفاصل والتجاويف': {
+    AppLanguage.arabic: 'إظهار المقابض والمفاصل والتجاويف',
+    AppLanguage.french: 'Afficher poignées, paumelles et cavités',
+    AppLanguage.english: 'Show handles, hinges and cavities',
+  },
+  'إظهار المقابض والمفاصل والتجاويف في الوجه الخارجي': {
+    AppLanguage.arabic: 'إظهار المقابض والمفاصل والتجاويف في الوجه الخارجي',
+    AppLanguage.french:
+        'Afficher poignées, paumelles et cavités sur la face externe',
+    AppLanguage.english:
+        'Show handles, hinges and cavities on the outer face',
+  },
   'خصائص الستار': {
     AppLanguage.arabic: 'خصائص الستار',
     AppLanguage.french: 'Propriétés du volet',
@@ -6609,6 +6636,11 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'المطلوب الفعلي',
     AppLanguage.french: 'Besoin réel',
     AppLanguage.english: 'Actual requirement',
+  },
+  'الأمتار الفعلية المستعملة': {
+    AppLanguage.arabic: 'الأمتار الفعلية المستعملة',
+    AppLanguage.french: 'Mètres réellement utilisés',
+    AppLanguage.english: 'Actual metres used',
   },
   'البيع': {
     AppLanguage.arabic: 'البيع',

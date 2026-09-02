@@ -2110,13 +2110,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     final deductionCtrl = TextEditingController(
       text: asDouble(item['triangle_deduction_mm']).toString(),
     );
-    final positionCtrl = TextEditingController(
-      text: asDouble(item['triangle_position_mm']).toString(),
-    );
     var isDefault = _databaseFlag(item['is_default']);
-    var positionMode = item['triangle_position_mode']?.toString() == 'custom'
-        ? 'custom'
-        : 'center';
     var saving = false;
 
     showDialog(
@@ -2227,39 +2221,6 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                       border: const OutlineInputBorder(),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: positionMode,
-                    decoration: InputDecoration(
-                      labelText: _t('موقع تقسيم التراينغل'),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'center',
-                        child: Text(_t('منتصف الظلفة')),
-                      ),
-                      DropdownMenuItem(
-                        value: 'custom',
-                        child: Text(_t('موقع مخصص')),
-                      ),
-                    ],
-                    onChanged: (value) =>
-                        setDialogState(() => positionMode = value ?? 'center'),
-                  ),
-                  if (positionMode == 'custom') ...[
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: positionCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: _t('موقع المقبض من بداية الظلفة (مم)'),
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -2278,8 +2239,6 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                       setDialogState(() => saving = true);
                       final deduction =
                           double.tryParse(deductionCtrl.text.trim()) ?? 0.0;
-                      final position =
-                          double.tryParse(positionCtrl.text.trim()) ?? 0.0;
                       await widget.db.updateAccessory(id, {
                         'gache_accessory_id': gacheId,
                         'gache_count': int.tryParse(gacheCountCtrl.text) ?? 0,
@@ -2287,8 +2246,10 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         'triangle_deduction_mm': deduction < 0
                             ? 0.0
                             : deduction,
-                        'triangle_position_mode': positionMode,
-                        'triangle_position_mm': position < 0 ? 0.0 : position,
+                        // The triangle is always split at the centre. Keep
+                        // the legacy columns normalised for old records.
+                        'triangle_position_mode': 'center',
+                        'triangle_position_mm': 0.0,
                       });
                       await widget.db.setAccessoryDefault(id, isDefault);
                       await _loadItems();

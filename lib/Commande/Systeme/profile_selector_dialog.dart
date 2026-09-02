@@ -393,6 +393,40 @@ List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
 
 List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   final t = normalizeArabic(selectorType.toLowerCase().trim());
+  if (t.contains("profil d'angle") ||
+      t.contains('profile d\'angle') ||
+      t.contains('profile_angle') ||
+      t.contains('profil angle') ||
+      t.contains('زاوية')) {
+    return const ['profile_angle'];
+  }
+  if (t.contains('cache-caniveau') ||
+      t.contains('cache caniveau') ||
+      t.contains('cache_caniveau')) {
+    return const ['cache_caniveau'];
+  }
+  if (t == 'caniveau' || t.contains('caniveau') || t.contains('كاني')) {
+    return const ['caniveau'];
+  }
+  if (t.contains('cache dormant') || t.contains('cache_dormant')) {
+    return const ['cache_dormant'];
+  }
+  if (t.contains('chch renfort') ||
+      t.contains('cache renfort') ||
+      t.contains('cache_renfort')) {
+    return const ['cache_renfort'];
+  }
+  if (t.contains('montant central slim') ||
+      t.contains('montant_central_slim') ||
+      t.contains('central slim')) {
+    return const ['montant_central_slim', 'sash_central'];
+  }
+  if (t.contains('complement haut') ||
+      t.contains('complément haut') ||
+      t.contains('complement_haut_base') ||
+      t.contains('haut et bas')) {
+    return const ['complement_haut_base'];
+  }
   if (t == 'bardage' || t.contains('bardage') || t.contains('بارداج')) {
     return const ['bardage'];
   }
@@ -447,6 +481,13 @@ List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   }
   if (t.contains('reduct') || t.contains('67114') || t.contains('ريديك')) {
     return const ['reducer'];
+  }
+  if (t == 'bouchon_batmo' ||
+      t.contains('bouchon_batmo') ||
+      t.contains('bouchon batmo') ||
+      t.contains('bochon batmo') ||
+      (t.contains('بوشون') && t.contains('باتمو'))) {
+    return const ['bouchon_batmo'];
   }
   if (t == 'batmo') return const ['batmo'];
   if (t == 'plant' || t.contains('plinthe') || t.contains('بلانت')) {
@@ -679,12 +720,30 @@ class CatalogCandidateResolver {
       return const <Map<String, dynamic>>[];
     }
 
-    final sections = await _db.getDesignSectionsForRoles(
-      query.seriesId!,
-      roleKeys,
-      requireDialog: query.requireDialog,
-      requireQuantity: query.requireQuantity,
-    );
+    // `frame_extension`/`sash_extension` are additional profiles for the
+    // sliding construction. A selector for the base frame or sash must not
+    // show them merely because the resolver was given the alias list for the
+    // same selector. The administrator's primary role is authoritative.
+    final scopedRoleKeys = roleKeys.contains('frame')
+        ? roleKeys.where((role) => role == 'frame').toList()
+        : roleKeys.contains('sash')
+        ? roleKeys.where((role) => role == 'sash').toList()
+        : roleKeys;
+    final sections = query.drawingMode == null
+        ? await _db.getDesignSectionsForRoles(
+            query.seriesId!,
+            scopedRoleKeys,
+            requireDialog: query.requireDialog,
+            requireQuantity: query.requireQuantity,
+          )
+        : await _db.getDesignSectionsForScopedDialogRoles(
+            query.seriesId!,
+            scopedRoleKeys,
+            usageScope: query.drawingMode == AccessoryDrawingMode.sliding
+                ? 'sliding'
+                : 'opening',
+            requireQuantity: query.requireQuantity,
+          );
     final normalizedMaterial = (query.materialType ?? '').toLowerCase().trim();
     final isAluminium =
         normalizedMaterial.isEmpty ||
@@ -840,6 +899,7 @@ class CatalogCandidateResolver {
     if (query.requireDialog && rule['show_in_dialog'] == 0) return false;
     if (query.requireQuantity && rule['show_in_quantity'] == 0) return false;
     if (!catalogRuleMatchesExactScope(rule, query.seriesId)) return false;
+    if (!_ruleUsageScopeMatches(rule, query.drawingMode)) return false;
     final ruleRole = (rule['role_key'] ?? '').toString();
     if (_roleIgnoresGlassRule(ruleRole)) return true;
     final glassRule = (rule['show_when_glass'] ?? 'any')
@@ -860,6 +920,25 @@ class CatalogCandidateResolver {
       return query.hasDoubleGlassForRules == true;
     }
     return true;
+  }
+
+  bool _ruleUsageScopeMatches(
+    Map<String, dynamic> rule,
+    AccessoryDrawingMode? drawingMode,
+  ) {
+    if (drawingMode == null) return true;
+    final scope = (rule['usage_scope'] ?? 'global')
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (scope.isEmpty ||
+        scope == 'global' ||
+        scope == 'auto' ||
+        scope == 'both') {
+      return true;
+    }
+    return scope ==
+        (drawingMode == AccessoryDrawingMode.sliding ? 'sliding' : 'opening');
   }
 
   bool _catalogRuleRowMatchesMaterial(
@@ -1876,7 +1955,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
       } // end if (myDb != null)
     } else {
       final myDb = await db.db;
-      if (myDb != null) {
+      if (myDb != null && widget.seriesId != null) {
         String whereClause = '(is_active = 1 OR is_active IS NULL)';
         List<dynamic> whereArgs = [];
         if (widget.seriesId != null) {
@@ -2046,32 +2125,41 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
               t.contains(name);
         }).toList();
 
-        // Prefer the explicit role mapping created by the administrator in
-        // "Définition intelligente de la série".  Name and code matching
-        // above remains a fallback for older, not-yet-configured series.
+        // The explicit role mapping created by the administrator in
+        // "Définition intelligente de la série" is authoritative. An empty
+        // mapping means that this profile does not exist for the series.
         final roleKeys = seriesRoleKeysForProfileSelectorType(t);
         if (widget.seriesId != null && roleKeys.isNotEmpty) {
-          final roleSelector =
-              t.contains('central') ||
-              t.contains('chicane') ||
-              t.contains('lateral') ||
-              t.contains('جانبي') ||
-              t.contains('sash_traverse') ||
-              t.contains('sash traverse');
-          final configured =
-              (await db.getDesignSectionsForRoles(
-                widget.seriesId!,
-                roleKeys,
-              )).where((section) {
-                if (roleSelector) return true;
-                return profileSectionMatchesDrawingMode(
-                  section: section,
-                  profileType: widget.profileType,
-                  activeSeriesType: activeSeriesType,
-                  drawingMode: widget.accessoryDrawingMode,
-                );
-              }).toList();
-          data = configured;
+          final roleRows = await db.getSeriesDesignRoles(widget.seriesId!);
+          if (roleRows.isEmpty) {
+            data = <Map<String, dynamic>>[];
+          } else if (widget.accessoryDrawingMode != null) {
+            // A frame extension is a sliding track addition, never an
+            // opening-frame choice. The role scope is authoritative for all
+            // other profile replacements as well.
+            final isBaseFrameSelector =
+                t == 'frame' || t == 'cadre' || t == 'إطار';
+            final isBaseSashSelector =
+                t == 'sash' || t == 'ouvrant' || t == 'ضلفة';
+            final scopedRoleKeys = isBaseFrameSelector
+                ? const ['frame']
+                : isBaseSashSelector
+                ? const ['sash']
+                : roleKeys;
+            data = await db.getDesignSectionsForScopedDialogRoles(
+              widget.seriesId!,
+              scopedRoleKeys,
+              usageScope:
+                  widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
+                  ? 'sliding'
+                  : 'opening',
+            );
+          } else {
+            data = await db.getDesignSectionsForRoles(
+              widget.seriesId!,
+              roleKeys,
+            );
+          }
         }
         final isFrameSelector = t == 'frame' || t == 'cadre' || t == 'إطار';
         final material = (widget.materialType ?? '').toLowerCase().trim();

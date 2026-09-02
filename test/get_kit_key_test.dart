@@ -68,15 +68,18 @@ void main() {
     );
 
     // Verify System OB expanded items
-    final hasCompas = bom.any((item) => item.name == 'Compas OB' && item.kitGroupName == 'System OB');
+    final hasCompas = bom.any((item) => item.name == 'Compas OB');
     expect(hasCompas, isTrue, reason: 'System OB sub-items should be resolved from "System Kit OB"');
+    expect(bom.where((item) => item.name == 'System OB'), isEmpty);
 
     // Verify Demi System OB expanded items
-    final hasBras = bom.any((item) => item.name == 'Bras OB' && item.kitGroupName == 'Demi System OB');
+    final hasBras = bom.any((item) => item.name == 'Bras OB');
     expect(hasBras, isTrue, reason: 'Demi System OB sub-items should be resolved from "Kit Demi OB"');
+    expect(bom.where((item) => item.name == 'Demi System OB'), isEmpty);
 
     // Verify Verrou Central expanded items
-    final hasTringle = bom.any((item) => item.name == 'Tringle' && item.kitGroupName == 'Verrou Central');
+    final hasTringle = bom.any((item) => item.name == 'Tringle');
     expect(hasTringle, isTrue, reason: 'Verrou Central sub-items should be resolved from "Kit Verrou Central"');
+    expect(bom.where((item) => item.name == 'Verrou Central'), isEmpty);
   });
 }

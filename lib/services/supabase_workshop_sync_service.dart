@@ -16,6 +16,7 @@ class SupabaseWorkshopSyncService {
   factory SupabaseWorkshopSyncService() => _instance;
 
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
+  static const Duration _backgroundSyncInterval = Duration(seconds: 30);
   static const int _batchSize = 200;
   static const int _downloadPageSize = 500;
   static const String _workshopProfileTable = '__WorkshopProfile';
@@ -27,6 +28,7 @@ class SupabaseWorkshopSyncService {
       StreamController<Map<String, dynamic>>.broadcast();
 
   Timer? _uploadTimer;
+  Timer? _backgroundSyncTimer;
   RealtimeChannel? _permissionsChannel;
   Future<void>? _startTask;
   Future<void>? _activeUpload;
@@ -75,6 +77,7 @@ class SupabaseWorkshopSyncService {
 
   void stop() {
     _uploadTimer?.cancel();
+    _backgroundSyncTimer?.cancel();
     final permissionsChannel = _permissionsChannel;
     if (permissionsChannel != null) {
       unawaited(_client.removeChannel(permissionsChannel));
@@ -84,6 +87,7 @@ class SupabaseWorkshopSyncService {
       unawaited(_client.removeChannel(workshopDataChannel));
     }
     _uploadTimer = null;
+    _backgroundSyncTimer = null;
     _permissionsChannel = null;
     _permissionsChannelName = null;
     _workshopDataChannel = null;
@@ -353,6 +357,7 @@ class SupabaseWorkshopSyncService {
       await _ensureReady();
       _subscribeToWorkshopDataChanges();
       _subscribeToPermissionChanges();
+      _startBackgroundSync();
       await refreshCurrentPermissions();
       final needsFullBootstrap = await _needsFullBootstrapDownload();
       final hasLocalBusinessData = await _hasLocalBusinessData();
@@ -369,6 +374,26 @@ class SupabaseWorkshopSyncService {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
       print('Supabase workshop sync not started: $error');
+    }
+  }
+
+  void _startBackgroundSync() {
+    _backgroundSyncTimer?.cancel();
+    _backgroundSyncTimer = Timer.periodic(_backgroundSyncInterval, (_) {
+      unawaited(_runBackgroundSyncCycle());
+    });
+  }
+
+  Future<void> _runBackgroundSyncCycle() async {
+    if (!isReady || _isApplyingRemoteData) return;
+    try {
+      // Realtime normally triggers this immediately. The periodic pass is a
+      // recovery path for sleeping devices, dropped channels, and failed
+      // uploads whose local change log must remain retryable.
+      await downloadWorkshopData();
+      await uploadPendingChanges();
+    } catch (error) {
+      print('Supabase background sync retry failed: $error');
     }
   }
 

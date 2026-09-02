@@ -1018,8 +1018,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Future<void> _showAvailableRemnantsDialog(AppLanguage lang) async {
     final locationId = _selectedLocationId;
     if (locationId == null) return;
-    final remnants = await widget.db.readAllAvailableMaterialRemnants(
+    final remnants = List<Map<String, dynamic>>.from(
+      await widget.db.readAllAvailableMaterialRemnants(
       locationId: locationId,
+      ),
     );
     if (!mounted) return;
     await showDialog(
@@ -1046,62 +1048,110 @@ class _InventoryScreenState extends State<InventoryScreen> {
               ),
             ],
           ),
-          content: SizedBox(
-            width: 520,
-            child: remnants.isEmpty
-                ? Text(
-                    Localization.translate(
-                      'لا توجد فضلات قابلة للاستعمال في هذا المخزون.',
-                      lang,
+          content: StatefulBuilder(
+            builder: (dialogContext, setDialogState) => SizedBox(
+              width: 560,
+              child: remnants.isEmpty
+                  ? Text(
+                      Localization.translate(
+                        'لا توجد فضلات قابلة للاستعمال في هذا المخزون.',
+                        lang,
+                      ),
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: remnants.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final row = remnants[index];
+                        final length =
+                            ((row['length_mm'] as num?)?.toDouble() ?? 0).round();
+                        final name = row['item_name']?.toString() ?? '';
+                        final code = row['item_code']?.toString() ?? '';
+                        final color = row['color_name']?.toString() ?? '';
+                        final series = row['series_name']?.toString() ?? '';
+                        final address =
+                            [row['rack_code'], row['shelf_code'], row['bin_code']]
+                                .map((value) => value?.toString().trim() ?? '')
+                                .where((value) => value.isNotEmpty)
+                                .join(' / ');
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.straighten, color: _blue),
+                          title: Text(
+                            '${row['ticket_code']} - ${code.isEmpty ? name : '[$code] $name'}',
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          subtitle: Text(
+                            [
+                              if (series.isNotEmpty) series,
+                              if (color.isNotEmpty) color,
+                              if (address.isNotEmpty) address,
+                            ].join(' - '),
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$length ${Localization.translate('مم', lang)}',
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.teal,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: Localization.translate('تسجيل هدر', lang),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: dialogContext,
+                                    builder: (confirmContext) => AlertDialog(
+                                      title: Text(
+                                        Localization.translate('تسجيل هدر', lang),
+                                      ),
+                                      content: Text(
+                                        Localization.translate(
+                                          'سيتم حفظ الفضلة كسجل هدر مع إبقاء رقمها وأثرها، ولن تُحذف نهائيًا. هل تريد المتابعة؟',
+                                          lang,
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(confirmContext, false),
+                                          child: Text(Localization.translate('إلغاء', lang)),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.pop(confirmContext, true),
+                                          child: Text(Localization.translate('تأكيد', lang)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed != true) return;
+                                  final result = await widget.db.markMaterialRemnantAsScrap(
+                                    remnantId: (row['id'] as num).toInt(),
+                                    note: 'هدر يدوي من شاشة المخزون',
+                                  );
+                                  if (result['marked'] == true) {
+                                    setDialogState(() => remnants.removeAt(index));
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                    style: const TextStyle(fontFamily: 'Cairo'),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: remnants.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final row = remnants[index];
-                      final length =
-                          ((row['length_mm'] as num?)?.toDouble() ?? 0).round();
-                      final name = row['item_name']?.toString() ?? '';
-                      final code = row['item_code']?.toString() ?? '';
-                      final color = row['color_name']?.toString() ?? '';
-                      final series = row['series_name']?.toString() ?? '';
-                      final address =
-                          [row['rack_code'], row['shelf_code'], row['bin_code']]
-                              .map((value) => value?.toString().trim() ?? '')
-                              .where((value) => value.isNotEmpty)
-                              .join(' / ');
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.straighten, color: _blue),
-                        title: Text(
-                          '${row['ticket_code']} - ${code.isEmpty ? name : '[$code] $name'}',
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: Text(
-                          [
-                            if (series.isNotEmpty) series,
-                            if (color.isNotEmpty) color,
-                            if (address.isNotEmpty) address,
-                          ].join(' - '),
-                          style: const TextStyle(fontFamily: 'Cairo'),
-                        ),
-                        trailing: Text(
-                          '$length ${Localization.translate('مم', lang)}',
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+            ),
           ),
           actions: [
             TextButton(

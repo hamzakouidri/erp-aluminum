@@ -1168,10 +1168,11 @@ class CloudSyncService {
     onDataRestored = onUpdateCallback;
     final supabaseWorkshopSync = SupabaseWorkshopSyncService();
     // Supabase downloads use their own Realtime channel. Apply incoming rows
-    // in the background, but keep the visible page stable. A page can reload
-    // deliberately when the user reopens it or presses its own refresh action.
+    // in the background, then notify open pages through the same stream used
+    // by local writes so they do not keep showing a stale database snapshot.
     void onSupabaseDataChanged() {
-      debugPrint('CloudSyncService: background data applied silently.');
+      debugPrint('CloudSyncService: Supabase data applied; notifying pages.');
+      _dbUpdateController.add('supabase_data_updated');
     }
 
     supabaseWorkshopSync.start(onDataChanged: onSupabaseDataChanged);

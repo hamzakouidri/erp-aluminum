@@ -257,25 +257,22 @@ void main() {
 
     final names = bom.map((item) => item.name).toList();
     final tunnelKitRows = bom
-        .where((item) => item.kitGroupName == 'Kit Caisson Tunnel')
+        .where((item) => item.name == 'Kit Caisson Tunnel')
         .toList();
-    expect(names, contains('Kit Caisson Tunnel'));
+    // A configured kit is a container only: once it has children, its own
+    // parent row must not be displayed or charged.
+    expect(tunnelKitRows, isEmpty);
     expect(names, contains('Embout moteur secours'));
     expect(names, contains('Rondelle indépendante'));
     expect(names, isNot(contains('Embout moteur normal')));
     expect(names, isNot(contains('Embout manivelle')));
     // The ordinary shutter bill of materials must not appear next to a
-    // Caisson Tunnel kit. Kit children remain grouped beneath the Kit row.
+    // Caisson Tunnel kit. The selected kit children are emitted directly.
     expect(names, isNot(contains('الصندوق (Caisson)')));
     expect(names, isNot(contains('المحور (Axe)')));
     expect(names, isNot(contains('المحرك (Moteur)')));
     expect(names, isNot(contains('الشرائح (Lames)')));
     expect(names, isNot(contains('السكك (Coulisses)')));
-    expect(tunnelKitRows, hasLength(3));
-    expect(
-      tunnelKitRows.first.originalName,
-      'كيت صندوق النفق (Kit Caisson Tunnel)',
-    );
   });
 
   test('an unselected kit family does not add its children', () {
@@ -391,7 +388,7 @@ void main() {
     );
 
     final kitItems = bom
-        .where((item) => item.kitGroupName == 'Kit volet 155')
+        .where((item) => item.originalName.startsWith('Kit volet 155_'))
         .map((item) => item.name)
         .toList();
     expect(kitItems, contains('أومبو 40'));

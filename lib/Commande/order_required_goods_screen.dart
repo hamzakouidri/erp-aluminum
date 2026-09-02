@@ -456,7 +456,10 @@ class OrderRequiredGoodsScreen extends StatefulWidget {
     super.key,
     required this.orderData,
     required this.db,
+    this.issueAtManufacturingStart = false,
   });
+
+  final bool issueAtManufacturingStart;
 
   @override
   State<OrderRequiredGoodsScreen> createState() =>
@@ -473,6 +476,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   final Set<String> _expandedKits = {};
   final Set<String> _expandedCuttingPlans = {};
   bool _isCreatingPurchase = false;
+  bool _manufacturingIssueRequested = false;
   late AppLanguage _currentLang;
   Future<int>? _shutterGreyColorIdFuture;
 
@@ -735,6 +739,29 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         _safeInt(model.selectedAccessoryColor?['id']) ?? colorId;
 
     for (var item in bomItems) {
+      final selector = (item.selectorType ?? '').trim().toLowerCase();
+      final original = item.originalName.trim().toLowerCase();
+      final looksLikeSlidingProfile =
+          selector.contains('sliding') ||
+          selector.contains('couliss') ||
+          selector == 'sash_lateral' ||
+          selector == 'sash_central' ||
+          selector == 'sash_traverse' ||
+          original.contains('قائم جانبي') ||
+          original.contains('قائم وسطي') ||
+          original.contains('sash lateral') ||
+          original.contains('sash central') ||
+          original.contains('chicane') ||
+          original.contains('couliss');
+      final usesSlidingSeries =
+          model.systemMode == 'sliding' ||
+          (item.sourceSeriesId != null &&
+              item.sourceSeriesId == model.activeSlidingSeries?.id) ||
+          (model.zones.any((zone) => zone.content == ZoneContent.slidingSash) &&
+              looksLikeSlidingProfile);
+      final int? itemSeriesId = usesSlidingSeries
+          ? model.activeSlidingSeries?.id
+          : model.activeSeries?.id;
       if (item.isMissing &&
           !model.componentOverrides.containsKey(item.originalName)) {
         try {
@@ -785,25 +812,26 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 }
               }
               selectedEsp ??= allEsp.first;
-              final mutableItem = Map<String, dynamic>.from(selectedEsp);
+              final selectedEspItem = selectedEsp!;
+              final mutableItem = Map<String, dynamic>.from(selectedEspItem);
               double price = 0.0;
               if (accessoryColorId != null) {
                 final colorPriceRes = await dbInstance.query(
                   'AccessoryColorPrices',
                   where: 'accessory_id = ? AND color_id = ?',
-                  whereArgs: [selectedEsp['id'], accessoryColorId],
+                    whereArgs: [selectedEspItem['id'], accessoryColorId],
                 );
                 if (colorPriceRes.isNotEmpty &&
                     _safeDouble(colorPriceRes.first['price']) > 0) {
                   price = _safeDouble(colorPriceRes.first['price']);
                 } else {
                   price = _safeDouble(
-                    selectedEsp['price_dzd'] ?? selectedEsp['price'],
+                      selectedEspItem['price_dzd'] ?? selectedEspItem['price'],
                   );
                 }
               } else {
                 price = _safeDouble(
-                  selectedEsp['price_dzd'] ?? selectedEsp['price'],
+                  selectedEspItem['price_dzd'] ?? selectedEspItem['price'],
                 );
               }
               mutableItem['calculated_price'] = price;
@@ -973,7 +1001,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             }
           } else if (item.category == 'profile') {
             table = 'Sections';
-            if (item.originalName.contains('Batmo') ||
+            if ((item.originalName.toLowerCase().contains('bouchon batmo') ||
+                    item.originalName.contains('بوشون باتمو')) &&
+                !item.originalName.toLowerCase().contains('vis')) {
+              keywordFr = 'bouchon batmo';
+              keywordAr = 'بوشون باتمو';
+            } else if (item.originalName.contains('Batmo') ||
                 item.originalName.contains('الباتمو')) {
               keywordFr = 'batmo';
               keywordAr = 'باتمو';
@@ -984,7 +1017,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 where:
                     'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ? OR type LIKE ?)',
                 whereArgs: [
-                  model.activeSeries?.id,
+                  itemSeriesId,
                   '%mullion%',
                   '%mullion%',
                   '%traverse%',
@@ -1046,9 +1079,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 item.originalName.contains('Side Cover') ||
                 item.originalName.contains('Couvre') ||
                 item.originalName.contains('couvre')) {
-              final sId = model.systemMode == 'sliding'
-                  ? model.activeSlidingSeries?.id
-                  : model.activeSeries?.id;
+              final sId = itemSeriesId;
               final cjRes = await dbInstance.query(
                 'Sections',
                 where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
@@ -1103,8 +1134,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             // مهم جداً لضمان أن جوان البروس يخص السلسلة المختارة لا أي سلسلة أخرى
             if (table == 'Joints' &&
                 queryRes.isNotEmpty &&
-                model.activeSeries != null) {
-              final sid = model.activeSeries!.id;
+                itemSeriesId != null) {
+              final sid = itemSeriesId;
               final sidStr = sid.toString();
               // أولاً: تصفية بـ series_id المباشر
               final exactMatch = queryRes
@@ -1134,13 +1165,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             }
 
             if (table == 'Sections' && queryRes.isNotEmpty) {
-              if (model.activeSeries != null) {
+              if (itemSeriesId != null) {
                 final seriesSections = queryRes
-                    .where((s) => s['series_id'] == model.activeSeries!.id)
+                    .where((s) => s['series_id'] == itemSeriesId)
                     .toList();
-                if (seriesSections.isNotEmpty) {
-                  queryRes = seriesSections;
-                }
+                // Never fall back to a similarly named section from another
+                // series. A missing exact-series row must stay missing and
+                // be shown as such, not become a wrong frame/image.
+                queryRes = seriesSections;
               }
 
               final origLower = item.originalName.toLowerCase();
@@ -1577,7 +1609,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     (sub) =>
                         sub.originalName == bom.originalName &&
                         sub.unit == bom.unit &&
-                        sub.colorId == bom.colorId,
+                        sub.colorId == bom.colorId &&
+                        sub.catalogItemId == bom.catalogItemId &&
+                        sub.profileCode == bom.profileCode &&
+                        sub.imagePath == bom.imagePath,
                   );
                   if (existingSubIndex != -1) {
                     final existing = agg.kitSubItems[existingSubIndex];
@@ -1603,6 +1638,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       inventoryItemType:
                           existing.inventoryItemType ?? bom.inventoryItemType,
                       colorId: existing.colorId ?? bom.colorId,
+                      overrideKey: existing.overrideKey ?? bom.overrideKey,
+                      selectorCategory:
+                          existing.selectorCategory ?? bom.selectorCategory,
+                      selectorType: existing.selectorType ?? bom.selectorType,
+                      roleKey: existing.roleKey ?? bom.roleKey,
+                      sourceSeriesId:
+                          existing.sourceSeriesId ?? bom.sourceSeriesId,
+                      materialType:
+                          existing.materialType ?? bom.materialType,
+                      targetThicknessMm:
+                          existing.targetThicknessMm ?? bom.targetThicknessMm,
                     );
                   } else {
                     agg.kitSubItems.add(bom);
@@ -1738,6 +1784,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         _processingWarnings = warnings;
         _isLoading = false;
       });
+      if (widget.issueAtManufacturingStart &&
+          !_manufacturingIssueRequested &&
+          mounted) {
+        _manufacturingIssueRequested = true;
+        if (await widget.db.hasOrderInventoryIssue(orderId)) {
+          if (mounted) Navigator.pop(context, true);
+          return;
+        }
+        await _showShortageReport(autoApply: true);
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -2788,15 +2844,33 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
-      child: ResizableColumnsTable(
-        key: ValueKey('required-goods-${_aggregatedItems.length}'),
-        headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
-        borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-        rowColor: isDark ? const Color(0xFF171721) : Colors.white,
-        headerMinHeight: 42,
-        rowMinHeight: 54,
-        cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        columns: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب السلع وخطط التقطيع',
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark ? Colors.white54 : Colors.blueGrey.shade600,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Expanded(
+            child: ResizableColumnsTable(
+              key: ValueKey('required-goods-${_aggregatedItems.length}'),
+              headerColor:
+                  isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+              borderColor:
+                  isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+              rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+              headerMinHeight: 42,
+              rowMinHeight: 54,
+              cellPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
+              reorderableRows: true,
+              columns: [
           ResizableTableColumn(
             id: 'image',
             label: Text(_t('الصورة'), style: headerStyle),
@@ -2862,8 +2936,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             maxWidth: 180,
             alignment: Alignment.center,
           ),
+              ],
+              rows: rows,
+            ),
+          ),
         ],
-        rows: rows,
       ),
     );
   }
@@ -2886,6 +2963,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         : null;
 
     return ResizableTableRow(
+      reorderId: 'item:${_aggregatedGoodReorderKey(item, category)}',
       color: rowColor,
       onTap: onTap,
       cells: [
@@ -2956,6 +3034,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     ].join(' • ');
 
     return ResizableTableRow(
+      reorderId: 'kit-child:${child.kitGroupName ?? ''}:${child.originalName}:${child.catalogItemId ?? child.name}:${child.unit}',
       color: isDark
           ? Colors.white.withValues(alpha: 0.03)
           : Colors.grey.shade50,
@@ -3004,6 +3083,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       final cutText = cuts.map((cut) => '${(cut * 1000).round()}').join(' + ');
       final remainder = _barRemainder(plan, cuts);
       return ResizableTableRow(
+        reorderId:
+            'cut:${_aggregatedGoodReorderKey(item, item.category)}:$barNumber',
         color: isDark
             ? color.withValues(alpha: 0.04)
             : color.withValues(alpha: 0.025),
@@ -3167,6 +3248,21 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     });
   }
+
+  String _aggregatedGoodReorderKey(
+    AggregatedGoodItem item,
+    String category,
+  ) => [
+    category,
+    item.catalogItemId ?? '',
+    item.inventoryItemType ?? '',
+    item.profileCode ?? '',
+    item.originalName,
+    item.name,
+    item.unit,
+    item.colorId ?? item.colorName ?? '',
+    item.stockLength ?? '',
+  ].join('|');
 
   String _cuttingKeyForItem(AggregatedGoodItem item) =>
       '${item.inventoryItemType}:${item.catalogItemId}:${item.colorId}:'
@@ -3483,7 +3579,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     if (print == true) await RemnantTicketService.printTickets(enriched);
   }
 
-  Future<void> _showShortageReport() async {
+  Future<void> _showShortageReport({bool autoApply = false}) async {
     List<Map<String, dynamic>> allocateStock(
       List<Map<String, dynamic>> rows,
       double required,
@@ -3598,11 +3694,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         itemType: itemType,
         colorId: item.colorId,
       );
-      final stockAvailable = stockRows.fold<double>(
-        0,
-        (sum, row) => sum + ((row['quantity'] as num?)?.toDouble() ?? 0),
-      );
-
       if (item.cuttingPieces.isNotEmpty && (item.stockLength ?? 0) > 0) {
         final seriesId = await _seriesIdFor(item);
         final remnantRows = await widget.db.readAvailableMaterialRemnants(
@@ -3636,7 +3727,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           'item': item,
           'stock_rows': stockAllocations,
           'stock_used': stockUsed,
-          'missing': (neededBars - stockAvailable).clamp(0, double.infinity),
+          'missing': (neededBars - stockUsed).clamp(0, double.infinity),
           'remnant_plan': remnantPlan,
         });
       } else {
@@ -3650,7 +3741,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           'item': item,
           'stock_rows': stockAllocations,
           'stock_used': stockUsed,
-          'missing': (item.totalQuantity - stockAvailable).clamp(
+          'missing': (item.totalQuantity - stockUsed).clamp(
             0,
             double.infinity,
           ),
@@ -3665,6 +3756,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           orderId: _safeInt(widget.orderData['id'])!,
           db: widget.db,
           reports: reports,
+          customerName: widget.orderData['client_name']?.toString() ??
+              widget.orderData['client_display']?.toString(),
+          autoApply: autoApply,
         ),
       ),
     );
@@ -4738,6 +4832,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         headerMinHeight: 38,
         rowMinHeight: 42,
         cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        maxBodyHeight: 360,
         columns: [
           ResizableTableColumn(
             id: 'name',
@@ -4900,16 +4995,46 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 }
 
-class _OrderShortageReportPage extends StatelessWidget {
+class _OrderShortageReportPage extends StatefulWidget {
   const _OrderShortageReportPage({
     required this.orderId,
     required this.db,
     required this.reports,
+    this.customerName,
+    this.autoApply = false,
   });
 
   final int orderId;
   final SqlDatabase db;
   final List<Map<String, dynamic>> reports;
+  final String? customerName;
+  final bool autoApply;
+
+  @override
+  State<_OrderShortageReportPage> createState() =>
+      _OrderShortageReportPageState();
+}
+
+class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
+  bool _automaticAttempted = false;
+
+  int get orderId => widget.orderId;
+  SqlDatabase get db => widget.db;
+  List<Map<String, dynamic>> get reports => widget.reports;
+  String? get customerName => widget.customerName;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoApply) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_automaticAttempted) {
+          _automaticAttempted = true;
+          _applyInventoryIssue(context, automatic: true);
+        }
+      });
+    }
+  }
 
   String _quantity(double value) => value == value.roundToDouble()
       ? value.round().toString()
@@ -4953,7 +5078,10 @@ class _OrderShortageReportPage extends StatelessWidget {
     return rows;
   }
 
-  Future<void> _applyInventoryIssue(BuildContext context) async {
+  Future<void> _applyInventoryIssue(
+    BuildContext context, {
+    bool automatic = false,
+  }) async {
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
@@ -4961,40 +5089,70 @@ class _OrderShortageReportPage extends StatelessWidget {
     String t(String key) => Localization.translate(key, lang);
     final remnantIds = _usedRemnantIds();
     final stockDeductions = _stockDeductions();
+    final missingRows = reports.where((report) {
+      if (report['unlinked'] == true) return true;
+      return ((report['missing'] as num?)?.toDouble() ?? 0) > 0.000001;
+    }).toList();
+    if (missingRows.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            t('لا يمكن اعتماد الصرف قبل توفير كل النواقص. راجع تقرير النقص ثم سجّل الشراء أو الاستلام.'),
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     if (remnantIds.isEmpty && stockDeductions.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t('لا توجد كميات متاحة لاعتماد صرفها.'))),
       );
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(t('اعتماد صرف المخزون')),
-        content: Text(
-          t(
-            'سيتم خصم القطع الكاملة من المخزون وتغيير حالة الفضلات المستعملة إلى منتهية. لا يمكن اعتماد نفس الطلبية مرتين.',
+    if (!automatic) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(t('اعتماد صرف المخزون')),
+          content: Text(
+            t(
+              'سيتم خصم القطع الكاملة من المخزون وتغيير حالة الفضلات المستعملة إلى منتهية. لا يمكن اعتماد نفس الطلبية مرتين.',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(t('إلغاء')),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.check_circle_outline),
+              label: Text(t('اعتماد')),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(t('إلغاء')),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.check_circle_outline),
-            label: Text(t('اعتماد')),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    final result = await db.applyOrderInventoryIssue(
-      orderId: orderId,
-      remnantIds: remnantIds,
-      stockDeductions: stockDeductions,
-    );
+      );
+      if (confirmed != true) return;
+    }
+    Map<String, dynamic> result;
+    try {
+      result = await db.applyOrderInventoryIssue(
+        orderId: orderId,
+        remnantIds: remnantIds,
+        stockDeductions: stockDeductions,
+        customerName: customerName,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${t('تعذر اعتماد الصرف')}: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (!context.mounted) return;
     final alreadyApplied = result['already_applied'] == true;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -5009,6 +5167,9 @@ class _OrderShortageReportPage extends StatelessWidget {
         backgroundColor: alreadyApplied ? Colors.orange : Colors.green,
       ),
     );
+    if (automatic && context.mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   @override

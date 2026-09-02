@@ -35,6 +35,7 @@ bool _isDefaultPlaceholderHex(Object? value) {
       clean == 'FFF' ||
       clean == 'FFFFFF' ||
       clean == 'FFFFFFFF' ||
+      clean == 'F5F5DC' ||
       clean == '9E9E9E' ||
       clean == 'FF9E9E9E';
 }
@@ -192,7 +193,11 @@ List<Color>? _namedGradient(Object? rawName) {
   }
   if (name.contains('champagne') ||
       name.contains('شامبان') ||
-      name.contains('شمبان')) {
+      name.contains('شمبان') ||
+      name.contains('شومبان') ||
+      name.contains('شامباني') ||
+      name.contains('شمباني') ||
+      name.contains('شومباني')) {
     return const [Color(0xFFFFF4DF), Color(0xFFF7E7CE), Color(0xFFC9AE86)];
   }
   if (isWoodColorName(name)) {

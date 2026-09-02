@@ -130,6 +130,13 @@ class WindowPainter extends CustomPainter {
   bool get _shouldDrawSideCovers =>
       _hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover;
 
+  bool get _shouldDrawWindowHardware {
+    final isInternal = overrideIsInternalView ?? model.isInternalView;
+    // The internal face shows its real hardware by default. The external face
+    // stays clean unless the user explicitly enables the hardware overlay.
+    return isInternal || model.showInternalHardware;
+  }
+
   bool get _hasEffectiveBottomFrame => model.effectiveHasBottomFrame;
 
   double get _drawableStandaloneSideCoverWidth {
@@ -305,9 +312,6 @@ class WindowPainter extends CustomPainter {
 
         _drawOuterFrames(canvas, w, h, t, topOffset);
 
-        // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم دائماً عند تفعيله)
-        _drawConfiguredSideCovers(canvas, w, h, 0.0);
-
         canvas.save();
         canvas.clipPath(innerPath);
         for (final zone in model.zones) {
@@ -376,8 +380,6 @@ class WindowPainter extends CustomPainter {
       if (!model.isShutterOnly) {
         _drawOuterFrames(canvas, w, h, t, topOffset);
 
-        // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم في الوجه الخارجي أيضاً عند تفعيله)
-        _drawConfiguredSideCovers(canvas, w, h, 0.0);
       }
 
       if (!model.isShutterOnly) {
@@ -473,6 +475,12 @@ class WindowPainter extends CustomPainter {
           _drawShutterBox(canvas, w, topOffset, h);
         }
       }
+    }
+
+    // Draw the side cover after both face pipelines have finished. This keeps
+    // it visible when the wall, shutter, or sash layers are enabled.
+    if (!model.isShutterOnly) {
+      _drawConfiguredSideCovers(canvas, w, h, 0.0);
     }
 
     if (model.hasShutter &&
@@ -1540,6 +1548,7 @@ class WindowPainter extends CustomPainter {
   }
 
   bool _frameRectIsSlidingOnly(Rect frameRect) {
+    if (model.usesSlidingPrimaryProfiles) return true;
     if (model.getFrameRects().length <= 1) return false;
     final innerLeft = frameRect.left + model.profileThickness - 2.0;
     final innerTop = frameRect.top + model.profileThickness - 2.0;
@@ -1557,17 +1566,12 @@ class WindowPainter extends CustomPainter {
   }
 
   double _slidingFrameWidth(double fallback) {
-    final override = model.slidingFrameOverride;
-    if (override != null) {
-      final visible = override['visible_width'];
-      if (visible is num && visible > 0) return visible.toDouble();
-      final thickness = override['thickness'];
-      if (thickness is num && thickness > 0) return thickness.toDouble();
-    }
-    final section = model.getSlidingSectionByType('frame');
+    final section = model.getSlidingBaseFrameSection();
     if (section != null) {
-      if (section.visibleWidth > 0) return section.visibleWidth;
-      if (section.thickness > 0) return section.thickness;
+      final visible = section.visibleWidth;
+      if (visible > 0) return visible;
+      final thickness = section.thickness;
+      if (thickness > 0) return thickness;
     }
     return fallback;
   }
@@ -3115,13 +3119,13 @@ class WindowPainter extends CustomPainter {
       bool isNested = model.isSlidingZoneNestedInSingleFrame(zone);
       if (isNested) {
         double innerFrameT = 45.0;
-        if (model.slidingFrameOverride != null) {
-          innerFrameT =
-              ((model.slidingFrameOverride!['visible_width'] ??
-                          model.slidingFrameOverride!['thickness'])
-                      as num?)
-                  ?.toDouble() ??
-              innerFrameT;
+        final slidingFrame = model.getSlidingBaseFrameSection();
+        if (slidingFrame != null) {
+          innerFrameT = slidingFrame.visibleWidth > 0
+              ? slidingFrame.visibleWidth
+              : (slidingFrame.thickness > 0
+                    ? slidingFrame.thickness
+                    : innerFrameT);
         } else {
           final series = model.activeSlidingSeries ?? model.activeSeries;
           if (series != null) {
@@ -3839,6 +3843,7 @@ class WindowPainter extends CustomPainter {
   /// outside the inner glass-opening clip.  Keeping this pass separate makes
   /// it visible on every normal sash as well as on coupled frames.
   void _drawMainZoneHinges(Canvas canvas, double h, double t) {
+    if (!_shouldDrawWindowHardware) return;
     final isInternal = overrideIsInternalView ?? model.isInternalView;
     final topOffset = _topOffset;
 
@@ -3945,8 +3950,8 @@ class WindowPainter extends CustomPainter {
     bool isNested = model.isSlidingZoneNestedInSingleFrame(zone);
     if (isNested) {
       double innerFrameT = _slidingFrameWidth(45.0);
-      if (model.slidingFrameOverride == null) {
-        final series = model.activeSlidingSeries ?? model.activeSeries;
+      if (model.getSlidingBaseFrameSection() == null) {
+        final series = model.activeSlidingSeries;
         if (series != null) {
           var slidingFrames = series.sections.where((s) {
             final name = s.name.toLowerCase();
@@ -4140,7 +4145,7 @@ class WindowPainter extends CustomPainter {
         }
 
         final bool drawHandle = (i == 0 || i == count - 1);
-        if (drawHandle) {
+        if (drawHandle && _shouldDrawWindowHardware) {
           _drawWindowDrawHandle(
             canvas,
             sashRect,
@@ -5177,13 +5182,9 @@ class WindowPainter extends CustomPainter {
       );
     }
 
-    final isInternal = overrideIsInternalView ?? model.isInternalView;
-
-    // The selected handle style must be visible on both leaves of a double
-    // sash, regardless of whether it is a door lock, cremone or window
-    // handle.  Single sashes keep their existing external-view path.
-    final bool shouldDrawHandle =
-        isInternal || zone.content == ZoneContent.doubleSash;
+    // Hardware is always shown on the internal face. On the external face it
+    // remains an optional aid controlled by the visibility switch.
+    final bool shouldDrawHandle = _shouldDrawWindowHardware;
 
     if (zone.openDirection != null) {
       // Hinges are painted after the window's inner area has been unclipped.
@@ -5191,13 +5192,6 @@ class WindowPainter extends CustomPainter {
       // cut off the normal-window hinges at the external edges.
       if (shouldDrawHandle && forceHandle) {
         OpenDirection handleSide = zone.openDirection!;
-        if (!isInternal) {
-          if (handleSide == OpenDirection.left) {
-            handleSide = OpenDirection.right;
-          } else if (handleSide == OpenDirection.right) {
-            handleSide = OpenDirection.left;
-          }
-        }
         _drawWindowDrawHandle(
           canvas,
           sashR,
@@ -5217,7 +5211,7 @@ class WindowPainter extends CustomPainter {
     String fallbackName,
     double defaultVal,
   ) {
-    final series = model.activeSlidingSeries ?? model.activeSeries;
+    final series = model.activeSlidingSeries;
     if (series == null) return defaultVal;
 
     final String tName = typeName.toLowerCase();
@@ -5481,6 +5475,8 @@ class WindowPainter extends CustomPainter {
     required bool isTopBound,
     WindowZone? zone,
   }) {
+    if (!_shouldDrawWindowHardware) return;
+
     double handleY = sashRect.center.dy;
     double x = sashRect.center.dx;
     if (handleSide == OpenDirection.left) {

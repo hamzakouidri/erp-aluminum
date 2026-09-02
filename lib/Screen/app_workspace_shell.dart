@@ -239,10 +239,13 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   bool _isOsChatHeadMode = false;
+
   bool get isOsChatHeadMode => _isOsChatHeadMode;
 
   Future<void> minimizeToOsChatHead() async {}
+
   Future<void> restoreFromOsChatHead() async {}
+
   void minimize(int index) {}
 
   void move(int index, Offset delta) {
@@ -670,9 +673,10 @@ class _WorkspaceHeader extends StatelessWidget {
                     .snapshots(),
           builder: (context, snapshot) {
             final data = snapshot.data?.data() as Map<String, dynamic>?;
-            final language =
-                Provider.of<AppSettingsProvider>(context, listen: false)
-                    .language;
+            final language = Provider.of<AppSettingsProvider>(
+              context,
+              listen: false,
+            ).language;
             final workshopName = data?['workshopName'] ?? 'ورشة الألمنيوم';
             final String displayName =
                 (data?['displayName'] as String?)?.trim().isNotEmpty == true
@@ -882,6 +886,7 @@ class _WorkspaceHeader extends StatelessWidget {
 
 class _HomeTabBrandContent extends StatefulWidget {
   final bool active;
+
   const _HomeTabBrandContent({required this.active});
 
   @override
@@ -1225,8 +1230,10 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final language =
-        Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final language = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return MouseRegion(
       onEnter: (_) => onHover?.call(),
       child: Material(
@@ -1327,6 +1334,7 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
 
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   bool _isSidebarOpen = true;
+  bool _sidebarOpenedByHover = false;
   String? _expandedSidebarGroup;
   bool _hasVisitedNonHome = false;
   bool _collapseSidebarScheduled = false;
@@ -1361,9 +1369,29 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
 
   void _openSidebarGroup(String? group) {
     setState(() {
+      _sidebarOpenedByHover = false;
       _isSidebarOpen = true;
       _expandedSidebarGroup = group;
       _keepSidebarOpenRequested = true;
+    });
+  }
+
+  void _openSidebarOnHover() {
+    if (!mounted) return;
+    setState(() {
+      _sidebarOpenedByHover = true;
+      _isSidebarOpen = true;
+      _expandedSidebarGroup = null;
+      _keepSidebarOpenRequested = false;
+    });
+  }
+
+  void _closeSidebarAfterHover() {
+    if (!_sidebarOpenedByHover || !mounted) return;
+    setState(() {
+      _sidebarOpenedByHover = false;
+      _isSidebarOpen = false;
+      _expandedSidebarGroup = null;
     });
   }
 
@@ -1463,125 +1491,119 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                               },
                             ),
                             child: ListView.builder(
-                                  controller: _tabsScrollController,
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                    isDesktop ? 0 : 8,
-                                    10,
-                                    12,
-                                    0,
-                                  ),
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: workspace.entries.length,
-                                  itemBuilder: (context, index) {
-                                    final entry = workspace.entries[index];
-                                    final active =
-                                        index == workspace.activeIndex;
+                              controller: _tabsScrollController,
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                isDesktop ? 0 : 8,
+                                10,
+                                12,
+                                0,
+                              ),
+                              scrollDirection: Axis.horizontal,
+                              itemCount: workspace.entries.length,
+                              itemBuilder: (context, index) {
+                                final entry = workspace.entries[index];
+                                final active = index == workspace.activeIndex;
 
-                                    return KeyedSubtree(
-                                      key: _tabKeyFor(entry.id),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          workspace.activate(index);
-                                        },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 180,
-                                          ),
-                                          margin:
-                                              const EdgeInsetsDirectional.only(
-                                                end: 8,
+                                return KeyedSubtree(
+                                  key: _tabKeyFor(entry.id),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      workspace.activate(index);
+                                    },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 180,
+                                      ),
+                                      margin: const EdgeInsetsDirectional.only(
+                                        end: 8,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: active
+                                            ? Colors.white
+                                            : Colors.white.withValues(
+                                                alpha: 0.14,
                                               ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: active
-                                                ? Colors.white
-                                                : Colors.white.withValues(
-                                                    alpha: 0.14,
-                                                  ),
-                                            borderRadius:
-                                                const BorderRadius.vertical(
-                                                  top: Radius.circular(14),
-                                                  bottom: Radius.circular(6),
-                                                ),
-                                            border: Border.all(
-                                              color: active
-                                                  ? Colors.white
-                                                  : Colors.white.withValues(
-                                                      alpha: 0.18,
-                                                    ),
-                                              width: active ? 1.5 : 1,
+                                        borderRadius:
+                                            const BorderRadius.vertical(
+                                              top: Radius.circular(14),
+                                              bottom: Radius.circular(6),
                                             ),
-                                          ),
-                                          child: entry.id == 'home'
-                                              ? _HomeTabBrandContent(
-                                                  active: active,
-                                                )
-                                              : Row(
-                                                  children: [
-                                                    Icon(
-                                                      entry.icon,
-                                                      size: 17,
+                                        border: Border.all(
+                                          color: active
+                                              ? Colors.white
+                                              : Colors.white.withValues(
+                                                  alpha: 0.18,
+                                                ),
+                                          width: active ? 1.5 : 1,
+                                        ),
+                                      ),
+                                      child: entry.id == 'home'
+                                          ? _HomeTabBrandContent(active: active)
+                                          : Row(
+                                              children: [
+                                                Icon(
+                                                  entry.icon,
+                                                  size: 17,
+                                                  color: active
+                                                      ? const Color(0xFF0F172A)
+                                                      : Colors.white,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                ConstrainedBox(
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                        maxWidth: 190,
+                                                      ),
+                                                  child: Text(
+                                                    Localization.translate(
+                                                      entry.title,
+                                                      Provider.of<
+                                                            AppSettingsProvider
+                                                          >(context)
+                                                          .language,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w700,
                                                       color: active
                                                           ? const Color(
                                                               0xFF0F172A,
                                                             )
                                                           : Colors.white,
                                                     ),
-                                                    const SizedBox(width: 8),
-                                                    ConstrainedBox(
-                                                      constraints:
-                                                          const BoxConstraints(
-                                                            maxWidth: 190,
-                                                          ),
-                                                      child: Text(
-                                                        Localization.translate(
-                                                          entry.title,
-                                                          Provider.of<
-                                                                AppSettingsProvider
-                                                              >(context)
-                                                              .language,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          color: active
-                                                              ? const Color(
-                                                                  0xFF0F172A,
-                                                                )
-                                                              : Colors.white,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    if (entry.id != 'home') ...[
-                                                      const SizedBox(width: 10),
-                                                      InkWell(
-                                                        onTap: () => workspace
-                                                            .close(index),
-                                                        child: Icon(
-                                                          Icons.close_rounded,
-                                                          size: 16,
-                                                          color: active
-                                                              ? const Color(
-                                                                  0xFF0F172A,
-                                                                )
-                                                              : Colors.white,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ],
+                                                  ),
                                                 ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
+                                                if (entry.id != 'home') ...[
+                                                  const SizedBox(width: 10),
+                                                  InkWell(
+                                                    onTap: () =>
+                                                        workspace.close(index),
+                                                    child: Icon(
+                                                      Icons.close_rounded,
+                                                      size: 16,
+                                                      color: active
+                                                          ? const Color(
+                                                              0xFF0F172A,
+                                                            )
+                                                          : Colors.white,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -1637,25 +1659,31 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AnimatedContainer(
-            // The content area can contain heavy tables. Animating the width
-            // forces those pages to relayout on every frame and can make the
-            // Windows UI look frozen while the sidebar opens.
-            duration: Duration.zero,
-            width: _isSidebarOpen ? 290 : 56,
-            child: _isSidebarOpen
-                ? Material(
-                    elevation: 10,
-                    child: AppDrawer(
-                      key: ValueKey('desktop-sidebar-$_expandedSidebarGroup'),
-                      onCollapse: () => setState(() => _isSidebarOpen = false),
-                      expandedGroup: _expandedSidebarGroup,
+          MouseRegion(
+            onExit: (_) => _closeSidebarAfterHover(),
+            child: AnimatedContainer(
+              // The content area can contain heavy tables. Animating the width
+              // forces those pages to relayout on every frame and can make the
+              // Windows UI look frozen while the sidebar opens.
+              duration: Duration.zero,
+              width: _isSidebarOpen ? 290 : 56,
+              child: _isSidebarOpen
+                  ? Material(
+                      elevation: 10,
+                      child: AppDrawer(
+                        key: ValueKey('desktop-sidebar-$_expandedSidebarGroup'),
+                        onCollapse: () => setState(() {
+                          _sidebarOpenedByHover = false;
+                          _isSidebarOpen = false;
+                        }),
+                        expandedGroup: _expandedSidebarGroup,
+                      ),
+                    )
+                  : _CollapsedDesktopSidebar(
+                      onOpenGroup: _openSidebarGroup,
+                      onHover: _openSidebarOnHover,
                     ),
-                  )
-                : _CollapsedDesktopSidebar(
-                    onOpenGroup: _openSidebarGroup,
-                    onHover: () => _openSidebarGroup(null),
-                  ),
+            ),
           ),
           Expanded(child: mainContent),
         ],
@@ -1675,6 +1703,31 @@ class _FloatingWorkspaceView extends StatefulWidget {
 
 class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
   bool _isSidebarOpen = true;
+  bool _sidebarOpenedByHover = false;
+
+  void _openSidebarOnHover() {
+    if (!mounted) return;
+    setState(() {
+      _sidebarOpenedByHover = true;
+      _isSidebarOpen = true;
+    });
+  }
+
+  void _openSidebarManually() {
+    if (!mounted) return;
+    setState(() {
+      _sidebarOpenedByHover = false;
+      _isSidebarOpen = true;
+    });
+  }
+
+  void _closeSidebarAfterHover() {
+    if (!_sidebarOpenedByHover || !mounted) return;
+    setState(() {
+      _sidebarOpenedByHover = false;
+      _isSidebarOpen = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1798,7 +1851,10 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
                   modeTitle: 'نظام النوافذ',
                   modeSubtitle: 'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته',
                   onToggleSidebar: isDesktop
-                      ? () => setState(() => _isSidebarOpen = !_isSidebarOpen)
+                      ? () => setState(() {
+                          _sidebarOpenedByHover = false;
+                          _isSidebarOpen = !_isSidebarOpen;
+                        })
                       : null,
                   isSidebarOpen: _isSidebarOpen,
                 ),
@@ -1823,21 +1879,27 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.fastOutSlowIn,
-            width: _isSidebarOpen ? 290 : 56,
-            child: _isSidebarOpen
-                ? Material(
-                    elevation: 10,
-                    child: AppDrawer(
-                      onCollapse: () => setState(() => _isSidebarOpen = false),
+          MouseRegion(
+            onExit: (_) => _closeSidebarAfterHover(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.fastOutSlowIn,
+              width: _isSidebarOpen ? 290 : 56,
+              child: _isSidebarOpen
+                  ? Material(
+                      elevation: 10,
+                      child: AppDrawer(
+                        onCollapse: () => setState(() {
+                          _sidebarOpenedByHover = false;
+                          _isSidebarOpen = false;
+                        }),
+                      ),
+                    )
+                  : _CollapsedDesktopSidebar(
+                      onOpenGroup: (_) => _openSidebarManually(),
+                      onHover: _openSidebarOnHover,
                     ),
-                  )
-                : _CollapsedDesktopSidebar(
-                    onOpenGroup: (_) => setState(() => _isSidebarOpen = true),
-                    onHover: () => setState(() => _isSidebarOpen = true),
-                  ),
+            ),
           ),
           Expanded(child: mainContent),
         ],
@@ -2020,7 +2082,7 @@ class _WindowFrameState extends State<_WindowFrame> {
                           onPressed: widget.onClose,
                           icon: const Icon(Icons.close, color: Colors.white),
                           visualDensity: VisualDensity.compact,
-                        tooltip: Localization.translate('إغلاق', language),
+                          tooltip: Localization.translate('إغلاق', language),
                         ),
                     ],
                   ),

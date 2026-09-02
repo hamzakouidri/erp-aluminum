@@ -150,10 +150,10 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       // نبني نسخة مؤقتة بالأبعاد الجديدة لالتقاط الصورة فقط
       final tempModel = WindowModel(db: p.db);
       applyWindowModelFromMap(tempModel, p.toMap());
-      tempModel.availableSystems = List.from(p.availableSystems);
-      tempModel.activeSeries = p.activeSeries;
-      tempModel.activeSlidingSeries = p.activeSlidingSeries;
-      tempModel.availableColors = List.from(p.availableColors);
+      // Copy the complete catalog runtime, including role ownership and the
+      // separate sliding series. Copying only the two active series made the
+      // preview fall back to opening profiles and lose its colours.
+      tempModel.copyCatalogRuntimeFrom(p, preserveCurrentSelections: true);
       tempModel.persistedDrawingImagePath = p.persistedDrawingImagePath;
       tempModel.persistedDrawingImageBase64 = p.persistedDrawingImageBase64;
 

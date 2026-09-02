@@ -26,12 +26,14 @@ class ResizableTableRow {
   final Color? color;
   final VoidCallback? onTap;
   final ValueChanged<Offset>? onSecondaryTapDown;
+  final String? reorderId;
 
   const ResizableTableRow({
     required this.cells,
     this.color,
     this.onTap,
     this.onSecondaryTapDown,
+    this.reorderId,
   });
 }
 
@@ -48,6 +50,13 @@ class ResizableColumnsTable extends StatefulWidget {
   final EdgeInsets cellPadding;
   final ScrollController? horizontalController;
   final ScrollController? verticalController;
+  /// Gives an unbounded table a real viewport so the mouse wheel can scroll
+  /// its rows instead of scrolling only the outer page.
+  final double? maxBodyHeight;
+  /// Enables long-press/mouse-drag reordering of rows for desktop tables.
+  /// Reordering changes display order only; calculations remain unchanged.
+  final bool reorderableRows;
+  final ValueChanged<List<String>>? onRowOrderChanged;
 
   const ResizableColumnsTable({
     super.key,
@@ -63,6 +72,9 @@ class ResizableColumnsTable extends StatefulWidget {
     this.cellPadding = const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     this.horizontalController,
     this.verticalController,
+    this.maxBodyHeight,
+    this.reorderableRows = false,
+    this.onRowOrderChanged,
   });
 
   @override
@@ -75,6 +87,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   String? _draggingHandleColumnId;
   late final ScrollController _ownHorizontalController;
   late final ScrollController _ownVerticalController;
+  List<String> _rowOrder = [];
 
   ScrollController get _horizontalController =>
       widget.horizontalController ?? _ownHorizontalController;
@@ -87,6 +100,13 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     super.initState();
     _ownHorizontalController = ScrollController();
     _ownVerticalController = ScrollController();
+    _syncRowOrder();
+  }
+
+  @override
+  void didUpdateWidget(covariant ResizableColumnsTable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncRowOrder();
   }
 
   @override
@@ -115,6 +135,89 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
 
   bool get _hasAnyFilter => widget.columns.any((c) => c.filter != null);
 
+  String _rowId(ResizableTableRow row, int index) =>
+      row.reorderId ?? '__row_index_$index';
+
+  void _syncRowOrder() {
+    if (!widget.reorderableRows) {
+      _rowOrder = [];
+      return;
+    }
+    final available = <String>[
+      for (var i = 0; i < widget.rows.length; i++) _rowId(widget.rows[i], i),
+    ];
+    final availableSet = available.toSet();
+    final previous = _rowOrder.toSet();
+    _rowOrder = [
+      ..._rowOrder.where(availableSet.contains),
+      ...available.where((id) => !previous.contains(id)),
+    ];
+  }
+
+  List<({String id, ResizableTableRow row})> _orderedRows() {
+    if (!widget.reorderableRows) {
+      return [
+        for (var i = 0; i < widget.rows.length; i++)
+          (id: _rowId(widget.rows[i], i), row: widget.rows[i]),
+      ];
+    }
+    final byId = <String, ResizableTableRow>{
+      for (var i = 0; i < widget.rows.length; i++)
+        _rowId(widget.rows[i], i): widget.rows[i],
+    };
+    return [
+      for (final id in _rowOrder)
+        if (byId[id] != null) (id: id, row: byId[id]!),
+    ];
+  }
+
+  void _reorderRows(int oldIndex, int newIndex) {
+    final rows = _orderedRows();
+    if (oldIndex < 0 || oldIndex >= rows.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    newIndex = newIndex.clamp(0, rows.length - 1);
+    final next = rows.map((entry) => entry.id).toList();
+    final moved = next.removeAt(oldIndex);
+    next.insert(newIndex, moved);
+    setState(() => _rowOrder = next);
+    widget.onRowOrderChanged?.call(List<String>.unmodifiable(next));
+  }
+
+  Widget _buildReorderableRow(
+    ({String id, ResizableTableRow row}) entry,
+    int index,
+    Color rowColor,
+    Color borderColor,
+  ) {
+    return KeyedSubtree(
+      key: ValueKey(entry.id),
+      child: ReorderableDelayedDragStartListener(
+        index: index,
+        child: Stack(
+          children: [
+            _buildRow(entry.row, rowColor, borderColor),
+            PositionedDirectional(
+              top: 0,
+              end: 3,
+              bottom: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Icon(
+                    Icons.drag_indicator_rounded,
+                    size: 22,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white38
+                        : Colors.blueGrey.shade400,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -133,18 +236,42 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isBoundedHeight = constraints.maxHeight.isFinite;
+        final bodyHeight = isBoundedHeight
+            ? constraints.maxHeight
+            : widget.maxBodyHeight;
+        final bodyIsBounded = bodyHeight != null && bodyHeight.isFinite;
 
-        Widget bodyContent = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final row in widget.rows)
-              _buildRow(row, rowColor, borderColor),
-          ],
-        );
+        final orderedRows = _orderedRows();
+        Widget bodyContent = widget.reorderableRows
+            ? ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: orderedRows.length,
+                onReorder: _reorderRows,
+                proxyDecorator: (child, index, animation) => Material(
+                  color: Colors.transparent,
+                  elevation: 8,
+                  child: child,
+                ),
+                itemBuilder: (context, index) => _buildReorderableRow(
+                  orderedRows[index],
+                  index,
+                  rowColor,
+                  borderColor,
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final entry in orderedRows)
+                    _buildRow(entry.row, rowColor, borderColor),
+                ],
+              );
 
         Widget tableBody;
-        if (isBoundedHeight) {
+        if (bodyIsBounded) {
           tableBody = Expanded(
             child: SingleChildScrollView(
               controller: _verticalController,
@@ -161,7 +288,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           width: _tableWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: isBoundedHeight ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisSize: bodyIsBounded ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // 1. Header Row
               _buildHeader(headerColor, borderColor),
@@ -187,9 +314,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           child: SingleChildScrollView(
             controller: _horizontalController,
             scrollDirection: Axis.horizontal,
-            child: isBoundedHeight
+            child: bodyIsBounded
                 ? SizedBox(
-                    height: constraints.maxHeight,
+                    height: bodyHeight,
                     child: tableContent,
                   )
                 : tableContent,
