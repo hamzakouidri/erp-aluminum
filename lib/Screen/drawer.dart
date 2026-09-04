@@ -358,8 +358,12 @@ class _AppDrawerState extends State<AppDrawer> {
       leading: Icon(icon, color: Colors.white),
       title: Text(
         title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        // Drawer labels can be long in French (for example sales/distribution
+        // descriptions). Let them use a second line instead of overflowing
+        // the fixed-width desktop sidebar.
+        maxLines: 2,
+        softWrap: true,
+        overflow: TextOverflow.visible,
         style: const TextStyle(
           color: Colors.white,
           fontFamily: 'Arial',
@@ -382,8 +386,9 @@ class _AppDrawerState extends State<AppDrawer> {
       leading: Icon(icon, color: Colors.white),
       title: Text(
         title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        maxLines: 2,
+        softWrap: true,
+        overflow: TextOverflow.visible,
         style: const TextStyle(
           color: Colors.white,
           fontFamily: 'Arial',
@@ -696,7 +701,7 @@ class _AppDrawerState extends State<AppDrawer> {
     Navigator.pop(context);
     try {
       context.read<WorkspaceController>().resetForSignedOut();
-      CloudSyncService().reset();
+      await CloudSyncService().clearCachedWorkshopContext();
       await AppAuthService().signOut();
       await AppAuthService().signOutGoogleSession();
       await SqlDatabase.clearAllLocalData();
@@ -1212,8 +1217,9 @@ class _AppDrawerState extends State<AppDrawer> {
               french: 'Projets',
               english: 'Projects',
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.visible,
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           onTap: () => _openScreen(
@@ -1963,7 +1969,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 // تسجيل الخروج من Firebase و Google
                 try {
                   context.read<WorkspaceController>().resetForSignedOut();
-                  CloudSyncService().reset();
+                  await CloudSyncService().clearCachedWorkshopContext();
                   await AppAuthService().signOut();
                   await AppAuthService().signOutGoogleSession();
                   await SqlDatabase.clearAllLocalData();

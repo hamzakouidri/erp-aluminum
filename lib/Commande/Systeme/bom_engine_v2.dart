@@ -22,10 +22,10 @@ class BomEngineV2 {
     final database = await _db.db;
     if (database == null) return;
     for (final item in items) {
-      // The selected catalogue item is the administrator's explicit role
-      // assignment. Do not clear it merely because an older or incomplete
-      // rule row does not qualify for the quantity-table query.
-      if (item.isActive && item.catalogItemId != null && !item.isMissing) {
+      // Kit children are owned by the kit definition. They do not need an
+      // independent CatalogItemRules row and must not be resolved as if they
+      // were standalone components.
+      if (item.isActive && item.kitGroupName != null) {
         continue;
       }
       switch (item.selectorCategory ?? item.category) {
@@ -53,15 +53,6 @@ class BomEngineV2 {
       // complete list saved on the Kits page. They must remain available for
       // the expandable Kit row even when a child has no standalone rule row.
       if (item.isActive && item.kitGroupName != null) {
-        kept.add(item);
-        continue;
-      }
-      // A profile/accessory that is already linked to a concrete catalogue
-      // item is a valid selected role. Keep it in the quantity table even if
-      // an old/incomplete CatalogItemRules row still has show_in_quantity=0
-      // or is missing altogether. The administrator's selected role and the
-      // saved section are the authoritative association in that case.
-      if (item.isActive && item.catalogItemId != null && !item.isMissing) {
         kept.add(item);
         continue;
       }
@@ -101,6 +92,9 @@ class BomEngineV2 {
             materialType: _materialTypeForItem(window, item),
             hasShutter: window.hasShutter,
             drawingMode: _drawingModeForItem(window, item),
+            // The quantity/cost table follows the same catalog eligibility as
+            // the replacement dialog: only a rule explicitly enabled for the
+            // dialog can resolve to a displayed BOM row.
             requireDialog: true,
             requireQuantity: true,
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
@@ -330,7 +324,7 @@ class BomEngineV2 {
         seriesId: seriesId,
         materialType: _materialTypeForItem(window, item),
         drawingMode: _drawingModeForItem(window, item),
-        requireDialog: true,
+            requireDialog: true,
         requireQuantity: true,
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,

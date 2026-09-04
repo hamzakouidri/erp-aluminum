@@ -41,7 +41,11 @@ class SupabaseCatalogSyncService {
         .select('user_id')
         .eq('user_id', user.id)
         .maybeSingle();
-    return row != null;
+    // Keep the client-side check aligned with public.is_app_admin() in
+    // supabase/catalog_sync.sql. The bootstrap application-admin email is
+    // accepted by the database policy even before its app_admins row exists.
+    final email = user.email?.trim().toLowerCase() ?? '';
+    return row != null || email == 'kouidrihamza45@gmail.com';
   }
 
   Future<void> signInWithPassword({

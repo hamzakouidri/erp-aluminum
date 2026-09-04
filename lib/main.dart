@@ -252,14 +252,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           );
         }
-        return Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
-          child: MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
-            child: content,
+        return Focus(
+          canRequestFocus: false,
+          onKeyEvent: (_, event) {
+            final handled = DesktopScrollCoordinator.handleKeyEvent(event);
+            return handled ? KeyEventResult.handled : KeyEventResult.ignored;
+          },
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerHover: DesktopScrollCoordinator.rememberPointerPosition,
+            onPointerMove: DesktopScrollCoordinator.rememberPointerPosition,
+            onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
+            child: MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
+              child: content,
+            ),
           ),
         );
       },

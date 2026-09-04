@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -32,21 +33,21 @@ class SupabaseAccountSnapshot {
   final Map<String, dynamic> subscription;
 
   Map<String, dynamic> get subscriptionData => {
-        ...subscription,
-        'subscriptionStatus': subscription['status'],
-        'subscriptionType': subscription['plan_type'],
-        'subscriptionStartDate': subscription['starts_at'],
-        'subscriptionEndDate': subscription['ends_at'],
-        'maxUsers': subscription['max_users'],
-        'maxSystems': subscription['max_systems'],
-        'maxProfiles': subscription['max_profiles'],
-        'role': role,
-        'workshopId': workshopId,
-        'workshopName': workshopName,
-        'joinCode': workshopCode,
-        'email': email,
-        'isBlocked': blocked,
-      };
+    ...subscription,
+    'subscriptionStatus': subscription['status'],
+    'subscriptionType': subscription['plan_type'],
+    'subscriptionStartDate': subscription['starts_at'],
+    'subscriptionEndDate': subscription['ends_at'],
+    'maxUsers': subscription['max_users'],
+    'maxSystems': subscription['max_systems'],
+    'maxProfiles': subscription['max_profiles'],
+    'role': role,
+    'workshopId': workshopId,
+    'workshopName': workshopName,
+    'joinCode': workshopCode,
+    'email': email,
+    'isBlocked': blocked,
+  };
 }
 
 class SupabaseAccountService {
@@ -96,6 +97,130 @@ class SupabaseAccountService {
     );
   }
 
+  /// Updates the subscription for the exact workshop row selected by the
+  /// application administrator.  Admin listings can contain more than one
+  /// workshop for the same owner, so resolving by owner_uid is ambiguous.
+  Future<void> setSubscriptionForWorkshopId({
+    required String workshopId,
+    required String status,
+    required String planType,
+    DateTime? endsAt,
+    int? maxUsers,
+    int? maxSystems,
+    int? maxProfiles,
+  }) async {
+    final cleanId = workshopId.trim();
+    if (cleanId.isEmpty) {
+      throw Exception('معرّف الورشة غير موجود.');
+    }
+
+    final current = await _client
+        .from('workshop_subscriptions')
+        .select('max_users,max_systems,max_profiles')
+        .eq('workshop_id', cleanId)
+        .maybeSingle();
+    await _client.rpc(
+      'admin_set_workshop_subscription',
+      params: {
+        'target_workshop_id': cleanId,
+        'new_status': status,
+        'new_plan_type': planType,
+        'new_ends_at': endsAt?.toUtc().toIso8601String(),
+        'new_max_users': maxUsers ?? current?['max_users'] ?? 4,
+        'new_max_systems': maxSystems ?? current?['max_systems'] ?? 999,
+        'new_max_profiles': maxProfiles ?? current?['max_profiles'] ?? 999,
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAdminWorkshopMembers(
+    String workshopCode,
+  ) async {
+    final code = workshopCode.trim();
+    if (code.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      final result = await _client.rpc(
+        'list_workshop_members',
+        params: {'target_code': code},
+      );
+      if (result is List) {
+        return result
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+      }
+    } catch (e) {
+      print('list_workshop_members RPC note: $e');
+    }
+
+    try {
+      List<dynamic> ws;
+      try {
+        ws = await _client
+            .from('workshops')
+            .select('id')
+            .or('id.eq.$code,code.eq.$code,join_code.eq.$code')
+            .limit(1);
+      } catch (_) {
+        ws = await _client
+            .from('workshops')
+            .select('id')
+            .or('id.eq.$code,code.eq.$code')
+            .limit(1);
+      }
+      if (ws.isNotEmpty && ws.first is Map) {
+        final wId = ws.first['id']?.toString() ?? '';
+        if (wId.isNotEmpty) {
+          final members = await _client
+              .from('workshop_members')
+              .select('user_id,role,permissions,blocked,updated_at')
+              .eq('workshop_id', wId);
+          return members
+              .whereType<Map>()
+              .map(
+                (row) => {
+                  'user_id': row['user_id'],
+                  'email': '',
+                  'role': row['role'] ?? 'worker',
+                  'permissions':
+                      row['permissions'] ?? const <String, dynamic>{},
+                  'blocked': row['blocked'] == true,
+                  'is_pending': false,
+                  'updated_at': row['updated_at'],
+                },
+              )
+              .toList(growable: false);
+        }
+      }
+    } catch (_) {}
+
+    return <Map<String, dynamic>>[];
+  }
+
+  Future<void> updateAdminWorkshopMember({
+    required String workshopCode,
+    required String email,
+    required String role,
+    required Map<String, dynamic> permissions,
+    required bool blocked,
+  }) async {
+    final code = workshopCode.trim();
+    final cleanEmail = email.trim().toLowerCase();
+    if (code.isEmpty || cleanEmail.isEmpty) {
+      throw Exception('كود الورشة وبريد العامل مطلوبان.');
+    }
+    await _client.rpc(
+      'update_workshop_member_permissions',
+      params: {
+        'target_code': code,
+        'member_email': cleanEmail,
+        'member_role': role,
+        'member_permissions': permissions,
+        'member_blocked': blocked,
+      },
+    );
+  }
+
   Future<SupabaseAccountSnapshot?> loadCurrentAccount() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
@@ -123,6 +248,12 @@ class SupabaseAccountService {
         .map((row) => Map<String, dynamic>.from(row))
         .where((row) => (row['workshop_id']?.toString() ?? '').isNotEmpty)
         .toList(growable: false);
+
+    // A saved workshop code is only a hint for the join RPC. It is not proof
+    // of membership. The old fallback fabricated a worker snapshot from that
+    // local value, which could show a deleted/orphaned worker or attach a new
+    // login to another phone's previous workshop. Normal users must have a
+    // real workshop_members row created by ensure_my_workshop.
 
     if (membershipRows.isNotEmpty) {
       final workshopIds = membershipRows
@@ -155,8 +286,7 @@ class SupabaseAccountService {
         final workshop = workshopById[member['workshop_id'].toString()];
         if (workshop == null) continue;
         final workshopCode = workshop['code']?.toString().trim() ?? '';
-        final workshopJoinCode =
-            workshop['join_code']?.toString().trim() ?? '';
+        final workshopJoinCode = workshop['join_code']?.toString().trim() ?? '';
         if (preferredCode.isNotEmpty &&
             (workshop['id']?.toString() == preferredCode ||
                 workshopCode == preferredCode ||
@@ -195,6 +325,14 @@ class SupabaseAccountService {
     }
 
     if (isApplicationAdmin) {
+      // The application administrator is global and may not have a
+      // workshop_members row. When a workshop was selected explicitly on the
+      // admin screen, resolve that selected workshop without fabricating a
+      // worker membership.
+      final selectedAdminWorkshop =
+          await loadSelectedApplicationAdminWorkshop();
+      if (selectedAdminWorkshop != null) return selectedAdminWorkshop;
+
       // Some migrated owners have the real workshop but no corresponding
       // membership row yet. Resolve the owned workshop before falling back to
       // the synthetic application-admin account, otherwise its user UUID can
@@ -436,5 +574,69 @@ class SupabaseAccountService {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
+  }
+
+  Future<SupabaseAccountSnapshot?> loadSelectedApplicationAdminWorkshop({
+    String? code,
+    String? name,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null ||
+        !(isApplicationAdminEmail(user.email) ||
+            await _isCurrentUserApplicationAdmin())) {
+      return null;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final selectedCode = (code ?? prefs.getString('workshop_code') ?? '')
+        .trim();
+    if (selectedCode.isEmpty) return null;
+    if (code != null && code.trim().isNotEmpty) {
+      await prefs.setString('workshop_code', selectedCode);
+    }
+    if (name != null && name.trim().isNotEmpty) {
+      await prefs.setString('workshop_name', name.trim());
+    }
+
+    final rows = await _client.rpc('list_admin_workshops');
+    if (rows is! List) return null;
+    Map<String, dynamic>? selected;
+    for (final raw in rows.whereType<Map>()) {
+      final row = Map<String, dynamic>.from(raw);
+      final rowCode = row['code']?.toString().trim() ?? '';
+      final workshopId = row['workshop_id']?.toString().trim() ?? '';
+      if (rowCode == selectedCode || workshopId == selectedCode) {
+        selected = row;
+        break;
+      }
+    }
+    if (selected == null) return null;
+
+    final workshopId = selected['workshop_id']?.toString().trim() ?? '';
+    final publicCode = selected['code']?.toString().trim() ?? '';
+    if (workshopId.isEmpty || publicCode.isEmpty) return null;
+    return _buildWorkshopSnapshot(
+      user: user,
+      workshop: {
+        'id': workshopId,
+        'code': publicCode,
+        'join_code': publicCode,
+        'name': selected['name']?.toString() ?? '',
+      },
+      role: 'admin',
+      permissions: const <String, dynamic>{},
+      blocked: false,
+    );
+  }
+
+  Future<bool> _isCurrentUserApplicationAdmin() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+    final row = await _client
+        .from('app_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+    return row != null;
   }
 }

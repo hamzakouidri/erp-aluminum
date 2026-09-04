@@ -16,6 +16,7 @@ import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
 import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 
 class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
@@ -30,6 +31,9 @@ class Customers extends StatefulWidget {
 
 class _CustomersState extends State<Customers> {
   final SqlDatabase db = SqlDatabase();
+  // Explicitly bind the page/table scroll position so the desktop wheel can
+  // target this list as soon as the page is opened.
+  final ScrollController _clientsScrollController = ScrollController();
   final TextEditingController searchController = TextEditingController();
   String _searchQuery = '';
   StreamSubscription<String>? _dbUpdateSubscription;
@@ -55,6 +59,7 @@ class _CustomersState extends State<Customers> {
   void dispose() {
     _syncRefreshDebounce?.cancel();
     _dbUpdateSubscription?.cancel();
+    _clientsScrollController.dispose();
     searchController.dispose();
     for (final controller in _clientColumnControllers.values) {
       controller.dispose();
@@ -463,8 +468,10 @@ class _CustomersState extends State<Customers> {
             ),
         ],
       ),
-      body: Column(
-        children: [
+      body: DesktopScrollFallback(
+        controller: _clientsScrollController,
+        child: Column(
+          children: [
           // 🔍 Filter section — shown only on Mobile
           if (!(MediaQuery.of(context).size.width >= 900 || Platform.isWindows))
             Container(
@@ -740,6 +747,8 @@ class _CustomersState extends State<Customers> {
                   }
 
                   return ListView.builder(
+                    controller: _clientsScrollController,
+                    primary: false,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 8,
@@ -973,7 +982,8 @@ class _CustomersState extends State<Customers> {
               ),
             ),
           ),
-        ],
+          ],
+        ),
       ),
 
       floatingActionButton: (!isDesktop && settings.canCreateClients())
@@ -1674,6 +1684,7 @@ class _CustomersState extends State<Customers> {
                         filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
                         borderColor: borderColor,
                         rowColor: cardColor,
+                        verticalController: _clientsScrollController,
                         headerMinHeight: 38,
                         filterRowMinHeight: 34,
                         rowMinHeight: 46,

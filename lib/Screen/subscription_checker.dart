@@ -176,7 +176,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                       ),
                       onPressed: () async {
                         try {
-                          context.read<WorkspaceController>().resetForSignedOut();
+                          context
+                              .read<WorkspaceController>()
+                              .resetForSignedOut();
                           await AppAuthService().signOut();
                           await AppAuthService().signOutGoogleSession();
                           await SqlDatabase.clearAllLocalData();
@@ -317,9 +319,11 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                       ),
                       onPressed: () async {
                         try {
-                          context.read<WorkspaceController>().resetForSignedOut();
+                          context
+                              .read<WorkspaceController>()
+                              .resetForSignedOut();
                           await AppAuthService().signOut();
-                      await AppAuthService().signOutGoogleSession();
+                          await AppAuthService().signOutGoogleSession();
                           await SqlDatabase.clearAllLocalData();
                         } catch (e) {
                           debugPrint('Sign out error: $e');
@@ -415,7 +419,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                             ),
                             onPressed: () async {
                               try {
-                                context.read<WorkspaceController>().resetForSignedOut();
+                                context
+                                    .read<WorkspaceController>()
+                                    .resetForSignedOut();
                                 await AppAuthService().signOut();
                                 await AppAuthService().signOutGoogleSession();
                                 await SqlDatabase.clearAllLocalData();
@@ -490,7 +496,7 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                             onPressed: () async {
                               try {
                                 await AppAuthService().signOut();
-                  await AppAuthService().signOutGoogleSession();
+                                await AppAuthService().signOutGoogleSession();
                                 await SqlDatabase.clearAllLocalData();
                               } catch (e) {
                                 debugPrint('Sign out error: $e');
@@ -529,14 +535,15 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 class SupabaseSubscriptionGate extends StatelessWidget {
   const SupabaseSubscriptionGate({super.key});
 
-  String _t(BuildContext context, String key) => Localization.translate(
-    key,
-    context.read<AppSettingsProvider>().language,
-  );
+  String _t(BuildContext context, String key) =>
+      Localization.translate(key, context.read<AppSettingsProvider>().language);
 
   bool _isActive(SupabaseAccountSnapshot account) {
     if (account.role == 'admin') return true;
-    final status = account.subscription['status']?.toString().toLowerCase().trim();
+    final status = account.subscription['status']
+        ?.toString()
+        .toLowerCase()
+        .trim();
     if (status == 'expired' ||
         status == 'blocked' ||
         status == 'cancelled' ||
@@ -583,7 +590,10 @@ class SupabaseSubscriptionGate extends StatelessWidget {
             icon: Icons.error_outline,
             color: Colors.red,
             title: _t(context, 'الحساب غير مرتبط بورشة'),
-            body: _t(context, 'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.'),
+            body: _t(
+              context,
+              'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.',
+            ),
           );
         }
         if (account.blocked) {
@@ -592,7 +602,10 @@ class SupabaseSubscriptionGate extends StatelessWidget {
             icon: Icons.block,
             color: Colors.red,
             title: _t(context, 'تم إيقاف حسابك'),
-            body: _t(context, 'تم منعك من الدخول إلى هذه الورشة من قبل المدير.'),
+            body: _t(
+              context,
+              'تم منعك من الدخول إلى هذه الورشة من قبل المدير.',
+            ),
           );
         }
 
@@ -657,6 +670,7 @@ class SupabaseSubscriptionGate extends StatelessWidget {
               FilledButton.icon(
                 onPressed: () async {
                   context.read<WorkspaceController>().resetForSignedOut();
+                  await CloudSyncService().clearCachedWorkshopContext();
                   await AppAuthService().signOut();
                   await SqlDatabase.clearAllLocalData();
                 },
@@ -901,13 +915,20 @@ class _SyncGatewayState extends State<SyncGateway> {
         if (!mounted) return;
         CloudSyncService().startListeningForUpdates(() {});
         await _rememberActiveWorkshop();
-        CloudSyncService()
+        await SupabaseWorkshopSyncService().ensureStarted(
+          timeout: const Duration(seconds: 20),
+        );
+        // Keep the system-selection application behind the protected restore.
+        // Running both futures at once allowed the dashboard to read the old
+        // active-profile flags while the workshop snapshot was still being
+        // imported.
+        await CloudSyncService()
             .fullRecoverySync()
-            .timeout(const Duration(seconds: 45), onTimeout: () {})
+            .timeout(const Duration(seconds: 90), onTimeout: () {})
             .catchError((_) {});
-        CloudSyncService()
+        await CloudSyncService()
             .loadAndApplyWorkshopSystems()
-            .timeout(const Duration(seconds: 20), onTimeout: () {})
+            .timeout(const Duration(seconds: 30), onTimeout: () {})
             .catchError((_) {});
         db.runAutoDailyBackup().catchError((_) {});
       } catch (error) {

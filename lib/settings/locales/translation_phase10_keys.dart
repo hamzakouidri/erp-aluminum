@@ -65,7 +65,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'لا توجد عناصر قابلة لهذا التخصيص.': {
     AppLanguage.arabic: 'لا توجد عناصر قابلة لهذا التخصيص.',
-    AppLanguage.french: 'Aucun élément ne peut recevoir cette personnalisation.',
+    AppLanguage.french:
+        'Aucun élément ne peut recevoir cette personnalisation.',
     AppLanguage.english: 'No items can receive this customisation.',
   },
   'تغيير لون عناصر الطلبية': {
@@ -295,8 +296,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'مثال: رئيس ورشة، عامل متقدم، مبتدئ...': {
     AppLanguage.arabic: 'مثال: رئيس ورشة، عامل متقدم، مبتدئ...',
-    AppLanguage.french: 'Exemple : chef d’atelier, ouvrier confirmé, débutant...',
-    AppLanguage.english: 'Example: workshop manager, senior worker, beginner...',
+    AppLanguage.french:
+        'Exemple : chef d’atelier, ouvrier confirmé, débutant...',
+    AppLanguage.english:
+        'Example: workshop manager, senior worker, beginner...',
   },
   'ملف ومعلومات الورشة': {
     AppLanguage.arabic: 'ملف ومعلومات الورشة',
@@ -364,9 +367,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Example: 1 or 2 for the plinth profile',
   },
   'الافتراضي: المتر الخطي للإطار والظلفة والباتمو والتقسيمات فقط. باقي البروفيلات بسعرها الأساسي، والزجاج والبانو والإكسسوارات بأسعارها الخاصة.': {
-    AppLanguage.arabic: 'الافتراضي: المتر الخطي للإطار والظلفة والباتمو والتقسيمات فقط. باقي البروفيلات بسعرها الأساسي، والزجاج والبانو والإكسسوارات بأسعارها الخاصة.',
-    AppLanguage.french: 'Par défaut : le mètre linéaire uniquement pour le cadre, le vantail, le Batmo et les divisions. Les autres profilés utilisent leur prix de base ; le verre, le panneau et les accessoires gardent leurs prix propres.',
-    AppLanguage.english: 'Default: linear metre only for frame, sash, Batmo, and mullions. Other profiles use their base price; glass, panels, and accessories keep their own prices.',
+    AppLanguage.arabic:
+        'الافتراضي: المتر الخطي للإطار والظلفة والباتمو والتقسيمات فقط. باقي البروفيلات بسعرها الأساسي، والزجاج والبانو والإكسسوارات بأسعارها الخاصة.',
+    AppLanguage.french:
+        'Par défaut : le mètre linéaire uniquement pour le cadre, le vantail, le Batmo et les divisions. Les autres profilés utilisent leur prix de base ; le verre, le panneau et les accessoires gardent leurs prix propres.',
+    AppLanguage.english:
+        'Default: linear metre only for frame, sash, Batmo, and mullions. Other profiles use their base price; glass, panels, and accessories keep their own prices.',
   },
   'طريقة الحساب': {
     AppLanguage.arabic: 'طريقة الحساب',
@@ -495,7 +501,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'مزامنة واستيراد الكتالوج العالمي من السحابة': {
     AppLanguage.arabic: 'مزامنة واستيراد الكتالوج العالمي من السحابة',
-    AppLanguage.french: 'Synchroniser et importer le catalogue mondial depuis le cloud',
+    AppLanguage.french:
+        'Synchroniser et importer le catalogue mondial depuis le cloud',
     AppLanguage.english: 'Sync and import the global catalogue from the cloud',
   },
   'تاريخ...': {
@@ -540,17 +547,22 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'تمت الإضافة، يمكنك إدخال قياس آخر مباشرة': {
     AppLanguage.arabic: 'تمت الإضافة، يمكنك إدخال قياس آخر مباشرة',
-    AppLanguage.french: 'Ajouté, vous pouvez saisir directement une autre dimension',
+    AppLanguage.french:
+        'Ajouté, vous pouvez saisir directement une autre dimension',
     AppLanguage.english: 'Added. You can enter another size directly',
   },
   'أدخل فاقد المنشار والحد العام للفضلة بقيم أكبر من صفر.': {
-    AppLanguage.arabic: 'أدخل فاقد المنشار والحد العام للفضلة بقيم أكبر من صفر.',
-    AppLanguage.french: 'Saisissez une perte de scie et une limite générale des chutes supérieures à zéro.',
-    AppLanguage.english: 'Enter saw kerf and the general remnant limit as values greater than zero.',
+    AppLanguage.arabic:
+        'أدخل فاقد المنشار والحد العام للفضلة بقيم أكبر من صفر.',
+    AppLanguage.french:
+        'Saisissez une perte de scie et une limite générale des chutes supérieures à zéro.',
+    AppLanguage.english:
+        'Enter saw kerf and the general remnant limit as values greater than zero.',
   },
   'تم حفظ إعدادات القص والفضلات بنجاح': {
     AppLanguage.arabic: 'تم حفظ إعدادات القص والفضلات بنجاح',
-    AppLanguage.french: 'Les paramètres de coupe et de chutes ont été enregistrés.',
+    AppLanguage.french:
+        'Les paramètres de coupe et de chutes ont été enregistrés.',
     AppLanguage.english: 'Cutting and remnant settings saved successfully',
   },
   'إعدادات القص والفضلات': {
@@ -595,8 +607,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹': {
     AppLanguage.arabic: 'تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹',
-    AppLanguage.french: 'Toutes les données des installations ont été effacées et réinitialisées 🧹',
-    AppLanguage.english: 'All installation data was cleared and reset successfully 🧹',
+    AppLanguage.french:
+        'Toutes les données des installations ont été effacées et réinitialisées 🧹',
+    AppLanguage.english:
+        'All installation data was cleared and reset successfully 🧹',
   },
   'جاري إنشاء قائمة الشراء PDF الشاملة...': {
     AppLanguage.arabic: 'جاري إنشاء قائمة الشراء PDF الشاملة...',
@@ -605,8 +619,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'لا توجد نواقص لشرائها! جميع المواد متوفرة.': {
     AppLanguage.arabic: 'لا توجد نواقص لشرائها! جميع المواد متوفرة.',
-    AppLanguage.french: 'Aucun manque à acheter ! Tous les matériaux sont disponibles.',
-    AppLanguage.english: 'Nothing missing to purchase! All materials are available.',
+    AppLanguage.french:
+        'Aucun manque à acheter ! Tous les matériaux sont disponibles.',
+    AppLanguage.english:
+        'Nothing missing to purchase! All materials are available.',
   },
   'قائمة شراء النواقص الشاملة': {
     AppLanguage.arabic: 'قائمة شراء النواقص الشاملة',
@@ -650,8 +666,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'سعر تصنيع القطعة للعامل (د.ج) - اختياري': {
     AppLanguage.arabic: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
-    AppLanguage.french: 'Prix de fabrication par pièce pour l’ouvrier (DA) - facultatif',
-    AppLanguage.english: 'Worker manufacturing price per piece (DZD) - optional',
+    AppLanguage.french:
+        'Prix de fabrication par pièce pour l’ouvrier (DA) - facultatif',
+    AppLanguage.english:
+        'Worker manufacturing price per piece (DZD) - optional',
   },
   'اختر العامل': {
     AppLanguage.arabic: 'اختر العامل',
@@ -724,9 +742,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Copy RIP number',
   },
   'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...': {
-    AppLanguage.arabic: 'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...',
-    AppLanguage.french: 'Écrivez votre remarque, réclamation ou suggestion ici et nous vous répondrons directement...',
-    AppLanguage.english: 'Write your note, complaint, or suggestion here and we will follow up directly...',
+    AppLanguage.arabic:
+        'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...',
+    AppLanguage.french:
+        'Écrivez votre remarque, réclamation ou suggestion ici et nous vous répondrons directement...',
+    AppLanguage.english:
+        'Write your note, complaint, or suggestion here and we will follow up directly...',
   },
   'نوع العملية': {
     AppLanguage.arabic: 'نوع العملية',
@@ -770,7 +791,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'تحديث ومزامنة البيانات والمهام من السحابة': {
     AppLanguage.arabic: 'تحديث ومزامنة البيانات والمهام من السحابة',
-    AppLanguage.french: 'Mettre à jour et synchroniser les données et tâches depuis le cloud',
+    AppLanguage.french:
+        'Mettre à jour et synchroniser les données et tâches depuis le cloud',
     AppLanguage.english: 'Update and sync data and tasks from the cloud',
   },
   'براغي المحرك': {
@@ -834,9 +856,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Deadlock',
   },
   'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!': {
-    AppLanguage.arabic: 'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
-    AppLanguage.french: 'Sélectionnez au moins une gamme pour une portée propre à la gamme !',
-    AppLanguage.english: 'Select at least one series when choosing a series-specific scope!',
+    AppLanguage.arabic:
+        'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
+    AppLanguage.french:
+        'Sélectionnez au moins une gamme pour une portée propre à la gamme !',
+    AppLanguage.english:
+        'Select at least one series when choosing a series-specific scope!',
   },
   'اسم العائلة': {
     AppLanguage.arabic: 'اسم العائلة',
@@ -1016,7 +1041,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   'هذه الصفحة مبدئية للنقاش حول التفاصيل': {
     AppLanguage.arabic: 'هذه الصفحة مبدئية للنقاش حول التفاصيل',
     AppLanguage.french: 'Cette page est préliminaire pour discuter des détails',
-    AppLanguage.english: 'This page is a preliminary draft for discussing details',
+    AppLanguage.english:
+        'This page is a preliminary draft for discussing details',
   },
   'System Roling': {
     AppLanguage.arabic: 'نظام الستار',
@@ -1035,7 +1061,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'لا يوجد عمال مسجلين في ورشتك حالياً': {
     AppLanguage.arabic: 'لا يوجد عمال مسجلين في ورشتك حالياً',
-    AppLanguage.french: 'Aucun ouvrier n’est actuellement enregistré dans votre atelier',
+    AppLanguage.french:
+        'Aucun ouvrier n’est actuellement enregistré dans votre atelier',
     AppLanguage.english: 'No workers are currently registered in your workshop',
   },
   'تم تحديث العمال من Supabase بنجاح': {
@@ -1050,18 +1077,24 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.': {
     AppLanguage.arabic: 'تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.',
-    AppLanguage.french: 'Impossible d’enregistrer l’autorisation d’inventaire dans le cloud ; aucun changement.',
-    AppLanguage.english: 'Could not save inventory permission to the cloud; it was not changed.',
+    AppLanguage.french:
+        'Impossible d’enregistrer l’autorisation d’inventaire dans le cloud ; aucun changement.',
+    AppLanguage.english:
+        'Could not save inventory permission to the cloud; it was not changed.',
   },
   'تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.': {
     AppLanguage.arabic: 'تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.',
-    AppLanguage.french: 'Impossible d’enregistrer l’autorisation dans le cloud ; aucun changement.',
-    AppLanguage.english: 'Could not save the permission to the cloud; it was not changed.',
+    AppLanguage.french:
+        'Impossible d’enregistrer l’autorisation dans le cloud ; aucun changement.',
+    AppLanguage.english:
+        'Could not save the permission to the cloud; it was not changed.',
   },
   'تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.': {
     AppLanguage.arabic: 'تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.',
-    AppLanguage.french: 'Impossible d’enregistrer les autorisations dans le cloud ; aucun changement.',
-    AppLanguage.english: 'Could not save the permissions to the cloud; they were not changed.',
+    AppLanguage.french:
+        'Impossible d’enregistrer les autorisations dans le cloud ; aucun changement.',
+    AppLanguage.english:
+        'Could not save the permissions to the cloud; they were not changed.',
   },
   'رقم الهاتف (واتساب)': {
     AppLanguage.arabic: 'رقم الهاتف (واتساب)',
@@ -1091,7 +1124,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   'تم تسجيل العملية بنجاح وخصمها من الصندوق': {
     AppLanguage.arabic: 'تم تسجيل العملية بنجاح وخصمها من الصندوق',
     AppLanguage.french: 'Opération enregistrée et déduite de la caisse',
-    AppLanguage.english: 'Transaction recorded and deducted from the cash register',
+    AppLanguage.english:
+        'Transaction recorded and deducted from the cash register',
   },
   'تأكيد حذف العملية': {
     AppLanguage.arabic: 'تأكيد حذف العملية',
@@ -1101,7 +1135,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   'تم حذف العملية بنجاح وإعادة المبلغ للصندوق': {
     AppLanguage.arabic: 'تم حذف العملية بنجاح وإعادة المبلغ للصندوق',
     AppLanguage.french: 'Opération supprimée et montant remis en caisse',
-    AppLanguage.english: 'Transaction deleted and amount returned to the cash register',
+    AppLanguage.english:
+        'Transaction deleted and amount returned to the cash register',
   },
   'تم تعديل العملية بنجاح وتحديث الصندوق': {
     AppLanguage.arabic: 'تم تعديل العملية بنجاح وتحديث الصندوق',
@@ -1209,14 +1244,19 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'No saved role rules.',
   },
   'لا يمكن اعتماد الصرف قبل توفير كل النواقص. راجع تقرير النقص ثم سجّل الشراء أو الاستلام.': {
-    AppLanguage.arabic: 'لا يمكن اعتماد الصرف قبل توفير كل النواقص. راجع تقرير النقص ثم سجّل الشراء أو الاستلام.',
-    AppLanguage.french: 'La sortie ne peut pas être validée avant de couvrir tous les manquants. Consultez le rapport puis enregistrez l’achat ou la réception.',
-    AppLanguage.english: 'Issue cannot be approved until all shortages are covered. Review the shortage report, then record the purchase or receipt.',
+    AppLanguage.arabic:
+        'لا يمكن اعتماد الصرف قبل توفير كل النواقص. راجع تقرير النقص ثم سجّل الشراء أو الاستلام.',
+    AppLanguage.french:
+        'La sortie ne peut pas être validée avant de couvrir tous les manquants. Consultez le rapport puis enregistrez l’achat ou la réception.',
+    AppLanguage.english:
+        'Issue cannot be approved until all shortages are covered. Review the shortage report, then record the purchase or receipt.',
   },
   'لم تستعمل هذه السلسلة في طلبية مسجلة بعد.': {
     AppLanguage.arabic: 'لم تستعمل هذه السلسلة في طلبية مسجلة بعد.',
-    AppLanguage.french: 'Cette gamme n’a pas encore été utilisée dans une commande enregistrée.',
-    AppLanguage.english: 'This series has not yet been used in a recorded order.',
+    AppLanguage.french:
+        'Cette gamme n’a pas encore été utilisée dans une commande enregistrée.',
+    AppLanguage.english:
+        'This series has not yet been used in a recorded order.',
   },
   'ليس لديك صلاحية الوصول إلى هذا التقرير.': {
     AppLanguage.arabic: 'ليس لديك صلاحية الوصول إلى هذا التقرير.',
@@ -1234,9 +1274,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Linked to profile',
   },
   'هذه قيمة الطلبات الإجمالية وليست الربح الصافي للسلسلة.': {
-    AppLanguage.arabic: 'هذه قيمة الطلبات الإجمالية وليست الربح الصافي للسلسلة.',
-    AppLanguage.french: 'Il s’agit de la valeur totale des commandes, pas du bénéfice net de la gamme.',
-    AppLanguage.english: 'This is the total order value, not the series net profit.',
+    AppLanguage.arabic:
+        'هذه قيمة الطلبات الإجمالية وليست الربح الصافي للسلسلة.',
+    AppLanguage.french:
+        'Il s’agit de la valeur totale des commandes, pas du bénéfice net de la gamme.',
+    AppLanguage.english:
+        'This is the total order value, not the series net profit.',
   },
   'نوع موجود': {
     AppLanguage.arabic: 'نوع موجود',
@@ -1254,9 +1297,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Accessory',
   },
   'أدخل تعديل العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (العرض الداخلي − القيمة) ÷ عدد الضلفات. الرقم الموجب يطرح، والرقم السالب يضيف، والصفر يستعمل الحساب القديم.': {
-    AppLanguage.arabic: 'أدخل تعديل العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (العرض الداخلي − القيمة) ÷ عدد الضلفات. الرقم الموجب يطرح، والرقم السالب يضيف، والصفر يستعمل الحساب القديم.',
-    AppLanguage.french: 'Saisissez la correction de largeur de cette gamme pour deux, trois ou quatre vantaux. Largeur du vantail = (largeur intérieure − valeur) ÷ nombre de vantaux. Une valeur positive est soustraite, une valeur négative est ajoutée et zéro conserve l’ancien calcul.',
-    AppLanguage.english: 'Enter this series’ width adjustment for two, three, or four sashes. Sash width = (inner width − value) ÷ number of sashes. A positive value is subtracted, a negative value is added, and zero keeps the old calculation.',
+    AppLanguage.arabic:
+        'أدخل تعديل العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (العرض الداخلي − القيمة) ÷ عدد الضلفات. الرقم الموجب يطرح، والرقم السالب يضيف، والصفر يستعمل الحساب القديم.',
+    AppLanguage.french:
+        'Saisissez la correction de largeur de cette gamme pour deux, trois ou quatre vantaux. Largeur du vantail = (largeur intérieure − valeur) ÷ nombre de vantaux. Une valeur positive est soustraite, une valeur négative est ajoutée et zéro conserve l’ancien calcul.',
+    AppLanguage.english:
+        'Enter this series’ width adjustment for two, three, or four sashes. Sash width = (inner width − value) ÷ number of sashes. A positive value is subtracted, a negative value is added, and zero keeps the old calculation.',
   },
   'تعذر تحميل الورش من Supabase:': {
     AppLanguage.arabic: 'تعذر تحميل الورش من Supabase:',
@@ -1269,8 +1315,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'users',
   },
   'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.': {
-    AppLanguage.arabic: 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.',
-    AppLanguage.french: 'Le lien de réinitialisation a été envoyé. Consultez votre boîte de réception.',
+    AppLanguage.arabic:
+        'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.',
+    AppLanguage.french:
+        'Le lien de réinitialisation a été envoyé. Consultez votre boîte de réception.',
     AppLanguage.english: 'The password reset link was sent. Check your inbox.',
   },
   'نظام إدارة وتسيير ورش الألمنيوم الذكي': {
@@ -1289,9 +1337,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Create new account',
   },
   '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.': {
-    AppLanguage.arabic: '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
-    AppLanguage.french: '⚠️ Il est préférable de vous inscrire avec un vrai e-mail pour récupérer votre mot de passe.',
-    AppLanguage.english: '⚠️ Use a real email when registering so you can recover your password.',
+    AppLanguage.arabic:
+        '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
+    AppLanguage.french:
+        '⚠️ Il est préférable de vous inscrire avec un vrai e-mail pour récupérer votre mot de passe.',
+    AppLanguage.english:
+        '⚠️ Use a real email when registering so you can recover your password.',
   },
   'نسيت كلمة المرور؟': {
     AppLanguage.arabic: 'نسيت كلمة المرور؟',
@@ -1379,14 +1430,20 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Sorry, your trial period has ended!',
   },
   'للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.': {
-    AppLanguage.arabic: 'للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.',
-    AppLanguage.french: 'Pour continuer à utiliser le système et accéder à vos données, activez l’abonnement en contactant l’administration.',
-    AppLanguage.english: 'To keep using the system and access your data, activate the subscription by contacting administration.',
+    AppLanguage.arabic:
+        'للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.',
+    AppLanguage.french:
+        'Pour continuer à utiliser le système et accéder à vos données, activez l’abonnement en contactant l’administration.',
+    AppLanguage.english:
+        'To keep using the system and access your data, activate the subscription by contacting administration.',
   },
   'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.': {
-    AppLanguage.arabic: 'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.',
-    AppLanguage.french: 'Pour renouveler, payez via BaridiMob puis envoyez le reçu par WhatsApp.',
-    AppLanguage.english: 'To renew, pay via BaridiMob and send the receipt through WhatsApp.',
+    AppLanguage.arabic:
+        'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.',
+    AppLanguage.french:
+        'Pour renouveler, payez via BaridiMob puis envoyez le reçu par WhatsApp.',
+    AppLanguage.english:
+        'To renew, pay via BaridiMob and send the receipt through WhatsApp.',
   },
   'معلومات الدفع (BaridiMob)': {
     AppLanguage.arabic: 'معلومات الدفع (BaridiMob)',
@@ -1415,7 +1472,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   },
   'اكتب ملاحظتك أو شكواك للإدارة:': {
     AppLanguage.arabic: 'اكتب ملاحظتك أو شكواك للإدارة:',
-    AppLanguage.french: 'Écrivez votre remarque ou réclamation à l’administration :',
+    AppLanguage.french:
+        'Écrivez votre remarque ou réclamation à l’administration :',
     AppLanguage.english: 'Write your note or complaint to administration:',
   },
   'جاري الإرسال...': {
@@ -1449,9 +1507,12 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'The account is not linked to a workshop',
   },
   'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.': {
-    AppLanguage.arabic: 'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.',
-    AppLanguage.french: 'Terminez l’inscription ou demandez une invitation au responsable avant de vous connecter.',
-    AppLanguage.english: 'Complete registration or ask the workshop manager for an invitation before logging in.',
+    AppLanguage.arabic:
+        'أدخل كود الورشة أثناء إنشاء الحساب، أو اطلب دعوة من المدير.',
+    AppLanguage.french:
+        'Saisissez le code de l’atelier lors de l’inscription, ou demandez une invitation au responsable.',
+    AppLanguage.english:
+        'Enter the workshop code during registration, or ask the manager for an invitation.',
   },
   'تم إيقاف حسابك': {
     AppLanguage.arabic: 'تم إيقاف حسابك',
@@ -1461,11 +1522,13 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
   'تم منعك من الدخول إلى هذه الورشة من قبل المدير.': {
     AppLanguage.arabic: 'تم منعك من الدخول إلى هذه الورشة من قبل المدير.',
     AppLanguage.french: 'Le responsable vous a interdit l’accès à cet atelier.',
-    AppLanguage.english: 'The manager has blocked your access to this workshop.',
+    AppLanguage.english:
+        'The manager has blocked your access to this workshop.',
   },
   'مراسلة الإدارة وتقديم شكوى / ملاحظة:': {
     AppLanguage.arabic: 'مراسلة الإدارة وتقديم شكوى / ملاحظة:',
-    AppLanguage.french: 'Contacter l’administration et envoyer une remarque / réclamation :',
+    AppLanguage.french:
+        'Contacter l’administration et envoyer une remarque / réclamation :',
     AppLanguage.english: 'Contact administration with a complaint / note:',
   },
   'تقييم التطبيق:': {
@@ -1478,111 +1541,726 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.french: 'Remarque ou réclamation :',
     AppLanguage.english: 'Note or complaint:',
   },
-  'أحمر': {AppLanguage.arabic: 'أحمر', AppLanguage.french: 'Rouge', AppLanguage.english: 'Red'},
-  'مم': {AppLanguage.arabic: 'مم', AppLanguage.french: 'mm', AppLanguage.english: 'mm'},
-  'ث': {AppLanguage.arabic: 'ث', AppLanguage.french: 's', AppLanguage.english: 's'},
-  'تلقائي:': {AppLanguage.arabic: 'تلقائي:', AppLanguage.french: 'Automatique :', AppLanguage.english: 'Automatic:'},
-  'خيارات المحرك:': {AppLanguage.arabic: 'خيارات المحرك:', AppLanguage.french: 'Options du moteur :', AppLanguage.english: 'Motor options:'},
-  'مسح الرسم': {AppLanguage.arabic: 'مسح الرسم', AppLanguage.french: 'Effacer le dessin', AppLanguage.english: 'Clear drawing'},
-  'نوع المنطقة:': {AppLanguage.arabic: 'نوع المنطقة:', AppLanguage.french: 'Type de zone :', AppLanguage.english: 'Area type:'},
-  'تطبيق:': {AppLanguage.arabic: 'تطبيق:', AppLanguage.french: 'Appliquer :', AppLanguage.english: 'Apply:'},
-  'حفظ التعديلات': {AppLanguage.arabic: 'حفظ التعديلات', AppLanguage.french: 'Enregistrer les modifications', AppLanguage.english: 'Save changes'},
-  'الاسم': {AppLanguage.arabic: 'الاسم', AppLanguage.french: 'Nom', AppLanguage.english: 'Name'},
-  'الطول (ملم)': {AppLanguage.arabic: 'الطول (ملم)', AppLanguage.french: 'Longueur (mm)', AppLanguage.english: 'Length (mm)'},
-  'العرض (ملم)': {AppLanguage.arabic: 'العرض (ملم)', AppLanguage.french: 'Largeur (mm)', AppLanguage.english: 'Width (mm)'},
-  'العدد': {AppLanguage.arabic: 'العدد', AppLanguage.french: 'Quantité', AppLanguage.english: 'Quantity'},
-  'اتجاه شرائح البارداج:': {AppLanguage.arabic: 'اتجاه شرائح البارداج:', AppLanguage.french: 'Orientation des lames de bardage :', AppLanguage.english: 'Cladding slat direction:'},
-  'تم تعميم نوع البانو/الزجاج على جميع المناطق': {AppLanguage.arabic: 'تم تعميم نوع البانو/الزجاج على جميع المناطق', AppLanguage.french: 'Le type de panneau/verre a été appliqué à toutes les zones', AppLanguage.english: 'Panel/glass type applied to all areas'},
-  'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)': {AppLanguage.arabic: 'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)', AppLanguage.french: 'Mode de correction de l’inclinaison et de la courbure activé (faites glisser les poignées rondes supérieures)', AppLanguage.english: 'Frame tilt and curve editing mode enabled (drag the top round handles)'},
-  'لون الزجاج (ستوبسول):': {AppLanguage.arabic: 'لون الزجاج (ستوبسول):', AppLanguage.french: 'Couleur du verre (Stopsol) :', AppLanguage.english: 'Glass colour (Stopsol):'},
-  'وضع جوان الزجاج:': {AppLanguage.arabic: 'وضع جوان الزجاج:', AppLanguage.french: 'Mode du joint de vitrage :', AppLanguage.english: 'Glass gasket mode:'},
-  'لون البانو:': {AppLanguage.arabic: 'لون البانو:', AppLanguage.french: 'Couleur du panneau :', AppLanguage.english: 'Panel colour:'},
-  'لون البارداج:': {AppLanguage.arabic: 'لون البارداج:', AppLanguage.french: 'Couleur du bardage :', AppLanguage.english: 'Cladding colour:'},
-  'لون الجدار': {AppLanguage.arabic: 'لون الجدار', AppLanguage.french: 'Couleur du mur', AppLanguage.english: 'Wall colour'},
-  'مظهر القسم المحدد:': {AppLanguage.arabic: 'مظهر القسم المحدد:', AppLanguage.french: 'Aspect du profilé sélectionné :', AppLanguage.english: 'Selected profile appearance:'},
-  'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟': {AppLanguage.arabic: 'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟', AppLanguage.french: 'Voulez-vous vraiment effacer tout le dessin et recommencer ?', AppLanguage.english: 'Are you sure you want to clear the entire drawing and start over?'},
-  'يُحسب بالمتر الطولي كبروفيل': {AppLanguage.arabic: 'يُحسب بالمتر الطولي كبروفيل', AppLanguage.french: 'Calculé au mètre linéaire comme profilé', AppLanguage.english: 'Calculated by linear metre as a profile'},
-  'يحتوي على غاز (Gas)': {AppLanguage.arabic: 'يحتوي على غاز (Gas)', AppLanguage.french: 'Avec gaz', AppLanguage.english: 'Contains gas'},
-  'لا توجد ألوان مضافة لهذه السلسلة.': {AppLanguage.arabic: 'لا توجد ألوان مضافة لهذه السلسلة.', AppLanguage.french: 'Aucune couleur ajoutée à cette gamme.', AppLanguage.english: 'No colours have been added to this series.'},
-  'لا توجد إطارات متوفرة لهذه السلسلة': {AppLanguage.arabic: 'لا توجد إطارات متوفرة لهذه السلسلة', AppLanguage.french: 'Aucun cadre disponible pour cette gamme', AppLanguage.english: 'No frames available for this series'},
-  'لا توجد شفرات في قاعدة البيانات': {AppLanguage.arabic: 'لا توجد شفرات في قاعدة البيانات', AppLanguage.french: 'Aucune lame dans la base de données', AppLanguage.english: 'No blades in the database'},
-  'لا توجد صناديق في قاعدة البيانات': {AppLanguage.arabic: 'لا توجد صناديق في قاعدة البيانات', AppLanguage.french: 'Aucun caisson dans la base de données', AppLanguage.english: 'No boxes in the database'},
-  'متساويين (50%)': {AppLanguage.arabic: 'متساويين (50%)', AppLanguage.french: 'Égaux (50 %)', AppLanguage.english: 'Equal (50%)'},
-  'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)': {AppLanguage.arabic: 'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)', AppLanguage.french: 'Proportion de division du vantail (un vantail plus grand)', AppLanguage.english: 'Sash split ratio (one sash larger)'},
-  'رسم ومقاس البانو ديكور:': {AppLanguage.arabic: 'رسم ومقاس البانو ديكور:', AppLanguage.french: 'Dessin et dimensions du panneau décoratif :', AppLanguage.english: 'Decorative panel drawing and size:'},
-  'لا يوجد بانو ديكور في منتجات الزجاج.': {AppLanguage.arabic: 'لا يوجد بانو ديكور في منتجات الزجاج.', AppLanguage.french: 'Aucun panneau décoratif dans les produits verriers.', AppLanguage.english: 'No decorative panel in glass products.'},
-  'نوع الوردة:': {AppLanguage.arabic: 'نوع الوردة:', AppLanguage.french: 'Type de rosace :', AppLanguage.english: 'Rosette type:'},
-  'شكل 1 (نجمة)': {AppLanguage.arabic: 'شكل 1 (نجمة)', AppLanguage.french: 'Forme 1 (étoile)', AppLanguage.english: 'Shape 1 (star)'},
-  'شكل 2 (منحني)': {AppLanguage.arabic: 'شكل 2 (منحني)', AppLanguage.french: 'Forme 2 (courbe)', AppLanguage.english: 'Shape 2 (curved)'},
-  'شكل 3 (باروكي)': {AppLanguage.arabic: 'شكل 3 (باروكي)', AppLanguage.french: 'Forme 3 (baroque)', AppLanguage.english: 'Shape 3 (baroque)'},
-  'شكل 4 (معين مصمت)': {AppLanguage.arabic: 'شكل 4 (معين مصمت)', AppLanguage.french: 'Forme 4 (losange plein)', AppLanguage.english: 'Shape 4 (solid diamond)'},
-  'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.': {AppLanguage.arabic: 'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.', AppLanguage.french: 'Aucun couvre-joint adapté à l’épaisseur des deux vitrages. Choisissez d’abord un couvre-joint double compatible.', AppLanguage.english: 'No side cover matches the selected glass thickness. Choose a compatible double side cover first.'},
-  'لا يمكن التغيير إلى جهتين لأن سمك الزجاج الحالي يتجاوز 20 مم. يرجى تقليل سمك الزجاج أو الفاصل أولاً.': {AppLanguage.arabic: 'لا يمكن التغيير إلى جهتين لأن سمك الزجاج الحالي يتجاوز 20 مم. يرجى تقليل سمك الزجاج أو الفاصل أولاً.', AppLanguage.french: 'Impossible de passer à deux côtés car l’épaisseur du vitrage dépasse 20 mm. Réduisez d’abord le verre ou l’intercalaire.', AppLanguage.english: 'Cannot switch to two sides because the current glass is thicker than 20 mm. Reduce the glass or spacer thickness first.'},
-  'الإطار المختار لا يسمح بتركيب الكوفرجوا.': {AppLanguage.arabic: 'الإطار المختار لا يسمح بتركيب الكوفرجوا.', AppLanguage.french: 'Le cadre choisi n’autorise pas le couvre-joint.', AppLanguage.english: 'The selected frame does not allow the side cover.'},
-  'الرجاء تحديد عامود من الرسم بالضغط عليه لتعديله': {AppLanguage.arabic: 'الرجاء تحديد عامود من الرسم بالضغط عليه لتعديله', AppLanguage.french: 'Sélectionnez une colonne du dessin en cliquant dessus pour la modifier', AppLanguage.english: 'Select a drawing column by clicking it to edit it'},
-  'جهتان = جوانان ساقيان   |   جهة واحدة = جوان واحد': {AppLanguage.arabic: 'جهتان = جوانان ساقيان   |   جهة واحدة = جوان واحد', AppLanguage.french: 'Deux côtés = deux joints latéraux   |   Un côté = un joint', AppLanguage.english: 'Two sides = two side gaskets   |   One side = one gasket'},
-  'رمادي 9007': {AppLanguage.arabic: 'رمادي 9007', AppLanguage.french: 'Gris 9007', AppLanguage.english: 'Grey 9007'},
-  'شكل الوردة:': {AppLanguage.arabic: 'شكل الوردة:', AppLanguage.french: 'Forme de la rosace :', AppLanguage.english: 'Rosette shape:'},
-  'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.': {AppLanguage.arabic: 'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.', AppLanguage.french: 'Aucune baguette décorative dans la base de données. Ajoutez-la d’abord.', AppLanguage.english: 'No decorative bead in the database. Add it first.'},
-  'مقاس وسماكة البارداج:': {AppLanguage.arabic: 'مقاس وسماكة البارداج:', AppLanguage.french: 'Dimensions et épaisseur du bardage :', AppLanguage.english: 'Cladding size and thickness:'},
-  'نوع المنطقة': {AppLanguage.arabic: 'نوع المنطقة', AppLanguage.french: 'Type de zone', AppLanguage.english: 'Area type'},
-  'يرجى إدخال قياس صحيح بالمليمتر': {AppLanguage.arabic: 'يرجى إدخال قياس صحيح بالمليمتر', AppLanguage.french: 'Veuillez saisir une dimension valide en millimètres', AppLanguage.english: 'Enter a valid measurement in millimetres'},
-  'إنشاء ورشة (مدير)': {AppLanguage.arabic: 'إنشاء ورشة (مدير)', AppLanguage.french: 'Créer un atelier (gérant)', AppLanguage.english: 'Create a workshop (manager)'},
-  'الانضمام إلى ورشة موجودة': {AppLanguage.arabic: 'الانضمام إلى ورشة موجودة', AppLanguage.french: 'Rejoindre un atelier existant', AppLanguage.english: 'Join an existing workshop'},
-  'الدخول باستخدام Google': {AppLanguage.arabic: 'الدخول باستخدام Google', AppLanguage.french: 'Se connecter avec Google', AppLanguage.english: 'Sign in with Google'},
-  'التسجيل باستخدام Google': {AppLanguage.arabic: 'التسجيل باستخدام Google', AppLanguage.french: 'S’inscrire avec Google', AppLanguage.english: 'Sign up with Google'},
-  'ليس لديك حساب؟ إنشاء حساب جديد': {AppLanguage.arabic: 'ليس لديك حساب؟ إنشاء حساب جديد', AppLanguage.french: 'Vous n’avez pas de compte ? Créer un compte', AppLanguage.english: 'Don’t have an account? Create one'},
-  'لديك حساب بالفعل؟ تسجيل الدخول': {AppLanguage.arabic: 'لديك حساب بالفعل؟ تسجيل الدخول', AppLanguage.french: 'Vous avez déjà un compte ? Se connecter', AppLanguage.english: 'Already have an account? Sign in'},
-  'الكل (بدون فلتر)': {AppLanguage.arabic: 'الكل (بدون فلتر)', AppLanguage.french: 'Tous (sans filtre)', AppLanguage.english: 'All (no filter)'},
-  'يساوي الصفر ({symbol})': {AppLanguage.arabic: 'يساوي الصفر ({symbol})', AppLanguage.french: 'Égal à zéro ({symbol})', AppLanguage.english: 'Equals zero ({symbol})'},
-  'لا يساوي الصفر ({symbol})': {AppLanguage.arabic: 'لا يساوي الصفر ({symbol})', AppLanguage.french: 'Différent de zéro ({symbol})', AppLanguage.english: 'Not equal to zero ({symbol})'},
-  'أكبر تماماً من الصفر ({symbol})': {AppLanguage.arabic: 'أكبر تماماً من الصفر ({symbol})', AppLanguage.french: 'Strictement supérieur à zéro ({symbol})', AppLanguage.english: 'Strictly greater than zero ({symbol})'},
-  'أصغر تماماً من الصفر ({symbol})': {AppLanguage.arabic: 'أصغر تماماً من الصفر ({symbol})', AppLanguage.french: 'Strictement inférieur à zéro ({symbol})', AppLanguage.english: 'Strictly less than zero ({symbol})'},
-  'أكبر أو يساوي الصفر ({symbol})': {AppLanguage.arabic: 'أكبر أو يساوي الصفر ({symbol})', AppLanguage.french: 'Supérieur ou égal à zéro ({symbol})', AppLanguage.english: 'Greater than or equal to zero ({symbol})'},
-  'أصغر أو يساوي الصفر ({symbol})': {AppLanguage.arabic: 'أصغر أو يساوي الصفر ({symbol})', AppLanguage.french: 'Inférieur ou égal à zéro ({symbol})', AppLanguage.english: 'Less than or equal to zero ({symbol})'},
-  'يساوي القيمة ({symbol})': {AppLanguage.arabic: 'يساوي القيمة ({symbol})', AppLanguage.french: 'Égal à la valeur ({symbol})', AppLanguage.english: 'Equals value ({symbol})'},
-  'أكبر من القيمة ({symbol})': {AppLanguage.arabic: 'أكبر من القيمة ({symbol})', AppLanguage.french: 'Supérieur à la valeur ({symbol})', AppLanguage.english: 'Greater than value ({symbol})'},
-  'أصغر من القيمة ({symbol})': {AppLanguage.arabic: 'أصغر من القيمة ({symbol})', AppLanguage.french: 'Inférieur à la valeur ({symbol})', AppLanguage.english: 'Less than value ({symbol})'},
-  'أكبر أو يساوي القيمة ({symbol})': {AppLanguage.arabic: 'أكبر أو يساوي القيمة ({symbol})', AppLanguage.french: 'Supérieur ou égal à la valeur ({symbol})', AppLanguage.english: 'Greater than or equal to value ({symbol})'},
-  'أصغر أو يساوي القيمة ({symbol})': {AppLanguage.arabic: 'أصغر أو يساوي القيمة ({symbol})', AppLanguage.french: 'Inférieur ou égal à la valeur ({symbol})', AppLanguage.english: 'Less than or equal to value ({symbol})'},
-  'لا يساوي القيمة ({symbol})': {AppLanguage.arabic: 'لا يساوي القيمة ({symbol})', AppLanguage.french: 'Différent de la valeur ({symbol})', AppLanguage.english: 'Not equal to value ({symbol})'},
-  'تاريخ التعديل': {AppLanguage.arabic: 'تاريخ التعديل', AppLanguage.french: 'Date de modification', AppLanguage.english: 'Modified date'},
-  'عدّلها': {AppLanguage.arabic: 'عدّلها', AppLanguage.french: 'Modifiée par', AppLanguage.english: 'Modified by'},
-  'معدّل من طرف': {AppLanguage.arabic: 'معدّل من طرف', AppLanguage.french: 'Modifiée par', AppLanguage.english: 'Modified by'},
-  'اسم المعدّل...': {AppLanguage.arabic: 'اسم المعدّل...', AppLanguage.french: 'Nom du modificateur...', AppLanguage.english: 'Editor name...'},
-  'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.': {AppLanguage.arabic: 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.', AppLanguage.french: 'Identifiants incorrects. Vérifiez l’e-mail et le mot de passe.', AppLanguage.english: 'Incorrect sign-in details. Check your email and password.'},
-  'لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.': {AppLanguage.arabic: 'لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.', AppLanguage.french: 'Aucun compte trouvé avec cet e-mail. Créez un nouveau compte.', AppLanguage.english: 'No account was found for this email. Create a new account.'},
-  'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.': {AppLanguage.arabic: 'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.', AppLanguage.french: 'Cet e-mail est déjà enregistré. Essayez de vous connecter.', AppLanguage.english: 'This email is already registered. Try signing in.'},
-  'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.': {AppLanguage.arabic: 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.', AppLanguage.french: 'Compte créé. Confirmez votre e-mail puis connectez-vous.', AppLanguage.english: 'Account created. Confirm your email, then sign in.'},
-  'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.': {AppLanguage.arabic: 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.', AppLanguage.french: 'Mot de passe trop faible. Utilisez au moins 6 caractères.', AppLanguage.english: 'Password is too weak. Use at least 6 characters.'},
-  'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.': {AppLanguage.arabic: 'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.', AppLanguage.french: 'Adresse e-mail invalide. Saisissez-la correctement.', AppLanguage.english: 'Invalid email address. Enter it correctly.'},
-  'تم تعطيل هذا الحساب من قبل الإدارة.': {AppLanguage.arabic: 'تم تعطيل هذا الحساب من قبل الإدارة.', AppLanguage.french: 'Ce compte a été désactivé par l’administration.', AppLanguage.english: 'This account was disabled by the administrator.'},
-  'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.': {AppLanguage.arabic: 'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.', AppLanguage.french: 'Aucun compte trouvé avec cet e-mail. Vérifiez-le ou créez un compte.', AppLanguage.english: 'No account was found for this email. Check it or create an account.'},
-  'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.': {AppLanguage.arabic: 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.', AppLanguage.french: 'Mot de passe incorrect. Réessayez.', AppLanguage.english: 'Incorrect password. Try again.'},
-  'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.': {AppLanguage.arabic: 'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.', AppLanguage.french: 'La connexion par e-mail est désactivée dans Firebase Console. Activez Email/Password dans Authentication.', AppLanguage.english: 'Email sign-in is disabled in Firebase Console. Enable Email/Password in Authentication.'},
-  'لا يوجد اتصال بالإنترنت، يرجى التحقق من اتصال الشبكة.': {AppLanguage.arabic: 'لا يوجد اتصال بالإنترنت، يرجى التحقق من اتصال الشبكة.', AppLanguage.french: 'Aucune connexion Internet. Vérifiez le réseau.', AppLanguage.english: 'No internet connection. Check the network.'},
-  'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.': {AppLanguage.arabic: 'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.', AppLanguage.french: 'Trop de tentatives incorrectes. Attendez un moment puis réessayez.', AppLanguage.english: 'Too many failed attempts. Wait a moment and try again.'},
-  'خطأ في خادم الفايربيس (An internal error has occurred).\nالسبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.': {AppLanguage.arabic: 'خطأ في خادم الفايربيس (An internal error has occurred).\nالسبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.', AppLanguage.french: 'Erreur du serveur Firebase. Cause fréquente : mot de passe incorrect ou service Email/Password désactivé dans Firebase Console.', AppLanguage.english: 'Firebase server error. Common cause: incorrect password or Email/Password service disabled in Firebase Console.'},
-  'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.': {AppLanguage.arabic: 'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.', AppLanguage.french: 'Configuration d’authentification introuvable. Activez Email/Password dans Firebase Console.', AppLanguage.english: 'Authentication settings not found. Enable Email/Password in Firebase Console.'},
-  'حدث خطأ': {AppLanguage.arabic: 'حدث خطأ', AppLanguage.french: 'Une erreur est survenue', AppLanguage.english: 'An error occurred'},
-  'تم العثور على الحساب القديم، لكن لم تتم دعوته إلى الورشة بعد. يجب على المدير ترحيل الورشة أولاً.': {AppLanguage.arabic: 'تم العثور على الحساب القديم، لكن لم تتم دعوته إلى الورشة بعد. يجب على المدير ترحيل الورشة أولاً.', AppLanguage.french: 'Ancien compte trouvé, mais il n’a pas encore été invité à l’atelier. Le gérant doit d’abord migrer l’atelier.', AppLanguage.english: 'The old account was found, but it has not been invited to the workshop. The manager must migrate the workshop first.'},
-  'تم إنشاء حساب Supabase، لكن تعذر إنشاء عضوية الورشة القديمة.': {AppLanguage.arabic: 'تم إنشاء حساب Supabase، لكن تعذر إنشاء عضوية الورشة القديمة.', AppLanguage.french: 'Le compte Supabase a été créé, mais l’ancienne adhésion à l’atelier n’a pas pu être créée.', AppLanguage.english: 'The Supabase account was created, but the old workshop membership could not be created.'},
-  'لم يتم ربط الحساب بورشة في Supabase بعد.': {AppLanguage.arabic: 'لم يتم ربط الحساب بورشة في Supabase بعد.', AppLanguage.french: 'Ce compte n’est pas encore associé à un atelier dans Supabase.', AppLanguage.english: 'This account is not linked to a workshop in Supabase yet.'},
-  'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.': {AppLanguage.arabic: 'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.', AppLanguage.french: 'Désolé, ce compte a été désactivé par le gérant de l’atelier.', AppLanguage.english: 'Sorry, this account was disabled by the workshop manager.'},
-  'يرجى إدخال اسم المصنع أو الورشة.': {AppLanguage.arabic: 'يرجى إدخال اسم المصنع أو الورشة.', AppLanguage.french: 'Saisissez le nom de l’usine ou de l’atelier.', AppLanguage.english: 'Enter the factory or workshop name.'},
-  'يرجى إدخال كود الورشة.': {AppLanguage.arabic: 'يرجى إدخال كود الورشة.', AppLanguage.french: 'Saisissez le code de l’atelier.', AppLanguage.english: 'Enter the workshop code.'},
-  'كلمتا المرور غير متطابقتين. يرجى التأكد.': {AppLanguage.arabic: 'كلمتا المرور غير متطابقتين. يرجى التأكد.', AppLanguage.french: 'Les mots de passe ne correspondent pas. Vérifiez-les.', AppLanguage.english: 'The passwords do not match. Check them.'},
-  'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.': {AppLanguage.arabic: 'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.', AppLanguage.french: 'Impossible d’associer le compte à l’atelier. Vérifiez le code ou l’invitation du gérant.', AppLanguage.english: 'Could not link the account to the workshop. Check the code or the manager’s invitation.'},
-  'تم إنشاء الحساب، لكن لم يتم إنشاء عضوية الورشة.': {AppLanguage.arabic: 'تم إنشاء الحساب، لكن لم يتم إنشاء عضوية الورشة.', AppLanguage.french: 'Le compte a été créé, mais l’adhésion à l’atelier ne l’a pas été.', AppLanguage.english: 'The account was created, but the workshop membership was not.'},
-  'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.': {AppLanguage.arabic: 'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.', AppLanguage.french: 'Ce nom d’atelier est déjà utilisé. Choisissez un autre nom unique.', AppLanguage.english: 'This workshop name is already taken. Choose another unique name.'},
-  'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.': {AppLanguage.arabic: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.', AppLanguage.french: 'Cet e-mail est déjà enregistré. Connectez-vous.', AppLanguage.english: 'This email is already registered. Go to sign in.'},
-  'هذا الحساب موجود مسبقاً، ولكن كلمة المرور غير صحيحة لتفعيله من جديد.': {AppLanguage.arabic: 'هذا الحساب موجود مسبقاً، ولكن كلمة المرور غير صحيحة لتفعيله من جديد.', AppLanguage.french: 'Ce compte existe déjà, mais le mot de passe est incorrect pour le réactiver.', AppLanguage.english: 'This account already exists, but the password is incorrect for reactivation.'},
-  'حدث خطأ في التسجيل': {AppLanguage.arabic: 'حدث خطأ في التسجيل', AppLanguage.french: 'Une erreur est survenue lors de l’inscription', AppLanguage.english: 'An error occurred during registration'},
-  'كود الورشة غير صحيح أو الورشة غير موجودة.': {AppLanguage.arabic: 'كود الورشة غير صحيح أو الورشة غير موجودة.', AppLanguage.french: 'Le code de l’atelier est incorrect ou l’atelier est introuvable.', AppLanguage.english: 'The workshop code is invalid or the workshop does not exist.'},
-  'تعذر إنشاء كود الورشة.': {AppLanguage.arabic: 'تعذر إنشاء كود الورشة.', AppLanguage.french: 'Impossible de créer le code de l’atelier.', AppLanguage.english: 'Could not create the workshop code.'},
-  'تعذر ربط الحساب بالورشة في Supabase.': {AppLanguage.arabic: 'تعذر ربط الحساب بالورشة في Supabase.', AppLanguage.french: 'Impossible d’associer le compte à l’atelier dans Supabase.', AppLanguage.english: 'Could not link the account to the workshop in Supabase.'},
-  'لم يتم الحصول على رمز Google صالح.': {AppLanguage.arabic: 'لم يتم الحصول على رمز Google صالح.', AppLanguage.french: 'Impossible d’obtenir un jeton Google valide.', AppLanguage.english: 'A valid Google token could not be obtained.'},
-  'لم يتم العثور على حساب مرتبط بورشة. يجب ترحيل الورشة القديمة أولاً.': {AppLanguage.arabic: 'لم يتم العثور على حساب مرتبط بورشة. يجب ترحيل الورشة القديمة أولاً.', AppLanguage.french: 'Aucun compte associé à un atelier. Migrez d’abord l’ancien atelier.', AppLanguage.english: 'No account linked to a workshop was found. Migrate the old workshop first.'},
-  'هذا البريد الإلكتروني مسجل بالفعل. توجه إلى تسجيل الدخول.': {AppLanguage.arabic: 'هذا البريد الإلكتروني مسجل بالفعل. توجه إلى تسجيل الدخول.', AppLanguage.french: 'Cet e-mail est déjà enregistré. Accédez à la connexion.', AppLanguage.english: 'This email is already registered. Go to sign in.'},
-  'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.': {AppLanguage.arabic: 'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.', AppLanguage.french: 'Authentification réussie, mais l’adhésion à l’atelier n’a pas été créée.', AppLanguage.english: 'Authentication succeeded, but the workshop membership was not created.'},
+  'أحمر': {
+    AppLanguage.arabic: 'أحمر',
+    AppLanguage.french: 'Rouge',
+    AppLanguage.english: 'Red',
+  },
+  'مم': {
+    AppLanguage.arabic: 'مم',
+    AppLanguage.french: 'mm',
+    AppLanguage.english: 'mm',
+  },
+  'ث': {
+    AppLanguage.arabic: 'ث',
+    AppLanguage.french: 's',
+    AppLanguage.english: 's',
+  },
+  'تلقائي:': {
+    AppLanguage.arabic: 'تلقائي:',
+    AppLanguage.french: 'Automatique :',
+    AppLanguage.english: 'Automatic:',
+  },
+  'خيارات المحرك:': {
+    AppLanguage.arabic: 'خيارات المحرك:',
+    AppLanguage.french: 'Options du moteur :',
+    AppLanguage.english: 'Motor options:',
+  },
+  'مسح الرسم': {
+    AppLanguage.arabic: 'مسح الرسم',
+    AppLanguage.french: 'Effacer le dessin',
+    AppLanguage.english: 'Clear drawing',
+  },
+  'نوع المنطقة:': {
+    AppLanguage.arabic: 'نوع المنطقة:',
+    AppLanguage.french: 'Type de zone :',
+    AppLanguage.english: 'Area type:',
+  },
+  'تطبيق:': {
+    AppLanguage.arabic: 'تطبيق:',
+    AppLanguage.french: 'Appliquer :',
+    AppLanguage.english: 'Apply:',
+  },
+  'حفظ التعديلات': {
+    AppLanguage.arabic: 'حفظ التعديلات',
+    AppLanguage.french: 'Enregistrer les modifications',
+    AppLanguage.english: 'Save changes',
+  },
+  'الاسم': {
+    AppLanguage.arabic: 'الاسم',
+    AppLanguage.french: 'Nom',
+    AppLanguage.english: 'Name',
+  },
+  'الطول (ملم)': {
+    AppLanguage.arabic: 'الطول (ملم)',
+    AppLanguage.french: 'Longueur (mm)',
+    AppLanguage.english: 'Length (mm)',
+  },
+  'العرض (ملم)': {
+    AppLanguage.arabic: 'العرض (ملم)',
+    AppLanguage.french: 'Largeur (mm)',
+    AppLanguage.english: 'Width (mm)',
+  },
+  'العدد': {
+    AppLanguage.arabic: 'العدد',
+    AppLanguage.french: 'Quantité',
+    AppLanguage.english: 'Quantity',
+  },
+  'اتجاه شرائح البارداج:': {
+    AppLanguage.arabic: 'اتجاه شرائح البارداج:',
+    AppLanguage.french: 'Orientation des lames de bardage :',
+    AppLanguage.english: 'Cladding slat direction:',
+  },
+  'تم تعميم نوع البانو/الزجاج على جميع المناطق': {
+    AppLanguage.arabic: 'تم تعميم نوع البانو/الزجاج على جميع المناطق',
+    AppLanguage.french:
+        'Le type de panneau/verre a été appliqué à toutes les zones',
+    AppLanguage.english: 'Panel/glass type applied to all areas',
+  },
+  'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)': {
+    AppLanguage.arabic:
+        'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)',
+    AppLanguage.french:
+        'Mode de correction de l’inclinaison et de la courbure activé (faites glisser les poignées rondes supérieures)',
+    AppLanguage.english:
+        'Frame tilt and curve editing mode enabled (drag the top round handles)',
+  },
+  'لون الزجاج (ستوبسول):': {
+    AppLanguage.arabic: 'لون الزجاج (ستوبسول):',
+    AppLanguage.french: 'Couleur du verre (Stopsol) :',
+    AppLanguage.english: 'Glass colour (Stopsol):',
+  },
+  'وضع جوان الزجاج:': {
+    AppLanguage.arabic: 'وضع جوان الزجاج:',
+    AppLanguage.french: 'Mode du joint de vitrage :',
+    AppLanguage.english: 'Glass gasket mode:',
+  },
+  'لون البانو:': {
+    AppLanguage.arabic: 'لون البانو:',
+    AppLanguage.french: 'Couleur du panneau :',
+    AppLanguage.english: 'Panel colour:',
+  },
+  'لون البارداج:': {
+    AppLanguage.arabic: 'لون البارداج:',
+    AppLanguage.french: 'Couleur du bardage :',
+    AppLanguage.english: 'Cladding colour:',
+  },
+  'لون الجدار': {
+    AppLanguage.arabic: 'لون الجدار',
+    AppLanguage.french: 'Couleur du mur',
+    AppLanguage.english: 'Wall colour',
+  },
+  'مظهر القسم المحدد:': {
+    AppLanguage.arabic: 'مظهر القسم المحدد:',
+    AppLanguage.french: 'Aspect du profilé sélectionné :',
+    AppLanguage.english: 'Selected profile appearance:',
+  },
+  'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟': {
+    AppLanguage.arabic:
+        'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟',
+    AppLanguage.french:
+        'Voulez-vous vraiment effacer tout le dessin et recommencer ?',
+    AppLanguage.english:
+        'Are you sure you want to clear the entire drawing and start over?',
+  },
+  'يُحسب بالمتر الطولي كبروفيل': {
+    AppLanguage.arabic: 'يُحسب بالمتر الطولي كبروفيل',
+    AppLanguage.french: 'Calculé au mètre linéaire comme profilé',
+    AppLanguage.english: 'Calculated by linear metre as a profile',
+  },
+  'يحتوي على غاز (Gas)': {
+    AppLanguage.arabic: 'يحتوي على غاز (Gas)',
+    AppLanguage.french: 'Avec gaz',
+    AppLanguage.english: 'Contains gas',
+  },
+  'لا توجد ألوان مضافة لهذه السلسلة.': {
+    AppLanguage.arabic: 'لا توجد ألوان مضافة لهذه السلسلة.',
+    AppLanguage.french: 'Aucune couleur ajoutée à cette gamme.',
+    AppLanguage.english: 'No colours have been added to this series.',
+  },
+  'لا توجد إطارات متوفرة لهذه السلسلة': {
+    AppLanguage.arabic: 'لا توجد إطارات متوفرة لهذه السلسلة',
+    AppLanguage.french: 'Aucun cadre disponible pour cette gamme',
+    AppLanguage.english: 'No frames available for this series',
+  },
+  'لا توجد شفرات في قاعدة البيانات': {
+    AppLanguage.arabic: 'لا توجد شفرات في قاعدة البيانات',
+    AppLanguage.french: 'Aucune lame dans la base de données',
+    AppLanguage.english: 'No blades in the database',
+  },
+  'لا توجد صناديق في قاعدة البيانات': {
+    AppLanguage.arabic: 'لا توجد صناديق في قاعدة البيانات',
+    AppLanguage.french: 'Aucun caisson dans la base de données',
+    AppLanguage.english: 'No boxes in the database',
+  },
+  'متساويين (50%)': {
+    AppLanguage.arabic: 'متساويين (50%)',
+    AppLanguage.french: 'Égaux (50 %)',
+    AppLanguage.english: 'Equal (50%)',
+  },
+  'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)': {
+    AppLanguage.arabic: 'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)',
+    AppLanguage.french:
+        'Proportion de division du vantail (un vantail plus grand)',
+    AppLanguage.english: 'Sash split ratio (one sash larger)',
+  },
+  'رسم ومقاس البانو ديكور:': {
+    AppLanguage.arabic: 'رسم ومقاس البانو ديكور:',
+    AppLanguage.french: 'Dessin et dimensions du panneau décoratif :',
+    AppLanguage.english: 'Decorative panel drawing and size:',
+  },
+  'لا يوجد بانو ديكور في منتجات الزجاج.': {
+    AppLanguage.arabic: 'لا يوجد بانو ديكور في منتجات الزجاج.',
+    AppLanguage.french: 'Aucun panneau décoratif dans les produits verriers.',
+    AppLanguage.english: 'No decorative panel in glass products.',
+  },
+  'نوع الوردة:': {
+    AppLanguage.arabic: 'نوع الوردة:',
+    AppLanguage.french: 'Type de rosace :',
+    AppLanguage.english: 'Rosette type:',
+  },
+  'شكل 1 (نجمة)': {
+    AppLanguage.arabic: 'شكل 1 (نجمة)',
+    AppLanguage.french: 'Forme 1 (étoile)',
+    AppLanguage.english: 'Shape 1 (star)',
+  },
+  'شكل 2 (منحني)': {
+    AppLanguage.arabic: 'شكل 2 (منحني)',
+    AppLanguage.french: 'Forme 2 (courbe)',
+    AppLanguage.english: 'Shape 2 (curved)',
+  },
+  'شكل 3 (باروكي)': {
+    AppLanguage.arabic: 'شكل 3 (باروكي)',
+    AppLanguage.french: 'Forme 3 (baroque)',
+    AppLanguage.english: 'Shape 3 (baroque)',
+  },
+  'شكل 4 (معين مصمت)': {
+    AppLanguage.arabic: 'شكل 4 (معين مصمت)',
+    AppLanguage.french: 'Forme 4 (losange plein)',
+    AppLanguage.english: 'Shape 4 (solid diamond)',
+  },
+  'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.': {
+    AppLanguage.arabic:
+        'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.',
+    AppLanguage.french:
+        'Aucun couvre-joint adapté à l’épaisseur des deux vitrages. Choisissez d’abord un couvre-joint double compatible.',
+    AppLanguage.english:
+        'No side cover matches the selected glass thickness. Choose a compatible double side cover first.',
+  },
+  'لا يمكن التغيير إلى جهتين لأن سمك الزجاج الحالي يتجاوز 20 مم. يرجى تقليل سمك الزجاج أو الفاصل أولاً.': {
+    AppLanguage.arabic:
+        'لا يمكن التغيير إلى جهتين لأن سمك الزجاج الحالي يتجاوز 20 مم. يرجى تقليل سمك الزجاج أو الفاصل أولاً.',
+    AppLanguage.french:
+        'Impossible de passer à deux côtés car l’épaisseur du vitrage dépasse 20 mm. Réduisez d’abord le verre ou l’intercalaire.',
+    AppLanguage.english:
+        'Cannot switch to two sides because the current glass is thicker than 20 mm. Reduce the glass or spacer thickness first.',
+  },
+  'الإطار المختار لا يسمح بتركيب الكوفرجوا.': {
+    AppLanguage.arabic: 'الإطار المختار لا يسمح بتركيب الكوفرجوا.',
+    AppLanguage.french: 'Le cadre choisi n’autorise pas le couvre-joint.',
+    AppLanguage.english: 'The selected frame does not allow the side cover.',
+  },
+  'الرجاء تحديد عامود من الرسم بالضغط عليه لتعديله': {
+    AppLanguage.arabic: 'الرجاء تحديد عامود من الرسم بالضغط عليه لتعديله',
+    AppLanguage.french:
+        'Sélectionnez une colonne du dessin en cliquant dessus pour la modifier',
+    AppLanguage.english: 'Select a drawing column by clicking it to edit it',
+  },
+  'جهتان = جوانان ساقيان   |   جهة واحدة = جوان واحد': {
+    AppLanguage.arabic: 'جهتان = جوانان ساقيان   |   جهة واحدة = جوان واحد',
+    AppLanguage.french:
+        'Deux côtés = deux joints latéraux   |   Un côté = un joint',
+    AppLanguage.english:
+        'Two sides = two side gaskets   |   One side = one gasket',
+  },
+  'رمادي 9007': {
+    AppLanguage.arabic: 'رمادي 9007',
+    AppLanguage.french: 'Gris 9007',
+    AppLanguage.english: 'Grey 9007',
+  },
+  'شكل الوردة:': {
+    AppLanguage.arabic: 'شكل الوردة:',
+    AppLanguage.french: 'Forme de la rosace :',
+    AppLanguage.english: 'Rosette shape:',
+  },
+  'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.': {
+    AppLanguage.arabic:
+        'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+    AppLanguage.french:
+        'Aucune baguette décorative dans la base de données. Ajoutez-la d’abord.',
+    AppLanguage.english: 'No decorative bead in the database. Add it first.',
+  },
+  'مقاس وسماكة البارداج:': {
+    AppLanguage.arabic: 'مقاس وسماكة البارداج:',
+    AppLanguage.french: 'Dimensions et épaisseur du bardage :',
+    AppLanguage.english: 'Cladding size and thickness:',
+  },
+  'نوع المنطقة': {
+    AppLanguage.arabic: 'نوع المنطقة',
+    AppLanguage.french: 'Type de zone',
+    AppLanguage.english: 'Area type',
+  },
+  'يرجى إدخال قياس صحيح بالمليمتر': {
+    AppLanguage.arabic: 'يرجى إدخال قياس صحيح بالمليمتر',
+    AppLanguage.french: 'Veuillez saisir une dimension valide en millimètres',
+    AppLanguage.english: 'Enter a valid measurement in millimetres',
+  },
+  'إنشاء ورشة (مدير)': {
+    AppLanguage.arabic: 'إنشاء ورشة (مدير)',
+    AppLanguage.french: 'Créer un atelier (gérant)',
+    AppLanguage.english: 'Create a workshop (manager)',
+  },
+  'الانضمام إلى ورشة موجودة': {
+    AppLanguage.arabic: 'الانضمام إلى ورشة موجودة',
+    AppLanguage.french: 'Rejoindre un atelier existant',
+    AppLanguage.english: 'Join an existing workshop',
+  },
+  'الدخول باستخدام Google': {
+    AppLanguage.arabic: 'الدخول باستخدام Google',
+    AppLanguage.french: 'Se connecter avec Google',
+    AppLanguage.english: 'Sign in with Google',
+  },
+  'التسجيل باستخدام Google': {
+    AppLanguage.arabic: 'التسجيل باستخدام Google',
+    AppLanguage.french: 'S’inscrire avec Google',
+    AppLanguage.english: 'Sign up with Google',
+  },
+  'ليس لديك حساب؟ إنشاء حساب جديد': {
+    AppLanguage.arabic: 'ليس لديك حساب؟ إنشاء حساب جديد',
+    AppLanguage.french: 'Vous n’avez pas de compte ? Créer un compte',
+    AppLanguage.english: 'Don’t have an account? Create one',
+  },
+  'لديك حساب بالفعل؟ تسجيل الدخول': {
+    AppLanguage.arabic: 'لديك حساب بالفعل؟ تسجيل الدخول',
+    AppLanguage.french: 'Vous avez déjà un compte ? Se connecter',
+    AppLanguage.english: 'Already have an account? Sign in',
+  },
+  'الكل (بدون فلتر)': {
+    AppLanguage.arabic: 'الكل (بدون فلتر)',
+    AppLanguage.french: 'Tous (sans filtre)',
+    AppLanguage.english: 'All (no filter)',
+  },
+  'يساوي الصفر ({symbol})': {
+    AppLanguage.arabic: 'يساوي الصفر ({symbol})',
+    AppLanguage.french: 'Égal à zéro ({symbol})',
+    AppLanguage.english: 'Equals zero ({symbol})',
+  },
+  'لا يساوي الصفر ({symbol})': {
+    AppLanguage.arabic: 'لا يساوي الصفر ({symbol})',
+    AppLanguage.french: 'Différent de zéro ({symbol})',
+    AppLanguage.english: 'Not equal to zero ({symbol})',
+  },
+  'أكبر تماماً من الصفر ({symbol})': {
+    AppLanguage.arabic: 'أكبر تماماً من الصفر ({symbol})',
+    AppLanguage.french: 'Strictement supérieur à zéro ({symbol})',
+    AppLanguage.english: 'Strictly greater than zero ({symbol})',
+  },
+  'أصغر تماماً من الصفر ({symbol})': {
+    AppLanguage.arabic: 'أصغر تماماً من الصفر ({symbol})',
+    AppLanguage.french: 'Strictement inférieur à zéro ({symbol})',
+    AppLanguage.english: 'Strictly less than zero ({symbol})',
+  },
+  'أكبر أو يساوي الصفر ({symbol})': {
+    AppLanguage.arabic: 'أكبر أو يساوي الصفر ({symbol})',
+    AppLanguage.french: 'Supérieur ou égal à zéro ({symbol})',
+    AppLanguage.english: 'Greater than or equal to zero ({symbol})',
+  },
+  'أصغر أو يساوي الصفر ({symbol})': {
+    AppLanguage.arabic: 'أصغر أو يساوي الصفر ({symbol})',
+    AppLanguage.french: 'Inférieur ou égal à zéro ({symbol})',
+    AppLanguage.english: 'Less than or equal to zero ({symbol})',
+  },
+  'يساوي القيمة ({symbol})': {
+    AppLanguage.arabic: 'يساوي القيمة ({symbol})',
+    AppLanguage.french: 'Égal à la valeur ({symbol})',
+    AppLanguage.english: 'Equals value ({symbol})',
+  },
+  'أكبر من القيمة ({symbol})': {
+    AppLanguage.arabic: 'أكبر من القيمة ({symbol})',
+    AppLanguage.french: 'Supérieur à la valeur ({symbol})',
+    AppLanguage.english: 'Greater than value ({symbol})',
+  },
+  'أصغر من القيمة ({symbol})': {
+    AppLanguage.arabic: 'أصغر من القيمة ({symbol})',
+    AppLanguage.french: 'Inférieur à la valeur ({symbol})',
+    AppLanguage.english: 'Less than value ({symbol})',
+  },
+  'أكبر أو يساوي القيمة ({symbol})': {
+    AppLanguage.arabic: 'أكبر أو يساوي القيمة ({symbol})',
+    AppLanguage.french: 'Supérieur ou égal à la valeur ({symbol})',
+    AppLanguage.english: 'Greater than or equal to value ({symbol})',
+  },
+  'أصغر أو يساوي القيمة ({symbol})': {
+    AppLanguage.arabic: 'أصغر أو يساوي القيمة ({symbol})',
+    AppLanguage.french: 'Inférieur ou égal à la valeur ({symbol})',
+    AppLanguage.english: 'Less than or equal to value ({symbol})',
+  },
+  'لا يساوي القيمة ({symbol})': {
+    AppLanguage.arabic: 'لا يساوي القيمة ({symbol})',
+    AppLanguage.french: 'Différent de la valeur ({symbol})',
+    AppLanguage.english: 'Not equal to value ({symbol})',
+  },
+  'تاريخ التعديل': {
+    AppLanguage.arabic: 'تاريخ التعديل',
+    AppLanguage.french: 'Date de modification',
+    AppLanguage.english: 'Modified date',
+  },
+  'عدّلها': {
+    AppLanguage.arabic: 'عدّلها',
+    AppLanguage.french: 'Modifiée par',
+    AppLanguage.english: 'Modified by',
+  },
+  'معدّل من طرف': {
+    AppLanguage.arabic: 'معدّل من طرف',
+    AppLanguage.french: 'Modifiée par',
+    AppLanguage.english: 'Modified by',
+  },
+  'اسم المعدّل...': {
+    AppLanguage.arabic: 'اسم المعدّل...',
+    AppLanguage.french: 'Nom du modificateur...',
+    AppLanguage.english: 'Editor name...',
+  },
+  'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.': {
+    AppLanguage.arabic:
+        'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.',
+    AppLanguage.french:
+        'Identifiants incorrects. Vérifiez l’e-mail et le mot de passe.',
+    AppLanguage.english:
+        'Incorrect sign-in details. Check your email and password.',
+  },
+  'لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.': {
+    AppLanguage.arabic:
+        'لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.',
+    AppLanguage.french:
+        'Aucun compte trouvé avec cet e-mail. Créez un nouveau compte.',
+    AppLanguage.english:
+        'No account was found for this email. Create a new account.',
+  },
+  'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.': {
+    AppLanguage.arabic:
+        'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.',
+    AppLanguage.french:
+        'Cet e-mail est déjà enregistré. Essayez de vous connecter.',
+    AppLanguage.english: 'This email is already registered. Try signing in.',
+  },
+  'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.': {
+    AppLanguage.arabic:
+        'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+    AppLanguage.french:
+        'Compte créé. Confirmez votre e-mail puis connectez-vous.',
+    AppLanguage.english: 'Account created. Confirm your email, then sign in.',
+  },
+  'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.': {
+    AppLanguage.arabic: 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.',
+    AppLanguage.french:
+        'Mot de passe trop faible. Utilisez au moins 6 caractères.',
+    AppLanguage.english: 'Password is too weak. Use at least 6 characters.',
+  },
+  'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.': {
+    AppLanguage.arabic: 'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.',
+    AppLanguage.french: 'Adresse e-mail invalide. Saisissez-la correctement.',
+    AppLanguage.english: 'Invalid email address. Enter it correctly.',
+  },
+  'تم تعطيل هذا الحساب من قبل الإدارة.': {
+    AppLanguage.arabic: 'تم تعطيل هذا الحساب من قبل الإدارة.',
+    AppLanguage.french: 'Ce compte a été désactivé par l’administration.',
+    AppLanguage.english: 'This account was disabled by the administrator.',
+  },
+  'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.': {
+    AppLanguage.arabic:
+        'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.',
+    AppLanguage.french:
+        'Aucun compte trouvé avec cet e-mail. Vérifiez-le ou créez un compte.',
+    AppLanguage.english:
+        'No account was found for this email. Check it or create an account.',
+  },
+  'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.': {
+    AppLanguage.arabic: 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.',
+    AppLanguage.french: 'Mot de passe incorrect. Réessayez.',
+    AppLanguage.english: 'Incorrect password. Try again.',
+  },
+  'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.': {
+    AppLanguage.arabic:
+        'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.',
+    AppLanguage.french:
+        'La connexion par e-mail est désactivée dans Firebase Console. Activez Email/Password dans Authentication.',
+    AppLanguage.english:
+        'Email sign-in is disabled in Firebase Console. Enable Email/Password in Authentication.',
+  },
+  'لا يوجد اتصال بالإنترنت، يرجى التحقق من اتصال الشبكة.': {
+    AppLanguage.arabic: 'لا يوجد اتصال بالإنترنت، يرجى التحقق من اتصال الشبكة.',
+    AppLanguage.french: 'Aucune connexion Internet. Vérifiez le réseau.',
+    AppLanguage.english: 'No internet connection. Check the network.',
+  },
+  'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.': {
+    AppLanguage.arabic:
+        'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.',
+    AppLanguage.french:
+        'Trop de tentatives incorrectes. Attendez un moment puis réessayez.',
+    AppLanguage.english:
+        'Too many failed attempts. Wait a moment and try again.',
+  },
+  'خطأ في خادم الفايربيس (An internal error has occurred).\nالسبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.': {
+    AppLanguage.arabic:
+        'خطأ في خادم الفايربيس (An internal error has occurred).\nالسبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.',
+    AppLanguage.french:
+        'Erreur du serveur Firebase. Cause fréquente : mot de passe incorrect ou service Email/Password désactivé dans Firebase Console.',
+    AppLanguage.english:
+        'Firebase server error. Common cause: incorrect password or Email/Password service disabled in Firebase Console.',
+  },
+  'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.': {
+    AppLanguage.arabic:
+        'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.',
+    AppLanguage.french:
+        'Configuration d’authentification introuvable. Activez Email/Password dans Firebase Console.',
+    AppLanguage.english:
+        'Authentication settings not found. Enable Email/Password in Firebase Console.',
+  },
+  'حدث خطأ': {
+    AppLanguage.arabic: 'حدث خطأ',
+    AppLanguage.french: 'Une erreur est survenue',
+    AppLanguage.english: 'An error occurred',
+  },
+  'تم العثور على الحساب القديم، لكن لم تتم دعوته إلى الورشة بعد. يجب على المدير ترحيل الورشة أولاً.': {
+    AppLanguage.arabic:
+        'تم العثور على الحساب القديم، لكن لم تتم دعوته إلى الورشة بعد. يجب على المدير ترحيل الورشة أولاً.',
+    AppLanguage.french:
+        'Ancien compte trouvé, mais il n’a pas encore été invité à l’atelier. Le gérant doit d’abord migrer l’atelier.',
+    AppLanguage.english:
+        'The old account was found, but it has not been invited to the workshop. The manager must migrate the workshop first.',
+  },
+  'تم إنشاء حساب Supabase، لكن تعذر إنشاء عضوية الورشة القديمة.': {
+    AppLanguage.arabic:
+        'تم إنشاء حساب Supabase، لكن تعذر إنشاء عضوية الورشة القديمة.',
+    AppLanguage.french:
+        'Le compte Supabase a été créé, mais l’ancienne adhésion à l’atelier n’a pas pu être créée.',
+    AppLanguage.english:
+        'The Supabase account was created, but the old workshop membership could not be created.',
+  },
+  'لم يتم ربط الحساب بورشة في Supabase بعد.': {
+    AppLanguage.arabic: 'لم يتم ربط الحساب بورشة في Supabase بعد.',
+    AppLanguage.french:
+        'Ce compte n’est pas encore associé à un atelier dans Supabase.',
+    AppLanguage.english:
+        'This account is not linked to a workshop in Supabase yet.',
+  },
+  'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.': {
+    AppLanguage.arabic: 'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
+    AppLanguage.french:
+        'Désolé, ce compte a été désactivé par le gérant de l’atelier.',
+    AppLanguage.english:
+        'Sorry, this account was disabled by the workshop manager.',
+  },
+  'يرجى إدخال اسم المصنع أو الورشة.': {
+    AppLanguage.arabic: 'يرجى إدخال اسم المصنع أو الورشة.',
+    AppLanguage.french: 'Saisissez le nom de l’usine ou de l’atelier.',
+    AppLanguage.english: 'Enter the factory or workshop name.',
+  },
+  'يرجى إدخال كود الورشة.': {
+    AppLanguage.arabic: 'يرجى إدخال كود الورشة.',
+    AppLanguage.french: 'Saisissez le code de l’atelier.',
+    AppLanguage.english: 'Enter the workshop code.',
+  },
+  'كلمتا المرور غير متطابقتين. يرجى التأكد.': {
+    AppLanguage.arabic: 'كلمتا المرور غير متطابقتين. يرجى التأكد.',
+    AppLanguage.french: 'Les mots de passe ne correspondent pas. Vérifiez-les.',
+    AppLanguage.english: 'The passwords do not match. Check them.',
+  },
+  'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.': {
+    AppLanguage.arabic:
+        'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.',
+    AppLanguage.french:
+        'Impossible d’associer le compte à l’atelier. Vérifiez le code ou l’invitation du gérant.',
+    AppLanguage.english:
+        'Could not link the account to the workshop. Check the code or the manager’s invitation.',
+  },
+  'تم إنشاء الحساب، لكن لم يتم إنشاء عضوية الورشة.': {
+    AppLanguage.arabic: 'تم إنشاء الحساب، لكن لم يتم إنشاء عضوية الورشة.',
+    AppLanguage.french:
+        'Le compte a été créé, mais l’adhésion à l’atelier ne l’a pas été.',
+    AppLanguage.english:
+        'The account was created, but the workshop membership was not.',
+  },
+  'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.': {
+    AppLanguage.arabic:
+        'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.',
+    AppLanguage.french:
+        'Ce nom d’atelier est déjà utilisé. Choisissez un autre nom unique.',
+    AppLanguage.english:
+        'This workshop name is already taken. Choose another unique name.',
+  },
+  'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.': {
+    AppLanguage.arabic:
+        'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.',
+    AppLanguage.french: 'Cet e-mail est déjà enregistré. Connectez-vous.',
+    AppLanguage.english: 'This email is already registered. Go to sign in.',
+  },
+  'هذا الحساب موجود مسبقاً، ولكن كلمة المرور غير صحيحة لتفعيله من جديد.': {
+    AppLanguage.arabic:
+        'هذا الحساب موجود مسبقاً، ولكن كلمة المرور غير صحيحة لتفعيله من جديد.',
+    AppLanguage.french:
+        'Ce compte existe déjà, mais le mot de passe est incorrect pour le réactiver.',
+    AppLanguage.english:
+        'This account already exists, but the password is incorrect for reactivation.',
+  },
+  'حدث خطأ في التسجيل': {
+    AppLanguage.arabic: 'حدث خطأ في التسجيل',
+    AppLanguage.french: 'Une erreur est survenue lors de l’inscription',
+    AppLanguage.english: 'An error occurred during registration',
+  },
+  'كود الورشة غير صحيح أو الورشة غير موجودة.': {
+    AppLanguage.arabic: 'كود الورشة غير صحيح أو الورشة غير موجودة.',
+    AppLanguage.french:
+        'Le code de l’atelier est incorrect ou l’atelier est introuvable.',
+    AppLanguage.english:
+        'The workshop code is invalid or the workshop does not exist.',
+  },
+  'تعذر إنشاء كود الورشة.': {
+    AppLanguage.arabic: 'تعذر إنشاء كود الورشة.',
+    AppLanguage.french: 'Impossible de créer le code de l’atelier.',
+    AppLanguage.english: 'Could not create the workshop code.',
+  },
+  'تعذر ربط الحساب بالورشة في Supabase.': {
+    AppLanguage.arabic: 'تعذر ربط الحساب بالورشة في Supabase.',
+    AppLanguage.french:
+        'Impossible d’associer le compte à l’atelier dans Supabase.',
+    AppLanguage.english:
+        'Could not link the account to the workshop in Supabase.',
+  },
+  'لم يتم الحصول على رمز Google صالح.': {
+    AppLanguage.arabic: 'لم يتم الحصول على رمز Google صالح.',
+    AppLanguage.french: 'Impossible d’obtenir un jeton Google valide.',
+    AppLanguage.english: 'A valid Google token could not be obtained.',
+  },
+  'لم يتم العثور على حساب مرتبط بورشة. يجب ترحيل الورشة القديمة أولاً.': {
+    AppLanguage.arabic:
+        'لم يتم العثور على حساب مرتبط بورشة. يجب ترحيل الورشة القديمة أولاً.',
+    AppLanguage.french:
+        'Aucun compte associé à un atelier. Migrez d’abord l’ancien atelier.',
+    AppLanguage.english:
+        'No account linked to a workshop was found. Migrate the old workshop first.',
+  },
+  'هذا البريد الإلكتروني مسجل بالفعل. توجه إلى تسجيل الدخول.': {
+    AppLanguage.arabic:
+        'هذا البريد الإلكتروني مسجل بالفعل. توجه إلى تسجيل الدخول.',
+    AppLanguage.french:
+        'Cet e-mail est déjà enregistré. Accédez à la connexion.',
+    AppLanguage.english: 'This email is already registered. Go to sign in.',
+  },
+  'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.': {
+    AppLanguage.arabic: 'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.',
+    AppLanguage.french:
+        'Authentification réussie, mais l’adhésion à l’atelier n’a pas été créée.',
+    AppLanguage.english:
+        'Authentication succeeded, but the workshop membership was not created.',
+  },
+  'تنزيل بيانات الورشة': {
+    AppLanguage.arabic: 'تنزيل بيانات الورشة',
+    AppLanguage.french: 'Télécharger les données de l’atelier',
+    AppLanguage.english: 'Download workshop data',
+  },
+  'تنزيل الآن': {
+    AppLanguage.arabic: 'تنزيل الآن',
+    AppLanguage.french: 'Télécharger maintenant',
+    AppLanguage.english: 'Download now',
+  },
+  'تنزيل نسخة كاملة من بيانات الورشة مع إظهار نتيجة الاتصال والتحميل.': {
+    AppLanguage.arabic:
+        'تنزيل نسخة كاملة من بيانات الورشة مع إظهار نتيجة الاتصال والتحميل.',
+    AppLanguage.french:
+        'Télécharger une copie complète des données de l’atelier et afficher le résultat de la connexion et du téléchargement.',
+    AppLanguage.english:
+        'Download a full copy of the workshop data and show the connection and download result.',
+  },
+  'جاري تنزيل بيانات الورشة...': {
+    AppLanguage.arabic: 'جاري تنزيل بيانات الورشة...',
+    AppLanguage.french: 'Téléchargement des données de l’atelier…',
+    AppLanguage.english: 'Downloading workshop data…',
+  },
+  'الحساب غير مرتبط بورشة. لا يمكن تنزيل بياناتها.': {
+    AppLanguage.arabic: 'الحساب غير مرتبط بورشة. لا يمكن تنزيل بياناتها.',
+    AppLanguage.french:
+        'Ce compte n’est associé à aucun atelier. Les données ne peuvent pas être téléchargées.',
+    AppLanguage.english:
+        'This account is not linked to a workshop. Its data cannot be downloaded.',
+  },
+  'تعذر تجهيز اتصال الورشة في Supabase.': {
+    AppLanguage.arabic: 'تعذر تجهيز اتصال الورشة في Supabase.',
+    AppLanguage.french:
+        'Impossible d’établir la connexion de l’atelier dans Supabase.',
+    AppLanguage.english:
+        'Could not establish the workshop connection in Supabase.',
+  },
+  'تم تنزيل بيانات الورشة': {
+    AppLanguage.arabic: 'تم تنزيل بيانات الورشة',
+    AppLanguage.french: 'Données de l’atelier téléchargées',
+    AppLanguage.english: 'Workshop data downloaded',
+  },
+  'اكتمل التنزيل بنجاح.': {
+    AppLanguage.arabic: 'اكتمل التنزيل بنجاح.',
+    AppLanguage.french: 'Téléchargement terminé avec succès.',
+    AppLanguage.english: 'Download completed successfully.',
+  },
+  'الكود': {
+    AppLanguage.arabic: 'الكود',
+    AppLanguage.french: 'Code',
+    AppLanguage.english: 'Code',
+  },
+  'فشل تنزيل بيانات الورشة': {
+    AppLanguage.arabic: 'فشل تنزيل بيانات الورشة',
+    AppLanguage.french: 'Échec du téléchargement des données de l’atelier',
+    AppLanguage.english: 'Workshop data download failed',
+  },
+  'حدث خطأ أثناء تنزيل بيانات الورشة.': {
+    AppLanguage.arabic: 'حدث خطأ أثناء تنزيل بيانات الورشة.',
+    AppLanguage.french:
+        'Une erreur est survenue lors du téléchargement des données de l’atelier.',
+    AppLanguage.english: 'An error occurred while downloading workshop data.',
+  },
+  'بيانات الورشة في Supabase': {
+    AppLanguage.arabic: 'بيانات الورشة في Supabase',
+    AppLanguage.french: 'Données de l’atelier dans Supabase',
+    AppLanguage.english: 'Workshop data in Supabase',
+  },
+  'ارفع بيانات هذا الجهاز إلى الورشة، أو نزّل بيانات الورشة على هذا الجهاز.': {
+    AppLanguage.arabic:
+        'ارفع بيانات هذا الجهاز إلى الورشة، أو نزّل بيانات الورشة على هذا الجهاز.',
+    AppLanguage.french:
+        'Envoyez les données de cet appareil vers l’atelier ou téléchargez les données de l’atelier sur cet appareil.',
+    AppLanguage.english:
+        'Upload this device’s data to the workshop, or download workshop data to this device.',
+  },
+  'رفع بيانات الورشة': {
+    AppLanguage.arabic: 'رفع بيانات الورشة',
+    AppLanguage.french: 'Envoyer les données de l’atelier',
+    AppLanguage.english: 'Upload workshop data',
+  },
+  'جاري رفع بيانات الورشة...': {
+    AppLanguage.arabic: 'جاري رفع بيانات الورشة...',
+    AppLanguage.french: 'Envoi des données de l’atelier…',
+    AppLanguage.english: 'Uploading workshop data…',
+  },
+  'الحساب غير مرتبط بورشة. لا يمكن رفع بياناتها.': {
+    AppLanguage.arabic: 'الحساب غير مرتبط بورشة. لا يمكن رفع بياناتها.',
+    AppLanguage.french:
+        'Ce compte n’est associé à aucun atelier. Les données ne peuvent pas être envoyées.',
+    AppLanguage.english:
+        'This account is not linked to a workshop. Its data cannot be uploaded.',
+  },
+  'تم رفع بيانات الورشة': {
+    AppLanguage.arabic: 'تم رفع بيانات الورشة',
+    AppLanguage.french: 'Données de l’atelier envoyées',
+    AppLanguage.english: 'Workshop data uploaded',
+  },
+  'فشل رفع بيانات الورشة': {
+    AppLanguage.arabic: 'فشل رفع بيانات الورشة',
+    AppLanguage.french: 'Échec de l’envoi des données de l’atelier',
+    AppLanguage.english: 'Workshop data upload failed',
+  },
+  'حدث خطأ أثناء رفع بيانات الورشة.': {
+    AppLanguage.arabic: 'حدث خطأ أثناء رفع بيانات الورشة.',
+    AppLanguage.french:
+        'Une erreur est survenue lors de l’envoi des données de l’atelier.',
+    AppLanguage.english: 'An error occurred while uploading workshop data.',
+  },
 };

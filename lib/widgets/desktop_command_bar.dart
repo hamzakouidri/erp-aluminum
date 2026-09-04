@@ -661,7 +661,7 @@ class DesktopCommandBar extends StatelessWidget {
             onSelected: () async {
               try {
                 context.read<WorkspaceController>().resetForSignedOut();
-                CloudSyncService().reset();
+                await CloudSyncService().clearCachedWorkshopContext();
                 await AppAuthService().signOut();
                 await AppAuthService().signOutGoogleSession();
                 await SqlDatabase.clearAllLocalData();

@@ -561,6 +561,11 @@ class _LoginScreenState extends State<LoginScreen>
       _errorMessage = '';
     });
     try {
+      // The login screen can be reached after another account signed out on
+      // the same device. Clear the previous workshop identity before loading
+      // the new user's membership; otherwise a cached code/UUID can win the
+      // first sync cycle.
+      await CloudSyncService().clearCachedWorkshopContext();
       AppAuthUser user;
       try {
         user = await _auth.signInWithEmailAndPassword(
@@ -646,6 +651,10 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
+      // Registration may follow a previous account on the same device.
+      // Never let its cached workshop identity participate in this account's
+      // first membership lookup.
+      await CloudSyncService().clearCachedWorkshopContext();
       final workshopName = _workshopNameController.text.trim();
       final workshopCode = _workshopCodeController.text.trim();
       if (!_isWorkerSignup && workshopName.isEmpty) {
@@ -1063,6 +1072,9 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
+      // Google may switch accounts without recreating the Flutter singletons.
+      // Clear the previous account's local workshop hint before OAuth starts.
+      await CloudSyncService().clearCachedWorkshopContext();
       String? idToken;
       String? accessToken;
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
@@ -1089,6 +1101,10 @@ class _LoginScreenState extends State<LoginScreen>
         idToken: idToken,
         accessToken: accessToken,
       );
+      // Google can switch the Supabase session without recreating the Flutter
+      // singletons. Reset the old workshop context before resolving this
+      // Google account's membership.
+      CloudSyncService().reset();
       var account = await SupabaseAccountService().loadCurrentAccount();
       if (_isLoginMode) {
         if (account == null ||

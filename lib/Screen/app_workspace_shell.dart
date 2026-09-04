@@ -658,7 +658,9 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
     _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
       event,
     ) {
-      if (event == 'workshop_profile_updated' || event == 'cloud_restored') {
+      if (event == 'workshop_profile_updated' ||
+          event == 'cloud_restored' ||
+          event == 'supabase_data_updated') {
         _loadWorkshopIdentity();
       }
     });
@@ -970,7 +972,10 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
     _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
       event,
     ) {
-      if (event == 'cloud_restored' && mounted) _loadLocalProfile();
+      if ((event == 'cloud_restored' || event == 'supabase_data_updated') &&
+          mounted) {
+        _loadLocalProfile();
+      }
     });
   }
 
@@ -1140,7 +1145,10 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
     _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
       event,
     ) {
-      if (event == 'cloud_restored' && mounted) _loadLocalProfile();
+      if ((event == 'cloud_restored' || event == 'supabase_data_updated') &&
+          mounted) {
+        _loadLocalProfile();
+      }
     });
   }
 
@@ -1289,9 +1297,8 @@ class _TabbedWorkspaceView extends StatefulWidget {
 /// that section expanded.
 class _CollapsedDesktopSidebar extends StatelessWidget {
   final ValueChanged<String?> onOpenGroup;
-  final VoidCallback? onHover;
 
-  const _CollapsedDesktopSidebar({required this.onOpenGroup, this.onHover});
+  const _CollapsedDesktopSidebar({required this.onOpenGroup});
 
   @override
   Widget build(BuildContext context) {
@@ -1300,109 +1307,94 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
       context,
       listen: false,
     ).language;
-    return MouseRegion(
-      onEnter: (_) => onHover?.call(),
-      child: Material(
-        color: isDark ? const Color(0xFF172554) : const Color(0xFF3E55D9),
-        elevation: 6,
-        child: SafeArea(
-          right: false,
-          child: SingleChildScrollView(
-            primary: false,
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                IconButton(
-                  tooltip: Localization.translate('إظهار القائمة', language),
-                  onPressed: () => onOpenGroup(null),
-                  icon: const Icon(Icons.menu_rounded),
-                  color: Colors.white,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+    return Material(
+      color: isDark ? const Color(0xFF172554) : const Color(0xFF3E55D9),
+      elevation: 6,
+      child: SafeArea(
+        right: false,
+        child: SingleChildScrollView(
+          primary: false,
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              IconButton(
+                tooltip: Localization.translate('إظهار القائمة', language),
+                onPressed: () => onOpenGroup(null),
+                icon: const Icon(Icons.menu_rounded),
+                color: Colors.white,
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              const Divider(
+                height: 18,
+                indent: 10,
+                endIndent: 10,
+                color: Colors.white24,
+              ),
+              for (final item in [
+                (
+                  key: 'orders',
+                  icon: Icons.shopping_cart_checkout_rounded,
+                  label: Localization.translate('الطلبات والمبيعات', language),
+                ),
+                (
+                  key: 'purchases',
+                  icon: Icons.shopping_bag_rounded,
+                  label: Localization.translate('المشتريات', language),
+                ),
+                (
+                  key: 'inventory',
+                  icon: Icons.warehouse_rounded,
+                  label: Localization.translate('المخزون والمنتجات', language),
+                ),
+                (
+                  key: 'finance',
+                  icon: Icons.account_balance_wallet_rounded,
+                  label: Localization.translate('الصندوق والحسابات', language),
+                ),
+                (
+                  key: 'clients',
+                  icon: Icons.groups_rounded,
+                  label: Localization.translate('الزبائن', language),
+                ),
+                (
+                  key: 'projects',
+                  icon: Icons.folder_shared_rounded,
+                  label: Localization.translate('المشاريع', language),
+                ),
+                (
+                  key: 'tasks',
+                  icon: Icons.task_alt_rounded,
+                  label: Localization.translate('المهام والتنفيذ', language),
+                ),
+                (
+                  key: 'management',
+                  icon: Icons.settings_suggest_rounded,
+                  label: Localization.translate('الإعدادات والإدارة', language),
+                ),
+                (
+                  key: 'account',
+                  icon: Icons.account_circle_rounded,
+                  label: Localization.translate('الحساب', language),
+                ),
+              ])
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: IconButton(
+                    tooltip: item.label,
+                    onPressed: () => onOpenGroup(item.key),
+                    icon: Icon(item.icon),
+                    color: Colors.white,
+                    iconSize: 22,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(46, 42),
+                      backgroundColor: Colors.transparent,
+                    ),
                   ),
                 ),
-                const Divider(
-                  height: 18,
-                  indent: 10,
-                  endIndent: 10,
-                  color: Colors.white24,
-                ),
-                for (final item in [
-                  (
-                    key: 'orders',
-                    icon: Icons.shopping_cart_checkout_rounded,
-                    label: Localization.translate(
-                      'الطلبات والمبيعات',
-                      language,
-                    ),
-                  ),
-                  (
-                    key: 'purchases',
-                    icon: Icons.shopping_bag_rounded,
-                    label: Localization.translate('المشتريات', language),
-                  ),
-                  (
-                    key: 'inventory',
-                    icon: Icons.warehouse_rounded,
-                    label: Localization.translate(
-                      'المخزون والمنتجات',
-                      language,
-                    ),
-                  ),
-                  (
-                    key: 'finance',
-                    icon: Icons.account_balance_wallet_rounded,
-                    label: Localization.translate(
-                      'الصندوق والحسابات',
-                      language,
-                    ),
-                  ),
-                  (
-                    key: 'clients',
-                    icon: Icons.groups_rounded,
-                    label: Localization.translate('الزبائن', language),
-                  ),
-                  (
-                    key: 'projects',
-                    icon: Icons.folder_shared_rounded,
-                    label: Localization.translate('المشاريع', language),
-                  ),
-                  (
-                    key: 'tasks',
-                    icon: Icons.task_alt_rounded,
-                    label: Localization.translate('المهام والتنفيذ', language),
-                  ),
-                  (
-                    key: 'management',
-                    icon: Icons.settings_suggest_rounded,
-                    label: Localization.translate(
-                      'الإعدادات والإدارة',
-                      language,
-                    ),
-                  ),
-                  (
-                    key: 'account',
-                    icon: Icons.account_circle_rounded,
-                    label: Localization.translate('الحساب', language),
-                  ),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 1),
-                    child: IconButton(
-                      tooltip: item.label,
-                      onPressed: () => onOpenGroup(item.key),
-                      icon: Icon(item.icon),
-                      color: Colors.white,
-                      iconSize: 22,
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size(46, 42),
-                        backgroundColor: Colors.transparent,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 8),
-              ],
-            ),
+              const SizedBox(height: 8),
+            ],
           ),
         ),
       ),
@@ -1411,18 +1403,10 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
 }
 
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
-  // Keep the desktop sidebar collapsed on first render; hovering the rail
-  // still opens it through _openSidebarOnHover.
+  // The desktop sidebar is controlled only by the menu button and the
+  // collapsed rail buttons. Pointer hover must never change its state.
   bool _isSidebarOpen = false;
-  bool _sidebarOpenedByHover = false;
-  bool _sidebarHoverArmed = true;
   String? _expandedSidebarGroup;
-  bool _hasVisitedNonHome = false;
-  bool _collapseSidebarScheduled = false;
-  bool _keepSidebarOpenRequested = false;
-  Timer? _sidebarCloseTimer;
-  final GlobalKey _sidebarHoverKey = GlobalKey();
-  Offset? _lastSidebarPointerPosition;
   final ScrollController _tabsScrollController = ScrollController();
   final Map<String, GlobalKey> _tabKeys = {};
   String? _lastEnsuredActiveTabId;
@@ -1432,7 +1416,6 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
 
   @override
   void dispose() {
-    _sidebarCloseTimer?.cancel();
     _tabsScrollController.dispose();
     super.dispose();
   }
@@ -1453,103 +1436,9 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   }
 
   void _openSidebarGroup(String? group) {
-    _sidebarCloseTimer?.cancel();
     setState(() {
-      _sidebarOpenedByHover = false;
       _isSidebarOpen = true;
       _expandedSidebarGroup = group;
-      _keepSidebarOpenRequested = true;
-    });
-  }
-
-  void _openSidebarOnHover() {
-    if (!mounted) return;
-    // A MouseRegion can be recreated while it is closing. Do not treat that
-    // rebuild as a new pointer entry; wait for a real entry into the rail.
-    if (!_sidebarHoverArmed) return;
-    _sidebarCloseTimer?.cancel();
-    if (_isSidebarOpen && _sidebarOpenedByHover) return;
-    setState(() {
-      _sidebarOpenedByHover = true;
-      _isSidebarOpen = true;
-      _expandedSidebarGroup = null;
-      _keepSidebarOpenRequested = false;
-    });
-  }
-
-  bool _isPointerInsideSidebar(Offset position) {
-    final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
-    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-    final origin = renderObject.localToGlobal(Offset.zero);
-    return (origin & renderObject.size).contains(position);
-  }
-
-  void _closeSidebarAfterHover() {
-    if (!_sidebarOpenedByHover || !mounted) return;
-    _sidebarCloseTimer?.cancel();
-    _sidebarCloseTimer = Timer(const Duration(milliseconds: 220), () {
-      _sidebarCloseTimer = null;
-      if (!mounted || !_sidebarOpenedByHover) return;
-
-      // Expanding the rail changes the MouseRegion's render bounds. Flutter
-      // can report an exit for that layout change even though the pointer is
-      // still over the sidebar. Do not close in that case.
-      final pointerPosition = _lastSidebarPointerPosition;
-      final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
-      if (pointerPosition != null &&
-          renderObject is RenderBox &&
-          renderObject.hasSize) {
-        final origin = renderObject.localToGlobal(Offset.zero);
-        if ((origin & renderObject.size).contains(pointerPosition)) return;
-      }
-
-      setState(() {
-        _sidebarOpenedByHover = false;
-        _isSidebarOpen = false;
-        _expandedSidebarGroup = null;
-      });
-    });
-  }
-
-  void _onSidebarEnter(PointerEnterEvent event) {
-    _lastSidebarPointerPosition = event.position;
-    _sidebarHoverArmed = true;
-    _sidebarCloseTimer?.cancel();
-  }
-
-  void _onSidebarHover(PointerHoverEvent event) {
-    _lastSidebarPointerPosition = event.position;
-    _sidebarHoverArmed = true;
-    _sidebarCloseTimer?.cancel();
-  }
-
-  void _onSidebarExit(PointerExitEvent event) {
-    _lastSidebarPointerPosition = event.position;
-    // Changing the rail width can emit a synthetic exit. If the current
-    // pointer is still inside the expanded sidebar, it is not a real exit.
-    if (_isPointerInsideSidebar(event.position)) return;
-    _sidebarHoverArmed = false;
-    _closeSidebarAfterHover();
-  }
-
-  void _collapseSidebarAfterReturningHome(WorkspaceController workspace) {
-    if (!workspace.isHomeActive) {
-      _hasVisitedNonHome = true;
-      _keepSidebarOpenRequested = false;
-      return;
-    }
-    if (_keepSidebarOpenRequested) {
-      _keepSidebarOpenRequested = false;
-      return;
-    }
-    if (!_hasVisitedNonHome || !_isSidebarOpen || _collapseSidebarScheduled) {
-      return;
-    }
-    _collapseSidebarScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _collapseSidebarScheduled = false;
-      if (!mounted || !workspace.isHomeActive || !_isSidebarOpen) return;
-      setState(() => _isSidebarOpen = false);
     });
   }
 
@@ -1564,7 +1453,6 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     // same top application bar.
     const showWorkspaceChrome = true;
     final activeEntryId = workspace.entries[workspace.activeIndex].id;
-    _collapseSidebarAfterReturningHome(workspace);
     if (_lastEnsuredActiveTabId != activeEntryId) {
       _lastEnsuredActiveTabId = activeEntryId;
       _ensureActiveTabVisible(activeEntryId);
@@ -1789,34 +1677,24 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          MouseRegion(
-            key: _sidebarHoverKey,
-            onEnter: _onSidebarEnter,
-            onHover: _onSidebarHover,
-            onExit: _onSidebarExit,
-            child: AnimatedContainer(
-              // The content area can contain heavy tables. Animating the width
-              // forces those pages to relayout on every frame and can make the
-              // Windows UI look frozen while the sidebar opens.
-              duration: Duration.zero,
-              width: _isSidebarOpen ? 290 : 56,
-              child: _isSidebarOpen
-                  ? Material(
-                      elevation: 10,
-                      child: AppDrawer(
-                        key: ValueKey('desktop-sidebar-$_expandedSidebarGroup'),
-                        onCollapse: () => setState(() {
-                          _sidebarOpenedByHover = false;
-                          _isSidebarOpen = false;
-                        }),
-                        expandedGroup: _expandedSidebarGroup,
-                      ),
-                    )
-                  : _CollapsedDesktopSidebar(
-                      onOpenGroup: _openSidebarGroup,
-                      onHover: _openSidebarOnHover,
+          AnimatedContainer(
+            // The content area can contain heavy tables. Animating the width
+            // forces those pages to relayout on every frame and can make the
+            // Windows UI look frozen while the sidebar opens.
+            duration: Duration.zero,
+            width: _isSidebarOpen ? 290 : 56,
+            child: _isSidebarOpen
+                ? Material(
+                    elevation: 10,
+                    child: AppDrawer(
+                      key: ValueKey('desktop-sidebar-$_expandedSidebarGroup'),
+                      onCollapse: () => setState(() {
+                        _isSidebarOpen = false;
+                      }),
+                      expandedGroup: _expandedSidebarGroup,
                     ),
-            ),
+                  )
+                : _CollapsedDesktopSidebar(onOpenGroup: _openSidebarGroup),
           ),
           Expanded(child: mainContent),
         ],
@@ -1836,85 +1714,10 @@ class _FloatingWorkspaceView extends StatefulWidget {
 
 class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
   bool _isSidebarOpen = false;
-  bool _sidebarOpenedByHover = false;
-  bool _sidebarHoverArmed = true;
-  Timer? _sidebarCloseTimer;
-  final GlobalKey _sidebarHoverKey = GlobalKey();
-  Offset? _lastSidebarPointerPosition;
-
-  @override
-  void dispose() {
-    _sidebarCloseTimer?.cancel();
-    super.dispose();
-  }
-
-  void _openSidebarOnHover() {
-    if (!mounted) return;
-    if (!_sidebarHoverArmed) return;
-    _sidebarCloseTimer?.cancel();
-    if (_isSidebarOpen && _sidebarOpenedByHover) return;
-    setState(() {
-      _sidebarOpenedByHover = true;
-      _isSidebarOpen = true;
-    });
-  }
 
   void _openSidebarManually() {
     if (!mounted) return;
-    _sidebarCloseTimer?.cancel();
-    setState(() {
-      _sidebarOpenedByHover = false;
-      _isSidebarOpen = true;
-    });
-  }
-
-  bool _isPointerInsideSidebar(Offset position) {
-    final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
-    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-    final origin = renderObject.localToGlobal(Offset.zero);
-    return (origin & renderObject.size).contains(position);
-  }
-
-  void _closeSidebarAfterHover() {
-    if (!_sidebarOpenedByHover || !mounted) return;
-    _sidebarCloseTimer?.cancel();
-    _sidebarCloseTimer = Timer(const Duration(milliseconds: 220), () {
-      _sidebarCloseTimer = null;
-      if (!mounted || !_sidebarOpenedByHover) return;
-
-      final pointerPosition = _lastSidebarPointerPosition;
-      final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
-      if (pointerPosition != null &&
-          renderObject is RenderBox &&
-          renderObject.hasSize) {
-        final origin = renderObject.localToGlobal(Offset.zero);
-        if ((origin & renderObject.size).contains(pointerPosition)) return;
-      }
-
-      setState(() {
-        _sidebarOpenedByHover = false;
-        _isSidebarOpen = false;
-      });
-    });
-  }
-
-  void _onSidebarEnter(PointerEnterEvent event) {
-    _lastSidebarPointerPosition = event.position;
-    _sidebarHoverArmed = true;
-    _sidebarCloseTimer?.cancel();
-  }
-
-  void _onSidebarHover(PointerHoverEvent event) {
-    _lastSidebarPointerPosition = event.position;
-    _sidebarHoverArmed = true;
-    _sidebarCloseTimer?.cancel();
-  }
-
-  void _onSidebarExit(PointerExitEvent event) {
-    _lastSidebarPointerPosition = event.position;
-    if (_isPointerInsideSidebar(event.position)) return;
-    _sidebarHoverArmed = false;
-    _closeSidebarAfterHover();
+    setState(() => _isSidebarOpen = true);
   }
 
   @override
@@ -2044,7 +1847,6 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
                   ),
                   onToggleSidebar: isDesktop
                       ? () => setState(() {
-                          _sidebarOpenedByHover = false;
                           _isSidebarOpen = !_isSidebarOpen;
                         })
                       : null,
@@ -2062,30 +1864,22 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          MouseRegion(
-            key: _sidebarHoverKey,
-            onEnter: _onSidebarEnter,
-            onHover: _onSidebarHover,
-            onExit: _onSidebarExit,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.fastOutSlowIn,
-              width: _isSidebarOpen ? 290 : 56,
-              child: _isSidebarOpen
-                  ? Material(
-                      elevation: 10,
-                      child: AppDrawer(
-                        onCollapse: () => setState(() {
-                          _sidebarOpenedByHover = false;
-                          _isSidebarOpen = false;
-                        }),
-                      ),
-                    )
-                  : _CollapsedDesktopSidebar(
-                      onOpenGroup: (_) => _openSidebarManually(),
-                      onHover: _openSidebarOnHover,
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.fastOutSlowIn,
+            width: _isSidebarOpen ? 290 : 56,
+            child: _isSidebarOpen
+                ? Material(
+                    elevation: 10,
+                    child: AppDrawer(
+                      onCollapse: () => setState(() {
+                        _isSidebarOpen = false;
+                      }),
                     ),
-            ),
+                  )
+                : _CollapsedDesktopSidebar(
+                    onOpenGroup: (_) => _openSidebarManually(),
+                  ),
           ),
           Expanded(child: mainContent),
         ],

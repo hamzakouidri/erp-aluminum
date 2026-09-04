@@ -281,6 +281,7 @@ class _WindowViewState extends State<WindowView> {
   int? _loadedSlidingFrameSeriesId;
   bool _loadingAvailableProfiles = false;
   int _profileLoadGeneration = 0;
+  bool _slidingSeriesAutoSelectionQueued = false;
 
   // Drawing actions can generate far more pointer events than the display can
   // render.  Keep the full controls page at one refresh per frame; the canvas
@@ -1115,6 +1116,27 @@ class _WindowViewState extends State<WindowView> {
             _loadedSlidingFrameSeriesId != slidingSeriesId)) {
       unawaited(_loadAvailableProfiles());
     }
+  }
+
+  void _queueMixedSlidingSeriesSelection(
+    AluminumSeries candidate,
+    int? openingSeriesId,
+  ) {
+    if (_slidingSeriesAutoSelectionQueued) return;
+    _slidingSeriesAutoSelectionQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        if (!mounted ||
+            widget.systemMode != 'mixed' ||
+            widget.model.activeSeries?.id != openingSeriesId ||
+            widget.model.activeSlidingSeries?.id == candidate.id) {
+          return;
+        }
+        await widget.model.setActiveSlidingSeries(candidate);
+      } finally {
+        _slidingSeriesAutoSelectionQueued = false;
+      }
+    });
   }
 
   /// Synchronise the left glass drawer with the drawing being edited. A
@@ -2261,8 +2283,10 @@ class _WindowViewState extends State<WindowView> {
                               }
                               // --- end individual frame tap ---
 
-                              if (_paintbrushSecondsLeft > 0 ||
-                                  _isLeftDrawerOpen) {
+                              // Opening the glass drawer is not an apply
+                              // command. Only an explicitly armed paintbrush
+                              // may write a glass specification to a zone.
+                              if (_paintbrushSecondsLeft > 0) {
                                 // A prepared zone type has priority over
                                 // the glass brush. This makes a choice such
                                 // as "double sash" apply to the frame that
@@ -2291,14 +2315,7 @@ class _WindowViewState extends State<WindowView> {
                                     }
                                   }
                                 }
-                                final specToApply =
-                                    _activePaintGlassSpec ??
-                                    (widget.model.selectedZone != null
-                                        ? widget.model.selectedZone!
-                                              .getGlassForCell(
-                                                widget.model.activeSubZone,
-                                              )
-                                        : _tempGlassSpec);
+                                final specToApply = _activePaintGlassSpec;
                                 if (specToApply != null) {
                                   WindowZone? tappedZ;
                                   for (var z in widget.model.zones) {
@@ -2957,16 +2974,12 @@ class _WindowViewState extends State<WindowView> {
                                 _isDraggingHinge = false;
                               }
 
-                              if (_isLeftDrawerOpen ||
-                                  _paintbrushSecondsLeft > 0) {
-                                final specToApply =
-                                    _activePaintGlassSpec ??
-                                    (widget.model.selectedZone != null
-                                        ? widget.model.selectedZone!
-                                              .getGlassForCell(
-                                                widget.model.activeSubZone,
-                                              )
-                                        : _tempGlassSpec);
+                              if (_paintbrushSecondsLeft > 0) {
+                                // A long press applies to all zones only when
+                                // the user explicitly selected a glass brush.
+                                // Never reuse the currently saved zone glass
+                                // merely because the drawer is open.
+                                final specToApply = _activePaintGlassSpec;
                                 if (specToApply != null && tappedZ != null) {
                                   widget.model.paintAllZonesSpec(specToApply);
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -7562,9 +7575,14 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   value: widget.model.hasSideCovers,
                   activeThumbColor: Colors.blue,
-                  onChanged: widget.model.getFrameRects().length <= 1
-                      ? (value) => widget.model.toggleSideCovers(value)
-                      : null,
+                  // The user may always explicitly enable or disable the
+                  // couvre-joint. Catalogue capability rules control the
+                  // default/profile choice, never the switch availability.
+                  onChanged: (value) {
+                    if (value != null) {
+                      widget.model.toggleSideCovers(value);
+                    }
+                  },
                 );
               }()),
               if (widget.model.hasSideCovers) ...[
@@ -7992,9 +8010,7 @@ class _WindowViewState extends State<WindowView> {
               const Divider(height: 20),
 
               if (!widget.model.isPVC &&
-                  widget.model.canUseOpeningOnlyOptions &&
-                  (widget.model.hasBottomFrame ||
-                      widget.model.hasFramePlintheBottom)) ...[
+                  widget.model.canUseOpeningOnlyOptions) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -10053,9 +10069,10 @@ class _WindowViewState extends State<WindowView> {
         // falls back to sliding rows from another system with the same
         // material or a similar commercial name.
         list.addAll(
-          _seriesForScope(primarySystem, 'sliding').where(
-            (series) => series.id != primarySeries?.id,
-          ),
+          _seriesForScope(
+            primarySystem,
+            'sliding',
+          ).where((series) => series.id != primarySeries?.id),
         );
       }
       final activeSlidingSystem = profileSystemForSeries(
@@ -10085,7 +10102,7 @@ class _WindowViewState extends State<WindowView> {
       return uniqueList;
     }();
 
-    final safeSlidingValue =
+    final selectedSlidingValue =
         (widget.model.activeSlidingSeries != null &&
             slidingItemsList.any(
               (s) => s.id == widget.model.activeSlidingSeries!.id,
@@ -10094,6 +10111,22 @@ class _WindowViewState extends State<WindowView> {
             (s) => s.id == widget.model.activeSlidingSeries!.id,
           )
         : null;
+    // During the asynchronous catalogue switch, the model can briefly have
+    // no sliding selection even though the selected opening system already
+    // exposes valid sliding series. Show the actual first series immediately
+    // and persist it, instead of showing the generic "Gamme المنزلق" hint.
+    final autoSlidingValue =
+        selectedSlidingValue ??
+        (widget.systemMode == 'mixed' && slidingItemsList.isNotEmpty
+            ? slidingItemsList.first
+            : null);
+    if (selectedSlidingValue == null && autoSlidingValue != null) {
+      _queueMixedSlidingSeriesSelection(
+        autoSlidingValue,
+        widget.model.activeSeries?.id,
+      );
+    }
+    final safeSlidingValue = autoSlidingValue;
 
     return AppBar(
       backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
@@ -10261,8 +10294,7 @@ class _WindowViewState extends State<WindowView> {
                   },
                 ),
               ),
-              if (widget.systemMode == 'mixed' &&
-                  slidingItemsList.isNotEmpty) ...[
+              if (widget.systemMode == 'mixed' && safeSlidingValue != null) ...[
                 const SizedBox(width: 8),
                 Container(
                   constraints: const BoxConstraints(maxWidth: 160),
@@ -11104,6 +11136,7 @@ class _WindowViewState extends State<WindowView> {
                                     : 'Aluminium')
                               : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
                           hasShutter: widget.model.hasShutter,
+                          hasSideCovers: widget.model.hasSideCovers,
                           multiFrameDrawing:
                               widget.model.getFrameRects().length > 1 &&
                               (useSlidingProfiles
@@ -11984,8 +12017,19 @@ class _WindowViewState extends State<WindowView> {
     List<Widget> row1 = [];
     List<Widget> row2 = [];
 
-    for (int i = 0; i < items.length; i++) {
-      final item = items[i];
+    for (final item in items) {
+      // Some controls have a semantic row (for example, opening and sliding
+      // frame profiles in a mixed system). Keep those groups together instead
+      // of alternating their buttons between the two visual rows.
+      if (item is _Tier2RowItem) {
+        final targetRow = item.rowIndex == 0 ? row1 : row2;
+        if (targetRow.isNotEmpty) {
+          targetRow.add(const SizedBox(width: 8));
+        }
+        targetRow.add(item.child);
+        continue;
+      }
+
       if (row1.length <= row2.length) {
         if (row1.isNotEmpty) {
           row1.add(const SizedBox(width: 8));
@@ -12552,6 +12596,12 @@ class _WindowViewState extends State<WindowView> {
             color: Colors.brown,
             onTap: () {
               final mutable = Map<String, dynamic>.from(opt);
+              // Selecting a blade from the drawer is an explicit user choice.
+              // Keep it even when its configured width is below the window;
+              // the model will show a warning instead of silently replacing it.
+              mutable['manual_selection'] = true;
+              mutable['user_selected'] = true;
+              mutable['automatic_selection'] = false;
               mutable['calculated_price'] =
                   (opt['price_dzd'] ?? opt['price'] ?? 0.0).toDouble();
               setState(() {
@@ -13144,12 +13194,6 @@ class _WindowViewState extends State<WindowView> {
                 zone.content == ZoneContent.doubleSash ||
                 zone.content == ZoneContent.fixedGlass ||
                 zone.content == ZoneContent.empty);
-        final bool hasSlidingFrameInDrawing =
-            widget.systemMode == 'sliding' ||
-            (widget.systemMode == 'mixed' &&
-                widget.model.zones.any(
-                  (z) => z.content == ZoneContent.slidingSash,
-                ));
         final rawOpeningProfiles =
             selectedZoneUsesOpeningFrame && widget.systemMode != 'sliding'
             ? (widget.systemMode == 'mixed'
@@ -13161,8 +13205,7 @@ class _WindowViewState extends State<WindowView> {
           series: widget.model.activeSeries,
           drawingMode: AccessoryDrawingMode.opening,
         );
-        final rawSlidingProfiles =
-            selectedZoneUsesSlidingFrame && hasSlidingFrameInDrawing
+        final rawSlidingProfiles = selectedZoneUsesSlidingFrame
             ? _slidingFrameProfiles
             : <Map<String, dynamic>>[];
         final slidingProfiles =
@@ -13219,17 +13262,20 @@ class _WindowViewState extends State<WindowView> {
             final isSelected =
                 selectedMap != null && selectedMap['id'] == item['id'];
 
-            children.add(
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _ProfileButton(
-                  label: label,
-                  code: item['code']?.toString(),
-                  imagePath: item['image_path']?.toString(),
-                  selected: isSelected,
-                  onPressed: () => selectFrameProfile(item, sliding: sliding),
-                ),
+            final button = Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _ProfileButton(
+                label: label,
+                code: item['code']?.toString(),
+                imagePath: item['image_path']?.toString(),
+                selected: isSelected,
+                onPressed: () => selectFrameProfile(item, sliding: sliding),
               ),
+            );
+            children.add(
+              widget.systemMode == 'mixed'
+                  ? _Tier2RowItem(rowIndex: sliding ? 1 : 0, child: button)
+                  : button,
             );
           }
         }
@@ -13287,11 +13333,6 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else {
-          final canToggleSideCover =
-              widget.model.getFrameRects().length <= 1 &&
-              (widget.model.hasSideCovers ||
-                  widget.model.isSideCoverAllowed ||
-                  widget.model.canUseStandaloneSideCover);
           children.add(
             _ContentButton(
               label: widget.model.hasSideCovers
@@ -13301,22 +13342,31 @@ class _WindowViewState extends State<WindowView> {
                   ? Icons.border_clear_rounded
                   : Icons.border_outer_rounded,
               selected: widget.model.hasSideCovers,
-              showWarning: !canToggleSideCover,
+              showWarning: false,
               onPressed: () async {
-                if (!canToggleSideCover) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        _tr('الإطار المختار لا يسمح بتركيب الكوفرجوا.'),
-                        textDirection: TextDirection.rtl,
-                      ),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                  return;
-                }
                 await widget.model.toggleSideCovers(
                   !widget.model.hasSideCovers,
+                );
+                setState(() {});
+              },
+            ),
+          );
+        }
+
+        if (!widget.model.isPVC &&
+            widget.model.canUseOpeningOnlyOptions &&
+            selectedZoneUsesOpeningFrame) {
+          children.add(const SizedBox(width: 8));
+          children.add(
+            _ContentButton(
+              label: widget.model.hasFramePlintheBottom
+                  ? 'حذف بلانت الإطار'
+                  : 'إضافة بلانت للإطار',
+              icon: Icons.border_bottom_rounded,
+              selected: widget.model.hasFramePlintheBottom,
+              onPressed: () {
+                widget.model.toggleFramePlintheBottom(
+                  !widget.model.hasFramePlintheBottom,
                 );
                 setState(() {});
               },
@@ -16057,6 +16107,19 @@ class AppWorkspacePainter extends CustomPainter {
         oldDelegate.userScale != userScale ||
         oldDelegate.userPan != userPan;
   }
+}
+
+/// Marks an option that must stay in a specific visual row of the compact
+/// two-row toolbar. This is used by mixed systems so opening-frame profiles
+/// never get interleaved with sliding-frame profiles.
+class _Tier2RowItem extends StatelessWidget {
+  final int rowIndex;
+  final Widget child;
+
+  const _Tier2RowItem({required this.rowIndex, required this.child});
+
+  @override
+  Widget build(BuildContext context) => child;
 }
 
 class _ProfileButton extends StatelessWidget {

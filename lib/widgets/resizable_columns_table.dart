@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,15 +53,19 @@ class ResizableColumnsTable extends StatefulWidget {
   final EdgeInsets cellPadding;
   final ScrollController? horizontalController;
   final ScrollController? verticalController;
+
   /// Gives an unbounded table a real viewport so the mouse wheel can scroll
   /// its rows instead of scrolling only the outer page.
   final double? maxBodyHeight;
+
   /// Enables long-press/mouse-drag reordering of rows for desktop tables.
   /// Reordering changes display order only; calculations remain unchanged.
   final bool reorderableRows;
   final ValueChanged<List<String>>? onRowOrderChanged;
+
   /// Enables long-press dragging of a header to move a column.
   final bool reorderableColumns;
+
   /// Stable identifier used to persist widths and column order for this table.
   final String? persistenceKey;
   final ValueChanged<List<String>>? onColumnOrderChanged;
@@ -101,6 +106,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   List<String> _columnOrder = [];
   int _preferencesLoadGeneration = 0;
   Future<void> _persistenceQueue = Future<void>.value();
+  Future<SharedPreferences>? _preferencesFuture;
 
   ScrollController get _horizontalController =>
       widget.horizontalController ?? _ownHorizontalController;
@@ -126,10 +132,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       oldWidget.persistenceKey,
     );
     final namespaceChanged = oldNamespace != _storageNamespace;
-    final columnsChanged = !_sameColumnIds(
-      oldWidget.columns,
-      widget.columns,
-    );
+    final columnsChanged = !_sameColumnIds(oldWidget.columns, widget.columns);
     if (namespaceChanged) {
       _widths.clear();
       _columnOrder = [];
@@ -178,28 +181,52 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     return true;
   }
 
-  String get _widthStoragePrefix =>
-      'resizable_table_widths_${_storageNamespace}_';
-
-  String get _orderStorageKey =>
-      'resizable_table_column_order_$_storageNamespace';
+  Future<SharedPreferences> _getPreferences() =>
+      _preferencesFuture ??= SharedPreferences.getInstance();
 
   Future<void> _loadTablePreferences() async {
     final loadGeneration = ++_preferencesLoadGeneration;
     final namespace = _storageNamespace;
     final columns = List<ResizableTableColumn>.from(widget.columns);
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPreferences();
       final availableIds = columns.map((column) => column.id).toSet();
-      final orderStorageKey =
-          'resizable_table_column_order_$namespace';
+      final orderStorageKey = 'resizable_table_column_order_$namespace';
       final widthStoragePrefix = 'resizable_table_widths_${namespace}_';
-      final savedOrder = prefs.getStringList(orderStorageKey) ?? const [];
       final savedWidths = <String, double>{};
-      for (final column in columns) {
-        final savedWidth =
-            prefs.getDouble('$widthStoragePrefix${column.id}');
-        if (savedWidth != null) savedWidths[column.id] = savedWidth;
+      var savedOrder = <String>[];
+      final savedLayout = prefs.getString('resizable_table_layout_$namespace');
+      if (savedLayout != null && savedLayout.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(savedLayout);
+          if (decoded is Map) {
+            final rawWidths = decoded['widths'];
+            if (rawWidths is Map) {
+              for (final entry in rawWidths.entries) {
+                final raw = entry.value;
+                final width = raw is num
+                    ? raw.toDouble()
+                    : double.tryParse(raw?.toString() ?? '');
+                if (width != null) savedWidths[entry.key.toString()] = width;
+              }
+            }
+            final rawOrder = decoded['order'];
+            if (rawOrder is List) {
+              savedOrder = rawOrder.map((id) => id.toString()).toList();
+            }
+          }
+        } catch (_) {
+          // Fall back to the legacy keys below.
+        }
+      }
+      if (savedWidths.isEmpty) {
+        for (final column in columns) {
+          final savedWidth = prefs.getDouble('$widthStoragePrefix${column.id}');
+          if (savedWidth != null) savedWidths[column.id] = savedWidth;
+        }
+      }
+      if (savedOrder.isEmpty) {
+        savedOrder = prefs.getStringList(orderStorageKey) ?? <String>[];
       }
       if (!mounted ||
           loadGeneration != _preferencesLoadGeneration ||
@@ -222,24 +249,27 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   }
 
   void _persistWidth(String columnId, double width) {
-    _enqueuePersistence(() async {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setDouble('$_widthStoragePrefix$columnId', width);
-      } catch (_) {
-        // Persistence is best-effort; the current table state remains live.
-      }
-    });
+    _persistLayout();
   }
 
   void _persistColumnOrder() {
+    _persistLayout();
+  }
+
+  void _persistLayout() {
+    final namespace = _storageNamespace;
+    final layoutKey = 'resizable_table_layout_$namespace';
+    final widths = <String, double>{..._widths};
     final order = List<String>.from(_columnOrder);
     _enqueuePersistence(() async {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setStringList(_orderStorageKey, order);
+        final prefs = await _getPreferences();
+        await prefs.setString(
+          layoutKey,
+          jsonEncode(<String, dynamic>{'widths': widths, 'order': order}),
+        );
       } catch (_) {
-        // Persistence is best-effort; the current table state remains live.
+        // Persistence is optional; the current table state remains live.
       }
     });
   }
@@ -446,6 +476,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             child: SingleChildScrollView(
               controller: _verticalController,
               scrollDirection: Axis.vertical,
+              primary: false,
               physics: const AlwaysScrollableScrollPhysics(),
               child: bodyContent,
             ),
@@ -484,13 +515,11 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           child: SingleChildScrollView(
             controller: _horizontalController,
             scrollDirection: Axis.horizontal,
+            primary: false,
             child: bodyIsBounded
-                ? SizedBox(
-                    height: bodyHeight,
-                    child: tableContent,
-                  )
+                ? SizedBox(height: bodyHeight, child: tableContent)
                 : tableContent,
-            ),
+          ),
         );
       },
     );
@@ -544,9 +573,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               color: Colors.transparent,
               child: Container(
                 width: _widthFor(column),
-                constraints: BoxConstraints(
-                  minHeight: widget.headerMinHeight,
-                ),
+                constraints: BoxConstraints(minHeight: widget.headerMinHeight),
                 padding: widget.cellPadding,
                 decoration: BoxDecoration(
                   color: Theme.of(context).brightness == Brightness.dark
@@ -645,10 +672,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       );
     }
 
-    return SizedBox(
-      width: _widthFor(column),
-      child: headerContent,
-    );
+    return SizedBox(width: _widthFor(column), child: headerContent);
     /*
       Legacy header implementation retained below in source history was
       replaced by the draggable header above.

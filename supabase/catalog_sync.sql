@@ -288,7 +288,7 @@ begin
     raise exception 'Authentication required';
   end if;
 
-  clean_code := nullif(trim(coalesce(target_code, '')), '');
+  clean_code := upper(nullif(trim(coalesce(target_code, '')), ''));
   if clean_code is null then
     clean_code := auth.uid()::text;
   end if;
@@ -362,7 +362,34 @@ begin
 
         workshop_uuid := existing_workshop.id;
       else
-        raise exception 'You are not a member of this workshop';
+        -- The short workshop code is also a valid worker join credential.
+        -- When no email invitation exists, create a safe basic worker
+        -- membership instead of returning an account-without-workshop error.
+        insert into public.workshop_members (
+          workshop_id,
+          user_id,
+          role,
+          permissions,
+          blocked,
+          updated_at
+        )
+        values (
+          existing_workshop.id,
+          auth.uid(),
+          'worker',
+          '{
+            "view_clients": true,
+            "view_orders": true,
+            "view_client_details": true,
+            "view_order_details": true,
+            "view_my_tasks": true,
+            "view_my_accreditations": true
+          }'::jsonb,
+          false,
+          now()
+        )
+        on conflict (workshop_id, user_id) do nothing;
+        workshop_uuid := existing_workshop.id;
       end if;
     end if;
   else
@@ -584,10 +611,10 @@ begin
     public.is_app_admin()
     or exists (
       select 1
-      from public.workshop_members
-      where workshop_id = workshop_uuid
-        and user_id = auth.uid()
-        and role in ('owner', 'manager', 'co_manager', 'admin')
+      from public.workshop_members wm
+      where wm.workshop_id = workshop_uuid
+        and wm.user_id = auth.uid()
+        and wm.role in ('owner', 'manager', 'co_manager', 'admin')
     )
   ) then
     raise exception 'You cannot manage this workshop';
@@ -725,7 +752,10 @@ begin
   from public.workshop_members member
   left join auth.users member_user on member_user.id = member.user_id
   where member.workshop_id = workshop_uuid
-    and member.role <> 'owner';
+    and member.role <> 'owner'
+    -- Old installations may have orphan rows if their FK was created before
+    -- the cascade rule. Do not present such deleted Auth users as workers.
+    and member_user.id is not null;
 
   return query
   select
@@ -825,6 +855,17 @@ alter table public.workshops enable row level security;
 alter table public.workshop_members enable row level security;
 alter table public.workshop_member_invites enable row level security;
 alter table public.workshop_sync_rows enable row level security;
+
+-- The worker join code belongs to the shared workshop identity. Publish code
+-- changes so already-open devices refresh their local copy immediately.
+do $$
+begin
+  alter publication supabase_realtime add table public.workshops;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end
+$$;
 
 do $$
 begin

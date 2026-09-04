@@ -3,8 +3,10 @@ import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart'
-    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
+    show GestureBinding, PointerEvent, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show KeyDownEvent, KeyEvent, KeyRepeatEvent, LogicalKeyboardKey;
 
 /// Coordinates Windows mouse-wheel input across nested ScrollViews.
 ///
@@ -19,6 +21,7 @@ class DesktopScrollCoordinator {
   static final Set<_DesktopScrollableRegistration> _registrations = {};
   static final Map<PointerSignalEvent, Set<_DesktopScrollableRegistration>>
       _hits = {};
+  static Offset? _lastPointerPosition;
 
   static void _register(_DesktopScrollableRegistration registration) {
     _registrations.add(registration);
@@ -41,11 +44,27 @@ class DesktopScrollCoordinator {
     );
   }
 
+  static void rememberPointerPosition(PointerEvent event) {
+    _lastPointerPosition = event.position;
+  }
+
   static void handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
+    _lastPointerPosition = event.position;
 
-    final hitTargets = _hits.remove(event);
-    if (hitTargets == null || hitTargets.isEmpty) return;
+    // A scrollable can receive the signal before its scrollbar registration
+    // is reached in the hit-test path. Use all registered viewports under the
+    // pointer as a reliable fallback instead of waiting for a thumb drag.
+    final markedTargets = _hits.remove(event) ??
+        <_DesktopScrollableRegistration>{};
+    final hitTargets = <_DesktopScrollableRegistration>{
+      ...markedTargets,
+      ..._registrations.where(
+        (registration) =>
+            registration.bounds?.contains(event.position) == true,
+      ),
+    };
+    if (hitTargets.isEmpty) return;
 
     final verticalDelta = event.scrollDelta.dy;
     final horizontalDelta = event.scrollDelta.dx;
@@ -94,6 +113,106 @@ class DesktopScrollCoordinator {
       }
     });
   }
+
+  /// Handles page navigation keys without stealing cursor movement from a
+  /// text field. The focused scrollable wins; otherwise the scrollable under
+  /// the last pointer position is used, with the page viewport as fallback.
+  static bool handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+
+    final key = event.logicalKey;
+    final direction = switch (key) {
+      LogicalKeyboardKey.arrowDown || LogicalKeyboardKey.pageDown => 1,
+      LogicalKeyboardKey.arrowUp || LogicalKeyboardKey.pageUp => -1,
+      LogicalKeyboardKey.home => -2,
+      LogicalKeyboardKey.end => 2,
+      _ => 0,
+    };
+    if (direction == 0) return false;
+
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext != null && _isInsideEditableText(focusedContext)) {
+      return false;
+    }
+
+    final focusedScrollable = focusedContext == null
+        ? null
+        : Scrollable.maybeOf(focusedContext);
+    final registrations = _registrations
+        .where((registration) =>
+            registration.axis == Axis.vertical &&
+            registration.controller.hasClients)
+        .toList();
+    registrations.sort((a, b) {
+      final aArea = a.bounds == null
+          ? double.infinity
+          : a.bounds!.width * a.bounds!.height;
+      final bArea = b.bounds == null
+          ? double.infinity
+          : b.bounds!.width * b.bounds!.height;
+      return aArea.compareTo(bArea);
+    });
+
+    // The focused ScrollableState cannot always be matched to a registration
+    // (for example, when a page intentionally hides its scrollbar), so use its
+    // position directly when it can move.
+    if (focusedScrollable != null &&
+        (focusedScrollable.axisDirection == AxisDirection.up ||
+            focusedScrollable.axisDirection == AxisDirection.down) &&
+        focusedScrollable.position.hasContentDimensions &&
+        _canMovePosition(focusedScrollable.position, direction)) {
+      _applyKeyScroll(focusedScrollable.position, direction);
+      return true;
+    }
+
+    final pointer = _lastPointerPosition;
+    final underPointer = pointer == null
+        ? <_DesktopScrollableRegistration>[]
+        : registrations
+              .where((registration) => registration.bounds?.contains(pointer) == true)
+              .toList();
+    final candidates = [...underPointer, ...registrations]
+        .fold<List<_DesktopScrollableRegistration>>(
+          <_DesktopScrollableRegistration>[],
+          (result, registration) {
+            if (!result.contains(registration)) result.add(registration);
+            return result;
+          },
+        );
+    for (final registration in candidates) {
+      final position = registration.controller.position;
+      if (!_canMovePosition(position, direction)) continue;
+      _applyKeyScroll(position, direction);
+      return true;
+    }
+    return false;
+  }
+
+  static bool _isInsideEditableText(BuildContext context) {
+    if (context.widget is EditableText) return true;
+    return context.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  static bool _canMovePosition(ScrollPosition position, int direction) {
+    if (direction == -2 || direction == -1) {
+      return position.pixels > position.minScrollExtent;
+    }
+    return position.pixels < position.maxScrollExtent;
+  }
+
+  static void _applyKeyScroll(ScrollPosition position, int direction) {
+    final offset = direction == -2
+        ? position.minScrollExtent
+        : direction == 2
+        ? position.maxScrollExtent
+        : (position.pixels +
+                  (direction > 0
+                      ? (position.viewportDimension * 0.72).clamp(56.0, 520.0)
+                      : -(position.viewportDimension * 0.72).clamp(56.0, 520.0)))
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+    position.jumpTo(offset);
+  }
 }
 
 class _DesktopScrollableRegistration {
@@ -108,15 +227,21 @@ class _DesktopScrollableRegistration {
   final BuildContext context;
 
   Rect? get bounds {
+    if (!context.mounted) return null;
     final renderObject = context.findRenderObject();
-    if (renderObject is! RenderBox || !renderObject.hasSize) return null;
+    if (renderObject is! RenderBox || !renderObject.hasSize || !renderObject.attached) return null;
+    final offstage = context.findAncestorWidgetOfExactType<Offstage>();
+    if (offstage?.offstage == true) return null;
     final origin = renderObject.localToGlobal(Offset.zero);
     return origin & renderObject.size;
   }
 
   bool canMove(double delta) {
-    if (!controller.hasClients) return false;
+    if (!context.mounted || !controller.hasClients) return false;
+    final offstage = context.findAncestorWidgetOfExactType<Offstage>();
+    if (offstage?.offstage == true) return false;
     final position = controller.position;
+    if (!position.hasContentDimensions) return false;
     return delta < 0
         ? position.pixels > position.minScrollExtent
         : position.pixels < position.maxScrollExtent;
@@ -137,6 +262,29 @@ class _RegisteredDesktopScrollable extends StatefulWidget {
   @override
   State<_RegisteredDesktopScrollable> createState() =>
       _RegisteredDesktopScrollableState();
+}
+
+/// Registers a page-level fallback for wheel events that land on fixed page
+/// chrome (filters, toolbars, and empty padding) instead of on the scrollable
+/// list itself. The normal inner scrollable still wins whenever it can move.
+class DesktopScrollFallback extends StatelessWidget {
+  const DesktopScrollFallback({
+    super.key,
+    required this.controller,
+    required this.child,
+  });
+
+  final ScrollController controller;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return _RegisteredDesktopScrollable(
+      controller: controller,
+      axis: Axis.vertical,
+      child: child,
+    );
+  }
 }
 
 class _RegisteredDesktopScrollableState

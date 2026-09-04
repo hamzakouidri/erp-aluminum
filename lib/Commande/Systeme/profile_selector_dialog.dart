@@ -339,7 +339,11 @@ bool catalogRuleMatchesExactScope(Map<String, dynamic> rule, int? seriesId) {
       : int.tryParse('${rawSeriesId ?? ''}'.trim());
   if (seriesId == null) return ruleSeriesId == null;
   if (ruleSeriesId == seriesId) return true;
-  return ruleSeriesId == null;
+  // A global rule must not silently become a rule for every series.  Only the
+  // explicitly shared roles (for example common shutter screws) are allowed
+  // to fall back from the global catalogue to a series-specific query.
+  return ruleSeriesId == null &&
+      catalogRuleAllowsGlobalFallback(rule['role_key']?.toString() ?? '');
 }
 
 List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
@@ -653,6 +657,45 @@ bool profileHasIntegratedSideCover(Map<String, dynamic> item) {
       type.contains('suntara');
 }
 
+bool _profileSupportsEnabledSideCover(Map<String, dynamic> item) {
+  double readWidth(Object? raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '') ?? 0.0;
+  }
+
+  bool? readOptionalBool(Object? raw) {
+    if (raw == null) return null;
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    final normalized = raw.toString().trim().toLowerCase();
+    if (normalized == '1' || normalized == 'true' || normalized == 'yes') {
+      return true;
+    }
+    if (normalized == '0' || normalized == 'false' || normalized == 'no') {
+      return false;
+    }
+    return null;
+  }
+
+  final isIntegrated =
+      readOptionalBool(
+        item['design_integrated_side_cover'] ?? item['integrated_side_cover'],
+      ) ??
+      profileHasIntegratedSideCover(item);
+  if (isIntegrated) {
+    // A label such as "monobloc" is not enough: the drawing needs an actual
+    // cover width to render a compatible integrated frame.
+    return readWidth(item['couvre_joint_width']) > 0;
+  }
+
+  final allowsStandalone = readOptionalBool(
+    item['design_allows_side_cover'] ?? item['allows_side_cover'],
+  );
+  // Old catalogue rows have no capability flag and remain compatible by
+  // default. An explicit false is the authoritative incompatibility rule.
+  return allowsStandalone != false;
+}
+
 class CatalogCandidateQuery {
   const CatalogCandidateQuery({
     required this.category,
@@ -661,6 +704,7 @@ class CatalogCandidateQuery {
     this.seriesId,
     this.materialType,
     this.hasShutter = false,
+    this.hasSideCovers = false,
     this.multiFrameDrawing = false,
     this.drawingMode,
     this.requireDialog = true,
@@ -676,6 +720,7 @@ class CatalogCandidateQuery {
   final int? seriesId;
   final String? materialType;
   final bool hasShutter;
+  final bool hasSideCovers;
   final bool multiFrameDrawing;
   final AccessoryDrawingMode? drawingMode;
   final bool requireDialog;
@@ -742,6 +787,7 @@ class CatalogCandidateResolver {
             usageScope: query.drawingMode == AccessoryDrawingMode.sliding
                 ? 'sliding'
                 : 'opening',
+            requireDialog: query.requireDialog,
             requireQuantity: query.requireQuantity,
           );
     final normalizedMaterial = (query.materialType ?? '').toLowerCase().trim();
@@ -755,6 +801,11 @@ class CatalogCandidateResolver {
     return sections
         .where((section) {
           if (!_designRoleMatchesGlass(section, query)) {
+            return false;
+          }
+          if (isFrameSelector &&
+              query.hasSideCovers &&
+              !_profileSupportsEnabledSideCover(section)) {
             return false;
           }
           final isPvc = normalizedMaterial == 'pvc';
@@ -1155,6 +1206,7 @@ class ProfileSelectorDialog extends StatefulWidget {
   final int? seriesId;
   final String? materialType;
   final bool hasShutter;
+  final bool hasSideCovers;
   final bool multiFrameDrawing;
   final double? windowHeight;
   final double? targetSize;
@@ -1188,6 +1240,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.seriesId,
     this.materialType,
     this.hasShutter = false,
+    this.hasSideCovers = false,
     this.multiFrameDrawing = false,
     this.windowHeight,
     this.targetSize,
@@ -1255,6 +1308,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           seriesId: widget.seriesId,
           materialType: widget.materialType,
           hasShutter: widget.hasShutter,
+          hasSideCovers: widget.hasSideCovers,
           multiFrameDrawing: widget.multiFrameDrawing,
           drawingMode: widget.accessoryDrawingMode,
           requireDialog: true,
@@ -2153,6 +2207,8 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                   widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
                   ? 'sliding'
                   : 'opening',
+              requireDialog: true,
+              requireQuantity: true,
             );
           } else {
             data = await db.getDesignSectionsForRoles(

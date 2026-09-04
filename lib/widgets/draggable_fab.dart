@@ -24,12 +24,23 @@ class DraggableFloatingActionButton extends StatefulWidget {
 class _DraggableFloatingActionButtonState
     extends State<DraggableFloatingActionButton> {
   late Offset _offset;
+  late Offset _dragStartOffset;
   bool _isDragging = false;
 
   @override
   void initState() {
     super.initState();
     _offset = widget.initialOffset;
+    _dragStartOffset = _offset;
+  }
+
+  Offset _clampOffset(Offset offset, Size screenSize) {
+    final maxX = (screenSize.width - 150.0).clamp(10.0, 500.0).toDouble();
+    final maxY = (screenSize.height - 100.0).clamp(60.0, 1000.0).toDouble();
+    return Offset(
+      offset.dx.clamp(10.0, maxX).toDouble(),
+      offset.dy.clamp(60.0, maxY).toDouble(),
+    );
   }
 
   @override
@@ -40,41 +51,46 @@ class _DraggableFloatingActionButtonState
       left: _offset.dx,
       top: _offset.dy,
       child: GestureDetector(
-        onPanStart: (_) {
+        // A normal tap activates the button. Moving it requires an
+        // intentional long press first, so a small finger movement cannot
+        // make the button jump over the controls underneath it.
+        onLongPressStart: (_) {
+          _dragStartOffset = _offset;
           setState(() => _isDragging = true);
         },
-        onPanUpdate: (details) {
+        onLongPressMoveUpdate: (details) {
           setState(() {
-            double newX = _offset.dx + details.delta.dx;
-            double newY = _offset.dy + details.delta.dy;
-
-            newX = newX.clamp(10.0, (screenSize.width - 150.0).clamp(10.0, 500.0));
-            newY = newY.clamp(60.0, (screenSize.height - 100.0).clamp(60.0, 1000.0));
-
-            _offset = Offset(newX, newY);
+            _offset = _clampOffset(
+              _dragStartOffset + details.offsetFromOrigin,
+              screenSize,
+            );
           });
         },
-        onPanEnd: (_) {
+        onLongPressEnd: (_) {
           setState(() => _isDragging = false);
         },
+        onLongPressCancel: () => setState(() => _isDragging = false),
         child: AnimatedScale(
           scale: _isDragging ? 1.08 : 1.0,
           duration: const Duration(milliseconds: 100),
-          child: FloatingActionButton.extended(
-            onPressed: () {
-              if (!_isDragging) {
-                widget.onPressed();
-              }
-            },
-            backgroundColor: widget.backgroundColor,
-            elevation: _isDragging ? 12 : 6,
-            icon: Icon(widget.icon, color: Colors.white),
-            label: Text(
-              widget.label,
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+          child: Tooltip(
+            message: 'اضغط مطولاً لتحريك الزر',
+            child: FloatingActionButton.extended(
+              onPressed: () {
+                if (!_isDragging) {
+                  widget.onPressed();
+                }
+              },
+              backgroundColor: widget.backgroundColor,
+              elevation: _isDragging ? 12 : 6,
+              icon: Icon(widget.icon, color: Colors.white),
+              label: Text(
+                widget.label,
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

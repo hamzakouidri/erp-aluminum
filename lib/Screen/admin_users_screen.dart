@@ -6,6 +6,8 @@ import '../settings/localization.dart';
 import '../services/subscription_service.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -1004,7 +1006,487 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       'subscriptionType': row['plan_type'],
       'subscriptionStartDate': row['starts_at'],
       'subscriptionEndDate': row['ends_at'],
+      'maxUsers': row['max_users'],
+      'maxSystems': row['max_systems'],
+      'maxProfiles': row['max_profiles'],
     };
+  }
+
+  String _supabaseWorkshopGroupKey(Map<String, dynamic> row) {
+    final workshopId = row['workshop_id']?.toString().trim() ?? row['id']?.toString().trim() ?? '';
+    if (workshopId.isNotEmpty) return 'workshop:$workshopId';
+    final code = row['code']?.toString().trim() ?? '';
+    if (code.isNotEmpty) return 'code:$code';
+    final ownerUid = row['owner_uid']?.toString().trim() ?? '';
+    if (ownerUid.isNotEmpty) return 'owner:$ownerUid';
+    final name = row['name']?.toString().trim().toLowerCase() ?? '';
+    final email = row['owner_email']?.toString().trim().toLowerCase() ?? '';
+    return 'group:$name|$email';
+  }
+
+  String _supabaseWorkshopName(List<Map<String, dynamic>> rows) {
+    for (final row in rows) {
+      final name = row['name']?.toString().trim() ?? '';
+      if (name.isNotEmpty) return name;
+    }
+    return _t('ورشة بدون اسم');
+  }
+
+  String _supabaseWorkshopEmail(List<Map<String, dynamic>> rows) {
+    for (final row in rows) {
+      final email = row['owner_email']?.toString().trim() ?? '';
+      if (email.isNotEmpty) return email;
+    }
+    return _t('بدون بريد إلكتروني');
+  }
+
+  Map<String, dynamic> _supabaseStatusRow(List<Map<String, dynamic>> rows) {
+    for (final row in rows) {
+      if (_isActive(_supabaseSubscriptionData(row))) return row;
+    }
+    return rows.first;
+  }
+
+  int _supabaseMemberCount(List<Map<String, dynamic>> rows) {
+    var count = 0;
+    for (final row in rows) {
+      final value = int.tryParse(row['member_count']?.toString() ?? '') ?? 0;
+      if (value > count) count = value;
+    }
+    return count;
+  }
+
+  List<String> _supabaseWorkshopCodes(List<Map<String, dynamic>> rows) {
+    return rows
+        .map((row) => row['code']?.toString().trim() ?? '')
+        .where((code) => code.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+  }
+
+  Future<void> _setSupabaseSubscriptionForGroup(
+    BuildContext ctx,
+    List<Map<String, dynamic>> rows, {
+    required String status,
+    required String planType,
+    DateTime? endsAt,
+    required String message,
+  }) async {
+    try {
+      for (final row in rows) {
+        final workshopId = row['workshop_id']?.toString().trim() ?? '';
+        if (workshopId.isEmpty) continue;
+        await SupabaseAccountService().setSubscriptionForWorkshopId(
+          workshopId: workshopId,
+          status: status,
+          planType: planType,
+          endsAt: endsAt,
+        );
+      }
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.green),
+        );
+        setState(() {});
+      }
+    } catch (error) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('${_t('خطأ:')} $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openSupabaseWorkshop(
+    BuildContext ctx,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final code = _supabaseWorkshopCodes(rows).firstOrNull ?? '';
+    final name = _supabaseWorkshopName(rows);
+    if (code.isEmpty) return;
+    try {
+      final account = await SupabaseAccountService()
+          .loadSelectedApplicationAdminWorkshop(code: code, name: name);
+      if (account == null) {
+        throw Exception('لم يتم العثور على الورشة المحددة في Supabase.');
+      }
+      CloudSyncService().reset();
+      final sync = SupabaseWorkshopSyncService();
+      final ready = await sync.ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) {
+        throw Exception('تعذر تجهيز اتصال الورشة المحددة.');
+      }
+      await sync.downloadWorkshopData(full: true);
+      final diagnostics = await sync.inspectWorkshopData();
+      await CloudSyncService().init();
+      if (ctx.mounted) {
+        final hasRemoteData = diagnostics.syncRows > 0;
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              hasRemoteData
+                  ? 'تم فتح ${account.workshopName} (${account.workshopCode}). '
+                      '${sync.lastDownloadSummary}\n'
+                      'السجلات: ${diagnostics.syncRows}، الملف: '
+                      '${diagnostics.profileExists ? 'موجود' : 'غير موجود'}، '
+                      'المستخدمون: ${diagnostics.members}'
+                  : 'تم تحديد الورشة، لكن لم توجد سجلات بيانات لها. '
+                      'الكود: ${diagnostics.workshopCode}، '
+                      'UUID: ${diagnostics.workshopUuid}، '
+                      'UID: ${diagnostics.userId}',
+            ),
+            backgroundColor: hasRemoteData ? Colors.green : Colors.orange,
+            duration: const Duration(seconds: 8),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (error) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text('تعذر فتح بيانات الورشة: $error'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadAdminWorkshopMembers(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final members = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final code in _supabaseWorkshopCodes(rows)) {
+      final loaded = await SupabaseAccountService()
+          .fetchAdminWorkshopMembers(code);
+      for (final member in loaded) {
+        final email = member['email']?.toString().trim().toLowerCase() ?? '';
+        final userId = member['user_id']?.toString().trim() ?? '';
+        final key = userId.isNotEmpty ? 'uid:$userId' : 'email:$email';
+        if (key == 'email:' || !seen.add(key)) continue;
+        members.add({...member, '_sourceCode': code});
+      }
+    }
+    return members;
+  }
+
+  Future<void> _showSupabaseMemberDialog(
+    BuildContext ctx,
+    Map<String, dynamic> member,
+  ) async {
+    final email = member['email']?.toString().trim() ?? '';
+    if (email.isEmpty) return;
+    var blocked = member['blocked'] == true;
+    var role = member['role']?.toString().trim() ?? 'worker';
+    if (!const ['worker', 'manager', 'co_manager', 'admin'].contains(role)) {
+      role = 'worker';
+    }
+    final permissions = member['permissions'] is Map
+        ? Map<String, dynamic>.from(member['permissions'] as Map)
+        : <String, dynamic>{};
+    var saving = false;
+
+    final updated = await showDialog<bool>(
+      context: ctx,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          return AlertDialog(
+            title: Text(_t('إدارة العامل')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(email, style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: role,
+                  decoration: InputDecoration(labelText: _t('الدور')),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'worker',
+                      child: Text(_t('عامل')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'co_manager',
+                      child: Text(_t('نائب مدير')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'manager',
+                      child: Text(_t('مدير')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'admin',
+                      child: Text(_t('مسؤول')),
+                    ),
+                  ],
+                  onChanged: saving
+                      ? null
+                      : (value) {
+                          if (value != null) setDialogState(() => role = value);
+                        },
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_t('حظر الحساب')),
+                  value: blocked,
+                  onChanged: saving
+                      ? null
+                      : (value) => setDialogState(() => blocked = value),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogCtx),
+                child: Text(_t('إلغاء')),
+              ),
+              FilledButton.icon(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        setDialogState(() => saving = true);
+                        try {
+                          await SupabaseAccountService()
+                              .updateAdminWorkshopMember(
+                                workshopCode:
+                                    member['_sourceCode']?.toString() ?? '',
+                                email: email,
+                                role: role,
+                                permissions: {
+                                  ...permissions,
+                                  'isBlocked': blocked,
+                                  'full_manager_permissions':
+                                      role == 'co_manager',
+                                  'co_manager': role == 'co_manager',
+                                },
+                                blocked: blocked,
+                              );
+                          if (dialogCtx.mounted) {
+                            Navigator.pop(dialogCtx, true);
+                          }
+                        } catch (error) {
+                          setDialogState(() => saving = false);
+                          if (dialogCtx.mounted) {
+                            ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                              SnackBar(content: Text('${_t('خطأ:')} $error')),
+                            );
+                          }
+                        }
+                      },
+                icon: saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save),
+                label: Text(_t('حفظ')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (updated == true && ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(_t('تم حفظ إعدادات العامل.')),
+          backgroundColor: Colors.green,
+        ),
+      );
+      setState(() {});
+    }
+  }
+
+  Widget _buildSupabaseMembersSection(
+    BuildContext ctx,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final managerEmail = _supabaseWorkshopEmail(rows);
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _loadAdminWorkshopMembers(rows),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(18),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Text('${_t('تعذر تحميل أعضاء الورشة:')} ${snapshot.error}'),
+          );
+        }
+        final members = snapshot.data ?? const <Map<String, dynamic>>[];
+        return Column(
+          children: [
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.manage_accounts, color: Colors.blue),
+              title: Text(_t('مدير الورشة')),
+              subtitle: Text(managerEmail),
+            ),
+            if (members.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    _t('لا يوجد عمال أو مشتركون داخل هذه الورشة.'),
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
+            else
+              ...members.map(
+                (member) => ListTile(
+                  dense: true,
+                  leading: Icon(
+                    member['is_pending'] == true
+                        ? Icons.mail_outline
+                        : Icons.person_outline,
+                    color: member['blocked'] == true
+                        ? Colors.red
+                        : Colors.grey.shade700,
+                  ),
+                  title: Text(
+                    member['email']?.toString() ?? _t('بدون بريد'),
+                  ),
+                  subtitle: Text(
+                    '${member['is_pending'] == true ? '${_t('دعوة معلقة')} • ' : ''}'
+                    '${member['role'] ?? 'worker'}${member['blocked'] == true ? ' • ${_t('محظور')}' : ''}',
+                  ),
+                  trailing: IconButton(
+                    tooltip: _t('إدارة العامل'),
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () => _showSupabaseMemberDialog(ctx, member),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSupabaseWorkshopCard(
+    BuildContext ctx,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final statusRow = _supabaseStatusRow(rows);
+    final statusData = _supabaseSubscriptionData(statusRow);
+    final active = _isActive(statusData);
+    final (statusText, statusColor) = _statusInfo(statusData);
+    final codes = _supabaseWorkshopCodes(rows);
+    final email = _supabaseWorkshopEmail(rows);
+    final count = _supabaseMemberCount(rows);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: active ? Colors.transparent : Colors.red.shade300,
+          width: active ? 0 : 2,
+        ),
+      ),
+      child: ExpansionTile(
+        leading: Icon(
+          active ? Icons.storefront : Icons.lock_clock,
+          color: active ? Colors.green : Colors.red,
+        ),
+        title: Text(
+          _supabaseWorkshopName(rows),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        subtitle: Text('$email  •  $count ${_t('مستخدمين')}'),
+        trailing: Chip(
+          label: Text(
+            statusText,
+            style: TextStyle(color: statusColor, fontSize: 11),
+          ),
+          backgroundColor: statusColor.withAlpha(25),
+          side: BorderSide(color: statusColor.withAlpha(80)),
+        ),
+        children: [
+          _buildSupabaseMembersSection(ctx, rows),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: OutlinedButton.icon(
+                onPressed: () => _openSupabaseWorkshop(ctx, rows),
+                icon: const Icon(Icons.cloud_download_rounded),
+                label: Text(_t('فتح وتنزيل بيانات الورشة')),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Divider(),
+                Text(
+                  '${_t('أكواد الورشة')}: ${codes.isEmpty ? _t('غير متوفر') : codes.join('، ')}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton(
+                      onPressed: () => _setSupabaseSubscriptionForGroup(
+                        ctx,
+                        rows,
+                        status: 'trialing',
+                        planType: 'trial',
+                        endsAt: DateTime.now().add(const Duration(days: 30)),
+                        message: _t('تم تفعيل الورشة لمدة 30 يومًا.'),
+                      ),
+                      child: Text(_t('30 يومًا')),
+                    ),
+                    OutlinedButton(
+                      onPressed: () => _setSupabaseSubscriptionForGroup(
+                        ctx,
+                        rows,
+                        status: 'active',
+                        planType: 'lifetime',
+                        message: _t('تم تفعيل الورشة بشكل دائم.'),
+                      ),
+                      child: Text(_t('تفعيل دائم')),
+                    ),
+                    TextButton(
+                      onPressed: () => _setSupabaseSubscriptionForGroup(
+                        ctx,
+                        rows,
+                        status: 'expired',
+                        planType: 'trial',
+                        endsAt: DateTime.now(),
+                        message: _t('تم سحب اشتراك الورشة.'),
+                      ),
+                      child: Text(
+                        _t('سحب الاشتراك'),
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSupabaseAdminBody() {
@@ -1032,107 +1514,25 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           return Center(child: Text(_t('لا يوجد مستخدمون في قاعدة البيانات')));
         }
 
+        final grouped = <String, List<Map<String, dynamic>>>{};
+        for (final row in rows) {
+          grouped
+              .putIfAbsent(_supabaseWorkshopGroupKey(row), () => [])
+              .add(row);
+        }
+        final groups = grouped.values.toList()
+          ..sort((a, b) {
+            final aActive = _isActive(_supabaseSubscriptionData(_supabaseStatusRow(a)));
+            final bActive = _isActive(_supabaseSubscriptionData(_supabaseStatusRow(b)));
+            if (aActive != bActive) return aActive ? 1 : -1;
+            return _supabaseWorkshopName(a).compareTo(_supabaseWorkshopName(b));
+          });
+
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final row = rows[index];
-            final ownerUid = row['owner_uid']?.toString() ?? '';
-            final email = row['owner_email']?.toString() ?? '';
-            final data = _supabaseSubscriptionData(row);
-            final active = _isActive(data);
-            final (statusText, statusColor) = _statusInfo(data);
-            final memberCount = row['member_count']?.toString() ?? '0';
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          active ? Icons.storefront : Icons.lock_clock,
-                          color: active ? Colors.green : Colors.red,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            row['name']?.toString().trim().isNotEmpty == true
-                                ? row['name'].toString()
-                                : row['code']?.toString() ?? _t('ورشة'),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          statusText,
-                          style: TextStyle(
-                            color: statusColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text('$email  •  $memberCount ${_t('مستخدمين')}'),
-                    Text(
-                      '${_t('الكود:')} ${row['code'] ?? ''}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton(
-                          onPressed: ownerUid.isEmpty
-                              ? null
-                              : () async {
-                                  await _grantDays(
-                                    context,
-                                    ownerUid,
-                                    email,
-                                    30,
-                                  );
-                                  if (mounted) setState(() {});
-                                },
-                          child: Text(_t('30 يومًا')),
-                        ),
-                        OutlinedButton(
-                          onPressed: ownerUid.isEmpty
-                              ? null
-                              : () async {
-                                  await _grantActive(context, ownerUid, email);
-                                  if (mounted) setState(() {});
-                                },
-                          child: Text(_t('تفعيل دائم')),
-                        ),
-                        TextButton(
-                          onPressed: ownerUid.isEmpty
-                              ? null
-                              : () async {
-                                  await _revokeSubscription(
-                                    context,
-                                    ownerUid,
-                                    email,
-                                  );
-                                  if (mounted) setState(() {});
-                                },
-                          child: Text(_t('سحب الاشتراك')),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+          itemCount: groups.length,
+          itemBuilder: (context, index) =>
+              _buildSupabaseWorkshopCard(context, groups[index]),
         );
       },
     );

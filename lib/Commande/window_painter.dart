@@ -14,6 +14,7 @@ part 'window_painter_helpers.dart';
 class WindowPainter extends CustomPainter {
   final WindowModel model;
   final bool? overrideIsInternalView;
+  final int repaintToken;
 
   /// Technical dimensions are reserved for the interactive drawing editor.
   /// Previews, PDFs and customer-facing images stay clean.
@@ -31,6 +32,7 @@ class WindowPainter extends CustomPainter {
   WindowPainter({
     required this.model,
     this.overrideIsInternalView,
+    this.repaintToken = 0,
     this.showDrawingDimensions = false,
     this.showSelection = false,
   }) : super(repaint: model) {
@@ -124,10 +126,13 @@ class WindowPainter extends CustomPainter {
   bool get _hasDrawableIntegratedSideCover =>
       model.hasSideCovers &&
       model.isIntegratedFrame &&
+      model.isSideCoverAllowed &&
       model.integratedFrameSideCoverWidth > 0;
 
   bool get _hasDrawableStandaloneSideCover =>
-      model.hasSideCovers && _drawableStandaloneSideCoverWidth > 0;
+      model.hasSideCovers &&
+      model.canUseStandaloneSideCover &&
+      _drawableStandaloneSideCoverWidth > 0;
 
   bool get _shouldDrawSideCovers =>
       _hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover;
@@ -381,7 +386,6 @@ class WindowPainter extends CustomPainter {
     } else {
       if (!model.isShutterOnly) {
         _drawOuterFrames(canvas, w, h, t, topOffset);
-
       }
 
       if (!model.isShutterOnly) {
@@ -486,8 +490,9 @@ class WindowPainter extends CustomPainter {
       // side-cover perimeter must start at y=0 as well; otherwise it only
       // surrounds the frame below the box and leaves the box outside the
       // cover. Tunnel shutters already use a zero top offset.
-      final sideCoverTopY =
-          model.hasShutter && !isSlantedOrArched ? 0.0 : topOffset;
+      final sideCoverTopY = model.hasShutter && !isSlantedOrArched
+          ? 0.0
+          : topOffset;
       _drawConfiguredSideCovers(canvas, w, h, sideCoverTopY);
     }
 
@@ -705,7 +710,6 @@ class WindowPainter extends CustomPainter {
 
   Color get _fb =>
       getEffectiveBorderColor(model.frameColor, model.selectedDbColor);
-
 
   bool _isWoodColor([Map<String, dynamic>? dbColor]) {
     // If checking specifically for a different color, run standard check
@@ -2137,17 +2141,15 @@ class WindowPainter extends CustomPainter {
             .clamp(0.0, coverWidth)
             .toDouble();
         if (visible <= 0) continue;
-        pieces.add(
-          (
-            edge: FrameEdgeSegment(
-              side: edge.side,
-              start: start,
-              end: end,
-              coordinate: edge.coordinate,
-            ),
-            visible: visible,
+        pieces.add((
+          edge: FrameEdgeSegment(
+            side: edge.side,
+            start: start,
+            end: end,
+            coordinate: edge.coordinate,
           ),
-        );
+          visible: visible,
+        ));
       }
     }
     if (pieces.isEmpty) return;
@@ -2155,8 +2157,10 @@ class WindowPainter extends CustomPainter {
     const tolerance = 2.0;
     bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
-    Offset endpointOf(({FrameEdgeSegment edge, double visible}) piece,
-        bool atStart) {
+    Offset endpointOf(
+      ({FrameEdgeSegment edge, double visible}) piece,
+      bool atStart,
+    ) {
       final edge = piece.edge;
       final axis = atStart ? edge.start : edge.end;
       return isHorizontal(edge.side)
@@ -2229,12 +2233,9 @@ class WindowPainter extends CustomPainter {
         final rayA = rayIntoEdge(piece.edge, point);
         final rayB = rayIntoEdge(other.edge, point);
         const sampleDistance = 1.0;
-        final cornerSample = point +
-            Offset(
-              rayA.dx + rayB.dx,
-              rayA.dy + rayB.dy,
-            ) *
-                sampleDistance;
+        final cornerSample =
+            point +
+            Offset(rayA.dx + rayB.dx, rayA.dy + rayB.dy) * sampleDistance;
         result = math.min(result, other.visible);
         return (
           width: math.min(result, piece.visible),
@@ -2305,8 +2306,7 @@ class WindowPainter extends CustomPainter {
     ) {
       final edge = piece.edge;
       final point = endpointOf(piece, atStart);
-      final signedWidth =
-          (joint.isConvex ? 1.0 : -1.0) * joint.width;
+      final signedWidth = (joint.isConvex ? 1.0 : -1.0) * joint.width;
       switch (edge.side) {
         case 'top':
           return Offset(
@@ -3359,6 +3359,9 @@ class WindowPainter extends CustomPainter {
         if (zone.content == ZoneContent.empty) {
           break;
         }
+        final hasBottomPlinthe =
+            model.hasFramePlintheBottom && zone.hasSashPlintheBottom;
+        final contentRect = hasBottomPlinthe ? _rectWithoutBottomPlinthe(r) : r;
         final cellSpec = zone.getGlassForCell('main_cell_0_0');
 
         final bool isDecorPanel =
@@ -3369,7 +3372,7 @@ class WindowPainter extends CustomPainter {
         if (isDecorPanel) {
           _drawPanelTexture(
             canvas,
-            r,
+            contentRect,
             model.frameColor,
             finish: GlassFinish.paneauSandwitchDecore,
             zone: zone,
@@ -3381,7 +3384,7 @@ class WindowPainter extends CustomPainter {
         } else if (cellSpec.structure == GlassStructure.closed) {
           _drawPanelTexture(
             canvas,
-            r,
+            contentRect,
             model.frameColor,
             zone: zone,
             spec: cellSpec,
@@ -3390,17 +3393,27 @@ class WindowPainter extends CustomPainter {
             isTopBound: isTopBound,
           );
         } else if (zone.content == ZoneContent.fixedGlass) {
-          _drawFixedGlass(canvas, r, cellSpec, t, topOffset, isTopBound);
+          _drawFixedGlass(
+            canvas,
+            contentRect,
+            cellSpec,
+            t,
+            topOffset,
+            isTopBound,
+          );
         }
         if (!isDecorPanel) {
           _drawRealisticParclose(
             canvas,
-            r,
+            contentRect,
             model.frameColor,
             t: t,
             topOffset: topOffset,
             isTopBound: isTopBound,
           );
+        }
+        if (hasBottomPlinthe) {
+          _drawBottomPlinthe(canvas, r);
         }
         break;
 
@@ -3514,6 +3527,46 @@ class WindowPainter extends CustomPainter {
       topW: topW,
     );
     _drawGlassLabel(canvas, r, glass.displayName);
+  }
+
+  Rect _rectWithoutBottomPlinthe(Rect rect) {
+    final plintheHeight = model.plintheHeight;
+    if (plintheHeight <= 0 || rect.height <= plintheHeight + 2.0) {
+      return rect;
+    }
+    return Rect.fromLTRB(
+      rect.left,
+      rect.top,
+      rect.right,
+      rect.bottom - plintheHeight,
+    );
+  }
+
+  void _drawBottomPlinthe(Canvas canvas, Rect zoneRect) {
+    final plintheHeight = model.plintheHeight;
+    if (plintheHeight <= 0 || zoneRect.height <= plintheHeight) return;
+
+    final plintheRect = Rect.fromLTRB(
+      zoneRect.left,
+      zoneRect.bottom - plintheHeight,
+      zoneRect.right,
+      zoneRect.bottom,
+    );
+    canvas.drawRect(plintheRect, _buildPaint(plintheRect, gradientColors: _fc));
+    canvas.drawRect(
+      plintheRect,
+      Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+    canvas.drawLine(
+      plintheRect.topLeft,
+      plintheRect.topRight,
+      Paint()
+        ..color = _fb.withValues(alpha: 0.85)
+        ..strokeWidth = 1.0,
+    );
   }
 
   double getInnerBottomY(double x, double t) {
@@ -5298,6 +5351,46 @@ class WindowPainter extends CustomPainter {
     if (series == null) return defaultVal;
 
     final String tName = typeName.toLowerCase();
+    final overrideKeys = <String>[];
+    if (tName == 'traverse') {
+      overrideKeys.addAll(const [
+        'عرضي (Traverse)',
+        'سكة الظلفة (Sash Traverse)',
+      ]);
+    } else if (tName == 'chicane') {
+      overrideKeys.addAll(const [
+        'قائم وسطي معزز (Sash Central Renforcé)',
+        'قائم وسطي (Sash Central)',
+        'قائم وسطي (Central)',
+        'الشيكان (Chicane)',
+      ]);
+    } else if (tName == 'lateral') {
+      overrideKeys.addAll(const [
+        'قائم جانبي معزز (Sash Lateral Renforcé)',
+        'قائم جانبي (Sash Lateral)',
+        'قائم جانبي (Lateral)',
+      ]);
+    }
+
+    double widthFromOverride(Map<String, dynamic> override) {
+      for (final key in const ['visible_width', 'thickness', 'width']) {
+        final raw = override[key];
+        final width = raw is num
+            ? raw.toDouble()
+            : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+        if (width > 0) return width;
+      }
+      return 0.0;
+    }
+
+    for (final key in overrideKeys) {
+      final override = model.getSlidingComponentOverride(key);
+      if (override != null) {
+        final width = widthFromOverride(override);
+        if (width > 0) return width;
+      }
+    }
+
     String? altType;
     if (tName == 'traverse') {
       altType = 'sash_traverse';
@@ -7138,6 +7231,7 @@ class WindowPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant WindowPainter oldDelegate) {
     return oldDelegate.model != model ||
+        oldDelegate.repaintToken != repaintToken ||
         oldDelegate.overrideIsInternalView != overrideIsInternalView ||
         oldDelegate.showDrawingDimensions != showDrawingDimensions ||
         oldDelegate.showSelection != showSelection;

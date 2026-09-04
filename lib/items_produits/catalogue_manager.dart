@@ -2268,17 +2268,15 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
             ),
         ],
       ),
-      // 🟢 تغليف بـ SingleChildScrollView لمنع الانضغاط أفقياً
-      body: InteractiveViewer(
-        panEnabled: true,
-        scaleEnabled: true,
-        minScale: 0.5,
-        maxScale: 3.0,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: 1200, // عرض كافٍ يضمن عدم انضغاط النصوص أفقياً
-            child: Row(
+      // 🟢 تغليف بـ LayoutBuilder و SingleChildScrollView لمنع الانضغاط أفقياً
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final targetWidth = constraints.maxWidth < 1100 ? 1100.0 : constraints.maxWidth;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: targetWidth,
+              child: Row(
               children: [
                 // 1. قائمة الأنظمة (Profiles)
                 Expanded(
@@ -2778,8 +2776,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
+        );
+      },
+    ),
+  );
+}
 }

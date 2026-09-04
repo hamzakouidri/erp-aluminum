@@ -7,6 +7,30 @@ import 'package:database_data/settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+class WorkshopDataDiagnostics {
+  const WorkshopDataDiagnostics({
+    required this.userId,
+    required this.workshopUuid,
+    required this.workshopCode,
+    required this.remoteWorkshopExists,
+    required this.remoteWorkshopName,
+    required this.syncRows,
+    required this.members,
+    required this.profileExists,
+    required this.profileName,
+  });
+
+  final String userId;
+  final String workshopUuid;
+  final String workshopCode;
+  final bool remoteWorkshopExists;
+  final String remoteWorkshopName;
+  final int syncRows;
+  final int members;
+  final bool profileExists;
+  final String profileName;
+}
+
 class SupabaseWorkshopSyncService {
   SupabaseWorkshopSyncService._internal();
 
@@ -21,6 +45,9 @@ class SupabaseWorkshopSyncService {
   static const int _downloadPageSize = 500;
   static const String _workshopProfileTable = '__WorkshopProfile';
   static const String _workshopProfileRowId = 'current';
+  static const String _workshopCatalogConfigurationTable =
+      '__WorkshopCatalogConfiguration';
+  static const String _workshopCatalogConfigurationRowId = 'current';
 
   final SqlDatabase _db = SqlDatabase();
   final Random _random = Random.secure();
@@ -54,6 +81,63 @@ class SupabaseWorkshopSyncService {
   bool get isSignedIn => _client.auth.currentUser != null;
 
   bool get isReady => isSignedIn && _workshopUuid != null;
+
+  String get currentWorkshopUuid => _workshopUuid ?? '';
+
+  String get currentWorkshopCode => _workshopCode ?? '';
+
+  /// Reads the remote identity and the first batch of remote data without
+  /// changing the local database. This prevents a false "downloaded"
+  /// message when the selected code points to an empty or different workshop.
+  Future<WorkshopDataDiagnostics> inspectWorkshopData() async {
+    await _ensureReady();
+    final user = _client.auth.currentUser!;
+    final workshopUuid = _workshopUuid!;
+
+    final workshop = await _client
+        .from('workshops')
+        .select('id,code,join_code,name')
+        .eq('id', workshopUuid)
+        .maybeSingle();
+    final rows = await _client
+        .from('workshop_sync_rows')
+        .select('table_name,row_id,payload')
+        .eq('workshop_id', workshopUuid)
+        .limit(10000);
+    final members = await _client
+        .from('workshop_members')
+        .select('user_id,role,blocked')
+        .eq('workshop_id', workshopUuid)
+        .limit(1000);
+
+    var profileExists = false;
+    var profileName = '';
+    for (final raw in rows) {
+      final row = Map<String, dynamic>.from(raw);
+      if (row['table_name']?.toString() != _workshopProfileTable ||
+          row['row_id']?.toString() != _workshopProfileRowId) {
+        continue;
+      }
+      final payload = row['payload'];
+      if (payload is Map) {
+        profileExists = true;
+        profileName = payload['workshop_name']?.toString().trim() ?? '';
+      }
+      break;
+    }
+
+    return WorkshopDataDiagnostics(
+      userId: user.id,
+      workshopUuid: workshopUuid,
+      workshopCode: _workshopCode ?? '',
+      remoteWorkshopExists: workshop != null,
+      remoteWorkshopName: workshop?['name']?.toString().trim() ?? '',
+      syncRows: rows.length,
+      members: members.length,
+      profileExists: profileExists,
+      profileName: profileName,
+    );
+  }
 
   void start({void Function()? onDataChanged}) {
     _onDataChanged = onDataChanged ?? _onDataChanged;
@@ -92,6 +176,12 @@ class SupabaseWorkshopSyncService {
     _permissionsChannelName = null;
     _workshopDataChannel = null;
     _workshopDataChannelName = null;
+    // Do not let the next login reuse the previous account's workshop
+    // identity. This is especially important when a new worker signs in on
+    // the same phone after pressing "logout and return".
+    _workshopUuid = null;
+    _workshopCode = null;
+    _deviceId = '';
   }
 
   void notifyLocalChange({bool immediate = false}) {
@@ -218,6 +308,27 @@ class SupabaseWorkshopSyncService {
     }, onConflict: 'workshop_id,table_name,row_id');
   }
 
+  /// Mirrors series-role and catalogue-rule configuration to members of this
+  /// workshop. Product definitions themselves remain in the global catalogue;
+  /// this row carries only the workshop's configuration of those products.
+  Future<void> saveWorkshopCatalogConfiguration(
+    Map<String, dynamic> configuration,
+  ) async {
+    await _ensureReady();
+    final workshopUuid = _workshopUuid!;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _client.from('workshop_sync_rows').upsert({
+      'workshop_id': workshopUuid,
+      'table_name': _workshopCatalogConfigurationTable,
+      'row_id': _workshopCatalogConfigurationRowId,
+      'payload': <String, dynamic>{'tables': configuration, 'updated_at': now},
+      'updated_at': now,
+      'deleted_at': null,
+      'device_id': _deviceId,
+      'revision': DateTime.now().microsecondsSinceEpoch,
+    }, onConflict: 'workshop_id,table_name,row_id');
+  }
+
   /// Claims an old Firebase workshop using the stable legacy code. The SQL
   /// function validates the current Supabase email and creates the owner
   /// membership without ever storing a Firebase UID in a Supabase FK.
@@ -245,7 +356,10 @@ class SupabaseWorkshopSyncService {
     final prefs = await SharedPreferences.getInstance();
     _workshopUuid = workshopUuid;
     _workshopCode = code.trim();
-    await prefs.setString('supabase_workshop_uuid_${code.trim()}', workshopUuid);
+    await prefs.setString(
+      'supabase_workshop_uuid_${code.trim()}',
+      workshopUuid,
+    );
     await _cacheWorkshopIdentity(workshopUuid, prefs);
     return workshopUuid;
   }
@@ -297,6 +411,21 @@ class SupabaseWorkshopSyncService {
     }
   }
 
+  /// Refresh the public join code from the shared workshop row. The code is
+  /// an identity property of the workshop, not a value owned by one device.
+  Future<void> refreshWorkshopIdentity() async {
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null || workshopUuid.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final previousCode = prefs.getString('workshop_code') ?? '';
+    final previousName = prefs.getString('workshop_name') ?? '';
+    await _cacheWorkshopIdentity(workshopUuid, prefs);
+    if (previousCode != (prefs.getString('workshop_code') ?? '') ||
+        previousName != (prefs.getString('workshop_name') ?? '')) {
+      _onDataChanged?.call();
+    }
+  }
+
   /// Returns the real workshop display name, never the workshop code.
   ///
   /// Older workshop rows used the code as their name. Documents must not
@@ -345,32 +474,59 @@ class SupabaseWorkshopSyncService {
 
   Future<void> downloadWorkshopData({bool full = false}) {
     final activeDownload = _activeDownload;
-    if (activeDownload != null) return activeDownload;
+    if (activeDownload != null) {
+      // Startup normally begins with an incremental download. If the user
+      // pulls to refresh while that task is still running, returning it here
+      // silently drops the requested full restore. Queue the full pass after
+      // the current download so the workshop data is actually refreshed.
+      if (full) {
+        return activeDownload.then<void>(
+          (_) => downloadWorkshopData(full: true),
+        );
+      }
+      return activeDownload;
+    }
 
     final task = _downloadChanges(full: full);
-    _activeDownload = task;
-    return task.whenComplete(() {
-      if (identical(_activeDownload, task)) {
+    late Future<void> trackedTask;
+    trackedTask = task.whenComplete(() {
+      if (identical(_activeDownload, trackedTask)) {
         _activeDownload = null;
       }
     });
+    _activeDownload = trackedTask;
+    return trackedTask;
   }
 
   Future<void> _startAsync() async {
     try {
       await _ensureReady();
+      await refreshWorkshopIdentity();
       _subscribeToWorkshopDataChanges();
       _subscribeToPermissionChanges();
       _startBackgroundSync();
-      await refreshCurrentPermissions();
+      // A temporary permission/RLS read failure must not abort the workshop
+      // data download. The permission listener and the next sync cycle will
+      // retry it; business data must continue to sync independently.
+      try {
+        await refreshCurrentPermissions();
+      } catch (error) {
+        print('Supabase permission refresh skipped during startup: $error');
+      }
       final needsFullBootstrap = await _needsFullBootstrapDownload();
       final hasLocalBusinessData = await _hasLocalBusinessData();
-      if (needsFullBootstrap && !hasLocalBusinessData) {
+      // A phone can keep the bootstrap preference after its local database
+      // was cleared/reinstalled. In that case an incremental download starts
+      // after an old timestamp and silently misses the workshop profile,
+      // clients, orders, and other historical rows. Missing local business
+      // data is therefore also a signal to rebuild the workshop snapshot.
+      final shouldDownloadFull = needsFullBootstrap || !hasLocalBusinessData;
+      if (shouldDownloadFull) {
         await downloadWorkshopData(full: true);
       } else {
         await downloadWorkshopData();
       }
-      if (needsFullBootstrap) {
+      if (shouldDownloadFull) {
         await _markFullBootstrapComplete();
       }
       await uploadPendingChanges();
@@ -391,6 +547,7 @@ class SupabaseWorkshopSyncService {
   Future<void> _runBackgroundSyncCycle() async {
     if (!isReady || _isApplyingRemoteData) return;
     try {
+      await refreshWorkshopIdentity();
       // Realtime normally triggers this immediately. The periodic pass is a
       // recovery path for sleeping devices, dropped channels, and failed
       // uploads whose local change log must remain retryable.
@@ -518,6 +675,19 @@ class SupabaseWorkshopSyncService {
             unawaited(downloadWorkshopData());
           },
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'workshops',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: workshopUuid,
+          ),
+          callback: (_) {
+            unawaited(refreshWorkshopIdentity());
+          },
+        )
         .subscribe();
   }
 
@@ -608,7 +778,9 @@ class SupabaseWorkshopSyncService {
     final since = full ? null : await _readLastSyncAt();
     final data = <String, dynamic>{};
     final tombstones = <Map<String, dynamic>>[];
+    Map<String, dynamic>? catalogConfiguration;
     var profileChanged = false;
+    var catalogConfigurationChanged = false;
     var start = 0;
     var downloadedRows = 0;
     String? newestUpdate;
@@ -668,6 +840,18 @@ class SupabaseWorkshopSyncService {
           }
           continue;
         }
+        if (table == _workshopCatalogConfigurationTable) {
+          if (rowId == _workshopCatalogConfigurationRowId &&
+              payload is Map &&
+              payload['tables'] is Map) {
+            catalogConfiguration = Map<String, dynamic>.from(
+              payload['tables'] as Map,
+            );
+            catalogConfigurationChanged = true;
+            downloadedRows++;
+          }
+          continue;
+        }
         if (!_isWorkshopTable(table)) continue;
         if (payload is Map) {
           final list =
@@ -684,6 +868,15 @@ class SupabaseWorkshopSyncService {
 
     if (tombstones.isNotEmpty) {
       data['SyncTombstones'] = tombstones;
+    }
+
+    if (catalogConfiguration != null) {
+      _isApplyingRemoteData = true;
+      try {
+        await _db.importWorkshopCatalogConfiguration(catalogConfiguration);
+      } finally {
+        _isApplyingRemoteData = false;
+      }
     }
 
     // The profile row is metadata, not a business table. It must not make a
@@ -718,6 +911,9 @@ class SupabaseWorkshopSyncService {
     if (profileChanged && data.isEmpty) {
       _onDataChanged?.call();
     }
+    if (catalogConfigurationChanged && data.isEmpty) {
+      _onDataChanged?.call();
+    }
 
     if (newestUpdate != null) {
       await _saveLastSyncAt(newestUpdate);
@@ -744,15 +940,37 @@ class SupabaseWorkshopSyncService {
     _deviceId = deviceId;
 
     final storedCode = (prefs.getString('workshop_code') ?? '').trim();
+    if (storedCode.isEmpty && isApplicationAdminEmail(user.email)) {
+      throw Exception(
+        'مدير التطبيق لا يملك ورشة محددة. اختر ورشة من لوحة الإدارة أولاً.',
+      );
+    }
     final code = storedCode.isNotEmpty ? storedCode : user.id;
     if (_workshopUuid != null && _workshopCode == code) return;
 
     final cachedUuid = prefs.getString('supabase_workshop_uuid_$code');
     if (cachedUuid != null && cachedUuid.isNotEmpty) {
-      _workshopUuid = cachedUuid;
-      _workshopCode = code;
-      await _cacheWorkshopIdentity(cachedUuid, prefs);
-      return;
+      // A UUID cached on this device is valid only when Supabase confirms
+      // that the current user is still a member of that workshop.
+      Map<String, dynamic>? membership;
+      try {
+        final row = await _client
+            .from('workshop_members')
+            .select('workshop_id')
+            .eq('workshop_id', cachedUuid)
+            .eq('user_id', user.id)
+            .maybeSingle();
+        membership = row == null ? null : Map<String, dynamic>.from(row);
+      } catch (_) {
+        membership = null;
+      }
+      if (membership != null) {
+        _workshopUuid = cachedUuid;
+        _workshopCode = code;
+        await _cacheWorkshopIdentity(cachedUuid, prefs);
+        return;
+      }
+      await prefs.remove('supabase_workshop_uuid_$code');
     }
 
     final workshopName = (prefs.getString('workshop_name') ?? code).trim();
@@ -795,7 +1013,31 @@ class SupabaseWorkshopSyncService {
       existing = result == null ? null : Map<String, dynamic>.from(result);
     }
     final existingId = existing?['id']?.toString() ?? '';
-    if (existingId.isNotEmpty) return existingId;
+    if (existingId.isNotEmpty) {
+      final user = _client.auth.currentUser;
+      if (user != null) {
+        try {
+          final membership = await _client
+              .from('workshop_members')
+              .select('workshop_id')
+              .eq('workshop_id', existingId)
+              .eq('user_id', user.id)
+              .maybeSingle();
+          if (membership == null) {
+            throw Exception(
+              'لم تُنشأ عضوية الورشة. طبّق ملف '
+              'supabase/workshop_join_code_migration.sql في Supabase.',
+            );
+          }
+        } catch (error) {
+          throw Exception(
+            'تعذر التحقق من عضوية الورشة. طبّق ملف '
+            'supabase/workshop_join_code_migration.sql في Supabase: $error',
+          );
+        }
+      }
+      return existingId;
+    }
 
     final user = _client.auth.currentUser!;
     Map<String, dynamic> inserted;
@@ -835,7 +1077,12 @@ class SupabaseWorkshopSyncService {
         'user_id': user.id,
         'role': 'owner',
       }, onConflict: 'workshop_id,user_id');
-    } catch (_) {}
+    } catch (error) {
+      throw Exception(
+        'لم تُنشأ عضوية مالك الورشة. طبّق ملف '
+        'supabase/workshop_join_code_migration.sql في Supabase: $error',
+      );
+    }
     return id;
   }
 
@@ -1103,7 +1350,10 @@ class SupabaseWorkshopSyncService {
   String? _bootstrapKey() {
     final code = _workshopCode;
     if (code == null || code.isEmpty) return null;
-    return 'supabase_workshop_full_bootstrap_v2_$code';
+    // Bump this key when the sync format/restore path changes. Existing
+    // phones then perform one complete workshop download after updating the
+    // app instead of trusting an old bootstrap marker.
+    return 'supabase_workshop_full_bootstrap_v3_$code';
   }
 
   Future<void> _applyWorkshopProfile(Map<String, dynamic> profile) async {

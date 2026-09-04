@@ -2166,12 +2166,14 @@ class ComponentCalculator {
     }
 
     final integratedFrameCoverWidth = selectedFrameIntegratedCoverWidth();
-    // The selected frame owns an integrated cover. This rule is shared by
-    // PVC, aluminium, and TPR; the model disables it for aluminium shutters.
+    // The selected frame owns an integrated cover. Use the frame metadata
+    // itself as the source of truth here instead of isIntegratedFrame: that
+    // getter intentionally returns false for multi-frame drawing geometry,
+    // but an integrated frame must never create a separate side-cover row in
+    // the quantity/cost table.
     final bool hasIntegratedSideCover =
         window.hasSideCovers &&
-        integratedFrameCoverWidth > 0 &&
-        window.isIntegratedFrame;
+        integratedFrameCoverWidth > 0;
     bool hasNonIntegratedSideCover =
         window.hasSideCovers &&
         window.canUseStandaloneSideCover &&
@@ -2979,6 +2981,7 @@ class ComponentCalculator {
     List<double> framePieces = [];
     List<double> slidingOuterFramePieces = [];
     List<double> renfortFramePieces = [];
+    List<double> fixedPlinthePieces = [];
 
     double renfortFrameDeduction = 140.0;
     if (outerFrameOverride != null) {
@@ -3093,7 +3096,15 @@ class ComponentCalculator {
             ? window.width
             : zone.boundary.right;
         final length = math.max(0.0, segRight - segLeft);
-        if (length > 0) framePieces.add(length / 1000.0);
+        if (length > 0) {
+          final usesPlinthe =
+              window.hasFramePlintheBottom && zone.hasSashPlintheBottom;
+          if (usesPlinthe) {
+            fixedPlinthePieces.add(length / 1000.0);
+          } else {
+            framePieces.add(length / 1000.0);
+          }
+        }
       }
     }
 
@@ -3296,7 +3307,10 @@ class ComponentCalculator {
       }
     }
 
-    if (hasSingleSash || hasDoubleSash || hasSlidingSash) {
+    if (hasSingleSash ||
+        hasDoubleSash ||
+        hasSlidingSash ||
+        fixedPlinthePieces.isNotEmpty) {
       final Map<String, Map<String, dynamic>> sashGroups = {};
 
       for (var zone in window.zones) {
@@ -3688,12 +3702,16 @@ class ComponentCalculator {
         );
       }
 
-      if (sashPlinthePieces.isNotEmpty) {
+      final plinthePieces = <double>[
+        ...sashPlinthePieces,
+        ...fixedPlinthePieces,
+      ];
+      if (plinthePieces.isNotEmpty) {
         items.add(
           createProfile(
-            'بلانت الظلفة (Plinthe Sash)',
+            'بلانت (Plinthe)',
             colorName,
-            pieces: sashPlinthePieces,
+            pieces: plinthePieces,
             unit: 'متر',
             // Plinthe is its own catalogue role. Never fall back to the
             // selected sash profile, otherwise a thick sash can replace the
@@ -3707,13 +3725,14 @@ class ComponentCalculator {
           createProfile(
             'حامل الجوان (Porte-joint)',
             colorName,
-            pieces: sashPlinthePieces,
+            pieces: plinthePieces,
             unit: 'متر',
-            overrideMap: window.componentOverrides['حامل الجوان (Porte-joint)'],
+            overrideMap:
+                window.componentOverrides['حامل الجوان (Porte-joint)'],
             selectorType: 'porte_joint',
           ),
         );
-        final porteJointLength = sashPlinthePieces.fold<double>(
+        final porteJointLength = plinthePieces.fold<double>(
           0.0,
           (sum, piece) => sum + piece,
         );
@@ -3763,8 +3782,8 @@ class ComponentCalculator {
         const lateralName = 'قائم جانبي (Sash Lateral)';
         final baseLateral =
             slidingOverrideFor([
+              'قائم جانبي معزز (Sash Lateral Renforcé)',
               lateralName,
-              'قائم جانبي (Sash Lateral)',
               'قائم جانبي (Lateral)',
             ]) ??
             window.getSlidingSectionByType('sash_lateral')?.toMap() ??
@@ -3787,8 +3806,8 @@ class ComponentCalculator {
         const centralName = 'قائم وسطي (Sash Central)';
         final baseCentral =
             slidingOverrideFor([
+              'قائم وسطي معزز (Sash Central Renforcé)',
               centralName,
-              'قائم وسطي (Sash Central)',
               'قائم وسطي (Central)',
             ]) ??
             window.getSlidingSectionByType('sash_central')?.toMap() ??

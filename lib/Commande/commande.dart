@@ -27,6 +27,7 @@ import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
+import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 
 import '../services/auth_service.dart';
 
@@ -665,8 +666,10 @@ class _CommandeState extends State<Commande> {
             ),
         ],
       ),
-      body: Column(
-        children: [
+      body: DesktopScrollFallback(
+        controller: _scrollController,
+        child: Column(
+          children: [
           // 🔍 Filters — shown only on Mobile
           if (!(MediaQuery.of(context).size.width >= 900 || Platform.isWindows))
             Container(
@@ -945,6 +948,7 @@ class _CommandeState extends State<Commande> {
 
                   return ListView.builder(
                     controller: _scrollController,
+                    primary: false,
                     itemCount: data.length,
                     itemBuilder: (context, index) {
                       final clientFirst = data[index]['firstname'] ?? '';
@@ -1178,7 +1182,8 @@ class _CommandeState extends State<Commande> {
               ),
             ),
           ),
-        ],
+          ],
+        ),
       ),
 
       floatingActionButton: (!isDesktop && settings.canCreateOrders())

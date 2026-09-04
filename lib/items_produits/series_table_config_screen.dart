@@ -353,6 +353,20 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   Iterable<_SeriesRole> get _availableRoles =>
       _roles.where((role) => !_isPvcProfile || role.key != 'reducer');
 
+  /// Keep configured roles at the top of the rules page.  A role is active
+  /// when at least one section has been assigned to it; unassigned roles stay
+  /// below them while preserving the administrator's stable role order.
+  List<_SeriesRole> get _orderedAvailableRoles {
+    final roles = _availableRoles.toList(growable: false);
+    final active = roles.where(
+      (role) => _sectionIdsByRole[role.key]?.isNotEmpty ?? false,
+    );
+    final inactive = roles.where(
+      (role) => !(_sectionIdsByRole[role.key]?.isNotEmpty ?? false),
+    );
+    return [...active, ...inactive];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -856,7 +870,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     setState(() => _saving = true);
 
     final roles = <Map<String, dynamic>>[];
-    for (final role in _availableRoles) {
+    for (final role in _orderedAvailableRoles) {
       for (final sectionId in _sectionIdsByRole[role.key]!) {
         final options = _normalizedRoleOptions(
           role.key,
@@ -1127,7 +1141,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             _slidingFormulaCard(),
             const SizedBox(height: 14),
           ],
-          for (final role in _availableRoles) _roleCard(role),
+          for (final role in _orderedAvailableRoles) _roleCard(role),
           _aluminumJointLinksCard(),
           const SizedBox(height: 90),
         ],

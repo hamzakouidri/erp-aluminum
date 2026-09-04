@@ -17,6 +17,15 @@ where join_code is null or trim(join_code) = '';
 create unique index if not exists workshops_join_code_key
   on public.workshops (join_code);
 
+do $$
+begin
+  alter publication supabase_realtime add table public.workshops;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end
+$$;
+
 create or replace function public.set_my_workshop_join_code(
   target_workshop_id uuid,
   requested_code text default ''

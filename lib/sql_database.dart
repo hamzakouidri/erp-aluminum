@@ -315,6 +315,20 @@ class SqlDatabase {
     'MaterialScrap',
   ];
 
+  // These rows describe how a workshop uses the shared catalogue. The base
+  // catalogue remains global, while these workshop configuration rows are
+  // also mirrored to the other phones in the same workshop.
+  static const List<String> workshopCatalogConfigurationTables = [
+    'SeriesTableConfig',
+    'SeriesDesignConfig',
+    'SeriesDesignRoles',
+    'SectionSharingRules',
+    'CatalogItemRules',
+    'ProfileCalculationRules',
+    'SectionJointLinks',
+    'SeriesShutterRules',
+  ];
+
   static void resetDb() {
     _db = null;
     _openingDb = null;
@@ -10373,6 +10387,11 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await myDb!.execute(
+        'ALTER TABLE ShutterComponents ADD COLUMN max_width_mm REAL NOT NULL DEFAULT 6000.0;',
+      );
+    } catch (_) {}
+    try {
+      await myDb!.execute(
         "UPDATE ShutterComponents SET is_active = 1 WHERE is_active IS NULL;",
       );
     } catch (_) {}
@@ -10405,6 +10424,7 @@ class SqlDatabase {
     String? motorDiameter,
     bool motorHasEmergencyCrank = false,
     double capThickness = 0.0,
+    double? maxWidthMm,
   }) async {
     Database? myDb = await db;
     final String? cleanMeasurement =
@@ -10437,6 +10457,9 @@ class SqlDatabase {
       'motor_diameter': cleanMotorDiameter,
       'motor_has_emergency_crank': motorHasEmergencyCrank ? 1 : 0,
       'cap_thickness': capThickness,
+      'max_width_mm': maxWidthMm == null || maxWidthMm <= 0
+          ? 6000.0
+          : maxWidthMm,
     });
     // A new shutter component starts with its price in the mandatory grey
     // colour row, never in a separate editable default-price field.
@@ -10464,6 +10487,7 @@ class SqlDatabase {
     String? motorDiameter,
     bool motorHasEmergencyCrank = false,
     double capThickness = 0.0,
+    double? maxWidthMm,
   }) async {
     Database? myDb = await db;
     final String? cleanMeasurement =
@@ -10498,6 +10522,9 @@ class SqlDatabase {
         'motor_diameter': cleanMotorDiameter,
         'motor_has_emergency_crank': motorHasEmergencyCrank ? 1 : 0,
         'cap_thickness': capThickness,
+        'max_width_mm': maxWidthMm == null || maxWidthMm <= 0
+            ? 6000.0
+            : maxWidthMm,
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -12914,6 +12941,28 @@ class SqlDatabase {
     return Map.fromEntries(
       allData.entries.where((entry) => workshopTables.contains(entry.key)),
     );
+  }
+
+  Future<Map<String, dynamic>> exportWorkshopCatalogConfiguration() async {
+    final allData = await exportAllData();
+    return Map.fromEntries(
+      allData.entries.where(
+        (entry) => workshopCatalogConfigurationTables.contains(entry.key),
+      ),
+    );
+  }
+
+  Future<void> importWorkshopCatalogConfiguration(
+    Map<String, dynamic> data,
+  ) async {
+    final configuration = <String, dynamic>{};
+    for (final table in workshopCatalogConfigurationTables) {
+      if (data.containsKey(table)) configuration[table] = data[table];
+    }
+    if (configuration.isEmpty) return;
+    // Configuration tables are replaceable: an explicit deletion made by the
+    // manager must also delete the old row on the receiving phone.
+    await importAllData(configuration);
   }
 
   Future<void> importWorkshopData(
@@ -16641,12 +16690,13 @@ class SqlDatabase {
     int seriesId,
     Iterable<String> roleKeys, {
     required String usageScope,
+    bool requireDialog = true,
     bool requireQuantity = false,
   }) async {
     return _getDesignSectionsForRoles(
       seriesId,
       roleKeys,
-      requireDialog: true,
+      requireDialog: requireDialog,
       requireQuantity: requireQuantity,
       usageScope: usageScope,
     );

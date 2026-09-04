@@ -364,6 +364,7 @@ class AluminumSection {
   final double renfortDeduction;
   final String? imagePath;
   final bool allowsSideCover;
+  final bool? designIntegratedSideCover;
 
   AluminumSection({
     required this.id,
@@ -391,6 +392,7 @@ class AluminumSection {
     this.renfortDeduction = 140.0,
     this.imagePath,
     this.allowsSideCover = true,
+    this.designIntegratedSideCover,
   }) : thickness = profileThickness ?? thickness;
 
   factory AluminumSection.fromMap(Map<String, dynamic> map) {
@@ -399,6 +401,28 @@ class AluminumSection {
       return value is num
           ? value.toDouble()
           : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    bool readBool(Object? value, {bool fallback = true}) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        if (normalized == '1' || normalized == 'true' || normalized == 'yes') {
+          return true;
+        }
+        if (normalized == '0' ||
+            normalized == 'false' ||
+            normalized == 'no') {
+          return false;
+        }
+      }
+      return fallback;
+    }
+
+    bool? readOptionalBool(Object? value) {
+      if (value == null) return null;
+      return readBool(value, fallback: false);
     }
 
     return AluminumSection(
@@ -430,7 +454,14 @@ class AluminumSection {
           ? readDouble('renfort_deduction')
           : 140.0,
       imagePath: map['image_path']?.toString(),
-      allowsSideCover: (map['allows_side_cover'] as int?) != 0,
+      // Role-specific options returned by getDesignSectionsForRoles override
+      // the base section capability for the current series.
+      allowsSideCover: readBool(
+        map['design_allows_side_cover'] ?? map['allows_side_cover'],
+      ),
+      designIntegratedSideCover: readOptionalBool(
+        map['design_integrated_side_cover'],
+      ),
     );
   }
 
@@ -460,6 +491,8 @@ class AluminumSection {
       'renfort_deduction': renfortDeduction,
       'image_path': imagePath,
       'allows_side_cover': allowsSideCover ? 1 : 0,
+      if (designIntegratedSideCover != null)
+        'design_integrated_side_cover': designIntegratedSideCover! ? 1 : 0,
     };
   }
 }
@@ -2746,6 +2779,10 @@ class WindowModel extends ChangeNotifier {
   final Map<int, Map<String, Set<int>>> _seriesDesignRoleSectionIds = {};
   final Map<int, Map<String, Map<int, String>>> _seriesDesignRoleUsageScopes =
       {};
+  final Map<int, Map<String, Map<int, bool>>>
+      _seriesDesignRoleAllowsSideCover = {};
+  final Map<int, Map<String, Map<int, bool>>>
+      _seriesDesignRoleIntegratedSideCover = {};
 
   // Cutting rules are catalog data, separate from the drawing definition.
   // Keep the sliding copy distinct so a mixed drawing never applies an
@@ -2874,6 +2911,24 @@ class WindowModel extends ChangeNotifier {
         .toSet();
     final roleIds = <String, Set<int>>{};
     final roleScopes = <String, Map<int, String>>{};
+    final roleAllowsSideCover = <String, Map<int, bool>>{};
+    final roleIntegratedSideCover = <String, Map<int, bool>>{};
+    bool? readBool(Object? value) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        if (normalized == '1' || normalized == 'true' || normalized == 'yes') {
+          return true;
+        }
+        if (normalized == '0' ||
+            normalized == 'false' ||
+            normalized == 'no') {
+          return false;
+        }
+      }
+      return null;
+    }
     for (final row in rows) {
       final role = row['role_key']?.toString().trim();
       final rawId = row['section_id'];
@@ -2884,9 +2939,21 @@ class WindowModel extends ChangeNotifier {
       roleIds.putIfAbsent(role, () => <int>{}).add(sectionId);
       roleScopes.putIfAbsent(role, () => {})[sectionId] =
           row['usage_scope']?.toString().trim().toLowerCase() ?? 'auto';
+      final allowsSideCover = readBool(row['allows_side_cover']);
+      if (allowsSideCover != null) {
+        roleAllowsSideCover.putIfAbsent(role, () => {})[sectionId] =
+            allowsSideCover;
+      }
+      final integratedSideCover = readBool(row['integrated_side_cover']);
+      if (integratedSideCover != null) {
+        roleIntegratedSideCover.putIfAbsent(role, () => {})[sectionId] =
+            integratedSideCover;
+      }
     }
     _seriesDesignRoleSectionIds[series.id] = roleIds;
     _seriesDesignRoleUsageScopes[series.id] = roleScopes;
+    _seriesDesignRoleAllowsSideCover[series.id] = roleAllowsSideCover;
+    _seriesDesignRoleIntegratedSideCover[series.id] = roleIntegratedSideCover;
   }
 
   bool _roleScopeMatches(String? scope, {required bool sliding}) {
@@ -2906,6 +2973,40 @@ class WindowModel extends ChangeNotifier {
     final scope =
         _seriesDesignRoleUsageScopes[series.id]?[roleKey.trim()]?[sectionId];
     return _roleScopeMatches(scope, sliding: sliding);
+  }
+
+  AluminumSection _sectionWithConfiguredRoleOptions(
+    AluminumSeries series,
+    Iterable<String> roleKeys,
+    AluminumSection section,
+  ) {
+    for (final rawRoleKey in roleKeys) {
+      final roleKey = rawRoleKey.trim();
+      if (roleKey.isEmpty ||
+          _seriesDesignRoleSectionIds[series.id]?[roleKey]?.contains(
+                section.id,
+              ) !=
+              true) {
+        continue;
+      }
+      final allowsSideCover =
+          _seriesDesignRoleAllowsSideCover[series.id]?[roleKey]?[section.id];
+      final integratedSideCover = _seriesDesignRoleIntegratedSideCover[series
+          .id]?[roleKey]?[section.id];
+      if (allowsSideCover == null && integratedSideCover == null) {
+        return section;
+      }
+      final map = section.toMap();
+      if (allowsSideCover != null) {
+        map['allows_side_cover'] = allowsSideCover ? 1 : 0;
+        map['design_allows_side_cover'] = allowsSideCover ? 1 : 0;
+      }
+      if (integratedSideCover != null) {
+        map['design_integrated_side_cover'] = integratedSideCover ? 1 : 0;
+      }
+      return AluminumSection.fromMap(map);
+    }
+    return section;
   }
 
   bool seriesHasConfiguredRoles(AluminumSeries? series) {
@@ -3114,7 +3215,7 @@ class WindowModel extends ChangeNotifier {
             section.id,
             sliding: sliding,
           )) {
-        return section;
+        return _sectionWithConfiguredRoleOptions(series, [roleKey], section);
       }
     }
     return null;
@@ -3145,6 +3246,10 @@ class WindowModel extends ChangeNotifier {
                 sliding: sliding,
               ),
         )
+        .map(
+          (section) =>
+              _sectionWithConfiguredRoleOptions(series, [roleKey], section),
+        )
         .toList(growable: false);
   }
 
@@ -3154,6 +3259,9 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool _sectionHasIntegratedSideCover(AluminumSection section) {
+    if (section.designIntegratedSideCover != null) {
+      return section.designIntegratedSideCover!;
+    }
     final name = section.name.toLowerCase();
     final type = section.type.toLowerCase();
     return section.couvreJointWidth > 0 ||
@@ -3199,7 +3307,8 @@ class WindowModel extends ChangeNotifier {
   bool _overrideAllowsStandaloneSideCover(Map<String, dynamic>? override) {
     if (override == null) return true;
     if (_overrideHasIntegratedSideCover(override)) return false;
-    final rawAllowed = override['allows_side_cover'];
+    final rawAllowed =
+        override['design_allows_side_cover'] ?? override['allows_side_cover'];
     if (rawAllowed is bool) return rawAllowed;
     if (rawAllowed is num) return rawAllowed != 0;
     if (rawAllowed is String) {
@@ -3261,9 +3370,9 @@ class WindowModel extends ChangeNotifier {
         type.contains('فريم');
   }
 
-  /// A standalone side cover is not part of a multi-frame drawing. An
-  /// integrated-cover frame would otherwise make the cover extend through
-  /// empty areas between physical frames.
+  /// Multi-frame drawings start with the side-cover option disabled. This is
+  /// only a default: once the user explicitly enables it, keep that choice
+  /// and let the normal cover calculation run for the physical frames.
   void _enforceMultiFramePlainFrameRule() {
     final isMultiFrame = getFrameRects().length > 1;
     if (!isMultiFrame) {
@@ -3273,8 +3382,10 @@ class WindowModel extends ChangeNotifier {
       return;
     }
 
-    // A standalone couvre-joint is not valid for multiple frames.
-    _multiFrameSideCoverManuallyEnabled = false;
+    // Do not overwrite an explicit user choice on every notifyListeners().
+    if (_multiFrameSideCoverManuallyEnabled) return;
+
+    // Default state for a multi-frame drawing: no couvre-joint is active.
     hasSideCovers = false;
     useCustomSideCoverLayout = false;
     sideCoverSegments = [];
@@ -3354,6 +3465,18 @@ class WindowModel extends ChangeNotifier {
     if (override == null) return false;
     final name = (override['name'] ?? '').toString().toLowerCase();
     final type = (override['type'] ?? '').toString().toLowerCase();
+    final rawIntegrated = override['design_integrated_side_cover'];
+    if (rawIntegrated is bool) return rawIntegrated;
+    if (rawIntegrated is num) return rawIntegrated != 0;
+    if (rawIntegrated is String) {
+      final normalized = rawIntegrated.trim().toLowerCase();
+      if (normalized == '1' || normalized == 'true' || normalized == 'yes') {
+        return true;
+      }
+      if (normalized == '0' || normalized == 'false' || normalized == 'no') {
+        return false;
+      }
+    }
     final rawWidth = override['couvre_joint_width'];
     final width = rawWidth is num
         ? rawWidth.toDouble()
@@ -3481,14 +3604,37 @@ class WindowModel extends ChangeNotifier {
           mutable['manual_selection'] = true;
         }
       }
-      if (manualSelection &&
-          !isMultiFramePvc &&
-          !_overrideAllowsStandaloneSideCover(mutable)) {
-        hasSideCovers = false;
-        useCustomSideCoverLayout = false;
-        sideCoverSegments = [];
-        hiddenSideCoverSegments.clear();
-      }
+    }
+
+    // A frame role may explicitly reject a separate couvre-joint. Apply that
+    // rule in every drawing mode, not only in the shutter/multi-frame paths.
+    // Integrated covers stay enabled because they belong to the frame itself.
+    if (manualSelection &&
+        !_overrideHasIntegratedSideCover(mutable) &&
+        !_overrideAllowsStandaloneSideCover(mutable)) {
+      hasSideCovers = false;
+      useCustomSideCoverLayout = false;
+      sideCoverSegments = [];
+      hiddenSideCoverSegments.clear();
+      selectedSideCover = null;
+      sideCoverOverride = null;
+      componentOverrides.remove('الغطاء الجانبي (Side Cover)');
+    }
+
+    // Selecting a frame from the lower drawing toolbar also selects the
+    // cover mode represented by that frame. An integrated-cover frame must
+    // appear with its cover immediately; a plain frame must not keep a cover
+    // left over from the previously selected frame. The cover button remains
+    // available afterwards, so the user can enable a standalone cover again
+    // when the selected plain frame supports it.
+    if (manualSelection) {
+      final frameHasIntegratedCover =
+          _overrideHasIntegratedSideCover(mutable);
+      hasSideCovers = frameHasIntegratedCover;
+      _multiFrameSideCoverManuallyEnabled = false;
+      useCustomSideCoverLayout = false;
+      sideCoverSegments = [];
+      hiddenSideCoverSegments.clear();
     }
 
     if (sliding) {
@@ -4117,6 +4263,49 @@ class WindowModel extends ChangeNotifier {
   double get maximumAllowedShutterWidthMm =>
       math.min(maximumShutterBarLengthMm, shutterMaximumWidthMm ?? 6000.0);
 
+  bool _componentWasManuallySelected(Map<String, dynamic>? component) {
+    if (component == null) return false;
+
+    bool enabled(Object? value) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      final normalized = value?.toString().trim().toLowerCase();
+      return normalized == 'true' ||
+          normalized == '1' ||
+          normalized == 'yes';
+    }
+
+    return enabled(component['manual_selection']) ||
+        enabled(component['is_manual_selection']) ||
+        enabled(component['user_selected']);
+  }
+
+  double _shutterBladeConfiguredMaxWidthMm(Map<String, dynamic> blade) {
+    final raw = blade['max_width_mm'];
+    final value = raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+    if (value <= 0) return 6000.0;
+    return math.min(6000.0, value);
+  }
+
+  double _shutterBladeBarLimitMm(Map<String, dynamic> blade) {
+    final raw = blade['bar_length_m'] ?? blade['bar_length'];
+    final value = raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+    if (value <= 0) return 6000.0;
+    final millimetres = value > 100.0 ? value : value * 1000.0;
+    return math.min(6000.0, millimetres);
+  }
+
+  double _shutterBladeEffectiveMaxWidthMm(Map<String, dynamic> blade) {
+    return math.min(
+      _shutterBladeConfiguredMaxWidthMm(blade),
+      _shutterBladeBarLimitMm(blade),
+    );
+  }
+
   Future<void> updateShutterLame(String name) async {
     shutterLame = name;
     final database = await db.db;
@@ -4127,9 +4316,11 @@ class WindowModel extends ChangeNotifier {
         whereArgs: [name],
       );
       if (exactMatch.isNotEmpty) {
-        componentOverrides['الشرائح (Lames)'] = Map<String, dynamic>.from(
-          exactMatch.first,
-        );
+        final selected = Map<String, dynamic>.from(exactMatch.first);
+        selected['manual_selection'] = true;
+        selected['user_selected'] = true;
+        selected['automatic_selection'] = false;
+        componentOverrides['الشرائح (Lames)'] = selected;
       }
     }
     await updateShutterDefaultsIfNeeded();
@@ -4302,8 +4493,6 @@ class WindowModel extends ChangeNotifier {
   /// an integrated cover does not need a second cover row, while a plain
   /// frame may explicitly reject a standalone cover in the catalogue.
   bool get canUseStandaloneSideCover {
-    // A standalone couvre-joint is available for a single frame only.
-    if (getFrameRects().length > 1) return false;
     final canSwitchIntegratedFrame =
         _canSwitchIntegratedFrameToStandaloneSideCover;
     if (hasShutter && !isFramePVC) {
@@ -4352,7 +4541,14 @@ class WindowModel extends ChangeNotifier {
   bool get _hasFrameThatAllowsStandaloneSideCover {
     final series = activeFrameSeries;
     if (series == null) return false;
-    return series.sections.any((section) {
+    final configuredFrames = getConfiguredSectionsForRole(
+      'frame',
+      useSlidingSeries: usesSlidingPrimaryProfiles,
+    );
+    final frames = configuredFrames.isNotEmpty
+        ? configuredFrames
+        : series.sections;
+    return frames.any((section) {
       final type = section.type.toLowerCase();
       return (section.isFrame || type == 'frame' || type.contains('cadre')) &&
           _sectionAllowsStandaloneSideCover(section);
@@ -4360,7 +4556,11 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isSideCoverAllowed {
-    if (getFrameRects().length > 1) return false;
+    // The selected frame owns this cover. Check it before the shutter rule
+    // for standalone covers, otherwise an integrated frame can be rejected
+    // before the drawing has a chance to render its own side cover.
+    if (isIntegratedFrame) return integratedFrameSideCoverWidth > 0;
+
     if (hasShutter && !isFramePVC) {
       final currentFrame = activeFrameOverride;
       if (currentFrame != null) {
@@ -4374,9 +4574,6 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    // An integrated cover is allowed by its own selected frame, independently
-    // of the standalone-cover capability flag.
-    if (isIntegratedFrame) return integratedFrameSideCoverWidth > 0;
     if (!canUseStandaloneSideCover) return false;
     return true;
   }
@@ -4387,35 +4584,11 @@ class WindowModel extends ChangeNotifier {
     // cover span empty areas between the physical frames.
     if (getFrameRects().length > 1) return false;
     if (activeFrameOverride != null) {
-      final nameLower = (activeFrameOverride!['name'] ?? '')
-          .toString()
-          .toLowerCase();
-      final typeLower = (activeFrameOverride!['type'] ?? '')
-          .toString()
-          .toLowerCase();
-      final rawCjW = activeFrameOverride!['couvre_joint_width'];
-      final double cjW = rawCjW is num
-          ? rawCjW.toDouble()
-          : double.tryParse(rawCjW?.toString() ?? '') ?? 0.0;
-      if (cjW > 0 ||
-          nameLower.contains('مدمج') ||
-          nameLower.contains('intégré') ||
-          nameLower.contains('integre') ||
-          nameLower.contains('monobloc') ||
-          typeLower.contains('monobloc')) {
-        return true;
-      }
+      return _overrideHasIntegratedSideCover(activeFrameOverride);
     }
     final frame = getSectionByType('frame');
     if (frame == null) return false;
-    if (frame.couvreJointWidth > 0) return true;
-    final nameLower = frame.name.toLowerCase();
-    final codeLower = frame.code.toLowerCase();
-    return nameLower.contains('مدمج') ||
-        nameLower.contains('intégré') ||
-        nameLower.contains('integre') ||
-        nameLower.contains('monobloc') ||
-        codeLower.contains('103');
+    return _sectionHasIntegratedSideCover(frame);
   }
 
   /// Width of the selected standalone side-cover face.
@@ -7287,6 +7460,17 @@ class WindowModel extends ChangeNotifier {
 
   Future<void> _setActiveSeries(AluminumSeries series) async {
     _saveSnapshot();
+    // Capture the old plinthe geometry before switching activeSeries. Once
+    // the new series is assigned, plintheHeight would be read from the new
+    // catalogue and the old sash bottom could no longer be recognised.
+    final previousPlintheHeight = plintheHeight;
+    final previousPlintheZoneIds = zones
+        .where((zone) => zone.hasSashPlintheBottom)
+        .map((zone) => zone.id)
+        .toSet();
+    final hadPreviousFramePlinthe = hasFramePlintheBottom;
+    final hadPreviousPlinthe =
+        hasFramePlintheBottom || previousPlintheZoneIds.isNotEmpty;
     final double previousFrameThickness = profileThickness;
     final double previousMullionThickness = mullionThickness;
     final bool affectsVisibleDivisions = !usesSlidingPrimaryProfiles;
@@ -7337,6 +7521,10 @@ class WindowModel extends ChangeNotifier {
       if (ids.isEmpty) return <AluminumSection>[];
       return series.sections
           .where((section) => ids.contains(section.id))
+          .map(
+            (section) =>
+                _sectionWithConfiguredRoleOptions(series, roleKeys, section),
+          )
           .toList();
     }
 
@@ -7375,30 +7563,31 @@ class WindowModel extends ChangeNotifier {
       // Reset plinthe state: check if new series has a plinthe section
       // If it doesn't, disable plinthe and restore hasBottomFrame
       componentOverrides.remove('بلانت (Plinthe)');
-      final hasPlintheInNewSeries = series.sections.any((s) {
-        final t = s.type.toLowerCase().trim();
-        final n = s.name.toLowerCase().trim();
-        return t.contains('plinthe') ||
-            n.contains('plinthe') ||
-            t.contains('بلانت') ||
-            n.contains('بلانت') ||
-            t.contains('plinth') ||
-            n.contains('plinth');
-      });
+      final configuredPlinthes = configuredSectionsFor(const ['plant']);
+      final hasPlintheInNewSeries = configuredRoleRows.isNotEmpty
+          ? configuredPlinthes.isNotEmpty
+          : series.sections.any((s) {
+              final t = s.type.toLowerCase().trim();
+              final n = s.name.toLowerCase().trim();
+              return t.contains('plinthe') ||
+                  n.contains('plinthe') ||
+                  t.contains('بلانت') ||
+                  n.contains('بلانت') ||
+                  t.contains('plinth') ||
+                  n.contains('plinth');
+            });
       if (!hasPlintheInNewSeries) {
         // New series has no plinthe — reset plinthe flags and restore bottom frame
-        if (hasFramePlintheBottom || zones.any((z) => z.hasSashPlintheBottom)) {
-          final oldPlintheHeight =
-              plintheHeight; // still from old series/overrides
+        if (hadPreviousPlinthe) {
           hasFramePlintheBottom = false;
           hasBottomFrame = true;
+          showBottomWall = true;
           for (var z in zones) {
             z.hasSashPlintheBottom = false;
-          }
-          // Restore zone bottom boundaries: move them from (height - oldPlintheHeight) back to (height - profileThickness)
-          for (var z in zones) {
-            if ((z.boundary.bottom - (height - oldPlintheHeight)).abs() < 5.0 ||
-                z.boundary.bottom > height - 5.0) {
+            if (hadPreviousFramePlinthe ||
+                previousPlintheZoneIds.contains(z.id) ||
+                (z.boundary.bottom - (height - previousPlintheHeight)).abs() <
+                    5.0) {
               z.boundary = Rect.fromLTRB(
                 z.boundary.left,
                 z.boundary.top,
@@ -8379,6 +8568,10 @@ class WindowModel extends ChangeNotifier {
       if (ids.isEmpty) return <AluminumSection>[];
       return series.sections
           .where((section) => ids.contains(section.id))
+          .map(
+            (section) =>
+                _sectionWithConfiguredRoleOptions(series, roleKeys, section),
+          )
           .toList();
     }
 
@@ -8679,6 +8872,36 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
+    // Saved drawings can contain an older, reduced blade map. Refresh the
+    // limit fields from the catalogue so automatic selection and warnings
+    // always use the current database value.
+    if (database != null && blade != null && blade['id'] != null) {
+      final bladeId = (blade['id'] as num?)?.toInt();
+      if (bladeId != null) {
+        final catalogRows = await database.query(
+          'ShutterComponents',
+          where: 'id = ?',
+          whereArgs: [bladeId],
+          limit: 1,
+        );
+        if (catalogRows.isNotEmpty) {
+          final hydrated = Map<String, dynamic>.from(blade);
+          for (final key in const [
+            'name',
+            'component_type',
+            'max_width_mm',
+            'bar_length_m',
+            'shutter_subtype',
+          ]) {
+            hydrated[key] = catalogRows.first[key];
+          }
+          blade = hydrated;
+          shutterLame = hydrated['name']?.toString() ?? shutterLame;
+          componentOverrides['الشرائح (Lames)'] = hydrated;
+        }
+      }
+    }
+
     // 1. Check for extruded blade auto-switch (applies to all, including tunnel boxes!)
     if (blade != null) {
       final bladeSubtype = (blade['shutter_subtype']?.toString() ?? '')
@@ -8692,32 +8915,94 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    // Width is governed by the selected blade, independently from the box
-    // height rule. The configured limit is stored in millimetres; the 6 m
-    // physical bar limit remains an absolute upper bound.
-    if (database != null && blade != null && blade['id'] != null) {
+    // Choose a safe blade automatically when the current blade was not picked
+    // by the user.  The smallest blade that supports the current window is
+    // preferred, which prevents a weak blade from being used while avoiding
+    // an unnecessarily oversized blade.  A manual choice is never replaced:
+    // it remains in the drawing/BOM and receives a clear warning instead.
+    if (database != null && width > 0) {
       try {
-        final widthRows = await database.query(
+        final bladeRows = await database.query(
           'ShutterComponents',
-          columns: const ['max_width_mm'],
-          where: 'id = ?',
-          whereArgs: [blade['id']],
+          where:
+              "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
+          orderBy: 'name ASC',
         );
-        final configuredWidths = widthRows
-            .map((row) => (row['max_width_mm'] as num?)?.toDouble() ?? 0.0)
-            .where((value) => value > 0)
+        final blades = bladeRows
+            .map(Map<String, dynamic>.from)
+            .where(isShutterBladeComponent)
             .toList();
-        if (configuredWidths.isNotEmpty) {
-          shutterMaximumWidthMm = configuredWidths.reduce(math.min);
-          if (width > maximumAllowedShutterWidthMm) {
+        final currentBladeIsManual = _componentWasManuallySelected(blade);
+
+        if (blades.isNotEmpty && !currentBladeIsManual) {
+          final currentId = (blade?['id'] as num?)?.toInt();
+          final currentLimit = blade == null
+              ? 0.0
+              : _shutterBladeEffectiveMaxWidthMm(blade);
+          final currentSupportsWidth =
+              blade != null && currentLimit >= width;
+
+          if (!currentSupportsWidth) {
+            blades.sort((a, b) {
+              final limitCompare = _shutterBladeEffectiveMaxWidthMm(
+                a,
+              ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
+              if (limitCompare != 0) return limitCompare;
+              return (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
+            });
+            final compatible = blades
+                .where(
+                  (candidate) =>
+                      _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
+                )
+                .toList();
+            final replacement = compatible.isNotEmpty
+                ? compatible.first
+                : blades.last;
+            final replacementId = (replacement['id'] as num?)?.toInt();
+            if (replacementId != null && replacementId != currentId) {
+              final automaticSelection = Map<String, dynamic>.from(replacement)
+                ..['manual_selection'] = false
+                ..['user_selected'] = false
+                ..['automatic_selection'] = true;
+              componentOverrides['الشرائح (Lames)'] = automaticSelection;
+              blade = automaticSelection;
+              shutterLame = automaticSelection['name']?.toString() ?? shutterLame;
+            }
+          }
+        }
+
+        if (blade != null) {
+          // The automatic replacement may have selected an extruded blade;
+          // apply the motor requirement to the replacement as well.
+          final replacementSubtype = (blade['shutter_subtype']?.toString() ?? '')
+              .toLowerCase();
+          final replacementName = (blade['name']?.toString() ?? '').toLowerCase();
+          if (replacementSubtype == 'extruded' ||
+              replacementName.contains('extruded') ||
+              replacementName.contains('إكسترودي') ||
+              (isPVC &&
+                  !isCaissonTunnel &&
+                  _isX3dShutterComponent(blade))) {
+            shutterMechanism = 'محرك';
+          }
+          shutterMaximumWidthMm = _shutterBladeConfiguredMaxWidthMm(blade);
+          final effectiveLimit = maximumAllowedShutterWidthMm;
+          if (width > effectiveLimit) {
+            final configuredLimit = shutterMaximumWidthMm!;
             shutterWidthWarning =
-                'عرض الستار ${width.toStringAsFixed(0)} مم يتجاوز الحد الأقصى '
-                '${maximumAllowedShutterWidthMm.toStringAsFixed(0)} مم '
-                'للامة ${blade['name'] ?? shutterLame}. اختر لامة مناسبة.';
+                'عرض الستار ${width.toStringAsFixed(0)} مم يتجاوز الحد الأقصى المسجل '
+                'للامة ${blade['name'] ?? shutterLame}: '
+                '${configuredLimit.toStringAsFixed(0)} مم.';
+            if (effectiveLimit < configuredLimit) {
+              shutterWidthWarning =
+                  '${shutterWidthWarning!} الحد الفعلي لطول البارة هو '
+                  '${effectiveLimit.toStringAsFixed(0)} مم.';
+            }
           }
         }
       } catch (e) {
-        print('Error loading shutter blade width limit: $e');
+        print('Error resolving shutter blade width limit: $e');
       }
     }
 
@@ -13649,7 +13934,15 @@ class WindowModel extends ChangeNotifier {
   }
 
   void toggleFramePlintheBottom(bool value) {
-    if (value && !canUseOpeningOnlyOptions) {
+    bool isPlintheEligible(WindowZone zone) {
+      return zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash ||
+          zone.content == ZoneContent.fixedGlass;
+    }
+
+    final canUsePlinthe = hasOpeningSashZones ||
+        zones.any((z) => z.content == ZoneContent.fixedGlass);
+    if (value && !canUsePlinthe) {
       final wasBottomFrame = hasBottomFrame;
       hasFramePlintheBottom = false;
       for (final zone in zones) {
@@ -13662,30 +13955,27 @@ class WindowModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (hasFramePlintheBottom == value) return;
+    final flagsMatch = zones.every(
+      (zone) => zone.hasSashPlintheBottom == (value && isPlintheEligible(zone)),
+    );
+    final frameStateMatches = value ? !hasBottomFrame : hasBottomFrame;
+    if (hasFramePlintheBottom == value &&
+        frameStateMatches &&
+        flagsMatch) {
+      return;
+    }
     _saveSnapshot();
     final wasBottomFrame = hasBottomFrame;
 
     if (value) {
-      final sashZones = zones
-          .where(
-            (z) =>
-                z.content == ZoneContent.singleSash ||
-                z.content == ZoneContent.doubleSash,
-          )
-          .toList();
-      if (sashZones.isEmpty) {
-        hasFramePlintheBottom = false;
-        hasBottomFrame = true;
-        if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
-        notifyListeners();
-        return;
-      }
       hasFramePlintheBottom = true;
       hasBottomFrame = false;
       showBottomWall = false;
+      // The frame plinthe is a bottom profile for every opening/fixed zone.
+      // Sliding zones use a different bottom-profile system and must not be
+      // pulled into this opening-frame option.
       for (final z in zones) {
-        z.hasSashPlintheBottom = sashZones.any((sash) => sash.id == z.id);
+        z.hasSashPlintheBottom = isPlintheEligible(z);
       }
     } else {
       hasFramePlintheBottom = false;
@@ -13713,7 +14003,12 @@ class WindowModel extends ChangeNotifier {
 
     zone.hasSashPlintheBottom = !zone.hasSashPlintheBottom;
 
-    bool anySashPlinthe = zones.any((z) => z.hasSashPlintheBottom);
+    final anySashPlinthe = zones.any(
+      (z) =>
+          (z.content == ZoneContent.singleSash ||
+              z.content == ZoneContent.doubleSash) &&
+          z.hasSashPlintheBottom,
+    );
     if (anySashPlinthe) {
       hasFramePlintheBottom = true;
       hasBottomFrame = false;
@@ -13724,6 +14019,14 @@ class WindowModel extends ChangeNotifier {
       hasBottomFrame = true;
       if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
       showBottomWall = true;
+      // Fixed-zone flags can only come from the global frame-plinthe mode.
+      // Clear them when the last sash plinthe is disabled.
+      for (final z in zones) {
+        if (z.content != ZoneContent.singleSash &&
+            z.content != ZoneContent.doubleSash) {
+          z.hasSashPlintheBottom = false;
+        }
+      }
     }
 
     _hideBottomCoverWhenBottomFrameIsMissing();
@@ -13735,12 +14038,10 @@ class WindowModel extends ChangeNotifier {
     _normalizeBottomFrameForCurrentContent();
 
     for (var z in zones) {
-      final isSashZone =
-          z.content == ZoneContent.singleSash ||
-          z.content == ZoneContent.doubleSash;
-      final targetBottom = hasBottomFrame || !isSashZone
-          ? height - profileThickness
-          : height;
+      final hasPlintheBottom = !hasBottomFrame && z.hasSashPlintheBottom;
+      final targetBottom = hasPlintheBottom
+          ? height
+          : height - profileThickness;
       if ((z.boundary.bottom - height).abs() < 5.0 ||
           (z.boundary.bottom - (height - profileThickness)).abs() < 5.0 ||
           (z.boundary.bottom - (height - plintheHeight)).abs() < 5.0) {
@@ -13985,9 +14286,9 @@ class WindowModel extends ChangeNotifier {
   }
 
   Future<void> toggleSideCovers(bool value) async {
-    if (value && (hasArchOrSlant || getFrameRects().length > 1)) return;
+    final isMultiFrame = getFrameRects().length > 1;
     _saveSnapshot();
-    _multiFrameSideCoverManuallyEnabled = false;
+    _multiFrameSideCoverManuallyEnabled = isMultiFrame && value;
     hasSideCovers = value;
     if (value) {
       final covers = availableSideCovers;

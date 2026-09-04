@@ -6,6 +6,7 @@
 // ==========================================================================
 import 'dart:math' as math; // لاستخدام math.max عند حساب سعر القطعة الواحدة
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:database_data/sql_database.dart'; // كائن الوصول لقاعدة بيانات SQLite
 import 'package:database_data/Commande/Systeme/model.dart'; // نموذج بيانات النافذة (WindowModel)
@@ -59,8 +60,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       true; // إظهار/إخفاء سعر التكلفة (TODO: لاحقًا يُربط بصلاحية المدير)
   final ScrollController _scrollController =
       ScrollController(); // للتحكم بتمرير الجدول أفقيًا ومعرفة موضع السكرول
+  final ScrollController _pageScrollController = ScrollController();
   bool _isBottomBarExpanded = false; // هل شريط الإعدادات السفلي مفتوح أو مطوي
   bool _isFetchingDefaults = false;
+  double _fetchProgress = 0.0;
   bool _hasFetchedDefaults = false;
   List<BomItem> _visibleBomItems = const [];
   int _bomRefreshGeneration = 0;
@@ -448,10 +451,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   bool _profileUsesLinearMeter(BomItem item) {
-    final mode = _profileCalculationRuleFor(item)?['calculation_mode']
-        ?.toString()
-        .trim()
-        .toLowerCase();
+    final mode = _profileCalculationRuleFor(
+      item,
+    )?['calculation_mode']?.toString().trim().toLowerCase();
     if (mode == 'linear_meter') return true;
     if (mode == 'base_price') return false;
     final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
@@ -469,7 +471,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final mode = rule?['calculation_mode']?.toString().trim().toLowerCase();
     if (mode == 'linear_meter') {
       final value = rule?['linear_meter_multiplier'];
-      final parsed = value is num ? value.toDouble() : double.tryParse('$value');
+      final parsed = value is num
+          ? value.toDouble()
+          : double.tryParse('$value');
       if (parsed != null && parsed.isFinite && parsed > 0) return parsed;
     }
     return item.linearMeterMultiplier;
@@ -1102,10 +1106,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   String _materialDragId(BomItem item) =>
       '${_tableSectionForItem(item)}\u0000${_materialRowKey(item)}';
 
-  List<BomItem> _orderedMaterialItems(
-    String section,
-    List<BomItem> items,
-  ) {
+  List<BomItem> _orderedMaterialItems(String section, List<BomItem> items) {
     final byKey = <String, BomItem>{
       for (final item in items) _materialRowKey(item): item,
     };
@@ -1147,9 +1148,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // reordered among themselves.  This prevents a child from visually
     // escaping its kit group.
     if ((source.kitGroupName ?? '') != (target.kitGroupName ?? '')) return;
-    final keys = _orderedMaterialItems(sourceSection, sectionItems)
-        .map(_materialRowKey)
-        .toList();
+    final keys = _orderedMaterialItems(
+      sourceSection,
+      sectionItems,
+    ).map(_materialRowKey).toList();
     final oldIndex = keys.indexOf(sourceKey);
     final targetIndex = keys.indexOf(targetKey);
     if (oldIndex < 0 || targetIndex < 0 || oldIndex == targetIndex) return;
@@ -1602,7 +1604,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   static const double _defaultWEstimated = 140; // المطلوب الفعلي × سعر الوحدة
   static const double _defaultWTotal = 140; // سعر الوحدة × المطلوب الحقيقي
   static const double _defaultWCheck = 80; // عرض عمود مربع التفعيل
+  static const String _tableColumnLayoutKey =
+      'material_consumption_table_columns_v1';
   final Map<String, double> _tableColumnWidths = {};
+  Future<SharedPreferences>? _tablePreferencesFuture;
+  Future<void> _tablePersistenceQueue = Future<void>.value();
+  int _tablePreferencesLoadGeneration = 0;
 
   double _columnWidth(String key, double fallback) =>
       _tableColumnWidths[key] ?? fallback;
@@ -1690,10 +1697,64 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
   void _resizeColumn(String key, double delta) {
     final current = _columnWidth(key, _defaultColumnWidth(key));
+    _tablePreferencesLoadGeneration++;
     setState(() {
       _tableColumnWidths[key] = (current + delta)
           .clamp(_columnMinWidth(key), _columnMaxWidth(key))
           .toDouble();
+    });
+    _persistTableColumnLayout();
+  }
+
+  Future<SharedPreferences> _getTablePreferences() =>
+      _tablePreferencesFuture ??= SharedPreferences.getInstance();
+
+  Future<void> _loadTableColumnLayout() async {
+    final loadGeneration = ++_tablePreferencesLoadGeneration;
+    try {
+      final prefs = await _getTablePreferences();
+      final raw = prefs.getString(_tableColumnLayoutKey);
+      if (raw == null || raw.trim().isEmpty) return;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final rawWidths = decoded['widths'];
+      if (rawWidths is! Map) return;
+
+      final loaded = <String, double>{};
+      for (final entry in rawWidths.entries) {
+        final value = entry.value;
+        final width = value is num
+            ? value.toDouble()
+            : double.tryParse(value?.toString() ?? '');
+        if (width != null && width.isFinite) {
+          final key = entry.key.toString();
+          loaded[key] = width
+              .clamp(_columnMinWidth(key), _columnMaxWidth(key))
+              .toDouble();
+        }
+      }
+      if (!mounted || loadGeneration != _tablePreferencesLoadGeneration) {
+        return;
+      }
+      setState(() => _tableColumnWidths.addAll(loaded));
+    } catch (error) {
+      debugPrint('Material table column layout load failed: $error');
+    }
+  }
+
+  void _persistTableColumnLayout() {
+    final widths = <String, double>{..._tableColumnWidths};
+    _tablePersistenceQueue = _tablePersistenceQueue.then((_) async {
+      try {
+        final prefs = await _getTablePreferences();
+        await prefs.setString(
+          _tableColumnLayoutKey,
+          jsonEncode(<String, dynamic>{'widths': widths}),
+        );
+      } catch (error) {
+        debugPrint('Material table column layout save failed: $error');
+      }
     });
   }
 
@@ -1833,20 +1894,36 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   Future<void> _refreshVisibleBomItems() async {
     final refreshGeneration = ++_bomRefreshGeneration;
     final engine = BomEngineV2(database: SqlDatabase());
+    // Revalidate saved selections whenever the window/series changes. Without
+    // this pass, a selection resolved for the previous series could remain
+    // visible until the screen was recreated.
+    final rawBomItems = _generateRawBomItems();
+    await engine.stabilizeSelections(window: widget.model, items: rawBomItems);
     final visibleBomItems = await _generateStrictVisibleBomItems(engine);
     if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
     setState(() => _visibleBomItems = visibleBomItems);
   }
 
+  void _setFetchProgress(double value) {
+    if (!mounted || !_isFetchingDefaults) return;
+    setState(() => _fetchProgress = value.clamp(0.0, 1.0).toDouble());
+  }
+
   Future<void> _fetchDefaults() async {
     if (_isFetchingDefaults) return;
-    if (mounted) setState(() => _isFetchingDefaults = true);
+    if (mounted) {
+      setState(() {
+        _isFetchingDefaults = true;
+        _fetchProgress = 0.05;
+      });
+    }
     _accessoryPriceCache.clear();
     // Never publish the preliminary/raw BOM. The table is published only
     // after defaults, catalogue links and the strict visibility check finish.
     var visibleBomItems = const <BomItem>[];
     try {
       await widget.model.updateShutterDefaultsIfNeeded();
+      _setFetchProgress(0.20);
       _refreshStrictActiveVariants();
       if (!widget.model.hasSimpleGlassForReducer ||
           widget.model.hasDoubleGlassForRules) {
@@ -1857,24 +1934,97 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final dbInstance = await sqlDb.db;
       if (dbInstance == null) return;
 
+      _setFetchProgress(0.35);
       await _loadStrictKitBundles(dbInstance, sqlDb);
+      _setFetchProgress(0.55);
       var bomItems = _generateRawBomItems();
       final engine = BomEngineV2(database: sqlDb);
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
 
+      _setFetchProgress(0.72);
       bomItems = _generateRawBomItems();
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
       visibleBomItems = await _generateStrictVisibleBomItems(engine);
+      _setFetchProgress(0.88);
       await _loadPricesFromDb();
+      _setFetchProgress(0.96);
     } finally {
       if (mounted) {
         setState(() {
           _visibleBomItems = visibleBomItems;
+          _fetchProgress = 1.0;
           _isFetchingDefaults = false;
           _hasFetchedDefaults = true;
         });
       }
     }
+  }
+
+  Widget _buildFetchProgress(AppLanguage lang) {
+    final progress = _fetchProgress.clamp(0.0, 1.0).toDouble();
+    final percent = (progress * 100).round();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  value: progress < 1 ? null : 1,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  Localization.translate(
+                    'جاري تجهيز الكميات والأسعار...',
+                    lang,
+                  ),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Text(
+                '$percent%',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 7,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.14),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ==========================================================================
@@ -1924,6 +2074,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // لا تعرض نسخة BOM أولية؛ انشر فقط النتيجة بعد اكتمال الفحص الصارم.
     _visibleBomItems = const <BomItem>[];
     _hasFetchedDefaults = false;
+    unawaited(_loadTableColumnLayout());
     // استدعاء الجلب الذكي فور فتح الشاشة (لملء كل المكونات والفحص الصارم)
     _fetchDefaults();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
@@ -1952,6 +2103,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   void dispose() {
     widget.model.removeListener(_onModelChanged);
     _scrollController.dispose();
+    _pageScrollController.dispose();
     _profitMarginController.dispose();
     _pricePerSqmController.dispose();
     _pricePerLinearMeterController.dispose();
@@ -2441,11 +2593,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         title: Text(Localization.translate('الالكمية والتكلفة', lang)),
       ), // شريط العنوان العلوي
       body: SingleChildScrollView(
+        controller: _pageScrollController,
+        primary: false,
         scrollDirection: Axis.vertical, // تمرير رأسي لكامل محتوى الشاشة
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_isFetchingDefaults) const LinearProgressIndicator(),
+            if (_isFetchingDefaults) _buildFetchProgress(lang),
             // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
             if (widget.model.shutterHeightWarning != null) ...[
               Container(
@@ -2484,6 +2638,44 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 ),
               ),
             ],
+            // Manual blade selections remain visible in the BOM, but a blade
+            // whose database width limit is too small must be clearly flagged.
+            if (widget.model.shutterWidthWarning != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange.shade200),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.straighten,
+                      color: Colors.orange.shade800,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        widget.model.shutterWidthWarning!,
+                        style: TextStyle(
+                          color: Colors.orange.shade900,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             // رسم شكل النافذة (CustomPaint) بحجم مصغّر لعرض بصري سريع
             Center(
@@ -2497,6 +2689,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     child: CustomPaint(
                       painter: WindowPainter(
                         model: widget.model,
+                        repaintToken: _bomRefreshGeneration,
                       ), // الرسام المخصص
                       size: Size(
                         widget.model.width.toDouble(),
@@ -2837,7 +3030,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             .trim()
             .toLowerCase();
         final rule = _profileCalculationRuleFor(item);
-        final ruleMode = rule?['calculation_mode']?.toString().trim().toLowerCase();
+        final ruleMode = rule?['calculation_mode']
+            ?.toString()
+            .trim()
+            .toLowerCase();
         final isExplicitBasePrice = ruleMode == 'base_price';
         final isExplicitLinearMeter = ruleMode == 'linear_meter';
         final isFrame = role == 'frame' || role == 'frame_extension';
@@ -2857,10 +3053,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           // المتر الخطي: يمكن فرضه من صفحة القواعد حتى على بروفيل كان
           // مصنفًا سابقًا كحديد أو باركلوز.
           if (item.pieces != null) {
-            mainProfileMeters += item.pieces!.fold<double>(
-                  0.0,
-                  (sum, p) => sum + p,
-                ) *
+            mainProfileMeters +=
+                item.pieces!.fold<double>(0.0, (sum, p) => sum + p) *
                 _profileLinearMultiplier(item);
           } else if (item.length != null) {
             mainProfileMeters +=
@@ -2894,8 +3088,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
     // أجور تركيب خاصة (System OB, Demi OB, Verrou) تُضاف مرة واحدة لكل قطعة (× الكمية الكلية)
     double specialAccessoryInstallFees = 0.0;
-    bool hasActiveKit(String exactName, List<String> prefixes) => activeItems
-        .any(
+    bool hasActiveKit(String exactName, List<String> prefixes) =>
+        activeItems.any(
           (item) =>
               item.isActive &&
               item.category == 'accessory' &&
@@ -2908,12 +3102,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       specialAccessoryInstallFees += _obInstallFee * widget.model.quantity;
     }
     if (hasActiveKit('Demi System OB', const ['Demi System OB_'])) {
-      specialAccessoryInstallFees +=
-          _demiObInstallFee * widget.model.quantity;
+      specialAccessoryInstallFees += _demiObInstallFee * widget.model.quantity;
     }
     if (hasActiveKit('Verrou Central', const ['Verrou Central_'])) {
-      specialAccessoryInstallFees +=
-          _verrouInstallFee * widget.model.quantity;
+      specialAccessoryInstallFees += _verrouInstallFee * widget.model.quantity;
     }
     // أجرة تركيب المحرك تُضاف فقط إذا الآلية محرك ووُجد عنصر يخص المحرك مفعّل
     double motorCrankInstallFees = 0.0;
@@ -3882,12 +4074,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       'accessory': _orderedMaterialItems(
         'accessory',
         items
-          .where(
-            (i) =>
-            (i.category == 'accessory' && !isBouchonLame(i)) ||
-            (i.category == 'other'),
-          )
-          .toList(),
+            .where(
+              (i) =>
+                  (i.category == 'accessory' && !isBouchonLame(i)) ||
+                  (i.category == 'other'),
+            )
+            .toList(),
       ),
       'joint': _orderedMaterialItems(
         'joint',
@@ -3897,18 +4089,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       'shutter': _orderedMaterialItems(
         'shutter',
         items
-          .where(
-            (i) =>
-                i.category == 'shutter' ||
-                (i.category == 'accessory' && isBouchonLame(i)),
-          )
-          .toList(),
+            .where(
+              (i) =>
+                  i.category == 'shutter' ||
+                  (i.category == 'accessory' && isBouchonLame(i)),
+            )
+            .toList(),
       ),
       'glass': _orderedMaterialItems(
         'glass',
         items
-          .where((i) => i.category == 'glass' || i.category == 'panneau')
-          .toList(),
+            .where((i) => i.category == 'glass' || i.category == 'panneau')
+            .toList(),
       ),
     };
     final totals = _calculateTotals(
@@ -5425,6 +5617,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           seriesId: _seriesIdForSwapTarget(item, swapTarget),
           materialType: _materialTypeForSwapTarget(item, swapTarget),
           hasShutter: widget.model.hasShutter,
+          hasSideCovers: widget.model.hasSideCovers,
           accessoryDrawingMode: swapTarget.drawingMode,
           roleKeys: dialogRoleKeys,
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
@@ -5797,6 +5990,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         seriesId: _seriesIdForSwapTarget(item, swapTarget),
         materialType: _materialTypeForSwapTarget(item, swapTarget),
         hasShutter: widget.model.hasShutter,
+        hasSideCovers: widget.model.hasSideCovers,
         accessoryDrawingMode: accessoryDrawingMode,
         roleKeys: dialogRoleKeys,
         windowHeight: widget.model.height,
@@ -5838,6 +6032,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['manual_selection'] = true;
         mutableSelected['user_selected'] = true;
+        mutableSelected['automatic_selection'] = false;
         if (price > 0) mutableSelected['calculated_price'] = price;
         final isKitItem =
             !_isScrewBomName(item.originalName) &&

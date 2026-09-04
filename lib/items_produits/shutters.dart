@@ -66,6 +66,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     final barLengthCtrl = TextEditingController();
     final measurementCtrl = TextEditingController();
     final trackMeasurementCtrl = TextEditingController();
+    final maxWidthCtrl = TextEditingController(text: '6000');
     final motorDiameterCtrl = TextEditingController();
     final capThicknessCtrl = TextEditingController();
     String selectedType = 'box';
@@ -365,6 +366,20 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: maxWidthCtrl,
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'أقصى عرض للّامة (ملم) - خاص باللامة وليس الصندوق',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                   ],
                   if (selectedType == 'motor') ...[
                     SizedBox(height: 10),
@@ -476,6 +491,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       capThickness: selectedType == 'bouchon_lame'
                           ? (double.tryParse(capThicknessCtrl.text) ?? 0.0)
                           : 0.0,
+                      maxWidthMm: selectedType == 'blade'
+                          ? (double.tryParse(maxWidthCtrl.text) ?? 6000.0)
+                          : null,
                     );
                     if (context.mounted) Navigator.pop(context);
                     _loadItems();
@@ -506,6 +524,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     );
     final trackMeasurementCtrl = TextEditingController(
       text: item['track_measurement']?.toString() ?? '',
+    );
+    final maxWidthCtrl = TextEditingController(
+      text: item['max_width_mm']?.toString() ?? '6000',
     );
     final motorDiameterCtrl = TextEditingController(
       text: item['motor_diameter']?.toString() ?? '',
@@ -743,6 +764,20 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: maxWidthCtrl,
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'أقصى عرض للّامة (ملم) - خاص باللامة وليس الصندوق',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                   ],
                   // Tulip is not linked to a blade; this selector belongs only
                   // to blade end caps.
@@ -944,6 +979,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       capThickness: selectedType == 'bouchon_lame'
                           ? (double.tryParse(capThicknessCtrl.text) ?? 0.0)
                           : 0.0,
+                      maxWidthMm: selectedType == 'blade'
+                          ? (double.tryParse(maxWidthCtrl.text) ?? 6000.0)
+                          : null,
                     );
                     if (context.mounted) Navigator.pop(context);
                     _loadItems();
@@ -1285,6 +1323,14 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ? ' - ${Localization.translate("قياس السكة المطابق:", lang)} $trackMeasurement ${Localization.translate("مم", lang)}'
             : '';
 
+        final rawMaxWidth = item['max_width_mm'];
+        final maxWidth = rawMaxWidth is num
+            ? rawMaxWidth.toDouble()
+            : double.tryParse(rawMaxWidth?.toString() ?? '') ?? 0.0;
+        final maxWidthStr = item['component_type'] == 'blade' && maxWidth > 0
+            ? ' - ${Localization.translate("أقصى عرض اللامة:", lang)} ${maxWidth.toStringAsFixed(0)} ${Localization.translate("مم", lang)}'
+            : '';
+
         final dVal = item['motor_diameter']?.toString().trim();
         String diamStr = '';
         if (item['component_type'] == 'motor' &&
@@ -1332,7 +1378,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 ),
               ),
               subtitle: Text(
-                '${Localization.translate("الوحدة:", lang)} $unitAr$subtypeStr$barLenStr$measStr$trackMeasurementStr$diamStr$emergencyCrankStr$capStr',
+                '${Localization.translate("الوحدة:", lang)} $unitAr$subtypeStr$barLenStr$measStr$trackMeasurementStr$maxWidthStr$diamStr$emergencyCrankStr$capStr',
                 style: TextStyle(color: isArchived ? Colors.grey : null),
               ),
               trailing: isUserAdmin

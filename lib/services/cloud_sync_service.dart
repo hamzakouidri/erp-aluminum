@@ -997,7 +997,8 @@ class CloudSyncService {
           print('Supabase account context could not be loaded: $error');
           _workshopId = prefs.getString('workshop_code') ?? '';
         }
-        _lastHandledBackupFingerprint = _workshopId == null || _workshopId!.isEmpty
+        _lastHandledBackupFingerprint =
+            _workshopId == null || _workshopId!.isEmpty
             ? null
             : prefs.getString(_handledBackupPreferenceKey(_workshopId!));
         print(
@@ -1171,6 +1172,16 @@ class CloudSyncService {
     _localSyncQueuedAfterRestore = false;
   }
 
+  /// Stops the current sync and removes only the session-scoped workshop
+  /// hints. The login flow awaits this method so a new account cannot race
+  /// with the old account's cached code.
+  Future<void> clearCachedWorkshopContext() async {
+    reset();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('workshop_code');
+    await prefs.remove('workshop_name');
+  }
+
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
   void startListeningForUpdates(Function() onUpdateCallback) {
     onDataRestored = onUpdateCallback;
@@ -1184,6 +1195,15 @@ class CloudSyncService {
     }
 
     supabaseWorkshopSync.start(onDataChanged: onSupabaseDataChanged);
+    if (supabaseWorkshopSync.isSignedIn) {
+      unawaited(
+        supabaseWorkshopSync
+            .ensureStarted(onDataChanged: onSupabaseDataChanged)
+            .then((ready) async {
+              if (ready) await _syncPendingWorkshopCatalogConfiguration();
+            }),
+      );
+    }
     if (supabaseWorkshopSync.isSignedIn) {
       SupabaseCatalogSyncService().startRealtime(
         onDataChanged: onSupabaseDataChanged,
@@ -2655,8 +2675,9 @@ class CloudSyncService {
     _silentBackup();
   }
 
-  /// Publishes a local catalogue edit only to the central Supabase catalogue.
-  /// Catalogue tables are intentionally excluded from workshop_sync_rows.
+  /// Publishes a local catalogue edit to the central catalogue when the
+  /// account is the application admin. Series roles and catalogue rules are
+  /// also mirrored to the current workshop for its other phones.
   Future<void> notifyCatalogChange({bool uploadImmediately = false}) async {
     _dbUpdateController.add('catalog_changed');
 
@@ -2668,6 +2689,10 @@ class CloudSyncService {
 
     try {
       await init();
+      // Series roles and catalogue rules are workshop configuration. Mirror
+      // them to the workshop before applying the central-catalog permission
+      // check, so a manager's saved rules reach the other workshop phones.
+      await _syncWorkshopCatalogConfiguration();
       final prefs = await SharedPreferences.getInstance();
       if (!_canPublishGlobalCatalog(prefs.getString('user_role') ?? 'worker')) {
         // A non-admin must not leave catalog rows in the local generic change
@@ -2693,12 +2718,17 @@ class CloudSyncService {
 
     if (uploadImmediately) {
       _catalogDebounceTimer?.cancel();
-      unawaited(
-        backupGlobalCatalog().catchError((e) {
-          print('Immediate catalog sync failed: $e');
-          _scheduleCatalogUploadRetry();
-        }),
-      );
+      // The caller must not report a successful save before the shared
+      // catalogue has actually been uploaded. This also lets the save screen
+      // show the real Supabase/RLS error instead of leaving another phone on
+      // an older catalogue with no visible explanation.
+      try {
+        await backupGlobalCatalog();
+      } catch (e) {
+        print('Immediate catalog sync failed: $e');
+        _scheduleCatalogUploadRetry();
+        rethrow;
+      }
       return;
     }
 
@@ -3784,6 +3814,12 @@ class CloudSyncService {
       final supabaseWorkshopSync = SupabaseWorkshopSyncService();
       if (supabaseWorkshopSync.isSignedIn) {
         try {
+          // Wait for the automatic startup task before requesting the
+          // protected snapshot. Otherwise this call could reuse a concurrent
+          // incremental download and still leave the phone partially synced.
+          await supabaseWorkshopSync.ensureStarted(
+            timeout: const Duration(seconds: 20),
+          );
           // The central catalogue is independent from workshop data. An
           // application-admin edit that was interrupted is published first;
           // every other account only downloads the confirmed central copy.
@@ -3802,10 +3838,14 @@ class CloudSyncService {
           }
           await centralCatalogSync.downloadGlobalCatalog(allowMissing: true);
 
-          if (initialRestore) {
-            await supabaseWorkshopSync.downloadWorkshopData(full: true);
-          } else {
-            await supabaseWorkshopSync.downloadWorkshopData();
+          // A recovery is an explicit initial/refresh operation, not the
+          // lightweight realtime delta poll. Always read the complete
+          // workshop snapshot here so a phone with a stale last-sync marker
+          // cannot remain limited to active profiles or recent rows. Pending
+          // local changes were protected and published above before this
+          // replacement is allowed.
+          await supabaseWorkshopSync.downloadWorkshopData(full: true);
+          if (!initialRestore) {
             await supabaseWorkshopSync.uploadPendingChanges();
           }
           try {
@@ -4774,6 +4814,34 @@ class CloudSyncService {
     _lastHandledCatalogFingerprint = _catalogFingerprint(payload);
   }
 
+  Future<void> _syncWorkshopCatalogConfiguration() async {
+    final sync = SupabaseWorkshopSyncService();
+    if (!sync.isSignedIn) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('has_pending_workshop_catalog_configuration', true);
+    try {
+      if (!sync.isReady && !await sync.ensureStarted()) return;
+      final configuration = await _db.exportWorkshopCatalogConfiguration();
+      if (configuration.isEmpty) return;
+      await sync.saveWorkshopCatalogConfiguration(configuration);
+      await prefs.remove('has_pending_workshop_catalog_configuration');
+    } catch (error) {
+      // Keep the durable flag so the next successful Supabase start retries
+      // the local configuration instead of losing a saved edit silently.
+      print('Workshop catalog configuration sync failed: $error');
+    }
+  }
+
+  Future<void> _syncPendingWorkshopCatalogConfiguration() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('has_pending_workshop_catalog_configuration') ??
+        false)) {
+      return;
+    }
+    await _syncWorkshopCatalogConfiguration();
+  }
+
   /// Reads an old Firebase workshop backup without changing the current
   /// workshop context. It is used only while a legacy account is being moved
   /// to Supabase.
@@ -4807,8 +4875,8 @@ class CloudSyncService {
       return Map<String, dynamic>.from(payload['data'] as Map);
     }
 
-    CollectionReference<Map<String, dynamic>> sourceChunkRef =
-        latestDocRef.collection('chunks');
+    CollectionReference<Map<String, dynamic>> sourceChunkRef = latestDocRef
+        .collection('chunks');
     if (activeSnapshotId.isNotEmpty) {
       final activeSnapshotRef = latestDocRef.parent.doc(activeSnapshotId);
       final activeSnapshot = await activeSnapshotRef
@@ -4818,7 +4886,8 @@ class CloudSyncService {
       if (!activeSnapshot.exists ||
           activeData == null ||
           activeData['status']?.toString() != 'completed' ||
-          activeData['uploadId']?.toString() != payload['uploadId']?.toString()) {
+          activeData['uploadId']?.toString() !=
+              payload['uploadId']?.toString()) {
         throw StateError('نسخة الورشة القديمة غير صالحة أو غير مكتملة.');
       }
       sourceChunkRef = activeSnapshotRef.collection('chunks');
@@ -4832,7 +4901,8 @@ class CloudSyncService {
     final tables = payload['tables'];
     if (tables is List) {
       for (final table in tables) {
-        if (table is String && table.isNotEmpty) assembled.putIfAbsent(table, () => []);
+        if (table is String && table.isNotEmpty)
+          assembled.putIfAbsent(table, () => []);
       }
     }
     final expectedCounts = payload['tableRowCounts'];
@@ -4851,9 +4921,7 @@ class CloudSyncService {
 
   /// Imports a verified legacy snapshot locally, then publishes it to the
   /// already-claimed Supabase workshop using the normal merge-safe uploader.
-  Future<void> publishLegacyWorkshopBackup(
-    Map<String, dynamic> data,
-  ) async {
+  Future<void> publishLegacyWorkshopBackup(Map<String, dynamic> data) async {
     await _db.importWorkshopData(data, replaceAllData: false);
     await SupabaseWorkshopSyncService().uploadFullWorkshopData();
   }

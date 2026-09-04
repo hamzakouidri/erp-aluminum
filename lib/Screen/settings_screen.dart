@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_account_service.dart';
 import '../services/supabase_catalog_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import 'workshop_profile_screen.dart';
@@ -28,7 +29,10 @@ class SettingsScreen extends StatelessWidget {
 
   Future<bool> _ensureSupabaseCatalogLogin(BuildContext context) async {
     final service = SupabaseCatalogSyncService();
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     if (service.isSignedIn) return true;
 
     final emailController = TextEditingController();
@@ -155,6 +159,209 @@ class SettingsScreen extends StatelessWidget {
       // Session registration is optional for opening the local app. Keep the
       // technical reason in logs without showing another red sync message.
       debugPrint('Workshop session registration failed: $error');
+    }
+  }
+
+  Future<void> _runWorkshopDownload(BuildContext context) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    // Keep the progress dialog in the same root navigator so it cannot be
+    // hidden behind the settings page while the full download is running.
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                Localization.translate('جاري تنزيل بيانات الورشة...', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    String? successMessage;
+    String? warningMessage;
+    String? errorMessage;
+    SupabaseAccountSnapshot? account;
+    try {
+      account = await SupabaseAccountService().loadCurrentAccount();
+      if (account == null) {
+        throw Exception(
+          Localization.translate(
+            'الحساب غير مرتبط بورشة. لا يمكن تنزيل بياناتها.',
+            lang,
+          ),
+        );
+      }
+
+      final sync = SupabaseWorkshopSyncService();
+      final ready = await sync.ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) {
+        throw Exception(
+          Localization.translate('تعذر تجهيز اتصال الورشة في Supabase.', lang),
+        );
+      }
+      final before = await sync.inspectWorkshopData();
+      sync.lastDownloadSummary = '';
+      await sync.downloadWorkshopData(full: true);
+      final details = sync.lastDownloadSummary.trim();
+      final after = await sync.inspectWorkshopData();
+      final name = account.workshopName.trim().isEmpty
+          ? account.workshopCode
+          : account.workshopName.trim();
+      final identity =
+          'UID: ${after.userId}\nUUID الورشة: ${after.workshopUuid}\n'
+          'الكود المستخدم: ${after.workshopCode}\n'
+          'الورشة في Supabase: ${after.remoteWorkshopExists ? (after.remoteWorkshopName.isEmpty ? 'موجودة بلا اسم' : after.remoteWorkshopName) : 'غير موجودة'}\n'
+          'سجلات المزامنة: ${before.syncRows} قبل / ${after.syncRows} بعد\n'
+          'ملف معلومات الورشة: ${after.profileExists ? 'موجود' : 'غير موجود'}\n'
+          'مستخدمو الورشة: ${after.members}';
+      if (after.syncRows == 0) {
+        warningMessage =
+            'لم يتم العثور على أي بيانات لهذه الورشة، رغم اكتمال الطلب. '
+            'غالبًا الكود مرتبط بورشة أخرى، أو أن سجلاتها لم تُرفع إلى '
+            'workshop_sync_rows، أو أن صلاحيات Supabase تمنع قراءتها.\n'
+            '$identity';
+      } else if (!after.profileExists) {
+        warningMessage =
+            'تم العثور على سجلات، لكن ملف معلومات الورشة غير موجود؛ لذلك '
+            'لن تظهر الصورة والعنوان والهاتف والتخصص.\n$identity';
+      } else {
+        successMessage =
+            '${Localization.translate('تم تنزيل بيانات الورشة', lang)}: '
+            '$name (${account.workshopCode}). '
+            '${details.isEmpty ? Localization.translate('اكتمل التنزيل بنجاح.', lang) : details}\n'
+            '$identity';
+      }
+    } catch (error) {
+      final workshop = account == null
+          ? ''
+          : ' ${Localization.translate('الكود', lang)}: ${account.workshopCode}.';
+      errorMessage =
+          '${Localization.translate('فشل تنزيل بيانات الورشة', lang)}.$workshop\n'
+          '${error.toString().replaceFirst('Exception: ', '')}';
+    } finally {
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      final message =
+          successMessage ??
+          warningMessage ??
+          errorMessage ??
+          Localization.translate('حدث خطأ أثناء تنزيل بيانات الورشة.', lang);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message, style: const TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: successMessage != null
+              ? Colors.green
+              : warningMessage != null
+              ? Colors.orange.shade800
+              : Colors.red,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
+  Future<void> _runWorkshopUpload(BuildContext context) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                Localization.translate('جاري رفع بيانات الورشة...', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    String? successMessage;
+    String? errorMessage;
+    SupabaseAccountSnapshot? account;
+    try {
+      account = await SupabaseAccountService().loadCurrentAccount();
+      if (account == null) {
+        throw Exception(
+          Localization.translate(
+            'الحساب غير مرتبط بورشة. لا يمكن رفع بياناتها.',
+            lang,
+          ),
+        );
+      }
+      final sync = SupabaseWorkshopSyncService();
+      final ready = await sync.ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      if (!ready) {
+        throw Exception(
+          Localization.translate('تعذر تجهيز اتصال الورشة في Supabase.', lang),
+        );
+      }
+      await sync.uploadFullWorkshopData();
+      final diagnostics = await sync.inspectWorkshopData();
+      successMessage =
+          '${Localization.translate('تم رفع بيانات الورشة', lang)}: '
+          '${sync.lastUploadSummary}\n'
+          'الكود: ${diagnostics.workshopCode}\n'
+          'UUID: ${diagnostics.workshopUuid}\n'
+          'السجلات الموجودة على الخادم: ${diagnostics.syncRows}';
+    } catch (error) {
+      final workshop = account == null
+          ? ''
+          : ' ${Localization.translate('الكود', lang)}: ${account.workshopCode}.';
+      errorMessage =
+          '${Localization.translate('فشل رفع بيانات الورشة', lang)}.$workshop\n'
+          '${error.toString().replaceFirst('Exception: ', '')}';
+    } finally {
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            successMessage ??
+                errorMessage ??
+                Localization.translate(
+                  'حدث خطأ أثناء رفع بيانات الورشة.',
+                  lang,
+                ),
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          backgroundColor: successMessage == null ? Colors.red : Colors.green,
+          duration: const Duration(seconds: 8),
+        ),
+      );
     }
   }
 
@@ -677,6 +884,78 @@ class SettingsScreen extends StatelessWidget {
                               ? null
                               : () => _registerWorkshopSession(context),
                         ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      leading: const Icon(
+                        Icons.cloud_sync_rounded,
+                        color: Colors.indigo,
+                      ),
+                      title: Text(
+                        Localization.translate(
+                          'بيانات الورشة في Supabase',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                      subtitle: Text(
+                        Localization.translate(
+                          'ارفع بيانات هذا الجهاز إلى الورشة، أو نزّل بيانات الورشة على هذا الجهاز.',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(
+                        16,
+                        0,
+                        16,
+                        8,
+                      ),
+                      child: Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: () => _runWorkshopUpload(context),
+                            icon: const Icon(
+                              Icons.cloud_upload_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              Localization.translate('رفع بيانات الورشة', lang),
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _runWorkshopDownload(context),
+                            icon: const Icon(Icons.download_rounded, size: 18),
+                            label: Text(
+                              Localization.translate('تنزيل الآن', lang),
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

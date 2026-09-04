@@ -1,4 +1,5 @@
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart';
+import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -114,4 +115,42 @@ void main() {
       expect(result, isEmpty);
     },
   );
+
+  test('global catalogue rules do not leak into unrelated series', () {
+    expect(
+      catalogRuleMatchesExactScope(
+        {'series_id': null, 'role_key': 'gache_simple'},
+        67000,
+      ),
+      isFalse,
+    );
+    expect(
+      catalogRuleMatchesExactScope(
+        {'series_id': null, 'role_key': 'kit_screw'},
+        67000,
+      ),
+      isTrue,
+    );
+    expect(
+      catalogRuleMatchesExactScope(
+        {'series_id': 67000, 'role_key': 'gache_simple'},
+        67000,
+      ),
+      isTrue,
+    );
+  });
+
+  test('series role cover rules override the base section capability', () {
+    final section = AluminumSection.fromMap({
+      'id': 12,
+      'series_id': 67000,
+      'code': 'ATPR-F',
+      'name': 'ATPR frame',
+      'type': 'frame',
+      'allows_side_cover': 1,
+      'design_allows_side_cover': 0,
+    });
+
+    expect(section.allowsSideCover, isFalse);
+  });
 }

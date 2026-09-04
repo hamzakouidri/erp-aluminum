@@ -22,6 +22,7 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/supabase_account_service.dart';
+import '../services/supabase_workshop_sync_service.dart';
 import 'suppliers_screen.dart';
 import 'achat_screen.dart';
 import 'inventory_screen.dart';
@@ -153,6 +154,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     super.initState();
     _loadUserData();
     _loadStats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _autoSyncData(showSnackBar: false);
+      }
+    });
   }
 
   /// تحديث صورة الشعار فقط عند تغيير فعلي لتجنب إعادة فك التشفير في كل rebuild
@@ -587,15 +593,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
               SharedPreferences.getInstance().then((prefs) {
                 if (!mounted) return;
                 final savedName = prefs.getString('workshop_name');
-                final savedCode =
-                    (prefs.getString('workshop_code') ?? '').trim();
-                final usableSavedName = savedName?.trim().isNotEmpty == true &&
+                final savedCode = (prefs.getString('workshop_code') ?? '')
+                    .trim();
+                final usableSavedName =
+                    savedName?.trim().isNotEmpty == true &&
                     savedName!.trim() != savedCode &&
                     savedName.trim() != 'ورشة النجارة' &&
                     savedName.trim() != 'ورشة الألمنيوم';
                 final firebaseName =
                     (data['workshopName'] as String?)?.trim() ?? '';
-                final usableFirebaseName = firebaseName.isNotEmpty &&
+                final usableFirebaseName =
+                    firebaseName.isNotEmpty &&
                     firebaseName != 'ورشة النجارة' &&
                     firebaseName != 'ورشة الألمنيوم';
                 final savedLogo = prefs.getString('workshop_logo_base64');
@@ -603,8 +611,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
                     ? data['workshopLogoUrl']
                     : savedLogo;
-                final nextName =
-                    usableSavedName
+                final nextName = usableSavedName
                     ? savedName!
                     : (usableFirebaseName
                           ? firebaseName
@@ -667,7 +674,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       _statsDebounce?.cancel();
       _statsDebounce = Timer(const Duration(milliseconds: 600), () {
         if (mounted) {
-          if (event == 'cloud_restored' || event == 'cloud_delta_applied') {
+          if (event == 'cloud_restored' ||
+              event == 'cloud_delta_applied' ||
+              event == 'supabase_data_updated') {
             Provider.of<AppSettingsProvider>(
               context,
               listen: false,
@@ -697,6 +706,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       );
     }
     try {
+      try {
+        await SupabaseWorkshopSyncService().downloadWorkshopData();
+      } catch (_) {}
       await CloudSyncService().fullRecoverySync();
       if (mounted) {
         await Provider.of<AppSettingsProvider>(
@@ -931,11 +943,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
     for (final order in _desktopOrders) {
       if (!_desktopSearchable(order).contains(query)) continue;
       final number = _desktopOrderDisplayNumber(order);
-      final client = (order['client_name'] ??
-              order['client_display'] ??
-              '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}')
-          .toString()
-          .trim();
+      final client =
+          (order['client_name'] ??
+                  order['client_display'] ??
+                  '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}')
+              .toString()
+              .trim();
       results.add(
         _DesktopSearchResult(
           type: 'order',
@@ -1034,7 +1047,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
           final result = results[index];
           return ListTile(
             dense: true,
-            leading: Icon(result.icon, color: const Color(0xFF4D67F0), size: 20),
+            leading: Icon(
+              result.icon,
+              color: const Color(0xFF4D67F0),
+              size: 20,
+            ),
             title: Text(
               result.title,
               maxLines: 1,
@@ -1221,7 +1238,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
               suffixIcon: _desktopGlobalSearchQuery.trim().isEmpty
                   ? null
                   : IconButton(
-                      tooltip: _desktopText(lang, 'مسح البحث', 'Effacer', 'Clear'),
+                      tooltip: _desktopText(
+                        lang,
+                        'مسح البحث',
+                        'Effacer',
+                        'Clear',
+                      ),
                       icon: const Icon(Icons.close_rounded, size: 18),
                       onPressed: () {
                         _desktopGlobalSearchController.clear();
@@ -2561,7 +2583,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
     String raw = (rawPlatform ?? '').trim();
     raw = raw
         .replaceFirst(
-          RegExp(r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$', caseSensitive: false),
+          RegExp(
+            r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$',
+            caseSensitive: false,
+          ),
           '',
         )
         .trim();

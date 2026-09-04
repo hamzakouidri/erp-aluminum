@@ -15,6 +15,15 @@ where join_code is null or trim(join_code) = '';
 create unique index if not exists workshops_join_code_key
   on public.workshops (join_code);
 
+do $$
+begin
+  alter publication supabase_realtime add table public.workshops;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end
+$$;
+
 create or replace function public.ensure_my_workshop(
   target_code text,
   target_name text default ''
@@ -37,7 +46,7 @@ begin
     raise exception 'Authentication required';
   end if;
 
-  clean_code := nullif(trim(coalesce(target_code, '')), '');
+  clean_code := upper(nullif(trim(coalesce(target_code, '')), ''));
   if clean_code is null then
     raise exception 'Workshop join code is required';
   end if;
@@ -79,7 +88,24 @@ begin
             updated_at = now();
         workshop_uuid := existing_workshop.id;
       else
-        raise exception 'You are not a member of this workshop';
+        -- The short workshop code is also a valid worker join credential.
+        -- When no email invitation exists, create a safe basic worker
+        -- membership instead of returning an account-without-workshop error.
+        insert into public.workshop_members
+          (workshop_id, user_id, role, permissions, blocked, updated_at)
+        values
+          (existing_workshop.id, auth.uid(), 'worker',
+           '{
+             "view_clients": true,
+             "view_orders": true,
+             "view_client_details": true,
+             "view_order_details": true,
+             "view_my_tasks": true,
+             "view_my_accreditations": true
+           }'::jsonb,
+           false, now())
+        on conflict (workshop_id, user_id) do nothing;
+        workshop_uuid := existing_workshop.id;
       end if;
     end if;
 
@@ -270,9 +296,9 @@ begin
   where code = clean_code or join_code = clean_code limit 1;
   if workshop_uuid is null then raise exception 'Workshop was not found'; end if;
   if not (public.is_app_admin() or exists (
-    select 1 from public.workshop_members
-    where workshop_id = workshop_uuid and user_id = auth.uid()
-      and role in ('owner', 'manager', 'co_manager', 'admin')
+    select 1 from public.workshop_members wm
+    where wm.workshop_id = workshop_uuid and wm.user_id = auth.uid()
+      and wm.role in ('owner', 'manager', 'co_manager', 'admin')
   )) then raise exception 'You cannot view workshop members'; end if;
 
   return query
