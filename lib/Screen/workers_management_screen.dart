@@ -681,6 +681,7 @@ class _WorkerCardState extends State<WorkerCard> {
       'view_colors': false,
       'view_accessories': false,
       'view_series_accessories': false,
+      'view_series_requirements_report': false,
       'view_joints': false,
       'view_kit_bundles': false,
       'external_operations': false,
@@ -2239,6 +2240,7 @@ class _WorkerCardState extends State<WorkerCard> {
                     'view_colors',
                     'view_accessories',
                     'view_series_accessories',
+                    'view_series_requirements_report',
                     'view_joints',
                     'view_kit_bundles',
                     'external_operations',
@@ -2252,6 +2254,7 @@ class _WorkerCardState extends State<WorkerCard> {
                     'view_colors',
                     'view_accessories',
                     'view_series_accessories',
+                    'view_series_requirements_report',
                     'view_joints',
                     'view_kit_bundles',
                   ],
@@ -2412,6 +2415,29 @@ class _WorkerCardState extends State<WorkerCard> {
                     ),
                   ),
                 ],
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'تقارير متطلبات واستعمال السلاسل',
+                      'Rapports des besoins et de l’utilisation des gammes',
+                      'Series requirements and usage reports',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'يعرض قواعد السلسلة والقطاعات المرتبطة والطلبات التي استعملتها.',
+                      'Affiche les règles, les profilés liés et les commandes utilisant la gamme.',
+                      'Shows series rules, linked profiles, and orders that used the series.',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['view_series_requirements_report'] ?? false,
+                  onChanged: (val) =>
+                      _updatePermission('view_series_requirements_report', val),
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(

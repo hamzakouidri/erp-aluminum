@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import '../sql_database.dart';
 
 /// Administrator-only definition of the main profile roles for each series.
@@ -219,8 +220,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       key: 'renfort',
       ar: 'حديد الدعم',
       fr: 'Renfort',
-      descriptionAr: 'حديد الدعم المرتبط بمقاطع هذه السلسلة',
-      descriptionFr: 'Renforts liés aux profils de cette série',
+      descriptionAr:
+          'حدد قطاع حديد الدعم المرتبط بهذه السلسلة. يمكن أن يكون القطاع محليًا أو مشتركًا من سلسلة أخرى.',
+      descriptionFr:
+          'Associez le renfort à un profil précis de cette série, local ou partagé depuis une autre série.',
     ),
     _SeriesRole(
       key: 'cache_renfort',
@@ -298,9 +301,13 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   final _railClearanceController = TextEditingController(text: '1');
   final _formulaNotesController = TextEditingController();
 
-  bool get _isArabic =>
-      context.read<AppSettingsProvider>().language == AppLanguage.arabic;
-  String _t(String ar, String fr) => _isArabic ? ar : fr;
+  String _t(String ar, String fr) {
+    final language = context.read<AppSettingsProvider>().language;
+    if (language == AppLanguage.arabic) return ar;
+    if (language == AppLanguage.french) return fr;
+    final english = Localization.translate(ar, AppLanguage.english);
+    return english == ar ? fr : english;
+  }
 
   String _trackModeExplanation(String mode) {
     switch (mode) {
@@ -423,7 +430,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     });
 
     final results = await Future.wait<dynamic>([
-      widget.db.readSectionsBySeries(seriesId),
+      widget.db.readAvailableSectionsBySeries(seriesId),
       widget.db.getSeriesDesignRoles(seriesId),
       widget.db.getSeriesTableConfig(seriesId),
       widget.db.readJoints(),
@@ -665,7 +672,171 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   String _sectionLabel(Map<String, dynamic> section) {
     final code = section['code']?.toString().trim() ?? '';
     final name = section['name']?.toString().trim() ?? '';
-    return code.isEmpty ? name : '$code — $name';
+    final base = code.isEmpty ? name : '$code — $name';
+    final sourceProfile = section['source_profile_name']?.toString().trim();
+    final sourceSeries = section['source_series_name']?.toString().trim();
+    if (section['is_shared'] == 1 &&
+        (sourceProfile?.isNotEmpty == true || sourceSeries?.isNotEmpty == true)) {
+      final owner = [
+        if (sourceProfile?.isNotEmpty == true) sourceProfile,
+        if (sourceSeries?.isNotEmpty == true) sourceSeries,
+      ].join(' / ');
+      return '$base — ${_t('مشترك من', 'Partagé depuis')} $owner';
+    }
+    return base;
+  }
+
+  Future<void> _shareSectionForRole(_SeriesRole role) async {
+    final targetSeriesId = _seriesId;
+    final targetProfileId = (_selectedProfile?['id'] as num?)?.toInt();
+    if (targetSeriesId == null || targetProfileId == null) return;
+
+    final allSections = await widget.db.searchSectionsWithProfile('');
+    final candidates = allSections.where((section) {
+      final sourceSeriesId = (section['source_series_id'] as num?)?.toInt();
+      if (sourceSeriesId == targetSeriesId) return false;
+      if (role.key == 'side_cover') return _isSideCoverSection(section);
+      if (role.key == 'bardage') return _isBardageSection(section);
+      return true;
+    }).toList();
+    if (!mounted) return;
+    if (candidates.isEmpty) {
+      _showMessage(
+        _t(
+          'لا توجد بروفيلات مناسبة للمشاركة لهذا الدور.',
+          'Aucun profil compatible à partager pour ce rôle.',
+        ),
+        isError: true,
+      );
+      return;
+    }
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        int? selectedSectionId;
+        var targetScope = 'profile';
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(
+              _t(
+                'مشاركة بروفيل في ${role.ar}',
+                'Partager un profil pour ${role.fr}',
+              ),
+            ),
+            content: SizedBox(
+              width: 680,
+              height: 520,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: targetScope,
+                    decoration: InputDecoration(
+                      labelText: _t('نطاق المشاركة', 'Portée du partage'),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'profile',
+                        child: Text(
+                          _t(
+                            'كل سلاسل النظام الحالي',
+                            'Toutes les séries du système actuel',
+                          ),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'series',
+                        child: Text(
+                          _t('السلسلة الحالية فقط', 'Série actuelle seulement'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) => setDialogState(
+                      () => targetScope = value ?? 'profile',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _t(
+                      'اختر البروفيل الأصلي. يمكن أن يكون تابعًا لأي نظام أو مادة.',
+                      'Choisissez le profil source. Il peut appartenir à tout système ou matériau.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: candidates.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final section = candidates[index];
+                        final sectionId =
+                            (section['id'] as num?)?.toInt();
+                        final selected = sectionId == selectedSectionId;
+                        final owner = [
+                          section['profile_name']?.toString().trim(),
+                          section['series_name']?.toString().trim(),
+                        ].where((value) => value?.isNotEmpty == true).join(' / ');
+                        return ListTile(
+                          selected: selected,
+                          leading: Icon(
+                            selected
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                          ),
+                          title: Text(_sectionLabel(section)),
+                          subtitle: Text(owner),
+                          onTap: sectionId == null
+                              ? null
+                              : () => setDialogState(
+                                    () => selectedSectionId = sectionId,
+                                  ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_t('إلغاء', 'Annuler')),
+              ),
+              FilledButton(
+                onPressed: selectedSectionId == null
+                    ? null
+                    : () => Navigator.pop(dialogContext, {
+                        'section_id': selectedSectionId,
+                        'target_scope': targetScope,
+                      }),
+                child: Text(_t('مشاركة', 'Partager')),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    final sourceSectionId = (result?['section_id'] as num?)?.toInt();
+    final selectedTargetScope = result?['target_scope']?.toString();
+    if (sourceSectionId == null || selectedTargetScope == null) return;
+    await widget.db.saveSectionSharingRule(
+      sourceSectionId: sourceSectionId,
+      targetScope: selectedTargetScope,
+      targetId: selectedTargetScope == 'profile'
+          ? targetProfileId
+          : targetSeriesId,
+      roleKey: role.key,
+    );
+    if (mounted && _selectedSeries != null) {
+      await _selectSeries(_selectedSeries!);
+      _showMessage(
+        _t(
+          'تمت مشاركة البروفيل. اختره من قائمة هذا الدور ثم اضغط حفظ.',
+          'Profil partagé. Sélectionnez-le dans ce rôle puis enregistrez.',
+        ),
+      );
+    }
   }
 
   Future<void> _save() async {
@@ -987,10 +1158,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         subtitle: Text(
           selectedIds.isEmpty
               ? _t('غير محدد', 'Non défini')
-              : _t(
-                  '${selectedIds.length} مقطع محدد',
-                  '${selectedIds.length} profil(s) sélectionné(s)',
-                ),
+              : '${selectedIds.length} ${_t('مقطع محدد', 'profil(s) sélectionné(s)')}',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         children: [
@@ -999,6 +1167,17 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             child: Text(_t(role.descriptionAr, role.descriptionFr)),
           ),
           const SizedBox(height: 10),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: OutlinedButton.icon(
+              onPressed: () => _shareSectionForRole(role),
+              icon: const Icon(Icons.share_rounded, size: 18),
+              label: Text(
+                _t('إضافة بروفيل من المشاركة', 'Ajouter un profil partagé'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           if (availableSections.isEmpty)
             Text(
               _t(

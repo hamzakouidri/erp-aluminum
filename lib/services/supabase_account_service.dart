@@ -288,6 +288,9 @@ class SupabaseAccountService {
       for (final key in const [
         'join_code',
         'joinCode',
+        'code',
+        'result',
+        'data',
         'set_my_workshop_join_code',
       ]) {
         final nested = _shortPublicCode(value[key]);
@@ -297,8 +300,13 @@ class SupabaseAccountService {
     if (value is List && value.length == 1) {
       return _shortPublicCode(value.first);
     }
-    final code = value?.toString().trim() ?? '';
-    return RegExp(r'^[A-Za-z0-9]{1,7}$').hasMatch(code) ? code : '';
+    final code = value?.toString().replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
+    // Keep legacy public codes such as "BGRSC 202" valid, while rejecting
+    // UUIDs and other internal identifiers from the user-facing UI.
+    final validPublicCode = RegExp(
+      r'^[A-Za-z0-9]{2,8}(?:[ -][A-Za-z0-9]{1,8})?$',
+    ).hasMatch(code);
+    return validPublicCode ? code : '';
   }
 
   String _firstPublicCode(dynamic primary, dynamic fallback) {
@@ -379,8 +387,13 @@ class SupabaseAccountService {
     required String storedName,
   }) async {
     String clean(dynamic value) => value?.toString().trim() ?? '';
+    bool isUsableName(String value) =>
+        value.isNotEmpty &&
+        value != workshopCode &&
+        value != 'ورشة النجارة' &&
+        value != 'ورشة الألمنيوم';
     final directName = clean(storedName);
-    if (directName.isNotEmpty && directName != workshopCode) {
+    if (isUsableName(directName)) {
       return directName;
     }
 
@@ -397,7 +410,7 @@ class SupabaseAccountService {
       final payload = row?['payload'];
       if (payload is Map) {
         final profileName = clean(payload['workshop_name']);
-        if (profileName.isNotEmpty && profileName != workshopCode) {
+        if (isUsableName(profileName)) {
           return profileName;
         }
       }
@@ -407,13 +420,13 @@ class SupabaseAccountService {
 
     final prefs = await SharedPreferences.getInstance();
     final cachedName = clean(prefs.getString('workshop_name'));
-    if (cachedName.isNotEmpty && cachedName != workshopCode) {
+    if (isUsableName(cachedName)) {
       return cachedName;
     }
     // A workshop code is an identifier, not a display name. Keep the name
     // empty so the UI can show a neutral fallback instead of duplicating the
     // technical code as the workshop title.
-    return directName == workshopCode ? '' : directName;
+    return isUsableName(directName) ? directName : '';
   }
 
   Future<List<Map<String, dynamic>>> fetchAdminWorkshops() async {

@@ -2991,6 +2991,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     int sectionId,
     double currentMultiplier,
   ) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final controller = TextEditingController(
       text: currentMultiplier.toStringAsFixed(
         currentMultiplier == currentMultiplier.roundToDouble() ? 0 : 2,
@@ -2999,19 +3000,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final value = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('معامل المتر الخطي'),
+        title: Text(Localization.translate('معامل المتر الخطي', lang)),
         content: TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'مثال: 1 أو 2 للبلانت',
+          decoration: InputDecoration(
+            labelText: Localization.translate('مثال: 1 أو 2 للبلانت', lang),
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
+            child: Text(Localization.translate('إلغاء', lang)),
           ),
           FilledButton(
             onPressed: () {
@@ -3020,7 +3021,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 Navigator.pop(dialogContext, parsed);
               }
             },
-            child: const Text('حفظ'),
+            child: Text(Localization.translate('حفظ', lang)),
           ),
         ],
       ),
@@ -3110,7 +3111,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            'الافتراضي: المتر الخطي للإطار والظلفة والباتمو والتقسيمات فقط. باقي البروفيلات بسعرها الأساسي، والزجاج والبانو والإكسسوارات بأسعارها الخاصة.',
+            Localization.translate(
+              'الافتراضي: المتر الخطي للإطار والظلفة والباتمو والتقسيمات فقط. باقي البروفيلات بسعرها الأساسي، والزجاج والبانو والإكسسوارات بأسعارها الخاصة.',
+              lang,
+            ),
             style: TextStyle(color: Colors.grey.shade700),
           ),
         ),
@@ -3149,22 +3153,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                             child: DropdownButtonFormField<String>(
                               isExpanded: true,
                               initialValue: mode,
-                              decoration: const InputDecoration(
-                                labelText: 'طريقة الحساب',
+                              decoration: InputDecoration(
+                                labelText: Localization.translate('طريقة الحساب', lang),
                                 border: OutlineInputBorder(),
                               ),
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: 'auto',
-                                  child: Text('تلقائي'),
+                                  child: Text(Localization.translate('تلقائي', lang)),
                                 ),
                                 DropdownMenuItem(
                                   value: 'linear_meter',
-                                  child: Text('متر خطي'),
+                                  child: Text(Localization.translate('متر خطي', lang)),
                                 ),
                                 DropdownMenuItem(
                                   value: 'base_price',
-                                  child: Text('سعر أساسي'),
+                                  child: Text(Localization.translate('سعر أساسي', lang)),
                                 ),
                               ],
                               onChanged: canChangePrices

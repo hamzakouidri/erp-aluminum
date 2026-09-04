@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
@@ -21,6 +22,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   final _db = SqlDatabase();
 
   bool _isLoading = true;
+  bool _isSaving = false;
   Map<String, dynamic>? _managerData;
   List<Map<String, dynamic>> _workers = [];
 
@@ -38,6 +40,13 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
+
+  bool _isUsableWorkshopName(String value) {
+    final name = value.trim();
+    return name.isNotEmpty &&
+        name != 'ورشة النجارة' &&
+        name != 'ورشة الألمنيوم';
+  }
 
   String _localizedJobRole(String value) {
     if (value.trim() == 'نائب مدير (صلاحيات كاملة)') {
@@ -59,16 +68,18 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final user = _auth.currentUser;
-      if (user == null) return;
+      final firebaseUser = _auth.currentUser;
 
       try {
         final profile = await SupabaseWorkshopSyncService()
-            .readWorkshopProfile();
+            .readWorkshopProfile()
+            .timeout(const Duration(seconds: 4));
         if (profile.isNotEmpty) {
           _managerData = profile;
-          _workshopNameController.text =
-              profile['workshop_name']?.toString() ?? '';
+          final profileName = profile['workshop_name']?.toString() ?? '';
+          if (_isUsableWorkshopName(profileName)) {
+            _workshopNameController.text = profileName;
+          }
           _locationController.text =
               profile['workshop_address']?.toString() ?? '';
           _phoneController.text = profile['phone']?.toString() ?? '';
@@ -91,6 +102,12 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       final localAi = prefs.getString('workshop_ai') ?? '';
       final localRib = prefs.getString('workshop_rib') ?? '';
       final localAddress = prefs.getString('workshop_address') ?? '';
+      final localWorkshopName = prefs.getString('workshop_name') ?? '';
+
+      if (_workshopNameController.text.trim().isEmpty &&
+          _isUsableWorkshopName(localWorkshopName)) {
+        _workshopNameController.text = localWorkshopName.trim();
+      }
 
       if (_locationController.text.isEmpty) {
         _locationController.text = localAddress;
@@ -111,7 +128,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         final uid = (worker['uid'] ?? '').toString().trim();
         final email = (worker['email'] ?? '').toString().trim().toLowerCase();
         return uid.isNotEmpty &&
-            uid != user.uid &&
+            uid != (firebaseUser?.uid ?? '') &&
             (managerUid.isEmpty || uid != managerUid) &&
             email.isNotEmpty &&
             email != 'no email' &&
@@ -120,7 +137,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     } catch (e) {
       debugPrint('Error loading workshop profile: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -153,9 +170,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   }
 
   Future<void> _saveManagerData() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
+    if (_isSaving) return;
     final newWorkshopName = _workshopNameController.text.trim();
     if (newWorkshopName.isEmpty) {
       if (mounted) {
@@ -166,6 +181,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       return;
     }
 
+    setState(() => _isSaving = true);
     try {
       // Save to local SharedPreferences immediately
       final prefs = await SharedPreferences.getInstance();
@@ -187,6 +203,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       // The manager is the source of truth for the workshop header. Publish
       // these values to Supabase so worker devices receive them through the
       // workshop sync path; they are no longer written to Firebase.
+      var cloudProfileSaved = true;
       try {
         await SupabaseWorkshopSyncService().saveWorkshopProfile({
           'workshop_name': newWorkshopName,
@@ -203,15 +220,24 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
           'logo': _logoBase64 ?? prefs.getString('workshop_logo_base64') ?? '',
         });
       } catch (syncError) {
-        // A temporary Supabase/network failure must not undo the local save.
+        cloudProfileSaved = false;
+        // A temporary Supabase/network failure must not undo the local save,
+        // but it must be visible to the manager instead of being reported as
+        // a complete success.
         debugPrint('Workshop profile Supabase sync deferred: $syncError');
       }
+
+      CloudSyncService().notifyWorkshopProfileChanged();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_t('تم حفظ معلومات الورشة بنجاح')),
-            backgroundColor: Colors.green,
+            content: Text(
+              cloudProfileSaved
+                  ? _t('تم حفظ معلومات الورشة بنجاح')
+                  : _t('تم الحفظ محلياً، وتعذرت مزامنة الاسم مع السحابة'),
+            ),
+            backgroundColor: cloudProfileSaved ? Colors.green : Colors.orange,
           ),
         );
       }
@@ -224,6 +250,8 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -307,7 +335,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: _isLoading ? null : _saveManagerData,
+            onPressed: _isLoading || _isSaving ? null : _saveManagerData,
             tooltip: _t('حفظ المعلومات'),
           ),
         ],
@@ -486,9 +514,17 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: _isLoading ? null : _saveManagerData,
-              icon: const Icon(Icons.save),
-              label: Text(_t('حفظ التعديلات الرئيسية')),
+              onPressed: _isLoading || _isSaving ? null : _saveManagerData,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(
+                _isSaving ? _t('حفظ') : _t('حفظ التعديلات الرئيسية'),
+              ),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 45),
               ),

@@ -32,8 +32,8 @@ class SubscriptionExpiredScreen extends StatelessWidget {
             children: [
               const Icon(Icons.block, size: 100, color: Colors.redAccent),
               const SizedBox(height: 24),
-              const Text(
-                'عذراً، لقد انتهت الفترة التجريبية الخاصة بك!',
+              Text(
+                Localization.translate('عذراً، لقد انتهت الفترة التجريبية الخاصة بك!', lang),
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -42,13 +42,13 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.',
+              Text(
+                Localization.translate('للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.', lang),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
                 textAlign: TextAlign.center,
               ),
-              const Text(
-                'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.',
+              Text(
+                Localization.translate('للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.', lang),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
                 textAlign: TextAlign.center,
               ),
@@ -66,8 +66,8 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        const Text(
-                          'معلومات الدفع (BaridiMob)',
+                        Text(
+                          Localization.translate('معلومات الدفع (BaridiMob)', lang),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -76,7 +76,9 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          rip.isEmpty ? 'لم يتم تحديد الرقم بعد' : 'CCP/RIP: $rip',
+                          rip.isEmpty
+                              ? Localization.translate('لم يتم تحديد الرقم بعد', lang)
+                              : 'CCP/RIP: $rip',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -103,8 +105,8 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                 icon: const Icon(
                   Icons.wechat,
                 ), // Using a standard icon for chat
-                label: const Text(
-                  'تواصل لتجديد الاشتراك (WhatsApp)',
+                label: Text(
+                  Localization.translate('تواصل لتجديد الاشتراك (WhatsApp)', lang),
                   style: TextStyle(fontSize: 16),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -128,8 +130,8 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                   }
                 },
                 icon: const Icon(Icons.logout, color: Colors.red),
-                label: const Text(
-                  'تسجيل الخروج',
+                label: Text(
+                  Localization.translate('تسجيل الخروج', lang),
                   style: TextStyle(color: Colors.red, fontSize: 16),
                 ),
               ),

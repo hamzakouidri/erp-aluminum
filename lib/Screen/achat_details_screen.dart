@@ -1384,6 +1384,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
     return ResizableColumnsTable(
       key: ValueKey('achat-items-${widget.achatId}-${_items.length}'),
+      persistenceKey: 'purchase_items',
       headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
       borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
       rowColor: isDark ? const Color(0xFF171721) : Colors.white,

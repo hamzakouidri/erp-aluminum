@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ResizableTableColumn {
   final String id;
@@ -57,6 +59,11 @@ class ResizableColumnsTable extends StatefulWidget {
   /// Reordering changes display order only; calculations remain unchanged.
   final bool reorderableRows;
   final ValueChanged<List<String>>? onRowOrderChanged;
+  /// Enables long-press dragging of a header to move a column.
+  final bool reorderableColumns;
+  /// Stable identifier used to persist widths and column order for this table.
+  final String? persistenceKey;
+  final ValueChanged<List<String>>? onColumnOrderChanged;
 
   const ResizableColumnsTable({
     super.key,
@@ -75,6 +82,9 @@ class ResizableColumnsTable extends StatefulWidget {
     this.maxBodyHeight,
     this.reorderableRows = false,
     this.onRowOrderChanged,
+    this.reorderableColumns = true,
+    this.persistenceKey,
+    this.onColumnOrderChanged,
   });
 
   @override
@@ -88,6 +98,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   late final ScrollController _ownHorizontalController;
   late final ScrollController _ownVerticalController;
   List<String> _rowOrder = [];
+  List<String> _columnOrder = [];
+  int _preferencesLoadGeneration = 0;
+  Future<void> _persistenceQueue = Future<void>.value();
 
   ScrollController get _horizontalController =>
       widget.horizontalController ?? _ownHorizontalController;
@@ -101,12 +114,31 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     _ownHorizontalController = ScrollController();
     _ownVerticalController = ScrollController();
     _syncRowOrder();
+    _syncColumnOrder();
+    unawaited(_loadTablePreferences());
   }
 
   @override
   void didUpdateWidget(covariant ResizableColumnsTable oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final oldNamespace = _storageNamespaceFor(
+      oldWidget.columns,
+      oldWidget.persistenceKey,
+    );
+    final namespaceChanged = oldNamespace != _storageNamespace;
+    final columnsChanged = !_sameColumnIds(
+      oldWidget.columns,
+      widget.columns,
+    );
+    if (namespaceChanged) {
+      _widths.clear();
+      _columnOrder = [];
+    }
     _syncRowOrder();
+    _syncColumnOrder();
+    if (namespaceChanged || columnsChanged) {
+      unawaited(_loadTablePreferences());
+    }
   }
 
   @override
@@ -123,6 +155,127 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   double _widthFor(ResizableTableColumn column) =>
       _widths[column.id] ?? column.initialWidth;
 
+  String _storageNamespaceFor(
+    List<ResizableTableColumn> columns,
+    String? persistenceKey,
+  ) {
+    final explicit = persistenceKey?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    return columns.map((column) => column.id).join('__');
+  }
+
+  String get _storageNamespace =>
+      _storageNamespaceFor(widget.columns, widget.persistenceKey);
+
+  bool _sameColumnIds(
+    List<ResizableTableColumn> first,
+    List<ResizableTableColumn> second,
+  ) {
+    if (first.length != second.length) return false;
+    for (var i = 0; i < first.length; i++) {
+      if (first[i].id != second[i].id) return false;
+    }
+    return true;
+  }
+
+  String get _widthStoragePrefix =>
+      'resizable_table_widths_${_storageNamespace}_';
+
+  String get _orderStorageKey =>
+      'resizable_table_column_order_$_storageNamespace';
+
+  Future<void> _loadTablePreferences() async {
+    final loadGeneration = ++_preferencesLoadGeneration;
+    final namespace = _storageNamespace;
+    final columns = List<ResizableTableColumn>.from(widget.columns);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final availableIds = columns.map((column) => column.id).toSet();
+      final orderStorageKey =
+          'resizable_table_column_order_$namespace';
+      final widthStoragePrefix = 'resizable_table_widths_${namespace}_';
+      final savedOrder = prefs.getStringList(orderStorageKey) ?? const [];
+      final savedWidths = <String, double>{};
+      for (final column in columns) {
+        final savedWidth =
+            prefs.getDouble('$widthStoragePrefix${column.id}');
+        if (savedWidth != null) savedWidths[column.id] = savedWidth;
+      }
+      if (!mounted ||
+          loadGeneration != _preferencesLoadGeneration ||
+          namespace != _storageNamespace ||
+          !_sameColumnIds(columns, widget.columns)) {
+        return;
+      }
+      setState(() {
+        _widths.addAll(savedWidths);
+        _columnOrder = [
+          ...savedOrder.where(availableIds.contains),
+          ...columns
+              .map((column) => column.id)
+              .where((id) => !savedOrder.contains(id)),
+        ];
+      });
+    } catch (_) {
+      // Layout preferences are optional; the table still uses its defaults.
+    }
+  }
+
+  void _persistWidth(String columnId, double width) {
+    _enqueuePersistence(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setDouble('$_widthStoragePrefix$columnId', width);
+      } catch (_) {
+        // Persistence is best-effort; the current table state remains live.
+      }
+    });
+  }
+
+  void _persistColumnOrder() {
+    final order = List<String>.from(_columnOrder);
+    _enqueuePersistence(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList(_orderStorageKey, order);
+      } catch (_) {
+        // Persistence is best-effort; the current table state remains live.
+      }
+    });
+  }
+
+  void _enqueuePersistence(Future<void> Function() operation) {
+    _persistenceQueue = _persistenceQueue.then((_) async {
+      try {
+        await operation();
+      } catch (_) {
+        // Layout persistence is best-effort; the current table state remains.
+      }
+    });
+  }
+
+  List<ResizableTableColumn> _orderedColumns() {
+    final byId = <String, ResizableTableColumn>{
+      for (final column in widget.columns) column.id: column,
+    };
+    return [
+      for (final id in _columnOrder)
+        if (byId[id] != null) byId[id]!,
+      for (final column in widget.columns)
+        if (!_columnOrder.contains(column.id)) column,
+    ];
+  }
+
+  void _syncColumnOrder() {
+    final available = widget.columns.map((column) => column.id).toList();
+    final availableSet = available.toSet();
+    final previous = _columnOrder.toSet();
+    _columnOrder = [
+      ..._columnOrder.where(availableSet.contains),
+      ...available.where((id) => !previous.contains(id)),
+    ];
+  }
+
   double get _tableWidth =>
       widget.columns.fold<double>(0, (sum, column) => sum + _widthFor(column));
 
@@ -130,7 +283,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     final next = (_widthFor(column) + delta)
         .clamp(column.minWidth, column.maxWidth)
         .toDouble();
+    _preferencesLoadGeneration++;
     setState(() => _widths[column.id] = next);
+    _persistWidth(column.id, next);
   }
 
   bool get _hasAnyFilter => widget.columns.any((c) => c.filter != null);
@@ -181,6 +336,21 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     next.insert(newIndex, moved);
     setState(() => _rowOrder = next);
     widget.onRowOrderChanged?.call(List<String>.unmodifiable(next));
+  }
+
+  void _reorderColumns(String draggedId, String targetId) {
+    if (!widget.reorderableColumns || draggedId == targetId) return;
+    final next = List<String>.from(_columnOrder);
+    final oldIndex = next.indexOf(draggedId);
+    var targetIndex = next.indexOf(targetId);
+    if (oldIndex < 0 || targetIndex < 0) return;
+    next.removeAt(oldIndex);
+    if (oldIndex < targetIndex) targetIndex -= 1;
+    next.insert(targetIndex, draggedId);
+    _preferencesLoadGeneration++;
+    setState(() => _columnOrder = next);
+    _persistColumnOrder();
+    widget.onColumnOrderChanged?.call(List<String>.unmodifiable(next));
   }
 
   Widget _buildReorderableRow(
@@ -327,17 +497,18 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   }
 
   Widget _buildHeader(Color headerColor, Color borderColor) {
+    final columns = _orderedColumns();
     return Container(
       color: headerColor,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < widget.columns.length; i++)
+            for (var i = 0; i < columns.length; i++)
               _buildHeaderCell(
-                widget.columns[i],
+                columns[i],
                 borderColor,
-                isLast: i == widget.columns.length - 1,
+                isLast: i == columns.length - 1,
               ),
           ],
         ),
@@ -354,6 +525,133 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     final isDragging = _draggingHandleColumnId == column.id;
     final isRtl = Directionality.of(context) == TextDirection.rtl;
 
+    final headerLabel = Container(
+      constraints: BoxConstraints(minHeight: widget.headerMinHeight),
+      padding: widget.cellPadding,
+      decoration: BoxDecoration(
+        border: BorderDirectional(
+          end: BorderSide(color: borderColor, width: 1.0),
+        ),
+      ),
+      alignment: column.alignment,
+      child: column.label,
+    );
+    final draggableLabel = widget.reorderableColumns
+        ? LongPressDraggable<String>(
+            data: column.id,
+            delay: const Duration(milliseconds: 250),
+            feedback: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: _widthFor(column),
+                constraints: BoxConstraints(
+                  minHeight: widget.headerMinHeight,
+                ),
+                padding: widget.cellPadding,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF334155)
+                      : Colors.blueGrey.shade700,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: column.label,
+              ),
+            ),
+            childWhenDragging: Opacity(opacity: 0.35, child: headerLabel),
+            child: headerLabel,
+          )
+        : headerLabel;
+
+    final baseHeaderContent = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        draggableLabel,
+        if (!isLast)
+          Positioned.directional(
+            textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+            end: -7,
+            top: 0,
+            bottom: 0,
+            width: 14,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              onEnter: (_) =>
+                  setState(() => _hoveredHandleColumnId = column.id),
+              onExit: (_) => setState(() {
+                if (_draggingHandleColumnId != column.id) {
+                  _hoveredHandleColumnId = null;
+                }
+              }),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragStart: (_) =>
+                    setState(() => _draggingHandleColumnId = column.id),
+                onHorizontalDragEnd: (_) => setState(() {
+                  _draggingHandleColumnId = null;
+                  _hoveredHandleColumnId = null;
+                }),
+                onHorizontalDragCancel: () => setState(() {
+                  _draggingHandleColumnId = null;
+                  _hoveredHandleColumnId = null;
+                }),
+                onHorizontalDragUpdate: (details) {
+                  final delta = isRtl ? -details.delta.dx : details.delta.dx;
+                  _resize(column, delta);
+                },
+                onDoubleTap: () {
+                  _preferencesLoadGeneration++;
+                  setState(() => _widths[column.id] = column.initialWidth);
+                  _persistWidth(column.id, column.initialWidth);
+                },
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: (isHovered || isDragging) ? 3.5 : 1.5,
+                    height: double.infinity,
+                    decoration: BoxDecoration(
+                      color: (isHovered || isDragging)
+                          ? const Color(0xFF38BDF8)
+                          : Colors.white.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    Widget headerContent = baseHeaderContent;
+    if (widget.reorderableColumns) {
+      headerContent = DragTarget<String>(
+        onWillAcceptWithDetails: (details) => details.data != column.id,
+        onAcceptWithDetails: (details) =>
+            _reorderColumns(details.data, column.id),
+        builder: (context, candidateData, rejectedData) {
+          final isDropTarget = candidateData.isNotEmpty;
+          return DecoratedBox(
+            decoration: isDropTarget
+                ? BoxDecoration(
+                    border: Border.all(
+                      color: const Color(0xFF38BDF8),
+                      width: 2,
+                    ),
+                  )
+                : const BoxDecoration(),
+            child: baseHeaderContent,
+          );
+        },
+      );
+    }
+
+    return SizedBox(
+      width: _widthFor(column),
+      child: headerContent,
+    );
+    /*
+      Legacy header implementation retained below in source history was
+      replaced by the draggable header above.
     return SizedBox(
       width: _widthFor(column),
       child: Stack(
@@ -425,19 +723,20 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             ),
         ],
       ),
-    );
+    );*/
   }
 
   Widget _buildFilterRow(Color filterRowColor, Color borderColor) {
+    final columns = _orderedColumns();
     return Container(
       color: filterRowColor,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < widget.columns.length; i++)
+            for (var i = 0; i < columns.length; i++)
               Container(
-                width: _widthFor(widget.columns[i]),
+                width: _widthFor(columns[i]),
                 constraints: BoxConstraints(
                   minHeight: widget.filterRowMinHeight,
                 ),
@@ -448,8 +747,8 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                     end: BorderSide(color: borderColor, width: 1.0),
                   ),
                 ),
-                alignment: widget.columns[i].alignment,
-                child: widget.columns[i].filter ?? const SizedBox.shrink(),
+                alignment: columns[i].alignment,
+                child: columns[i].filter ?? const SizedBox.shrink(),
               ),
           ],
         ),
@@ -458,16 +757,22 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   }
 
   Widget _buildRow(ResizableTableRow row, Color rowColor, Color borderColor) {
+    final columns = _orderedColumns();
+    final originalIndexById = <String, int>{
+      for (var i = 0; i < widget.columns.length; i++) widget.columns[i].id: i,
+    };
     final content = Container(
       color: row.color ?? rowColor,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < widget.columns.length; i++)
+            for (final column in columns)
               _buildCell(
-                row.cells.length > i ? row.cells[i] : const SizedBox.shrink(),
-                widget.columns[i],
+                row.cells.length > (originalIndexById[column.id] ?? -1)
+                    ? row.cells[originalIndexById[column.id]!]
+                    : const SizedBox.shrink(),
+                column,
                 borderColor,
               ),
           ],

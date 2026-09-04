@@ -28,6 +28,8 @@ import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
 
+import '../services/auth_service.dart';
+
 class Commande extends StatefulWidget {
   /// Opens the normal new-order form after the orders page has appeared.
   /// The dashboard uses this so its add action behaves like the page action.
@@ -49,6 +51,7 @@ class _CommandeState extends State<Commande> {
   StreamSubscription? _dbUpdateSubscription;
   Timer? _syncRefreshDebounce;
   bool _permissionRedirectScheduled = false;
+  String _workshopNameForIdentity = '';
 
   @override
   void didChangeDependencies() {
@@ -305,6 +308,7 @@ class _CommandeState extends State<Commande> {
   @override
   void initState() {
     super.initState();
+    _loadWorkshopNameForIdentity();
     _fetchCommandes();
     _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
       _scheduleCloudRefresh();
@@ -359,6 +363,8 @@ class _CommandeState extends State<Commande> {
     'id': TextEditingController(),
     'client_project': TextEditingController(),
     'date': TextEditingController(),
+    'updated_at': TextEditingController(),
+    'updated_by': TextEditingController(),
     'total': TextEditingController(),
     'advance': TextEditingController(),
     'remaining': TextEditingController(),
@@ -473,6 +479,19 @@ class _CommandeState extends State<Commande> {
             final dt = formatDate(d).toLowerCase();
             if (!dt.contains(filterVal)) return false;
             break;
+          case 'updated_at':
+            final dt = formatOrderDate(
+              d['updated_at'],
+              fallback: d['created_at'],
+            ).toLowerCase();
+            if (!dt.contains(filterVal)) return false;
+            break;
+          case 'updated_by':
+            final editor = _formatEditorDisplay(
+              d['updated_by']?.toString(),
+            ).toLowerCase();
+            if (!editor.contains(filterVal)) return false;
+            break;
           case 'total':
             if (_orderNumericFilters['total']?.isActive != true) {
               final tStr = netPayable.toStringAsFixed(0);
@@ -532,6 +551,16 @@ class _CommandeState extends State<Commande> {
             final aDate = (a['created_at'] ?? a['date'] ?? '').toString();
             final bDate = (b['created_at'] ?? b['date'] ?? '').toString();
             comp = aDate.compareTo(bDate);
+            break;
+          case 'updated_at':
+            final aDate = (a['updated_at'] ?? a['created_at'] ?? '').toString();
+            final bDate = (b['updated_at'] ?? b['created_at'] ?? '').toString();
+            comp = aDate.compareTo(bDate);
+            break;
+          case 'updated_by':
+            final aEditor = _formatEditorDisplay(a['updated_by']?.toString());
+            final bEditor = _formatEditorDisplay(b['updated_by']?.toString());
+            comp = aEditor.compareTo(bEditor);
             break;
           case 'total':
             final aTot =
@@ -2911,22 +2940,26 @@ class _CommandeState extends State<Commande> {
           PopupMenuItem(
             value: 'measurements',
             child: Text(
-              Localization.translate('تأكيد القياسات والملصقات (Stickers)', lang),
+              Localization.translate(
+                'تأكيد القياسات والملصقات (Stickers)',
+                lang,
+              ),
             ),
           ),
         if (settings.canAllocateTasks())
           PopupMenuItem(
             value: 'allocate',
             child: Text(
-              Localization.translate('توزيع المهام على العمال (إسناد الورشة)', lang),
+              Localization.translate(
+                'توزيع المهام على العمال (إسناد الورشة)',
+                lang,
+              ),
             ),
           ),
         if (settings.canChangeOrderStatus())
           PopupMenuItem(
             value: 'status',
-            child: Text(
-              Localization.translate('تغيير الحالة المخصص', lang),
-            ),
+            child: Text(Localization.translate('تغيير الحالة المخصص', lang)),
           ),
         if (settings.canDuplicateOrders())
           PopupMenuItem(
@@ -2959,20 +2992,15 @@ class _CommandeState extends State<Commande> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => OrderMeasurementsConfirmScreen(
-              orderData: order,
-              db: db,
-            ),
+            builder: (_) =>
+                OrderMeasurementsConfirmScreen(orderData: order, db: db),
           ),
         );
       case 'allocate':
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => OrderAllocationScreen(
-              orderData: order,
-              db: db,
-            ),
+            builder: (_) => OrderAllocationScreen(orderData: order, db: db),
           ),
         );
       case 'status':
@@ -2983,6 +3011,16 @@ class _CommandeState extends State<Commande> {
       case 'delete':
         _showDeleteConfirmDialog(order['id']);
     }
+  }
+
+  Future<void> _loadWorkshopNameForIdentity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('workshop_name')?.trim() ?? '';
+      if (mounted && name != _workshopNameForIdentity) {
+        setState(() => _workshopNameForIdentity = name);
+      }
+    } catch (_) {}
   }
 
   Future<void> _duplicateOrder(Map<String, dynamic> orderData) async {
@@ -3196,48 +3234,68 @@ class _CommandeState extends State<Commande> {
         .toList(growable: false);
     if (missingImages.isEmpty) return;
 
-    // A path uploaded by another phone is not valid on this device. Use the
-    // image bytes already stored with the row instead of rebuilding the whole
-    // window model, which can be very expensive for complex orders.
-    late final Directory cacheDirectory;
+    // A path uploaded by another phone is not valid on this device. Prefer
+    // synced image bytes when available, then rebuild from partitions_json if
+    // the cloud snapshot intentionally contains no image bytes.
+    Directory? cacheDirectory;
     try {
       cacheDirectory = await getTemporaryDirectory().timeout(
         const Duration(seconds: 3),
       );
     } catch (_) {
-      for (final item in missingImages) {
-        item['drawing_image_path'] = '';
-      }
-      return;
+      // A temporary directory is only needed for a synced byte copy.  We can
+      // still rebuild the drawing from partitions_json below.
+      cacheDirectory = null;
     }
 
     final writes = missingImages.map((item) async {
       item['drawing_image_path'] = '';
       final raw = item['drawing_image_base64']?.toString().trim() ?? '';
-      if (raw.isEmpty) return;
-
-      try {
-        final separator = raw.indexOf(',');
-        final encoded = raw.startsWith('data:image') && separator >= 0
-            ? raw.substring(separator + 1)
-            : raw;
-        final bytes = base64Decode(encoded);
-        if (bytes.isEmpty) return;
-
-        final detailId =
-            (item['id'] as num?)?.toInt() ?? encoded.hashCode.abs();
-        final file = File(
-          '${cacheDirectory.path}${Platform.pathSeparator}'
-          'devis_item_$detailId.img',
-        );
-        if (!await file.exists() || await file.length() != bytes.length) {
-          await file
-              .writeAsBytes(bytes, flush: false)
-              .timeout(const Duration(seconds: 4));
+      if (raw.isNotEmpty && cacheDirectory != null) {
+        try {
+          final separator = raw.indexOf(',');
+          final encoded = raw.startsWith('data:image') && separator >= 0
+              ? raw.substring(separator + 1)
+              : raw;
+          final bytes = base64Decode(encoded);
+          if (bytes.isNotEmpty) {
+            final detailId =
+                (item['id'] as num?)?.toInt() ?? encoded.hashCode.abs();
+            final file = File(
+              '${cacheDirectory!.path}${Platform.pathSeparator}'
+              'devis_item_$detailId.img',
+            );
+            if (!await file.exists() || await file.length() != bytes.length) {
+              await file
+                  .writeAsBytes(bytes, flush: false)
+                  .timeout(const Duration(seconds: 4));
+            }
+            item['drawing_image_path'] = file.path;
+            return;
+          }
+        } catch (error) {
+          debugPrint('Unable to restore Devis image bytes: $error');
         }
-        item['drawing_image_path'] = file.path;
+      }
+
+      // Image paths are device-local and images are intentionally excluded
+      // from the cloud snapshot. Rebuild the missing image from the durable
+      // window model so a second device can display it immediately.
+      final modelMap = savedWindowModelMap(item['partitions_json']);
+      if (modelMap.isEmpty) return;
+      try {
+        final model = WindowModel(db: db);
+        await applyWindowModelAndLoadCatalog(model, modelMap);
+        applyStoredOrderDetailColorToWindowModel(model, item);
+        final generatedPath = await saveWindowImageToDisk(model, maxSide: 600);
+        if (generatedPath.isEmpty) return;
+        item['drawing_image_path'] = generatedPath;
+        final detailId = (item['id'] as num?)?.toInt();
+        if (detailId != null) {
+          await db.updateCommandeDetailImagePath(detailId, generatedPath);
+        }
       } catch (error) {
-        debugPrint('Unable to restore Devis image: $error');
+        debugPrint('Unable to rebuild missing Devis image: $error');
       }
     });
 
@@ -3544,6 +3602,17 @@ class _CommandeState extends State<Commande> {
 
   String _formatCreatorDisplay(String? rawPlatform) {
     String raw = (rawPlatform ?? '').trim();
+    // Older rows stored the email prefix followed by the device name. Keep
+    // the person name, but never display the technical platform suffix.
+    raw = raw
+        .replaceFirst(
+          RegExp(
+            r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
     if (raw.isNotEmpty &&
         raw != 'unknown' &&
         raw != 'تطبيق' &&
@@ -3551,10 +3620,43 @@ class _CommandeState extends State<Commande> {
         raw != 'computer' &&
         raw != 'web' &&
         raw != 'هاتف' &&
-        raw != 'كمبيوتر') {
+        raw != 'كمبيوتر' &&
+        raw != 'المدير / عامل الورشة') {
       return raw;
     }
-    return 'المدير / عامل الورشة';
+    final user = AppAuthService().currentUser;
+    final displayName = user?.displayName?.trim() ?? '';
+    if (displayName.isNotEmpty) return displayName;
+    final email = user?.email?.trim() ?? '';
+    if (email.isNotEmpty) {
+      return email.contains('@') ? email.split('@').first.trim() : email;
+    }
+    return '—';
+  }
+
+  String _formatEditorDisplay(String? rawEditor) {
+    final raw = (rawEditor ?? '').trim();
+    final isGeneric =
+        raw.isEmpty ||
+        raw == 'unknown' ||
+        raw == 'المدير / عامل الورشة' ||
+        raw == 'مدير الورشة' ||
+        raw == 'عامل ورشة' ||
+        raw == 'عامل';
+    final isWorkshopName =
+        raw.isNotEmpty &&
+        _workshopNameForIdentity.isNotEmpty &&
+        raw == _workshopNameForIdentity;
+    if (!isGeneric && !isWorkshopName) return raw;
+
+    final user = AppAuthService().currentUser;
+    final displayName = user?.displayName?.trim() ?? '';
+    if (displayName.isNotEmpty) return displayName;
+    final email = user?.email?.trim() ?? '';
+    if (email.isNotEmpty) {
+      return email.contains('@') ? email.split('@').first.trim() : email;
+    }
+    return '—';
   }
 
   Widget _buildOrderSortableHeaderCell({
@@ -3759,6 +3861,40 @@ class _CommandeState extends State<Commande> {
         maxWidth: 200,
       ),
       ResizableTableColumn(
+        id: 'updated_at',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('تاريخ التعديل', lang),
+          colKey: 'updated_at',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: Localization.translate('سنة-شهر...', lang),
+          controller: _orderColumnControllers['updated_at'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 125,
+        minWidth: 95,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'updated_by',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('معدّل من طرف', lang),
+          colKey: 'updated_by',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: Localization.translate('اسم المعدّل...', lang),
+          controller: _orderColumnControllers['updated_by'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 140,
+        minWidth: 100,
+        maxWidth: 260,
+      ),
+      ResizableTableColumn(
         id: 'total',
         label: _buildOrderSortableHeaderCell(
           label: Localization.translate('المجموع الكلي (د.ج)', lang),
@@ -3930,6 +4066,7 @@ class _CommandeState extends State<Commande> {
       final creator = _formatCreatorDisplay(
         order['creation_platform']?.toString(),
       );
+      final updatedBy = _formatEditorDisplay(order['updated_by']?.toString());
 
       return ResizableTableRow(
         onTap: () => _showOrderOptions(context, order),
@@ -3965,6 +4102,24 @@ class _CommandeState extends State<Commande> {
               fontFamily: 'Cairo',
               fontSize: 11.5,
             ),
+          ),
+          // Last edit timestamp and editor
+          Text(
+            formatOrderDate(order['updated_at'], fallback: order['created_at']),
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+            ),
+          ),
+          Text(
+            updatedBy.isEmpty ? '—' : updatedBy,
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
           // Total
           Text(
@@ -4109,6 +4264,7 @@ class _CommandeState extends State<Commande> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: ResizableColumnsTable(
+                        persistenceKey: 'orders',
                         columns: columns,
                         rows: rows,
                         headerColor: const Color(

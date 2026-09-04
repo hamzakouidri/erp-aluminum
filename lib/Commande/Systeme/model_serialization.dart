@@ -93,10 +93,14 @@ String? _persistedColorFamily(Object? raw) {
       value.contains('اسود')) {
     return 'black';
   }
-  if (value.contains('brown') || value.contains('marron') || value.contains('بني')) {
+  if (value.contains('brown') ||
+      value.contains('marron') ||
+      value.contains('بني')) {
     return 'brown';
   }
-  if (value.contains('beige') || value.contains('بيج') || value.contains('باج')) {
+  if (value.contains('beige') ||
+      value.contains('بيج') ||
+      value.contains('باج')) {
     return 'beige';
   }
   return null;
@@ -516,6 +520,7 @@ extension WindowModelSerialization on WindowModel {
       'isInternalView': isInternalView,
       'showInternalHardware': showInternalHardware,
       'isDrawingMode': isDrawingMode,
+      'isDesignDrawing': isDesignDrawing,
       'hasShutter': hasShutter,
       'isCaissonTunnel': isCaissonTunnel,
       'caissonPayload': caissonPayload,
@@ -624,6 +629,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.isInternalView = map['isInternalView'] ?? false;
   model.showInternalHardware = map['showInternalHardware'] == true;
   model.isDrawingMode = false;
+  model.isDesignDrawing =
+      map['isDesignDrawing'] == true ||
+      map['isDesignDrawing']?.toString().toLowerCase() == 'true';
   model.hasShutter = map['hasShutter'] ?? false;
   model.isCaissonTunnel = map['isCaissonTunnel'] ?? false;
   if (map['caissonPayload'] != null && map['caissonPayload'] is Map) {
@@ -682,7 +690,18 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.useVerrouCentral =
       map['useVerrouCentral'] == true ||
       map['useVerrouCentral']?.toString().toLowerCase() == 'true';
-  model.hasSideCovers = map['hasSideCovers'] ?? true;
+  // Older/cloud records can store booleans as 0/1 or strings. Normalise the
+  // value here so an explicit "false" never gets treated as enabled by the
+  // drawing painter, while missing legacy data keeps the default enabled.
+  final rawHasSideCovers = map['hasSideCovers'];
+  model.hasSideCovers = rawHasSideCovers == null
+      ? true
+      : rawHasSideCovers is bool
+      ? rawHasSideCovers
+      : rawHasSideCovers is num
+      ? rawHasSideCovers != 0
+      : rawHasSideCovers.toString().trim().toLowerCase() != 'false' &&
+            rawHasSideCovers.toString().trim() != '0';
   model.sideCoverUseSecondWidth = map['sideCoverUseSecondWidth'] ?? false;
   model.hasInternalSlidingSideCover =
       map['hasInternalSlidingSideCover'] == true ||

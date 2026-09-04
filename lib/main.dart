@@ -252,11 +252,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           );
         }
-        return MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
-          child: content,
+        return Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
+          child: MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
+            child: content,
+          ),
         );
       },
       home: widget.firebaseError != null

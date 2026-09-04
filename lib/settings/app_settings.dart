@@ -451,6 +451,12 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canViewSeriesAccessories() =>
       _isSubPermissionEnabled('view_series_accessories');
 
+  /// The series report contains catalogue rules and commercial usage totals.
+  /// Managers have it automatically; other workers need an explicit grant.
+  bool canViewSeriesRequirementsReport() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['view_series_requirements_report']);
+
   bool canViewJoints() => _isSubPermissionEnabled('view_joints');
 
   bool canViewKitBundles() => _isSubPermissionEnabled('view_kit_bundles');

@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_account_service.dart';
 import 'suppliers_screen.dart';
 import 'achat_screen.dart';
 import 'inventory_screen.dart';
@@ -85,7 +86,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   static const _green = Color(0xFF10B981);
   static const _purple = Color(0xFF8B5CF6);
 
-  String _workshopName = 'ورشة النجارة';
+  String _workshopName = '';
   String _userEmail = 'جاري التحميل...';
   String _workshopPhone = '';
   String? _logoUrl;
@@ -547,6 +548,28 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return counts.map((count) => count.toDouble()).toList();
   }
 
+  Future<void> _loadSupabaseWorkshopName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = (prefs.getString('workshop_name') ?? '').trim();
+      final savedCode = (prefs.getString('workshop_code') ?? '').trim();
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      final accountName = account?.workshopName.trim() ?? '';
+      final accountCode = account?.workshopCode.trim() ?? savedCode;
+      final name = accountName.isNotEmpty && accountName != accountCode
+          ? accountName
+          : (savedName.isNotEmpty && savedName != savedCode ? savedName : '');
+      if (name.isNotEmpty) {
+        await prefs.setString('workshop_name', name);
+        if (mounted && name != _workshopName) {
+          setState(() => _workshopName = name);
+        }
+      }
+    } catch (error) {
+      debugPrint('Could not load dashboard workshop name: $error');
+    }
+  }
+
   Future<void> _loadUserData() async {
     final user = AppAuthService().currentUser;
     if (user != null) {
@@ -564,17 +587,34 @@ class _WelcomScreenState extends State<WelcomScreen> {
               SharedPreferences.getInstance().then((prefs) {
                 if (!mounted) return;
                 final savedName = prefs.getString('workshop_name');
+                final savedCode =
+                    (prefs.getString('workshop_code') ?? '').trim();
+                final usableSavedName = savedName?.trim().isNotEmpty == true &&
+                    savedName!.trim() != savedCode &&
+                    savedName.trim() != 'ورشة النجارة' &&
+                    savedName.trim() != 'ورشة الألمنيوم';
+                final firebaseName =
+                    (data['workshopName'] as String?)?.trim() ?? '';
+                final usableFirebaseName = firebaseName.isNotEmpty &&
+                    firebaseName != 'ورشة النجارة' &&
+                    firebaseName != 'ورشة الألمنيوم';
                 final savedLogo = prefs.getString('workshop_logo_base64');
                 final newLogoUrl =
                     (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
                     ? data['workshopLogoUrl']
                     : savedLogo;
                 final nextName =
-                    (data['workshopName'] as String?)?.isNotEmpty == true
-                    ? data['workshopName'] as String
-                    : (savedName?.isNotEmpty == true
-                          ? savedName!
-                          : 'ورشة النجارة');
+                    usableSavedName
+                    ? savedName!
+                    : (usableFirebaseName
+                          ? firebaseName
+                          : Localization.translate(
+                              'اسم الورشة',
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                                listen: false,
+                              ).language,
+                            ));
                 final nextPhone = (data['phone'] ?? data['phoneNumber'] ?? '')
                     .toString();
                 final nextEmail = data['email']?.toString() ?? _userEmail;
@@ -596,37 +636,47 @@ class _WelcomScreenState extends State<WelcomScreen> {
               });
             }
           });
-
-      // SubscriptionChecker owns the global Firestore listeners.  This page
-      // only listens to local update notifications so navigating away cannot
-      // stop synchronization for the whole app.
-      await CloudSyncService().init();
-
-      // استماع التحديثات المحلية مع debounce لمنع تكرار البناء خلال مليسثانية فقيرة
-      await _databaseUpdateSub?.cancel();
-      _databaseUpdateSub = CloudSyncService().dbUpdateStream.listen((event) {
-        if (!mounted) return;
-        // Allocation/measurement listeners can emit a snapshot without a
-        // dashboard value changing. Reloading the whole dashboard for those
-        // events restarts the orders chart and makes it look like it is
-        // continually loading.
-        if (event == 'status_updated' || event == 'measurements_updated') {
-          return;
-        }
-        _statsDebounce?.cancel();
-        _statsDebounce = Timer(const Duration(milliseconds: 600), () {
-          if (mounted) {
-            if (event == 'cloud_restored' || event == 'cloud_delta_applied') {
-              Provider.of<AppSettingsProvider>(
-                context,
-                listen: false,
-              ).reloadPermissions();
-            }
-            _loadStats();
-          }
-        });
-      });
     }
+
+    // SubscriptionChecker owns the global Firestore listeners. This page
+    // only listens to local update notifications so navigating away cannot
+    // stop synchronization for the whole app. This must also run when the
+    // active account is Supabase-only and Firebase has no current user.
+    await CloudSyncService().init();
+
+    // The workshop identity is owned by Supabase. Firebase user documents
+    // may contain an old Arabic fallback, so load the real display name
+    // before the dashboard renders it.
+    await _loadSupabaseWorkshopName();
+
+    // استماع التحديثات المحلية مع debounce لمنع تكرار البناء خلال مليسثانية فقيرة
+    await _databaseUpdateSub?.cancel();
+    _databaseUpdateSub = CloudSyncService().dbUpdateStream.listen((event) {
+      if (!mounted) return;
+      if (event == 'workshop_profile_updated') {
+        _loadSupabaseWorkshopName();
+        return;
+      }
+      // Allocation/measurement listeners can emit a snapshot without a
+      // dashboard value changing. Reloading the whole dashboard for those
+      // events restarts the orders chart and makes it look like it is
+      // continually loading.
+      if (event == 'status_updated' || event == 'measurements_updated') {
+        return;
+      }
+      _statsDebounce?.cancel();
+      _statsDebounce = Timer(const Duration(milliseconds: 600), () {
+        if (mounted) {
+          if (event == 'cloud_restored' || event == 'cloud_delta_applied') {
+            Provider.of<AppSettingsProvider>(
+              context,
+              listen: false,
+            ).reloadPermissions();
+          }
+          _loadStats();
+        }
+      });
+    });
   }
 
   bool _isManualSyncing = false;
@@ -2495,6 +2545,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: ResizableColumnsTable(
+        persistenceKey: 'dashboard_primary',
         columns: columns,
         rows: rows,
         headerColor: const Color(0xFF2563EB).withOpacity(0.08),
@@ -2508,6 +2559,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
   String _formatCreatorDisplay(String? rawPlatform) {
     String raw = (rawPlatform ?? '').trim();
+    raw = raw
+        .replaceFirst(
+          RegExp(r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$', caseSensitive: false),
+          '',
+        )
+        .trim();
     if (raw.isNotEmpty &&
         raw != 'unknown' &&
         raw != 'تطبيق' &&
@@ -2515,7 +2572,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
         raw != 'computer' &&
         raw != 'web' &&
         raw != 'هاتف' &&
-        raw != 'كمبيوتر') {
+        raw != 'كمبيوتر' &&
+        raw != 'المدير / عامل الورشة') {
       return raw;
     }
     final user = AppAuthService().currentUser;
@@ -2960,6 +3018,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: ResizableColumnsTable(
+        persistenceKey: 'dashboard_secondary',
         columns: columns,
         rows: rows,
         headerColor: const Color(0xFF0EA5E9).withOpacity(0.08),

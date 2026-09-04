@@ -11,6 +11,7 @@ import 'joint.dart';
 import 'glass.dart';
 import 'shutters.dart';
 import 'kit_bundles_screen.dart';
+import 'series_requirements_report_screen.dart';
 
 class ProduitsDashboard extends StatelessWidget {
   final SqlDatabase db;
@@ -107,6 +108,14 @@ class ProduitsDashboard extends StatelessWidget {
               Icons.inventory_2_outlined,
               KitBundlesScreen(db: db),
             ),
+            if (Provider.of<AppSettingsProvider>(context)
+                .canViewSeriesRequirementsReport())
+              _buildMenuCard(
+                context,
+                'تقارير متطلبات واستعمال السلاسل',
+                Icons.analytics_outlined,
+                SeriesRequirementsReportScreen(db: db),
+              ),
           ],
         ),
       ),

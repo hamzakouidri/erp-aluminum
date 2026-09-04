@@ -22,10 +22,12 @@ class _SupportDialogState extends State<SupportDialog> {
   );
 
   void _sendToWhatsApp() async {
-    final ratingText = _rating > 0 ? '$_rating نجوم' : 'لم يتم تحديد تقييم';
+    final ratingText = _rating > 0
+        ? '$_rating ${_t('نجوم')}'
+        : _t('لم يتم تحديد تقييم');
     final userMsg = _msgController.text.trim();
     final String message =
-        "مراسلة الإدارة وتقديم شكوى / ملاحظة:\n• تقييم التطبيق: $ratingText\n• الملاحظة أو الشكوى:\n${userMsg.isNotEmpty ? userMsg : 'لا توجد تفاصيل إضافية'}";
+        "${_t('مراسلة الإدارة وتقديم شكوى / ملاحظة:')}\n• ${_t('تقييم التطبيق:')} $ratingText\n• ${_t('الملاحظة أو الشكوى:')}\n${userMsg.isNotEmpty ? userMsg : _t('لا توجد تفاصيل إضافية')}";
 
     final encodedMessage = Uri.encodeComponent(message);
     final String webUrl = "https://wa.me/213554301484?text=$encodedMessage";
@@ -82,9 +84,9 @@ class _SupportDialogState extends State<SupportDialog> {
             child: const Icon(Icons.support_agent_rounded, color: Colors.green, size: 24),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
-              'مراسلة الإدارة وتقييم التطبيق',
+              _t('مراسلة الإدارة وتقييم التطبيق'),
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
             ),
           ),
@@ -95,8 +97,8 @@ class _SupportDialogState extends State<SupportDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'ما هو تقييمك للتطبيق؟',
+            Text(
+              _t('ما هو تقييمك للتطبيق؟'),
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
             ),
             const SizedBox(height: 6),
@@ -118,8 +120,8 @@ class _SupportDialogState extends State<SupportDialog> {
               }),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'اكتب ملاحظتك أو شكواك للإدارة:',
+            Text(
+              _t('اكتب ملاحظتك أو شكواك للإدارة:'),
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
             ),
             const SizedBox(height: 6),
@@ -152,8 +154,8 @@ class _SupportDialogState extends State<SupportDialog> {
           ),
           onPressed: canSend && !_isSending ? _sendToWhatsApp : null,
           icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
-          label: Text(
-            _isSending ? 'جاري الإرسال...' : 'إرسال عبر واتساب',
+            label: Text(
+            _isSending ? _t('جاري الإرسال...') : _t('إرسال عبر واتساب'),
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),

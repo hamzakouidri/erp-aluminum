@@ -69,6 +69,11 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _animationController;
   late List<Particle> _particles;
 
+  String _t(String key) => Localization.translate(
+        key,
+        context.read<AppSettingsProvider>().language,
+      );
+
   @override
   void initState() {
     super.initState();
@@ -107,74 +112,100 @@ class _LoginScreenState extends State<LoginScreen>
     if (e is AppAuthException) {
       final code = e.code.toLowerCase().trim();
       final msg = e.message.toLowerCase();
+      if (_isNetworkError(code, msg)) {
+        return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
+      }
       if (code.contains('invalid') || msg.contains('invalid login')) {
-        return 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.';
+        return _t('بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.');
       }
       if (code.contains('not-found') || msg.contains('not found')) {
-        return 'لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.';
+        return _t('لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.');
       }
       if (code.contains('already') || msg.contains('already registered')) {
-        return 'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.';
+        return _t('هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.');
       }
       if (code.contains('confirmed') || msg.contains('confirm')) {
-        return 'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.';
+        return _t('تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.');
       }
       if (code.contains('weak') || msg.contains('weak password')) {
-        return 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.';
+        return _t('كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.');
       }
-      return e.message;
+      return _t(e.message);
     }
     if (e is FirebaseAuthException) {
       final code = e.code.replaceAll('auth/', '').toLowerCase().trim();
       final msg = (e.message ?? '').toLowerCase();
 
       if (code == 'invalid-email' || msg.contains('invalid email')) {
-        return 'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.';
+        return _t('البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.');
       }
       if (code == 'user-disabled' || msg.contains('user disabled')) {
-        return 'تم تعطيل هذا الحساب من قبل الإدارة.';
+        return _t('تم تعطيل هذا الحساب من قبل الإدارة.');
       }
       if (code == 'user-not-found' || msg.contains('user not found')) {
-        return 'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.';
+        return _t('لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.');
       }
       if (code == 'wrong-password' || msg.contains('wrong password')) {
-        return 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.';
+        return _t('كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.');
       }
       if (code == 'invalid-credential' ||
           code == 'invalid_login_credentials' ||
           msg.contains('invalid credential') ||
           msg.contains('invalid login credentials')) {
-        return 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.';
+        return _t('بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.');
       }
       if (code == 'email-already-in-use' ||
           msg.contains('email already in use')) {
-        return 'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.';
+        return _t('هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.');
       }
       if (code == 'weak-password' || msg.contains('weak password')) {
-        return 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.';
+        return _t('كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.');
       }
       if (code == 'operation-not-allowed' ||
           msg.contains('operation not allowed')) {
-        return 'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.';
+        return _t('طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.');
       }
-      if (code == 'network-request-failed' || msg.contains('network')) {
-        return 'لا يوجد اتصال بالإنترنت، يرجى التحقق من اتصال الشبكة.';
+      if (_isNetworkError(code, msg)) {
+        return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
       }
       if (code == 'too-many-requests' || msg.contains('too many requests')) {
-        return 'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.';
+        return _t('تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.');
       }
       if (code == 'internal-error' ||
           code == 'channel-error' ||
           msg.contains('internal error')) {
-        return 'خطأ في خادم الفايربيس (An internal error has occurred).\n'
-            'السبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.';
+        return _t('خطأ في خادم الفايربيس (An internal error has occurred).\n'
+            'السبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.');
       }
       if (msg.contains('configuration not found')) {
-        return 'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.';
+        return _t('إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.');
       }
-      return 'حدث خطأ: ${e.message}';
+      return '${_t('حدث خطأ')}: ${e.message}';
     }
-    return 'حدث خطأ: $e';
+    final errorText = e.toString().toLowerCase();
+    if (_isNetworkError(errorText, errorText)) {
+      return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
+    }
+    return '${_t('حدث خطأ')}: $e';
+  }
+
+  bool _isNetworkError(String code, String message) {
+    final value = '$code $message';
+    return value.contains('network') ||
+        value.contains('socketexception') ||
+        value.contains('failed host lookup') ||
+        value.contains('connection refused') ||
+        value.contains('connection reset') ||
+        value.contains('connection closed') ||
+        value.contains('network is unreachable') ||
+        value.contains('networkerror') ||
+        value.contains('fetch failed') ||
+        value.contains('failed to fetch') ||
+        value.contains('xmlhttprequest error') ||
+        value.contains('offline') ||
+        value.contains('clientexception') ||
+        value.contains('timed out') ||
+        value.contains('timeout');
   }
 
   Future<void> _resetPassword() async {
@@ -194,9 +225,12 @@ class _LoginScreenState extends State<LoginScreen>
       await _auth.sendPasswordResetEmail(email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.',
+              Localization.translate(
+                'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.',
+                Provider.of<AppSettingsProvider>(context, listen: false).language,
+              ),
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
@@ -238,6 +272,18 @@ class _LoginScreenState extends State<LoginScreen>
     SupabaseAccountSnapshot account,
   ) async {
     final prefs = await SharedPreferences.getInstance();
+    // Keep the person's account name separate from the workshop name. The
+    // latter is used for document headers, while the former is used by
+    // "Entered by" and "Modified by" fields.
+    final signedInUser = AppAuthService().currentUser;
+    final displayName = signedInUser?.displayName?.trim() ?? '';
+    final email = signedInUser?.email?.trim() ?? account.email.trim();
+    final accountDisplayName = displayName.isNotEmpty
+        ? displayName
+        : (email.contains('@') ? email.split('@').first.trim() : email);
+    if (accountDisplayName.isNotEmpty) {
+      await prefs.setString('user_display_name', accountDisplayName);
+    }
     await prefs.setString('workshop_code', account.workshopCode);
     final accountName = account.workshopName.trim();
     final accountCode = account.workshopCode.trim();
@@ -1593,8 +1639,8 @@ class _LoginScreenState extends State<LoginScreen>
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const Text(
-                      'نظام إدارة وتسيير ورش الألمنيوم الذكي',
+                    Text(
+                      Localization.translate('نظام إدارة وتسيير ورش الألمنيوم الذكي', settings.language),
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 13,
@@ -1623,8 +1669,8 @@ class _LoginScreenState extends State<LoginScreen>
                             children: [
                               Text(
                                 _isLoginMode
-                                    ? 'تسجيل الدخول'
-                                    : 'إنشاء حساب جديد',
+                                    ? Localization.translate('تسجيل الدخول', lang)
+                                    : Localization.translate('إنشاء حساب جديد', lang),
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   fontFamily: 'Cairo',
@@ -1841,7 +1887,10 @@ class _LoginScreenState extends State<LoginScreen>
                                     horizontal: 4.0,
                                   ),
                                   child: Text(
-                                    '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
+                                    Localization.translate(
+                                      '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
+                                      lang,
+                                    ),
                                     style: TextStyle(
                                       color: Colors.amber.shade300,
                                       fontSize: 11,
@@ -1910,8 +1959,8 @@ class _LoginScreenState extends State<LoginScreen>
                                       tapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
                                     ),
-                                    child: const Text(
-                                      'نسيت كلمة المرور؟',
+                                    child: Text(
+                                      Localization.translate('نسيت كلمة المرور؟', lang),
                                       style: TextStyle(
                                         color: Colors.white70,
                                         fontFamily: 'Cairo',
@@ -2029,8 +2078,8 @@ class _LoginScreenState extends State<LoginScreen>
                                       ),
                                       child: Text(
                                         _isLoginMode
-                                            ? 'تسجيل الدخول'
-                                            : 'إنشاء حساب',
+                                            ? Localization.translate('تسجيل الدخول', lang)
+                                            : Localization.translate('إنشاء حساب', lang),
                                         style: const TextStyle(
                                           fontFamily: 'Cairo',
                                           fontSize: 18,
@@ -2077,8 +2126,8 @@ class _LoginScreenState extends State<LoginScreen>
                                           const SizedBox(width: 12),
                                           Text(
                                             _isLoginMode
-                                                ? 'الدخول باستخدام Google'
-                                                : 'التسجيل باستخدام Google',
+                                                ? Localization.translate('الدخول باستخدام Google', lang)
+                                                : Localization.translate('التسجيل باستخدام Google', lang),
                                             style: const TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.bold,
@@ -2099,8 +2148,8 @@ class _LoginScreenState extends State<LoginScreen>
                                       },
                                       child: Text(
                                         _isLoginMode
-                                            ? 'ليس لديك حساب؟ إنشاء حساب جديد'
-                                            : 'لديك حساب بالفعل؟ تسجيل الدخول',
+                                            ? Localization.translate('ليس لديك حساب؟ إنشاء حساب جديد', lang)
+                                            : Localization.translate('لديك حساب بالفعل؟ تسجيل الدخول', lang),
                                         style: const TextStyle(
                                           color: Colors.white70,
                                           fontSize: 14,

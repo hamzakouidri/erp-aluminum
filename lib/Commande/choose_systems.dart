@@ -380,127 +380,93 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final lang = Provider.of<AppSettingsProvider>(context).language;
 
-    // There is one user-facing entry point for windows and doors.  Whether a
-    // zone is opening, sliding or uses a shutter is determined later by the
-    // selected series definition; those are not separate drawing screens.
-    final systemItems = <Widget>[
-      ItemBuildSystem(
-        width: 70,
-        height: 70,
-        title: Localization.translate('التصميم', lang),
+    // The drawing page must follow the system-mode selection screen.  Keep
+    // each mode as its own entry point: active modes are systems, not series.
+    final systemItems = <Widget>[];
+
+    void addSystem({
+      required String mode,
+      required String title,
+      required String iconPath,
+      double size = 60,
+    }) {
+      if (systemItems.isNotEmpty) {
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      }
+      systemItems.add(
+        ItemBuildSystem(
+          width: size,
+          height: size,
+          title: Localization.translate(title, lang),
+          iconPath: iconPath,
+          onTap: () => _navigateToSystem(context, mode),
+        ),
+      );
+    }
+
+    if (_activeModes['mixed'] ?? true) {
+      addSystem(
+        mode: 'mixed',
+        title: 'التصميم',
         iconPath: 'Icon/french.png',
-        onTap: () => _navigateToSystem(context, 'mixed'),
-      ),
-    ];
-    const showLegacySystemCards = false;
-
-    if (showLegacySystemCards && (_activeModes['sliding'] ?? true)) {
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: 'System Sliding (جرار)',
-          iconPath: 'Icon/sli.png',
-          onTap: () => _navigateToSystem(context, 'sliding'),
-        ),
+        size: 70,
       );
     }
 
-    if (showLegacySystemCards && (_activeModes['french'] ?? true)) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 70,
-          height: 70,
-          title: 'System Beating (فرنسي)',
-          iconPath: 'Icon/french.png',
-          onTap: () => _navigateToSystem(context, 'french'),
-        ),
+    if (_activeModes['sliding'] ?? true) {
+      addSystem(
+        mode: 'sliding',
+        title: 'System Sliding (جرار)',
+        iconPath: 'Icon/sli.png',
       );
     }
 
-    if (showLegacySystemCards && (_activeModes['mixed'] ?? true)) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: 'Conception (التصميم)',
-          iconPath: 'Icon/french.png',
-          onTap: () => _navigateToSystem(context, 'mixed'),
-        ),
+    if (_activeModes['french'] ?? true) {
+      addSystem(
+        mode: 'french',
+        title: 'System Beating (فرنسي)',
+        iconPath: 'Icon/french.png',
+        size: 70,
       );
     }
 
-    if (showLegacySystemCards && (_activeModes['rolling'] ?? true)) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: 'System Roling',
-          iconPath: 'Icon/roling.png',
-          onTap: () => _navigateToSystem(context, ''),
-        ),
+    if (_activeModes['rolling'] ?? true) {
+      addSystem(
+        mode: 'rolling',
+        title: 'System Roling',
+        iconPath: 'Icon/roling.png',
       );
     }
 
     if (_activeModes['caisson_tunnel'] ?? true) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: 'Caisson Tunnel',
-          iconPath: 'Icon/caisson_tunnel.jpg',
-          onTap: () => _navigateToSystem(context, 'caisson_tunnel'),
-        ),
+      addSystem(
+        mode: 'caisson_tunnel',
+        title: 'Caisson Tunnel',
+        iconPath: 'Icon/caisson_tunnel.jpg',
       );
     }
 
     if (_activeModes['moustiquaire'] ?? true) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: Localization.translate('Moustiquaire (موستيكير)', lang),
-          iconPath: 'Icon/media.webp',
-          onTap: () => _navigateToSystem(context, 'moustiquaire'),
-        ),
+      addSystem(
+        mode: 'moustiquaire',
+        title: 'Moustiquaire (موستيكير)',
+        iconPath: 'Icon/media.webp',
       );
     }
 
     if (_activeModes['precadre'] ?? true) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: 'Pre-cadre',
-          iconPath: 'Icon/french.png',
-          onTap: () => _navigateToSystem(context, 'precadre'),
-        ),
+      addSystem(
+        mode: 'precadre',
+        title: 'Pre-cadre',
+        iconPath: 'Icon/french.png',
       );
     }
 
     if (_activeModes['verre'] ?? true) {
-      if (systemItems.isNotEmpty)
-        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
-      systemItems.add(
-        ItemBuildSystem(
-          width: 60,
-          height: 60,
-          title: Localization.translate('Verre Trempé (أعمال الزجاج)', lang),
-          iconPath: 'Icon/verre.png',
-          onTap: () => _navigateToSystem(context, 'verre'),
-        ),
+      addSystem(
+        mode: 'verre',
+        title: 'Verre Trempé (أعمال الزجاج)',
+        iconPath: 'Icon/verre.png',
       );
     }
 
@@ -781,7 +747,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         );
         break;
       case 'rolling':
-        targetPage = WindowView(model: _makeModel(thickness: 30));
+        targetPage = WindowView(
+          systemMode: 'rolling',
+          model: _makeModel(thickness: 30),
+        );
         break;
       default:
         targetPage = WindowView(systemMode: 'mixed', model: _makeModel());

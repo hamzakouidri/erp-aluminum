@@ -58,4 +58,100 @@ void main() {
       isNot(contains('Automatic series')),
     );
   });
+
+  test(
+    'Devis preserves edited text when the document language is French',
+    () async {
+      SharedPreferences.setMockInitialValues({'app_language': 1});
+
+      final data = await DevisBuilder.build(
+        order: {
+          'id': 102,
+          'created_at': '2026-07-28',
+          'firstname': 'Test',
+          'lastname': 'Client',
+        },
+        items: [
+          {
+            'id': 502,
+            'game': 'Série automatique',
+            'window_type': 'sliding',
+            'largeur': 1200,
+            'hauteur': 1400,
+            'quantity': 1,
+            'price': 25000.0,
+            'color': 'white',
+            'partitions_json': jsonEncode({
+              'width': 1200,
+              'height': 1400,
+              'seriesName': 'Série automatique',
+              'zones': [
+                {'content': 'slidingSash'},
+              ],
+              'manualNameOverride': 'Nom modifié',
+              'description':
+                  'Gamme: texte modifié\nCouleur Profil: couleur modifiée',
+              'invoiceTableEdited': true,
+            }),
+          },
+        ],
+        workshop: const DevisWorkshopInfo(
+          name: 'Workshop',
+          phone: '',
+          address: '',
+        ),
+      );
+
+      expect(data.items.single.title, 'Nom modifié');
+      expect(
+        data.items.single.details,
+        ['Gamme: texte modifié', 'Couleur Profil: couleur modifiée'],
+      );
+    },
+  );
+
+  test('a tunnel box on a designed window stays a normal window invoice line', () async {
+    SharedPreferences.setMockInitialValues({'app_language': 0});
+
+    final data = await DevisBuilder.build(
+      order: {
+        'id': 103,
+        'created_at': '2026-07-28',
+        'firstname': 'Test',
+        'lastname': 'Client',
+      },
+      items: [
+        {
+          'id': 503,
+          'game': '4000 - نافذة بضلفة واحدة',
+          'window_type': 'mixed',
+          'largeur': 1200,
+          'hauteur': 1400,
+          'quantity': 1,
+          'price': 25000.0,
+          'color': 'white',
+          'partitions_json': jsonEncode({
+            'width': 1200,
+            'height': 1400,
+            'isDesignDrawing': true,
+            'isCaissonTunnel': true,
+            'showWall': true,
+            'seriesName': '4000',
+            'zones': [
+              {'content': 'singleSash'},
+            ],
+            'description': 'نافذة كاملة مع صندوق نفق',
+          }),
+        },
+      ],
+      workshop: const DevisWorkshopInfo(
+        name: 'Workshop',
+        phone: '',
+        address: '',
+      ),
+    );
+
+    expect(data.items.single.title, isNot('Caisson Tunnel'));
+    expect(data.items.single.details.join(' '), isNot(contains('Kit:')));
+  });
 }

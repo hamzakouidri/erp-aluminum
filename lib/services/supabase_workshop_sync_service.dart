@@ -309,7 +309,11 @@ class SupabaseWorkshopSyncService {
     final code = (_workshopCode ?? prefs.getString('workshop_code') ?? '')
         .trim();
 
-    bool isUsable(String value) => value.isNotEmpty && value != code;
+    bool isUsable(String value) =>
+        value.isNotEmpty &&
+        value != code &&
+        value != 'ورشة النجارة' &&
+        value != 'ورشة الألمنيوم';
 
     final cachedName = (prefs.getString('workshop_name') ?? '').trim();
     if (isUsable(cachedName)) return cachedName;
@@ -872,13 +876,15 @@ class SupabaseWorkshopSyncService {
         // A legacy fallback could have stored the workshop code in the
         // workshops.name column. Never let that overwrite the real local
         // workshop name used by document headers.
-        final remoteNameIsCode = code.isNotEmpty && name == code;
+        final remoteNameIsCode =
+            (code.isNotEmpty && name == code) ||
+            name == 'ورشة النجارة' ||
+            name == 'ورشة الألمنيوم';
         final usableName = remoteNameIsCode
             ? (cachedName.isNotEmpty && cachedName != code ? cachedName : '')
             : name;
         if (usableName.isNotEmpty && usableName != code) {
           await prefs.setString('workshop_name', usableName);
-          await prefs.setString('user_display_name', usableName);
         } else if (remoteNameIsCode) {
           // Do not leave the technical code in the local display-name slot.
           await prefs.remove('workshop_name');

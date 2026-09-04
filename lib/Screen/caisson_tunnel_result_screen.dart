@@ -255,6 +255,7 @@ class _CaissonTunnelResultScreenState extends State<CaissonTunnelResultScreen> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: ResizableColumnsTable(
+                          persistenceKey: 'caisson_tunnel_results',
                           columns: columns,
                           rows: rows,
                           headerColor: isDark ? const Color(0xFF2C2C2C) : Colors.blue.shade100,

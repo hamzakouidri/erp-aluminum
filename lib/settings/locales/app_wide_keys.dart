@@ -31,6 +31,13 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.english:
         'Incorrect login details. Please check the email and password.',
   },
+  'التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.': {
+    AppLanguage.arabic: 'التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.',
+    AppLanguage.french:
+        'L’application n’est pas connectée à Internet. Vérifiez votre connexion Internet.',
+    AppLanguage.english:
+        'The app is offline. Please check your internet connection.',
+  },
   'طريقة تسجيل الدخول هذه غير مفعلة في لوحة التحكم (يرجى تفعيل Email/Password).': {
     AppLanguage.arabic:
         'طريقة تسجيل الدخول هذه غير مفعلة في لوحة التحكم (يرجى تفعيل Email/Password).',
@@ -565,6 +572,11 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'العامل المُضيف',
     AppLanguage.french: 'Employé ayant ajouté',
     AppLanguage.english: 'Added by worker',
+  },
+  'تم الإدخال بواسطة': {
+    AppLanguage.arabic: 'تم الإدخال بواسطة',
+    AppLanguage.french: 'Saisi par',
+    AppLanguage.english: 'Entered by',
   },
   'العدد': {
     AppLanguage.arabic: 'العدد',

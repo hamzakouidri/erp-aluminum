@@ -173,6 +173,14 @@ class CloudSyncService {
       StreamController<String>.broadcast();
 
   Stream<String> get dbUpdateStream => _dbUpdateController.stream;
+
+  /// Notifies screens that the workshop identity/profile changed. This is a
+  /// UI refresh event only; it does not mark the transactional database dirty
+  /// or trigger an unrelated catalogue upload.
+  void notifyWorkshopProfileChanged() {
+    _dbUpdateController.add('workshop_profile_updated');
+  }
+
   final StreamController<CloudSyncFeedback> _syncFeedbackController =
       StreamController<CloudSyncFeedback>.broadcast();
 

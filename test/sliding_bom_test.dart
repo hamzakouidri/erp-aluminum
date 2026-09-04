@@ -154,4 +154,47 @@ void main() {
       isFalse,
     );
   });
+
+  test('a tunnel shutter on a complete window keeps the window profiles', () {
+    final model = WindowModel(
+      db: FakeSqlDatabase(),
+      width: 1500,
+      height: 1200,
+      systemMode: 'mixed',
+    );
+    final frame = AluminumSection(
+      id: 101,
+      seriesId: 10,
+      code: 'OF',
+      name: 'Opening Frame',
+      type: 'frame',
+      isFrame: true,
+      barLength: 6,
+    );
+    final series = AluminumSeries(
+      id: 10,
+      profileId: 1,
+      name: '4000',
+      type: 'opening',
+      sections: [frame],
+    );
+    model.activeSeries = series;
+    model.frameOverride = frame.toMap();
+    model.hasShutter = true;
+    model.isCaissonTunnel = true;
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.fixedGlass,
+        boundary: const Rect.fromLTWH(0, 0, 1500, 1200),
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, const {});
+
+    expect(
+      bom.any((item) => item.originalName == 'الإطار (Frame)'),
+      isTrue,
+    );
+  });
 }

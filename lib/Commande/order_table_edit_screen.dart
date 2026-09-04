@@ -246,7 +246,10 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       final p = widget.products[i];
       final invoiceLine = _buildInvoiceLineForProduct(
         p,
-        forceGeneratedDetails: true,
+        // Reopen the exact text previously saved in the PDF table. Forcing
+        // generated details here made a text-only edit appear to disappear
+        // the next time the invoice was edited.
+        forceGeneratedDetails: false,
       );
 
       // Name

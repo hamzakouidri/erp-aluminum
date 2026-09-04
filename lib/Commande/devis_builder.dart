@@ -716,7 +716,14 @@ class DevisBuilder {
 
     final seriesName = map['seriesName'];
     final profileName = map['profileName'];
-    final manualDesc = map['description']?.toString();
+    // The model JSON is the primary source, while the detail column keeps
+    // older/partially migrated orders readable.
+    final jsonDescription = map['description']?.toString();
+    final rowDescription = item['description']?.toString();
+    final manualDesc =
+        jsonDescription != null && jsonDescription.trim().isNotEmpty
+        ? jsonDescription
+        : rowDescription;
     final gameName = item['game']?.toString();
     final bool isShutterOnly =
         map['isShutterOnly'] == true ||
@@ -809,6 +816,16 @@ class DevisBuilder {
         map['isCaissonTunnel'] == true ||
         (item['game']?.toString().contains('Caisson Tunnel') == true) ||
         (displaySeries.toLowerCase().contains('caisson tunnel'));
+    // `isCaissonTunnel` is also true for a complete designed window that has
+    // a tunnel box. Only a standalone calculator result may use the special
+    // tunnel-only invoice row; otherwise the ordinary window line must keep
+    // its opening/sliding profiles and shutter details.
+    final rawZones = map['zones'];
+    final isDesignedWindow =
+        map['isDesignDrawing'] == true ||
+        (rawZones is List && rawZones.isNotEmpty) ||
+        (map['showWall'] == true && map['width'] != null && map['height'] != null);
+    final isStandaloneCaisson = isCaissonTunnel && !isDesignedWindow;
 
     final bool isMoustiquaire =
         map['isMoustiquaire'] == true ||
@@ -826,7 +843,7 @@ class DevisBuilder {
 
     // Build DevisLineItem Title
     String title;
-    if (isCaissonTunnel) {
+    if (isStandaloneCaisson) {
       title = 'Caisson Tunnel';
     } else if (isMoustiquaire) {
       title = 'Moustiquaire (موستيكير)';
@@ -870,11 +887,15 @@ class DevisBuilder {
     final invoiceTableEdited =
         map['invoiceTableEdited'] == true ||
         map['invoiceTableEdited']?.toString().toLowerCase() == 'true';
-    // The editable table stores text in the language used while editing. For
-    // another document language, rebuild the technical details from the saved
-    // window structure so labels are localized instead of remaining Arabic.
-    if (invoiceTableEdited && _currentLang == AppLanguage.arabic) {
-      var exactDetails = (manualDesc ?? '')
+    // The editable table is the exact source of the Devis row. Once the user
+    // edits the printed text, never rebuild those lines from the window model:
+    // doing so silently reverted edits whenever the PDF was regenerated or
+    // the invoice was opened again. The text is intentionally kept exactly as
+    // entered, including its language.
+    if (invoiceTableEdited &&
+        manualDesc != null &&
+        manualDesc.trim().isNotEmpty) {
+      var exactDetails = manualDesc
           .split('\n')
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
@@ -901,7 +922,7 @@ class DevisBuilder {
     }
 
     // ── Caisson Tunnel: build details from caissonPayload ──────────────────
-    if (isCaissonTunnel) {
+    if (isStandaloneCaisson) {
       final payload = (map['caissonPayload'] is Map)
           ? (map['caissonPayload'] as Map<String, dynamic>)
           : map;

@@ -555,14 +555,14 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                         ),
                         SegmentedButton<KitType>(
                           showSelectedIcon: false,
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: KitType.kit11,
-                              label: Text('Kit 11 (+11cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                              label: Text(Localization.translate('Kit 11 (+11cm)', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                             ),
                             ButtonSegment(
                               value: KitType.kit16,
-                              label: Text('Kit 16 (+16cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                              label: Text(Localization.translate('Kit 16 (+16cm)', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                             ),
                           ],
                           selected: {_selectedKit},

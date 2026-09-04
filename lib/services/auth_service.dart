@@ -295,6 +295,32 @@ class AppAuthService {
 
   Object _normalizeError(Object error) {
     if (error is AppAuthException) return error;
+
+    // Supabase can surface a transport failure as a plain ClientException,
+    // SocketException, or TimeoutException instead of an AuthException.
+    // Normalize those failures so the login screen can show a localized,
+    // user-friendly offline message rather than the technical exception.
+    final errorText = error.toString().toLowerCase();
+    if (errorText.contains('socketexception') ||
+        errorText.contains('failed host lookup') ||
+        errorText.contains('connection refused') ||
+        errorText.contains('connection reset') ||
+        errorText.contains('connection closed') ||
+        errorText.contains('network is unreachable') ||
+        errorText.contains('network request failed') ||
+        errorText.contains('networkerror') ||
+        errorText.contains('fetch failed') ||
+        errorText.contains('failed to fetch') ||
+        errorText.contains('xmlhttprequest error') ||
+        errorText.contains('offline') ||
+        errorText.contains('clientexception') ||
+        errorText.contains('timed out') ||
+        errorText.contains('timeout')) {
+      return const AppAuthException(
+        'network-request-failed',
+        'التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.',
+      );
+    }
     if (error is supabase.AuthException) {
       return AppAuthException(error.statusCode ?? 'auth-error', error.message);
     }

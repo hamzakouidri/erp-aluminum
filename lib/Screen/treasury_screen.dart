@@ -713,6 +713,7 @@ class TreasuryScreen extends StatefulWidget {
                       border: Border.all(color: borderColor),
                     ),
                     child: ResizableColumnsTable(
+                      persistenceKey: 'treasury',
                       columns: columns,
                       rows: rows,
                       headerColor: headerColor,

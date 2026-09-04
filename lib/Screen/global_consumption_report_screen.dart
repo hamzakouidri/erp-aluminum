@@ -375,6 +375,7 @@ class _GlobalConsumptionReportScreenState
           Padding(
             padding: const EdgeInsets.all(12),
             child: ResizableColumnsTable(
+              persistenceKey: 'global_consumption',
               headerColor: Colors.blueGrey.shade800,
               borderColor: Colors.grey.shade300,
               rowColor: Colors.white,

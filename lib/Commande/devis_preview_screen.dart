@@ -1189,32 +1189,32 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       child: Row(
         children: [
           if (!_isOfficial)
-            const SizedBox(
+            SizedBox(
               width: 88,
-              child: Text('Image', style: _headerStyle),
+              child: Text(t('Image'), style: _headerStyle),
             ),
           Expanded(
             flex: hidePrices ? 8 : 4,
-            child: const Text('Désignation', style: _headerStyle),
+            child: Text(t('Désignation'), style: _headerStyle),
           ),
           if (!hidePrices)
             Expanded(
               flex: 2,
               child: Text(
-                _isOfficial ? 'P.U. H.T.' : t('Prix Unit.'),
+                _isOfficial ? t('P.U. H.T.') : t('Prix Unit.'),
                 style: _headerStyle,
                 textAlign: TextAlign.end,
               ),
             ),
-          const SizedBox(
+          SizedBox(
             width: 38,
-            child: Text('Qté', style: _headerStyle, textAlign: TextAlign.end),
+            child: Text(t('Qté'), style: _headerStyle, textAlign: TextAlign.end),
           ),
           if (!hidePrices)
             Expanded(
               flex: 2,
               child: Text(
-                _isOfficial ? 'TOTAL H.T.' : t('Total'),
+                _isOfficial ? t('TOTAL H.T.') : t('Total'),
                 style: _headerStyle,
                 textAlign: TextAlign.end,
               ),

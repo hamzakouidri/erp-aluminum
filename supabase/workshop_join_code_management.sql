@@ -2,6 +2,21 @@
 -- Allows an owner/manager to create the short worker-facing code without
 -- granting normal clients unrestricted UPDATE access to public.workshops.
 
+-- Keep this file self-contained. The button can be used on databases that
+-- received the base schema but not the optional join-code migration yet.
+alter table public.workshops
+  add column if not exists join_code text;
+
+alter table public.workshops
+  alter column join_code set default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+
+update public.workshops
+set join_code = upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6))
+where join_code is null or trim(join_code) = '';
+
+create unique index if not exists workshops_join_code_key
+  on public.workshops (join_code);
+
 create or replace function public.set_my_workshop_join_code(
   target_workshop_id uuid,
   requested_code text default ''

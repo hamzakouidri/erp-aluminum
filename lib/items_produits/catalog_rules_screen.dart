@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import '../sql_database.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
@@ -51,9 +52,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   bool _loading = true;
   bool _saving = false;
 
-  bool get _isArabic =>
-      context.read<AppSettingsProvider>().language == AppLanguage.arabic;
-  String _t(String ar, String fr) => _isArabic ? ar : fr;
+  String _t(String ar, String fr) {
+    final language = context.read<AppSettingsProvider>().language;
+    if (language == AppLanguage.arabic) return ar;
+    if (language == AppLanguage.french) return fr;
+    if (ar.startsWith('الدور:')) {
+      final role = ar.substring('الدور:'.length).trim();
+      return 'Role: ${Localization.translate(role, AppLanguage.english)}';
+    }
+    final english = Localization.translate(ar, AppLanguage.english);
+    return english == ar ? fr : english;
+  }
 
   @override
   void initState() {
@@ -835,10 +844,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 leading: Icon(group.icon),
                 title: Text(_t(group.ar, group.fr)),
                 subtitle: Text(
-                  _t(
-                    '${groupItems.length} نوع موجود',
-                    '${groupItems.length} article(s) disponible(s)',
-                  ),
+                  '${groupItems.length} ${_t('نوع موجود', 'article(s) disponible(s)')}',
                 ),
                 children: groupItems.isEmpty
                     ? [

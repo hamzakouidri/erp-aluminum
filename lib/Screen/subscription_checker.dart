@@ -529,6 +529,11 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 class SupabaseSubscriptionGate extends StatelessWidget {
   const SupabaseSubscriptionGate({super.key});
 
+  String _t(BuildContext context, String key) => Localization.translate(
+    key,
+    context.read<AppSettingsProvider>().language,
+  );
+
   bool _isActive(SupabaseAccountSnapshot account) {
     if (account.role == 'admin') return true;
     final status = account.subscription['status']?.toString().toLowerCase().trim();
@@ -577,8 +582,8 @@ class SupabaseSubscriptionGate extends StatelessWidget {
             context,
             icon: Icons.error_outline,
             color: Colors.red,
-            title: 'الحساب غير مرتبط بورشة',
-            body: 'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.',
+            title: _t(context, 'الحساب غير مرتبط بورشة'),
+            body: _t(context, 'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.'),
           );
         }
         if (account.blocked) {
@@ -586,8 +591,8 @@ class SupabaseSubscriptionGate extends StatelessWidget {
             context,
             icon: Icons.block,
             color: Colors.red,
-            title: 'تم إيقاف حسابك',
-            body: 'تم منعك من الدخول إلى هذه الورشة من قبل المدير.',
+            title: _t(context, 'تم إيقاف حسابك'),
+            body: _t(context, 'تم منعك من الدخول إلى هذه الورشة من قبل المدير.'),
           );
         }
 
@@ -656,7 +661,7 @@ class SupabaseSubscriptionGate extends StatelessWidget {
                   await SqlDatabase.clearAllLocalData();
                 },
                 icon: const Icon(Icons.logout),
-                label: const Text('تسجيل الخروج'),
+                label: Text(_t(context, 'تسجيل الخروج')),
               ),
             ],
           ),
@@ -798,6 +803,18 @@ class _SyncGatewayState extends State<SyncGateway> {
     final workshopId = widget.initialWorkshopId?.trim() ?? '';
     final workshopName = widget.initialWorkshopName?.trim() ?? '';
     final userRole = widget.initialUserRole?.trim() ?? '';
+    final user = AppAuthService().currentUser;
+    final displayName = user?.displayName?.trim() ?? '';
+    final email = user?.email?.trim() ?? '';
+    final accountName = displayName.isNotEmpty
+        ? displayName
+        : (email.contains('@') ? email.split('@').first.trim() : email);
+
+    // Keep the account person's name independent from the workshop identity.
+    // This is used by the local database for "Entered by" and "Modified by".
+    if (accountName.isNotEmpty) {
+      await prefs.setString('user_display_name', accountName);
+    }
 
     if (workshopId.isNotEmpty) {
       await prefs.setString('workshop_code', workshopId);

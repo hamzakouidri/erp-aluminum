@@ -18,4 +18,22 @@ void main() {
     );
     expect(Localization.translate('قطعة', AppLanguage.english), 'piece');
   });
+
+  test('new interface keys never fall back to Arabic', () {
+    expect(
+      Localization.translate('الدخول باستخدام Google', AppLanguage.french),
+      'Se connecter avec Google',
+    );
+    expect(
+      Localization.translate('System Sliding (جرار)', AppLanguage.english),
+      'Sliding system',
+    );
+    expect(
+      Localization.translate(
+        'أكبر من القيمة ({symbol})',
+        AppLanguage.french,
+      ).replaceAll('{symbol}', '> X'),
+      'Supérieur à la valeur (> X)',
+    );
+  });
 }

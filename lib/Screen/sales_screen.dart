@@ -336,6 +336,159 @@ class _SalesScreenState extends State<SalesScreen> {
     }
   }
 
+  DateTime? _parseOrderDate(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  bool _isConfirmedOrder(Map<String, dynamic> order) {
+    final status = (order['status'] ?? '').toString().trim().toLowerCase();
+    return status == 'confirmed' ||
+        status == 'confirmée' ||
+        status == 'confirmé' ||
+        status == 'مؤكد' ||
+        status == 'مؤكدة';
+  }
+
+  List<_SalesChartPoint> get _salesChartPoints {
+    final grouped = <DateTime, _SalesChartPoint>{};
+    for (final order in _allOrders) {
+      final status = (order['status'] ?? '').toString().trim().toLowerCase();
+      if (!_activeStatuses.contains(status)) continue;
+      final date = _parseOrderDate(order['created_at']);
+      if (date == null) continue;
+
+      final month = DateTime(date.year, date.month);
+      final netPayable = (order['net_payable'] as num?)?.toDouble() ?? 0.0;
+      final rawTotal = (order['total'] as num?)?.toDouble() ?? 0.0;
+      final total = netPayable > 0 ? netPayable : rawTotal;
+      if (total <= 0) continue;
+
+      final confirmed = _isConfirmedOrder(order);
+      final paid = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
+      final point = grouped[month] ?? _SalesChartPoint(month: month);
+      point.total += total;
+      if (confirmed) {
+        point.confirmed += total;
+        if (paid >= total - 0.01) point.paid += total;
+      }
+      grouped[month] = point;
+    }
+
+    final points = grouped.values.toList()
+      ..sort((a, b) => a.month.compareTo(b.month));
+    // Keep the graph readable when the database contains a long history.
+    return points.length > 12
+        ? points.sublist(points.length - 12)
+        : points;
+  }
+
+  Widget _buildSalesChart(AppLanguage lang) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final points = _salesChartPoints;
+    return Container(
+      height: 285,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.blueGrey.shade100,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _tr(
+              'حركة المبيعات خلال الفترة',
+              'Évolution des ventes sur la période',
+              'Sales activity over time',
+              lang,
+            ),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: isDark ? Colors.white : Colors.blueGrey.shade900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            children: [
+              _chartLegend(
+                _tr('إجمالي المبيعات', 'Total ventes', 'Total sales', lang),
+                const Color(0xFF2563EB),
+              ),
+              _chartLegend(
+                _tr('مؤكدة', 'Confirmées', 'Confirmed', lang),
+                const Color(0xFFF59E0B),
+              ),
+              _chartLegend(
+                _tr('مؤكدة ومدفوعة', 'Confirmées et payées', 'Confirmed & paid', lang),
+                const Color(0xFF16A34A),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: points.isEmpty
+                ? Center(
+                    child: Text(
+                      _tr(
+                        'لا توجد بيانات مبيعات للرسم البياني.',
+                        'Aucune donnée de vente à afficher.',
+                        'No sales data to display.',
+                        lang,
+                      ),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11,
+                        color: isDark ? Colors.white54 : Colors.blueGrey,
+                      ),
+                    ),
+                  )
+                : CustomPaint(
+                    painter: _SalesChartPainter(
+                      points: points,
+                      isDark: isDark,
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chartLegend(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 10,
+            color: Theme.of(context).textTheme.bodySmall?.color,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStatCard(
     String title,
     String value,
@@ -612,6 +765,9 @@ class _SalesScreenState extends State<SalesScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 14),
+
+                    _buildSalesChart(lang),
                     const SizedBox(height: 14),
 
                     // Orders / Partial Deliveries list
@@ -952,4 +1108,174 @@ class _SalesScreenState extends State<SalesScreen> {
       },
     );
   }
+}
+
+class _SalesChartPoint {
+  final DateTime month;
+  double total = 0;
+  double confirmed = 0;
+  double paid = 0;
+
+  _SalesChartPoint({required this.month});
+}
+
+class _SalesChartPainter extends CustomPainter {
+  final List<_SalesChartPoint> points;
+  final bool isDark;
+
+  const _SalesChartPainter({required this.points, required this.isDark});
+
+  static const _totalColor = Color(0xFF2563EB);
+  static const _confirmedColor = Color(0xFFF59E0B);
+  static const _paidColor = Color(0xFF16A34A);
+
+  String _compactValue(double value) {
+    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}K';
+    return value.toStringAsFixed(0);
+  }
+
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    TextStyle style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    painter.paint(canvas, offset);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    const left = 45.0;
+    const right = 12.0;
+    const top = 10.0;
+    const bottom = 28.0;
+    final chartWidth = size.width - left - right;
+    final chartHeight = size.height - top - bottom;
+    if (chartWidth <= 0 || chartHeight <= 0) return;
+
+    final maxValue = points.fold<double>(
+      0,
+      (max, point) => point.total > max ? point.total : max,
+    );
+    if (maxValue <= 0) return;
+
+    final gridColor = isDark ? Colors.white12 : Colors.blueGrey.shade100;
+    final labelColor = isDark ? Colors.white54 : Colors.blueGrey.shade500;
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    final axisPaint = Paint()
+      ..color = isDark ? Colors.white24 : Colors.blueGrey.shade300
+      ..strokeWidth = 1.2;
+
+    for (var i = 0; i <= 4; i++) {
+      final ratio = i / 4;
+      final y = top + chartHeight - (chartHeight * ratio);
+      canvas.drawLine(Offset(left, y), Offset(size.width - right, y), gridPaint);
+      _drawText(
+        canvas,
+        _compactValue(maxValue * ratio),
+        Offset(0, y - 7),
+        TextStyle(fontSize: 9, color: labelColor),
+      );
+    }
+    canvas.drawLine(
+      Offset(left, top),
+      Offset(left, top + chartHeight),
+      axisPaint,
+    );
+    canvas.drawLine(
+      Offset(left, top + chartHeight),
+      Offset(size.width - right, top + chartHeight),
+      axisPaint,
+    );
+
+    final slotWidth = chartWidth / points.length;
+    final barWidth = (slotWidth * 0.58).clamp(12.0, 58.0).toDouble();
+    final paidCenters = <Offset>[];
+    final totalPaint = Paint()..color = _totalColor;
+    final confirmedPaint = Paint()..color = _confirmedColor;
+    final paidPaint = Paint()..color = _paidColor;
+
+    for (var i = 0; i < points.length; i++) {
+      final point = points[i];
+      final centerX = left + slotWidth * (i + 0.5);
+      final totalHeight = chartHeight * point.total / maxValue;
+      final confirmedHeight = chartHeight * point.confirmed / maxValue;
+      final paidHeight = chartHeight * point.paid / maxValue;
+      final baseline = top + chartHeight;
+
+      // Nested bars: blue total, orange confirmed, green fully paid.
+      canvas.drawRect(
+        Rect.fromLTWH(
+          centerX - barWidth / 2,
+          baseline - totalHeight,
+          barWidth,
+          totalHeight,
+        ),
+        totalPaint,
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(
+          centerX - barWidth * 0.36,
+          baseline - confirmedHeight,
+          barWidth * 0.72,
+          confirmedHeight,
+        ),
+        confirmedPaint,
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(
+          centerX - barWidth * 0.20,
+          baseline - paidHeight,
+          barWidth * 0.40,
+          paidHeight,
+        ),
+        paidPaint,
+      );
+
+      paidCenters.add(Offset(centerX, baseline - paidHeight));
+      final monthLabel = DateFormat('MM/yy').format(point.month);
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: monthLabel,
+          style: TextStyle(fontSize: 9, color: labelColor),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(
+        canvas,
+        Offset(centerX - labelPainter.width / 2, baseline + 7),
+      );
+    }
+
+    if (paidCenters.length > 1) {
+      final linePaint = Paint()
+        ..color = _paidColor
+        ..strokeWidth = 2.5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      final path = Path()..moveTo(paidCenters.first.dx, paidCenters.first.dy);
+      for (final center in paidCenters.skip(1)) {
+        path.lineTo(center.dx, center.dy);
+      }
+      canvas.drawPath(path, linePaint);
+      for (final center in paidCenters) {
+        canvas.drawCircle(center, 3.5, Paint()..color = _paidColor);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SalesChartPainter oldDelegate) =>
+      oldDelegate.isDark != isDark || oldDelegate.points != points;
 }

@@ -2735,6 +2735,11 @@ class _GlassManufacturingSheet extends StatelessWidget {
   final _SablageMode sablageMode;
   final String workTypeLabel;
 
+  String _tr(BuildContext context, String key) => Localization.translate(
+    key,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
+
   String _value(Object? value, [String fallback = '—']) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? fallback : text;
@@ -2839,19 +2844,21 @@ class _GlassManufacturingSheet extends StatelessWidget {
       300.0,
     ).toDouble();
     final isFrosted = sablageMode != _SablageMode.none;
-    final tempered = payload['glassTempered'] == true ? 'نعم' : 'لا';
+    final tempered = payload['glassTempered'] == true
+        ? _tr(context, 'نعم')
+        : _tr(context, 'لا');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ورقة تصنيع الزجاج'),
+        title: Text(_tr(context, 'ورقة تصنيع الزجاج')),
         backgroundColor: Colors.cyan.shade800,
         foregroundColor: Colors.white,
         actions: [
           TextButton.icon(
             onPressed: () => Navigator.pop(context, payload),
             icon: const Icon(Icons.check, color: Colors.white),
-            label: const Text(
-              'اعتماد',
+            label: Text(
+              _tr(context, 'اعتماد'),
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -2866,14 +2873,14 @@ class _GlassManufacturingSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'طلب تصنيع الزجاج',
+                    _tr(context, 'طلب تصنيع الزجاج'),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
                 Text(
-                  '${panels.length} قطعة',
+                  '${panels.length} ${_tr(context, 'قطعة')}',
                   style: const TextStyle(color: Colors.blueGrey),
                 ),
               ],
@@ -2915,8 +2922,8 @@ class _GlassManufacturingSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'مواصفات الزجاج',
+            Text(
+              _tr(context, 'مواصفات الزجاج'),
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
@@ -2952,8 +2959,8 @@ class _GlassManufacturingSheet extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 6),
-            const Text(
-              'تفاصيل القطع والثقوب',
+            Text(
+              _tr(context, 'تفاصيل القطع والثقوب'),
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
@@ -2963,7 +2970,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => Navigator.pop(context, payload),
               icon: const Icon(Icons.check_circle_outline),
-              label: const Text('اعتماد وإضافة إلى الطلب'),
+              label: Text(_tr(context, 'اعتماد وإضافة إلى الطلب')),
             ),
           ],
         ),

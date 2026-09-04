@@ -22,6 +22,12 @@ class BomEngineV2 {
     final database = await _db.db;
     if (database == null) return;
     for (final item in items) {
+      // The selected catalogue item is the administrator's explicit role
+      // assignment. Do not clear it merely because an older or incomplete
+      // rule row does not qualify for the quantity-table query.
+      if (item.isActive && item.catalogItemId != null && !item.isMissing) {
+        continue;
+      }
       switch (item.selectorCategory ?? item.category) {
         case 'profile':
           await _resolveProfile(window, item);
@@ -43,13 +49,19 @@ class BomEngineV2 {
   }) async {
     final kept = <BomItem>[];
     for (final item in items) {
-      // A System OB definition is an explicit kit: its child rows are the
-      // complete hardware list configured on the Kits page.  They must stay
-      // visible even when a child name has no standalone CatalogItemRules
-      // entry (for example, a manufacturer-specific OB part).  Catalog rules
-      // still control all ordinary/generated accessory rows and the selector
-      // used when the user replaces a kit child.
-      if (_isExplicitObKitItem(item)) {
+      // A configured Kit is authoritative: its active child rows are the
+      // complete list saved on the Kits page. They must remain available for
+      // the expandable Kit row even when a child has no standalone rule row.
+      if (item.isActive && item.kitGroupName != null) {
+        kept.add(item);
+        continue;
+      }
+      // A profile/accessory that is already linked to a concrete catalogue
+      // item is a valid selected role. Keep it in the quantity table even if
+      // an old/incomplete CatalogItemRules row still has show_in_quantity=0
+      // or is missing altogether. The administrator's selected role and the
+      // saved section are the authoritative association in that case.
+      if (item.isActive && item.catalogItemId != null && !item.isMissing) {
         kept.add(item);
         continue;
       }
@@ -58,14 +70,6 @@ class BomEngineV2 {
       }
     }
     return kept;
-  }
-
-  bool _isExplicitObKitItem(BomItem item) {
-    final group = item.kitGroupName?.toLowerCase().replaceAll(
-      RegExp(r'[\s_-]'),
-      '',
-    );
-    return group == 'systemob' || group == 'demisystemob';
   }
 
   Future<bool> _itemHasRuleCandidate(WindowModel window, BomItem item) async {

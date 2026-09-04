@@ -870,7 +870,8 @@ class _CommandePageState extends State<CommandePage> {
         if (savedHeight != null) model.height = savedHeight;
 
         final game = row['game']?.toString().trim() ?? '';
-        if (game.isNotEmpty) {
+        if (game.isNotEmpty &&
+            (model.manualNameOverride?.trim().isEmpty ?? true)) {
           model.manualNameOverride = game;
         }
         final savedPrice = readDouble(row['price']);
@@ -881,7 +882,7 @@ class _CommandePageState extends State<CommandePage> {
         }
         model.quantity = readInt(row['quantity']) ?? model.quantity;
         final desc = row['description']?.toString().trim() ?? '';
-        if (desc.isNotEmpty) {
+        if (desc.isNotEmpty && (model.description?.trim().isEmpty ?? true)) {
           model.description = desc;
         }
         model.persistedDrawingImagePath = row['drawing_image_path']?.toString();
@@ -3823,6 +3824,23 @@ class _CommandePageState extends State<CommandePage> {
         (p.manualNameOverride?.contains('Caisson Tunnel') == true) ||
         (p.manualNameOverride?.contains('Caisson Tunnel') == true);
 
+    // A tunnel box can be either a standalone calculated item or part of a
+    // complete window designed in WindowView. Only the standalone item should
+    // open the dedicated Caisson Tunnel calculator when edited. The fallback
+    // checks keep older saved drawings working before isDesignDrawing existed.
+    final bool isDesignedWindow =
+        p.isDesignDrawing ||
+        p.zones.isNotEmpty ||
+        p.showWall ||
+        p.componentOverrides['الصندوق (Caisson)']?['measurement']
+                ?.toString()
+                .toLowerCase() ==
+            'tunnel';
+    final bool isStandaloneCaisson =
+        !isDesignedWindow &&
+        (p.isCaissonTunnel ||
+            p.manualNameOverride?.contains('Caisson Tunnel') == true);
+
     final bool isMoustiquaire =
         p.isMoustiquaire ||
         (p.manualNameOverride?.contains('Moustiquaire') == true) ||
@@ -3978,11 +3996,7 @@ class _CommandePageState extends State<CommandePage> {
                                   color: Colors.blue,
                                 ),
                                 onPressed: () async {
-                                  if (p.isCaissonTunnel ||
-                                      (p.manualNameOverride?.contains(
-                                            'Caisson Tunnel',
-                                          ) ==
-                                          true)) {
+                                  if (isStandaloneCaisson) {
                                     final result = await Navigator.push(
                                       context,
                                       MaterialPageRoute(
@@ -4674,17 +4688,22 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
   List<Map<String, dynamic>> filtered = [];
 
   TextEditingController search = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocusNode.requestFocus();
+    });
   }
 
   // 🟢 التخلص من متحكم البحث لتفريغ الذاكرة
   @override
   void dispose() {
     search.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -4945,6 +4964,8 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
                 Expanded(
                   child: TextField(
                     controller: search,
+                    focusNode: _searchFocusNode,
+                    autofocus: true,
                     style: TextStyle(
                       color: isDark ? Colors.white : Colors.black87,
                     ),

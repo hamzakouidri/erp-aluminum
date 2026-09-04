@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +17,6 @@ import '../services/supabase_catalog_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
-import '../widgets/desktop_command_bar.dart';
 import 'drawer.dart';
 import 'settings_screen.dart';
 import 'welcom_screen.dart';
@@ -628,7 +628,7 @@ class _WorkspaceContentHost extends StatelessWidget {
   }
 }
 
-class _WorkspaceHeader extends StatelessWidget {
+class _WorkspaceHeader extends StatefulWidget {
   final String modeTitle;
   final String modeSubtitle;
   final Widget? bottom;
@@ -640,8 +640,54 @@ class _WorkspaceHeader extends StatelessWidget {
     required this.modeSubtitle,
     this.bottom,
     this.onToggleSidebar,
-    this.isSidebarOpen = true,
+    this.isSidebarOpen = false,
   });
+
+  @override
+  State<_WorkspaceHeader> createState() => _WorkspaceHeaderState();
+}
+
+class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
+  String _workshopName = '';
+  StreamSubscription<String>? _workshopSyncSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWorkshopIdentity();
+    _workshopSyncSubscription = CloudSyncService().dbUpdateStream.listen((
+      event,
+    ) {
+      if (event == 'workshop_profile_updated' || event == 'cloud_restored') {
+        _loadWorkshopIdentity();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _workshopSyncSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadWorkshopIdentity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = (prefs.getString('workshop_name') ?? '').trim();
+      var resolvedName = savedName;
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      final accountName = account?.workshopName.trim() ?? '';
+      final accountCode = account?.workshopCode.trim() ?? '';
+      if (accountName.isNotEmpty && accountName != accountCode) {
+        resolvedName = accountName;
+        await prefs.setString('workshop_name', accountName);
+      }
+      if (!mounted || resolvedName == _workshopName) return;
+      setState(() => _workshopName = resolvedName);
+    } catch (error) {
+      debugPrint('Could not load workspace workshop name: $error');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -677,19 +723,24 @@ class _WorkspaceHeader extends StatelessWidget {
               context,
               listen: false,
             ).language;
-            final workshopName = data?['workshopName'] ?? 'ورشة الألمنيوم';
+            final legacyWorkshopName =
+                data?['workshopName']?.toString().trim() ?? '';
+            final hasLegacyName =
+                legacyWorkshopName.isNotEmpty &&
+                legacyWorkshopName != 'ورشة النجارة' &&
+                legacyWorkshopName != 'ورشة الألمنيوم';
+            final workshopName = _workshopName.isNotEmpty
+                ? _workshopName
+                : (hasLegacyName ? legacyWorkshopName : '');
             final String displayName =
                 (data?['displayName'] as String?)?.trim().isNotEmpty == true
                 ? data!['displayName'].toString()
                 : (user?.displayName?.trim().isNotEmpty == true
                       ? user!.displayName!
                       : (data?['role'] == 'manager' ? 'مدير الورشة' : 'عامل'));
-            final logoUrl = data?['workshopLogoUrl'] ?? data?['logoUrl'];
-
-            final safeWorkshopName =
-                workshopName?.toString().trim().isNotEmpty == true
-                ? workshopName.toString()
-                : 'ورشة الألمنيوم';
+            final safeWorkshopName = workshopName.trim().isNotEmpty
+                ? workshopName
+                : Localization.translate('اسم الورشة', language);
             final safeDisplayName = displayName?.toString() ?? '';
 
             return Padding(
@@ -702,15 +753,17 @@ class _WorkspaceHeader extends StatelessWidget {
                       Builder(
                         builder: (innerContext) => IconButton(
                           tooltip: Localization.translate(
-                            isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                            widget.isSidebarOpen
+                                ? 'إغلاق القائمة'
+                                : 'فتح القائمة',
                             language,
                           ),
                           onPressed:
-                              onToggleSidebar ??
+                              widget.onToggleSidebar ??
                               () => Scaffold.of(innerContext).openDrawer(),
                           icon: Icon(
-                            onToggleSidebar != null
-                                ? (isSidebarOpen
+                            widget.onToggleSidebar != null
+                                ? (widget.isSidebarOpen
                                       ? Icons.menu_open_rounded
                                       : Icons.menu_rounded)
                                 : Icons.menu_rounded,
@@ -853,7 +906,10 @@ class _WorkspaceHeader extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              Localization.translate(modeTitle, language),
+                              Localization.translate(
+                                widget.modeTitle,
+                                language,
+                              ),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -862,7 +918,10 @@ class _WorkspaceHeader extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              Localization.translate(modeSubtitle, language),
+                              Localization.translate(
+                                widget.modeSubtitle,
+                                language,
+                              ),
                               style: const TextStyle(
                                 color: Color(0xFFBFDBFE),
                                 fontSize: 12,
@@ -873,7 +932,10 @@ class _WorkspaceHeader extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (bottom != null) ...[const SizedBox(height: 14), bottom!],
+                  if (widget.bottom != null) ...[
+                    const SizedBox(height: 14),
+                    widget.bottom!,
+                  ],
                 ],
               ),
             );
@@ -894,7 +956,7 @@ class _HomeTabBrandContent extends StatefulWidget {
 }
 
 class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
-  String _workshopName = 'ورشة الألمنيوم';
+  String _workshopName = '';
   String _workshopCode = '';
   String? _logoUrl;
   ImageProvider? _cachedLogo;
@@ -978,6 +1040,10 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
   @override
   Widget build(BuildContext context) {
     final user = AppAuthService().currentUser;
+    final language = Provider.of<AppSettingsProvider>(context).language;
+    final displayWorkshopName = _workshopName.isNotEmpty
+        ? _workshopName
+        : Localization.translate('اسم الورشة', language);
     return StreamBuilder<DocumentSnapshot>(
       stream: user == null
           ? null
@@ -1036,7 +1102,7 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
               child: Text(
-                _workshopName,
+                displayWorkshopName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1062,7 +1128,7 @@ class _HeaderWorkshopBrand extends StatefulWidget {
 }
 
 class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
-  String _workshopName = 'ورشة الألمنيوم';
+  String _workshopName = '';
   String? _logoUrl;
   ImageProvider? _cachedLogo;
   StreamSubscription<String>? _workshopSyncSubscription;
@@ -1091,7 +1157,10 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
       final savedLogo = prefs.getString('workshop_logo_base64');
       final nextName = savedName != null && savedName.isNotEmpty
           ? savedName
-          : _workshopName;
+          : Localization.translate(
+              'اسم الورشة',
+              Provider.of<AppSettingsProvider>(context, listen: false).language,
+            );
       final nextLogo = savedLogo != null && savedLogo.isNotEmpty
           ? savedLogo
           : _logoUrl;
@@ -1222,10 +1291,7 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
   final ValueChanged<String?> onOpenGroup;
   final VoidCallback? onHover;
 
-  const _CollapsedDesktopSidebar({
-    required this.onOpenGroup,
-    this.onHover,
-  });
+  const _CollapsedDesktopSidebar({required this.onOpenGroup, this.onHover});
 
   @override
   Widget build(BuildContext context) {
@@ -1245,84 +1311,96 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
             primary: false,
             child: Column(
               children: [
-              const SizedBox(height: 8),
-              IconButton(
-                tooltip: Localization.translate('إظهار القائمة', language),
-                onPressed: () => onOpenGroup(null),
-                icon: const Icon(Icons.menu_rounded),
-                color: Colors.white,
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.12),
-                ),
-              ),
-              const Divider(
-                height: 18,
-                indent: 10,
-                endIndent: 10,
-                color: Colors.white24,
-              ),
-              for (final item in [
-                (
-                  key: 'orders',
-                  icon: Icons.shopping_cart_checkout_rounded,
-                  label: Localization.translate('الطلبات والمبيعات', language),
-                ),
-                (
-                  key: 'purchases',
-                  icon: Icons.shopping_bag_rounded,
-                  label: Localization.translate('المشتريات', language),
-                ),
-                (
-                  key: 'inventory',
-                  icon: Icons.warehouse_rounded,
-                  label: Localization.translate('المخزون والمنتجات', language),
-                ),
-                (
-                  key: 'finance',
-                  icon: Icons.account_balance_wallet_rounded,
-                  label: Localization.translate('الصندوق والحسابات', language),
-                ),
-                (
-                  key: 'clients',
-                  icon: Icons.groups_rounded,
-                  label: Localization.translate('الزبائن', language),
-                ),
-                (
-                  key: 'projects',
-                  icon: Icons.folder_shared_rounded,
-                  label: Localization.translate('المشاريع', language),
-                ),
-                (
-                  key: 'tasks',
-                  icon: Icons.task_alt_rounded,
-                  label: Localization.translate('المهام والتنفيذ', language),
-                ),
-                (
-                  key: 'management',
-                  icon: Icons.settings_suggest_rounded,
-                  label: Localization.translate('الإعدادات والإدارة', language),
-                ),
-                (
-                  key: 'account',
-                  icon: Icons.account_circle_rounded,
-                  label: Localization.translate('الحساب', language),
-                ),
-              ])
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 1),
-                  child: IconButton(
-                    tooltip: item.label,
-                    onPressed: () => onOpenGroup(item.key),
-                    icon: Icon(item.icon),
-                    color: Colors.white,
-                    iconSize: 22,
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(46, 42),
-                      backgroundColor: Colors.transparent,
-                    ),
+                const SizedBox(height: 8),
+                IconButton(
+                  tooltip: Localization.translate('إظهار القائمة', language),
+                  onPressed: () => onOpenGroup(null),
+                  icon: const Icon(Icons.menu_rounded),
+                  color: Colors.white,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.12),
                   ),
                 ),
-              const SizedBox(height: 8),
+                const Divider(
+                  height: 18,
+                  indent: 10,
+                  endIndent: 10,
+                  color: Colors.white24,
+                ),
+                for (final item in [
+                  (
+                    key: 'orders',
+                    icon: Icons.shopping_cart_checkout_rounded,
+                    label: Localization.translate(
+                      'الطلبات والمبيعات',
+                      language,
+                    ),
+                  ),
+                  (
+                    key: 'purchases',
+                    icon: Icons.shopping_bag_rounded,
+                    label: Localization.translate('المشتريات', language),
+                  ),
+                  (
+                    key: 'inventory',
+                    icon: Icons.warehouse_rounded,
+                    label: Localization.translate(
+                      'المخزون والمنتجات',
+                      language,
+                    ),
+                  ),
+                  (
+                    key: 'finance',
+                    icon: Icons.account_balance_wallet_rounded,
+                    label: Localization.translate(
+                      'الصندوق والحسابات',
+                      language,
+                    ),
+                  ),
+                  (
+                    key: 'clients',
+                    icon: Icons.groups_rounded,
+                    label: Localization.translate('الزبائن', language),
+                  ),
+                  (
+                    key: 'projects',
+                    icon: Icons.folder_shared_rounded,
+                    label: Localization.translate('المشاريع', language),
+                  ),
+                  (
+                    key: 'tasks',
+                    icon: Icons.task_alt_rounded,
+                    label: Localization.translate('المهام والتنفيذ', language),
+                  ),
+                  (
+                    key: 'management',
+                    icon: Icons.settings_suggest_rounded,
+                    label: Localization.translate(
+                      'الإعدادات والإدارة',
+                      language,
+                    ),
+                  ),
+                  (
+                    key: 'account',
+                    icon: Icons.account_circle_rounded,
+                    label: Localization.translate('الحساب', language),
+                  ),
+                ])
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    child: IconButton(
+                      tooltip: item.label,
+                      onPressed: () => onOpenGroup(item.key),
+                      icon: Icon(item.icon),
+                      color: Colors.white,
+                      iconSize: 22,
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(46, 42),
+                        backgroundColor: Colors.transparent,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -1333,12 +1411,18 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
 }
 
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
-  bool _isSidebarOpen = true;
+  // Keep the desktop sidebar collapsed on first render; hovering the rail
+  // still opens it through _openSidebarOnHover.
+  bool _isSidebarOpen = false;
   bool _sidebarOpenedByHover = false;
+  bool _sidebarHoverArmed = true;
   String? _expandedSidebarGroup;
   bool _hasVisitedNonHome = false;
   bool _collapseSidebarScheduled = false;
   bool _keepSidebarOpenRequested = false;
+  Timer? _sidebarCloseTimer;
+  final GlobalKey _sidebarHoverKey = GlobalKey();
+  Offset? _lastSidebarPointerPosition;
   final ScrollController _tabsScrollController = ScrollController();
   final Map<String, GlobalKey> _tabKeys = {};
   String? _lastEnsuredActiveTabId;
@@ -1348,6 +1432,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
 
   @override
   void dispose() {
+    _sidebarCloseTimer?.cancel();
     _tabsScrollController.dispose();
     super.dispose();
   }
@@ -1368,6 +1453,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   }
 
   void _openSidebarGroup(String? group) {
+    _sidebarCloseTimer?.cancel();
     setState(() {
       _sidebarOpenedByHover = false;
       _isSidebarOpen = true;
@@ -1378,6 +1464,11 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
 
   void _openSidebarOnHover() {
     if (!mounted) return;
+    // A MouseRegion can be recreated while it is closing. Do not treat that
+    // rebuild as a new pointer entry; wait for a real entry into the rail.
+    if (!_sidebarHoverArmed) return;
+    _sidebarCloseTimer?.cancel();
+    if (_isSidebarOpen && _sidebarOpenedByHover) return;
     setState(() {
       _sidebarOpenedByHover = true;
       _isSidebarOpen = true;
@@ -1386,13 +1477,59 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     });
   }
 
+  bool _isPointerInsideSidebar(Offset position) {
+    final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final origin = renderObject.localToGlobal(Offset.zero);
+    return (origin & renderObject.size).contains(position);
+  }
+
   void _closeSidebarAfterHover() {
     if (!_sidebarOpenedByHover || !mounted) return;
-    setState(() {
-      _sidebarOpenedByHover = false;
-      _isSidebarOpen = false;
-      _expandedSidebarGroup = null;
+    _sidebarCloseTimer?.cancel();
+    _sidebarCloseTimer = Timer(const Duration(milliseconds: 220), () {
+      _sidebarCloseTimer = null;
+      if (!mounted || !_sidebarOpenedByHover) return;
+
+      // Expanding the rail changes the MouseRegion's render bounds. Flutter
+      // can report an exit for that layout change even though the pointer is
+      // still over the sidebar. Do not close in that case.
+      final pointerPosition = _lastSidebarPointerPosition;
+      final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
+      if (pointerPosition != null &&
+          renderObject is RenderBox &&
+          renderObject.hasSize) {
+        final origin = renderObject.localToGlobal(Offset.zero);
+        if ((origin & renderObject.size).contains(pointerPosition)) return;
+      }
+
+      setState(() {
+        _sidebarOpenedByHover = false;
+        _isSidebarOpen = false;
+        _expandedSidebarGroup = null;
+      });
     });
+  }
+
+  void _onSidebarEnter(PointerEnterEvent event) {
+    _lastSidebarPointerPosition = event.position;
+    _sidebarHoverArmed = true;
+    _sidebarCloseTimer?.cancel();
+  }
+
+  void _onSidebarHover(PointerHoverEvent event) {
+    _lastSidebarPointerPosition = event.position;
+    _sidebarHoverArmed = true;
+    _sidebarCloseTimer?.cancel();
+  }
+
+  void _onSidebarExit(PointerExitEvent event) {
+    _lastSidebarPointerPosition = event.position;
+    // Changing the rail width can emit a synthetic exit. If the current
+    // pointer is still inside the expanded sidebar, it is not a real exit.
+    if (_isPointerInsideSidebar(event.position)) return;
+    _sidebarHoverArmed = false;
+    _closeSidebarAfterHover();
   }
 
   void _collapseSidebarAfterReturningHome(WorkspaceController workspace) {
@@ -1419,6 +1556,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
+    final lang = context.read<AppSettingsProvider>().language;
     final isDesktop =
         _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
     // Keep the desktop tab bar visible even on the dashboard. The workshop
@@ -1454,9 +1592,10 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                       children: [
                         Builder(
                           builder: (menuContext) => IconButton(
-                            tooltip: _isSidebarOpen
-                                ? 'إغلاق القائمة'
-                                : 'فتح القائمة',
+                            tooltip: Localization.translate(
+                              _isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                              lang,
+                            ),
                             onPressed: () {
                               if (isDesktop) {
                                 setState(
@@ -1609,15 +1748,6 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                   ),
                 ),
               ),
-            if (_isWindowsDesktop && showWorkspaceChrome)
-              DesktopCommandBar(
-                onOpen: (title, icon, screen) => openAdaptiveScreen(
-                  context,
-                  title: title,
-                  icon: icon,
-                  screen: screen,
-                ),
-              ),
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
@@ -1660,7 +1790,10 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MouseRegion(
-            onExit: (_) => _closeSidebarAfterHover(),
+            key: _sidebarHoverKey,
+            onEnter: _onSidebarEnter,
+            onHover: _onSidebarHover,
+            onExit: _onSidebarExit,
             child: AnimatedContainer(
               // The content area can contain heavy tables. Animating the width
               // forces those pages to relayout on every frame and can make the
@@ -1702,11 +1835,24 @@ class _FloatingWorkspaceView extends StatefulWidget {
 }
 
 class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
-  bool _isSidebarOpen = true;
+  bool _isSidebarOpen = false;
   bool _sidebarOpenedByHover = false;
+  bool _sidebarHoverArmed = true;
+  Timer? _sidebarCloseTimer;
+  final GlobalKey _sidebarHoverKey = GlobalKey();
+  Offset? _lastSidebarPointerPosition;
+
+  @override
+  void dispose() {
+    _sidebarCloseTimer?.cancel();
+    super.dispose();
+  }
 
   void _openSidebarOnHover() {
     if (!mounted) return;
+    if (!_sidebarHoverArmed) return;
+    _sidebarCloseTimer?.cancel();
+    if (_isSidebarOpen && _sidebarOpenedByHover) return;
     setState(() {
       _sidebarOpenedByHover = true;
       _isSidebarOpen = true;
@@ -1715,18 +1861,60 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
 
   void _openSidebarManually() {
     if (!mounted) return;
+    _sidebarCloseTimer?.cancel();
     setState(() {
       _sidebarOpenedByHover = false;
       _isSidebarOpen = true;
     });
   }
 
+  bool _isPointerInsideSidebar(Offset position) {
+    final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final origin = renderObject.localToGlobal(Offset.zero);
+    return (origin & renderObject.size).contains(position);
+  }
+
   void _closeSidebarAfterHover() {
     if (!_sidebarOpenedByHover || !mounted) return;
-    setState(() {
-      _sidebarOpenedByHover = false;
-      _isSidebarOpen = false;
+    _sidebarCloseTimer?.cancel();
+    _sidebarCloseTimer = Timer(const Duration(milliseconds: 220), () {
+      _sidebarCloseTimer = null;
+      if (!mounted || !_sidebarOpenedByHover) return;
+
+      final pointerPosition = _lastSidebarPointerPosition;
+      final renderObject = _sidebarHoverKey.currentContext?.findRenderObject();
+      if (pointerPosition != null &&
+          renderObject is RenderBox &&
+          renderObject.hasSize) {
+        final origin = renderObject.localToGlobal(Offset.zero);
+        if ((origin & renderObject.size).contains(pointerPosition)) return;
+      }
+
+      setState(() {
+        _sidebarOpenedByHover = false;
+        _isSidebarOpen = false;
+      });
     });
+  }
+
+  void _onSidebarEnter(PointerEnterEvent event) {
+    _lastSidebarPointerPosition = event.position;
+    _sidebarHoverArmed = true;
+    _sidebarCloseTimer?.cancel();
+  }
+
+  void _onSidebarHover(PointerHoverEvent event) {
+    _lastSidebarPointerPosition = event.position;
+    _sidebarHoverArmed = true;
+    _sidebarCloseTimer?.cancel();
+  }
+
+  void _onSidebarExit(PointerExitEvent event) {
+    _lastSidebarPointerPosition = event.position;
+    if (_isPointerInsideSidebar(event.position)) return;
+    _sidebarHoverArmed = false;
+    _closeSidebarAfterHover();
   }
 
   @override
@@ -1734,6 +1922,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
     final workspace = Provider.of<WorkspaceController>(context);
     final isDesktop =
         _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+    final lang = context.read<AppSettingsProvider>().language;
     final immersiveIndex = workspace.entries.indexWhere(
       (entry) => entry.immersive,
     );
@@ -1848,8 +2037,11 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
             return Column(
               children: [
                 _WorkspaceHeader(
-                  modeTitle: 'نظام النوافذ',
-                  modeSubtitle: 'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته',
+                  modeTitle: Localization.translate('نظام النوافذ', lang),
+                  modeSubtitle: Localization.translate(
+                    'القائمة الجانبية هي مركز التنقل',
+                    lang,
+                  ),
                   onToggleSidebar: isDesktop
                       ? () => setState(() {
                           _sidebarOpenedByHover = false;
@@ -1858,15 +2050,6 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
                       : null,
                   isSidebarOpen: _isSidebarOpen,
                 ),
-                if (_isWindowsDesktop)
-                  DesktopCommandBar(
-                    onOpen: (title, icon, screen) => openAdaptiveScreen(
-                      context,
-                      title: title,
-                      icon: icon,
-                      screen: screen,
-                    ),
-                  ),
                 Expanded(child: workspaceArea),
               ],
             );
@@ -1880,7 +2063,10 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MouseRegion(
-            onExit: (_) => _closeSidebarAfterHover(),
+            key: _sidebarHoverKey,
+            onEnter: _onSidebarEnter,
+            onHover: _onSidebarHover,
+            onExit: _onSidebarExit,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               curve: Curves.fastOutSlowIn,

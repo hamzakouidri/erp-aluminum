@@ -1102,6 +1102,12 @@ class _CustomersState extends State<Customers> {
 
   String _formatCreatorDisplay(String? rawPlatform) {
     String raw = (rawPlatform ?? '').trim();
+    raw = raw
+        .replaceFirst(
+          RegExp(r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$', caseSensitive: false),
+          '',
+        )
+        .trim();
     if (raw.isNotEmpty &&
         raw != 'unknown' &&
         raw != 'تطبيق' &&
@@ -1109,7 +1115,8 @@ class _CustomersState extends State<Customers> {
         raw != 'computer' &&
         raw != 'web' &&
         raw != 'هاتف' &&
-        raw != 'كمبيوتر') {
+        raw != 'كمبيوتر' &&
+        raw != 'المدير / عامل الورشة') {
       return raw;
     }
     final user = AppAuthService().currentUser;
@@ -1398,7 +1405,7 @@ class _CustomersState extends State<Customers> {
       ResizableTableColumn(
         id: 'creator',
         label: _buildSortableHeaderCell(
-          label: Localization.translate('العامل المُضيف', lang),
+          label: Localization.translate('تم الإدخال بواسطة', lang),
           colKey: 'creator',
           mutedColor: mutedColor,
         ),
@@ -1660,6 +1667,7 @@ class _CustomersState extends State<Customers> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: ResizableColumnsTable(
+                        persistenceKey: 'clients',
                         columns: columns,
                         rows: rows,
                         headerColor: const Color(0xFF0EA5E9).withValues(alpha: 0.08),

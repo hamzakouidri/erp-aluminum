@@ -2169,7 +2169,9 @@ class ComponentCalculator {
     // The selected frame owns an integrated cover. This rule is shared by
     // PVC, aluminium, and TPR; the model disables it for aluminium shutters.
     final bool hasIntegratedSideCover =
-        integratedFrameCoverWidth > 0 && window.isIntegratedFrame;
+        window.hasSideCovers &&
+        integratedFrameCoverWidth > 0 &&
+        window.isIntegratedFrame;
     bool hasNonIntegratedSideCover =
         window.hasSideCovers &&
         window.canUseStandaloneSideCover &&
@@ -4061,7 +4063,7 @@ class ComponentCalculator {
             isActive: isVerrouCentralActive,
             leafCount: leafCount,
             variantValue: windowVariant,
-            groupExpandedItems: false,
+            groupExpandedItems: true,
           ),
         );
       } else {
@@ -4149,7 +4151,7 @@ class ComponentCalculator {
             isActive: isSystemObActive,
             leafCount: leafCount,
             variantValue: windowVariant,
-            groupExpandedItems: false,
+            groupExpandedItems: true,
           ),
         );
       } else {
@@ -4187,7 +4189,7 @@ class ComponentCalculator {
               isActive: isDemiObActive,
               leafCount: leafCount,
               variantValue: windowVariant,
-              groupExpandedItems: false,
+              groupExpandedItems: true,
             ),
           );
         } else {
@@ -4842,9 +4844,10 @@ class ComponentCalculator {
             leafCount: leafCount,
             category: 'shutter',
             variantValue: shutterVariant,
-            // There is no parent row when a kit has children, so the
-            // selected children must be emitted as ordinary BOM rows.
-            groupExpandedItems: false,
+            // Keep the children attached to the Kit group. The quantity table
+            // renders one collapsed Kit row and reveals these children only
+            // after the user expands it.
+            groupExpandedItems: true,
           );
           // If Axe is 60mm (separate row), exclude axe items already inside kit bundle
           if (filterAxeItems) {

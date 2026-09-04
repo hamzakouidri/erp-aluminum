@@ -512,7 +512,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(fontFamily: 'Cairo')),
+            child: Text(
+              Localization.translate('موافق', lang),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
           ),
         ],
       ),

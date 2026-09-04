@@ -596,6 +596,21 @@ AluminumProfileSystem? profileSystemForSeries(
   return null;
 }
 
+/// Opening and sliding series must come from the same catalogue system.
+///
+/// `Profile.id` is the stable system identity; its `type` is only the
+/// material label. Comparing only `type` allowed an opening series from one
+/// aluminium system to be paired with a sliding series from another one.
+/// That produced a drawing made from two unrelated systems, even though both
+/// rows happened to say "Aluminium". A different profile row is therefore
+/// never a valid pairing, regardless of its material label.
+bool profileSystemsShareMaterial(
+  AluminumProfileSystem first,
+  AluminumProfileSystem second,
+) {
+  return first.id == second.id;
+}
+
 class InnerDimensionHit {
   final String zoneId;
   final bool isWidth;
@@ -2729,8 +2744,8 @@ class WindowModel extends ChangeNotifier {
   Map<String, dynamic>? seriesDesignConfig;
   final Map<int, Set<String>> _seriesDesignRoleKeys = {};
   final Map<int, Map<String, Set<int>>> _seriesDesignRoleSectionIds = {};
-  final Map<int, Map<String, Map<int, String>>>
-      _seriesDesignRoleUsageScopes = {};
+  final Map<int, Map<String, Map<int, String>>> _seriesDesignRoleUsageScopes =
+      {};
 
   // Cutting rules are catalog data, separate from the drawing definition.
   // Keep the sliding copy distinct so a mixed drawing never applies an
@@ -2888,14 +2903,99 @@ class WindowModel extends ChangeNotifier {
     int sectionId, {
     required bool sliding,
   }) {
-    final scope = _seriesDesignRoleUsageScopes[series.id]?[roleKey.trim()]?
-        [sectionId];
+    final scope =
+        _seriesDesignRoleUsageScopes[series.id]?[roleKey.trim()]?[sectionId];
     return _roleScopeMatches(scope, sliding: sliding);
   }
 
   bool seriesHasConfiguredRoles(AluminumSeries? series) {
     if (series == null) return false;
     return _seriesDesignRoleKeys[series.id]?.isNotEmpty == true;
+  }
+
+  /// Returns whether the catalogue explicitly assigned this series to the
+  /// opening or sliding drawing scope.  Names such as PBC or Anime are
+  /// commercial system names and cannot reliably classify a series.
+  bool seriesSupportsDrawingScope(
+    AluminumSeries series,
+    String scope, {
+    AluminumProfileSystem? profile,
+  }) {
+    final normalizedScope = scope.trim().toLowerCase();
+    final configuredScopes = <String>{};
+    final roleScopes = _seriesDesignRoleUsageScopes[series.id];
+    if (roleScopes != null) {
+      for (final sectionScopes in roleScopes.values) {
+        for (final value in sectionScopes.values) {
+          final normalized = value.trim().toLowerCase();
+          if (normalized == 'opening' ||
+              normalized == 'sliding' ||
+              normalized == 'both') {
+            configuredScopes.add(normalized);
+          }
+        }
+      }
+    }
+
+    if (configuredScopes.isNotEmpty) {
+      return configuredScopes.contains(normalizedScope) ||
+          configuredScopes.contains('both');
+    }
+
+    // Older catalogues have no explicit scope. Preserve their legacy
+    // classifier as a fallback until the series is configured.
+    return normalizedScope == 'sliding'
+        ? isSlidingSeriesForDrawing(series)
+        : profile != null && isOpeningSeriesForDrawing(series, profile);
+  }
+
+  /// Applies the drawing scope to the whole catalogue system, not only to
+  /// the individual series that happen to have role rows. Older catalogues
+  /// commonly configured roles for one representative series while keeping
+  /// several other active series in the same opening/sliding family.
+  bool seriesSupportsDrawingScopeInSystem(
+    AluminumSeries series,
+    String scope, {
+    AluminumProfileSystem? profile,
+  }) {
+    final normalizedScope = scope.trim().toLowerCase();
+    final system =
+        profile ?? profileSystemForSeries(availableSystems, series);
+    if (system == null) {
+      return seriesSupportsDrawingScope(series, normalizedScope);
+    }
+    if (seriesSupportsDrawingScope(
+      series,
+      normalizedScope,
+      profile: system,
+    )) {
+      return true;
+    }
+
+    final oppositeScope = normalizedScope == 'sliding' ? 'opening' : 'sliding';
+    if (seriesSupportsDrawingScope(
+      series,
+      oppositeScope,
+      profile: system,
+    )) {
+      return false;
+    }
+
+    // If at least one series in this system identifies the requested scope,
+    // an otherwise unlabelled active series belongs to that family unless it
+    // is recognizably from the opposite drawing.
+    final hasSystemScope = system.series.any(
+      (candidate) =>
+          seriesSupportsDrawingScope(
+            candidate,
+            normalizedScope,
+            profile: system,
+          ),
+    );
+    if (!hasSystemScope) return false;
+    return normalizedScope == 'sliding'
+        ? !isOpeningSeriesForDrawing(series, system)
+        : !isSlidingSeriesForDrawing(series);
   }
 
   bool _hasLoadedRoleMetadata(AluminumSeries? series) {
@@ -2916,8 +3016,7 @@ class WindowModel extends ChangeNotifier {
   }
 
   List<AluminumSection> _sideCoversForSeries(AluminumSeries series) {
-    final configuredIds =
-        _seriesDesignRoleSectionIds[series.id]?['side_cover'];
+    final configuredIds = _seriesDesignRoleSectionIds[series.id]?['side_cover'];
     if (!_hasLoadedRoleMetadata(series) ||
         configuredIds == null ||
         configuredIds.isEmpty) {
@@ -2941,14 +3040,17 @@ class WindowModel extends ChangeNotifier {
     }
 
     AluminumSection? selected;
-    final selectedId = selectedSideCover?.id ??
+    final selectedId =
+        selectedSideCover?.id ??
         (sideCoverOverride?['id'] is num
             ? (sideCoverOverride!['id'] as num).toInt()
             : int.tryParse('${sideCoverOverride?['id'] ?? ''}'));
-    final selectedCode = (selectedSideCover?.code ??
-            sideCoverOverride?['code']?.toString() ?? '')
-        .trim()
-        .toLowerCase();
+    final selectedCode =
+        (selectedSideCover?.code ??
+                sideCoverOverride?['code']?.toString() ??
+                '')
+            .trim()
+            .toLowerCase();
     for (final cover in covers) {
       if ((selectedId != null && cover.id == selectedId) ||
           (selectedCode.isNotEmpty &&
@@ -2964,7 +3066,10 @@ class WindowModel extends ChangeNotifier {
     if (selected == null) {
       selectedSideCover = null;
       sideCoverOverride = null;
-      hasSideCovers = false;
+      // An integrated couvre-joint belongs to the selected frame and does
+      // not require a separate catalogue row. Do not turn off the global
+      // cover switch merely because the shared standalone catalogue is empty.
+      // This also preserves an explicit user choice when switching series.
       return;
     }
 
@@ -2973,9 +3078,6 @@ class WindowModel extends ChangeNotifier {
     sideCoverOverride = selected.toMap();
     if (oldOverride?['calculated_price'] != null) {
       sideCoverOverride!['calculated_price'] = oldOverride!['calculated_price'];
-    }
-    if (getFrameRects().length <= 1 && !hasArchOrSlant) {
-      hasSideCovers = true;
     }
   }
 
@@ -2995,16 +3097,15 @@ class WindowModel extends ChangeNotifier {
     String roleKey, {
     bool? useSlidingSeries,
   }) {
-    final series = _seriesForConfiguredRole(
-      useSlidingSeries: useSlidingSeries,
-    );
+    final series = _seriesForConfiguredRole(useSlidingSeries: useSlidingSeries);
     if (series == null) return null;
     final configuredIds =
         _seriesDesignRoleSectionIds[series.id]?[roleKey.trim()] ??
         const <int>{};
     if (configuredIds.isEmpty) return null;
     final sliding =
-        useSlidingSeries ?? (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
+        useSlidingSeries ??
+        (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
     for (final section in series.sections) {
       if (configuredIds.contains(section.id) &&
           _configuredSectionMatchesScope(
@@ -3024,16 +3125,15 @@ class WindowModel extends ChangeNotifier {
     String roleKey, {
     bool? useSlidingSeries,
   }) {
-    final series = _seriesForConfiguredRole(
-      useSlidingSeries: useSlidingSeries,
-    );
+    final series = _seriesForConfiguredRole(useSlidingSeries: useSlidingSeries);
     if (series == null) return const <AluminumSection>[];
     final configuredIds =
         _seriesDesignRoleSectionIds[series.id]?[roleKey.trim()] ??
         const <int>{};
     if (configuredIds.isEmpty) return const <AluminumSection>[];
     final sliding =
-        useSlidingSeries ?? (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
+        useSlidingSeries ??
+        (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
     return series.sections
         .where(
           (section) =>
@@ -3161,22 +3261,24 @@ class WindowModel extends ChangeNotifier {
         type.contains('فريم');
   }
 
-  /// Multi-frame drawings always use a plain frame and a real, separate
-  /// side-cover profile. An integrated-cover frame would make the cover part
-  /// extend through empty areas between physical frames.
+  /// A standalone side cover is not part of a multi-frame drawing. An
+  /// integrated-cover frame would otherwise make the cover extend through
+  /// empty areas between physical frames.
   void _enforceMultiFramePlainFrameRule() {
     final isMultiFrame = getFrameRects().length > 1;
     if (!isMultiFrame) {
       _multiFrameSideCoverManuallyEnabled = false;
+      // A single-frame drawing keeps the user's side-cover state. It must not
+      // be reset by notifyListeners or by an unrelated drawing edit.
       return;
     }
 
-    if (!_multiFrameSideCoverManuallyEnabled) {
-      hasSideCovers = false;
-      useCustomSideCoverLayout = false;
-      sideCoverSegments = [];
-      hiddenSideCoverSegments.clear();
-    }
+    // A standalone couvre-joint is not valid for multiple frames.
+    _multiFrameSideCoverManuallyEnabled = false;
+    hasSideCovers = false;
+    useCustomSideCoverLayout = false;
+    sideCoverSegments = [];
+    hiddenSideCoverSegments.clear();
 
     final series = activeFrameSeries;
     if (series == null) return;
@@ -3202,7 +3304,6 @@ class WindowModel extends ChangeNotifier {
       selectedFrameCode = plainFrame['code']?.toString();
     }
 
-    hasSideCovers = _multiFrameSideCoverManuallyEnabled;
     final separateCovers = availableSideCovers
         .where((cover) => !_sectionHasIntegratedSideCover(cover))
         .toList();
@@ -3213,7 +3314,8 @@ class WindowModel extends ChangeNotifier {
   }
 
   String? slidingSeriesFamily({AluminumSeries? series}) {
-    final source = series ??
+    final source =
+        series ??
         (systemMode == 'sliding' || usesSlidingPrimaryProfiles
             ? activeSlidingSeries
             : activeSeries);
@@ -3283,9 +3385,8 @@ class WindowModel extends ChangeNotifier {
   /// Series and override used for the visible outer frame. In a mixed system
   /// the opening series owns the outer frame, while a sliding-only system uses
   /// the sliding series.
-  AluminumSeries? get activeFrameSeries => usesSlidingPrimaryProfiles
-      ? activeSlidingSeries
-      : activeSeries;
+  AluminumSeries? get activeFrameSeries =>
+      usesSlidingPrimaryProfiles ? activeSlidingSeries : activeSeries;
 
   Map<String, dynamic>? get activeFrameOverride {
     if (usesSlidingPrimaryProfiles) {
@@ -3305,12 +3406,7 @@ class WindowModel extends ChangeNotifier {
         _seriesDesignRoleSectionIds[series!.id]?['frame'] ?? const <int>{};
     return id != null &&
             configuredIds.contains(id) &&
-            _configuredSectionMatchesScope(
-              series,
-              'frame',
-              id,
-              sliding: false,
-            )
+            _configuredSectionMatchesScope(series, 'frame', id, sliding: false)
         ? override
         : null;
   }
@@ -3555,12 +3651,22 @@ class WindowModel extends ChangeNotifier {
       limit: 1,
     );
     final frameSource = frameRows.isEmpty ? frame : frameRows.first;
+    Map<String, dynamic>? reinforcement;
+    // The Renfort role is the authoritative association configured for the
+    // selected series. This also supports a shared section whose owner is a
+    // different series or even a different material system.
+    final configuredReinforcement = getConfiguredSectionForRole(
+      'renfort',
+      useSlidingSeries: false,
+    );
+    if (configuredReinforcement != null) {
+      reinforcement = configuredReinforcement.toMap();
+    }
+
     final linkedReinforcementId = readId(
       frameSource['linked_renfort_id'] ?? frame['linked_renfort_id'],
     );
-
-    Map<String, dynamic>? reinforcement;
-    if (linkedReinforcementId != null) {
+    if (reinforcement == null && linkedReinforcementId != null) {
       final rows = await database.query(
         'Sections',
         where: 'id = ?',
@@ -3961,6 +4067,10 @@ class WindowModel extends ChangeNotifier {
 
   bool hasShutter = false;
   bool isCaissonTunnel = false;
+  // True when this model belongs to the full window-design workspace. This
+  // distinguishes a designed window with a tunnel box/wall from a standalone
+  // Caisson Tunnel quantity created by the dedicated calculator.
+  bool isDesignDrawing = false;
   Map<String, dynamic>? caissonPayload;
   bool isMoustiquaire = false;
   Map<String, dynamic>? moustiquairePayload;
@@ -4192,6 +4302,8 @@ class WindowModel extends ChangeNotifier {
   /// an integrated cover does not need a second cover row, while a plain
   /// frame may explicitly reject a standalone cover in the catalogue.
   bool get canUseStandaloneSideCover {
+    // A standalone couvre-joint is available for a single frame only.
+    if (getFrameRects().length > 1) return false;
     final canSwitchIntegratedFrame =
         _canSwitchIntegratedFrameToStandaloneSideCover;
     if (hasShutter && !isFramePVC) {
@@ -4248,6 +4360,7 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isSideCoverAllowed {
+    if (getFrameRects().length > 1) return false;
     if (hasShutter && !isFramePVC) {
       final currentFrame = activeFrameOverride;
       if (currentFrame != null) {
@@ -6012,14 +6125,64 @@ class WindowModel extends ChangeNotifier {
       availableAccessoryColors = await db.readAccessoryColors();
       availableSystems.clear();
       bool foundValidSeries = false;
+      final selectedSeriesIds = <int>{
+        if (loadedSeriesId != null) loadedSeriesId!,
+        if (loadedSlidingSeriesId != null) loadedSlidingSeriesId!,
+        if (activeSeries != null) activeSeries!.id,
+        if (activeSlidingSeries != null) activeSlidingSeries!.id,
+      };
+      final selectedSeriesNames = <String>{
+        if (loadedSeriesName != null && loadedSeriesName!.trim().isNotEmpty)
+          loadedSeriesName!.trim().toLowerCase(),
+        if (loadedSlidingSeriesName != null &&
+            loadedSlidingSeriesName!.trim().isNotEmpty)
+          loadedSlidingSeriesName!.trim().toLowerCase(),
+        if (activeSeries != null && activeSeries!.name.trim().isNotEmpty)
+          activeSeries!.name.trim().toLowerCase(),
+        if (activeSlidingSeries != null &&
+            activeSlidingSeries!.name.trim().isNotEmpty)
+          activeSlidingSeries!.name.trim().toLowerCase(),
+      };
 
       for (var pData in profilesData) {
         var system = AluminumProfileSystem.fromMap(pData);
-        final seriesData = await db.readSeriesByProfile(system.id);
+        final seriesData = <Map<String, dynamic>>[
+          ...(await db.readSeriesByProfile(system.id)),
+        ];
+
+        // Keep an explicitly selected series visible even if it was marked
+        // inactive after the drawing was saved. Do not expose every inactive
+        // catalogue row; restore only the row(s) already selected by the
+        // drawing/order.
+        if (selectedSeriesIds.isNotEmpty || selectedSeriesNames.isNotEmpty) {
+          final allSeriesData = await db.readAllSeriesByProfile(system.id);
+          for (final candidate in allSeriesData) {
+            final rawId = candidate['id'];
+            final candidateId = rawId is int
+                ? rawId
+                : int.tryParse(rawId?.toString() ?? '');
+            final candidateName = (candidate['name'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            final selectedById =
+                candidateId != null && selectedSeriesIds.contains(candidateId);
+            final selectedByName =
+                candidateName.isNotEmpty &&
+                selectedSeriesNames.contains(candidateName);
+            if (selectedById || selectedByName) {
+              final alreadyLoaded = seriesData.any((row) {
+                final rowId = row['id'];
+                return rowId?.toString() == rawId?.toString();
+              });
+              if (!alreadyLoaded) seriesData.add(candidate);
+            }
+          }
+        }
 
         for (var sData in seriesData) {
           var series = AluminumSeries.fromMap(sData);
-          final sectionsData = await db.readSectionsBySeries(series.id);
+          final sectionsData = await db.readAvailableSectionsBySeries(series.id);
           series.sections = sectionsData
               .map((e) => AluminumSection.fromMap(e))
               .toList();
@@ -6031,80 +6194,13 @@ class WindowModel extends ChangeNotifier {
             await db.getSeriesDesignRoles(series.id),
           );
 
-          bool isLoadedSeries = false;
-          final Set<String> matchQueries = {};
-          if (loadedSeriesName != null && loadedSeriesName!.isNotEmpty) {
-            matchQueries.add(loadedSeriesName!.toLowerCase().trim());
-          }
-          if (loadedSlidingSeriesName != null &&
-              loadedSlidingSeriesName!.isNotEmpty) {
-            matchQueries.add(loadedSlidingSeriesName!.toLowerCase().trim());
-          }
-          if (activeSeries != null) {
-            matchQueries.add(activeSeries!.name.toLowerCase().trim());
-          }
-          if (activeSlidingSeries != null) {
-            matchQueries.add(activeSlidingSeries!.name.toLowerCase().trim());
-          }
-
-          final sName = series.name.toLowerCase().trim();
-          final sType = series.type.toLowerCase().trim();
-          for (final query in matchQueries) {
-            if (sName == query ||
-                sType == query ||
-                sName.contains(query) ||
-                query.contains(sName)) {
-              isLoadedSeries = true;
-              break;
-            }
-          }
-
-          if (!isLoadedSeries) {
-            if (loadedSeriesId != null && series.id == loadedSeriesId) {
-              isLoadedSeries = true;
-            } else if (loadedSlidingSeriesId != null &&
-                series.id == loadedSlidingSeriesId) {
-              isLoadedSeries = true;
-            } else if (activeSeries != null && series.id == activeSeries!.id) {
-              isLoadedSeries = true;
-            } else if (activeSlidingSeries != null &&
-                series.id == activeSlidingSeries!.id) {
-              isLoadedSeries = true;
-            }
-          }
-
-          String searchString =
-              '${system.type} ${system.name} ${series.type} ${series.name}'
-                  .toLowerCase();
-          bool isMatchingMode = true;
-          if (isLoadedSeries) {
-            isMatchingMode = true;
-          } else if (systemMode == 'french') {
-            isMatchingMode =
-                searchString.contains('frappe') ||
-                searchString.contains('battant') ||
-                searchString.contains('فتح') ||
-                searchString.contains('فرنسي') ||
-                (searchString.contains('pvc') &&
-                    !searchString.contains('coulissant') &&
-                    !searchString.contains('sliding') &&
-                    !searchString.contains('منزلق') &&
-                    !searchString.contains('كوليس'));
-          } else if (systemMode == 'sliding') {
-            isMatchingMode =
-                searchString.contains('coulissant') ||
-                searchString.contains('sliding') ||
-                searchString.contains('منزلق') ||
-                searchString.contains('كوليس');
-          } else if (systemMode == 'mixed') {
-            isMatchingMode = true;
-          }
-
-          // Classify by the series type, never by the profile's commercial
-          // name. This preserves the strict separation between opening and
-          // sliding series while applying it to every active profile.
-          isMatchingMode = seriesMatchesDrawingMode(series, system, systemMode);
-          if (isMatchingMode) system.series.add(series);
+          // Keep every active catalogue row available to the drawing page.
+          // Opening/sliding classification is used later to resolve the
+          // correct role and calculation path; it must never remove an
+          // enabled system from the selector. This is especially important
+          // for commercial/legacy types such as TPR whose type field may not
+          // contain an exact opening/sliding label.
+          system.series.add(series);
         }
         if (system.series.isNotEmpty) availableSystems.add(system);
       }
@@ -6116,7 +6212,11 @@ class WindowModel extends ChangeNotifier {
         ) {
           if (systemMode == 'sliding') return false;
           if (systemMode == 'mixed' || systemMode == 'french') {
-            return isOpeningSeriesForDrawing(series, profile);
+            return seriesSupportsDrawingScopeInSystem(
+              series,
+              'opening',
+              profile: profile,
+            );
           }
           return true;
         }
@@ -6127,9 +6227,24 @@ class WindowModel extends ChangeNotifier {
         ) {
           if (systemMode == 'french') return false;
           if (systemMode == 'mixed' || systemMode == 'sliding') {
-            return isSlidingSeriesForDrawing(series);
+            return seriesSupportsDrawingScopeInSystem(
+              series,
+              'sliding',
+              profile: profile,
+            );
           }
           return true;
+        }
+
+        bool isPrimarySeriesCandidate(
+          AluminumSeries series,
+          AluminumProfileSystem profile,
+        ) {
+          // In a sliding drawing activeSeries is the primary sliding series;
+          // in the other drawing modes it is the opening series.
+          return systemMode == 'sliding'
+              ? isSlidingCandidate(series, profile)
+              : isOpeningCandidate(series, profile);
         }
 
         AluminumSeries? resolvedActive;
@@ -6144,7 +6259,7 @@ class WindowModel extends ChangeNotifier {
           // First check availableSystems (already loaded)
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == loadedSeriesId && isOpeningCandidate(s, sys)) {
+              if (s.id == loadedSeriesId && isPrimarySeriesCandidate(s, sys)) {
                 resolvedActive = s;
                 break;
               }
@@ -6161,18 +6276,27 @@ class WindowModel extends ChangeNotifier {
               for (var sData in seriesData) {
                 final s = AluminumSeries.fromMap(sData);
                 if (s.id == loadedSeriesId &&
-                    isOpeningCandidate(s, sourceSystem)) {
-                  final sectionsData = await db.readSectionsBySeries(s.id);
+                    isPrimarySeriesCandidate(s, sourceSystem)) {
+                  final sectionsData = await db.readAvailableSectionsBySeries(s.id);
                   s.sections = sectionsData
                       .map((e) => AluminumSection.fromMap(e))
                       .toList();
                   resolvedActive = s;
-                  // Inject into availableSystems so downstream logic works
-                  if (availableSystems.isNotEmpty) {
-                    final alreadyIn = availableSystems.any(
-                      (sys) => sys.series.any((sr) => sr.id == s.id),
-                    );
-                    if (!alreadyIn) availableSystems.first.series.add(s);
+                  // Inject into the matching system only. Never attach a
+                  // restored series to the first unrelated profile row.
+                  final targetSystem = availableSystems.where(
+                    (sys) => sys.id == sourceSystem.id,
+                  );
+                  final alreadyIn = targetSystem.any(
+                    (sys) => sys.series.any((sr) => sr.id == s.id),
+                  );
+                  if (!alreadyIn) {
+                    if (targetSystem.isNotEmpty) {
+                      targetSystem.first.series.add(s);
+                    } else {
+                      sourceSystem.series.add(s);
+                      availableSystems.add(sourceSystem);
+                    }
                   }
                   break outer0;
                 }
@@ -6185,7 +6309,8 @@ class WindowModel extends ChangeNotifier {
         if (resolvedActive == null && activeSeries != null) {
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == activeSeries!.id && isOpeningCandidate(s, sys)) {
+              if (s.id == activeSeries!.id &&
+                  isPrimarySeriesCandidate(s, sys)) {
                 resolvedActive = s;
                 break;
               }
@@ -6202,17 +6327,25 @@ class WindowModel extends ChangeNotifier {
               for (var sData in seriesData) {
                 final s = AluminumSeries.fromMap(sData);
                 if (s.id == activeSeries!.id &&
-                    isOpeningCandidate(s, sourceSystem)) {
-                  final sectionsData = await db.readSectionsBySeries(s.id);
+                    isPrimarySeriesCandidate(s, sourceSystem)) {
+                  final sectionsData = await db.readAvailableSectionsBySeries(s.id);
                   s.sections = sectionsData
                       .map((e) => AluminumSection.fromMap(e))
                       .toList();
                   resolvedActive = s;
-                  final alreadyIn = availableSystems.any(
+                  final targetSystem = availableSystems.where(
+                    (sys) => sys.id == sourceSystem.id,
+                  );
+                  final alreadyIn = targetSystem.any(
                     (sys) => sys.series.any((sr) => sr.id == s.id),
                   );
-                  if (!alreadyIn && availableSystems.isNotEmpty) {
-                    availableSystems.first.series.add(s);
+                  if (!alreadyIn) {
+                    if (targetSystem.isNotEmpty) {
+                      targetSystem.first.series.add(s);
+                    } else {
+                      sourceSystem.series.add(s);
+                      availableSystems.add(sourceSystem);
+                    }
                   }
                   break outerP1;
                 }
@@ -6227,7 +6360,7 @@ class WindowModel extends ChangeNotifier {
           final query = activeNameToResolve.toLowerCase().trim();
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (!isOpeningCandidate(s, sys)) continue;
+              if (!isPrimarySeriesCandidate(s, sys)) continue;
               final sName = s.name.toLowerCase().trim();
               final sType = s.type.toLowerCase().trim();
               if (sName == query ||
@@ -6249,7 +6382,7 @@ class WindowModel extends ChangeNotifier {
           AluminumSeries? firstFrench;
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (isOpeningCandidate(s, sys)) {
+              if (isPrimarySeriesCandidate(s, sys)) {
                 firstFrench = s;
                 break;
               }
@@ -6258,18 +6391,17 @@ class WindowModel extends ChangeNotifier {
           }
           if (firstFrench != null) {
             await setActiveSeries(firstFrench);
-          } else if (systemMode != 'mixed' &&
-              availableSystems.isNotEmpty &&
-              availableSystems.first.series.isNotEmpty) {
-            await setActiveSeries(availableSystems.first.series.first);
           }
-          foundValidSeries = firstFrench != null || systemMode != 'mixed';
+          foundValidSeries = firstFrench != null;
         }
 
         final pairedSystem = systemMode == 'mixed'
             ? profileSystemForSeries(availableSystems, activeSeries)
             : null;
-        final int? pairedProfileId = pairedSystem?.id;
+        final selectedPairedSystem = pairedSystem;
+        bool belongsToPairedSystem(AluminumProfileSystem system) =>
+            selectedPairedSystem == null ||
+            profileSystemsShareMaterial(system, selectedPairedSystem);
 
         AluminumSeries? resolvedSliding;
         String? slidingNameToResolve = loadedSlidingSeriesName;
@@ -6279,7 +6411,7 @@ class WindowModel extends ChangeNotifier {
 
         if (activeSlidingSeries != null) {
           for (var sys in availableSystems) {
-            if (pairedProfileId != null && sys.id != pairedProfileId) continue;
+            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
               if (s.id == activeSlidingSeries!.id &&
                   isSlidingCandidate(s, sys)) {
@@ -6293,7 +6425,7 @@ class WindowModel extends ChangeNotifier {
 
         if (resolvedSliding == null && loadedSlidingSeriesId != null) {
           for (var sys in availableSystems) {
-            if (pairedProfileId != null && sys.id != pairedProfileId) continue;
+            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
               if (s.id == loadedSlidingSeriesId && isSlidingCandidate(s, sys)) {
                 resolvedSliding = s;
@@ -6309,7 +6441,7 @@ class WindowModel extends ChangeNotifier {
             slidingNameToResolve.isNotEmpty) {
           final query = slidingNameToResolve.toLowerCase().trim();
           for (var sys in availableSystems) {
-            if (pairedProfileId != null && sys.id != pairedProfileId) continue;
+            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
               if (!isSlidingCandidate(s, sys)) continue;
               final sName = s.name.toLowerCase().trim();
@@ -6326,11 +6458,11 @@ class WindowModel extends ChangeNotifier {
           }
         }
 
-        // Keep the paired profile as the preferred source, but some catalogues
-        // store the opening and sliding families in different profile rows.
-        // In that case a valid saved sliding series must still be restored.
+        // Keep the selected system as the only source. Never restore a saved
+        // sliding id from another system just because its material is equal.
         if (resolvedSliding == null) {
           for (var sys in availableSystems) {
+            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
               final matchesSavedId =
                   loadedSlidingSeriesId != null &&
@@ -6353,6 +6485,7 @@ class WindowModel extends ChangeNotifier {
             slidingNameToResolve.isNotEmpty) {
           final query = slidingNameToResolve.toLowerCase().trim();
           for (var sys in availableSystems) {
+            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
               if (!isSlidingCandidate(s, sys)) continue;
               final sName = s.name.toLowerCase().trim();
@@ -6377,7 +6510,7 @@ class WindowModel extends ChangeNotifier {
         } else {
           AluminumSeries? firstSliding;
           for (var sys in availableSystems) {
-            if (pairedProfileId != null && sys.id != pairedProfileId) continue;
+            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
               if (isSlidingCandidate(s, sys)) {
                 firstSliding = s;
@@ -6390,13 +6523,6 @@ class WindowModel extends ChangeNotifier {
             await setActiveSlidingSeries(firstSliding);
             if (systemMode == 'sliding') {
               await setActiveSeries(firstSliding);
-            }
-          } else if (systemMode == 'sliding' &&
-              availableSystems.isNotEmpty &&
-              availableSystems.first.series.isNotEmpty) {
-            await setActiveSlidingSeries(availableSystems.first.series.first);
-            if (systemMode == 'sliding') {
-              await setActiveSeries(availableSystems.first.series.first);
             }
           }
         }
@@ -6423,8 +6549,9 @@ class WindowModel extends ChangeNotifier {
             } else {
               // A mixed drawing may keep the sliding family in another
               // profile row. Use the first actual sliding series, never the
-              // opening series as a substitute.
+              // opening series as a substitute, but keep the same material.
               for (var sys in availableSystems) {
+                if (!belongsToPairedSystem(sys)) continue;
                 for (var ser in sys.series) {
                   if (isSlidingCandidate(ser, sys)) {
                     firstSliding = ser;
@@ -6541,9 +6668,7 @@ class WindowModel extends ChangeNotifier {
         source._seriesDesignRoleSectionIds.map(
           (seriesId, roles) => MapEntry(
             seriesId,
-            roles.map(
-              (role, ids) => MapEntry(role, Set<int>.from(ids)),
-            ),
+            roles.map((role, ids) => MapEntry(role, Set<int>.from(ids))),
           ),
         ),
       );
@@ -6634,8 +6759,7 @@ class WindowModel extends ChangeNotifier {
 
     // إذا كان هناك ضلفة مخصصة مختارة، نستخدم العرض الظاهر لها
     if (selectedOverride != null) {
-      double t =
-          (selectedOverride['visible_width'] as num?)?.toDouble() ?? 0.0;
+      double t = (selectedOverride['visible_width'] as num?)?.toDouble() ?? 0.0;
       if (t > 0) return t;
     }
 
@@ -6793,8 +6917,7 @@ class WindowModel extends ChangeNotifier {
     // by name/type, which is how opening frames leaked into sliding drawings.
     if (normalizedType == 'frame' && _hasLoadedRoleMetadata(series)) {
       final configuredIds =
-          _seriesDesignRoleSectionIds[series.id]?['frame'] ??
-          const <int>{};
+          _seriesDesignRoleSectionIds[series.id]?['frame'] ?? const <int>{};
       if (configuredIds.isEmpty) return null;
       if (result != null) {
         final rawId = result.id;
@@ -6948,7 +7071,8 @@ class WindowModel extends ChangeNotifier {
           : int.tryParse(rawId?.toString() ?? '');
       final configuredIds =
           _seriesDesignRoleSectionIds[series.id]?['sash'] ?? const <int>{};
-      final overrideIsAllowed = overrideId != null &&
+      final overrideIsAllowed =
+          overrideId != null &&
           (!_hasLoadedRoleMetadata(series) ||
               (configuredIds.contains(overrideId) &&
                   _configuredSectionMatchesScope(
@@ -7034,12 +7158,7 @@ class WindowModel extends ChangeNotifier {
       final configuredIds =
           _seriesDesignRoleSectionIds[series.id]?['frame'] ?? const <int>{};
       return configuredIds.contains(id) &&
-          _configuredSectionMatchesScope(
-            series,
-            'frame',
-            id,
-            sliding: true,
-          );
+          _configuredSectionMatchesScope(series, 'frame', id, sliding: true);
     }
 
     if (slidingFrameOverride != null &&
@@ -7187,10 +7306,7 @@ class WindowModel extends ChangeNotifier {
       if (row['is_visible'] == 0 || row['show_in_quantity'] == 0) {
         return false;
       }
-      if (!_roleScopeMatches(
-        row['usage_scope']?.toString(),
-        sliding: false,
-      )) {
+      if (!_roleScopeMatches(row['usage_scope']?.toString(), sliding: false)) {
         return false;
       }
       final glassRule = row['show_when_glass']?.toString().trim() ?? 'any';
@@ -7247,9 +7363,9 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('البارداج (Bardage)');
       _clearAccessoryOverrides();
 
-      // Profile identifiers from another series (for example TPR) cannot be
-      // reused safely.  Let the newly selected series provide its own standard
-      // mullion instead of retaining an incompatible old shape.
+      // Section identifiers from another series (for example TPR) cannot be
+      // reused safely. Preserve the user's mullion type, then resolve its
+      // concrete frame section from the newly selected series.
       if (affectsVisibleDivisions) {
         mullionProfiles.clear();
         groovedMullionCavityOnPositiveSide.clear();
@@ -7294,40 +7410,78 @@ class WindowModel extends ChangeNotifier {
         }
       }
 
-      // Auto-matching sliding series for System Mixed
-      if (systemMode == 'mixed' || activeSlidingSeries != null) {
+      // In a mixed drawing, the opening series determines the profile system.
+      // Always select a sliding series from that same system, even when the
+      // user changes from one opening series to another within the system.
+      if (systemMode == 'mixed') {
         final currentSystem = profileSystemForSeries(availableSystems, series);
         if (currentSystem != null) {
-          final slidingMissingOrForeign =
-              activeSlidingSeries == null ||
-              !currentSystem.series.any((s) => s.id == activeSlidingSeries!.id);
-          if (slidingMissingOrForeign) {
-            AluminumSeries? newSliding;
-            for (var s in currentSystem.series) {
-              if (isSlidingSeriesForDrawing(s)) {
-                newSliding = s;
+          AluminumSeries? newSliding;
+          for (final candidate in currentSystem.series) {
+            if (candidate.id != series.id &&
+                seriesSupportsDrawingScope(
+                  candidate,
+                  'sliding',
+                  profile: currentSystem,
+                )) {
+              newSliding = candidate;
+              break;
+            }
+          }
+
+          // If only one series has explicit sliding role metadata, use it
+          // before the system-wide fallback. This prevents an unlabelled
+          // opening sibling from being selected as the automatic counterpart.
+          if (newSliding == null) {
+            for (final candidate in currentSystem.series) {
+              if (candidate.id != series.id &&
+                  seriesSupportsDrawingScopeInSystem(
+                    candidate,
+                    'sliding',
+                    profile: currentSystem,
+                  )) {
+                newSliding = candidate;
                 break;
               }
             }
-            if (newSliding == null) {
-              for (final candidateSystem in availableSystems) {
-                for (final candidate in candidateSystem.series) {
-                  if (isSlidingSeriesForDrawing(candidate)) {
-                    newSliding = candidate;
-                    break;
-                  }
+          }
+
+          // Imported catalogues may contain a multi-series system without
+          // role metadata or recognizable names. In that case, use the first
+          // series other than the selected opening series as the counterpart.
+          if (newSliding == null && currentSystem.series.length > 1) {
+            final hasKnownRole = currentSystem.series.any(
+              (candidate) =>
+                  seriesSupportsDrawingScopeInSystem(
+                    candidate,
+                    'opening',
+                    profile: currentSystem,
+                  ) ||
+                  seriesSupportsDrawingScopeInSystem(
+                    candidate,
+                    'sliding',
+                    profile: currentSystem,
+                  ),
+            );
+            if (!hasKnownRole) {
+              for (final candidate in currentSystem.series) {
+                if (candidate.id != series.id) {
+                  newSliding = candidate;
+                  break;
                 }
-                if (newSliding != null) break;
               }
             }
-            if (newSliding != null) {
+          }
+
+          if (newSliding != null) {
+            if (activeSlidingSeries?.id != newSliding.id) {
               await _setActiveSlidingSeries(newSliding);
-            } else if (systemMode == 'mixed') {
-              activeSlidingSeries = null;
-              slidingFrameOverride = null;
-              slidingSashOverride = null;
-              _clearSlidingProfileOverrides();
             }
+          } else {
+            activeSlidingSeries = null;
+            slidingFrameOverride = null;
+            slidingSashOverride = null;
+            _clearSlidingProfileOverrides();
           }
         }
       }
@@ -8116,15 +8270,15 @@ class WindowModel extends ChangeNotifier {
     var bardages = configuredSectionsFor(const ['bardage']);
     if (bardages.isEmpty && !strictProfileRoles) {
       bardages = series.sections.where((s) {
-      final t = s.type.toLowerCase().trim();
-      final n = s.name.toLowerCase().trim();
-      return t == 'bardage' ||
-          t.contains('bardage') ||
-          t.contains('بارداج') ||
-          t.contains('بارداش') ||
-          n.contains('bardage') ||
-          n.contains('بارداج') ||
-          n.contains('بارداش');
+        final t = s.type.toLowerCase().trim();
+        final n = s.name.toLowerCase().trim();
+        return t == 'bardage' ||
+            t.contains('bardage') ||
+            t.contains('بارداج') ||
+            t.contains('بارداش') ||
+            n.contains('bardage') ||
+            n.contains('بارداج') ||
+            n.contains('بارداش');
       }).toList();
     }
     if (bardages.isNotEmpty &&
@@ -8194,10 +8348,7 @@ class WindowModel extends ChangeNotifier {
       if (row['is_visible'] == 0 || row['show_in_quantity'] == 0) {
         return false;
       }
-      if (!_roleScopeMatches(
-        row['usage_scope']?.toString(),
-        sliding: true,
-      )) {
+      if (!_roleScopeMatches(row['usage_scope']?.toString(), sliding: true)) {
         return false;
       }
       final glassRule = row['show_when_glass']?.toString().trim() ?? 'any';
@@ -8256,19 +8407,46 @@ class WindowModel extends ChangeNotifier {
         );
         final canAutoMatchOpening =
             currentSystem != null &&
-            (activeSeries == null ||
+            (systemMode == 'mixed' ||
+                activeSeries == null ||
                 openingSystem == null ||
-                openingSystem.id == currentSystem.id);
+                profileSystemsShareMaterial(currentSystem, openingSystem));
         if (canAutoMatchOpening) {
           final openingMissingOrForeign =
               activeSeries == null ||
-              !currentSystem.series.any((s) => s.id == activeSeries!.id);
+              openingSystem == null ||
+              !profileSystemsShareMaterial(currentSystem, openingSystem);
           if (openingMissingOrForeign) {
             AluminumSeries? newOpening;
             for (var s in currentSystem.series) {
-              if (isOpeningSeriesForDrawing(s, currentSystem)) {
+              if (seriesSupportsDrawingScope(
+                s,
+                'opening',
+                profile: currentSystem,
+              )) {
                 newOpening = s;
                 break;
+              }
+            }
+            if (newOpening == null) {
+              for (final candidateSystem in availableSystems) {
+                if (!profileSystemsShareMaterial(
+                  currentSystem,
+                  candidateSystem,
+                )) {
+                  continue;
+                }
+                for (final candidate in candidateSystem.series) {
+                  if (seriesSupportsDrawingScopeInSystem(
+                    candidate,
+                    'opening',
+                    profile: candidateSystem,
+                  )) {
+                    newOpening = candidate;
+                    break;
+                  }
+                }
+                if (newOpening != null) break;
               }
             }
             if (newOpening != null) {
@@ -12313,18 +12491,27 @@ class WindowModel extends ChangeNotifier {
       double secondStart,
       double secondEnd,
     ) {
-      return math.min(firstEnd, secondEnd) -
-              math.max(firstStart, secondStart) >
+      return math.min(firstEnd, secondEnd) - math.max(firstStart, secondStart) >
           2.0;
     }
 
     bool nearPerpendicularEdge(Rect candidate) {
       if (side == 'left' || side == 'right') {
-        return overlap(current.top, current.bottom, candidate.top, candidate.bottom) ||
+        return overlap(
+              current.top,
+              current.bottom,
+              candidate.top,
+              candidate.bottom,
+            ) ||
             (candidate.top - current.bottom).abs() <= threshold ||
             (candidate.bottom - current.top).abs() <= threshold;
       }
-      return overlap(current.left, current.right, candidate.left, candidate.right) ||
+      return overlap(
+            current.left,
+            current.right,
+            candidate.left,
+            candidate.right,
+          ) ||
           (candidate.left - current.right).abs() <= threshold ||
           (candidate.right - current.left).abs() <= threshold;
     }
@@ -13798,11 +13985,9 @@ class WindowModel extends ChangeNotifier {
   }
 
   Future<void> toggleSideCovers(bool value) async {
-    if (value && hasArchOrSlant) return;
+    if (value && (hasArchOrSlant || getFrameRects().length > 1)) return;
     _saveSnapshot();
-    if (getFrameRects().length > 1) {
-      _multiFrameSideCoverManuallyEnabled = value;
-    }
+    _multiFrameSideCoverManuallyEnabled = false;
     hasSideCovers = value;
     if (value) {
       final covers = availableSideCovers;
@@ -14993,8 +15178,7 @@ class WindowModel extends ChangeNotifier {
 
     final isSlidingSeriesContext =
         systemMode == 'sliding' ||
-        (activeSlidingSeries?.id == seriesId &&
-            activeSeries?.id != seriesId);
+        (activeSlidingSeries?.id == seriesId && activeSeries?.id != seriesId);
     bool ruleScopeMatches(Map<String, dynamic> rule) {
       final scope = (rule['usage_scope'] ?? 'global')
           .toString()
@@ -15078,8 +15262,7 @@ class WindowModel extends ChangeNotifier {
 
     final isSlidingSeriesContext =
         systemMode == 'sliding' ||
-        (activeSlidingSeries?.id == seriesId &&
-            activeSeries?.id != seriesId);
+        (activeSlidingSeries?.id == seriesId && activeSeries?.id != seriesId);
     bool ruleScopeMatches(Map<String, dynamic> rule) {
       final scope = (rule['usage_scope'] ?? 'global')
           .toString()

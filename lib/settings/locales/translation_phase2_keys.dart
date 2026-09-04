@@ -445,6 +445,13 @@ const Map<String, Map<AppLanguage, String>> translationPhase2Keys = {
     AppLanguage.french: 'Les informations de l’atelier ont été enregistrées',
     AppLanguage.english: 'Workshop information saved successfully',
   },
+  'تم الحفظ محلياً، وتعذرت مزامنة الاسم مع السحابة': {
+    AppLanguage.arabic: 'تم الحفظ محلياً، وتعذرت مزامنة الاسم مع السحابة',
+    AppLanguage.french:
+        'Enregistré localement, mais le nom n’a pas pu être synchronisé avec le cloud',
+    AppLanguage.english:
+        'Saved locally, but the name could not be synchronized with the cloud',
+  },
   'اسم الورشة': {
     AppLanguage.arabic: 'اسم الورشة',
     AppLanguage.french: 'Nom de l’atelier',

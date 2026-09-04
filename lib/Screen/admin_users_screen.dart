@@ -1016,7 +1016,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         }
         if (snapshot.hasError) {
           return Center(
-            child: Text('تعذر تحميل الورش من Supabase:\n${snapshot.error}'),
+            child: Text('${_t('تعذر تحميل الورش من Supabase:')}\n${snapshot.error}'),
           );
         }
         var rows = snapshot.data ?? const <Map<String, dynamic>>[];
@@ -1062,7 +1062,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                           child: Text(
                             row['name']?.toString().trim().isNotEmpty == true
                                 ? row['name'].toString()
-                                : row['code']?.toString() ?? 'ورشة',
+                                : row['code']?.toString() ?? _t('ورشة'),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -1080,9 +1080,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text('$email  •  $memberCount مستخدمين'),
+                    Text('$email  •  $memberCount ${_t('مستخدمين')}'),
                     Text(
-                      'الكود: ${row['code'] ?? ''}',
+                      '${_t('الكود:')} ${row['code'] ?? ''}',
                       style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     const SizedBox(height: 10),
@@ -1102,7 +1102,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                                   );
                                   if (mounted) setState(() {});
                                 },
-                          child: const Text('30 يومًا'),
+                          child: Text(_t('30 يومًا')),
                         ),
                         OutlinedButton(
                           onPressed: ownerUid.isEmpty
@@ -1111,7 +1111,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                                   await _grantActive(context, ownerUid, email);
                                   if (mounted) setState(() {});
                                 },
-                          child: const Text('تفعيل دائم'),
+                          child: Text(_t('تفعيل دائم')),
                         ),
                         TextButton(
                           onPressed: ownerUid.isEmpty
@@ -1124,7 +1124,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                                   );
                                   if (mounted) setState(() {});
                                 },
-                          child: const Text('سحب الاشتراك'),
+                          child: Text(_t('سحب الاشتراك')),
                         ),
                       ],
                     ),

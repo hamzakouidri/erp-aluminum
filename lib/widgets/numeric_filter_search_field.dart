@@ -126,85 +126,36 @@ class NumericFilterState {
 
   String getLabel(AppLanguage lang) {
     final symbol = getDisplaySymbol();
+    String label(String key) => Localization.translate(key, lang)
+        .replaceAll('{symbol}', symbol);
+
     switch (operator) {
       case NumericFilterOperator.none:
-        return lang == AppLanguage.french
-            ? 'Tous (Sans filtre)'
-            : (lang == AppLanguage.english
-                  ? 'All (No Filter)'
-                  : 'الكل (بدون فلتر)');
+        return label('الكل (بدون فلتر)');
       case NumericFilterOperator.equalsZero:
-        return lang == AppLanguage.french
-            ? 'Égal à zéro ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Equals zero ($symbol)'
-                  : 'يساوي الصفر ($symbol)');
+        return label('يساوي الصفر ({symbol})');
       case NumericFilterOperator.notEqualsZero:
-        return lang == AppLanguage.french
-            ? 'Différent de zéro ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Not equal to zero ($symbol)'
-                  : 'لا يساوي الصفر ($symbol)');
+        return label('لا يساوي الصفر ({symbol})');
       case NumericFilterOperator.greaterThanZero:
-        return lang == AppLanguage.french
-            ? 'Strictement supérieur à zéro ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Greater than zero ($symbol)'
-                  : 'أكبر تماماً من الصفر ($symbol)');
+        return label('أكبر تماماً من الصفر ({symbol})');
       case NumericFilterOperator.lessThanZero:
-        return lang == AppLanguage.french
-            ? 'Strictement inférieur à zéro ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Less than zero ($symbol)'
-                  : 'أصغر تماماً من الصفر ($symbol)');
+        return label('أصغر تماماً من الصفر ({symbol})');
       case NumericFilterOperator.greaterThanOrEqualZero:
-        return lang == AppLanguage.french
-            ? 'Supérieur ou égal à zéro ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Greater or equal to zero ($symbol)'
-                  : 'أكبر أو يساوي الصفر ($symbol)');
+        return label('أكبر أو يساوي الصفر ({symbol})');
       case NumericFilterOperator.lessThanOrEqualZero:
-        return lang == AppLanguage.french
-            ? 'Inférieur ou égal à zéro ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Less or equal to zero ($symbol)'
-                  : 'أصغر أو يساوي الصفر ($symbol)');
+        return label('أصغر أو يساوي الصفر ({symbol})');
       case NumericFilterOperator.equalsValue:
-        return lang == AppLanguage.french
-            ? 'Égal à la valeur ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Equals value ($symbol)'
-                  : 'يساوي القيمة ($symbol)');
+        return label('يساوي القيمة ({symbol})');
       case NumericFilterOperator.greaterThanValue:
-        return lang == AppLanguage.french
-            ? 'Supérieur à la valeur ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Greater than value ($symbol)'
-                  : 'أكبر من القيمة ($symbol)');
+        return label('أكبر من القيمة ({symbol})');
       case NumericFilterOperator.lessThanValue:
-        return lang == AppLanguage.french
-            ? 'Inférieur à la valeur ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Less than value ($symbol)'
-                  : 'أصغر من القيمة ($symbol)');
+        return label('أصغر من القيمة ({symbol})');
       case NumericFilterOperator.greaterThanOrEqualValue:
-        return lang == AppLanguage.french
-            ? 'Supérieur ou égal à la valeur ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Greater or equal to value ($symbol)'
-                  : 'أكبر أو يساوي القيمة ($symbol)');
+        return label('أكبر أو يساوي القيمة ({symbol})');
       case NumericFilterOperator.lessThanOrEqualValue:
-        return lang == AppLanguage.french
-            ? 'Inférieur ou égal à la valeur ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Less or equal to value ($symbol)'
-                  : 'أصغر أو يساوي القيمة ($symbol)');
+        return label('أصغر أو يساوي القيمة ({symbol})');
       case NumericFilterOperator.notEqualsValue:
-        return lang == AppLanguage.french
-            ? 'Différent de la valeur ($symbol)'
-            : (lang == AppLanguage.english
-                  ? 'Not equal to value ($symbol)'
-                  : 'لا يساوي القيمة ($symbol)');
+        return label('لا يساوي القيمة ({symbol})');
     }
   }
 }

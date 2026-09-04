@@ -40,19 +40,19 @@ class _InventoryPageState extends State<InventoryPage>
         backgroundColor: Colors.teal,
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.category), text: 'البروفيلات'),
-            Tab(icon: Icon(Icons.window), text: 'الزجاج'),
-            Tab(icon: Icon(Icons.build), text: 'الإكسسوارات'),
+          tabs: [
+            Tab(icon: const Icon(Icons.category), text: _t('البروفيلات')),
+            Tab(icon: const Icon(Icons.window), text: _t('الزجاج')),
+            Tab(icon: const Icon(Icons.build), text: _t('الإكسسوارات')),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildPlaceholder('قائمة بروفيلات الألمنيوم/PVC في الورشة'),
-          _buildPlaceholder('قائمة الزجاج المتاح في الورشة'),
-          _buildPlaceholder('قائمة الإكسسوارات (مقابض، عجلات، الخ)'),
+          _buildPlaceholder(_t('قائمة بروفيلات الألمنيوم/PVC في الورشة')),
+          _buildPlaceholder(_t('قائمة الزجاج المتاح في الورشة')),
+          _buildPlaceholder(_t('قائمة الإكسسوارات (مقابض، عجلات، الخ)')),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -78,8 +78,8 @@ class _InventoryPageState extends State<InventoryPage>
           const SizedBox(height: 20),
           Text(text, style: const TextStyle(fontSize: 18, color: Colors.grey)),
           const SizedBox(height: 10),
-          const Text(
-            'هذه الصفحة مبدئية للنقاش حول التفاصيل',
+          Text(
+            _t('هذه الصفحة مبدئية للنقاش حول التفاصيل'),
             style: TextStyle(fontSize: 14, color: Colors.blueGrey),
           ),
         ],

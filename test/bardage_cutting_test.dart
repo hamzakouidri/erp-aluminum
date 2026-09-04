@@ -1,5 +1,6 @@
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,22 @@ import 'package:flutter_test/flutter_test.dart';
 class FakeSqlDatabase extends SqlDatabase {}
 
 void main() {
+  test('side covers default to enabled and preserve an explicit off state', () {
+    final model = WindowModel(db: FakeSqlDatabase());
+
+    expect(model.hasSideCovers, isTrue);
+
+    applyWindowModelFromMap(model, {'hasSideCovers': false});
+    expect(model.hasSideCovers, isFalse);
+
+    applyWindowModelFromMap(model, {'hasSideCovers': '0'});
+    expect(model.hasSideCovers, isFalse);
+
+    // Legacy drawings without the field use the new default.
+    applyWindowModelFromMap(model, const {});
+    expect(model.hasSideCovers, isTrue);
+  });
+
   test('shutter curtain weight follows the actual blade cuts', () {
     final weight = ComponentCalculator.shutterCurtainWeightKg(
       windowWidthMm: 1200,
@@ -264,6 +281,10 @@ void main() {
     expect(tunnelKitRows, isEmpty);
     expect(names, contains('Embout moteur secours'));
     expect(names, contains('Rondelle indépendante'));
+    expect(
+      bom.firstWhere((item) => item.name == 'Embout moteur secours').kitGroupName,
+      'Kit Caisson Tunnel',
+    );
     expect(names, isNot(contains('Embout moteur normal')));
     expect(names, isNot(contains('Embout manivelle')));
     // The ordinary shutter bill of materials must not appear next to a

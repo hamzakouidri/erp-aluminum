@@ -2858,6 +2858,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           Expanded(
             child: ResizableColumnsTable(
               key: ValueKey('required-goods-${_aggregatedItems.length}'),
+              persistenceKey: 'order_required_goods',
               headerColor:
                   isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
               borderColor:
@@ -4825,6 +4826,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     if (isDesktop) {
       return ResizableColumnsTable(
+        persistenceKey: 'order_required_goods_cutting',
         key: ValueKey('product-bom-${pb.index}'),
         headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
         borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,

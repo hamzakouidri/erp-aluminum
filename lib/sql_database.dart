@@ -255,6 +255,7 @@ class SqlDatabase {
     'SeriesTableConfig',
     'SeriesDesignConfig',
     'SeriesDesignRoles',
+    'SectionSharingRules',
     'CatalogItemRules',
     'ProfileCalculationRules',
     'SectionJointLinks',
@@ -367,6 +368,24 @@ class SqlDatabase {
 
   String get date => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
+  Future<String> _currentOrderEditor() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('user_display_name')?.trim() ?? '';
+      final workshopName = prefs.getString('workshop_name')?.trim() ?? '';
+      if (cached.isNotEmpty && cached != workshopName) return cached;
+    } catch (_) {}
+
+    try {
+      final user = AppAuthService().currentUser;
+      final displayName = user?.displayName?.trim() ?? '';
+      if (displayName.isNotEmpty) return displayName;
+      final email = user?.email?.trim() ?? '';
+      if (email.isNotEmpty) return email;
+    } catch (_) {}
+    return 'system';
+  }
+
   Future<String> _resolveDbPassword(String dbName) async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'db_cipher_$dbName';
@@ -388,7 +407,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 65,
+          version: 66,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -399,7 +418,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 65,
+      version: 66,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -437,6 +456,11 @@ class SqlDatabase {
       // Preserve the order chosen by the user when an order is edited.
       await db.execute(
         "ALTER TABLE Commandes_details ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes ADD COLUMN updated_by TEXT;",
       );
     } catch (_) {}
     try {
@@ -539,6 +563,7 @@ class SqlDatabase {
     } catch (_) {}
 
     await _ensureSeriesDesignTables(db);
+    await _ensureSectionSharingSchema(db);
     await _ensureProfileCalculationRulesTable(db);
     await _ensureClientCodeInfrastructure(db);
     await _ensureOrderCodeInfrastructure(db);
@@ -1829,6 +1854,32 @@ class SqlDatabase {
     );
   }
 
+  /// Allows one catalogue section to be assigned to another series or to an
+  /// entire profile system without duplicating the section row.
+  Future<void> _ensureSectionSharingSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SectionSharingRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_section_id INTEGER NOT NULL,
+        target_scope TEXT NOT NULL CHECK(target_scope IN ('series', 'profile')),
+        target_id INTEGER NOT NULL,
+        role_key TEXT NOT NULL,
+        usage_scope TEXT NOT NULL DEFAULT 'global',
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(source_section_id, target_scope, target_id, role_key, usage_scope)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_section_sharing_target ON SectionSharingRules(target_scope, target_id, role_key, is_active);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_section_sharing_source ON SectionSharingRules(source_section_id);',
+    );
+  }
+
   Future<void> _ensureAdvancedKitCompatibilitySchema(DatabaseExecutor db) {
     final cachedTask = _advancedKitSchemaTask;
     if (identical(_advancedKitSchemaOwner, db) && cachedTask != null) {
@@ -3024,6 +3075,9 @@ class SqlDatabase {
         } catch (_) {}
       }
     }
+    if (oldVersion < 66) {
+      await _ensureSectionSharingSchema(db);
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -3171,7 +3225,8 @@ class SqlDatabase {
     advance_payment REAL NOT NULL DEFAULT 0.0,
     payment_status TEXT NOT NULL DEFAULT 'Unpaid',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
   )
 ''');
     await _ensureOrderCodeInfrastructure(db);
@@ -3506,6 +3561,7 @@ class SqlDatabase {
         FOREIGN KEY (blade_id) REFERENCES ShutterComponents(id) ON DELETE CASCADE
       )
     ''');
+    await _ensureSectionSharingSchema(db);
   }
 
   //////////////////////////////////// Profile //////////////////////////////////////
@@ -3877,6 +3933,206 @@ class SqlDatabase {
     );
   }
 
+  /// Returns local sections plus sections shared with this series or with
+  /// its entire profile system. Local rows come first and duplicate section
+  /// ids are removed so a shared section never appears twice.
+  Future<List<Map<String, dynamic>>> readAvailableSectionsBySeries(
+    int seriesId, {
+    String? roleKey,
+    String? usageScope,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSectionSharingSchema(myDb);
+
+    final seriesRows = await myDb.query(
+      'Series',
+      columns: ['profile_id'],
+      where: 'id = ?',
+      whereArgs: [seriesId],
+      limit: 1,
+    );
+    if (seriesRows.isEmpty) return readSectionsBySeries(seriesId);
+    final profileId = (seriesRows.first['profile_id'] as num?)?.toInt();
+    if (profileId == null) return readSectionsBySeries(seriesId);
+
+    final where = StringBuffer('''
+      (s.is_active = 1 OR s.is_active IS NULL)
+      AND (ownerSer.is_active = 1 OR ownerSer.is_active IS NULL)
+      AND (ownerProfile.is_active = 1 OR ownerProfile.is_active IS NULL)
+      AND r.is_active = 1
+      AND (
+        (r.target_scope = 'series' AND r.target_id = ?)
+        OR
+        (r.target_scope = 'profile' AND r.target_id = ?)
+      )
+    ''');
+    final args = <Object?>[seriesId, profileId];
+    final normalizedRole = roleKey?.trim();
+    if (normalizedRole != null && normalizedRole.isNotEmpty) {
+      where.write(' AND r.role_key = ?');
+      args.add(normalizedRole);
+    }
+    final normalizedScope = usageScope?.trim().toLowerCase();
+    if (normalizedScope != null && normalizedScope.isNotEmpty) {
+      where.write(" AND r.usage_scope IN ('global', 'both', ?)");
+      args.add(normalizedScope);
+    }
+
+    final local = await readSectionsBySeries(seriesId);
+    final shared = await myDb.rawQuery(
+      '''
+      SELECT s.*, 1 AS is_shared, r.id AS sharing_rule_id,
+             r.role_key AS sharing_role_key,
+             r.usage_scope AS sharing_usage_scope,
+             r.target_scope AS sharing_target_scope,
+             r.target_id AS sharing_target_id,
+             ownerSer.id AS source_series_id,
+             ownerSer.profile_id AS source_profile_id,
+             ownerSer.name AS source_series_name,
+             ownerProfile.name AS source_profile_name
+      FROM SectionSharingRules r
+      JOIN Sections s ON s.id = r.source_section_id
+      JOIN Series ownerSer ON ownerSer.id = s.series_id
+      JOIN Profile ownerProfile ON ownerProfile.id = ownerSer.profile_id
+      WHERE ${where.toString()}
+      ORDER BY r.is_default DESC, r.sort_order ASC, r.id ASC
+      ''',
+      args,
+    );
+
+    final result = <Map<String, dynamic>>[...local];
+    final seen = local
+        .map((row) => (row['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toSet();
+    for (final row in shared) {
+      final id = (row['id'] as num?)?.toInt();
+      if (id == null || seen.add(id)) result.add(Map<String, dynamic>.from(row));
+    }
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> readSectionSharingRules({
+    int? sourceSectionId,
+    String? targetScope,
+    int? targetId,
+    String? roleKey,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSectionSharingSchema(myDb);
+    final conditions = <String>['r.is_active = 1'];
+    final args = <Object?>[];
+    if (sourceSectionId != null) {
+      conditions.add('r.source_section_id = ?');
+      args.add(sourceSectionId);
+    }
+    if (targetScope != null && targetScope.trim().isNotEmpty) {
+      conditions.add('r.target_scope = ?');
+      args.add(targetScope.trim().toLowerCase());
+    }
+    if (targetId != null) {
+      conditions.add('r.target_id = ?');
+      args.add(targetId);
+    }
+    if (roleKey != null && roleKey.trim().isNotEmpty) {
+      conditions.add('r.role_key = ?');
+      args.add(roleKey.trim());
+    }
+    return myDb.rawQuery(
+      '''
+      SELECT r.*, s.code AS source_section_code,
+             s.name AS source_section_name,
+             ser.name AS source_series_name,
+             p.name AS source_profile_name
+      FROM SectionSharingRules r
+      JOIN Sections s ON s.id = r.source_section_id
+      JOIN Series ser ON ser.id = s.series_id
+      JOIN Profile p ON p.id = ser.profile_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY r.target_scope ASC, r.target_id ASC,
+               r.role_key ASC, r.sort_order ASC, r.id ASC
+      ''',
+      args,
+    );
+  }
+
+  Future<int> saveSectionSharingRule({
+    required int sourceSectionId,
+    required String targetScope,
+    required int targetId,
+    required String roleKey,
+    String usageScope = 'global',
+    bool isDefault = false,
+    int sortOrder = 0,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureSectionSharingSchema(myDb);
+    final normalizedTarget = targetScope.trim().toLowerCase();
+    if (normalizedTarget != 'series' && normalizedTarget != 'profile') {
+      throw ArgumentError('targetScope must be series or profile');
+    }
+    final normalizedRole = roleKey.trim();
+    if (normalizedRole.isEmpty) throw ArgumentError('roleKey is required');
+    final normalizedUsage = usageScope.trim().toLowerCase();
+    final now = DateTime.now().toIso8601String();
+    await myDb.rawInsert(
+      '''
+      INSERT INTO SectionSharingRules
+        (source_section_id, target_scope, target_id, role_key, usage_scope,
+         is_default, is_active, sort_order, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(source_section_id, target_scope, target_id, role_key, usage_scope)
+      DO UPDATE SET is_default = excluded.is_default,
+                    is_active = 1,
+                    sort_order = excluded.sort_order,
+                    updated_at = excluded.updated_at
+      ''',
+      [
+        sourceSectionId,
+        normalizedTarget,
+        targetId,
+        normalizedRole,
+        normalizedUsage.isEmpty ? 'global' : normalizedUsage,
+        isDefault ? 1 : 0,
+        sortOrder,
+        now,
+      ],
+    );
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    final rows = await myDb.rawQuery(
+      '''
+      SELECT id FROM SectionSharingRules
+      WHERE source_section_id = ? AND target_scope = ? AND target_id = ?
+        AND role_key = ? AND usage_scope = ?
+      LIMIT 1
+      ''',
+      [
+        sourceSectionId,
+        normalizedTarget,
+        targetId,
+        normalizedRole,
+        normalizedUsage.isEmpty ? 'global' : normalizedUsage,
+      ],
+    );
+    return (rows.first['id'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> deleteSectionSharingRule(int id) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSectionSharingSchema(myDb);
+    await myDb.update(
+      'SectionSharingRules',
+      {'is_active': 0, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+  }
+
   Future<List<Map<String, dynamic>>> searchSectionsWithProfile(
     String query,
   ) async {
@@ -3885,7 +4141,9 @@ class SqlDatabase {
 
     return await dbClient!.rawQuery(
       '''
-      SELECT s.*, p.name as profile_name
+      SELECT s.*, p.name as profile_name,
+             ser.name as series_name, ser.profile_id as source_profile_id,
+             ser.id as source_series_id
       FROM Sections s
       JOIN Series ser ON s.series_id = ser.id
       JOIN Profile p ON ser.profile_id = p.id
@@ -4376,17 +4634,14 @@ class SqlDatabase {
 
   String get _currentCreationPlatform {
     final user = AppAuthService().currentUser;
-    final email = user?.email ?? '';
-    final platformStr = kIsWeb
-        ? 'ÙˆÙŠØ¨'
-        : (Platform.isWindows || Platform.isLinux || Platform.isMacOS
-              ? 'ÙƒÙ…Ø¨ÙŠÙˆØªØ±'
-              : 'Ù‡Ø§ØªÙ');
+    final displayName = user?.displayName?.trim() ?? '';
+    if (displayName.isNotEmpty) return displayName;
+
+    final email = user?.email?.trim() ?? '';
     if (email.isNotEmpty) {
-      final namePart = email.split('@').first;
-      return '$namePart ($platformStr)';
+      return email.contains('@') ? email.split('@').first.trim() : email;
     }
-    return platformStr;
+    return 'system';
   }
 
   Future<int> _deleteClientOnce(dynamic id) async {
@@ -4670,9 +4925,14 @@ class SqlDatabase {
     bool skipAllocationSync = false,
   }) async {
     Database? myDb = await db;
+    final updatedBy = await _currentOrderEditor();
     var res = await myDb!.update(
       'Commandes',
-      {'status': newStatus},
+      {
+        'status': newStatus,
+        'updated_at': DateTime.now().toIso8601String(),
+        'updated_by': updatedBy,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -4683,7 +4943,13 @@ class SqlDatabase {
 
     // The local database is authoritative for the current action. Cloud
     // delivery continues in the background and must never freeze the UI.
-    unawaited(_uploadOrderStatusToCloud(id, newStatus));
+    unawaited(
+      _uploadOrderStatusToCloud(
+        id,
+        newStatus,
+        updatedBy: updatedBy,
+      ),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -4692,6 +4958,7 @@ class SqlDatabase {
     int orderId,
     String status, {
     int? clientId,
+    String? updatedBy,
   }) async {
     if (CloudSyncService.supabaseWorkshopDataOnly) return;
     try {
@@ -4702,6 +4969,8 @@ class SqlDatabase {
           'id': orderId,
           'status': status,
           'updated_at': FieldValue.serverTimestamp(),
+          if (updatedBy != null && updatedBy.trim().isNotEmpty)
+            'updated_by': updatedBy.trim(),
         };
         if (clientId != null) {
           payload['client_id'] = clientId;
@@ -4758,6 +5027,7 @@ class SqlDatabase {
         if (orderId == null) continue;
         final cloudStatus = data['status']?.toString() ?? '';
         final cloudClientId = (data['client_id'] as num?)?.toInt();
+        final cloudUpdatedBy = data['updated_by']?.toString().trim() ?? '';
 
         final existing = await myDb.query(
           'Commandes',
@@ -4776,8 +5046,13 @@ class SqlDatabase {
           if (cloudClientId != null && cloudClientId != currentClientId) {
             updateMap['client_id'] = cloudClientId;
           }
+          if (cloudUpdatedBy.isNotEmpty &&
+              cloudUpdatedBy != existing.first['updated_by']?.toString()) {
+            updateMap['updated_by'] = cloudUpdatedBy;
+          }
 
           if (updateMap.isNotEmpty) {
+            updateMap['updated_at'] = DateTime.now().toIso8601String();
             await myDb.update(
               'Commandes',
               updateMap,
@@ -7449,6 +7724,7 @@ class SqlDatabase {
     required String createdAt,
     int? projectId,
     required List<Map<String, dynamic>> details,
+    String? updatedBy,
   }) async {
     final myDb = await db;
     if (myDb == null) {
@@ -7497,6 +7773,9 @@ class SqlDatabase {
       }),
     );
 
+    final editor = updatedBy?.trim().isNotEmpty == true
+        ? updatedBy!.trim()
+        : await _currentOrderEditor();
     final savedId = await myDb.transaction<int>((txn) async {
       final now = DateTime.now().toIso8601String();
       late final int orderId;
@@ -7518,6 +7797,7 @@ class SqlDatabase {
           'payment_status': 'Unpaid',
           'created_at': createdAt,
           'updated_at': now,
+          'updated_by': editor,
           'project_id': projectId,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
         orderId = newOrderId;
@@ -7548,6 +7828,7 @@ class SqlDatabase {
             'payment_status': 'Unpaid',
             'created_at': createdAt,
             'updated_at': now,
+            'updated_by': editor,
             'project_id': projectId,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         } else {
@@ -7573,6 +7854,7 @@ class SqlDatabase {
               'payment_status': paymentStatus,
               'created_at': createdAt,
               'updated_at': now,
+              'updated_by': editor,
               'project_id': projectId,
             },
             where: 'id = ? OR CAST(id AS TEXT) = ?',
@@ -7668,6 +7950,7 @@ class SqlDatabase {
     double advancePayment = 0.0,
     String? createdAt,
     int? projectId,
+    String? updatedBy,
   }) async {
     final myDb = await db;
     if (myDb == null) {
@@ -7677,10 +7960,13 @@ class SqlDatabase {
     final netPayable = total - remise + ((total * tva) / 100);
     final now = DateTime.now().toIso8601String();
     final orderDate = createdAt ?? now;
+    final editor = updatedBy?.trim().isNotEmpty == true
+        ? updatedBy!.trim()
+        : await _currentOrderEditor();
     final distributedId = _nextDistributedId();
     final orderCode = await _reserveNextOrderCode(myDb);
     var res = await myDb.rawInsert(
-      'INSERT INTO Commandes (id, order_code, client_id, status, description, remise, tva, total, net_payable, advance_payment, payment_status, created_at, updated_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO Commandes (id, order_code, client_id, status, description, remise, tva, total, net_payable, advance_payment, payment_status, created_at, updated_at, project_id, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         distributedId,
         orderCode,
@@ -7698,6 +7984,7 @@ class SqlDatabase {
         orderDate,
         now,
         projectId,
+        editor,
       ],
     );
     if (advancePayment > _paymentTolerance) {
@@ -7748,6 +8035,7 @@ class SqlDatabase {
     if (updateProjectId) data['project_id'] = projectId;
     if (data.isNotEmpty) {
       data['updated_at'] = DateTime.now().toIso8601String();
+      data['updated_by'] = await _currentOrderEditor();
       var res = await myDb!.update(
         'Commandes',
         data,
@@ -11915,7 +12203,8 @@ class SqlDatabase {
         advance_payment REAL NOT NULL DEFAULT 0.0,
         payment_status TEXT NOT NULL DEFAULT 'Unpaid',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_by TEXT
       )
     ''');
     await _ensureOrderCodeInfrastructure(db);
@@ -12408,6 +12697,7 @@ class SqlDatabase {
       'SeriesTableConfig',
       'SeriesDesignConfig',
       'SeriesDesignRoles',
+      'SectionSharingRules',
       'CatalogItemRules',
       'SectionJointLinks',
       'SeriesShutterRules',

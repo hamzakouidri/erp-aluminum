@@ -122,7 +122,9 @@ class WindowPainter extends CustomPainter {
       : 0.0;
 
   bool get _hasDrawableIntegratedSideCover =>
-      model.isIntegratedFrame && model.integratedFrameSideCoverWidth > 0;
+      model.hasSideCovers &&
+      model.isIntegratedFrame &&
+      model.integratedFrameSideCoverWidth > 0;
 
   bool get _hasDrawableStandaloneSideCover =>
       model.hasSideCovers && _drawableStandaloneSideCoverWidth > 0;
@@ -480,7 +482,13 @@ class WindowPainter extends CustomPainter {
     // Draw the side cover after both face pipelines have finished. This keeps
     // it visible when the wall, shutter, or sash layers are enabled.
     if (!model.isShutterOnly) {
-      _drawConfiguredSideCovers(canvas, w, h, 0.0);
+      // The shutter box occupies the area from y=0 to [topOffset]. The
+      // side-cover perimeter must start at y=0 as well; otherwise it only
+      // surrounds the frame below the box and leaves the box outside the
+      // cover. Tunnel shutters already use a zero top offset.
+      final sideCoverTopY =
+          model.hasShutter && !isSlantedOrArched ? 0.0 : topOffset;
+      _drawConfiguredSideCovers(canvas, w, h, sideCoverTopY);
     }
 
     if (model.hasShutter &&
@@ -2057,6 +2065,20 @@ class WindowPainter extends CustomPainter {
   }
 
   void _drawMultiFrameSideCovers(Canvas canvas, double coverWidth) {
+    // A regular shutter box sits above all physical frame rectangles. Its
+    // cover therefore needs its own short perimeter; the exposed-frame
+    // segments below do not include this area.
+    if (model.hasShutter &&
+        !model.isCaissonTunnel &&
+        model.shutterBoxHeight > 0) {
+      _drawMultiFrameShutterBoxCover(
+        canvas,
+        model.width,
+        model.shutterBoxHeight,
+        coverWidth,
+      );
+    }
+
     final edges = model.getExposedFrameEdgeSegments();
     if (edges.isEmpty) return;
 
@@ -2339,6 +2361,67 @@ class WindowPainter extends CustomPainter {
           miterPaint,
         );
       }
+    }
+  }
+
+  void _drawMultiFrameShutterBoxCover(
+    Canvas canvas,
+    double w,
+    double boxHeight,
+    double coverWidth,
+  ) {
+    final isInternal = overrideIsInternalView ?? model.isInternalView;
+    final hasL = isInternal
+        ? !model.removedShutterSides.contains('left')
+        : !model.removedShutterSides.contains('right');
+    final hasR = isInternal
+        ? !model.removedShutterSides.contains('right')
+        : !model.removedShutterSides.contains('left');
+    final hasT = !model.removedShutterSides.contains('top');
+
+    final paint = Paint();
+    if (_isWoodColor() && TextureCache.woodTexture != null) {
+      _applyWoodShader(
+        paint,
+        Rect.fromLTRB(-coverWidth, -coverWidth, w + coverWidth, boxHeight),
+      );
+    } else {
+      paint.color = _fc[1];
+    }
+    final borderPaint = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    if (hasL) {
+      final path = Path()
+        ..moveTo(0, 0)
+        ..lineTo(-coverWidth, hasT ? -coverWidth : 0)
+        ..lineTo(-coverWidth, boxHeight)
+        ..lineTo(0, boxHeight)
+        ..close();
+      canvas.drawPath(path, paint);
+      canvas.drawPath(path, borderPaint);
+    }
+    if (hasR) {
+      final path = Path()
+        ..moveTo(w, 0)
+        ..lineTo(w + coverWidth, hasT ? -coverWidth : 0)
+        ..lineTo(w + coverWidth, boxHeight)
+        ..lineTo(w, boxHeight)
+        ..close();
+      canvas.drawPath(path, paint);
+      canvas.drawPath(path, borderPaint);
+    }
+    if (hasT) {
+      final path = Path()
+        ..moveTo(0, 0)
+        ..lineTo(hasL ? -coverWidth : 0, -coverWidth)
+        ..lineTo(hasR ? w + coverWidth : w, -coverWidth)
+        ..lineTo(w, 0)
+        ..close();
+      canvas.drawPath(path, paint);
+      canvas.drawPath(path, borderPaint);
     }
   }
 

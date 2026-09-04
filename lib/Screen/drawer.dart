@@ -23,9 +23,7 @@ import 'distribution_tracking_screen.dart';
 import 'external_operations_hub_screen.dart';
 import 'client_chrono_search_screen.dart';
 import '../login_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'inventory_screen.dart';
 import 'worker_archive_screen.dart';
 import 'package:flutter/gestures.dart';
@@ -68,13 +66,42 @@ class _AppDrawerState extends State<AppDrawer> {
 
   Future<void> _loadLocalWorkshopInfo() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedCode = prefs.getString('workshop_code');
+    final localWorkshopName = _usableWorkshopName(
+      prefs.getString('workshop_name'),
+      code: savedCode,
+    );
     if (mounted) {
       setState(() {
         _savedLogoBase64 = prefs.getString('workshop_logo_base64');
-        _savedWorkshopName = prefs.getString('workshop_name');
-        _savedWorkshopCode = prefs.getString('workshop_code');
+        _savedWorkshopName = localWorkshopName.isEmpty
+            ? null
+            : localWorkshopName;
+        _savedWorkshopCode = savedCode;
         _savedUserRole = prefs.getString('user_role');
       });
+    }
+
+    // The drawer can also be opened before the legacy Firebase profile has
+    // loaded. Resolve the name from the same Supabase account used by the
+    // home tab, then cache it for the next rebuild/offline opening.
+    try {
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      final accountName = _usableWorkshopName(
+        account?.workshopName,
+        code: account?.workshopCode,
+      );
+      if (accountName.isEmpty) return;
+      await prefs.setString('workshop_name', accountName);
+      if (!mounted) return;
+      setState(() {
+        _savedWorkshopName = accountName;
+        if (account?.workshopCode.trim().isNotEmpty == true) {
+          _savedWorkshopCode = account!.workshopCode.trim();
+        }
+      });
+    } catch (error) {
+      debugPrint('Could not load drawer workshop name: $error');
     }
   }
 
@@ -85,8 +112,7 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   void _handleDrawerPointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        !_drawerScrollController.hasClients) {
+    if (event is! PointerScrollEvent || !_drawerScrollController.hasClients) {
       return;
     }
 
@@ -119,13 +145,82 @@ class _AppDrawerState extends State<AppDrawer> {
   /// Supabase UUIDs (or any other long identifier) must never be displayed as
   /// the worker-facing workshop code.
   String _shortWorkshopCode(String? value) {
-    final code = value?.trim() ?? '';
-    return RegExp(r'^[A-Za-z0-9]{1,7}$').hasMatch(code) ? code : '';
+    final code = value?.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
+    return RegExp(r'^[A-Za-z0-9]{2,8}(?:[ -][A-Za-z0-9]{1,8})?$').hasMatch(code)
+        ? code
+        : '';
+  }
+
+  String _usableWorkshopName(dynamic value, {String? code}) {
+    final name = value?.toString().trim() ?? '';
+    final normalizedCode = code?.trim() ?? '';
+    const placeholders = {
+      'ورشة النجارة',
+      'ورشة الألمنيوم',
+      'اسم الورشة',
+      'menu_principal',
+    };
+    if (name.isEmpty || name == normalizedCode || placeholders.contains(name)) {
+      return '';
+    }
+    return name;
+  }
+
+  Widget _singleLineCodeText(
+    String code, {
+    TextStyle? style,
+    int? maxLines,
+    TextOverflow? overflow,
+  }) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Text(
+          code,
+          maxLines: maxLines ?? 1,
+          softWrap: false,
+          overflow: overflow,
+          style: style,
+        ),
+      ),
+    );
   }
 
   bool _canManageWorkshop(String? role) {
-    return const {'admin', 'manager', 'owner', 'co_manager'}
-        .contains(role?.trim().toLowerCase());
+    return const {
+      'admin',
+      'manager',
+      'owner',
+      'co_manager',
+    }.contains(role?.trim().toLowerCase());
+  }
+
+  String _workshopCodeErrorMessage(AppLanguage language, Object error) {
+    final details = error.toString().toLowerCase();
+    final migrationIsMissing =
+        details.contains('workshop_join_code_management.sql') ||
+        details.contains('join_code') ||
+        details.contains('set_my_workshop_join_code');
+    if (migrationIsMissing) {
+      return _desktopLabel(
+        language,
+        arabic:
+            'تعذر إنشاء الكود: يجب تطبيق تحديث workshop_join_code_management.sql في Supabase مرة واحدة.',
+        french:
+            "Impossible de créer le code : appliquez une fois la mise à jour workshop_join_code_management.sql dans Supabase.",
+        english:
+            'The code could not be created. Apply workshop_join_code_management.sql once in Supabase.',
+      );
+    }
+    return _desktopLabel(
+      language,
+      arabic: 'تعذر إنشاء كود الورشة. تحقق من الاتصال والصلاحيات.',
+      french:
+          "Impossible de créer le code de l’atelier. Vérifiez la connexion et les droits.",
+      english:
+          'Unable to create the workshop code. Check the connection and permissions.',
+    );
   }
 
   Future<String> _createWorkshopJoinCode() async {
@@ -316,13 +411,15 @@ class _AppDrawerState extends State<AppDrawer> {
         final savedCode = _shortWorkshopCode(_savedWorkshopCode);
         final rawAccountCode = account?.workshopCode.trim() ?? '';
         final accountCode = _shortWorkshopCode(rawAccountCode);
-        final isSyntheticAdminAccount = account != null &&
+        final isSyntheticAdminAccount =
+            account != null &&
             account.workshopId == account.userId &&
             rawAccountCode == account.userId;
         final workshopCode = isSyntheticAdminAccount
             ? savedCode
             : (accountCode.isNotEmpty ? accountCode : savedCode);
-        final workshopName = accountName.isNotEmpty &&
+        final workshopName =
+            accountName.isNotEmpty &&
                 accountName != account?.workshopCode.trim()
             ? accountName
             : (savedName.isNotEmpty && savedName != savedCode
@@ -333,7 +430,8 @@ class _AppDrawerState extends State<AppDrawer> {
                       french: 'Menu principal',
                       english: 'Main menu',
                     ));
-        final role = account?.role ??
+        final role =
+            account?.role ??
             (isApplicationAdminEmail(AppAuthService().currentUser?.email)
                 ? 'admin'
                 : (_savedUserRole ?? 'worker'));
@@ -431,10 +529,9 @@ class _AppDrawerState extends State<AppDrawer> {
                       ),
                     ),
                     if (workshopCode.isNotEmpty)
-                      Text(
+                      _singleLineCodeText(
                         '${_desktopLabel(lang, arabic: 'كود الورشة', french: "Code de l'atelier", english: 'Workshop code')}: $workshopCode',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        overflow: TextOverflow.visible,
                         style: const TextStyle(
                           color: Color(0xFFE0F2FE),
                           fontSize: 11,
@@ -456,7 +553,8 @@ class _AppDrawerState extends State<AppDrawer> {
       future: SupabaseAccountService().loadCurrentAccount(),
       builder: (context, snapshot) {
         final account = snapshot.data;
-        final role = account?.role ??
+        final role =
+            account?.role ??
             (isApplicationAdminEmail(AppAuthService().currentUser?.email)
                 ? 'admin'
                 : (_savedUserRole ?? 'worker'));
@@ -465,7 +563,8 @@ class _AppDrawerState extends State<AppDrawer> {
         }
         final rawAccountCode = account?.workshopCode.trim() ?? '';
         final accountCode = _shortWorkshopCode(rawAccountCode);
-        final isSyntheticAdminAccount = account != null &&
+        final isSyntheticAdminAccount =
+            account != null &&
             account.workshopId == account.userId &&
             rawAccountCode == account.userId;
         final joinCode = isSyntheticAdminAccount
@@ -495,8 +594,9 @@ class _AppDrawerState extends State<AppDrawer> {
                   ),
           ),
           subtitle: hasCode
-              ? Text(
+              ? _singleLineCodeText(
                   joinCode,
+                  overflow: TextOverflow.visible,
                   style: const TextStyle(
                     letterSpacing: 2,
                     fontWeight: FontWeight.bold,
@@ -536,9 +636,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   },
                 )
               : TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.white,
-                  ),
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
                   onPressed: () async {
                     try {
                       await _createWorkshopJoinCode();
@@ -557,9 +655,14 @@ class _AppDrawerState extends State<AppDrawer> {
                         );
                       }
                     } catch (error) {
+                      debugPrint('Workshop join code creation failed: $error');
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تعذر إنشاء كود الورشة: $error')),
+                          SnackBar(
+                            content: Text(
+                              _workshopCodeErrorMessage(lang, error),
+                            ),
+                          ),
                         );
                       }
                     }
@@ -1217,10 +1320,10 @@ class _AppDrawerState extends State<AppDrawer> {
                       .snapshots()
                 : null,
             builder: (context, snapshot) {
-              String workshopName = Localization.translate(
-                'menu_principal',
-                lang,
-              );
+              String workshopName = _usableWorkshopName(_savedWorkshopName);
+              if (workshopName.isEmpty) {
+                workshopName = Localization.translate('اسم الورشة', lang);
+              }
               String userEmail = AppAuthService().currentUser?.email ?? '';
               String? logoBase64;
               String? joinCode;
@@ -1229,12 +1332,16 @@ class _AppDrawerState extends State<AppDrawer> {
 
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                workshopName =
-                    (data['workshopName'] as String?)?.isNotEmpty == true
-                    ? data['workshopName']
-                    : (_savedWorkshopName?.isNotEmpty == true
-                          ? _savedWorkshopName!
-                          : workshopName);
+                // Firebase is legacy data. It may contain the old default
+                // name, so it must not overwrite the Supabase/local name.
+                final savedName = _usableWorkshopName(_savedWorkshopName);
+                final legacyName = _usableWorkshopName(
+                  data['workshopName'],
+                  code: _savedWorkshopCode,
+                );
+                workshopName = savedName.isNotEmpty
+                    ? savedName
+                    : (legacyName.isNotEmpty ? legacyName : workshopName);
                 logoBase64 =
                     (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
                     ? data['workshopLogoUrl']
@@ -1324,137 +1431,130 @@ class _AppDrawerState extends State<AppDrawer> {
                     ? account!.workshopCode
                     : _savedWorkshopCode,
               );
-              final role = isApplicationAdminEmail(
-                    AppAuthService().currentUser?.email,
-                  )
+              final role =
+                  isApplicationAdminEmail(AppAuthService().currentUser?.email)
                   ? 'admin'
                   : (account?.role ?? _savedUserRole);
 
               if (_canManageWorkshop(role)) {
-                  if (joinCode.isNotEmpty) {
-                    final visibleCode = joinCode;
-                    final isDark =
-                        Theme.of(context).brightness == Brightness.dark;
-                    return Container(
-                      color: isDark
-                          ? const Color(0xFF1E293B)
-                          : Colors.blue.shade50,
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.qr_code,
+                if (joinCode.isNotEmpty) {
+                  final visibleCode = joinCode;
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
+                  return Container(
+                    color: isDark
+                        ? const Color(0xFF1E293B)
+                        : Colors.blue.shade50,
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.qr_code,
+                        color: isDark ? Colors.lightBlue.shade300 : Colors.blue,
+                      ),
+                      title: Text(
+                        Localization.translate('كود انضمام العمال', lang),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
                           color: isDark
                               ? Colors.lightBlue.shade300
                               : Colors.blue,
                         ),
-                        title: Text(
-                          Localization.translate('كود انضمام العمال', lang),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isDark
-                                ? Colors.lightBlue.shade300
-                                : Colors.blue,
-                          ),
+                      ),
+                      subtitle: _singleLineCodeText(
+                        visibleCode,
+                        overflow: TextOverflow.visible,
+                        style: TextStyle(
+                          fontSize: 18,
+                          letterSpacing: 2,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
-                        subtitle: Text(
-                          visibleCode,
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 18,
-                            letterSpacing: 2,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(
+                          Icons.copy,
+                          color: isDark
+                              ? Colors.lightBlue.shade300
+                              : Colors.blue,
                         ),
-                        trailing: IconButton(
-                          icon: Icon(
-                            Icons.copy,
-                            color: isDark
-                                ? Colors.lightBlue.shade300
-                                : Colors.blue,
-                          ),
-                          onPressed: () {
-                            Clipboard.setData(
-                              ClipboardData(text: visibleCode),
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  Localization.translate(
-                                    'تم نسخ كود الورشة بنجاح!',
-                                    lang,
-                                  ),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: visibleCode));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                Localization.translate(
+                                  'تم نسخ كود الورشة بنجاح!',
+                                  lang,
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  } else {
-                    return Container(
-                      color: Colors.orange.shade50,
-                      child: ListTile(
-                        leading: const Icon(
-                          Icons.qr_code,
-                          color: Colors.orange,
-                        ),
-                        title: Text(
-                          Localization.translate('توليد كود الورشة', lang),
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          Localization.translate(
-                            'انقر هنا لإنشاء كود لعمالك',
-                            lang,
-                          ),
-                        ),
-                        trailing: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: const Color(0xFF2563EB),
-                            minimumSize: const Size(118, 40),
-                          ),
-                          onPressed: () async {
-                            try {
-                              await _createWorkshopJoinCode();
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      Localization.translate(
-                                        'تم إنشاء الكود بنجاح!',
-                                        lang,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'تعذر إنشاء كود الورشة: $e',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              Localization.translate('توليد الآن', lang),
-                              maxLines: 1,
-                              softWrap: false,
                             ),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                } else {
+                  return Container(
+                    color: Colors.orange.shade50,
+                    child: ListTile(
+                      leading: const Icon(Icons.qr_code, color: Colors.orange),
+                      title: Text(
+                        Localization.translate('توليد كود الورشة', lang),
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        Localization.translate(
+                          'انقر هنا لإنشاء كود لعمالك',
+                          lang,
+                        ),
+                      ),
+                      trailing: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: const Color(0xFF2563EB),
+                          minimumSize: const Size(118, 40),
+                        ),
+                        onPressed: () async {
+                          try {
+                            await _createWorkshopJoinCode();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    Localization.translate(
+                                      'تم إنشاء الكود بنجاح!',
+                                      lang,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            debugPrint(
+                              'Workshop join code creation failed: $e',
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    _workshopCodeErrorMessage(lang, e),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            Localization.translate('توليد الآن', lang),
+                            maxLines: 1,
+                            softWrap: false,
                           ),
                         ),
                       ),
-                    );
-                  }
+                    ),
+                  );
+                }
               }
               return const SizedBox.shrink();
             },
