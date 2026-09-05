@@ -265,14 +265,7 @@ class SqlDatabase {
     'Joints',
     'Glass',
     'ShutterComponents',
-    'ShutterColorPrices',
     'ShutterComponentColors',
-    'ShutterSqmPrices',
-    'ShutterBoxLimits',
-    'CaissonTunnelPrices',
-    'SeriesColorPrices',
-    'SectionColorPrices',
-    'AccessoryColorPrices',
     'ProfileColors',
     'ProfileColorConfig',
     'KitBundles',
@@ -313,6 +306,16 @@ class SqlDatabase {
     'OrderInventoryIssueSessions',
     'MaterialRemnants',
     'MaterialScrap',
+    // Selling prices are workshop data: each workshop has its own local
+    // market prices and must not overwrite another workshop's prices.
+    'GlassColorPrices',
+    'ShutterColorPrices',
+    'ShutterSqmPrices',
+    'ShutterBoxLimits',
+    'CaissonTunnelPrices',
+    'SeriesColorPrices',
+    'SectionColorPrices',
+    'AccessoryColorPrices',
   ];
 
   // These rows describe how a workshop uses the shared catalogue. The base
@@ -378,7 +381,7 @@ class SqlDatabase {
     }
   }
 
-  String get now => DateTime.now().toIso8601String();
+  String get now => DateTime.now().toUtc().toIso8601String();
 
   String get date => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -1944,6 +1947,28 @@ class SqlDatabase {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_kit_item_ranges_family ON KitItemRanges(family_id, item_id);',
       );
+    } catch (_) {}
+
+    // Repair legacy ranges that accidentally stored both targets.  Prefer an
+    // active family when it exists; otherwise preserve the component link.
+    try {
+      await db.execute('''
+        UPDATE KitItemRanges
+        SET shutter_component_id = NULL
+        WHERE shutter_component_id IS NOT NULL
+          AND family_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM KitBundleFamilies
+            WHERE KitBundleFamilies.id = KitItemRanges.family_id
+              AND KitBundleFamilies.is_active = 1
+          )
+      ''');
+      await db.execute('''
+        UPDATE KitItemRanges
+        SET family_id = NULL
+        WHERE shutter_component_id IS NOT NULL
+          AND family_id IS NOT NULL
+      ''');
     } catch (_) {}
 
     // Preserve old single-scope choices while moving to multi-select scopes.
@@ -3716,7 +3741,7 @@ class SqlDatabase {
         'section_id': sectionId,
         'calculation_mode': mode,
         'linear_meter_multiplier': multiplier,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -4091,7 +4116,7 @@ class SqlDatabase {
     final normalizedRole = roleKey.trim();
     if (normalizedRole.isEmpty) throw ArgumentError('roleKey is required');
     final normalizedUsage = usageScope.trim().toLowerCase();
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     await myDb.rawInsert(
       '''
       INSERT INTO SectionSharingRules
@@ -4140,7 +4165,7 @@ class SqlDatabase {
     await _ensureSectionSharingSchema(myDb);
     await myDb.update(
       'SectionSharingRules',
-      {'is_active': 0, 'updated_at': DateTime.now().toIso8601String()},
+      {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -4608,7 +4633,7 @@ class SqlDatabase {
         'nis': nis,
         'rc': rc,
         'ai': ai,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -4630,7 +4655,7 @@ class SqlDatabase {
         {
           'latitude': latitude,
           'longitude': longitude,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
         whereArgs: [id],
@@ -4783,7 +4808,7 @@ class SqlDatabase {
     String? description,
   ) async {
     Database? myDb = await db;
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     var res = await myDb!.rawInsert(
       'INSERT INTO Projects (id, name, client_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
       [_nextDistributedId(), name, clientId, description, now, now],
@@ -4805,7 +4830,7 @@ class SqlDatabase {
         'name': name,
         'client_id': clientId,
         'description': description,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -4944,7 +4969,7 @@ class SqlDatabase {
       'Commandes',
       {
         'status': newStatus,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
         'updated_by': updatedBy,
       },
       where: 'id = ?',
@@ -5066,7 +5091,7 @@ class SqlDatabase {
           }
 
           if (updateMap.isNotEmpty) {
-            updateMap['updated_at'] = DateTime.now().toIso8601String();
+            updateMap['updated_at'] = DateTime.now().toUtc().toIso8601String();
             await myDb.update(
               'Commandes',
               updateMap,
@@ -5219,7 +5244,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
 
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
     final details = await readCommandeDetails(orderId);
     if (details.isEmpty) return;
     final allocationIdsToUpload = <int>{};
@@ -5547,7 +5572,7 @@ class SqlDatabase {
     }
 
     // ðŸ›¡ï¸ 2. Clean slate initialization: reset all status flags for new allocation
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
     final Map<String, dynamic> row = {
       'commande_detail_id': detailId,
       'worker_uid': workerUid,
@@ -5634,7 +5659,7 @@ class SqlDatabase {
         'worker_uid': workerUid,
         'quantity': quantity,
         'worker_price': workerPrice,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6495,7 +6520,7 @@ class SqlDatabase {
                 'WorkerAllocations',
                 {
                   'archive_locked': 1,
-                  'updated_at': DateTime.now().toIso8601String(),
+                  'updated_at': DateTime.now().toUtc().toIso8601String(),
                 },
                 where: 'id = ?',
                 whereArgs: [allocId],
@@ -6559,7 +6584,7 @@ class SqlDatabase {
                 'reserve_notes': alloc['reserve_notes'],
                 'reserve_at': alloc['reserve_at'],
                 'updated_at':
-                    alloc['updated_at'] ?? DateTime.now().toIso8601String(),
+                    alloc['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
                 'cloud_synced_at': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true))
               .timeout(const Duration(seconds: 10));
@@ -6720,7 +6745,7 @@ class SqlDatabase {
               'quantity': data['quantity'] ?? 1,
               'worker_price': data['worker_price'] ?? 0.0,
               'assigned_at':
-                  data['assigned_at'] ?? DateTime.now().toIso8601String(),
+                  data['assigned_at'] ?? DateTime.now().toUtc().toIso8601String(),
               'unit_index': data['unit_index'],
               'unit_position': data['unit_position'],
               'is_settled': 0,
@@ -6741,7 +6766,7 @@ class SqlDatabase {
               'has_reserve': data['has_reserve'] ?? 0,
               'reserve_notes': data['reserve_notes'],
               'reserve_at': data['reserve_at'],
-              'updated_at': cloudUpdatedAt ?? DateTime.now().toIso8601String(),
+              'updated_at': cloudUpdatedAt ?? DateTime.now().toUtc().toIso8601String(),
             });
           }
         }
@@ -6878,7 +6903,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
 
     await myDb.update(
       'WorkerAllocations',
@@ -6928,7 +6953,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
 
     await myDb.update(
       'WorkerAllocations',
@@ -6975,7 +7000,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
 
     await myDb.update(
       'WorkerAllocations',
@@ -7022,7 +7047,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
 
     // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„ØªØ­ÙˆÙŠÙ„ Ø¥Ù„Ù‰ Ø§Ù„ØªÙˆØ²ÙŠØ¹: Ù†Ø¶Ø¨Ø· Ø­Ù‚Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„ ÙÙ‚Ø· â†’ Ø§Ù„Ø¹Ù†ØµØ± ÙŠÙ†ØªÙ‚Ù„ Ù„ØµÙØ­Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ©
     // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ù„ØºØ§Ø¡ (Ø¥Ø±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ø£Ø±Ø´ÙŠÙ): Ù†ØµÙÙ‘Ø± Ø¬Ù…ÙŠØ¹ Ø­Ù‚ÙˆÙ„ Ø§Ù„ØªØ±ÙƒÙŠØ¨/Ø§Ù„Ø§ÙƒØªÙ…Ø§Ù„ Ø­ØªÙ‰ ÙŠÙ…Ø± Ø§Ù„Ø¹Ù†ØµØ± Ø¨Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰
@@ -7119,7 +7144,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
     await myDb.update(
       'WorkerAllocations',
       {
@@ -7165,7 +7190,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
     await myDb.update(
       'WorkerAllocations',
       {
@@ -7190,7 +7215,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
     await myDb.update(
       'WorkerAllocations',
       {
@@ -7241,7 +7266,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    final nowStr = DateTime.now().toIso8601String();
+    final nowStr = DateTime.now().toUtc().toIso8601String();
     await myDb.update(
       'WorkerAllocations',
       {
@@ -7404,7 +7429,7 @@ class SqlDatabase {
                 'WorkerAllocations',
                 {
                   'archive_locked': 1,
-                  'updated_at': DateTime.now().toIso8601String(),
+                  'updated_at': DateTime.now().toUtc().toIso8601String(),
                 },
                 where: 'id = ?',
                 whereArgs: [allocId],
@@ -7427,7 +7452,7 @@ class SqlDatabase {
     if (myDb == null) return;
     await myDb.update(
       'WorkerAllocations',
-      {'worker_price': price, 'updated_at': DateTime.now().toIso8601String()},
+      {'worker_price': price, 'updated_at': DateTime.now().toUtc().toIso8601String()},
       where: 'id = ?',
       whereArgs: [allocationId],
     );
@@ -7579,7 +7604,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
 
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     final cleanKey = workerUid.trim().toLowerCase();
 
     // Collect all matching identifiers for this worker
@@ -7715,7 +7740,7 @@ class SqlDatabase {
         'assigned_worker_uid': workerUid,
         'worker_price': workerUid != null ? workerPrice : 0.0,
         'assigned_at': workerUid != null
-            ? DateTime.now().toIso8601String()
+            ? DateTime.now().toUtc().toIso8601String()
             : null,
       },
       where: 'id = ?',
@@ -7791,7 +7816,7 @@ class SqlDatabase {
         ? updatedBy!.trim()
         : await _currentOrderEditor();
     final savedId = await myDb.transaction<int>((txn) async {
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now().toUtc().toIso8601String();
       late final int orderId;
 
       if (idCommande == null) {
@@ -7972,7 +7997,7 @@ class SqlDatabase {
     }
     await _backfillOrderCodes(myDb);
     final netPayable = total - remise + ((total * tva) / 100);
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     final orderDate = createdAt ?? now;
     final editor = updatedBy?.trim().isNotEmpty == true
         ? updatedBy!.trim()
@@ -8048,7 +8073,7 @@ class SqlDatabase {
     if (dateCommande != null) data['created_at'] = dateCommande;
     if (updateProjectId) data['project_id'] = projectId;
     if (data.isNotEmpty) {
-      data['updated_at'] = DateTime.now().toIso8601String();
+      data['updated_at'] = DateTime.now().toUtc().toIso8601String();
       data['updated_by'] = await _currentOrderEditor();
       var res = await myDb!.update(
         'Commandes',
@@ -8269,7 +8294,7 @@ class SqlDatabase {
       'partitions_json': partitionsJson,
       'drawing_image_path': drawingImagePath,
       if (base64Str != null) 'drawing_image_base64': base64Str,
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
     CloudSyncService().notifyChange();
     return res;
@@ -8291,7 +8316,7 @@ class SqlDatabase {
       {
         'drawing_image_path': path,
         if (base64Str != null) 'drawing_image_base64': base64Str,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [idDetail],
@@ -8309,7 +8334,7 @@ class SqlDatabase {
       'Commandes_details',
       {
         'delivered_qty': newDeliveredQty,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [idDetail],
@@ -8322,7 +8347,7 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes_details',
-      {'delivered_qty': 0, 'updated_at': DateTime.now().toIso8601String()},
+      {'delivered_qty': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
       where: 'id_commandes = ?',
       whereArgs: [idCommande],
     );
@@ -8716,7 +8741,7 @@ class SqlDatabase {
       );
     }
 
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     var res = await myDb.insert(
       'Achats',
       _withDistributedId({
@@ -8838,7 +8863,7 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Achats',
-      {'status': status, 'updated_at': DateTime.now().toIso8601String()},
+      {'status': status, 'updated_at': DateTime.now().toUtc().toIso8601String()},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -8858,7 +8883,7 @@ class SqlDatabase {
     if (remainingAmount != null) data['remaining_amount'] = remainingAmount;
     if (status != null) data['status'] = status;
     if (data.isEmpty) return 0;
-    data['updated_at'] = DateTime.now().toIso8601String();
+    data['updated_at'] = DateTime.now().toUtc().toIso8601String();
     var res = await myDb!.update(
       'Achats',
       data,
@@ -8880,7 +8905,7 @@ class SqlDatabase {
       {
         'invoice_number': invoiceNumber,
         'supplier_name': supplierName,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -8893,7 +8918,7 @@ class SqlDatabase {
     Database? myDb = await db;
     final res = await myDb!.update(
       'Achats',
-      {'created_at': createdAt, 'updated_at': DateTime.now().toIso8601String()},
+      {'created_at': createdAt, 'updated_at': DateTime.now().toUtc().toIso8601String()},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -8911,7 +8936,7 @@ class SqlDatabase {
     if (imagePath != null) data['image_path'] = imagePath;
     if (pdfPath != null) data['pdf_path'] = pdfPath;
     if (data.isEmpty) return 0;
-    data['updated_at'] = DateTime.now().toIso8601String();
+    data['updated_at'] = DateTime.now().toUtc().toIso8601String();
     var res = await myDb!.update(
       'Achats',
       data,
@@ -9125,7 +9150,7 @@ class SqlDatabase {
                         as num?) ??
                     0)
                 .toDouble(),
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [achatId],
@@ -9183,7 +9208,7 @@ class SqlDatabase {
           'entity_type': 'Supplier',
           'entity_id': supplierId,
           'recorded_by': 'system',
-          'created_at': DateTime.now().toIso8601String(),
+          'created_at': DateTime.now().toUtc().toIso8601String(),
           'old_balance': 0.0,
           'new_balance': 0.0,
           'caisse_name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
@@ -9227,7 +9252,7 @@ class SqlDatabase {
           'paid_amount': newPaid,
           'remaining_amount': newRemaining,
           'status': newStatus,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
         whereArgs: [achatId],
@@ -9287,7 +9312,7 @@ class SqlDatabase {
         'notes': data['notes'] ?? '',
         'latitude': data['latitude'],
         'longitude': data['longitude'],
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       }),
     );
     CloudSyncService().notifyChange();
@@ -9329,7 +9354,7 @@ class SqlDatabase {
     String? recordedBy,
   }) async {
     Database? myDb = await db;
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
 
     var res = await myDb!.insert(
       'WorkerTransactions',
@@ -10892,7 +10917,7 @@ class SqlDatabase {
         'document_type': documentType,
         'document_id': documentId,
         'amount': amount,
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       }),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -10974,7 +10999,7 @@ class SqlDatabase {
             'caisse_name': 'الصندوق الرئيسي',
             'payment_method': 'نقداً / Espèce',
             'created_at': (createdAt == null || createdAt.trim().isEmpty)
-                ? DateTime.now().toIso8601String()
+                ? DateTime.now().toUtc().toIso8601String()
                 : createdAt,
           }),
         );
@@ -10982,7 +11007,7 @@ class SqlDatabase {
           'id': legacyId,
           'reference_id': orderId,
           'amount': amount,
-          'created_at': createdAt ?? DateTime.now().toIso8601String(),
+          'created_at': createdAt ?? DateTime.now().toUtc().toIso8601String(),
         });
         missingLegacy -= amount;
       }
@@ -11071,7 +11096,7 @@ class SqlDatabase {
         {
           'advance_payment': paid,
           'payment_status': paymentStatus,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
         whereArgs: [orderId],
@@ -11143,7 +11168,7 @@ class SqlDatabase {
             'caisse_name': 'الصندوق الرئيسي',
             'payment_method': 'نقداً / Espèce',
             'created_at': (createdAt == null || createdAt.trim().isEmpty)
-                ? DateTime.now().toIso8601String()
+                ? DateTime.now().toUtc().toIso8601String()
                 : createdAt,
           }),
         );
@@ -11151,7 +11176,7 @@ class SqlDatabase {
           'id': legacyId,
           'reference_id': purchaseId,
           'amount': amount,
-          'created_at': createdAt ?? DateTime.now().toIso8601String(),
+          'created_at': createdAt ?? DateTime.now().toUtc().toIso8601String(),
         });
         missingLegacy -= amount;
       }
@@ -11234,7 +11259,7 @@ class SqlDatabase {
         {
           'paid_amount': paid,
           'remaining_amount': remaining,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
         whereArgs: [purchaseId],
@@ -11325,7 +11350,7 @@ class SqlDatabase {
   }) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
-    final transactionAt = createdAt ?? DateTime.now().toIso8601String();
+    final transactionAt = createdAt ?? DateTime.now().toUtc().toIso8601String();
     final treasuryData = _withDistributedId({
       'transaction_type': transactionType,
       'amount': amount,
@@ -12821,6 +12846,17 @@ class SqlDatabase {
       await txn.update('_sync_runtime_flags', {
         'suppress_tombstones': 1,
       }, where: 'id = 1');
+
+      // A full workshop restore means that the active workshop has been
+      // selected explicitly and the incoming snapshot is authoritative.
+      // SyncTombstones is stored in the shared local database, so keeping
+      // tombstones from a previously opened workshop can hide unrelated rows
+      // that happen to use the same ID in the newly selected workshop.
+      // Clear that old workshop state before importing this workshop's own
+      // tombstones. Incremental downloads still merge tombstones normally.
+      if (replaceAllData) {
+        await txn.delete('SyncTombstones');
+      }
       final tombstoneKeys = await _mergeAndReadSyncTombstones(
         txn,
         data['SyncTombstones'],
@@ -13642,7 +13678,7 @@ class SqlDatabase {
     );
     final values = {
       'numeric_value': value,
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     if (rows.isEmpty) {
       await myDb.insert(
@@ -13754,13 +13790,13 @@ class SqlDatabase {
         if (issueAlreadyApplied) {
           await txn.update(
             'MaterialRemnants',
-            {'status': 'available', 'updated_at': DateTime.now().toIso8601String()},
+            {'status': 'available', 'updated_at': DateTime.now().toUtc().toIso8601String()},
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
           await txn.update(
             'MaterialScrap',
-            {'status': 'posted', 'updated_at': DateTime.now().toIso8601String()},
+            {'status': 'posted', 'updated_at': DateTime.now().toUtc().toIso8601String()},
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
@@ -13768,7 +13804,7 @@ class SqlDatabase {
         return;
       }
 
-      final timestamp = DateTime.now().toIso8601String();
+      final timestamp = DateTime.now().toUtc().toIso8601String();
       await txn.insert(
         'OrderCuttingSessions',
         _withDistributedId({
@@ -13924,7 +13960,7 @@ class SqlDatabase {
       );
       if (rows.isEmpty) return;
       final row = rows.first;
-      final timestamp = DateTime.now().toIso8601String();
+      final timestamp = DateTime.now().toUtc().toIso8601String();
       await txn.insert('MaterialScrap', {
         'id': _nextDistributedId(),
         'ticket_code': row['ticket_code'],
@@ -14023,13 +14059,13 @@ class SqlDatabase {
         if (completeIssue) {
           await txn.update(
             'MaterialRemnants',
-            {'status': 'available', 'updated_at': DateTime.now().toIso8601String()},
+            {'status': 'available', 'updated_at': DateTime.now().toUtc().toIso8601String()},
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
           await txn.update(
             'MaterialScrap',
-            {'status': 'posted', 'updated_at': DateTime.now().toIso8601String()},
+            {'status': 'posted', 'updated_at': DateTime.now().toUtc().toIso8601String()},
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
@@ -14037,7 +14073,7 @@ class SqlDatabase {
         return;
       }
 
-      final timestamp = DateTime.now().toIso8601String();
+      final timestamp = DateTime.now().toUtc().toIso8601String();
 
       // Validate the whole issue before changing anything.  Clamping a
       // negative result to zero hides a shortage and corrupts stock totals.
@@ -14438,7 +14474,7 @@ class SqlDatabase {
           'quantity': 0.0,
           'min_qty': minQty,
           'low_stock_alert_enabled': alertEnabled ? 1 : 0,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         }),
       );
     } else {
@@ -14447,7 +14483,7 @@ class SqlDatabase {
         {
           'min_qty': minQty,
           'low_stock_alert_enabled': alertEnabled ? 1 : 0,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
         whereArgs: [stock.first['id']],
@@ -14481,7 +14517,7 @@ class SqlDatabase {
           'quantity': quantityChange,
           'transaction_type': transactionType,
           'reference_id': referenceId,
-          'created_at': DateTime.now().toIso8601String(),
+          'created_at': DateTime.now().toUtc().toIso8601String(),
         }),
       );
 
@@ -14510,7 +14546,7 @@ class SqlDatabase {
         double newQty = currentQty + quantityChange;
         await txn.update(
           'CurrentStock',
-          {'quantity': newQty, 'updated_at': DateTime.now().toIso8601String()},
+          {'quantity': newQty, 'updated_at': DateTime.now().toUtc().toIso8601String()},
           where: where,
           whereArgs: whereArgs,
         );
@@ -14523,7 +14559,7 @@ class SqlDatabase {
             'color_id': colorId,
             'location_id': locationId,
             'quantity': quantityChange,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
           }),
         );
       }
@@ -15410,7 +15446,28 @@ class SqlDatabase {
     final result = <Map<String, dynamic>>[];
     for (final raw in rows) {
       final row = Map<String, dynamic>.from(raw);
-      final componentId = (row['shutter_component_id'] as num?)?.toInt();
+      var componentId = (row['shutter_component_id'] as num?)?.toInt();
+      var familyId = (row['family_id'] as num?)?.toInt();
+
+      // A range is either linked to one component or one family, never both.
+      // Normalize legacy malformed rows while reading as a second line of
+      // defense for databases created before the exclusivity fix.
+      if (componentId != null && familyId != null) {
+        final activeFamily = await database.query(
+          'KitBundleFamilies',
+          columns: const ['id'],
+          where: 'id = ? AND is_active = 1',
+          whereArgs: [familyId],
+          limit: 1,
+        );
+        if (activeFamily.isNotEmpty) {
+          componentId = null;
+          row['shutter_component_id'] = null;
+        } else {
+          familyId = null;
+          row['family_id'] = null;
+        }
+      }
       if (componentId != null) {
         final components = await database.query(
           'ShutterComponents',
@@ -15433,7 +15490,6 @@ class SqlDatabase {
               .toList();
         }
       }
-      final familyId = (row['family_id'] as num?)?.toInt();
       if (familyId != null) {
         final families = await database.query(
           'KitBundleFamilies',
@@ -15468,12 +15524,16 @@ class SqlDatabase {
     final database = await db;
     if (database == null) return -1;
     await _ensureAdvancedKitCompatibilitySchema(database);
-    final linkedColumn = shutterComponentId != null
+    // Enforce the model at the persistence boundary as well: callers may
+    // never store a component and a family on the same range.
+    final normalizedComponentId = shutterComponentId;
+    final normalizedFamilyId = shutterComponentId == null ? familyId : null;
+    final linkedColumn = normalizedComponentId != null
         ? 'shutter_component_id'
-        : familyId != null
+        : normalizedFamilyId != null
         ? 'family_id'
         : null;
-    final linkedId = shutterComponentId ?? familyId;
+    final linkedId = normalizedComponentId ?? normalizedFamilyId;
     if (linkedColumn != null && linkedId != null) {
       final duplicate = await database.query(
         'KitItemRanges',
@@ -15499,8 +15559,8 @@ class SqlDatabase {
       'price': price,
       'qty': qty,
       'compatibility_group': compatibilityGroup.clamp(0, 2),
-      'shutter_component_id': shutterComponentId,
-      'family_id': familyId,
+      'shutter_component_id': normalizedComponentId,
+      'family_id': normalizedFamilyId,
     });
     CloudSyncService().notifyCatalogChange();
     return result;
@@ -15521,12 +15581,16 @@ class SqlDatabase {
     final database = await db;
     if (database == null) return 0;
     await _ensureAdvancedKitCompatibilitySchema(database);
-    final linkedColumn = shutterComponentId != null
+    // Keep updates mutually exclusive too, including updates made by import
+    // or older callers that still provide both IDs.
+    final normalizedComponentId = shutterComponentId;
+    final normalizedFamilyId = shutterComponentId == null ? familyId : null;
+    final linkedColumn = normalizedComponentId != null
         ? 'shutter_component_id'
-        : familyId != null
+        : normalizedFamilyId != null
         ? 'family_id'
         : null;
-    final linkedId = shutterComponentId ?? familyId;
+    final linkedId = normalizedComponentId ?? normalizedFamilyId;
     if (linkedColumn != null && linkedId != null) {
       final duplicate = await database.query(
         'KitItemRanges',
@@ -15556,8 +15620,8 @@ class SqlDatabase {
         'price': price,
         'qty': qty,
         'compatibility_group': compatibilityGroup.clamp(0, 2),
-        'shutter_component_id': shutterComponentId,
-        'family_id': familyId,
+        'shutter_component_id': normalizedComponentId,
+        'family_id': normalizedFamilyId,
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -15965,7 +16029,7 @@ class SqlDatabase {
         slidingChicanePiecesPerJunction,
         slidingRailClearance,
         customFormulaNotes,
-        DateTime.now().toIso8601String(),
+        DateTime.now().toUtc().toIso8601String(),
       ],
     );
     CloudSyncService().notifyChange();
@@ -16013,7 +16077,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureSeriesDesignTables(myDb);
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     await myDb.transaction((txn) async {
       await txn.delete(
         'SeriesDesignRoles',
@@ -16116,7 +16180,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureSeriesDesignTables(myDb);
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     await myDb.transaction((txn) async {
       await txn.delete(
         'SectionJointLinks',
@@ -16355,7 +16419,7 @@ class SqlDatabase {
     await _ensureSeriesDesignTables(myDb);
     final cleanTable = itemTable.trim();
     if (cleanTable.isEmpty) return;
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     await myDb.transaction((txn) async {
       if (seriesId == null) {
         await txn.delete(
@@ -16441,7 +16505,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureSeriesDesignTables(myDb);
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     await myDb.transaction((txn) async {
       await txn.insert('SeriesDesignConfig', {
         'series_id': seriesId,
@@ -16659,7 +16723,7 @@ class SqlDatabase {
             'section_id': sectionId,
             'calculation_mode': isMainProfile ? 'linear_meter' : 'base_price',
             'linear_meter_multiplier': isPlant ? 2.0 : 1.0,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
           },
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );

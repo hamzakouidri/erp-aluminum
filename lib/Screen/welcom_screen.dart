@@ -562,9 +562,13 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final account = await SupabaseAccountService().loadCurrentAccount();
       final accountName = account?.workshopName.trim() ?? '';
       final accountCode = account?.workshopCode.trim() ?? savedCode;
-      final name = accountName.isNotEmpty && accountName != accountCode
-          ? accountName
-          : (savedName.isNotEmpty && savedName != savedCode ? savedName : '');
+      // The synced workshop profile is authoritative for the visible name.
+      // The workshops row is only a fallback for an older profile-less account.
+      final name = savedName.isNotEmpty && savedName != savedCode
+          ? savedName
+          : (accountName.isNotEmpty && accountName != accountCode
+                ? accountName
+                : '');
       if (name.isNotEmpty) {
         await prefs.setString('workshop_name', name);
         if (mounted && name != _workshopName) {
@@ -5257,12 +5261,12 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
     String displayTrend = widget.trend;
     final lang = Provider.of<AppSettingsProvider>(context).language;
     if (displayTrend.contains('(new)')) {
-      final newWord = Localization.translate('جديدة', lang);
-      displayTrend = displayTrend.replaceAll('(new)', '($newWord)');
+      final newWord = Localization.translate('طلبية جديدة', lang);
+      displayTrend = displayTrend.replaceAll('(new)', newWord);
     }
     if (displayTrend.contains('(new_client)')) {
-      final newWord = Localization.translate('جديد', lang);
-      displayTrend = displayTrend.replaceAll('(new_client)', '($newWord)');
+      final newWord = Localization.translate('زبون جديد', lang);
+      displayTrend = displayTrend.replaceAll('(new_client)', newWord);
     }
     if (displayTrend.contains('(جديد)')) {
       final newWord = Localization.translate('جديد', lang);

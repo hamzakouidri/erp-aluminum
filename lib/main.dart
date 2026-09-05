@@ -308,7 +308,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                     body: Center(child: CircularProgressIndicator()),
                   );
                 }
-                return const LoginScreen();
+                final loginContent = const LoginScreen();
+                if (!kIsWeb && Platform.isWindows) {
+                  return DesktopWindowFrame(child: loginContent);
+                }
+                return loginContent;
               },
             ),
     );

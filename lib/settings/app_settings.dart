@@ -116,6 +116,7 @@ class AppSettingsProvider extends ChangeNotifier {
         .doc(user.uid)
         .snapshots()
         .listen((docSnap) {
+          final previousRole = _userRole;
           _firestoreRoleLoaded = true;
           final data = docSnap.data();
           _firestorePermissionsAvailable = docSnap.exists && data != null;
@@ -157,8 +158,13 @@ class AppSettingsProvider extends ChangeNotifier {
 
           // Update the running app first. Cache writes must never delay the
           // permission that the worker sees on screen.
+          final roleChanged = _userRole != previousRole;
+          final permissionsChanged = !mapEquals(
+            _workerPermissions,
+            cloudPermissions,
+          );
           _workerPermissions = cloudPermissions;
-          notifyListeners();
+          if (roleChanged || permissionsChanged) notifyListeners();
           unawaited(prefs.setString('user_role', _userRole));
           unawaited(
             prefs.setString(
@@ -175,6 +181,10 @@ class AppSettingsProvider extends ChangeNotifier {
     _supabasePermSubscription ??= SupabaseWorkshopSyncService()
         .permissionsStream
         .listen((payload) {
+          final previousRole = _userRole;
+          final previousPermissions = Map<String, dynamic>.from(
+            _workerPermissions,
+          );
           final role = payload['role']?.toString() ?? '';
           final rawPermissions = payload['permissions'];
           // Once the Supabase session is open, Supabase is authoritative for
@@ -186,7 +196,10 @@ class AppSettingsProvider extends ChangeNotifier {
           if (rawPermissions is Map) {
             _workerPermissions = Map<String, dynamic>.from(rawPermissions);
           }
-          notifyListeners();
+          if (previousRole != _userRole ||
+              !mapEquals(previousPermissions, _workerPermissions)) {
+            notifyListeners();
+          }
         });
 
     unawaited(
@@ -482,9 +495,9 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager ||
       _isPermissionTrue(_workerPermissions['select_systems']);
 
-  /// Prices are part of the global catalogue. Only the application admin may
-  /// edit or publish them; workshop-manager permissions do not grant this.
-  bool canChangePrices() => isAdmin;
+  /// Workshop managers control their prices and can delegate price editing.
+  bool canChangePrices() =>
+      isManager || _isPermissionTrue(_workerPermissions['change_prices']);
 
   bool canViewCostPrice() =>
       isManager || _isPermissionTrue(_workerPermissions['view_cost_price']);
@@ -522,9 +535,10 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canBackupToCloud() =>
       isManager || _isPermissionTrue(_workerPermissions['cloud_backup']);
 
-  /// The catalogue is shared by all workshops, so synchronization is an
-  /// application-admin operation rather than a workshop permission.
-  bool canSyncGlobalCatalog() => isAdmin;
+  /// Every user who can open the products/catalogue screen must be able to
+  /// refresh its shared catalogue on their device. This is a local download;
+  /// it does not grant permission to edit or publish the global catalogue.
+  bool canSyncGlobalCatalog() => canViewMyAccreditations();
 
   bool canAccessLocalJsonBackup() =>
       isManager || _isPermissionTrue(_workerPermissions['local_json_backup']);

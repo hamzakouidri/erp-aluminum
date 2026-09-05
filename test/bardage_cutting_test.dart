@@ -182,7 +182,7 @@ void main() {
     },
   );
 
-  test('tunnel shutter uses only its grouped kit and selected family', () {
+  test('tunnel kit contains only configured children', () {
     final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400)
       ..hasShutter = true
       ..isCaissonTunnel = true
@@ -273,6 +273,7 @@ void main() {
     );
 
     final names = bom.map((item) => item.name).toList();
+    final originalNames = bom.map((item) => item.originalName).toList();
     final tunnelKitRows = bom
         .where((item) => item.name == 'Kit Caisson Tunnel')
         .toList();
@@ -282,18 +283,83 @@ void main() {
     expect(names, contains('Embout moteur secours'));
     expect(names, contains('Rondelle indépendante'));
     expect(
-      bom.firstWhere((item) => item.name == 'Embout moteur secours').kitGroupName,
+      bom
+          .firstWhere((item) => item.name == 'Embout moteur secours')
+          .kitGroupName,
       'Kit Caisson Tunnel',
     );
     expect(names, isNot(contains('Embout moteur normal')));
     expect(names, isNot(contains('Embout manivelle')));
-    // The ordinary shutter bill of materials must not appear next to a
-    // Caisson Tunnel kit. The selected kit children are emitted directly.
+    // The ordinary shutter BOM remains in the shutter section, but none of
+    // those calculated rows may be presented as a child of the tunnel kit.
     expect(names, isNot(contains('الصندوق (Caisson)')));
-    expect(names, isNot(contains('المحور (Axe)')));
-    expect(names, isNot(contains('المحرك (Moteur)')));
-    expect(names, isNot(contains('الشرائح (Lames)')));
-    expect(names, isNot(contains('السكك (Coulisses)')));
+    expect(originalNames, contains('المحور (Axe)'));
+    expect(originalNames, contains('المحرك (Moteur)'));
+    expect(originalNames, contains('الشرائح (Lames)'));
+    expect(originalNames, contains('السكك (Coulisses)'));
+    for (final item in bom.where(
+      (item) => const {
+        'المحور (Axe)',
+        'المحرك (Moteur)',
+        'براغي المحرك',
+        'الشرائح (Lames)',
+        'الشريحة النهائية (Lame Finale)',
+        'السكك (Coulisses)',
+        'جوان بروس للستار (Joint Brosse Shutter)',
+      }.contains(item.originalName),
+    )) {
+      expect(item.kitGroupName, isNull, reason: item.originalName);
+    }
+  });
+
+  test('tunnel manivelle kit stays separate from caisson tunnel kit', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400)
+      ..hasShutter = true
+      ..isCaissonTunnel = true
+      ..shutterMechanism = 'مانيفال';
+
+    final bom = ComponentCalculator.generateBom(
+      model,
+      const {},
+      kitBundleData: const {
+        'Kit Caisson Tunnel Manivelle': [
+          {
+            'component_type': 'Pièce tunnel',
+            'qty_mode': 'fixed',
+            'base_qty': 1.0,
+            'mechanism_scopes': 'crank',
+          },
+        ],
+        'Kit Manivelle': [
+          {
+            'component_type': 'Pièce kit manivelle',
+            'qty_mode': 'fixed',
+            'base_qty': 1.0,
+            'mechanism_scopes': 'crank',
+          },
+        ],
+      },
+      kitBundleMetadata: const {
+        'Kit Caisson Tunnel Manivelle': {
+          'name': 'Kit Caisson Tunnel Manivelle',
+          'description': 'CT',
+        },
+        'Kit Manivelle': {'name': 'Kit Manivelle', 'description': 'M'},
+      },
+    );
+
+    expect(
+      bom.firstWhere((item) => item.name == 'Pièce tunnel').kitGroupName,
+      'Kit Caisson Tunnel Manivelle',
+    );
+    expect(
+      bom.firstWhere((item) => item.name == 'Pièce kit manivelle').kitGroupName,
+      'Kit Manivelle',
+    );
+    expect(
+      bom.where((item) => item.originalName == 'المانيفال (Manivelle)'),
+      isEmpty,
+    );
   });
 
   test('an unselected kit family does not add its children', () {
@@ -1012,6 +1078,7 @@ void main() {
       sections: [frame, otherSimple, parclose514],
     );
     model.frameOverride = frame.toMap();
+    model.quantity = 2;
     model.sectionPricesForSelectedColor[514] = 2500;
     model.zones = [
       WindowZone(
@@ -1024,13 +1091,20 @@ void main() {
       ),
     ];
 
-    final item = ComponentCalculator.generateBom(model, {}).firstWhere(
+    final bom = ComponentCalculator.generateBom(model, {});
+    final item = bom.firstWhere(
       (row) => row.originalName == 'باكيت زجاج مفرد (Parclose Simple)',
     );
+    final glass = bom.firstWhere((row) => row.originalName == 'الزجاج');
 
     expect(item.profileCode, '514');
     expect(item.unitPrice, 2500);
     expect(item.isMissing, isFalse);
+    expect(glass.pieceCount, 2);
+    expect(
+      glass.name,
+      contains('Dimensions / القياس: 990 × 990 مم\n- Quantité / الكمية: 2'),
+    );
   });
 
   test(
@@ -1325,9 +1399,9 @@ void main() {
       {'id': 1, 'component_type': 'blade', 'name': 'Blade 43'},
       {'id': 2, 'component_type': 'bouchon_lame', 'name': 'Cap 43'},
     ];
-    final filtered = blades.where(
-      (b) => b['component_type'] == 'blade',
-    ).toList();
+    final filtered = blades
+        .where((b) => b['component_type'] == 'blade')
+        .toList();
     expect(filtered.length, 1);
     expect(filtered.first['name'], 'Blade 43');
   });

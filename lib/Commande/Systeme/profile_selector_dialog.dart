@@ -321,15 +321,46 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
 }
 
 bool catalogRuleAllowsGlobalFallback(String roleKey) {
-  switch (roleKey.trim().toLowerCase()) {
-    case 'kit_screw':
-    case 'box_screw':
-    case 'motor_screw':
-    case 'manivelle_screw':
-    case 'shutter_joint_brosse':
-      return true;
-  }
-  return false;
+  // A rule saved from the global Accessories tab applies to all compatible
+  // series. A series-specific rule still has priority because
+  // getCatalogItemRules suppresses the global row for that item/series.
+  const globallyShareableRoles = {
+    'kit_screw',
+    'box_screw',
+    'motor_screw',
+    'batmo_screw',
+    'bouchon_batmo',
+    'bouchon_batmo_screw',
+    'renfort_screw',
+    'manivelle_screw',
+    'assembly_screw',
+    'installation_screw',
+    'accessory_screw',
+    'sliding_kit',
+    'gache_simple',
+    'gache_double',
+    'gache_door',
+    'lock_clef',
+    'lock_condamnation',
+    'sliding_clamp',
+    'sliding_lock',
+    'verrou',
+    'cremone',
+    'tringle',
+    'espagnolette',
+    'canon',
+    'door_handle_key',
+    'door_handle_condamnation',
+    'handle',
+    'hinge',
+    'tasso',
+    'ekar',
+    'roulette',
+    'entrematique',
+    'other',
+    'shutter_joint_brosse',
+  };
+  return globallyShareableRoles.contains(roleKey.trim().toLowerCase());
 }
 
 bool catalogRuleMatchesExactScope(Map<String, dynamic> rule, int? seriesId) {
@@ -704,6 +735,7 @@ class CatalogCandidateQuery {
     this.seriesId,
     this.materialType,
     this.hasShutter = false,
+    this.isCaissonTunnel = false,
     this.hasSideCovers = false,
     this.multiFrameDrawing = false,
     this.drawingMode,
@@ -720,6 +752,7 @@ class CatalogCandidateQuery {
   final int? seriesId;
   final String? materialType;
   final bool hasShutter;
+  final bool isCaissonTunnel;
   final bool hasSideCovers;
   final bool multiFrameDrawing;
   final AccessoryDrawingMode? drawingMode;
@@ -816,6 +849,7 @@ class CatalogCandidateResolver {
             return false;
           }
           if (query.hasShutter &&
+              !query.isCaissonTunnel &&
               isAluminium &&
               isFrameSelector &&
               profileHasIntegratedSideCover(section)) {
@@ -1206,6 +1240,7 @@ class ProfileSelectorDialog extends StatefulWidget {
   final int? seriesId;
   final String? materialType;
   final bool hasShutter;
+  final bool isCaissonTunnel;
   final bool hasSideCovers;
   final bool multiFrameDrawing;
   final double? windowHeight;
@@ -1240,6 +1275,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.seriesId,
     this.materialType,
     this.hasShutter = false,
+    this.isCaissonTunnel = false,
     this.hasSideCovers = false,
     this.multiFrameDrawing = false,
     this.windowHeight,
@@ -1308,6 +1344,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           seriesId: widget.seriesId,
           materialType: widget.materialType,
           hasShutter: widget.hasShutter,
+          isCaissonTunnel: widget.isCaissonTunnel,
           hasSideCovers: widget.hasSideCovers,
           multiFrameDrawing: widget.multiFrameDrawing,
           drawingMode: widget.accessoryDrawingMode,
@@ -2224,7 +2261,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             material == 'aluminium' ||
             material == 'aluminum' ||
             material == 'alu';
-        if (widget.hasShutter && isAluminium && isFrameSelector) {
+        if (widget.hasShutter &&
+            !widget.isCaissonTunnel &&
+            isAluminium &&
+            isFrameSelector) {
           data = data
               .where((item) => !profileHasIntegratedSideCover(item))
               .toList();

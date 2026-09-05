@@ -160,7 +160,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           newCreatedAt:
               paymentChoice['payment_date']?.toString() ??
               existingTx.first['created_at']?.toString() ??
-              DateTime.now().toIso8601String(),
+              DateTime.now().toUtc().toIso8601String(),
         );
       } else {
         await _db.insertTreasury(

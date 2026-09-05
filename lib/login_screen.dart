@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'dart:convert';
@@ -26,7 +27,9 @@ const _googleServerClientId =
 
 int _readWorkshopMaxUsers(Map<String, dynamic> workshopData) {
   final hasNewLimit = workshopData['maxUsers'] != null;
-  final raw = hasNewLimit ? workshopData['maxUsers'] : workshopData['maxWorkers'];
+  final raw = hasNewLimit
+      ? workshopData['maxUsers']
+      : workshopData['maxWorkers'];
   if (raw == null) return 4; // Legacy default: 3 workers + the manager.
   final parsed = raw is num ? raw.toInt() : int.tryParse(raw.toString()) ?? 4;
   if (parsed == 999) return 999;
@@ -69,10 +72,40 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _animationController;
   late List<Particle> _particles;
 
-  String _t(String key) => Localization.translate(
-        key,
-        context.read<AppSettingsProvider>().language,
-      );
+  String _t(String key) =>
+      Localization.translate(key, context.read<AppSettingsProvider>().language);
+
+  String? _normalizeGmailAddress(String raw) {
+    var value = raw.trim().toLowerCase();
+    if (value.isEmpty) return null;
+    if (!value.contains('@')) value = '$value@gmail.com';
+    if (!RegExp(r'^[^@\s]+@gmail\.com$').hasMatch(value)) return null;
+    return value;
+  }
+
+  bool _requireGmailAddress() {
+    final normalized = _normalizeGmailAddress(_emailController.text);
+    if (normalized == null) {
+      setState(() {
+        _errorMessage =
+            'يرجى استعمال بريد Gmail صحيح ينتهي بـ @gmail.com.';
+        _isLoading = false;
+      });
+      return false;
+    }
+    _emailController.text = normalized;
+    return true;
+  }
+
+  void _onGmailLocalPartChanged(String value) {
+    final at = value.indexOf('@');
+    if (at < 0) return;
+    final localPart = value.substring(0, at);
+    _emailController.value = TextEditingValue(
+      text: localPart,
+      selection: TextSelection.collapsed(offset: localPart.length),
+    );
+  }
 
   @override
   void initState() {
@@ -109,6 +142,14 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   String _getFriendlyErrorMessage(Object e) {
+    if (e.toString().contains('WORKSHOP_USER_LIMIT_REACHED')) {
+      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      return switch (lang) {
+        AppLanguage.arabic => 'عذرًا، اكتمل عدد المستخدمين المسموح به لهذه الورشة. يُرجى التواصل مع مدير الورشة.',
+        AppLanguage.french => 'Le nombre maximal d’utilisateurs autorisés pour cet atelier est atteint. Veuillez contacter le responsable de l’atelier.',
+        AppLanguage.english => 'This workshop has reached its user limit. Please contact the workshop manager.',
+      };
+    }
     if (e is AppAuthException) {
       final code = e.code.toLowerCase().trim();
       final msg = e.message.toLowerCase();
@@ -116,7 +157,9 @@ class _LoginScreenState extends State<LoginScreen>
         return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
       }
       if (code.contains('invalid') || msg.contains('invalid login')) {
-        return _t('بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.');
+        return _t(
+          'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.',
+        );
       }
       if (code.contains('not-found') || msg.contains('not found')) {
         return _t('لم يتم العثور على حساب بهذا البريد، يرجى إنشاء حساب جديد.');
@@ -125,7 +168,9 @@ class _LoginScreenState extends State<LoginScreen>
         return _t('هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.');
       }
       if (code.contains('confirmed') || msg.contains('confirm')) {
-        return _t('تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.');
+        return _t(
+          'تم إنشاء الحساب. يرجى تأكيد البريد الإلكتروني ثم تسجيل الدخول.',
+        );
       }
       if (code.contains('weak') || msg.contains('weak password')) {
         return _t('كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.');
@@ -143,7 +188,9 @@ class _LoginScreenState extends State<LoginScreen>
         return _t('تم تعطيل هذا الحساب من قبل الإدارة.');
       }
       if (code == 'user-not-found' || msg.contains('user not found')) {
-        return _t('لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.');
+        return _t(
+          'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.',
+        );
       }
       if (code == 'wrong-password' || msg.contains('wrong password')) {
         return _t('كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.');
@@ -152,7 +199,9 @@ class _LoginScreenState extends State<LoginScreen>
           code == 'invalid_login_credentials' ||
           msg.contains('invalid credential') ||
           msg.contains('invalid login credentials')) {
-        return _t('بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.');
+        return _t(
+          'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.',
+        );
       }
       if (code == 'email-already-in-use' ||
           msg.contains('email already in use')) {
@@ -163,26 +212,38 @@ class _LoginScreenState extends State<LoginScreen>
       }
       if (code == 'operation-not-allowed' ||
           msg.contains('operation not allowed')) {
-        return _t('طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.');
+        return _t(
+          'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.',
+        );
       }
       if (_isNetworkError(code, msg)) {
         return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
       }
       if (code == 'too-many-requests' || msg.contains('too many requests')) {
-        return _t('تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.');
+        return _t(
+          'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.',
+        );
       }
       if (code == 'internal-error' ||
           code == 'channel-error' ||
           msg.contains('internal error')) {
-        return _t('خطأ في خادم الفايربيس (An internal error has occurred).\n'
-            'السبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.');
+        return _t(
+          'خطأ في خادم الفايربيس (An internal error has occurred).\n'
+          'السبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.',
+        );
       }
       if (msg.contains('configuration not found')) {
-        return _t('إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.');
+        return _t(
+          'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.',
+        );
       }
       return '${_t('حدث خطأ')}: ${e.message}';
     }
     final errorText = e.toString().toLowerCase();
+    if (errorText.contains('workshop name already exists') ||
+        errorText.contains('name already exists')) {
+      return _t('اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.');
+    }
     if (_isNetworkError(errorText, errorText)) {
       return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
     }
@@ -209,6 +270,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _resetPassword() async {
+    if (!_requireGmailAddress()) return;
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       setState(() {
@@ -229,7 +291,10 @@ class _LoginScreenState extends State<LoginScreen>
             content: Text(
               Localization.translate(
                 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.',
-                Provider.of<AppSettingsProvider>(context, listen: false).language,
+                Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language,
               ),
               style: TextStyle(fontFamily: 'Cairo'),
             ),
@@ -315,10 +380,7 @@ class _LoginScreenState extends State<LoginScreen>
       final legacyBackup = await CloudSyncService().readLegacyWorkshopBackup(
         legacy.legacyWorkshopId,
       );
-      final migratedName = _legacyDisplayName(
-        legacy,
-        legacyBackup,
-      );
+      final migratedName = _legacyDisplayName(legacy, legacyBackup);
       if (migratedName.isNotEmpty && migratedName != legacy.workshopCode) {
         await prefs.setString('workshop_name', migratedName);
       } else {
@@ -358,10 +420,7 @@ class _LoginScreenState extends State<LoginScreen>
           await workshopSync.updateMemberPermissionsByEmail(
             email: member.email,
             role: member.role,
-            permissions: {
-              ...member.permissions,
-              'isBlocked': member.blocked,
-            },
+            permissions: {...member.permissions, 'isBlocked': member.blocked},
           );
         } catch (error) {
           debugPrint(
@@ -556,6 +615,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _login() async {
+    if (!_requireGmailAddress()) return;
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -600,8 +660,8 @@ class _LoginScreenState extends State<LoginScreen>
         // if the old Firebase account is no longer available.
         final repaired = await _tryLegacyPasswordMigration();
         if (repaired) {
-          account = await SupabaseAccountService().loadCurrentAccount() ??
-              account;
+          account =
+              await SupabaseAccountService().loadCurrentAccount() ?? account;
         }
       }
       if (account.blocked) {
@@ -645,6 +705,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _register() async {
+    if (!_requireGmailAddress()) return;
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -691,6 +752,10 @@ class _LoginScreenState extends State<LoginScreen>
       await prefs.setString('workshop_code', code);
       if (!_isWorkerSignup) {
         await prefs.setString('workshop_name', workshopName);
+        await SupabaseWorkshopSyncService().createWorkshopForCurrentUser(
+          joinCode: code,
+          workshopName: workshopName,
+        );
       }
       final ready = await SupabaseWorkshopSyncService().ensureStarted(
         timeout: const Duration(seconds: 20),
@@ -713,10 +778,14 @@ class _LoginScreenState extends State<LoginScreen>
       await prefs.setString('workshop_code', account.workshopCode);
       await prefs.setString('workshop_name', account.workshopName);
       await prefs.setString('user_role', account.role);
-      await prefs.setString('permissions_json', jsonEncode(account.permissions));
+      await prefs.setString(
+        'permissions_json',
+        jsonEncode(account.permissions),
+      );
       SupabaseWorkshopSyncService().start();
     } catch (error) {
-      if (mounted) setState(() => _errorMessage = _getFriendlyErrorMessage(error));
+      if (mounted)
+        setState(() => _errorMessage = _getFriendlyErrorMessage(error));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -724,6 +793,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   /// Legacy Firebase registration retained only as a rollback reference.
   Future<void> _registerLegacy() async {
+    if (!_requireGmailAddress()) return;
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -1066,6 +1136,25 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _signInWithGoogle() async {
+    // Registration requirements must be checked before OAuth starts. This
+    // prevents Google from creating an Auth user when the workshop identity
+    // (name for an owner, code for a worker) is missing.
+    if (!_isLoginMode) {
+      final workshopName = _workshopNameController.text.trim();
+      final workshopCode = _workshopCodeController.text.trim();
+      if (!_isWorkerSignup && workshopName.isEmpty) {
+        setState(() {
+          _errorMessage = 'أدخل اسم الورشة قبل التسجيل بواسطة Google.';
+        });
+        return;
+      }
+      if (_isWorkerSignup && workshopCode.isEmpty) {
+        setState(() {
+          _errorMessage = 'أدخل كود الورشة قبل التسجيل بواسطة Google.';
+        });
+        return;
+      }
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -1082,6 +1171,13 @@ class _LoginScreenState extends State<LoginScreen>
         idToken = tokens.idToken;
         accessToken = tokens.accessToken;
       } else {
+        // Clear the plugin's cached Google account so the chooser is shown
+        // instead of silently reusing the previous email.
+        try {
+          await GoogleSignIn(
+            serverClientId: _googleServerClientId,
+          ).signOut();
+        } catch (_) {}
         final googleUser = await GoogleSignIn(
           serverClientId: _googleServerClientId,
         ).signIn();
@@ -1114,6 +1210,15 @@ class _LoginScreenState extends State<LoginScreen>
             accessToken: accessToken,
           );
           if (account == null) {
+            // Google OAuth may create the Auth row before membership lookup.
+            // Remove that orphan immediately; an account without a workshop
+            // must never remain in Supabase Authentication.
+            try {
+              await SupabaseAccountService()
+                  .deleteCurrentUnconfiguredAuthUser();
+            } catch (cleanupError) {
+              debugPrint('Orphan Google account cleanup failed: $cleanupError');
+            }
             await _auth.signOut();
             throw const AppAuthException(
               'account-not-configured',
@@ -1165,6 +1270,10 @@ class _LoginScreenState extends State<LoginScreen>
             );
           }
           await prefs.setString('workshop_name', name);
+          await SupabaseWorkshopSyncService().createWorkshopForCurrentUser(
+            joinCode: code,
+            workshopName: name,
+          );
         }
         final ready = await SupabaseWorkshopSyncService().ensureStarted(
           timeout: const Duration(seconds: 20),
@@ -1192,7 +1301,8 @@ class _LoginScreenState extends State<LoginScreen>
     } on WindowsGoogleSignInException catch (error) {
       if (mounted) setState(() => _errorMessage = error.userMessage);
     } catch (error) {
-      if (mounted) setState(() => _errorMessage = _getFriendlyErrorMessage(error));
+      if (mounted)
+        setState(() => _errorMessage = _getFriendlyErrorMessage(error));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1317,6 +1427,12 @@ class _LoginScreenState extends State<LoginScreen>
         await prefs.setString('workshop_code', code);
         if (workshopName.isNotEmpty) {
           await prefs.setString('workshop_name', workshopName);
+          if (!_isWorkerSignup) {
+            await SupabaseWorkshopSyncService().createWorkshopForCurrentUser(
+              joinCode: code,
+              workshopName: workshopName,
+            );
+          }
         }
         final ready = await SupabaseWorkshopSyncService().ensureStarted(
           timeout: const Duration(seconds: 20),
@@ -1342,7 +1458,10 @@ class _LoginScreenState extends State<LoginScreen>
       await prefs.setString('workshop_code', account!.workshopCode);
       await prefs.setString('workshop_name', account.workshopName);
       await prefs.setString('user_role', account.role);
-      await prefs.setString('permissions_json', jsonEncode(account.permissions));
+      await prefs.setString(
+        'permissions_json',
+        jsonEncode(account.permissions),
+      );
       SupabaseWorkshopSyncService().start();
       return;
 
@@ -1656,7 +1775,10 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                     Text(
-                      Localization.translate('نظام إدارة وتسيير ورش الألمنيوم الذكي', settings.language),
+                      Localization.translate(
+                        'نظام إدارة وتسيير ورش الألمنيوم الذكي',
+                        settings.language,
+                      ),
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 13,
@@ -1685,8 +1807,14 @@ class _LoginScreenState extends State<LoginScreen>
                             children: [
                               Text(
                                 _isLoginMode
-                                    ? Localization.translate('تسجيل الدخول', lang)
-                                    : Localization.translate('إنشاء حساب جديد', lang),
+                                    ? Localization.translate(
+                                        'تسجيل الدخول',
+                                        lang,
+                                      )
+                                    : Localization.translate(
+                                        'إنشاء حساب جديد',
+                                        lang,
+                                      ),
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   fontFamily: 'Cairo',
@@ -1761,7 +1889,10 @@ class _LoginScreenState extends State<LoginScreen>
                                       fontFamily: 'Cairo',
                                     ),
                                     decoration: InputDecoration(
-                                      labelText: Localization.translate('اسم المصنع / الورشة', lang),
+                                      labelText: Localization.translate(
+                                        'اسم المصنع / الورشة',
+                                        lang,
+                                      ),
                                       labelStyle: const TextStyle(
                                         color: Colors.white70,
                                         fontFamily: 'Cairo',
@@ -1795,7 +1926,10 @@ class _LoginScreenState extends State<LoginScreen>
                                       fontFamily: 'Cairo',
                                     ),
                                     decoration: InputDecoration(
-                                      labelText: Localization.translate('كود الورشة (ضروري)', lang),
+                                      labelText: Localization.translate(
+                                        'كود الورشة (ضروري)',
+                                        lang,
+                                      ),
                                       labelStyle: const TextStyle(
                                         color: Colors.white70,
                                         fontFamily: 'Cairo',
@@ -1833,7 +1967,10 @@ class _LoginScreenState extends State<LoginScreen>
                                     fontFamily: 'Cairo',
                                   ),
                                   decoration: InputDecoration(
-                                    labelText: Localization.translate('الاسم الكامل', lang),
+                                    labelText: Localization.translate(
+                                      'الاسم الكامل',
+                                      lang,
+                                    ),
                                     labelStyle: const TextStyle(
                                       color: Colors.white70,
                                       fontFamily: 'Cairo',
@@ -1865,12 +2002,22 @@ class _LoginScreenState extends State<LoginScreen>
                               TextField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
+                                onChanged: _onGmailLocalPartChanged,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'[A-Za-z0-9._%+\-]'),
+                                  ),
+                                ],
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontFamily: 'Cairo',
                                 ),
                                 decoration: InputDecoration(
-                                  labelText: Localization.translate('البريد الإلكتروني', lang),
+                                  labelText: Localization.translate(
+                                    'البريد الإلكتروني',
+                                    lang,
+                                  ),
                                   labelStyle: const TextStyle(
                                     color: Colors.white70,
                                     fontFamily: 'Cairo',
@@ -1880,6 +2027,11 @@ class _LoginScreenState extends State<LoginScreen>
                                   prefixIcon: const Icon(
                                     Icons.email_outlined,
                                     color: Colors.white60,
+                                  ),
+                                  suffixText: '@gmail.com',
+                                  suffixStyle: const TextStyle(
+                                    color: Colors.white70,
+                                    fontFamily: 'Cairo',
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -1925,7 +2077,10 @@ class _LoginScreenState extends State<LoginScreen>
                                   fontFamily: 'Cairo',
                                 ),
                                 decoration: InputDecoration(
-                                  labelText: Localization.translate('كلمة المرور', lang),
+                                  labelText: Localization.translate(
+                                    'كلمة المرور',
+                                    lang,
+                                  ),
                                   labelStyle: const TextStyle(
                                     color: Colors.white70,
                                     fontFamily: 'Cairo',
@@ -1976,7 +2131,10 @@ class _LoginScreenState extends State<LoginScreen>
                                           MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
-                                      Localization.translate('نسيت كلمة المرور؟', lang),
+                                      Localization.translate(
+                                        'نسيت كلمة المرور؟',
+                                        lang,
+                                      ),
                                       style: TextStyle(
                                         color: Colors.white70,
                                         fontFamily: 'Cairo',
@@ -1997,7 +2155,10 @@ class _LoginScreenState extends State<LoginScreen>
                                     fontFamily: 'Cairo',
                                   ),
                                   decoration: InputDecoration(
-                                    labelText: Localization.translate('تأكيد كلمة المرور', lang),
+                                    labelText: Localization.translate(
+                                      'تأكيد كلمة المرور',
+                                      lang,
+                                    ),
                                     labelStyle: const TextStyle(
                                       color: Colors.white70,
                                       fontFamily: 'Cairo',
@@ -2094,8 +2255,14 @@ class _LoginScreenState extends State<LoginScreen>
                                       ),
                                       child: Text(
                                         _isLoginMode
-                                            ? Localization.translate('تسجيل الدخول', lang)
-                                            : Localization.translate('إنشاء حساب', lang),
+                                            ? Localization.translate(
+                                                'تسجيل الدخول',
+                                                lang,
+                                              )
+                                            : Localization.translate(
+                                                'إنشاء حساب',
+                                                lang,
+                                              ),
                                         style: const TextStyle(
                                           fontFamily: 'Cairo',
                                           fontSize: 18,
@@ -2142,8 +2309,14 @@ class _LoginScreenState extends State<LoginScreen>
                                           const SizedBox(width: 12),
                                           Text(
                                             _isLoginMode
-                                                ? Localization.translate('الدخول باستخدام Google', lang)
-                                                : Localization.translate('التسجيل باستخدام Google', lang),
+                                                ? Localization.translate(
+                                                    'الدخول باستخدام Google',
+                                                    lang,
+                                                  )
+                                                : Localization.translate(
+                                                    'التسجيل باستخدام Google',
+                                                    lang,
+                                                  ),
                                             style: const TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.bold,
@@ -2164,8 +2337,14 @@ class _LoginScreenState extends State<LoginScreen>
                                       },
                                       child: Text(
                                         _isLoginMode
-                                            ? Localization.translate('ليس لديك حساب؟ إنشاء حساب جديد', lang)
-                                            : Localization.translate('لديك حساب بالفعل؟ تسجيل الدخول', lang),
+                                            ? Localization.translate(
+                                                'ليس لديك حساب؟ إنشاء حساب جديد',
+                                                lang,
+                                              )
+                                            : Localization.translate(
+                                                'لديك حساب بالفعل؟ تسجيل الدخول',
+                                                lang,
+                                              ),
                                         style: const TextStyle(
                                           color: Colors.white70,
                                           fontSize: 14,

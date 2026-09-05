@@ -306,16 +306,20 @@ class SupabaseCatalogSyncService {
       throw StateError('مؤشر الكتالوج المركزي لا يحتوي على نسخة صالحة.');
     }
 
-    final tables = _readStringList(manifest['tables']);
+    // Older catalog manifests incorrectly included workshop-owned price
+    // tables (including AccessoryColorPrices). They must be ignored during a
+    // global catalog download, otherwise every phone either rejects the
+    // manifest or overwrites its own workshop prices.
+    final tables = _readStringList(manifest['tables'])
+        .where(SqlDatabase.catalogTables.contains)
+        .toList(growable: false);
     final expectedRows = _readIntMap(manifest['table_row_counts']);
     final expectedChunks = _readIntMap(manifest['chunk_counts']);
     if (tables.isEmpty || expectedRows.isEmpty) {
       throw StateError('بيانات تعريف الكتالوج المركزي فارغة.');
     }
-    for (final table in tables) {
-      if (!SqlDatabase.catalogTables.contains(table)) {
-        throw StateError('الكتالوج المركزي يحتوي على جدول غير مسموح: $table');
-      }
+    if (tables.isEmpty) {
+      throw StateError('الكتالوج المركزي لا يحتوي على جداول كتالوج صالحة.');
     }
 
     final chunks = <Map<String, dynamic>>[];
@@ -326,6 +330,10 @@ class SupabaseCatalogSyncService {
           .from('catalog_chunks')
           .select('table_name,chunk_index,total_chunks,row_count,payload')
           .eq('version_id', versionId)
+          // Do not fetch legacy workshop-price chunks from old manifests.
+          // They are not part of the global catalogue and would otherwise be
+          // treated as invalid chunks or overwrite local workshop prices.
+          .inFilter('table_name', tables)
           .order('table_name')
           .order('chunk_index')
           .range(offset, offset + pageSize - 1);

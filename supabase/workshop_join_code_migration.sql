@@ -39,7 +39,6 @@ declare
   existing_workshop public.workshops%rowtype;
   pending_invite public.workshop_member_invites%rowtype;
   workshop_uuid uuid;
-  workshop_was_created boolean := false;
   current_email text;
 begin
   if auth.uid() is null then
@@ -69,6 +68,19 @@ begin
        ) then
       workshop_uuid := existing_workshop.id;
     else
+      -- The subscription limit includes the workshop owner/manager.
+      if (
+        select count(*)
+        from public.workshop_members
+        where workshop_id = existing_workshop.id
+      ) >= coalesce((
+        select max_users
+        from public.workshop_subscriptions
+        where workshop_id = existing_workshop.id
+      ), 4) then
+        raise exception 'WORKSHOP_USER_LIMIT_REACHED';
+      end if;
+
       select * into pending_invite
       from public.workshop_member_invites
       where workshop_id = existing_workshop.id
@@ -118,17 +130,10 @@ begin
       where id = existing_workshop.id;
     end if;
   else
-    -- New managers receive an internal code based on their Supabase user ID,
-    -- while the short entered/generated value becomes the worker join code.
-    insert into public.workshops (code, join_code, name, owner_uid)
-    values (auth.uid()::text, clean_code, coalesce(clean_name, ''), auth.uid())
-    returning id into workshop_uuid;
-    workshop_was_created := true;
+    raise exception 'Workshop not found';
   end if;
 
-  if existing_workshop.owner_uid = auth.uid()
-     or workshop_was_created
-     or public.is_app_admin() then
+  if existing_workshop.owner_uid = auth.uid() then
     insert into public.workshop_members (workshop_id, user_id, role)
     values (workshop_uuid, auth.uid(), 'owner')
     on conflict (workshop_id, user_id) do update

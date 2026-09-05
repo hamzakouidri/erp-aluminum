@@ -24,13 +24,16 @@ import 'package:database_data/Screen/worker_weekly_settlement_screen.dart';
 import 'package:database_data/Screen/workers_management_screen.dart';
 import 'package:database_data/items_produits/products_menu_screen.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/services/auth_service.dart';
 
@@ -661,10 +664,29 @@ class DesktopCommandBar extends StatelessWidget {
             onSelected: () async {
               try {
                 context.read<WorkspaceController>().resetForSignedOut();
-                await CloudSyncService().clearCachedWorkshopContext();
-                await AppAuthService().signOut();
+                // Change the auth state first so main.dart replaces the
+                // workspace with LoginScreen immediately. Cleanup must not
+                // block that transition on desktop.
+                try {
+                  await AppAuthService().signOut().timeout(
+                    const Duration(seconds: 5),
+                  );
+                } catch (error) {
+                  // Continue local cleanup and window restoration even if
+                  // the remote sign-out call is delayed.
+                  debugPrint('Timed out signing out of auth backend: $error');
+                }
                 await AppAuthService().signOutGoogleSession();
-                await SqlDatabase.clearAllLocalData();
+                CloudSyncService().reset();
+                SupabaseWorkshopSyncService().stop();
+                unawaited(CloudSyncService().clearCachedWorkshopContext());
+                unawaited(SqlDatabase.clearAllLocalData());
+                // A Windows window can remain minimized after the workspace
+                // is replaced by the auth gate. Explicitly restore and focus
+                // it so LoginScreen is visible immediately.
+                await windowManager.restore();
+                await windowManager.show();
+                await windowManager.focus();
               } catch (error) {
                 debugPrint('Sign out error: $error');
               }

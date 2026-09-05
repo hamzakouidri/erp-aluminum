@@ -3,7 +3,6 @@ import 'package:database_data/services/auth_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'subscription_expired_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +13,9 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
+import '../widgets/subscription_deadline.dart';
 
 class SubscriptionChecker extends StatefulWidget {
   const SubscriptionChecker({super.key});
@@ -532,8 +534,108 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
   }
 }
 
-class SupabaseSubscriptionGate extends StatelessWidget {
+class SupabaseSubscriptionGate extends StatefulWidget {
   const SupabaseSubscriptionGate({super.key});
+
+  @override
+  State<SupabaseSubscriptionGate> createState() =>
+      _SupabaseSubscriptionGateState();
+}
+
+class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
+  Timer? _expiryTimer;
+  Timer? _subscriptionCheckTimer;
+  RealtimeChannel? _subscriptionChannel;
+  String? _subscriptionWorkshopId;
+  late Future<SupabaseAccountSnapshot?> _accountFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _accountFuture = SupabaseAccountService().loadCurrentAccount();
+    unawaited(_bindSubscriptionRealtime());
+    _subscriptionCheckTimer = Timer.periodic(const Duration(hours: 24), (_) {
+      if (!mounted) return;
+      setState(() {
+        // Daily fallback only; immediate changes arrive through Realtime.
+        _accountFuture = SupabaseAccountService().loadCurrentAccount();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _expiryTimer?.cancel();
+    _subscriptionCheckTimer?.cancel();
+    final channel = _subscriptionChannel;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+    super.dispose();
+  }
+
+  Future<void> _bindSubscriptionRealtime() async {
+    try {
+      final account = await _accountFuture;
+      if (!mounted || account == null || account.workshopId.trim().isEmpty) {
+        return;
+      }
+      _scheduleSubscriptionExpiry(account);
+      final workshopId = account.workshopId.trim();
+      if (_subscriptionWorkshopId == workshopId &&
+          _subscriptionChannel != null) {
+        return;
+      }
+      final oldChannel = _subscriptionChannel;
+      if (oldChannel != null) {
+        await Supabase.instance.client.removeChannel(oldChannel);
+      }
+      _subscriptionWorkshopId = workshopId;
+      _subscriptionChannel = Supabase.instance.client
+          .channel('subscription_gate_$workshopId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'workshop_subscriptions',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'workshop_id',
+              value: workshopId,
+            ),
+            callback: (_) {
+              if (!mounted) return;
+              setState(() {
+                _accountFuture =
+                    SupabaseAccountService().loadCurrentAccount();
+              });
+              unawaited(_bindSubscriptionRealtime());
+            },
+          )
+          .subscribe();
+    } catch (error) {
+      debugPrint('Subscription realtime setup skipped: $error');
+    }
+  }
+
+  void _scheduleSubscriptionExpiry(SupabaseAccountSnapshot account) {
+    _expiryTimer?.cancel();
+    final raw = account.subscription['ends_at']?.toString().trim() ?? '';
+    if (raw.isEmpty || raw == 'null') return;
+    final endsAt = DateTime.tryParse(raw)?.toLocal();
+    if (endsAt == null) return;
+    final delay = endsAt.difference(DateTime.now());
+    _expiryTimer = Timer(
+      delay.isNegative || delay == Duration.zero ? Duration.zero : delay,
+      _reloadAccountSilently,
+    );
+  }
+
+  void _reloadAccountSilently() {
+    if (!mounted) return;
+    setState(() {
+      _accountFuture = SupabaseAccountService().loadCurrentAccount();
+    });
+  }
 
   String _t(BuildContext context, String key) =>
       Localization.translate(key, context.read<AppSettingsProvider>().language);
@@ -559,7 +661,7 @@ class SupabaseSubscriptionGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<SupabaseAccountSnapshot?>(
-      future: SupabaseAccountService().loadCurrentAccount(),
+      future: _accountFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -634,11 +736,23 @@ class SupabaseSubscriptionGate extends StatelessWidget {
         });
 
         if (_isActive(account)) {
-          return SyncGateway(
-            key: const ValueKey('supabase_sync_gateway'),
+          return SubscriptionDeadline(
+            endsAt: account.role == 'admin' ? null : DateTime.tryParse(
+              account.subscription['ends_at']?.toString() ?? '',
+            ),
+            expired: const SubscriptionExpiredScreen(),
+            child: SyncGateway(
+            // A global administrator can open several workshops with the same
+            // user account. Recreate the gateway when the selected workshop
+            // changes; keying it by the user alone would keep the previous
+            // workshop's local database and synchronization state alive.
+            key: ValueKey(
+              'supabase_sync_gateway:${account.userId}:${account.workshopId}',
+            ),
             initialWorkshopId: account.workshopCode,
             initialWorkshopName: account.workshopName,
             initialUserRole: account.role,
+            ),
           );
         }
         return const SubscriptionExpiredScreen();
@@ -726,6 +840,10 @@ class _SyncGatewayState extends State<SyncGateway> {
       final currentUid = AppAuthService().currentUser?.uid ?? '';
       final activeUid = prefs.getString('active_cloud_user_uid') ?? '';
       final activeWorkshop = _storedActiveWorkshop(prefs);
+      final requestedWorkshop =
+          (widget.initialWorkshopId?.trim().isNotEmpty ?? false)
+          ? widget.initialWorkshopId!.trim()
+          : (prefs.getString('workshop_code') ?? '').trim();
       final db = SqlDatabase();
       final myDb = await db.db;
       if (myDb == null) {
@@ -736,7 +854,10 @@ class _SyncGatewayState extends State<SyncGateway> {
       if (hasLocalBusinessData &&
           currentUid.isNotEmpty &&
           activeUid == currentUid &&
-          activeWorkshop.isNotEmpty) {
+          activeWorkshop.isNotEmpty &&
+          requestedWorkshop.isNotEmpty &&
+          activeWorkshop == requestedWorkshop) {
+        await _preparePermissionsBeforeEnter();
         _enterApp(startListening: false);
         _syncSameAccountInBackground(db);
         return;
@@ -745,6 +866,7 @@ class _SyncGatewayState extends State<SyncGateway> {
           currentUid.isNotEmpty &&
           (activeUid.isEmpty || activeUid == currentUid) &&
           activeWorkshop.isEmpty) {
+        await _preparePermissionsBeforeEnter();
         _enterApp(startListening: false);
         _syncSameAccountInBackground(db);
         return;
@@ -764,11 +886,10 @@ class _SyncGatewayState extends State<SyncGateway> {
 
       final hasEffectiveLocalData = await _hasLocalBusinessData(effectiveMyDb);
 
-      // The dashboard must never be blocked by a cloud restore. This is
-      // especially important on a worker's first login: Supabase can take a
-      // moment to resolve the workshop membership, while the local database
-      // is already safe to open. The restore continues in the background and
-      // the realtime listener applies later changes automatically.
+      // Resolve permissions before creating the page tree. The business-data
+      // restore remains in the background, but every page starts with the
+      // correct role and no permission-related rebuild/flash is needed.
+      await _preparePermissionsBeforeEnter();
       _enterApp();
       effectiveDb.runAutoDailyBackup().catchError((_) {});
       await _rememberActiveWorkshop();
@@ -791,6 +912,7 @@ class _SyncGatewayState extends State<SyncGateway> {
         // realtime callback: SyncGateway remains mounted while it hosts the
         // dashboard, so that would repaint the whole app on every row change.
         await supabase.ensureStarted(timeout: const Duration(seconds: 20));
+        await _refreshPermissionsInBackground();
         await CloudSyncService().init();
         CloudSyncService().startListeningForUpdates(() {});
 
@@ -804,6 +926,7 @@ class _SyncGatewayState extends State<SyncGateway> {
           const Duration(seconds: 30),
           onTimeout: () {},
         );
+        await _refreshPermissionsInBackground();
       } catch (error) {
         debugPrint(
           'Background workshop sync skipped '
@@ -811,6 +934,20 @@ class _SyncGatewayState extends State<SyncGateway> {
         );
       }
     }();
+  }
+
+  Future<void> _preparePermissionsBeforeEnter() async {
+    try {
+      await SupabaseWorkshopSyncService().ensureStarted(
+        timeout: const Duration(seconds: 20),
+      );
+      await Provider.of<AppSettingsProvider>(context, listen: false)
+          .reloadPermissions();
+    } catch (error) {
+      // Login must remain usable during a temporary cloud failure; the
+      // background listener will retry without rebuilding the page tree.
+      debugPrint('Initial permission load skipped: $error');
+    }
   }
 
   Future<void> _primeCloudIdentity(SharedPreferences prefs) async {
@@ -918,6 +1055,7 @@ class _SyncGatewayState extends State<SyncGateway> {
         await SupabaseWorkshopSyncService().ensureStarted(
           timeout: const Duration(seconds: 20),
         );
+        await _refreshPermissionsInBackground();
         // Keep the system-selection application behind the protected restore.
         // Running both futures at once allowed the dashboard to read the old
         // active-profile flags while the workshop snapshot was still being
@@ -946,6 +1084,16 @@ class _SyncGatewayState extends State<SyncGateway> {
       if (startListening) {
         CloudSyncService().startListeningForUpdates(() {});
       }
+    }
+  }
+
+  Future<void> _refreshPermissionsInBackground() async {
+    if (!mounted) return;
+    try {
+      await Provider.of<AppSettingsProvider>(context, listen: false)
+          .reloadPermissions();
+    } catch (error) {
+      debugPrint('Background permission refresh skipped: $error');
     }
   }
 

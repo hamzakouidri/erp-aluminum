@@ -56,6 +56,10 @@ class _BomSwapTarget {
 }
 
 class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+  // Keep the selected cap in memory while it is disabled.  Removing the
+  // override is intentional: the cutting engine uses its presence to decide
+  // whether the cap thickness must be deducted from every blade cut.
+  Map<String, dynamic>? _disabledBladeEndCap;
   bool showCostPrice =
       true; // إظهار/إخفاء سعر التكلفة (TODO: لاحقًا يُربط بصلاحية المدير)
   final ScrollController _scrollController =
@@ -199,6 +203,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     ])) {
       // Bouchon Batmo is an opening-system profile even when the same
       // drawing also contains sliding zones.
+      return AccessoryDrawingMode.opening;
+    }
+    if (_containsAny(rowText, const ['batmo', 'باتمو'])) {
+      // Batmo belongs to the opening series and is only valid for a pair of
+      // opening sashes, even when the drawing also contains sliding zones.
       return AccessoryDrawingMode.opening;
     }
     if (rowText.contains('plinthe') || rowText.contains('بلانت')) {
@@ -1609,6 +1618,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   final Map<String, double> _tableColumnWidths = {};
   Future<SharedPreferences>? _tablePreferencesFuture;
   Future<void> _tablePersistenceQueue = Future<void>.value();
+  Timer? _tableColumnSaveDebounce;
   int _tablePreferencesLoadGeneration = 0;
 
   double _columnWidth(String key, double fallback) =>
@@ -1703,6 +1713,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           .clamp(_columnMinWidth(key), _columnMaxWidth(key))
           .toDouble();
     });
+    _tableColumnSaveDebounce?.cancel();
+    _tableColumnSaveDebounce = Timer(
+      const Duration(milliseconds: 250),
+      _persistTableColumnLayout,
+    );
+  }
+
+  void _finishColumnResize() {
+    _tableColumnSaveDebounce?.cancel();
+    _tableColumnSaveDebounce = null;
     _persistTableColumnLayout();
   }
 
@@ -2102,6 +2122,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   void dispose() {
     widget.model.removeListener(_onModelChanged);
+    _tableColumnSaveDebounce?.cancel();
+    if (_tableColumnWidths.isNotEmpty) {
+      _persistTableColumnLayout();
+    }
     _scrollController.dispose();
     _pageScrollController.dispose();
     _profitMarginController.dispose();
@@ -2494,6 +2518,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   void _handleVariantToggle(String name, String? group, bool value) {
     setState(() {
       activeVariants[name] = value; // تحديث الحالة الأساسية أولًا
+      if (name == 'أغطية الشفرات (Bouchons Lames)') {
+        const capKey = 'أغطية الشفرات (Bouchons Lames)';
+        if (value) {
+          final savedCap = _disabledBladeEndCap;
+          if (savedCap != null) {
+            widget.model.componentOverrides[capKey] =
+                Map<String, dynamic>.from(savedCap);
+            _disabledBladeEndCap = null;
+          }
+        } else {
+          final currentCap = widget.model.componentOverrides[capKey];
+          if (currentCap is Map) {
+            _disabledBladeEndCap = Map<String, dynamic>.from(currentCap);
+          }
+          widget.model.componentOverrides.remove(capKey);
+        }
+        // Do not let the generic exclusion logic below alter this explicit
+        // toggle.  The BOM refresh will recalculate blade lengths from the
+        // updated override state.
+        widget.model.refreshUI();
+        return;
+      }
       // تحقق: هل الاسم هو أحد مفاتيح الكيتات؟
       final isAnyKitKey =
           name == 'كيت (Kit)' ||
@@ -4954,11 +5000,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       listen: false,
     ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const s = TextStyle(
-      fontWeight: FontWeight.bold,
-      fontSize: 13,
-      color: Colors.white,
-    );
     return Container(
       color: isDark ? const Color(0xFF1E1E2C) : Colors.blueGrey.shade800,
       child: IntrinsicHeight(
@@ -5027,24 +5068,25 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           Expanded(
             child: Text(title, style: s, overflow: TextOverflow.ellipsis),
           ),
-          if (!isLast)
-            MouseRegion(
-              cursor: SystemMouseCursors.resizeColumn,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onHorizontalDragUpdate: (details) =>
-                    _resizeColumn(columnKey, details.delta.dx),
+          MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragUpdate: (details) =>
+                  _resizeColumn(columnKey, details.delta.dx),
+              onHorizontalDragEnd: (_) => _finishColumnResize(),
+              onHorizontalDragCancel: _finishColumnResize,
+              child: Container(
+                width: 14,
+                alignment: Alignment.center,
                 child: Container(
-                  width: 14,
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 2,
-                    height: 24,
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
+                  width: 2,
+                  height: 24,
+                  color: Colors.white.withValues(alpha: 0.35),
                 ),
               ),
             ),
+          ),
         ],
       ),
       width,
@@ -5617,6 +5659,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           seriesId: _seriesIdForSwapTarget(item, swapTarget),
           materialType: _materialTypeForSwapTarget(item, swapTarget),
           hasShutter: widget.model.hasShutter,
+          isCaissonTunnel: widget.model.isCaissonTunnel,
           hasSideCovers: widget.model.hasSideCovers,
           accessoryDrawingMode: swapTarget.drawingMode,
           roleKeys: dialogRoleKeys,
@@ -5990,6 +6033,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         seriesId: _seriesIdForSwapTarget(item, swapTarget),
         materialType: _materialTypeForSwapTarget(item, swapTarget),
         hasShutter: widget.model.hasShutter,
+        isCaissonTunnel: widget.model.isCaissonTunnel,
         hasSideCovers: widget.model.hasSideCovers,
         accessoryDrawingMode: accessoryDrawingMode,
         roleKeys: dialogRoleKeys,

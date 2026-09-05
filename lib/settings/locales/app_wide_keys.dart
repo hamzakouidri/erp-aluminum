@@ -1068,13 +1068,12 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Choisissez une couleur pour',
     AppLanguage.english: 'Choose a color for',
   },
-  'اختر مركّباً منفرداً أو عائلة؛ العائلة لا تدخل إلا عند هذا الاختيار.': {
-    AppLanguage.arabic:
-        'اختر مركّباً منفرداً أو عائلة؛ العائلة لا تدخل إلا عند هذا الاختيار.',
+  'اختر هدفاً واحداً فقط: مركّب أو عائلة.': {
+    AppLanguage.arabic: 'اختر هدفاً واحداً فقط: مركّب أو عائلة.',
     AppLanguage.french:
-        'Choisissez un composant seul ou une famille ; la famille n’est utilisée que pour ce choix.',
+        'Choisissez une seule cible : un composant ou une famille.',
     AppLanguage.english:
-        'Choose a single component or a family; the family is used only for this selection.',
+        'Choose exactly one target: a component or a family.',
   },
   'اختر نوع الناموسية (ملفوفة، مطوية أكورديون، منزلقة، ثابتة) وأدخل الأبعاد لتلقائياً إضافتها إلى الطلبية.': {
     AppLanguage.arabic:

@@ -1699,10 +1699,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.english: 'Equal (50%)',
   },
   'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)': {
-    AppLanguage.arabic: 'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)',
+    AppLanguage.arabic: 'توزيع عرض الضلفتين (ضلفة أكبر من الأخرى)',
     AppLanguage.french:
-        'Proportion de division du vantail (un vantail plus grand)',
-    AppLanguage.english: 'Sash split ratio (one sash larger)',
+        'Répartition de la largeur des vantaux (un vantail plus large)',
+    AppLanguage.english: 'Sash width split (one sash wider)',
   },
   'رسم ومقاس البانو ديكور:': {
     AppLanguage.arabic: 'رسم ومقاس البانو ديكور:',
@@ -2159,10 +2159,38 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.french: 'Télécharger les données de l’atelier',
     AppLanguage.english: 'Download workshop data',
   },
+  'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.': {
+    AppLanguage.arabic:
+        'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
+    AppLanguage.french:
+        'Aucune commande n’est enregistrée actuellement.\nCommencez maintenant par créer la première facture ou fiche de coupe du client.',
+    AppLanguage.english:
+        'No orders are currently registered.\nStart by creating the customer’s first invoice or cutting sheet.',
+  },
+  'إنشاء طلبية جديدة': {
+    AppLanguage.arabic: 'إنشاء طلبية جديدة',
+    AppLanguage.french: 'Créer une nouvelle commande',
+    AppLanguage.english: 'Create a new order',
+  },
   'تنزيل الآن': {
     AppLanguage.arabic: 'تنزيل الآن',
     AppLanguage.french: 'Télécharger maintenant',
     AppLanguage.english: 'Download now',
+  },
+  'الاشتراك الموحّد للورشة': {
+    AppLanguage.arabic: 'الاشتراك الموحّد للورشة',
+    AppLanguage.french: 'Abonnement unifié de l’atelier',
+    AppLanguage.english: 'Workshop unified subscription',
+  },
+  'لا يوجد عمال أو مشتركون داخل هذه الورشة.': {
+    AppLanguage.arabic: 'لا يوجد عمال أو مشتركون داخل هذه الورشة.',
+    AppLanguage.french: 'Aucun employé ou abonné dans cet atelier.',
+    AppLanguage.english: 'There are no workers or subscribers in this workshop.',
+  },
+  'أكواد الورشة': {
+    AppLanguage.arabic: 'أكواد الورشة',
+    AppLanguage.french: 'Codes de l’atelier',
+    AppLanguage.english: 'Workshop codes',
   },
   'تنزيل نسخة كاملة من بيانات الورشة مع إظهار نتيجة الاتصال والتحميل.': {
     AppLanguage.arabic:

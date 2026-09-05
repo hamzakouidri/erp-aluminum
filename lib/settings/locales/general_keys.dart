@@ -4914,6 +4914,36 @@ This action cannot be undone!''',
     AppLanguage.french: 'Vue : Face externe',
     AppLanguage.english: 'View: Outer face',
   },
+  'جرد المخزون': {
+    AppLanguage.arabic: 'جرد المخزون',
+    AppLanguage.french: 'Inventaire',
+    AppLanguage.english: 'Inventory',
+  },
+  'لا توجد أسعار معدّلة بانتظار الحفظ.': {
+    AppLanguage.arabic: 'لا توجد أسعار معدّلة بانتظار الحفظ.',
+    AppLanguage.french: 'Aucun prix modifié en attente d’enregistrement.',
+    AppLanguage.english: 'No modified prices are waiting to be saved.',
+  },
+  'طلبية جديدة': {
+    AppLanguage.arabic: 'طلبية جديدة',
+    AppLanguage.french: 'Nouvelle commande',
+    AppLanguage.english: 'New order',
+  },
+  'زبون جديد': {
+    AppLanguage.arabic: 'زبون جديد',
+    AppLanguage.french: 'Nouveau client',
+    AppLanguage.english: 'New client',
+  },
+  'أسعار جاهزة للحفظ.': {
+    AppLanguage.arabic: 'أسعار جاهزة للحفظ.',
+    AppLanguage.french: 'prix prêts à être enregistrés.',
+    AppLanguage.english: 'prices ready to be saved.',
+  },
+  'رمادي (السعر الأساسي)': {
+    AppLanguage.arabic: 'رمادي (السعر الأساسي)',
+    AppLanguage.french: 'Gris (prix de base)',
+    AppLanguage.english: 'Grey (base price)',
+  },
   'إظهار المقابض والمفاصل والتجاويف': {
     AppLanguage.arabic: 'إظهار المقابض والمفاصل والتجاويف',
     AppLanguage.french: 'Afficher poignées, paumelles et cavités',

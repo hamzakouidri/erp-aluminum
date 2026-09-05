@@ -410,7 +410,7 @@ class _CustomersState extends State<Customers> {
               values['phone2']!,
               values['email']!,
               values['address']!,
-              DateTime.now().toIso8601String(),
+              DateTime.now().toUtc().toIso8601String(),
               values['nif']!,
               values['nis']!,
               values['rc']!,

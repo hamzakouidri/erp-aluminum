@@ -495,7 +495,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         ),
         title: Text(
-          Localization.translate('المخزون', lang),
+          Localization.translate('جرد المخزون', lang),
           style: const TextStyle(
             fontFamily: 'Cairo',
             fontWeight: FontWeight.bold,

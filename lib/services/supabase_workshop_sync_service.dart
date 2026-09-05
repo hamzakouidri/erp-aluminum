@@ -155,8 +155,47 @@ class SupabaseWorkshopSyncService {
       await _startTask?.timeout(timeout);
     } catch (error) {
       print('Supabase workshop sync start timeout/error: $error');
+      if (error.toString().contains('WORKSHOP_USER_LIMIT_REACHED')) rethrow;
     }
     return isReady;
+  }
+
+  /// Creates a workshop only from the explicit "new workshop" registration
+  /// flow. Startup, login, and background synchronization never call this.
+  Future<String> createWorkshopForCurrentUser({
+    required String joinCode,
+    required String workshopName,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw Exception('يجب تسجيل الدخول قبل إنشاء الورشة.');
+    }
+    final cleanCode = joinCode.trim().toUpperCase();
+    final cleanName = workshopName.trim();
+    if (cleanCode.isEmpty || cleanName.isEmpty) {
+      throw Exception('كود واسم الورشة مطلوبان.');
+    }
+
+    // This is the only client-side workshop creation path. Never fall back to
+    // ensure_my_workshop here: older deployments used that RPC to create a
+    // workshop when a code was missing, which caused duplicate workshops on
+    // ordinary login/startup. If the explicit creation RPC is unavailable,
+    // fail clearly and require the database migration instead.
+    final result = await _client.rpc(
+      'create_my_workshop',
+      params: {'requested_join_code': cleanCode, 'requested_name': cleanName},
+    );
+
+    final workshopId = result?.toString().trim() ?? '';
+    if (workshopId.isEmpty) {
+      throw Exception('تعذر إنشاء الورشة الجديدة في Supabase.');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('workshop_code', cleanCode);
+    await prefs.setString('workshop_name', cleanName);
+    await prefs.setString('selected_supabase_workshop_id', workshopId);
+    await prefs.setString('supabase_workshop_uuid_$cleanCode', workshopId);
+    return workshopId;
   }
 
   void stop() {
@@ -296,6 +335,20 @@ class SupabaseWorkshopSyncService {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final now = DateTime.now().toUtc().toIso8601String();
+    final user = _client.auth.currentUser;
+    final profileName = profile['workshop_name']?.toString().trim() ?? '';
+
+    // Keep the canonical workshop identity in sync with the printable header.
+    // Only the owner may rename the workshop; workers still receive the name
+    // through the profile row below.
+    if (user != null && profileName.isNotEmpty) {
+      await _client
+          .from('workshops')
+          .update({'name': profileName, 'updated_at': now})
+          .eq('id', workshopUuid)
+          .eq('owner_uid', user.id);
+    }
+
     await _client.from('workshop_sync_rows').upsert({
       'workshop_id': workshopUuid,
       'table_name': _workshopProfileTable,
@@ -534,6 +587,7 @@ class SupabaseWorkshopSyncService {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
       print('Supabase workshop sync not started: $error');
+      if (error.toString().contains('WORKSHOP_USER_LIMIT_REACHED')) rethrow;
     }
   }
 
@@ -982,20 +1036,10 @@ class SupabaseWorkshopSyncService {
   }
 
   Future<String> _resolveWorkshopUuid(String code, String workshopName) async {
-    try {
-      final result = await _client.rpc(
-        'ensure_my_workshop',
-        params: {
-          'target_code': code,
-          'target_name': workshopName.trim().isEmpty ? code : workshopName,
-        },
-      );
-      final id = result?.toString() ?? '';
-      if (id.isNotEmpty) return id;
-    } catch (error) {
-      print('Supabase ensure_my_workshop RPC failed, trying tables: $error');
-    }
-
+    // Prove that the workshop exists before invoking the membership RPC.
+    // Older deployed versions of ensure_my_workshop created a workshop when
+    // the supplied code was missing; looking it up first makes the client safe
+    // even before the database migration is applied.
     Map<String, dynamic>? existing;
     try {
       final result = await _client
@@ -1014,6 +1058,20 @@ class SupabaseWorkshopSyncService {
     }
     final existingId = existing?['id']?.toString() ?? '';
     if (existingId.isNotEmpty) {
+      try {
+        final result = await _client.rpc(
+          'ensure_my_workshop',
+          params: {
+            'target_code': code,
+            'target_name': workshopName.trim().isEmpty ? code : workshopName,
+          },
+        );
+        final resolvedId = result?.toString() ?? '';
+        if (resolvedId == existingId) return resolvedId;
+      } catch (error) {
+        print('Supabase existing-workshop membership RPC failed: $error');
+      }
+
       final user = _client.auth.currentUser;
       if (user != null) {
         try {
@@ -1039,51 +1097,14 @@ class SupabaseWorkshopSyncService {
       return existingId;
     }
 
-    final user = _client.auth.currentUser!;
-    Map<String, dynamic> inserted;
-    try {
-      inserted = Map<String, dynamic>.from(
-        await _client
-            .from('workshops')
-            .insert({
-              'code': user.id,
-              'join_code': code,
-              'name': workshopName.trim().isEmpty ? '' : workshopName.trim(),
-              'owner_uid': user.id,
-            })
-            .select('id')
-            .single(),
-      );
-    } catch (_) {
-      inserted = Map<String, dynamic>.from(
-        await _client
-            .from('workshops')
-            .insert({
-              'code': code,
-              'name': workshopName.trim().isEmpty ? code : workshopName.trim(),
-              'owner_uid': user.id,
-            })
-            .select('id')
-            .single(),
-      );
-    }
-    final id = inserted['id']?.toString() ?? '';
-    if (id.isEmpty) {
-      throw Exception('تعذر إنشاء ورشة Supabase.');
-    }
-    try {
-      await _client.from('workshop_members').upsert({
-        'workshop_id': id,
-        'user_id': user.id,
-        'role': 'owner',
-      }, onConflict: 'workshop_id,user_id');
-    } catch (error) {
-      throw Exception(
-        'لم تُنشأ عضوية مالك الورشة. طبّق ملف '
-        'supabase/workshop_join_code_migration.sql في Supabase: $error',
-      );
-    }
-    return id;
+    // Opening, registration and background synchronization are lookup-only.
+    // A stale/incorrect code must never create an empty workshop and make the
+    // user's real data appear lost. Workshops are provisioned administratively
+    // outside the client application.
+    throw Exception(
+      'لم يتم العثور على الورشة في Supabase. تحقق من كود الورشة أو اطلب من '
+      'الإدارة ربط الحساب بالورشة الموجودة.',
+    );
   }
 
   Future<void> _cacheWorkshopIdentity(
@@ -1353,7 +1374,7 @@ class SupabaseWorkshopSyncService {
     // Bump this key when the sync format/restore path changes. Existing
     // phones then perform one complete workshop download after updating the
     // app instead of trusting an old bootstrap marker.
-    return 'supabase_workshop_full_bootstrap_v3_$code';
+    return 'supabase_workshop_full_bootstrap_v4_$code';
   }
 
   Future<void> _applyWorkshopProfile(Map<String, dynamic> profile) async {

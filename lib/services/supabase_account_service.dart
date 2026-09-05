@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -58,6 +57,12 @@ class SupabaseAccountService {
   factory SupabaseAccountService() => _instance;
 
   SupabaseClient get _client => Supabase.instance.client;
+
+  /// Removes an OAuth account created by Auth when workshop registration was
+  /// not completed. The RPC refuses deletion for configured users.
+  Future<void> deleteCurrentUnconfiguredAuthUser() async {
+    await _client.rpc('delete_unconfigured_auth_user');
+  }
 
   Future<void> setSubscriptionForOwnerUid({
     required String ownerUid,
@@ -279,6 +284,8 @@ class SupabaseAccountService {
 
       final prefs = await SharedPreferences.getInstance();
       final preferredCode = (prefs.getString('workshop_code') ?? '').trim();
+      final preferredWorkshopId =
+          (prefs.getString('selected_supabase_workshop_id') ?? '').trim();
       Map<String, dynamic>? selectedMember;
       Map<String, dynamic>? selectedWorkshop;
 
@@ -287,10 +294,12 @@ class SupabaseAccountService {
         if (workshop == null) continue;
         final workshopCode = workshop['code']?.toString().trim() ?? '';
         final workshopJoinCode = workshop['join_code']?.toString().trim() ?? '';
-        if (preferredCode.isNotEmpty &&
-            (workshop['id']?.toString() == preferredCode ||
-                workshopCode == preferredCode ||
-                workshopJoinCode == preferredCode)) {
+        if ((preferredWorkshopId.isNotEmpty &&
+                workshop['id']?.toString() == preferredWorkshopId) ||
+            (preferredCode.isNotEmpty &&
+                (workshop['id']?.toString() == preferredCode ||
+                    workshopCode == preferredCode ||
+                    workshopJoinCode == preferredCode))) {
           selectedMember = member;
           selectedWorkshop = workshop;
           break;
@@ -300,7 +309,7 @@ class SupabaseAccountService {
       // A normal worker/manager has one membership. For an app administrator
       // with several memberships, use the most recently returned one when no
       // previous workshop choice exists; the next load will persist that code.
-      if (selectedMember == null) {
+      if (selectedMember == null && !isApplicationAdmin) {
         for (final member in membershipRows) {
           final workshop = workshopById[member['workshop_id'].toString()];
           if (workshop != null) {
@@ -312,6 +321,10 @@ class SupabaseAccountService {
       }
 
       if (selectedMember != null && selectedWorkshop != null) {
+        await prefs.setString(
+          'selected_supabase_workshop_id',
+          selectedWorkshop['id'].toString(),
+        );
         return _buildWorkshopSnapshot(
           user: user,
           workshop: selectedWorkshop,
@@ -465,6 +478,21 @@ class SupabaseAccountService {
       throw Exception('لم يتم العثور على الورشة الحالية في Supabase.');
     }
 
+    // A workshop join code is a persistent identity shared by every device.
+    // Opening the drawer or pressing "create" again must never rotate an
+    // existing code, otherwise devices that cached the previous value can
+    // resolve a different workshop on their next launch.
+    final existingCode = _shortPublicCode(account.workshopCode);
+    if (existingCode.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('workshop_code', existingCode);
+      await prefs.setString(
+        'selected_supabase_workshop_id',
+        account.workshopId,
+      );
+      return existingCode;
+    }
+
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = math.Random.secure();
     final requestedCode = String.fromCharCodes(
@@ -516,6 +544,7 @@ class SupabaseAccountService {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('workshop_code', code);
+    await prefs.setString('selected_supabase_workshop_id', account.workshopId);
     return code;
   }
 
@@ -570,9 +599,28 @@ class SupabaseAccountService {
   Future<List<Map<String, dynamic>>> fetchAdminWorkshops() async {
     final rows = await _client.rpc('list_admin_workshops');
     if (rows is! List) return <Map<String, dynamic>>[];
+    final currentUser = _client.auth.currentUser;
+    final currentAdminId = currentUser?.id.trim() ?? '';
+    final currentAdminEmail = currentUser?.email?.trim().toLowerCase() ?? '';
+
+    // The application administrator is global, not a workshop subscriber.
+    // Keep this client-side guard for older RPC versions until the updated
+    // SQL function is applied in Supabase as well.
     return rows
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
+        .where((row) {
+          final ownerId = row['owner_uid']?.toString().trim() ?? '';
+          final ownerEmail =
+              row['owner_email']?.toString().trim().toLowerCase() ?? '';
+          if (currentAdminId.isNotEmpty && ownerId == currentAdminId) {
+            return false;
+          }
+          if (currentAdminEmail.isNotEmpty && ownerEmail == currentAdminEmail) {
+            return false;
+          }
+          return true;
+        })
         .toList(growable: false);
   }
 
@@ -590,7 +638,10 @@ class SupabaseAccountService {
     final prefs = await SharedPreferences.getInstance();
     final selectedCode = (code ?? prefs.getString('workshop_code') ?? '')
         .trim();
-    if (selectedCode.isEmpty) return null;
+    final preferredWorkshopId = code == null
+        ? (prefs.getString('selected_supabase_workshop_id') ?? '').trim()
+        : '';
+    if (selectedCode.isEmpty && preferredWorkshopId.isEmpty) return null;
     if (code != null && code.trim().isNotEmpty) {
       await prefs.setString('workshop_code', selectedCode);
     }
@@ -605,7 +656,10 @@ class SupabaseAccountService {
       final row = Map<String, dynamic>.from(raw);
       final rowCode = row['code']?.toString().trim() ?? '';
       final workshopId = row['workshop_id']?.toString().trim() ?? '';
-      if (rowCode == selectedCode || workshopId == selectedCode) {
+      if ((preferredWorkshopId.isNotEmpty &&
+              workshopId == preferredWorkshopId) ||
+          rowCode == selectedCode ||
+          workshopId == selectedCode) {
         selected = row;
         break;
       }
@@ -615,6 +669,8 @@ class SupabaseAccountService {
     final workshopId = selected['workshop_id']?.toString().trim() ?? '';
     final publicCode = selected['code']?.toString().trim() ?? '';
     if (workshopId.isEmpty || publicCode.isEmpty) return null;
+    await prefs.setString('selected_supabase_workshop_id', workshopId);
+    await prefs.setString('workshop_code', publicCode);
     return _buildWorkshopSnapshot(
       user: user,
       workshop: {

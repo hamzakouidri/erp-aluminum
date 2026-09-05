@@ -266,7 +266,11 @@ class AppAuthService {
 
   Future<void> signOut() async {
     if (usesSupabase) {
-      await _supabaseAuth.signOut();
+      // A global sign-out may wait on the network on Windows. The local
+      // session is the one that controls this app's auth gate, so clear it
+      // locally and let the auth-state stream switch to LoginScreen
+      // immediately even when Supabase is temporarily unreachable.
+      await _supabaseAuth.signOut(scope: supabase.SignOutScope.local);
       return;
     }
     await _firebaseAuth.signOut();

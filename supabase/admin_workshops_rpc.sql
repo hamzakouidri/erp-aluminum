@@ -45,6 +45,17 @@ begin
   from public.workshops w
   left join public.workshop_subscriptions s on s.workshop_id = w.id
   left join auth.users owner_user on owner_user.id = w.owner_uid
+  -- The application administrator is global and must never appear as a
+  -- workshop subscriber in this management list.
+  where not exists (
+    select 1
+    from public.app_admins aa
+    where aa.user_id = w.owner_uid
+  )
+  and lower(coalesce(owner_user.email, '')) <> lower(coalesce(
+    (select email from auth.users where id = auth.uid()),
+    ''
+  ))
   order by w.created_at desc;
 end;
 $$;

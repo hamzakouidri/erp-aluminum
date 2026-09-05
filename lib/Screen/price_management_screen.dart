@@ -972,8 +972,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 Expanded(
                   child: Text(
                     _pendingShutterPrices.isEmpty
-                        ? 'لا توجد أسعار معدّلة بانتظار الحفظ.'
-                        : '${_pendingShutterPrices.length} أسعار جاهزة للحفظ.',
+                        ? Localization.translate(
+                            'لا توجد أسعار معدّلة بانتظار الحفظ.',
+                            lang,
+                          )
+                        : '${_pendingShutterPrices.length} ${Localization.translate('أسعار جاهزة للحفظ.', lang)}',
                     style: TextStyle(
                       color: _pendingShutterPrices.isEmpty
                           ? Colors.grey.shade600
@@ -1151,8 +1154,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     children: [
                       PriceEditRow(
                         title: isGreyBaseColor
-                            ? 'رمادي (السعر الأساسي)'
-                            : cName,
+                            ? Localization.translate(
+                                'رمادي (السعر الأساسي)',
+                                lang,
+                              )
+                            : Localization.translate(cName, lang),
                         titleIcon: _buildColorCircle(colorMap, size: 24),
                         currentPrice: currentPrice,
                         canChangePrices: canChangePrices,
@@ -2146,7 +2152,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              label,
+              Localization.translate(
+                label,
+                Provider.of<AppSettingsProvider>(context, listen: false)
+                    .language,
+              ),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ),
@@ -3302,11 +3312,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
         String displayTitle = name;
         if (item.specificColor != null) {
-          displayTitle = '$name  —  اللون: ${item.specificColor}';
+          displayTitle =
+              '$name  —  ${Localization.translate('اللون: ', lang)}'
+              '${Localization.translate(item.specificColor!, lang)}';
         } else {
           final String colorText = item.glass['color']?.toString() ?? '';
           if (colorText.isNotEmpty) {
-            displayTitle = '$name  —  اللون: $colorText';
+            displayTitle =
+                '$name  —  ${Localization.translate('اللون: ', lang)}'
+                '${Localization.translate(colorText, lang)}';
           }
         }
 
@@ -3317,15 +3331,28 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         if (glassType.isNotEmpty) {
           final t = glassType.toLowerCase();
           if (t == 'baguette') {
-            displaySubtitle = 'سعر المتر الخطي  |  النوع: باجيت ديكور';
+            displaySubtitle =
+                '${Localization.translate('سعر المتر الخطي', lang)}  |  '
+                '${Localization.translate('النوع: ', lang)}'
+                '${Localization.translate('باجيت ديكور', lang)}';
           } else if (t == 'rosette') {
-            displaySubtitle = 'سعر القطعة  |  النوع: وردة ديكور';
+            displaySubtitle =
+                '${Localization.translate('سعر القطعة', lang)}  |  '
+                '${Localization.translate('النوع: ', lang)}'
+                '${Localization.translate('وردة ديكور', lang)}';
           } else if (isDecorPanneau) {
-            displaySubtitle = 'سعر القطعة  |  النوع: بانو ديكور';
+            displaySubtitle =
+                '${Localization.translate('سعر القطعة', lang)}  |  '
+                '${Localization.translate('النوع: ', lang)}'
+                '${Localization.translate('بانو ديكور', lang)}';
           } else {
-            displaySubtitle = 'سعر المتر المربع  |  النوع: $glassType';
+            displaySubtitle =
+                '${Localization.translate('سعر المتر المربع', lang)}  |  '
+                '${Localization.translate('النوع: ', lang)}'
+                '${Localization.translate(glassType, lang)}';
             if (t == 'panneau' && subtype.isNotEmpty) {
-              displaySubtitle += ' ($subtype)';
+              displaySubtitle +=
+                  ' (${Localization.translate(subtype, lang)})';
             }
           }
         }
@@ -4417,10 +4444,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                       _isShutterGreyBaseColor(color);
 
                                   return CheckboxListTile(
-                                    title: Text(
-                                      isGreyBaseColor
-                                          ? 'رمادي (السعر الأساسي)'
-                                          : color['name'].toString(),
+                                      title: Text(
+                                        isGreyBaseColor
+                                          ? Localization.translate(
+                                              'رمادي (السعر الأساسي)',
+                                              lang,
+                                            )
+                                          : Localization.translate(
+                                              color['name'].toString(),
+                                              lang,
+                                            ),
                                     ),
                                     secondary: _buildColorCircle(
                                       color,

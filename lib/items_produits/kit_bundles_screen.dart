@@ -1364,6 +1364,12 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
         !_families.any((family) => family['id'] == selectedFamilyId)) {
       selectedFamilyId = null;
     }
+    // A range has exactly one target.  Older rows could contain both IDs;
+    // keep the family because it is the target shown by the range list and
+    // clear the stale component before the dialog is rendered.
+    if (selectedComponentId != null && selectedFamilyId != null) {
+      selectedComponentId = null;
+    }
     String? selectedTarget = selectedComponentId != null
         ? 'component:$selectedComponentId'
         : selectedFamilyId != null
@@ -1450,7 +1456,7 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                         lang,
                       ),
                       helperText: Localization.translate(
-                        'اختر مركّباً منفرداً أو عائلة؛ العائلة لا تدخل إلا عند هذا الاختيار.',
+                        'اختر هدفاً واحداً فقط: مركّب أو عائلة.',
                         lang,
                       ),
                       border: const OutlineInputBorder(),
@@ -1478,8 +1484,29 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                         ),
                       ),
                     ],
-                    onChanged: (value) =>
-                        setDialogState(() => selectedTarget = value),
+                    onChanged: (value) => setDialogState(() {
+                      selectedTarget = value;
+                      selectedComponentId = null;
+                      selectedFamilyId = null;
+                      if (value == null) return;
+                      final parts = value.split(':');
+                      if (parts.length != 2) {
+                        selectedTarget = null;
+                        return;
+                      }
+                      final id = int.tryParse(parts[1]);
+                      if (id == null) {
+                        selectedTarget = null;
+                        return;
+                      }
+                      if (parts[0] == 'component') {
+                        selectedComponentId = id;
+                      } else if (parts[0] == 'family') {
+                        selectedFamilyId = id;
+                      } else {
+                        selectedTarget = null;
+                      }
+                    }),
                   ),
                   const SizedBox(height: 10),
                   TextField(

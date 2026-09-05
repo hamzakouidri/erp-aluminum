@@ -133,7 +133,8 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.english: 'Register workshop session',
   },
   'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.': {
-    AppLanguage.arabic: 'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.',
+    AppLanguage.arabic:
+        'تم تسجيل جلسة الورشة. ستتم المزامنة تلقائياً في الخلفية.',
     AppLanguage.french:
         'La session de l’atelier est enregistrée. La synchronisation fonctionnera automatiquement en arrière-plan.',
     AppLanguage.english:
@@ -495,6 +496,106 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.arabic: 'حد البروفيلات:',
     AppLanguage.french: 'Limite des profils :',
     AppLanguage.english: 'Profiles limit:',
+  },
+  'إعداد الاشتراك': {
+    AppLanguage.arabic: 'إعداد الاشتراك',
+    AppLanguage.french: 'Paramètres de l’abonnement',
+    AppLanguage.english: 'Subscription settings',
+  },
+  '⏱ إعداد مدة الاشتراك وحد المستخدمين:': {
+    AppLanguage.arabic: '⏱ إعداد مدة الاشتراك وحد المستخدمين:',
+    AppLanguage.french: '⏱ Définir la durée et la limite d’utilisateurs :',
+    AppLanguage.english: '⏱ Set subscription duration and user limit:',
+  },
+  'اختيار المدة وعدد المستخدمين': {
+    AppLanguage.arabic: 'اختيار المدة وعدد المستخدمين',
+    AppLanguage.french: 'Choisir la durée et le nombre d’utilisateurs',
+    AppLanguage.english: 'Choose duration and number of users',
+  },
+  'مدة الاشتراك:': {
+    AppLanguage.arabic: 'مدة الاشتراك:',
+    AppLanguage.french: 'Durée de l’abonnement :',
+    AppLanguage.english: 'Subscription duration:',
+  },
+  'عدد المستخدمين المسموح به (يشمل المدير):': {
+    AppLanguage.arabic: 'عدد المستخدمين المسموح به (يشمل المدير):',
+    AppLanguage.french:
+        'Nombre d’utilisateurs autorisés (responsable inclus) :',
+    AppLanguage.english: 'Allowed users (including the manager):',
+  },
+  'حفظ الاشتراك': {
+    AppLanguage.arabic: 'حفظ الاشتراك',
+    AppLanguage.french: 'Enregistrer l’abonnement',
+    AppLanguage.english: 'Save subscription',
+  },
+  'يوم واحد': {
+    AppLanguage.arabic: 'يوم واحد',
+    AppLanguage.french: '1 jour',
+    AppLanguage.english: '1 day',
+  },
+  'يومان': {
+    AppLanguage.arabic: 'يومان',
+    AppLanguage.french: '2 jours',
+    AppLanguage.english: '2 days',
+  },
+  '3 أيام': {
+    AppLanguage.arabic: '3 أيام',
+    AppLanguage.french: '3 jours',
+    AppLanguage.english: '3 days',
+  },
+  'أسبوع': {
+    AppLanguage.arabic: 'أسبوع',
+    AppLanguage.french: '1 semaine',
+    AppLanguage.english: '1 week',
+  },
+  '15 يومًا': {
+    AppLanguage.arabic: '15 يومًا',
+    AppLanguage.french: '15 jours',
+    AppLanguage.english: '15 days',
+  },
+  'شهر': {
+    AppLanguage.arabic: 'شهر',
+    AppLanguage.french: '1 mois',
+    AppLanguage.english: '1 month',
+  },
+  'شهران': {
+    AppLanguage.arabic: 'شهران',
+    AppLanguage.french: '2 mois',
+    AppLanguage.english: '2 months',
+  },
+  '6 أشهر': {
+    AppLanguage.arabic: '6 أشهر',
+    AppLanguage.french: '6 mois',
+    AppLanguage.english: '6 months',
+  },
+  'سنة': {
+    AppLanguage.arabic: 'سنة',
+    AppLanguage.french: '1 an',
+    AppLanguage.english: '1 year',
+  },
+  'لمدة {days} يومًا': {
+    AppLanguage.arabic: 'لمدة {days} يومًا',
+    AppLanguage.french: 'pour {days} jours',
+    AppLanguage.english: 'for {days} days',
+  },
+  'تم حفظ اشتراك {email}: {duration}، الحد {users}': {
+    AppLanguage.arabic: 'تم حفظ اشتراك {email}: {duration}، الحد {users}',
+    AppLanguage.french:
+        'Abonnement de {email} enregistré : {duration}, limite {users}',
+    AppLanguage.english:
+        'Subscription for {email} saved: {duration}, limit {users}',
+  },
+  'تم حفظ الاشتراك الدائم وحد المستخدمين.': {
+    AppLanguage.arabic: 'تم حفظ الاشتراك الدائم وحد المستخدمين.',
+    AppLanguage.french:
+        'Abonnement permanent et limite d’utilisateurs enregistrés.',
+    AppLanguage.english: 'Permanent subscription and user limit saved.',
+  },
+  'تم حفظ الاشتراك لمدة {days} يومًا وحد المستخدمين.': {
+    AppLanguage.arabic: 'تم حفظ الاشتراك لمدة {days} يومًا وحد المستخدمين.',
+    AppLanguage.french:
+        'Abonnement de {days} jours et limite d’utilisateurs enregistrés.',
+    AppLanguage.english: '{days}-day subscription and user limit saved.',
   },
   'مسح ورشة': {
     AppLanguage.arabic: 'مسح ورشة',

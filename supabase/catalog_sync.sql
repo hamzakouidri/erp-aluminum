@@ -281,7 +281,6 @@ declare
   existing_workshop public.workshops%rowtype;
   pending_invite public.workshop_member_invites%rowtype;
   workshop_uuid uuid;
-  workshop_was_created boolean := false;
   current_email text;
 begin
   if auth.uid() is null then
@@ -330,6 +329,20 @@ begin
        ) then
       workshop_uuid := existing_workshop.id;
     else
+      -- max_users includes the workshop owner/manager. Enforce this in the
+      -- database so parallel devices cannot bypass the subscription limit.
+      if (
+        select count(*)
+        from public.workshop_members
+        where workshop_id = existing_workshop.id
+      ) >= coalesce((
+        select max_users
+        from public.workshop_subscriptions
+        where workshop_id = existing_workshop.id
+      ), 4) then
+        raise exception 'WORKSHOP_USER_LIMIT_REACHED';
+      end if;
+
       select *
       into pending_invite
       from public.workshop_member_invites
@@ -393,15 +406,10 @@ begin
       end if;
     end if;
   else
-    insert into public.workshops (code, join_code, name, owner_uid)
-    values (auth.uid()::text, clean_code, clean_name, auth.uid())
-    returning id into workshop_uuid;
-    workshop_was_created := true;
+    raise exception 'Workshop not found';
   end if;
 
-  if existing_workshop.owner_uid = auth.uid()
-     or workshop_was_created
-     or public.is_app_admin() then
+  if existing_workshop.owner_uid = auth.uid() then
     insert into public.workshop_members (workshop_id, user_id, role)
     values (workshop_uuid, auth.uid(), 'owner')
     on conflict (workshop_id, user_id) do update
@@ -416,6 +424,69 @@ end;
 $$;
 
 grant execute on function public.ensure_my_workshop(text, text) to authenticated;
+
+create or replace function public.create_my_workshop(
+  requested_join_code text,
+  requested_name text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  clean_code text := upper(nullif(trim(coalesce(requested_join_code, '')), ''));
+  clean_name text := nullif(trim(coalesce(requested_name, '')), '');
+  existing_id uuid;
+  created_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Authentication required'; end if;
+  if clean_code is null or clean_name is null then
+    raise exception 'Workshop code and name are required';
+  end if;
+  select id into existing_id from public.workshops
+  where owner_uid = auth.uid() order by created_at limit 1;
+  if existing_id is not null then return existing_id; end if;
+  if exists (select 1 from public.workshops
+             where code = clean_code or join_code = clean_code) then
+    raise exception 'Workshop code already exists';
+  end if;
+  insert into public.workshops (code, join_code, name, owner_uid)
+  values (auth.uid()::text, clean_code, clean_name, auth.uid())
+  returning id into created_id;
+  insert into public.workshop_members (workshop_id, user_id, role)
+  values (created_id, auth.uid(), 'owner')
+  on conflict (workshop_id, user_id) do update set role = 'owner';
+  return created_id;
+end;
+$$;
+
+-- Google/OAuth can create auth.users before the app finishes registration.
+-- Allow the signed-in user to remove only that orphan account; configured
+-- owners or members are protected from this cleanup path.
+create or replace function public.delete_unconfigured_auth_user()
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if exists (select 1 from public.workshops where owner_uid = auth.uid())
+     or exists (select 1 from public.workshop_members where user_id = auth.uid()) then
+    raise exception 'configured workshop account cannot be deleted here';
+  end if;
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+
+revoke all on function public.delete_unconfigured_auth_user() from public;
+grant execute on function public.delete_unconfigured_auth_user() to authenticated;
+
+grant execute on function public.create_my_workshop(text, text)
+to authenticated;
 
 -- Keep workshop-code creation in the main schema deployment.  This used to
 -- live only in an optional migration, so managers received an RLS error when

@@ -325,7 +325,7 @@ class _ExternalOperationsHubScreenState
     final workerName = (selected['name'] ?? workerKey).toString();
 
     _isLocalChangePending = true;
-    final nowIso = DateTime.now().toIso8601String();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
     setState(() {
       for (final list in [_fieldInstallationAllocations, _reserveAllocations]) {
         for (var i = 0; i < list.length; i++) {

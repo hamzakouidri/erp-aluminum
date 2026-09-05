@@ -18,6 +18,24 @@ class AdminUsersScreen extends StatefulWidget {
 
 class _AdminUsersScreenState extends State<AdminUsersScreen>
     with SingleTickerProviderStateMixin {
+  static const List<int?> _subscriptionDurations = <int?>[
+    // Test-only values: negative numbers represent minutes, keeping the
+    // production day-based values and database format unchanged.
+    -1,
+    -2,
+    -4,
+    1,
+    2,
+    3,
+    7,
+    30,
+    60,
+    180,
+    365,
+  ];
+
+  static const List<int> _allowedWorkerCounts = <int>[1, 2, 3, 4, 5, 10];
+
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -36,6 +54,41 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     });
     return result;
   }
+
+  String _subscriptionDurationLabel(int? days) {
+    switch (days) {
+      case -1:
+        return _t('اختبار: دقيقة واحدة');
+      case -2:
+        return _t('اختبار: دقيقتان');
+      case -4:
+        return _t('اختبار: 4 دقائق');
+      case 1:
+        return _t('يوم واحد');
+      case 2:
+        return _t('يومان');
+      case 3:
+        return _t('3 أيام');
+      case 7:
+        return _t('أسبوع');
+      case 30:
+        return _t('شهر');
+      case 60:
+        return _t('شهران');
+      case 180:
+        return _t('6 أشهر');
+      case 365:
+        return _t('سنة');
+      default:
+        return _t('اشتراك دائم');
+    }
+  }
+
+  Duration? _subscriptionDuration(int? value) => value == null
+      ? null
+      : value < 0
+      ? Duration(minutes: -value)
+      : Duration(days: value);
 
   @override
   void initState() {
@@ -219,110 +272,86 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
 
   // ──────────────── Actions ────────────────
 
-  Future<void> _grantDays(
+  Future<void> _saveSubscriptionSettings(
     BuildContext ctx,
     String uid,
-    String email,
-    int days,
-  ) async {
-    final expiry = DateTime.now().add(Duration(days: days));
+    String email, {
+    required int? durationDays,
+    int? maxUsers,
+    required bool isManager,
+  }) async {
+    final endsAt = _subscriptionDuration(durationDays) == null
+        ? null
+        : DateTime.now().add(_subscriptionDuration(durationDays)!);
+    final status = durationDays == null ? 'active' : 'trialing';
+    final planType = durationDays == null ? 'lifetime' : 'trial';
+
     try {
       if (AppAuthService().usesSupabase) {
         await SupabaseAccountService().setSubscriptionForOwnerUid(
           ownerUid: uid,
-          status: 'trialing',
-          planType: 'trial',
-          endsAt: expiry,
+          status: status,
+          planType: planType,
+          endsAt: endsAt,
+          maxUsers: maxUsers,
         );
-        if (ctx.mounted) {
-          ScaffoldMessenger.of(ctx).showSnackBar(
-            SnackBar(
-              content: Text(_tf('✅ تم تفعيل {email} لمدة {days} أيام', {
-                'email': email,
-                'days': days,
-              })),
-              backgroundColor: Colors.green,
-            ),
+      } else {
+        final userUpdate = <String, dynamic>{
+          'subscriptionStatus': durationDays == null ? 'active' : 'trial',
+        };
+        if (endsAt == null) {
+          userUpdate.addAll({
+            'trialEndDate': FieldValue.delete(),
+            'subscriptionEndDate': FieldValue.delete(),
+            'subscriptionExpiresAt': FieldValue.delete(),
+            'expiresAt': FieldValue.delete(),
+            'subscriptionExpiredDate': FieldValue.delete(),
+          });
+        } else {
+          userUpdate.addAll({
+            'trialEndDate': endsAt.toIso8601String(),
+            'subscriptionExpiredDate': FieldValue.delete(),
+          });
+        }
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update(userUpdate);
+        if (isManager && maxUsers != null) {
+          await FirebaseFirestore.instance.collection('workshops').doc(uid).set(
+            {'maxUsers': maxUsers},
+            SetOptions(merge: true),
           );
         }
-        return;
       }
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'trialEndDate': expiry.toIso8601String(),
-        'subscriptionStatus': 'trial',
-        'subscriptionExpiredDate': FieldValue.delete(),
-      });
+
       if (ctx.mounted) {
+        final durationText = durationDays == null
+            ? _t('اشتراك دائم')
+            : durationDays! < 0
+            ? _tf('اختبار لمدة {minutes} دقيقة', {'minutes': -durationDays})
+            : _tf('لمدة {days} يومًا', {'days': durationDays});
+        final usersText = maxUsers == null || maxUsers >= 999
+            ? _t('بلا حدود')
+            : _tf('{count} مستخدمين', {'count': maxUsers});
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text(
-              _tf('✅ تم تفعيل {email} لمدة {days} أيام', {
+              _tf('تم حفظ اشتراك {email}: {duration}، الحد {users}', {
                 'email': email,
-                'days': days,
+                'duration': durationText,
+                'users': usersText,
               }),
             ),
             backgroundColor: Colors.green,
           ),
         );
       }
-    } catch (e) {
+    } catch (error) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text('${_t('خطأ:')} $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _grantActive(BuildContext ctx, String uid, String email) async {
-    try {
-      if (AppAuthService().usesSupabase) {
-        await SupabaseAccountService().setSubscriptionForOwnerUid(
-          ownerUid: uid,
-          status: 'active',
-          planType: 'lifetime',
-        );
-        if (ctx.mounted) {
-          ScaffoldMessenger.of(ctx).showSnackBar(
-            SnackBar(
-              content: Text(_tf('✅ تم تفعيل {email} كاشتراك دائم', {
-                'email': email,
-              })),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        return;
-      }
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'subscriptionStatus': 'active',
-        'trialEndDate': FieldValue.delete(),
-        'subscriptionEndDate': FieldValue.delete(),
-        'subscriptionExpiresAt': FieldValue.delete(),
-        'expiresAt': FieldValue.delete(),
-        'subscriptionExpiredDate': FieldValue.delete(),
-      });
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text(
-              _tf('✅ تم تفعيل {email} كاشتراك دائم', {'email': email}),
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text('${_t('خطأ:')} $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          ctx,
+        ).showSnackBar(SnackBar(content: Text('${_t('خطأ:')} $error')));
       }
     }
   }
@@ -342,7 +371,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         );
         if (ctx.mounted) {
           ScaffoldMessenger.of(ctx).showSnackBar(
-            SnackBar(content: Text(_tf('تم سحب اشتراك {email}', {'email': email}))),
+            SnackBar(
+              content: Text(_tf('تم سحب اشتراك {email}', {'email': email})),
+            ),
           );
         }
         return;
@@ -350,9 +381,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'trialEndDate': FieldValue.delete(),
         'subscriptionStatus': 'expired',
-        'subscriptionExpiredDate': DateTime.now().toIso8601String(),
+        'subscriptionExpiredDate': DateTime.now().toUtc().toIso8601String(),
       });
-      if (ctx.mounted) {
+      if (mounted && ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text(_tf('تم سحب اشتراك {email}', {'email': email})),
@@ -403,7 +434,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           .collection('workshops')
           .doc(workshopId)
           .set({'maxUsers': limit}, SetOptions(merge: true));
-      if (ctx.mounted) {
+      if (mounted && ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text(
@@ -473,7 +504,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           .collection('workshops')
           .doc(workshopId)
           .set({field: limit}, SetOptions(merge: true));
-      if (ctx.mounted) {
+      if (mounted && ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text(
@@ -493,7 +524,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         );
       }
     } catch (e) {
-      if (ctx.mounted) {
+      if (mounted && ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(content: Text('${_t('خطأ في حفظ حد')} $label: $e')),
         );
@@ -544,7 +575,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           .collection('workshops')
           .doc(uid)
           .delete();
-      if (ctx.mounted) {
+      if (mounted && ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(content: Text(_tf('تم مسح ورشة {email}', {'email': email}))),
         );
@@ -559,6 +590,102 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   }
 
   // ──────────────── Dialogs ────────────────
+
+  void _showSubscriptionSettingsDialog(
+    BuildContext ctx,
+    String uid,
+    String email,
+    bool isManager,
+  ) {
+    int? selectedDays = 30;
+    var selectedMaxUsers = 4;
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: Text(_t('إعداد الاشتراك')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _t('مدة الاشتراك:'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _subscriptionDurations
+                      .map(
+                        (days) => ChoiceChip(
+                          label: Text(_subscriptionDurationLabel(days)),
+                          selected: selectedDays == days,
+                          onSelected: (value) {
+                            if (value) {
+                              setDialogState(() => selectedDays = days);
+                            }
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+                if (isManager) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    _t('عدد المستخدمين المسموح به (يشمل المدير):'),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _allowedWorkerCounts
+                        .map(
+                          (count) => ChoiceChip(
+                            label: Text(
+                              _tf('{count} مستخدمين', {'count': count}),
+                            ),
+                            selected: selectedMaxUsers == count,
+                            onSelected: (value) {
+                              if (value) {
+                                setDialogState(() => selectedMaxUsers = count);
+                              }
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(_t('إلغاء')),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                _saveSubscriptionSettings(
+                  ctx,
+                  uid,
+                  email,
+                  durationDays: selectedDays,
+                  maxUsers: isManager ? selectedMaxUsers : null,
+                  isManager: isManager,
+                );
+              },
+              icon: const Icon(Icons.save),
+              label: Text(_t('حفظ الاشتراك')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _showManageDialog(
     BuildContext ctx,
@@ -579,37 +706,17 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                _t('⏱ منح فترة تجريبية:'),
+                _t('⏱ إعداد مدة الاشتراك وحد المستخدمين:'),
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [3, 7, 15, 30, 60, 90]
-                    .map(
-                      (d) => ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(dialogCtx);
-                          _grantDays(ctx, uid, email, d);
-                        },
-                        child: Text(_tf('{days} يوم', {'days': d})),
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
+              OutlinedButton.icon(
                 onPressed: () {
                   Navigator.pop(dialogCtx);
-                  _grantActive(ctx, uid, email);
+                  _showSubscriptionSettingsDialog(ctx, uid, email, isManager);
                 },
-                icon: const Icon(Icons.verified),
-                label: Text(_t('اشتراك نشط دائم (مدفوع)')),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
+                icon: const Icon(Icons.tune),
+                label: Text(_t('اختيار المدة وعدد المستخدمين')),
               ),
               const Divider(height: 24),
               if (isManager) ...[
@@ -1013,7 +1120,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   }
 
   String _supabaseWorkshopGroupKey(Map<String, dynamic> row) {
-    final workshopId = row['workshop_id']?.toString().trim() ?? row['id']?.toString().trim() ?? '';
+    final workshopId =
+        row['workshop_id']?.toString().trim() ??
+        row['id']?.toString().trim() ??
+        '';
     if (workshopId.isNotEmpty) return 'workshop:$workshopId';
     final code = row['code']?.toString().trim() ?? '';
     if (code.isNotEmpty) return 'code:$code';
@@ -1070,6 +1180,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     required String status,
     required String planType,
     DateTime? endsAt,
+    int? maxUsers,
     required String message,
   }) async {
     try {
@@ -1081,6 +1192,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           status: status,
           planType: planType,
           endsAt: endsAt,
+          maxUsers: maxUsers,
         );
       }
       if (ctx.mounted) {
@@ -1091,11 +1203,120 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       }
     } catch (error) {
       if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(content: Text('${_t('خطأ:')} $error')),
-        );
+        ScaffoldMessenger.of(
+          ctx,
+        ).showSnackBar(SnackBar(content: Text('${_t('خطأ:')} $error')));
       }
     }
+  }
+
+  void _showSupabaseSubscriptionSettingsDialog(
+    BuildContext ctx,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final current = _supabaseSubscriptionData(_supabaseStatusRow(rows));
+    int? selectedDays = 30;
+    var selectedMaxUsers =
+        int.tryParse(current['maxUsers']?.toString() ?? '') ?? 4;
+    if (selectedMaxUsers <= 0) selectedMaxUsers = 4;
+
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: Text(_t('إعداد الاشتراك')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _t('مدة الاشتراك:'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _subscriptionDurations
+                      .map(
+                        (days) => ChoiceChip(
+                          label: Text(_subscriptionDurationLabel(days)),
+                          selected: selectedDays == days,
+                          onSelected: (value) {
+                            if (value) {
+                              setDialogState(() => selectedDays = days);
+                            }
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _t('عدد المستخدمين المسموح به (يشمل المدير):'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _allowedWorkerCounts
+                      .map(
+                        (count) => ChoiceChip(
+                          label: Text(
+                            _tf('{count} مستخدمين', {'count': count}),
+                          ),
+                          selected: selectedMaxUsers == count,
+                          onSelected: (value) {
+                            if (value) {
+                              setDialogState(() => selectedMaxUsers = count);
+                            }
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(_t('إلغاء')),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                final endsAt = _subscriptionDuration(selectedDays) == null
+                    ? null
+                    : DateTime.now().add(_subscriptionDuration(selectedDays)!);
+                _setSupabaseSubscriptionForGroup(
+                  ctx,
+                  rows,
+                  status: selectedDays == null ? 'active' : 'trialing',
+                  planType: selectedDays == null ? 'lifetime' : 'trial',
+                  endsAt: endsAt,
+                  maxUsers: selectedMaxUsers,
+                  message: selectedDays == null
+                      ? _t('تم حفظ الاشتراك الدائم وحد المستخدمين.')
+                      : _tf(
+                          selectedDays! < 0
+                              ? 'تم حفظ اشتراك الاختبار لمدة {minutes} دقيقة وحد المستخدمين.'
+                              : 'تم حفظ الاشتراك لمدة {days} يومًا وحد المستخدمين.',
+                          selectedDays! < 0
+                              ? {'minutes': -selectedDays!}
+                              : {'days': selectedDays!},
+                        ),
+                );
+              },
+              icon: const Icon(Icons.save),
+              label: Text(_t('حفظ الاشتراك')),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openSupabaseWorkshop(
@@ -1129,14 +1350,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
             content: Text(
               hasRemoteData
                   ? 'تم فتح ${account.workshopName} (${account.workshopCode}). '
-                      '${sync.lastDownloadSummary}\n'
-                      'السجلات: ${diagnostics.syncRows}، الملف: '
-                      '${diagnostics.profileExists ? 'موجود' : 'غير موجود'}، '
-                      'المستخدمون: ${diagnostics.members}'
+                        '${sync.lastDownloadSummary}\n'
+                        'السجلات: ${diagnostics.syncRows}، الملف: '
+                        '${diagnostics.profileExists ? 'موجود' : 'غير موجود'}، '
+                        'المستخدمون: ${diagnostics.members}'
                   : 'تم تحديد الورشة، لكن لم توجد سجلات بيانات لها. '
-                      'الكود: ${diagnostics.workshopCode}، '
-                      'UUID: ${diagnostics.workshopUuid}، '
-                      'UID: ${diagnostics.userId}',
+                        'الكود: ${diagnostics.workshopCode}، '
+                        'UUID: ${diagnostics.workshopUuid}، '
+                        'UID: ${diagnostics.userId}',
             ),
             backgroundColor: hasRemoteData ? Colors.green : Colors.orange,
             duration: const Duration(seconds: 8),
@@ -1163,8 +1384,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     final members = <Map<String, dynamic>>[];
     final seen = <String>{};
     for (final code in _supabaseWorkshopCodes(rows)) {
-      final loaded = await SupabaseAccountService()
-          .fetchAdminWorkshopMembers(code);
+      final loaded = await SupabaseAccountService().fetchAdminWorkshopMembers(
+        code,
+      );
       for (final member in loaded) {
         final email = member['email']?.toString().trim().toLowerCase() ?? '';
         final userId = member['user_id']?.toString().trim() ?? '';
@@ -1208,22 +1430,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                   value: role,
                   decoration: InputDecoration(labelText: _t('الدور')),
                   items: [
-                    DropdownMenuItem(
-                      value: 'worker',
-                      child: Text(_t('عامل')),
-                    ),
+                    DropdownMenuItem(value: 'worker', child: Text(_t('عامل'))),
                     DropdownMenuItem(
                       value: 'co_manager',
                       child: Text(_t('نائب مدير')),
                     ),
-                    DropdownMenuItem(
-                      value: 'manager',
-                      child: Text(_t('مدير')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'admin',
-                      child: Text(_t('مسؤول')),
-                    ),
+                    DropdownMenuItem(value: 'manager', child: Text(_t('مدير'))),
+                    DropdownMenuItem(value: 'admin', child: Text(_t('مسؤول'))),
                   ],
                   onChanged: saving
                       ? null
@@ -1307,6 +1520,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   Widget _buildSupabaseMembersSection(
     BuildContext ctx,
     List<Map<String, dynamic>> rows,
+    String subscriptionStatusText,
   ) {
     final managerEmail = _supabaseWorkshopEmail(rows);
     return FutureBuilder<List<Map<String, dynamic>>>(
@@ -1331,7 +1545,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
               dense: true,
               leading: const Icon(Icons.manage_accounts, color: Colors.blue),
               title: Text(_t('مدير الورشة')),
-              subtitle: Text(managerEmail),
+              subtitle: Text(
+                '$managerEmail\n${_t('الاشتراك الموحّد للورشة')}: $subscriptionStatusText',
+              ),
             ),
             if (members.isEmpty)
               Padding(
@@ -1356,12 +1572,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                         ? Colors.red
                         : Colors.grey.shade700,
                   ),
-                  title: Text(
-                    member['email']?.toString() ?? _t('بدون بريد'),
-                  ),
+                  title: Text(member['email']?.toString() ?? _t('بدون بريد')),
                   subtitle: Text(
                     '${member['is_pending'] == true ? '${_t('دعوة معلقة')} • ' : ''}'
-                    '${member['role'] ?? 'worker'}${member['blocked'] == true ? ' • ${_t('محظور')}' : ''}',
+                    '${member['role'] ?? 'worker'} • ${_t('تابع لاشتراك الورشة')}'
+                    '${member['blocked'] == true ? ' • ${_t('محظور')}' : ''}',
                   ),
                   trailing: IconButton(
                     tooltip: _t('إدارة العامل'),
@@ -1417,7 +1632,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           side: BorderSide(color: statusColor.withAlpha(80)),
         ),
         children: [
-          _buildSupabaseMembersSection(ctx, rows),
+          _buildSupabaseMembersSection(ctx, rows, statusText),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             child: Align(
@@ -1444,6 +1659,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          _showSupabaseSubscriptionSettingsDialog(ctx, rows),
+                      icon: const Icon(Icons.tune),
+                      label: Text(_t('اختيار المدة وعدد المستخدمين')),
+                    ),
                     FilledButton(
                       onPressed: () => _setSupabaseSubscriptionForGroup(
                         ctx,
@@ -1498,17 +1719,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         }
         if (snapshot.hasError) {
           return Center(
-            child: Text('${_t('تعذر تحميل الورش من Supabase:')}\n${snapshot.error}'),
+            child: Text(
+              '${_t('تعذر تحميل الورش من Supabase:')}\n${snapshot.error}',
+            ),
           );
         }
         var rows = snapshot.data ?? const <Map<String, dynamic>>[];
         if (_searchQuery.trim().isNotEmpty) {
           final query = _searchQuery.trim().toLowerCase();
-          rows = rows.where((row) {
-            final text = '${row['name']} ${row['code']} ${row['owner_email']}'
-                .toLowerCase();
-            return text.contains(query);
-          }).toList(growable: false);
+          rows = rows
+              .where((row) {
+                final text =
+                    '${row['name']} ${row['code']} ${row['owner_email']}'
+                        .toLowerCase();
+                return text.contains(query);
+              })
+              .toList(growable: false);
         }
         if (rows.isEmpty) {
           return Center(child: Text(_t('لا يوجد مستخدمون في قاعدة البيانات')));
@@ -1522,8 +1748,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         }
         final groups = grouped.values.toList()
           ..sort((a, b) {
-            final aActive = _isActive(_supabaseSubscriptionData(_supabaseStatusRow(a)));
-            final bActive = _isActive(_supabaseSubscriptionData(_supabaseStatusRow(b)));
+            final aActive = _isActive(
+              _supabaseSubscriptionData(_supabaseStatusRow(a)),
+            );
+            final bActive = _isActive(
+              _supabaseSubscriptionData(_supabaseStatusRow(b)),
+            );
             if (aActive != bActive) return aActive ? 1 : -1;
             return _supabaseWorkshopName(a).compareTo(_supabaseWorkshopName(b));
           });
@@ -1624,213 +1854,208 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           ),
         ],
         body: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .snapshots(),
-              builder: (ctx, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: Colors.red,
-                          size: 48,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'خطأ في قراءة البيانات:\n${snapshot.error}',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'تأكد من أن قواعد Firestore تسمح للمسؤول بقراءة جميع المستخدمين.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
+          builder: (ctx, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.red,
+                      size: 48,
                     ),
-                  );
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(
-                    child: Text(_t('لا يوجد مستخدمون في قاعدة البيانات')),
-                  );
-                }
+                    const SizedBox(height: 12),
+                    Text(
+                      'خطأ في قراءة البيانات:\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'تأكد من أن قواعد Firestore تسمح للمسؤول بقراءة جميع المستخدمين.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+              );
+            }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Center(
+                child: Text(_t('لا يوجد مستخدمون في قاعدة البيانات')),
+              );
+            }
 
-                // Filter out admin's own account
-                final allUsers = snapshot.data!.docs.where((doc) {
-                  final d = doc.data() as Map<String, dynamic>;
-                  return !isApplicationAdminEmail(d['email']?.toString()) &&
-                      d['role'] != 'admin';
-                }).toList();
+            // Filter out admin's own account
+            final allUsers = snapshot.data!.docs.where((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return !isApplicationAdminEmail(d['email']?.toString()) &&
+                  d['role'] != 'admin';
+            }).toList();
 
-                // Apply search
-                final filtered = _searchQuery.isEmpty
-                    ? allUsers
-                    : allUsers.where((doc) {
-                        final d = doc.data() as Map<String, dynamic>;
-                        final email = (d['email'] ?? '')
-                            .toString()
-                            .toLowerCase();
-                        final name = (d['name'] ?? d['displayName'] ?? '')
-                            .toString()
-                            .toLowerCase();
-                        final workshop = (d['workshopName'] ?? '')
-                            .toString()
-                            .toLowerCase();
-                        return email.contains(_searchQuery) ||
-                            name.contains(_searchQuery) ||
-                            workshop.contains(_searchQuery);
-                      }).toList();
+            // Apply search
+            final filtered = _searchQuery.isEmpty
+                ? allUsers
+                : allUsers.where((doc) {
+                    final d = doc.data() as Map<String, dynamic>;
+                    final email = (d['email'] ?? '').toString().toLowerCase();
+                    final name = (d['name'] ?? d['displayName'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final workshop = (d['workshopName'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    return email.contains(_searchQuery) ||
+                        name.contains(_searchQuery) ||
+                        workshop.contains(_searchQuery);
+                  }).toList();
 
-                // Group by workshopId
-                final Map<String, List<QueryDocumentSnapshot>> workshops = {};
-                for (var user in filtered) {
-                  final d = user.data() as Map<String, dynamic>;
-                  final wId = (d['workshopId'] as String?)?.isNotEmpty == true
-                      ? d['workshopId'] as String
-                      : user.id;
-                  workshops.putIfAbsent(wId, () => []).add(user);
-                }
+            // Group by workshopId
+            final Map<String, List<QueryDocumentSnapshot>> workshops = {};
+            for (var user in filtered) {
+              final d = user.data() as Map<String, dynamic>;
+              final wId = (d['workshopId'] as String?)?.isNotEmpty == true
+                  ? d['workshopId'] as String
+                  : user.id;
+              workshops.putIfAbsent(wId, () => []).add(user);
+            }
 
-                // Get manager data for each workshop for filtering
-                bool workshopIsActive(String wId) {
-                  final wUsers = workshops[wId]!;
-                  QueryDocumentSnapshot? mgr;
-                  try {
-                    mgr = wUsers.firstWhere(
-                      (u) =>
-                          (u.data() as Map<String, dynamic>)['role'] ==
-                          'manager',
-                    );
-                  } catch (_) {}
-                  final d = mgr != null
-                      ? (mgr.data() as Map<String, dynamic>)
-                      : (wUsers.isNotEmpty
-                            ? (wUsers.first.data() as Map<String, dynamic>)
-                            : <String, dynamic>{});
-                  return _isActive(d);
-                }
+            // Get manager data for each workshop for filtering
+            bool workshopIsActive(String wId) {
+              final wUsers = workshops[wId]!;
+              QueryDocumentSnapshot? mgr;
+              try {
+                mgr = wUsers.firstWhere(
+                  (u) =>
+                      (u.data() as Map<String, dynamic>)['role'] == 'manager',
+                );
+              } catch (_) {}
+              final d = mgr != null
+                  ? (mgr.data() as Map<String, dynamic>)
+                  : (wUsers.isNotEmpty
+                        ? (wUsers.first.data() as Map<String, dynamic>)
+                        : <String, dynamic>{});
+              return _isActive(d);
+            }
 
-                final allIds = workshops.keys.toList()
-                  ..sort((a, b) {
-                    // Expired workshops first
-                    final aActive = workshopIsActive(a);
-                    final bActive = workshopIsActive(b);
-                    if (aActive == bActive) return 0;
-                    return aActive ? 1 : -1;
-                  });
+            final allIds = workshops.keys.toList()
+              ..sort((a, b) {
+                // Expired workshops first
+                final aActive = workshopIsActive(a);
+                final bActive = workshopIsActive(b);
+                if (aActive == bActive) return 0;
+                return aActive ? 1 : -1;
+              });
 
-                final expiredIds = allIds
-                    .where((id) => !workshopIsActive(id))
-                    .toList();
-                final activeIds = allIds
-                    .where((id) => workshopIsActive(id))
-                    .toList();
+            final expiredIds = allIds
+                .where((id) => !workshopIsActive(id))
+                .toList();
+            final activeIds = allIds
+                .where((id) => workshopIsActive(id))
+                .toList();
 
-                Widget buildList(List<String> ids) {
-                  if (ids.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+            Widget buildList(List<String> ids) {
+              if (ids.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.green,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(_t('لا توجد ورشات في هذه الفئة')),
+                    ],
+                  ),
+                );
+              }
+              return ListView.builder(
+                itemCount: ids.length,
+                itemBuilder: (_, i) =>
+                    _buildWorkshopCard(ctx, ids[i], workshops[ids[i]]!),
+              );
+            }
+
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                // Tab 0 – All
+                Column(
+                  children: [
+                    Container(
+                      color: Colors.grey.shade100,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
+                      child: Row(
                         children: [
-                          const Icon(
-                            Icons.check_circle_outline,
-                            color: Colors.green,
-                            size: 48,
+                          Text(
+                            'إجمالي الورشات: ${allIds.length}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          const SizedBox(height: 12),
-                          Text(_t('لا توجد ورشات في هذه الفئة')),
+                          const SizedBox(width: 16),
+                          Text(
+                            'منتهية: ${expiredIds.length}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
-                    );
-                  }
-                  return ListView.builder(
-                    itemCount: ids.length,
-                    itemBuilder: (_, i) =>
-                        _buildWorkshopCard(ctx, ids[i], workshops[ids[i]]!),
-                  );
-                }
-
-                return TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // Tab 0 – All
-                    Column(
-                      children: [
-                        Container(
-                          color: Colors.grey.shade100,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 6,
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                'إجمالي الورشات: ${allIds.length}',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Text(
-                                'منتهية: ${expiredIds.length}',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(child: buildList(allIds)),
-                      ],
                     ),
-                    // Tab 1 – Expired / need activation
-                    Column(
-                      children: [
-                        if (expiredIds.isNotEmpty)
-                          Container(
-                            color: Colors.red.shade50,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: Colors.orange,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${expiredIds.length} ورشة بحاجة للتفعيل – اضغط "تفعيل" على أي بطاقة',
-                                  style: const TextStyle(
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        Expanded(child: buildList(expiredIds)),
-                      ],
-                    ),
-                    // Tab 2 – Active
-                    buildList(activeIds),
+                    Expanded(child: buildList(allIds)),
                   ],
-                );
-              },
-            ),
+                ),
+                // Tab 1 – Expired / need activation
+                Column(
+                  children: [
+                    if (expiredIds.isNotEmpty)
+                      Container(
+                        color: Colors.red.shade50,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.orange,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${expiredIds.length} ورشة بحاجة للتفعيل – اضغط "تفعيل" على أي بطاقة',
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Expanded(child: buildList(expiredIds)),
+                  ],
+                ),
+                // Tab 2 – Active
+                buildList(activeIds),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

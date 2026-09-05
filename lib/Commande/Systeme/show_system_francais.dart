@@ -532,7 +532,11 @@ class _WindowViewState extends State<WindowView> {
           .where((profile) => !profileHasIntegratedSideCover(profile))
           .toList();
     }
-    if (!widget.model.hasShutter || _seriesIsPvc(series)) return filtered;
+    if (!widget.model.hasShutter ||
+        widget.model.isCaissonTunnel ||
+        _seriesIsPvc(series)) {
+      return filtered;
+    }
     return filtered
         .where((profile) => !profileHasIntegratedSideCover(profile))
         .toList();
@@ -4999,14 +5003,18 @@ class _WindowViewState extends State<WindowView> {
                       size: 20,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      _tr('نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)'),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isDark
-                            ? Colors.blue.shade300
-                            : Colors.blue.shade800,
-                        fontSize: 13,
+                    Expanded(
+                      child: Text(
+                        _tr('نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? Colors.blue.shade300
+                              : Colors.blue.shade800,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
@@ -11136,6 +11144,7 @@ class _WindowViewState extends State<WindowView> {
                                     : 'Aluminium')
                               : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
                           hasShutter: widget.model.hasShutter,
+                          isCaissonTunnel: widget.model.isCaissonTunnel,
                           hasSideCovers: widget.model.hasSideCovers,
                           multiFrameDrawing:
                               widget.model.getFrameRects().length > 1 &&

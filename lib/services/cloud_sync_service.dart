@@ -3704,7 +3704,7 @@ class CloudSyncService {
       // 4. حفظ نسخة في الـ History
       if (!isSilent) {
         try {
-          String historyId = DateTime.now().toIso8601String().replaceAll(
+          String historyId = DateTime.now().toUtc().toIso8601String().replaceAll(
             ':',
             '-',
           );

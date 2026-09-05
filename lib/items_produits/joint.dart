@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../sql_database.dart';
+import '../services/cloud_sync_service.dart';
 
 import 'package:database_data/settings/localization.dart';
 
@@ -21,6 +24,7 @@ class JointsScreen extends StatefulWidget {
 
 class _JointsScreenState extends State<JointsScreen> {
   String searchQuery = '';
+  StreamSubscription? _dbSubscription;
 
   List<Map<String, dynamic>> _items = [];
 
@@ -31,6 +35,15 @@ class _JointsScreenState extends State<JointsScreen> {
     super.initState();
 
     _loadItems();
+    _dbSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) _loadItems();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dbSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadItems() async {
@@ -63,6 +76,7 @@ class _JointsScreenState extends State<JointsScreen> {
     String scope = 'Global';
     String selectedGasketType = 'جوان فيتراج';
     List<int> selectedSeriesIds = [];
+    bool isSaving = false;
 
     showDialog(
       context: context,
@@ -258,67 +272,118 @@ class _JointsScreenState extends State<JointsScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-              onPressed: () async {
-                if (nameCtrl.text.isNotEmpty) {
-                  if (materialType == 'Aluminium' &&
-                      scope == 'Unique' &&
-                      selectedSeriesIds.isEmpty) {
-                    ScaffoldMessenger.of(dialogContext).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          Localization.translate(
-                            'يرجى اختيار سلسلة واحدة على الأقل عند تحديد النطاق الخاص',
-                            Provider.of<AppSettingsProvider>(context).language,
-                          ),
-                        ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (nameCtrl.text.isNotEmpty) {
+                        if (materialType == 'Aluminium' &&
+                            scope == 'Unique' &&
+                            selectedSeriesIds.isEmpty) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                Localization.translate(
+                                  'يرجى اختيار سلسلة واحدة على الأقل عند تحديد النطاق الخاص',
+                                  Provider.of<AppSettingsProvider>(
+                                    context,
+                                  ).language,
+                                ),
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        setStateDialog(() => isSaving = true);
+                        try {
+                          final dbInstance = await widget.db.db;
+                          final seriesIdsStr =
+                              (scope == 'Unique' &&
+                                  selectedSeriesIds.isNotEmpty)
+                              ? ',${selectedSeriesIds.join(',')},'
+                              : null;
+                          final seriesIdVal =
+                              (scope == 'Unique' &&
+                                  selectedSeriesIds.isNotEmpty)
+                              ? selectedSeriesIds.first
+                              : null;
+
+                          final values = <String, dynamic>{
+                            'name': nameCtrl.text,
+                            'type': materialType,
+                            'scope': scope,
+                            'series_id': seriesIdVal,
+                            'series_ids': seriesIdsStr,
+                            'thickness':
+                                double.tryParse(thicknessCtrl.text) ?? 0.0,
+                            'price_per_meter':
+                                double.tryParse(priceCtrl.text) ?? 0.0,
+                            'gasket_type': selectedGasketType,
+                          };
+                          final insertedId = await dbInstance!.insert(
+                            'Joints',
+                            values,
+                          );
+                          // The direct detailed insert must still publish the
+                          // catalog change so the other workshop devices receive it.
+                          unawaited(CloudSyncService().notifyCatalogChange());
+
+                          if (mounted) {
+                            setState(() {
+                              _items = [
+                                ..._items,
+                                <String, dynamic>{...values, 'id': insertedId},
+                              ];
+                            });
+                          }
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  Localization.translate(
+                                    'تم الحفظ بنجاح!',
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                      listen: false,
+                                    ).language,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setStateDialog(() => isSaving = false);
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '${Localization.translate('حدث خطأ أثناء الحفظ', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
                       ),
-                    );
-                    return;
-                  }
-                  try {
-                    final dbInstance = await widget.db.db;
-                    final seriesIdsStr =
-                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
-                        ? ',${selectedSeriesIds.join(',')},'
-                        : null;
-                    final seriesIdVal =
-                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
-                        ? selectedSeriesIds.first
-                        : null;
-
-                    await dbInstance!.insert('Joints', {
-                      'name': nameCtrl.text,
-                      'type': materialType,
-                      'scope': scope,
-                      'series_id': seriesIdVal,
-                      'series_ids': seriesIdsStr,
-                      'thickness': double.tryParse(thicknessCtrl.text) ?? 0.0,
-                      'price_per_meter': double.tryParse(priceCtrl.text) ?? 0.0,
-                      'gasket_type': selectedGasketType,
-                    });
-
-                    _loadItems();
-                    if (context.mounted) Navigator.pop(dialogContext);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '${Localization.translate('حدث خطأ أثناء الحفظ', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                }
-              },
-              child: Text(
-                Localization.translate(
-                  'حفظ',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
-                style: TextStyle(color: Colors.white),
-              ),
+                    )
+                  : Text(
+                      Localization.translate(
+                        'حفظ',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
             ),
           ],
         ),
@@ -340,6 +405,7 @@ class _JointsScreenState extends State<JointsScreen> {
     String scope = item['scope']?.toString() == 'Unique' ? 'Unique' : 'Global';
     String selectedGasketType =
         item['gasket_type']?.toString() ?? 'جوان فيتراج';
+    bool isSaving = false;
     if (selectedGasketType.contains('بروس') ||
         selectedGasketType.contains('براش') ||
         selectedGasketType.toLowerCase().contains('brosse') ||
@@ -562,73 +628,126 @@ class _JointsScreenState extends State<JointsScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-              onPressed: () async {
-                if (nameCtrl.text.isNotEmpty) {
-                  if (materialType == 'Aluminium' &&
-                      scope == 'Unique' &&
-                      selectedSeriesIds.isEmpty) {
-                    ScaffoldMessenger.of(dialogContext).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          Localization.translate(
-                            'يرجى اختيار سلسلة واحدة على الأقل عند تحديد النطاق الخاص',
-                            Provider.of<AppSettingsProvider>(context).language,
-                          ),
-                        ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (nameCtrl.text.isNotEmpty) {
+                        if (materialType == 'Aluminium' &&
+                            scope == 'Unique' &&
+                            selectedSeriesIds.isEmpty) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                Localization.translate(
+                                  'يرجى اختيار سلسلة واحدة على الأقل عند تحديد النطاق الخاص',
+                                  Provider.of<AppSettingsProvider>(
+                                    context,
+                                  ).language,
+                                ),
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        setStateDialog(() => isSaving = true);
+                        try {
+                          final dbInstance = await widget.db.db;
+                          final seriesIdsStr =
+                              (scope == 'Unique' &&
+                                  selectedSeriesIds.isNotEmpty)
+                              ? ',${selectedSeriesIds.join(',')},'
+                              : null;
+                          final seriesIdVal =
+                              (scope == 'Unique' &&
+                                  selectedSeriesIds.isNotEmpty)
+                              ? selectedSeriesIds.first
+                              : null;
+
+                          final values = <String, dynamic>{
+                            'name': nameCtrl.text,
+                            'type': materialType,
+                            'scope': scope,
+                            'series_id': seriesIdVal,
+                            'series_ids': seriesIdsStr,
+                            'thickness':
+                                double.tryParse(thicknessCtrl.text) ?? 0.0,
+                            'price_per_meter':
+                                double.tryParse(priceCtrl.text) ?? 0.0,
+                            'gasket_type': selectedGasketType,
+                          };
+                          final updatedRows = await dbInstance!.update(
+                            'Joints',
+                            values,
+                            where: 'id = ?',
+                            whereArgs: [item['id']],
+                          );
+                          if (updatedRows == 0) {
+                            throw StateError('Joint row was not found');
+                          }
+                          unawaited(CloudSyncService().notifyCatalogChange());
+
+                          if (mounted) {
+                            setState(() {
+                              final index = _items.indexWhere(
+                                (row) => row['id'] == item['id'],
+                              );
+                              if (index >= 0) {
+                                _items[index] = <String, dynamic>{
+                                  ..._items[index],
+                                  ...values,
+                                };
+                              }
+                            });
+                          }
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  Localization.translate(
+                                    'تم الحفظ بنجاح!',
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                      listen: false,
+                                    ).language,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setStateDialog(() => isSaving = false);
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '${Localization.translate('حدث خطأ أثناء الحفظ', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
                       ),
-                    );
-                    return;
-                  }
-                  try {
-                    final dbInstance = await widget.db.db;
-                    final seriesIdsStr =
-                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
-                        ? ',${selectedSeriesIds.join(',')},'
-                        : null;
-                    final seriesIdVal =
-                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
-                        ? selectedSeriesIds.first
-                        : null;
-
-                    await dbInstance!.update(
-                      'Joints',
-                      {
-                        'name': nameCtrl.text,
-                        'type': materialType,
-                        'scope': scope,
-                        'series_id': seriesIdVal,
-                        'series_ids': seriesIdsStr,
-                        'thickness': double.tryParse(thicknessCtrl.text) ?? 0.0,
-                        'price_per_meter':
-                            double.tryParse(priceCtrl.text) ?? 0.0,
-                        'gasket_type': selectedGasketType,
-                      },
-                      where: 'id = ?',
-                      whereArgs: [item['id']],
-                    );
-
-                    _loadItems();
-                    if (context.mounted) Navigator.pop(dialogContext);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '${Localization.translate('حدث خطأ أثناء الحفظ', Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e',
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                }
-              },
-              child: Text(
-                Localization.translate(
-                  'حفظ التعديل',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
-                style: TextStyle(color: Colors.white),
-              ),
+                    )
+                  : Text(
+                      Localization.translate(
+                        'حفظ التعديل',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
             ),
           ],
         ),
@@ -670,6 +789,7 @@ class _JointsScreenState extends State<JointsScreen> {
 
             onPressed: () async {
               await widget.db.deleteJoint(item['id']);
+              unawaited(CloudSyncService().notifyCatalogChange());
 
               _loadItems();
 

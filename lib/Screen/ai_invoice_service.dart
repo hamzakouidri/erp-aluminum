@@ -144,7 +144,7 @@ class AiInvoiceService {
     final mockJson = {
       "invoice_number": "ACH-2026-098",
       "supplier_name": "نورالور للألمنيوم (Noralur)",
-      "date": DateTime.now().toIso8601String().substring(0, 10),
+      "date": DateTime.now().toUtc().toIso8601String().substring(0, 10),
       "total": 85400.0,
       "items": [
         {

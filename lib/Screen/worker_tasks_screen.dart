@@ -279,7 +279,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
           if (list[i]['id'] == allocationId) {
             final mutable = Map<String, dynamic>.from(list[i]);
             mutable['is_manufactured'] = newVal;
-            mutable['manufactured_at'] = newVal == 1 ? DateTime.now().toIso8601String() : null;
+            mutable['manufactured_at'] = newVal == 1 ? DateTime.now().toUtc().toIso8601String() : null;
             if (newVal == 0) {
               mutable['is_glass_installed'] = 0;
               mutable['glass_installed_at'] = null;
@@ -330,7 +330,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
           if (list[i]['id'] == allocationId) {
             final mutable = Map<String, dynamic>.from(list[i]);
             mutable['is_glass_installed'] = newVal;
-            mutable['glass_installed_at'] = newVal == 1 ? DateTime.now().toIso8601String() : null;
+            mutable['glass_installed_at'] = newVal == 1 ? DateTime.now().toUtc().toIso8601String() : null;
             list[i] = mutable;
           }
         }

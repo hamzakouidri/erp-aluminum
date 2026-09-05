@@ -330,7 +330,7 @@ class WorkspaceTabStrip extends StatelessWidget {
             final entry = workspace.entries[index];
             final active = index == workspace.activeIndex;
             final title = entry.id == 'home'
-                ? 'الرئيسية'
+                ? Localization.translate('Home', language)
                 : Localization.translate(entry.title, language);
 
             return Padding(
@@ -522,49 +522,10 @@ class _WorkshopSessionNoticeState extends State<_WorkshopSessionNotice> {
 
   @override
   Widget build(BuildContext context) {
-    if (SupabaseCatalogSyncService().isSignedIn) return widget.child;
-
-    return Column(
-      children: [
-        Material(
-          color: const Color(0xFFFFF7E0),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 12, 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.cloud_off_rounded, color: Colors.orange),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'جلسة قاعدة بيانات الورشة غير مفتوحة. افتحها لتعمل المزامنة تلقائياً.',
-                      style: TextStyle(fontFamily: 'Cairo'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: _opening ? null : _openSession,
-                    icon: _opening
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.login_rounded),
-                    label: Text(
-                      _opening ? 'جاري الفتح...' : 'فتح جلسة الورشة',
-                      style: const TextStyle(fontFamily: 'Cairo'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Expanded(child: widget.child),
-      ],
-    );
+    // Workshop synchronization is silent and non-blocking. The gateway and
+    // realtime services start it in the background; never replace the
+    // desktop dashboard with a sync/login banner.
+    return widget.child;
   }
 }
 
@@ -649,6 +610,8 @@ class _WorkspaceHeader extends StatefulWidget {
 
 class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
   String _workshopName = '';
+  String _userDisplayName = '';
+  String? _workshopLogo;
   StreamSubscription<String>? _workshopSyncSubscription;
 
   @override
@@ -676,18 +639,41 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = (prefs.getString('workshop_name') ?? '').trim();
+      final savedUserName =
+          (prefs.getString('user_display_name') ?? '').trim();
+      final savedLogo = (prefs.getString('workshop_logo_base64') ?? '').trim();
       var resolvedName = savedName;
       final account = await SupabaseAccountService().loadCurrentAccount();
       final accountName = account?.workshopName.trim() ?? '';
       final accountCode = account?.workshopCode.trim() ?? '';
-      if (accountName.isNotEmpty && accountName != accountCode) {
+      if (resolvedName.isEmpty &&
+          accountName.isNotEmpty &&
+          accountName != accountCode) {
         resolvedName = accountName;
         await prefs.setString('workshop_name', accountName);
       }
-      if (!mounted || resolvedName == _workshopName) return;
-      setState(() => _workshopName = resolvedName);
+      if (!mounted ||
+          (resolvedName == _workshopName &&
+              savedUserName == _userDisplayName && savedLogo == _workshopLogo)) {
+        return;
+      }
+      setState(() {
+        _workshopName = resolvedName;
+        _userDisplayName = savedUserName;
+        _workshopLogo = savedLogo.isEmpty ? null : savedLogo;
+      });
     } catch (error) {
       debugPrint('Could not load workspace workshop name: $error');
+    }
+  }
+
+  ImageProvider? _decodeWorkshopLogo(String value) {
+    try {
+      final raw = value.contains(',') ? value.split(',').last : value;
+      final bytes = base64Decode(raw);
+      return bytes.isEmpty ? null : MemoryImage(bytes);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -734,16 +720,24 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
             final workshopName = _workshopName.isNotEmpty
                 ? _workshopName
                 : (hasLegacyName ? legacyWorkshopName : '');
-            final String displayName =
-                (data?['displayName'] as String?)?.trim().isNotEmpty == true
-                ? data!['displayName'].toString()
-                : (user?.displayName?.trim().isNotEmpty == true
-                      ? user!.displayName!
-                      : (data?['role'] == 'manager' ? 'مدير الورشة' : 'عامل'));
+            final authDisplayName = user?.displayName?.trim() ?? '';
+            final legacyDisplayName =
+                data?['displayName']?.toString().trim() ?? '';
+            var displayName = _userDisplayName.isNotEmpty
+                ? _userDisplayName
+                : (authDisplayName.isNotEmpty
+                      ? authDisplayName
+                      : legacyDisplayName);
             final safeWorkshopName = workshopName.trim().isNotEmpty
                 ? workshopName
                 : Localization.translate('اسم الورشة', language);
-            final safeDisplayName = displayName?.toString() ?? '';
+            if (displayName.isEmpty || displayName == safeWorkshopName) {
+              final email = user?.email?.trim() ?? '';
+              displayName = email.contains('@')
+                  ? email.split('@').first
+                  : Localization.translate('المستخدم', language);
+            }
+            final safeDisplayName = displayName;
 
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
@@ -782,10 +776,17 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
                       CircleAvatar(
                         radius: 24,
                         backgroundColor: Colors.white,
+                        backgroundImage: _workshopLogo == null
+                            ? null
+                            : (_workshopLogo!.startsWith('http')
+                                  ? NetworkImage(_workshopLogo!)
+                                  : _decodeWorkshopLogo(_workshopLogo!)),
                         child: Text(
-                          safeWorkshopName.length >= 2
+                          _workshopLogo == null && safeWorkshopName.length >= 2
                               ? safeWorkshopName.substring(0, 2).toUpperCase()
-                              : safeWorkshopName.toUpperCase(),
+                              : (_workshopLogo == null
+                                    ? safeWorkshopName.toUpperCase()
+                                    : ''),
                           style: const TextStyle(
                             color: Color(0xFF1D4ED8),
                             fontWeight: FontWeight.bold,

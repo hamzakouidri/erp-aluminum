@@ -733,21 +733,29 @@ class SubscriptionReviewDialog extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: valueColor ?? const Color(0xFF2563EB)),
         const SizedBox(width: 10),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 13,
-            color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color:
-                valueColor ?? (isDark ? Colors.white : const Color(0xFF0F172A)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color:
+                      valueColor ??
+                      (isDark ? Colors.white : const Color(0xFF0F172A)),
+                ),
+              ),
+            ],
           ),
         ),
       ],

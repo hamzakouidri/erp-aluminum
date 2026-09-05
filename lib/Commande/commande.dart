@@ -871,7 +871,9 @@ class _CommandeState extends State<Commande> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
+                              _t(
+                                'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
+                              ),
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.grey.shade600,
@@ -905,8 +907,8 @@ class _CommandeState extends State<Commande> {
                                 Icons.add_circle_outline,
                                 size: 24,
                               ),
-                              label: const Text(
-                                'إنشاء طلبية جديدة',
+                              label: Text(
+                                _t('إنشاء طلبية جديدة'),
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -3076,7 +3078,7 @@ class _CommandeState extends State<Commande> {
       tva: tva,
       total: total,
       netPayable: total - remise + ((total * tva) / 100),
-      createdAt: DateTime.now().toIso8601String(),
+      createdAt: DateTime.now().toUtc().toIso8601String(),
       details: copiedDetails,
     );
   }

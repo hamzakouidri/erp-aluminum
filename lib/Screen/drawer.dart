@@ -31,11 +31,14 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'worker_tasks_screen.dart';
 import 'worker_weekly_settlement_screen.dart';
+import '../services/supabase_workshop_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
+import 'dart:async';
 
 class AppDrawer extends StatefulWidget {
   /// Used by the permanent desktop sidebar.  Mobile drawers still close with
@@ -57,11 +60,22 @@ class _AppDrawerState extends State<AppDrawer> {
   String? _savedWorkshopName;
   String? _savedWorkshopCode;
   String? _savedUserRole;
+  String? _savedUserDisplayName;
+  StreamSubscription<String>? _workshopProfileSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadLocalWorkshopInfo();
+    _workshopProfileSubscription = CloudSyncService().dbUpdateStream.listen((
+      event,
+    ) {
+      if (event == 'workshop_profile_updated' ||
+          event == 'cloud_restored' ||
+          event == 'supabase_data_updated') {
+        _loadLocalWorkshopInfo();
+      }
+    });
   }
 
   Future<void> _loadLocalWorkshopInfo() async {
@@ -79,6 +93,16 @@ class _AppDrawerState extends State<AppDrawer> {
             : localWorkshopName;
         _savedWorkshopCode = savedCode;
         _savedUserRole = prefs.getString('user_role');
+        final authUser = AppAuthService().currentUser;
+        final email = authUser?.email?.trim() ?? '';
+        final authName = authUser?.displayName?.trim() ?? '';
+        final storedUserName =
+            (prefs.getString('user_display_name') ?? '').trim();
+        _savedUserDisplayName = storedUserName.isNotEmpty
+            ? storedUserName
+            : (authName.isNotEmpty
+                  ? authName
+                  : (email.contains('@') ? email.split('@').first : email));
       });
     }
 
@@ -91,11 +115,14 @@ class _AppDrawerState extends State<AppDrawer> {
         account?.workshopName,
         code: account?.workshopCode,
       );
-      if (accountName.isEmpty) return;
-      await prefs.setString('workshop_name', accountName);
+      final resolvedName = localWorkshopName.isNotEmpty
+          ? localWorkshopName
+          : accountName;
+      if (resolvedName.isEmpty) return;
+      await prefs.setString('workshop_name', resolvedName);
       if (!mounted) return;
       setState(() {
-        _savedWorkshopName = accountName;
+        _savedWorkshopName = resolvedName;
         if (account?.workshopCode.trim().isNotEmpty == true) {
           _savedWorkshopCode = account!.workshopCode.trim();
         }
@@ -107,6 +134,7 @@ class _AppDrawerState extends State<AppDrawer> {
 
   @override
   void dispose() {
+    _workshopProfileSubscription?.cancel();
     _drawerScrollController.dispose();
     super.dispose();
   }
@@ -454,12 +482,20 @@ class _AppDrawerState extends State<AppDrawer> {
                 french: 'Responsable atelier',
                 english: 'Workshop manager',
               )
-            : _desktopLabel(
+              : _desktopLabel(
                 lang,
                 arabic: 'عامل',
                 french: 'Employé',
                 english: 'Worker',
               );
+        final userEmail = AppAuthService().currentUser?.email?.trim() ?? '';
+        final savedUserName = _savedUserDisplayName?.trim() ?? '';
+        final userName = savedUserName.isNotEmpty &&
+                savedUserName != workshopName
+            ? savedUserName
+            : (userEmail.contains('@')
+                  ? userEmail.split('@').first
+                  : roleLabel);
 
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return Container(
@@ -518,14 +554,15 @@ class _AppDrawerState extends State<AppDrawer> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      roleLabel,
+                      userName,
                       style: const TextStyle(
                         color: Color(0xFFE0F2FE),
                         fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     Text(
-                      AppAuthService().currentUser?.email ?? '',
+                      userEmail,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -701,10 +738,15 @@ class _AppDrawerState extends State<AppDrawer> {
     Navigator.pop(context);
     try {
       context.read<WorkspaceController>().resetForSignedOut();
-      await CloudSyncService().clearCachedWorkshopContext();
+      // Notify the root auth gate first. Waiting for cloud/local cleanup here
+      // can leave Android showing only the launcher/background while the
+      // sync service still owns database listeners.
       await AppAuthService().signOut();
       await AppAuthService().signOutGoogleSession();
-      await SqlDatabase.clearAllLocalData();
+      CloudSyncService().reset();
+      SupabaseWorkshopSyncService().stop();
+      unawaited(CloudSyncService().clearCachedWorkshopContext());
+      unawaited(SqlDatabase.clearAllLocalData());
     } catch (error) {
       debugPrint('Sign out error: $error');
     }
@@ -1354,13 +1396,23 @@ class _AppDrawerState extends State<AppDrawer> {
                     : _savedLogoBase64;
                 joinCode = data['joinCode'];
                 role = data['role'];
-                displayName =
-                    data['displayName'] ??
-                    (role == 'admin'
-                        ? 'مدير التطبيق'
-                        : (role == 'manager'
-                              ? Localization.translate('مدير الورشة', lang)
-                              : Localization.translate('عامل', lang)));
+                final legacyDisplayName =
+                    data['displayName']?.toString().trim() ?? '';
+                final savedUserName = _savedUserDisplayName?.trim() ?? '';
+                final authDisplayName =
+                    AppAuthService().currentUser?.displayName?.trim() ?? '';
+                displayName = savedUserName.isNotEmpty
+                    ? savedUserName
+                    : (authDisplayName.isNotEmpty
+                          ? authDisplayName
+                          : legacyDisplayName);
+              }
+
+              if (displayName.trim().isEmpty ||
+                  displayName.trim() == workshopName.trim()) {
+                displayName = userEmail.contains('@')
+                    ? userEmail.split('@').first
+                    : Localization.translate('المستخدم', lang);
               }
 
               return UserAccountsDrawerHeader(
@@ -1969,10 +2021,12 @@ class _AppDrawerState extends State<AppDrawer> {
                 // تسجيل الخروج من Firebase و Google
                 try {
                   context.read<WorkspaceController>().resetForSignedOut();
-                  await CloudSyncService().clearCachedWorkshopContext();
                   await AppAuthService().signOut();
                   await AppAuthService().signOutGoogleSession();
-                  await SqlDatabase.clearAllLocalData();
+                  CloudSyncService().reset();
+                  SupabaseWorkshopSyncService().stop();
+                  unawaited(CloudSyncService().clearCachedWorkshopContext());
+                  unawaited(SqlDatabase.clearAllLocalData());
                 } catch (e) {
                   debugPrint('Sign out error: $e');
                 }

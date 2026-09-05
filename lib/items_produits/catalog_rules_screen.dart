@@ -183,6 +183,16 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('ekar', 'إيكار', 'Ekar'),
           _RuleRole('roulette', 'عجلات', 'Roulettes'),
           _RuleRole('entrematique', 'أونتروماتيك', 'Entrematique'),
+          _RuleRole(
+            'sliding_kit_40000',
+            'كيت سلسلة 40000 TPR',
+            'Kit série 40000 TPR',
+          ),
+          _RuleRole(
+            'sliding_kit_67000',
+            'كيت سلسلة 67000 TPR',
+            'Kit série 67000 TPR',
+          ),
           _RuleRole('other', 'أخرى', 'Autre'),
         ];
       case 'Joints':
@@ -408,12 +418,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'الأقفال',
         fr: 'Serrures et verrous',
         icon: Icons.lock_outline,
-        roleKeys: {
-          'lock_clef',
-          'lock_condamnation',
-          'verrou',
-          'canon',
-        },
+        roleKeys: {'lock_clef', 'lock_condamnation', 'verrou', 'canon'},
       ),
       _CatalogGroup(
         key: 'handles',
@@ -440,7 +445,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'الطاسو والإيكار والعجلات',
         fr: 'Tasso, Ekar et roulettes',
         icon: Icons.circle_outlined,
-        roleKeys: {'tasso', 'ekar', 'roulette', 'sliding_kit', 'sliding_clamp'},
+        roleKeys: {
+          'tasso',
+          'ekar',
+          'roulette',
+          'sliding_kit',
+          'sliding_kit_40000',
+          'sliding_kit_67000',
+          'sliding_clamp',
+        },
       ),
       _CatalogGroup(
         key: 'other',
@@ -454,9 +467,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   String _groupRoleForItem(String table, Map<String, dynamic> item) {
     final guessed = _guessRole(table, item);
-    if (table == 'Accessories' &&
-        guessed == 'other' &&
-        _isScrewItem(item)) {
+    if (table == 'Accessories' && guessed == 'other' && _isScrewItem(item)) {
       return 'accessory_screw';
     }
     return guessed;
@@ -487,25 +498,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     return group.roleKeys.contains(_groupRoleForItem(table, item));
   }
 
-  List<_RuleRole> _rolesForItem(
-    String table,
-    Map<String, dynamic> item,
-  ) {
+  List<_RuleRole> _rolesForItem(String table, Map<String, dynamic> item) {
     final group = _groupsForTable(table).firstWhere(
       (candidate) => _itemBelongsToGroup(table, item, candidate),
       orElse: () => _groupsForTable(table).last,
     );
-    final roles = _rolesForTable(table)
-        .where((role) => group.roleKeys.contains(role.key))
-        .toList();
+    final roles = _rolesForTable(
+      table,
+    ).where((role) => group.roleKeys.contains(role.key)).toList();
     final itemId = _itemId(item);
     final currentKey = itemId == null
         ? ''
         : _ruleFor(table, itemId)['role_key']?.toString() ?? '';
     if (currentKey.isNotEmpty && !roles.any((role) => role.key == currentKey)) {
-      final currentRole = _rolesForTable(table).where(
-        (role) => role.key == currentKey,
-      );
+      final currentRole = _rolesForTable(
+        table,
+      ).where((role) => role.key == currentKey);
       if (currentRole.isNotEmpty) roles.add(currentRole.first);
     }
     return roles;
@@ -576,6 +584,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           (text.contains('vis') || text.contains('براغ'))) {
         return 'box_screw';
       }
+      if ((text.contains('40000') || text.contains('40000')) &&
+          (text.contains('kit') || text.contains('كيت'))) {
+        return 'sliding_kit_40000';
+      }
+      if ((text.contains('67000') || text.contains('67000')) &&
+          (text.contains('kit') || text.contains('كيت'))) {
+        return 'sliding_kit_67000';
+      }
+      if (text.contains('kit') || text.contains('كيت')) return 'sliding_kit';
       if (text.contains('clam')) return 'sliding_clamp';
       if (text.contains('gache couliss') || text.contains('gâche couliss')) {
         return 'sliding_lock';
@@ -730,7 +747,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _t('قواعد الأكسسوارات والجوانات', 'Règles des accessoires et des joints'),
+          _t(
+            'قواعد الأكسسوارات والجوانات',
+            'Règles des accessoires et des joints',
+          ),
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -898,16 +918,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final itemId = _itemId(item);
     final role = itemId == null
         ? null
-        : _rolesForTable(table).where(
-            (candidate) =>
-                candidate.key == _ruleFor(table, itemId)['role_key'],
-          ).firstOrNull;
+        : _rolesForTable(table)
+              .where(
+                (candidate) =>
+                    candidate.key == _ruleFor(table, itemId)['role_key'],
+              )
+              .firstOrNull;
     return FilterChip(
       avatar: enabled ? const Icon(Icons.check_rounded, size: 17) : null,
       label: Text(_itemTitle(item)),
       selected: enabled,
       onSelected: (value) => _toggleItem(table, item, value),
-      tooltip: role == null ? null : _t('الدور: ${role.ar}', 'Rôle : ${role.fr}'),
+      tooltip: role == null
+          ? null
+          : _t('الدور: ${role.ar}', 'Rôle : ${role.fr}'),
     );
   }
 
@@ -1041,7 +1065,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       setState(() => item.addAll(values));
     } catch (error) {
       if (!mounted) return;
-      _showError('${_t('تعذر حفظ ارتباط الأكسسوار', 'Lien impossible à enregistrer')}: $error');
+      _showError(
+        '${_t('تعذر حفظ ارتباط الأكسسوار', 'Lien impossible à enregistrer')}: $error',
+      );
     }
   }
 
@@ -1105,7 +1131,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               initialValue: screwId,
               isExpanded: true,
               decoration: InputDecoration(
-                labelText: _t('الفيس المرتبط بهذا العنصر', 'Vis liées à cet élément'),
+                labelText: _t(
+                  'الفيس المرتبط بهذا العنصر',
+                  'Vis liées à cet élément',
+                ),
               ),
               items: [
                 DropdownMenuItem(
@@ -1120,7 +1149,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     ),
               ],
               onChanged: (value) => _updateAccessoryFields(item, {
-                'screw_accessory_id': value == null || value == 0 ? null : value,
+                'screw_accessory_id': value == null || value == 0
+                    ? null
+                    : value,
               }),
             ),
           if (screwItems.isNotEmpty) ...[
@@ -1129,7 +1160,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               initialValue: '${(item['screw_count'] as num?)?.toInt() ?? 0}',
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: _t('عدد الفيس لهذا العنصر', 'Nombre de vis pour cet élément'),
+                labelText: _t(
+                  'عدد الفيس لهذا العنصر',
+                  'Nombre de vis pour cet élément',
+                ),
               ),
               onFieldSubmitted: (value) => _updateAccessoryFields(item, {
                 'screw_count': int.tryParse(value.trim()) ?? 0,
@@ -1142,7 +1176,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               initialValue: gacheId,
               isExpanded: true,
               decoration: InputDecoration(
-                labelText: _t('القاش المرتبط بهذا القفل/الأكسسوار', 'Gâche liée à cet élément'),
+                labelText: _t(
+                  'القاش المرتبط بهذا القفل/الأكسسوار',
+                  'Gâche liée à cet élément',
+                ),
               ),
               items: [
                 DropdownMenuItem(
@@ -1157,7 +1194,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     ),
               ],
               onChanged: (value) => _updateAccessoryFields(item, {
-                'gache_accessory_id': value == null || value == 0 ? null : value,
+                'gache_accessory_id': value == null || value == 0
+                    ? null
+                    : value,
               }),
             ),
             const SizedBox(height: 8),

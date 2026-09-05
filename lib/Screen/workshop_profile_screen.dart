@@ -185,6 +185,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     try {
       // Save to local SharedPreferences immediately
       final prefs = await SharedPreferences.getInstance();
+      final previousWorkshopName = prefs.getString('workshop_name') ?? '';
       await prefs.setString('workshop_name', newWorkshopName);
       await prefs.setString('phone', _phoneController.text.trim());
       await prefs.setString('workshop_rc', _rcController.text.trim());
@@ -204,6 +205,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
       // these values to Supabase so worker devices receive them through the
       // workshop sync path; they are no longer written to Firebase.
       var cloudProfileSaved = true;
+      var duplicateWorkshopName = false;
       try {
         await SupabaseWorkshopSyncService().saveWorkshopProfile({
           'workshop_name': newWorkshopName,
@@ -221,6 +223,15 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         });
       } catch (syncError) {
         cloudProfileSaved = false;
+        final errorText = syncError.toString().toLowerCase();
+        duplicateWorkshopName =
+            errorText.contains('workshop name already exists') ||
+            errorText.contains('name already exists');
+        if (duplicateWorkshopName) {
+          // The server is authoritative for the unique workshop name. Do not
+          // leave a rejected duplicate in this device's local preferences.
+          await prefs.setString('workshop_name', previousWorkshopName);
+        }
         // A temporary Supabase/network failure must not undo the local save,
         // but it must be visible to the manager instead of being reported as
         // a complete success.
@@ -235,6 +246,10 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             content: Text(
               cloudProfileSaved
                   ? _t('تم حفظ معلومات الورشة بنجاح')
+                  : duplicateWorkshopName
+                  ? _t(
+                      'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.',
+                    )
                   : _t('تم الحفظ محلياً، وتعذرت مزامنة الاسم مع السحابة'),
             ),
             backgroundColor: cloudProfileSaved ? Colors.green : Colors.orange,

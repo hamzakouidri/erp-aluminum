@@ -91,6 +91,7 @@ class BomEngineV2 {
             seriesId: seriesId,
             materialType: _materialTypeForItem(window, item),
             hasShutter: window.hasShutter,
+            isCaissonTunnel: window.isCaissonTunnel,
             drawingMode: _drawingModeForItem(window, item),
             // The quantity/cost table follows the same catalog eligibility as
             // the replacement dialog: only a rule explicitly enabled for the
@@ -189,6 +190,7 @@ class BomEngineV2 {
         seriesId: seriesId,
         materialType: _materialTypeForItem(window, item),
         hasShutter: window.hasShutter,
+        isCaissonTunnel: window.isCaissonTunnel,
         drawingMode: _drawingModeForItem(window, item),
         requireDialog: true,
         requireQuantity: true,
@@ -371,6 +373,7 @@ class BomEngineV2 {
       query.seriesId ?? '',
       (query.materialType ?? '').toLowerCase().trim(),
       query.hasShutter ? '1' : '0',
+      query.isCaissonTunnel ? '1' : '0',
       query.drawingMode?.name ?? '',
       query.requireDialog ? '1' : '0',
       query.requireQuantity ? '1' : '0',
@@ -436,6 +439,15 @@ class BomEngineV2 {
     final selectorType = item.selectorType?.toLowerCase().trim() ?? '';
     final originalName = item.originalName.toLowerCase().trim();
     final roleKey = item.roleKey?.toLowerCase().trim() ?? '';
+
+    // Batmo is always sourced from the opening series.  This explicit rule is
+    // required for mixed drawings where opening and sliding zones coexist.
+    if (roleKey == 'batmo' ||
+        roleKey == 'bouchon_batmo' ||
+        selectorType == 'batmo' ||
+        selectorType == 'bouchon_batmo') {
+      return AccessoryDrawingMode.opening;
+    }
 
     // In a mixed drawing, the presence of both sash families is not enough
     // to infer the source of generic hardware. BOM rows created for a sliding
