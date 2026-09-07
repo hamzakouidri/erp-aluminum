@@ -6396,7 +6396,7 @@ class WindowModel extends ChangeNotifier {
       // are being resolved. Clearing it here brought back the white/default
       // state and made colours appear to load much later than they did.
       availableAccessoryColors = await db.readAccessoryColors();
-      availableSystems.clear();
+      final newAvailableSystems = <AluminumProfileSystem>[];
       bool foundValidSeries = false;
       final selectedSeriesIds = <int>{
         if (loadedSeriesId != null) loadedSeriesId!,
@@ -6477,7 +6477,10 @@ class WindowModel extends ChangeNotifier {
           // contain an exact opening/sliding label.
           system.series.add(series);
         }
-        if (system.series.isNotEmpty) availableSystems.add(system);
+        if (system.series.isNotEmpty) newAvailableSystems.add(system);
+      }
+      if (newAvailableSystems.isNotEmpty) {
+        availableSystems = newAvailableSystems;
       }
 
       if (availableSystems.isNotEmpty) {
@@ -7587,6 +7590,8 @@ class WindowModel extends ChangeNotifier {
             loadedSeriesId != null &&
             loadedSeriesId != series.id);
     activeSeries = series;
+    loadedSeriesId = series.id;
+    loadedSeriesName = series.name;
     seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
     seriesTableConfig = await db.getSeriesTableConfig(series.id);
     final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
@@ -8643,6 +8648,8 @@ class WindowModel extends ChangeNotifier {
             loadedSlidingSeriesId != null &&
             loadedSlidingSeriesId != series.id);
     activeSlidingSeries = series;
+    loadedSlidingSeriesId = series.id;
+    loadedSlidingSeriesName = series.name;
     seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
     slidingSeriesTableConfig = await db.getSeriesTableConfig(series.id);
     final configuredRoleRows = await db.getSeriesDesignRoles(series.id);

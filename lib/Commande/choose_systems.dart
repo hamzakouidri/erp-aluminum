@@ -34,6 +34,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     'verre': true,
   };
 
+  int? _defaultOpeningSeriesId;
+  int? _defaultSlidingSeriesId;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +47,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
+      _defaultOpeningSeriesId = prefs.getInt('default_opening_series_id');
+      _defaultSlidingSeriesId = prefs.getInt('default_sliding_series_id');
       _activeModes = {
         'sliding': prefs.getBool('system_active_sliding') ?? true,
         'french': prefs.getBool('system_active_french') ?? true,
@@ -55,6 +60,254 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         'verre': prefs.getBool('system_active_verre') ?? true,
       };
     });
+  }
+
+  Future<List<Map<String, dynamic>>> _loadActiveSeriesList() async {
+    final d = await db.db;
+    if (d == null) return [];
+    return await d.rawQuery('''
+      SELECT s.id, s.name, s.type, s.profile_id, p.name as profile_name 
+      FROM Series s 
+      LEFT JOIN Profile p ON s.profile_id = p.id 
+      WHERE (s.is_active = 1 OR s.is_active IS NULL)
+        AND (p.is_active = 1 OR p.is_active IS NULL)
+      ORDER BY p.name, s.name
+    ''');
+  }
+
+  Future<void> _showDefaultSeriesDialog(
+    BuildContext context,
+    AppLanguage lang,
+  ) async {
+    final seriesList = await _loadActiveSeriesList();
+    if (!mounted) return;
+
+    int? tempOpeningId = _defaultOpeningSeriesId;
+    int? tempSlidingId = _defaultSlidingSeriesId;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF232336) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      Localization.translate('السلاسل الافتراضية للورشة', lang),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Localization.translate(
+                        'حدد السلسلة التي تفتح بها النوافذ الجديدة تلقائياً بدون الحاجة لتغييرها في كل مرة:',
+                        lang,
+                      ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      Localization.translate(
+                        'سلسلة الفتح الافتراضية (Battant):',
+                        lang,
+                      ),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.blue.shade300 : Colors.blue.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: DropdownButton<int?>(
+                        value: seriesList.any((s) => s['id'] == tempOpeningId)
+                            ? tempOpeningId
+                            : null,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        dropdownColor: isDark ? const Color(0xFF2A2A3E) : Colors.white,
+                        hint: Text(
+                          Localization.translate('تلقائي (افتراضي النظام)', lang),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                          ),
+                        ),
+                        items: [
+                          DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text(
+                              Localization.translate('تلقائي (افتراضي النظام)', lang),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          ...seriesList.map((s) {
+                            final profileName = s['profile_name'] ?? '';
+                            final seriesName = s['name'] ?? '';
+                            return DropdownMenuItem<int?>(
+                              value: s['id'] as int,
+                              child: Text(
+                                profileName.toString().isNotEmpty
+                                    ? '[] '
+                                    : seriesName.toString(),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          setDialogState(() => tempOpeningId = val);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      Localization.translate(
+                        'سلسلة المنزلق الافتراضية (Coulissant):',
+                        lang,
+                      ),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.green.shade300 : Colors.green.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: DropdownButton<int?>(
+                        value: seriesList.any((s) => s['id'] == tempSlidingId)
+                            ? tempSlidingId
+                            : null,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        dropdownColor: isDark ? const Color(0xFF2A2A3E) : Colors.white,
+                        hint: Text(
+                          Localization.translate('تلقائي (افتراضي النظام)', lang),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                          ),
+                        ),
+                        items: [
+                          DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text(
+                              Localization.translate('تلقائي (افتراضي النظام)', lang),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          ...seriesList.map((s) {
+                            final profileName = s['profile_name'] ?? '';
+                            final seriesName = s['name'] ?? '';
+                            return DropdownMenuItem<int?>(
+                              value: s['id'] as int,
+                              child: Text(
+                                profileName.toString().isNotEmpty
+                                    ? '[] '
+                                    : seriesName.toString(),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          setDialogState(() => tempSlidingId = val);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(Localization.translate('إلغاء', lang)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDark ? Colors.blue.shade700 : Colors.blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    if (tempOpeningId != null) {
+                      await prefs.setInt('default_opening_series_id', tempOpeningId!);
+                    } else {
+                      await prefs.remove('default_opening_series_id');
+                    }
+                    if (tempSlidingId != null) {
+                      await prefs.setInt('default_sliding_series_id', tempSlidingId!);
+                    } else {
+                      await prefs.remove('default_sliding_series_id');
+                    }
+                    if (mounted) {
+                      setState(() {
+                        _defaultOpeningSeriesId = tempOpeningId;
+                        _defaultSlidingSeriesId = tempSlidingId;
+                      });
+                      Navigator.pop(dialogContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            Localization.translate('تم حفظ السلاسل الافتراضية بنجاح', lang),
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  child: Text(Localization.translate('حفظ', lang)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _applyDrawingDefaults(WindowModel model, Map<String, dynamic> defaults) {
@@ -482,20 +735,11 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
             : Colors.blue,
         foregroundColor: Colors.white,
         actions: [
-          if (false)
-            IconButton(
-              tooltip: Localization.translate('تعديل الأنظمة المفعلة', lang),
-              icon: const Icon(Icons.tune_rounded),
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SelectedSystemsScreen(),
-                  ),
-                );
-                _loadActiveModes();
-              },
-            ),
+          IconButton(
+            tooltip: Localization.translate('السلاسل الافتراضية', lang),
+            icon: const Icon(Icons.tune_rounded),
+            onPressed: () => _showDefaultSeriesDialog(context, lang),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -729,21 +973,37 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 
     switch (systemType) {
       case 'sliding':
+        final model = _makeModel(thickness: 45);
+        if (_defaultSlidingSeriesId != null && model.loadedSeriesId == null) {
+          model.loadedSeriesId = _defaultSlidingSeriesId;
+          model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
+        }
         targetPage = WindowView(
           systemMode: 'sliding',
-          model: _makeModel(thickness: 45),
+          model: model,
         );
         break;
       case 'french':
+        final model = _makeModel(thickness: 60);
+        if (_defaultOpeningSeriesId != null && model.loadedSeriesId == null) {
+          model.loadedSeriesId = _defaultOpeningSeriesId;
+        }
         targetPage = WindowView(
           systemMode: 'french',
-          model: _makeModel(thickness: 60),
+          model: model,
         );
         break;
       case 'mixed':
+        final model = _makeModel(thickness: 60);
+        if (_defaultOpeningSeriesId != null && model.loadedSeriesId == null) {
+          model.loadedSeriesId = _defaultOpeningSeriesId;
+        }
+        if (_defaultSlidingSeriesId != null && model.loadedSlidingSeriesId == null) {
+          model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
+        }
         targetPage = WindowView(
           systemMode: 'mixed',
-          model: _makeModel(thickness: 60),
+          model: model,
         );
         break;
       case 'rolling':

@@ -14818,12 +14818,15 @@ class _WindowViewState extends State<WindowView> {
     }
 
     if (!context.mounted) return;
-    await Navigator.push(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => MaterialConsumptionScreen(model: widget.model),
       ),
     );
+    if (result == true && context.mounted) {
+      Navigator.pop(context, widget.model);
+    }
   }
 
   void _showParcloseSelectorDialog(BuildContext context) async {

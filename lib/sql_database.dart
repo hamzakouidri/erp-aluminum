@@ -1374,6 +1374,7 @@ class SqlDatabase {
               price REAL NOT NULL DEFAULT 0.0,
               qty REAL NOT NULL DEFAULT 1,
               compatibility_group INTEGER NOT NULL DEFAULT 0,
+              accessory_id INTEGER,
               family_id INTEGER,
               FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
             )

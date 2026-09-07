@@ -6702,4 +6702,39 @@ This action cannot be undone!''',
     AppLanguage.french: 'Tous les statuts',
     AppLanguage.english: 'All statuses',
   },
+  'السلاسل الافتراضية': {
+    AppLanguage.arabic: 'السلاسل الافتراضية',
+    AppLanguage.french: 'Séries par défaut',
+    AppLanguage.english: 'Default Series',
+  },
+  'السلاسل الافتراضية للورشة': {
+    AppLanguage.arabic: 'السلاسل الافتراضية للورشة',
+    AppLanguage.french: 'Séries par défaut de l\'atelier',
+    AppLanguage.english: 'Workshop Default Series',
+  },
+  'حدد السلسلة التي تفتح بها النوافذ الجديدة تلقائياً بدون الحاجة لتغييرها في كل مرة:': {
+    AppLanguage.arabic: 'حدد السلسلة التي تفتح بها النوافذ الجديدة تلقائياً بدون الحاجة لتغييرها في كل مرة:',
+    AppLanguage.french: 'Définissez les séries qui s\'ouvrent automatiquement pour les nouvelles fenêtres :',
+    AppLanguage.english: 'Define the series that open automatically for new windows:',
+  },
+  'سلسلة الفتح الافتراضية (Battant):': {
+    AppLanguage.arabic: 'سلسلة الفتح الافتراضية (Battant):',
+    AppLanguage.french: 'Série ouvrante par défaut (Battant) :',
+    AppLanguage.english: 'Default opening series (Battant):',
+  },
+  'سلسلة المنزلق الافتراضية (Coulissant):': {
+    AppLanguage.arabic: 'سلسلة المنزلق الافتراضية (Coulissant):',
+    AppLanguage.french: 'Série coulissante par défaut (Coulissant) :',
+    AppLanguage.english: 'Default sliding series (Coulissant):',
+  },
+  'تلقائي (افتراضي النظام)': {
+    AppLanguage.arabic: 'تلقائي (افتراضي النظام)',
+    AppLanguage.french: 'Automatique (Défaut du système)',
+    AppLanguage.english: 'Automatic (System default)',
+  },
+  'تم حفظ السلاسل الافتراضية بنجاح': {
+    AppLanguage.arabic: 'تم حفظ السلاسل الافتراضية بنجاح',
+    AppLanguage.french: 'Séries par défaut enregistrées avec succès',
+    AppLanguage.english: 'Default series saved successfully',
+  },
 };
