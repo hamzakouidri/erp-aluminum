@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
+import '../services/cloud_sync_service.dart';
+import '../widgets/section_image.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
   const CatalogRulesScreen({super.key, required this.db});
@@ -699,8 +703,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   (rule['role_key']?.toString().isNotEmpty ?? false),
             )
             .toList();
-        await widget.db.saveCatalogItemRules(itemTable: table, rules: rules);
+        await widget.db.saveCatalogItemRules(
+          itemTable: table,
+          rules: rules,
+          syncCatalog: false,
+        );
       }
+      // Upload once after both local tables are committed. Do not make the
+      // save button wait for Supabase or fail when the server is slow.
+      unawaited(CloudSyncService().notifyCatalogChange());
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
@@ -925,7 +936,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               )
               .firstOrNull;
     return FilterChip(
-      avatar: enabled ? const Icon(Icons.check_rounded, size: 17) : null,
+      avatar: enabled
+          ? const Icon(Icons.check_rounded, size: 17)
+          : SectionImageWidget(
+              code: item['code']?.toString(),
+              name: item['name']?.toString(),
+              imagePath: item['image_path']?.toString(),
+              size: 24,
+              fallbackIcon: Icons.inventory_2_outlined,
+            ),
       label: Text(_itemTitle(item)),
       selected: enabled,
       onSelected: (value) => _toggleItem(table, item, value),
@@ -949,9 +968,24 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                _itemTitle(item),
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SectionImageWidget(
+                    code: item['code']?.toString(),
+                    name: item['name']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    size: 56,
+                    fallbackIcon: Icons.inventory_2_outlined,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _itemTitle(item),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
               ),
               if (_itemSubtitle(item).isNotEmpty) ...[
                 const SizedBox(height: 3),

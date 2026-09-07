@@ -288,6 +288,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
   }
 
   void _showAddDialog() {
+    bool isSaving = false;
     final nameCtrl = TextEditingController();
 
     final screwCountCtrl = TextEditingController(text: '0');
@@ -429,685 +430,722 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
 
       builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          title: Text(
-            Localization.translate(
-              'إضافة أكسسوار جديد',
+        builder: (context, setStateDialog) => PopScope(
+          canPop: !isSaving,
+          child: AlertDialog(
+            title: Text(
+              Localization.translate(
+                'إضافة أكسسوار جديد',
 
-              Provider.of<AppSettingsProvider>(context).language,
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
+
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
 
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 520,
 
-          content: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: 520,
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
 
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
 
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'اسم الأكسسوار (مثال: مقبض إيطالي)',
-
-                        Provider.of<AppSettingsProvider>(context).language,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-
-                    value: accessoryCategory,
-
-                    items: categories.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-
-                        child: Text(
-                          Localization.translate(
-                            value,
-                            Provider.of<AppSettingsProvider>(context).language,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-
-                    onChanged: (newValue) {
-                      setStateDialog(() {
-                        accessoryCategory = newValue!;
-                      });
-                    },
-
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'تصنيف الإكسسوار (النوع)',
-                        Provider.of<AppSettingsProvider>(context).language,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  if (!_isScrewCategory(accessoryCategory)) ...[
+                  children: [
                     TextField(
-                      controller: screwCountCtrl,
-
-                      keyboardType: TextInputType.number,
+                      controller: nameCtrl,
 
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'عدد البراغي المستخدمة',
+                          'اسم الأكسسوار (مثال: مقبض إيطالي)',
+
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
                     ),
 
                     const SizedBox(height: 10),
-                  ],
 
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
 
-                    value: quality,
+                      value: accessoryCategory,
 
-                    items: qualities.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
+                      items: categories.map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
 
-                        child: Text(
-                          Localization.translate(
-                            value,
+                          child: Text(
+                            Localization.translate(
+                              value,
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                              ).language,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+
+                      onChanged: (newValue) {
+                        setStateDialog(() {
+                          accessoryCategory = newValue!;
+                        });
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'تصنيف الإكسسوار (النوع)',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    if (!_isScrewCategory(accessoryCategory)) ...[
+                      TextField(
+                        controller: screwCountCtrl,
+
+                        keyboardType: TextInputType.number,
+
+                        decoration: InputDecoration(
+                          labelText: Localization.translate(
+                            'عدد البراغي المستخدمة',
                             Provider.of<AppSettingsProvider>(context).language,
                           ),
                         ),
-                      );
-                    }).toList(),
+                      ),
 
-                    onChanged: (newValue) {
-                      setStateDialog(() {
-                        quality = newValue!;
-                      });
-                    },
+                      const SizedBox(height: 10),
+                    ],
 
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'الجودة (النوعية)',
-                        Provider.of<AppSettingsProvider>(context).language,
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+
+                      value: quality,
+
+                      items: qualities.map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+
+                          child: Text(
+                            Localization.translate(
+                              value,
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                              ).language,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+
+                      onChanged: (newValue) {
+                        setStateDialog(() {
+                          quality = newValue!;
+                        });
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'الجودة (النوعية)',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
                       ),
                     ),
-                  ),
 
-                  if (_isScrewCategory(accessoryCategory)) ...[
-                    const SizedBox(height: 10),
+                    if (_isScrewCategory(accessoryCategory)) ...[
+                      const SizedBox(height: 10),
 
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Text(
-                          _t('استخدام البراغي:'),
-
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي المحرك')),
-
-                          value: isMoteurScrew,
-
-                          onChanged: (v) =>
-                              setStateDialog(() => isMoteurScrew = v ?? false),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي الصندوق')),
-
-                          value: isCaissonScrew,
-
-                          onChanged: (v) =>
-                              setStateDialog(() => isCaissonScrew = v ?? false),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي الباتمو')),
-
-                          value: isBatmoScrew,
-
-                          onChanged: (v) =>
-                              setStateDialog(() => isBatmoScrew = v ?? false),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي بوشون باتمو')),
-
-                          value: isBouchonBatmoScrew,
-
-                          onChanged: (v) => setStateDialog(
-                            () => isBouchonBatmoScrew = v ?? false,
-                          ),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي حديد الدعم (Renfort)')),
-
-                          value: isRenfortScrew,
-
-                          onChanged: (v) =>
-                              setStateDialog(() => isRenfortScrew = v ?? false),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي المانيفال')),
-
-                          value: isManivelleScrew,
-
-                          onChanged: (v) => setStateDialog(
-                            () => isManivelleScrew = v ?? false,
-                          ),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي التجميع')),
-
-                          value: isAssemblyScrew,
-
-                          onChanged: (v) => setStateDialog(
-                            () => isAssemblyScrew = v ?? false,
-                          ),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي الإكسسوارات')),
-
-                          value: isAccessoryScrew,
-
-                          onChanged: (v) => setStateDialog(
-                            () => isAccessoryScrew = v ?? false,
-                          ),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي التركيب')),
-
-                          value: isInstallationScrew,
-
-                          onChanged: (v) => setStateDialog(
-                            () => isInstallationScrew = v ?? false,
-                          ),
-                        ),
-
-                        CheckboxListTile(
-                          title: Text(_t('براغي الكيت')),
-
-                          value: isKitScrew,
-
-                          onChanged: (v) =>
-                              setStateDialog(() => isKitScrew = v ?? false),
-                        ),
-                      ],
-                    ),
-                  ],
-
-                  // Gache type checkboxes (only shown when category is Gache)
-                  Builder(
-                    builder: (context) {
-                      final isGacheCategory = _isGacheCategory(
-                        accessoryCategory,
-                      );
-
-                      if (!isGacheCategory) return const SizedBox.shrink();
-
-                      return Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
 
                         children: [
-                          const SizedBox(height: 8),
-
                           Text(
-                            _t('نوع اللاش:'),
+                            _t('استخدام البراغي:'),
 
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
 
                           CheckboxListTile(
-                            title: Text(_t('Gache Simple Ouvrant')),
+                            title: Text(_t('براغي المحرك')),
 
-                            value: isGacheSimple,
+                            value: isMoteurScrew,
 
                             onChanged: (v) => setStateDialog(
-                              () => isGacheSimple = v ?? false,
+                              () => isMoteurScrew = v ?? false,
                             ),
                           ),
 
                           CheckboxListTile(
-                            title: Text(_t('Gache Double Ouvrant')),
+                            title: Text(_t('براغي الصندوق')),
 
-                            value: isGacheDouble,
+                            value: isCaissonScrew,
 
                             onChanged: (v) => setStateDialog(
-                              () => isGacheDouble = v ?? false,
+                              () => isCaissonScrew = v ?? false,
                             ),
                           ),
 
                           CheckboxListTile(
-                            title: Text(_t('Gache Porte')),
+                            title: Text(_t('براغي الباتمو')),
 
-                            value: isGachePorte,
+                            value: isBatmoScrew,
 
                             onChanged: (v) =>
-                                setStateDialog(() => isGachePorte = v ?? false),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          Text(
-                            _t('نوع القفل:'),
-
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                                setStateDialog(() => isBatmoScrew = v ?? false),
                           ),
 
                           CheckboxListTile(
-                            title: Text(_t('قفل بمفتاح (Clef)')),
+                            title: Text(_t('براغي بوشون باتمو')),
 
-                            value: isLockClef,
-
-                            onChanged: (v) =>
-                                setStateDialog(() => isLockClef = v ?? false),
-                          ),
-
-                          CheckboxListTile(
-                            title: Text(_t('قفل Condamnation')),
-
-                            value: isLockCondamnation,
+                            value: isBouchonBatmoScrew,
 
                             onChanged: (v) => setStateDialog(
-                              () => isLockCondamnation = v ?? false,
+                              () => isBouchonBatmoScrew = v ?? false,
                             ),
+                          ),
+
+                          CheckboxListTile(
+                            title: Text(_t('براغي حديد الدعم (Renfort)')),
+
+                            value: isRenfortScrew,
+
+                            onChanged: (v) => setStateDialog(
+                              () => isRenfortScrew = v ?? false,
+                            ),
+                          ),
+
+                          CheckboxListTile(
+                            title: Text(_t('براغي المانيفال')),
+
+                            value: isManivelleScrew,
+
+                            onChanged: (v) => setStateDialog(
+                              () => isManivelleScrew = v ?? false,
+                            ),
+                          ),
+
+                          CheckboxListTile(
+                            title: Text(_t('براغي التجميع')),
+
+                            value: isAssemblyScrew,
+
+                            onChanged: (v) => setStateDialog(
+                              () => isAssemblyScrew = v ?? false,
+                            ),
+                          ),
+
+                          CheckboxListTile(
+                            title: Text(_t('براغي الإكسسوارات')),
+
+                            value: isAccessoryScrew,
+
+                            onChanged: (v) => setStateDialog(
+                              () => isAccessoryScrew = v ?? false,
+                            ),
+                          ),
+
+                          CheckboxListTile(
+                            title: Text(_t('براغي التركيب')),
+
+                            value: isInstallationScrew,
+
+                            onChanged: (v) => setStateDialog(
+                              () => isInstallationScrew = v ?? false,
+                            ),
+                          ),
+
+                          CheckboxListTile(
+                            title: Text(_t('براغي الكيت')),
+
+                            value: isKitScrew,
+
+                            onChanged: (v) =>
+                                setStateDialog(() => isKitScrew = v ?? false),
                           ),
                         ],
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  const SizedBox(height: 10),
-
-                  const Align(
-                    alignment: Alignment.centerLeft,
-
-                    child: Text(
-                      'نوع المادة (Material Type):',
-
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: isAluminiumSelected,
-
-                        onChanged: (val) {
-                          setStateDialog(() {
-                            isAluminiumSelected = val ?? false;
-
-                            if (!isAluminiumSelected && !isPvcSelected) {
-                              isPvcSelected = true;
-                            }
-                          });
-                        },
                       ),
-
-                      const Text('Alu'),
-
-                      const SizedBox(width: 8),
-
-                      Checkbox(
-                        value: isPvcSelected,
-
-                        onChanged: (val) {
-                          setStateDialog(() {
-                            isPvcSelected = val ?? false;
-
-                            if (!isAluminiumSelected && !isPvcSelected) {
-                              isAluminiumSelected = true;
-                            }
-                          });
-                        },
-                      ),
-
-                      const Text('PVC'),
                     ],
-                  ),
 
-                  const SizedBox(height: 10),
-
-                  DropdownButtonFormField<String>(
-                    value: scope,
-
-                    items: ['Global', 'Unique'].map((String value) {
-                      String translatedValue = value == 'Global'
-                          ? Localization.translate(
-                              "Global",
-
-                              Provider.of<AppSettingsProvider>(
-                                context,
-                              ).language,
-                            )
-                          : Localization.translate(
-                              "Unique (Per Series)",
-
-                              Provider.of<AppSettingsProvider>(
-                                context,
-                              ).language,
-                            );
-
-                      return DropdownMenuItem<String>(
-                        value: value,
-
-                        child: Text(translatedValue),
-                      );
-                    }).toList(),
-
-                    onChanged: (newValue) {
-                      setStateDialog(() {
-                        scope = newValue!;
-                      });
-                    },
-
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'Scope',
-
-                        Provider.of<AppSettingsProvider>(context).language,
-                      ),
-                    ),
-                  ),
-
-                  if (scope == 'Unique')
+                    // Gache type checkboxes (only shown when category is Gache)
                     Builder(
                       builder: (context) {
-                        final filteredSeries = _series.where((s) {
-                          final mat = s['material_type']?.toString() ?? '';
+                        final isGacheCategory = _isGacheCategory(
+                          accessoryCategory,
+                        );
 
-                          if (isAluminiumSelected && mat == 'Aluminium')
-                            return true;
+                        if (!isGacheCategory) return const SizedBox.shrink();
 
-                          if (isPvcSelected && mat == 'PVC') return true;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
 
-                          // fallback: if material_type missing show all
+                          children: [
+                            const SizedBox(height: 8),
 
-                          if (mat.isEmpty) return true;
+                            Text(
+                              _t('نوع اللاش:'),
 
-                          return false;
-                        }).toList();
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
 
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 10),
+                            CheckboxListTile(
+                              title: Text(_t('Gache Simple Ouvrant')),
 
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                              value: isGacheSimple,
 
-                            children: [
-                              Text(
-                                Localization.translate(
-                                  'اختر السلاسل المسموح لها:',
-
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
-
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              onChanged: (v) => setStateDialog(
+                                () => isGacheSimple = v ?? false,
                               ),
+                            ),
 
-                              const SizedBox(height: 5),
+                            CheckboxListTile(
+                              title: Text(_t('Gache Double Ouvrant')),
 
-                              Column(
-                                children: filteredSeries.map((s) {
-                                  final sId =
-                                      int.tryParse(s['id'].toString()) ?? -1;
+                              value: isGacheDouble,
 
-                                  if (sId == -1) return const SizedBox.shrink();
-
-                                  return CheckboxListTile(
-                                    title: Text(
-                                      "${s['profile_name'] ?? ''} - ${s['name']}",
-                                    ),
-
-                                    value: selectedSeriesIds.contains(sId),
-
-                                    onChanged: (bool? checked) {
-                                      setStateDialog(() {
-                                        if (checked == true) {
-                                          selectedSeriesIds.add(sId);
-                                        } else {
-                                          selectedSeriesIds.remove(sId);
-                                        }
-                                      });
-                                    },
-                                  );
-                                }).toList(),
+                              onChanged: (v) => setStateDialog(
+                                () => isGacheDouble = v ?? false,
                               ),
-                            ],
-                          ),
+                            ),
+
+                            CheckboxListTile(
+                              title: Text(_t('Gache Porte')),
+
+                              value: isGachePorte,
+
+                              onChanged: (v) => setStateDialog(
+                                () => isGachePorte = v ?? false,
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            Text(
+                              _t('نوع القفل:'),
+
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+
+                            CheckboxListTile(
+                              title: Text(_t('قفل بمفتاح (Clef)')),
+
+                              value: isLockClef,
+
+                              onChanged: (v) =>
+                                  setStateDialog(() => isLockClef = v ?? false),
+                            ),
+
+                            CheckboxListTile(
+                              title: Text(_t('قفل Condamnation')),
+
+                              value: isLockCondamnation,
+
+                              onChanged: (v) => setStateDialog(
+                                () => isLockCondamnation = v ?? false,
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
-                ],
-              ),
-            ),
-          ),
 
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
+                    const SizedBox(height: 10),
 
-              child: Text(
-                Localization.translate(
-                  'إلغاء',
+                    const SizedBox(height: 10),
 
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
+                    const Align(
+                      alignment: Alignment.centerLeft,
 
-                style: const TextStyle(color: Colors.grey),
-              ),
-            ),
+                      child: Text(
+                        'نوع المادة (Material Type):',
 
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
 
-              onPressed: () async {
-                if (scope == 'Unique' && selectedSeriesIds.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        _t(
-                          'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: isAluminiumSelected,
+
+                          onChanged: (val) {
+                            setStateDialog(() {
+                              isAluminiumSelected = val ?? false;
+
+                              if (!isAluminiumSelected && !isPvcSelected) {
+                                isPvcSelected = true;
+                              }
+                            });
+                          },
+                        ),
+
+                        const Text('Alu'),
+
+                        const SizedBox(width: 8),
+
+                        Checkbox(
+                          value: isPvcSelected,
+
+                          onChanged: (val) {
+                            setStateDialog(() {
+                              isPvcSelected = val ?? false;
+
+                              if (!isAluminiumSelected && !isPvcSelected) {
+                                isAluminiumSelected = true;
+                              }
+                            });
+                          },
+                        ),
+
+                        const Text('PVC'),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    DropdownButtonFormField<String>(
+                      value: scope,
+
+                      items: ['Global', 'Unique'].map((String value) {
+                        String translatedValue = value == 'Global'
+                            ? Localization.translate(
+                                "Global",
+
+                                Provider.of<AppSettingsProvider>(
+                                  context,
+                                ).language,
+                              )
+                            : Localization.translate(
+                                "Unique (Per Series)",
+
+                                Provider.of<AppSettingsProvider>(
+                                  context,
+                                ).language,
+                              );
+
+                        return DropdownMenuItem<String>(
+                          value: value,
+
+                          child: Text(translatedValue),
+                        );
+                      }).toList(),
+
+                      onChanged: (newValue) {
+                        setStateDialog(() {
+                          scope = newValue!;
+                        });
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'Scope',
+
+                          Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
-
-                      backgroundColor: Colors.red,
                     ),
-                  );
 
-                  return;
-                }
+                    if (scope == 'Unique')
+                      Builder(
+                        builder: (context) {
+                          final filteredSeries = _series.where((s) {
+                            final mat = s['material_type']?.toString() ?? '';
 
-                final trimmedName = nameCtrl.text.trim();
-                if (trimmedName.isNotEmpty) {
-                  String finalName = "$trimmedName ($quality)";
+                            if (isAluminiumSelected && mat == 'Aluminium')
+                              return true;
 
-                  String finalType = _isScrewCategory(accessoryCategory)
-                      ? "$accessoryCategory|$quality|$screwUsage"
-                      : "$accessoryCategory|$quality";
+                            if (isPvcSelected && mat == 'PVC') return true;
 
-                  try {
-                    String finalMaterialType = 'Aluminium';
+                            // fallback: if material_type missing show all
 
-                    if (isAluminiumSelected && isPvcSelected) {
-                      finalMaterialType = 'Both';
-                    } else if (isPvcSelected) {
-                      finalMaterialType = 'PVC';
-                    }
+                            if (mat.isEmpty) return true;
 
-                    final seriesIdsStr =
-                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
-                        ? ',${selectedSeriesIds.join(',')},'
-                        : null;
+                            return false;
+                          }).toList();
 
-                    final seriesIdVal =
-                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
-                        ? selectedSeriesIds.first
-                        : null;
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 10),
 
-                    await widget.db.insertAccessory({
-                      'name': finalName,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
 
-                      'material_type': finalMaterialType,
+                              children: [
+                                Text(
+                                  Localization.translate(
+                                    'اختر السلاسل المسموح لها:',
 
-                      'scope': scope,
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                    ).language,
+                                  ),
 
-                      'series_id': seriesIdVal,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
 
-                      'series_ids': seriesIdsStr,
+                                const SizedBox(height: 5),
 
-                      'type': finalType,
+                                Column(
+                                  children: filteredSeries.map((s) {
+                                    final sId =
+                                        int.tryParse(s['id'].toString()) ?? -1;
 
-                      'price': 0.0,
+                                    if (sId == -1)
+                                      return const SizedBox.shrink();
 
-                      'screw_count': _isScrewCategory(accessoryCategory)
-                          ? 0
-                          : (int.tryParse(screwCountCtrl.text) ?? 0),
+                                    return CheckboxListTile(
+                                      title: Text(
+                                        "${s['profile_name'] ?? ''} - ${s['name']}",
+                                      ),
 
-                      'is_moteur_screw':
-                          _isScrewCategory(accessoryCategory) && isMoteurScrew
-                          ? 1
-                          : 0,
+                                      value: selectedSeriesIds.contains(sId),
 
-                      'is_caisson_screw':
-                          _isScrewCategory(accessoryCategory) && isCaissonScrew
-                          ? 1
-                          : 0,
-
-                      'is_batmo_screw':
-                          _isScrewCategory(accessoryCategory) && isBatmoScrew
-                          ? 1
-                          : 0,
-
-                      'is_bouchon_batmo_screw':
-                          _isScrewCategory(accessoryCategory) &&
-                              isBouchonBatmoScrew
-                          ? 1
-                          : 0,
-
-                      'is_renfort_screw':
-                          _isScrewCategory(accessoryCategory) && isRenfortScrew
-                          ? 1
-                          : 0,
-
-                      'is_manivelle_screw':
-                          _isScrewCategory(accessoryCategory) &&
-                              isManivelleScrew
-                          ? 1
-                          : 0,
-
-                      'is_gache_simple':
-                          (_isGacheCategory(accessoryCategory) &&
-                              (accessoryCategory == 'Gâche simple' ||
-                                  isGacheSimple))
-                          ? 1
-                          : 0,
-
-                      'is_gache_double':
-                          _isGacheCategory(accessoryCategory) && isGacheDouble
-                          ? 1
-                          : 0,
-
-                      'is_gache_porte':
-                          _isGacheCategory(accessoryCategory) && isGachePorte
-                          ? 1
-                          : 0,
-
-                      'is_lock_clef':
-                          _isGacheCategory(accessoryCategory) && isLockClef
-                          ? 1
-                          : 0,
-
-                      'is_lock_condamnation':
-                          _isGacheCategory(accessoryCategory) &&
-                              isLockCondamnation
-                          ? 1
-                          : 0,
-
-                      'is_assembly_screw':
-                          _isScrewCategory(accessoryCategory) && isAssemblyScrew
-                          ? 1
-                          : 0,
-
-                      'is_accessory_screw':
-                          _isScrewCategory(accessoryCategory) &&
-                              isAccessoryScrew
-                          ? 1
-                          : 0,
-
-                      'is_installation_screw':
-                          _isScrewCategory(accessoryCategory) &&
-                              isInstallationScrew
-                          ? 1
-                          : 0,
-
-                      'is_kit_screw':
-                          _isScrewCategory(accessoryCategory) && isKitScrew
-                          ? 1
-                          : 0,
-                    });
-
-                    _loadItems();
-
-                    if (context.mounted) Navigator.pop(context);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '${_t('حدث خطأ في قاعدة البيانات')}: $e',
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                }
-              },
-
-              child: Text(
-                Localization.translate(
-                  'حفظ',
-
-                  Provider.of<AppSettingsProvider>(context).language,
+                                      onChanged: (bool? checked) {
+                                        setStateDialog(() {
+                                          if (checked == true) {
+                                            selectedSeriesIds.add(sId);
+                                          } else {
+                                            selectedSeriesIds.remove(sId);
+                                          }
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                  ],
                 ),
-
-                style: const TextStyle(color: Colors.white),
               ),
             ),
-          ],
+
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(context),
+
+                child: Text(
+                  Localization.translate(
+                    'إلغاء',
+
+                    Provider.of<AppSettingsProvider>(context).language,
+                  ),
+
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ),
+
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (isSaving) return;
+                        if (scope == 'Unique' && selectedSeriesIds.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _t(
+                                  'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
+                                ),
+                              ),
+
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+
+                          return;
+                        }
+
+                        final trimmedName = nameCtrl.text.trim();
+                        if (trimmedName.isNotEmpty) {
+                          setStateDialog(() => isSaving = true);
+                          String finalName = "$trimmedName ($quality)";
+
+                          String finalType = _isScrewCategory(accessoryCategory)
+                              ? "$accessoryCategory|$quality|$screwUsage"
+                              : "$accessoryCategory|$quality";
+
+                          try {
+                            String finalMaterialType = 'Aluminium';
+
+                            if (isAluminiumSelected && isPvcSelected) {
+                              finalMaterialType = 'Both';
+                            } else if (isPvcSelected) {
+                              finalMaterialType = 'PVC';
+                            }
+
+                            final seriesIdsStr =
+                                (scope == 'Unique' &&
+                                    selectedSeriesIds.isNotEmpty)
+                                ? ',${selectedSeriesIds.join(',')},'
+                                : null;
+
+                            final seriesIdVal =
+                                (scope == 'Unique' &&
+                                    selectedSeriesIds.isNotEmpty)
+                                ? selectedSeriesIds.first
+                                : null;
+
+                            await widget.db.insertAccessory({
+                              'name': finalName,
+
+                              'material_type': finalMaterialType,
+
+                              'scope': scope,
+
+                              'series_id': seriesIdVal,
+
+                              'series_ids': seriesIdsStr,
+
+                              'type': finalType,
+
+                              'price': 0.0,
+
+                              'screw_count': _isScrewCategory(accessoryCategory)
+                                  ? 0
+                                  : (int.tryParse(screwCountCtrl.text) ?? 0),
+
+                              'is_moteur_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isMoteurScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_caisson_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isCaissonScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_batmo_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isBatmoScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_bouchon_batmo_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isBouchonBatmoScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_renfort_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isRenfortScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_manivelle_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isManivelleScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_gache_simple':
+                                  (_isGacheCategory(accessoryCategory) &&
+                                      (accessoryCategory == 'Gâche simple' ||
+                                          isGacheSimple))
+                                  ? 1
+                                  : 0,
+
+                              'is_gache_double':
+                                  _isGacheCategory(accessoryCategory) &&
+                                      isGacheDouble
+                                  ? 1
+                                  : 0,
+
+                              'is_gache_porte':
+                                  _isGacheCategory(accessoryCategory) &&
+                                      isGachePorte
+                                  ? 1
+                                  : 0,
+
+                              'is_lock_clef':
+                                  _isGacheCategory(accessoryCategory) &&
+                                      isLockClef
+                                  ? 1
+                                  : 0,
+
+                              'is_lock_condamnation':
+                                  _isGacheCategory(accessoryCategory) &&
+                                      isLockCondamnation
+                                  ? 1
+                                  : 0,
+
+                              'is_assembly_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isAssemblyScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_accessory_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isAccessoryScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_installation_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isInstallationScrew
+                                  ? 1
+                                  : 0,
+
+                              'is_kit_screw':
+                                  _isScrewCategory(accessoryCategory) &&
+                                      isKitScrew
+                                  ? 1
+                                  : 0,
+                            });
+
+                            // The catalogue notification refreshes the list once.
+                            if (context.mounted) Navigator.pop(context);
+                          } catch (e) {
+                            if (context.mounted) {
+                              setStateDialog(() => isSaving = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '${_t('حدث خطأ في قاعدة البيانات')}: $e',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
+
+                child: isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        Localization.translate(
+                          'حفظ',
+
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+
+                        style: const TextStyle(color: Colors.white),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2517,7 +2555,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       'Autre': Icons.widgets,
     };
 
-    List<Widget> sections = [];
+    final sections = <WidgetBuilder>[];
 
     for (var cat in typeOrder) {
       final items = grouped[cat] ?? [];
@@ -2529,7 +2567,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       final sectionIcon = categoryIcons[cat] ?? Icons.widgets;
 
       sections.add(
-        Padding(
+        (context) => Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
 
           child: Row(
@@ -2608,7 +2646,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
               );
 
         sections.add(
-          Card(
+          (context) => Card(
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
 
             child: ListTile(
@@ -2909,7 +2947,10 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                       style: const TextStyle(color: Colors.grey, fontSize: 15),
                     ),
                   )
-                : ListView(children: sections),
+                : ListView.builder(
+                    itemCount: sections.length,
+                    itemBuilder: (context, index) => sections[index](context),
+                  ),
           ),
         ],
       ),

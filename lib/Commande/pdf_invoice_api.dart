@@ -134,6 +134,22 @@ class PdfInvoiceApi {
               bytes = await loadPath(path);
             }
 
+            // The path belongs to the device that created the order.  When
+            // the PDF is generated on another device it is usually invalid,
+            // so use the portable copy stored with the detail row.
+            if (bytes == null &&
+                item.imageBase64 != null &&
+                item.imageBase64!.trim().isNotEmpty) {
+              try {
+                final raw = item.imageBase64!.trim();
+                final separator = raw.indexOf(',');
+                final encoded = raw.startsWith('data:image') && separator >= 0
+                    ? raw.substring(separator + 1)
+                    : raw;
+                bytes = base64Decode(encoded);
+              } catch (_) {}
+            }
+
             // Compatibility fallback for old tunnel rows whose only image was
             // the official asset. New rows reach the branches above first.
             if (bytes == null &&

@@ -8,6 +8,7 @@ import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/auth_connection_error.dart';
 import 'package:database_data/services/supabase_account_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
@@ -153,8 +154,9 @@ class _LoginScreenState extends State<LoginScreen>
     if (e is AppAuthException) {
       final code = e.code.toLowerCase().trim();
       final msg = e.message.toLowerCase();
-      if (_isNetworkError(code, msg)) {
-        return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
+      final connectionMessage = authConnectionErrorMessage(code, msg);
+      if (connectionMessage != null) {
+        return _t(connectionMessage);
       }
       if (code.contains('invalid') || msg.contains('invalid login')) {
         return _t(
@@ -216,8 +218,9 @@ class _LoginScreenState extends State<LoginScreen>
           'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.',
         );
       }
-      if (_isNetworkError(code, msg)) {
-        return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
+      final connectionMessage = authConnectionErrorMessage(code, msg);
+      if (connectionMessage != null) {
+        return _t(connectionMessage);
       }
       if (code == 'too-many-requests' || msg.contains('too many requests')) {
         return _t(
@@ -244,29 +247,11 @@ class _LoginScreenState extends State<LoginScreen>
         errorText.contains('name already exists')) {
       return _t('اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.');
     }
-    if (_isNetworkError(errorText, errorText)) {
-      return _t('التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.');
+    final connectionMessage = authConnectionErrorMessage('', errorText);
+    if (connectionMessage != null) {
+      return _t(connectionMessage);
     }
     return '${_t('حدث خطأ')}: $e';
-  }
-
-  bool _isNetworkError(String code, String message) {
-    final value = '$code $message';
-    return value.contains('network') ||
-        value.contains('socketexception') ||
-        value.contains('failed host lookup') ||
-        value.contains('connection refused') ||
-        value.contains('connection reset') ||
-        value.contains('connection closed') ||
-        value.contains('network is unreachable') ||
-        value.contains('networkerror') ||
-        value.contains('fetch failed') ||
-        value.contains('failed to fetch') ||
-        value.contains('xmlhttprequest error') ||
-        value.contains('offline') ||
-        value.contains('clientexception') ||
-        value.contains('timed out') ||
-        value.contains('timeout');
   }
 
   Future<void> _resetPassword() async {

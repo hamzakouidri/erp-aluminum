@@ -5578,9 +5578,7 @@ class _WindowViewState extends State<WindowView> {
                     // دائماً نضيف البارداج كخيار ثابت من بروفيلات السلسلة.
                     // تسعيره لاحقاً يكون بعدد قطع المخزون الكاملة.
                     const String bardageKey = 'bardage';
-                    if (!subtypes.any(
-                      (s) => s.toLowerCase().contains('bardage'),
-                    )) {
+                    if (!subtypes.any(isBardagePanelSubtype)) {
                       subtypes.add(bardageKey);
                     }
 
@@ -5604,7 +5602,7 @@ class _WindowViewState extends State<WindowView> {
                       if (s.contains('aluco') || s.contains('الوكو')) {
                         return 'الوكو';
                       }
-                      if (s.contains('bardage') || s.contains('بارداش')) {
+                      if (isBardagePanelSubtype(s)) {
                         return 'بارداش';
                       }
                       return sub;
@@ -5612,7 +5610,7 @@ class _WindowViewState extends State<WindowView> {
 
                     IconData getSubtypeIcon(String sub) {
                       final s = sub.toLowerCase();
-                      if (s.contains('bardage')) {
+                      if (isBardagePanelSubtype(s)) {
                         return Icons.view_stream_rounded;
                       }
                       return Icons.blur_on_rounded;
@@ -5627,9 +5625,7 @@ class _WindowViewState extends State<WindowView> {
                             final isSelected =
                                 (spec.panneauSubtype ?? '').toLowerCase() ==
                                 sub.toLowerCase();
-                            final isBardage = sub.toLowerCase().contains(
-                              'bardage',
-                            );
+                            final isBardage = isBardagePanelSubtype(sub);
                             final isDecor = isDecorPanelSubtype(sub);
                             return Padding(
                               padding: const EdgeInsets.only(right: 6),
@@ -6074,13 +6070,8 @@ class _WindowViewState extends State<WindowView> {
                           (activeSeriesForSystem?.sections ?? []).where((s) {
                             final t = s.type.toLowerCase().trim();
                             final n = s.name.toLowerCase().trim();
-                            return t == 'bardage' ||
-                                t.contains('bardage') ||
-                                t.contains('بارداج') ||
-                                t.contains('بارداش') ||
-                                n.contains('bardage') ||
-                                n.contains('بارداج') ||
-                                n.contains('بارداش');
+                            return isBardagePanelSubtype(t) ||
+                                isBardagePanelSubtype(n);
                           }).toList();
 
                       final List<Map<String, dynamic>> productsList = [];
@@ -14827,16 +14818,12 @@ class _WindowViewState extends State<WindowView> {
     }
 
     if (!context.mounted) return;
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => MaterialConsumptionScreen(model: widget.model),
       ),
-    ).then((res) {
-      if (res != null && context.mounted) {
-        Navigator.pop(context, widget.model);
-      }
-    });
+    );
   }
 
   void _showParcloseSelectorDialog(BuildContext context) async {

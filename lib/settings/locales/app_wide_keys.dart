@@ -1,6 +1,40 @@
 import '../app_settings.dart';
 
 const Map<String, Map<AppLanguage, String>> appWideKeys = {
+  'لا يُحتسب بدون سعر': {
+    AppLanguage.arabic: 'بدون احتساب',
+    AppLanguage.french: 'Exclu du prix',
+    AppLanguage.english: 'Excluded from pricing',
+  },
+  'استبعاد هذا البروفايل تماماً من الأسعار': {
+    AppLanguage.arabic: 'استبعاد هذا البروفايل تماماً من الأسعار',
+    AppLanguage.french: 'Exclure complètement ce profil des prix',
+    AppLanguage.english: 'Exclude this profile completely from pricing',
+  },
+  'The sign-in server is temporarily unavailable. Please try again later.': {
+    AppLanguage.arabic:
+        'خادم تسجيل الدخول غير متاح مؤقتاً. يرجى المحاولة لاحقاً.',
+    AppLanguage.french:
+        'Le serveur de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
+    AppLanguage.english:
+        'The sign-in server is temporarily unavailable. Please try again later.',
+  },
+  'The sign-in server did not respond in time. Please try again.': {
+    AppLanguage.arabic:
+        'لم يستجب خادم تسجيل الدخول في الوقت المحدد. يرجى إعادة المحاولة.',
+    AppLanguage.french:
+        'Le serveur de connexion n’a pas répondu à temps. Veuillez réessayer.',
+    AppLanguage.english:
+        'The sign-in server did not respond in time. Please try again.',
+  },
+  'Unable to reach the sign-in server. Check your connection or try again later.': {
+    AppLanguage.arabic:
+        'تعذر الوصول إلى خادم تسجيل الدخول. تحقق من الاتصال أو حاول لاحقاً.',
+    AppLanguage.french:
+        'Impossible de joindre le serveur de connexion. Vérifiez votre connexion ou réessayez plus tard.',
+    AppLanguage.english:
+        'Unable to reach the sign-in server. Check your connection or try again later.',
+  },
   'حدد نوع النافذة للبدء في الحسابات': {
     AppLanguage.arabic: 'حدد نوع النافذة للبدء في الحسابات',
     AppLanguage.french:

@@ -150,7 +150,7 @@ class BomEngineV2 {
             seriesId: seriesId,
             materialType: _materialTypeForItem(window, item),
             drawingMode: _drawingModeForItem(window, item),
-            requireDialog: true,
+            requireDialog: false,
             requireQuantity: true,
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
             hasDoubleGlassForRules: window.hasDoubleGlassForRules,
@@ -326,7 +326,7 @@ class BomEngineV2 {
         seriesId: seriesId,
         materialType: _materialTypeForItem(window, item),
         drawingMode: _drawingModeForItem(window, item),
-            requireDialog: true,
+        requireDialog: false,
         requireQuantity: true,
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,
@@ -453,12 +453,13 @@ class BomEngineV2 {
     // to infer the source of generic hardware. BOM rows created for a sliding
     // zone carry either a sliding role/name or the sliding series id; resolve
     // those rows against the sliding catalogue explicitly.
-    final isSlidingRole = const {
-      'roulette',
-      'sliding_kit',
-      'sliding_clamp',
-      'sliding_lock',
-    }.contains(roleKey) ||
+    final isSlidingRole =
+        const {
+          'roulette',
+          'sliding_kit',
+          'sliding_clamp',
+          'sliding_lock',
+        }.contains(roleKey) ||
         const {
           'roulette',
           'sliding_kit',

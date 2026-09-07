@@ -224,6 +224,21 @@ bool isDecorPanelSubtype(String? subtype) {
       normalized.contains('ديكور');
 }
 
+/// Recognizes the legacy and Arabic spellings used for bardage in catalog data.
+bool isBardagePanelSubtype(String? value) {
+  final normalized = (value ?? '')
+      .trim()
+      .toLowerCase()
+      .replaceAll('\u0640', '')
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+  return normalized.contains('bardage') ||
+      normalized.contains('بارداج') ||
+      normalized.contains('بارداش') ||
+      normalized.contains('برداج') ||
+      normalized.contains('برداش') ||
+      RegExp(r'ب(?:ا)?ر(?:ا)?د(?:ا)?[جش]').hasMatch(normalized);
+}
+
 bool decorPanelFitsSpace({
   required double spaceWidth,
   required double spaceHeight,
@@ -932,7 +947,7 @@ class GlassSpecification {
           finishKws = const ['بانو ديكور', 'paneau decore', 'sandwich decore'];
           break;
         case GlassFinish.bardage:
-          finishKws = const ['بارداج', 'bardage'];
+          finishKws = const ['بارداج', 'بارداش', 'برداج', 'برداش', 'bardage'];
           break;
         default:
           finishKws = const [];
@@ -5263,6 +5278,38 @@ class WindowModel extends ChangeNotifier {
         : frameColor.toString().split('.').last;
   }
 
+  /// Returns the physical stock profile used for bardage. New catalogues may
+  /// assign it through the generic panneau role, while older ones use the
+  /// dedicated bardage role.
+  Map<String, dynamic>? getBardageProfileOverride() {
+    final specific = componentOverrides['البارداج (Bardage)'];
+    if (specific is Map) return Map<String, dynamic>.from(specific);
+    final panneau = componentOverrides['البانو (Panneau)'];
+    if (panneau is Map &&
+        (isBardagePanelSubtype(panneau['type']?.toString()) ||
+            isBardagePanelSubtype(panneau['name']?.toString()))) {
+      return Map<String, dynamic>.from(panneau);
+    }
+    for (final series in <AluminumSeries?>[activeSeries, activeSlidingSeries]) {
+      if (series == null) continue;
+      for (final section in series.sections) {
+        if (isBardagePanelSubtype(section.type) ||
+            isBardagePanelSubtype(section.name)) {
+          return section.toMap();
+        }
+      }
+    }
+    return null;
+  }
+
+  double get bardageVisibleWidth {
+    final profile = getBardageProfileOverride();
+    final raw = profile?['visible_width'];
+    return raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+  }
+
   /// Reads the price attached to the resolved bardage colour. The complete
   /// colour-price map is cached on the selected bardage profile because BOM
   /// generation is synchronous and may contain several bardage colours.
@@ -5289,6 +5336,37 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
+    final rawFallback =
+        override['calculated_price'] ??
+        override['price_dzd'] ??
+        override['price'] ??
+        0.0;
+    return rawFallback is num
+        ? rawFallback.toDouble()
+        : double.tryParse(rawFallback.toString()) ?? 0.0;
+  }
+
+  double getPanneauProfilePriceForColor(
+    Map<String, dynamic>? colorData,
+    String colorName,
+  ) {
+    final rawOverride = componentOverrides['البانو (Panneau)'];
+    if (rawOverride is! Map) return 0.0;
+    final override = Map<String, dynamic>.from(rawOverride);
+    final rawPrices = override['color_prices'];
+    if (rawPrices is Map) {
+      final colorId = colorData?['id'];
+      for (final key in <String>[
+        if (colorId != null) 'id:$colorId',
+        'name:${_normalizedProfileColorName(colorName)}',
+      ]) {
+        final rawPrice = rawPrices[key];
+        final price = rawPrice is num
+            ? rawPrice.toDouble()
+            : double.tryParse(rawPrice?.toString() ?? '');
+        if (price != null && price >= 0) return price;
+      }
+    }
     final rawFallback =
         override['calculated_price'] ??
         override['price_dzd'] ??
@@ -5687,7 +5765,7 @@ class WindowModel extends ChangeNotifier {
       case GlassFinish.paneauSandwitchDecore:
         return ['بانو ديكور', 'paneau decore', 'sandwich decore'];
       case GlassFinish.bardage:
-        return ['بارداج', 'bardage'];
+        return ['بارداج', 'بارداش', 'برداج', 'برداش', 'bardage'];
       case GlassFinish.moussa:
         return ['موسى', 'moussa'];
       case GlassFinish.harari:
@@ -7577,6 +7655,7 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('حديد الظلفة (Renfort Sash)');
       componentOverrides.remove('حديد الظلفة الخاص بالمفاصل');
       componentOverrides.remove('البارداج (Bardage)');
+      componentOverrides.remove('البانو (Panneau)');
       _clearAccessoryOverrides();
 
       // Section identifiers from another series (for example TPR) cannot be
@@ -8489,13 +8568,7 @@ class WindowModel extends ChangeNotifier {
       bardages = series.sections.where((s) {
         final t = s.type.toLowerCase().trim();
         final n = s.name.toLowerCase().trim();
-        return t == 'bardage' ||
-            t.contains('bardage') ||
-            t.contains('بارداج') ||
-            t.contains('بارداش') ||
-            n.contains('bardage') ||
-            n.contains('بارداج') ||
-            n.contains('بارداش');
+        return isBardagePanelSubtype(t) || isBardagePanelSubtype(n);
       }).toList();
     }
     if (bardages.isNotEmpty &&
@@ -8509,6 +8582,20 @@ class WindowModel extends ChangeNotifier {
       }
       rMap['calculated_price'] = price;
       componentOverrides['البارداج (Bardage)'] = rMap;
+    }
+
+    final panneaux = configuredSectionsFor(const ['panneau']);
+    if (panneaux.isNotEmpty &&
+        !componentOverrides.containsKey('البانو (Panneau)')) {
+      final rMap = Map<String, dynamic>.from(panneaux.first.toMap());
+      final rId = rMap['id'] as int;
+      final colorId = selectedDbColor?['id'] as int?;
+      double price = await db.getSectionPrice(rId, colorId);
+      if (price <= 0) {
+        price = ((rMap['price_dzd'] ?? rMap['price'] ?? 0.0) as num).toDouble();
+      }
+      rMap['calculated_price'] = price;
+      componentOverrides['البانو (Panneau)'] = rMap;
     }
 
     updateProfileThickness();
@@ -8612,6 +8699,7 @@ class WindowModel extends ChangeNotifier {
       _clearSlidingProfileOverrides();
       _clearAccessoryOverrides();
       componentOverrides.remove('البارداج (Bardage)');
+      componentOverrides.remove('البانو (Panneau)');
 
       if (affectsVisibleDivisions) {
         mullionProfiles.clear();
@@ -8748,13 +8836,7 @@ class WindowModel extends ChangeNotifier {
       bardages = series.sections.where((s) {
         final t = s.type.toLowerCase().trim();
         final n = s.name.toLowerCase().trim();
-        return t == 'bardage' ||
-            t.contains('bardage') ||
-            t.contains('بارداج') ||
-            t.contains('بارداش') ||
-            n.contains('bardage') ||
-            n.contains('بارداج') ||
-            n.contains('بارداش');
+        return isBardagePanelSubtype(t) || isBardagePanelSubtype(n);
       }).toList();
     }
     if (bardages.isNotEmpty &&
@@ -8768,6 +8850,20 @@ class WindowModel extends ChangeNotifier {
       }
       rMap['calculated_price'] = price;
       componentOverrides['البارداج (Bardage)'] = rMap;
+    }
+
+    final panneaux = configuredSectionsFor(const ['panneau']);
+    if (panneaux.isNotEmpty &&
+        !componentOverrides.containsKey('البانو (Panneau)')) {
+      final rMap = Map<String, dynamic>.from(panneaux.first.toMap());
+      final rId = rMap['id'] as int;
+      final colorId = selectedDbColor?['id'] as int?;
+      double price = await db.getSectionPrice(rId, colorId);
+      if (price <= 0) {
+        price = ((rMap['price_dzd'] ?? rMap['price'] ?? 0.0) as num).toDouble();
+      }
+      rMap['calculated_price'] = price;
+      componentOverrides['البانو (Panneau)'] = rMap;
     }
 
     var rails = configuredSectionsFor(const ['rail']);

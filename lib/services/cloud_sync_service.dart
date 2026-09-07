@@ -107,7 +107,6 @@ class CloudSyncService {
   Timer? _catalogRetryTimer;
   Timer? _realtimeRetryTimer;
   Timer? _realtimeHealthTimer;
-  Timer? _pendingCloudChangePollTimer;
   Timer? _pendingTransactionUploadTimer;
   StreamSubscription<DocumentSnapshot>? _listener;
   StreamSubscription<DocumentSnapshot>? _catalogListener;
@@ -168,11 +167,25 @@ class CloudSyncService {
   DateTime? _lastTransactionalCountReconcileAt;
   Map<String, dynamic> _currentPermissions = <String, dynamic>{};
   String? _lastHandledPermissionsFingerprint;
+  bool _databaseUiRefreshScheduled = false;
 
   final StreamController<String> _dbUpdateController =
       StreamController<String>.broadcast();
 
   Stream<String> get dbUpdateStream => _dbUpdateController.stream;
+
+  /// Coalesces several callbacks produced by one remote transaction into one
+  /// UI refresh. Rebuilding every subscribed table for every callback can
+  /// reset scroll positions even though all callbacks describe the same data
+  /// batch.
+  void _notifyDatabaseUiChanged(String reason) {
+    if (_databaseUiRefreshScheduled) return;
+    _databaseUiRefreshScheduled = true;
+    scheduleMicrotask(() {
+      _databaseUiRefreshScheduled = false;
+      _dbUpdateController.add(reason);
+    });
+  }
 
   /// Notifies screens that the workshop identity/profile changed. This is a
   /// UI refresh event only; it does not mark the transactional database dirty
@@ -1106,7 +1119,6 @@ class CloudSyncService {
     _catalogRetryTimer?.cancel();
     _realtimeRetryTimer?.cancel();
     _realtimeHealthTimer?.cancel();
-    _pendingCloudChangePollTimer?.cancel();
     _pendingTransactionUploadTimer?.cancel();
     _listener?.cancel();
     _catalogListener?.cancel();
@@ -1128,7 +1140,7 @@ class CloudSyncService {
     _deletionsListener = null;
     _orderDeletionsListener = null;
     _permissionsListener = null;
-    _pendingCloudChangePollTimer = null;
+    _databaseUiRefreshScheduled = false;
     _pendingTransactionUploadTimer = null;
     _lastHandledBackupFingerprint = null;
     _lastHandledCatalogFingerprint = null;
@@ -1191,7 +1203,7 @@ class CloudSyncService {
     // by local writes so they do not keep showing a stale database snapshot.
     void onSupabaseDataChanged() {
       debugPrint('CloudSyncService: Supabase data applied; notifying pages.');
-      _dbUpdateController.add('supabase_data_updated');
+      _notifyDatabaseUiChanged('supabase_data_updated');
     }
 
     supabaseWorkshopSync.start(onDataChanged: onSupabaseDataChanged);
@@ -1532,7 +1544,11 @@ class CloudSyncService {
         }, onError: _scheduleRealtimeListenerRetry);
 
     _startRealtimeHealthCheck();
-    _startPendingCloudChangePoll();
+    // Local writes call notifyChange immediately. The three-minute realtime
+    // health check remains the recovery path for legacy writes that only
+    // reached the durable SQLite change log; a two-second database poll made
+    // every open table reload continuously and disturbed its scroll state.
+    unawaited(_publishPendingLocalRowsIfNeeded());
     _resumePendingTransactionalUpload();
   }
 
@@ -2377,14 +2393,6 @@ class CloudSyncService {
     _runRealtimeHealthCheck();
   }
 
-  void _startPendingCloudChangePoll() {
-    _pendingCloudChangePollTimer?.cancel();
-    _pendingCloudChangePollTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => _publishPendingLocalRowsIfNeeded(),
-    );
-  }
-
   Future<void> _publishPendingLocalRowsIfNeeded() async {
     if (_isRestoring ||
         _isLocalWriteInProgress ||
@@ -2525,7 +2533,6 @@ class CloudSyncService {
   void stopListening() {
     _realtimeRetryTimer?.cancel();
     _realtimeHealthTimer?.cancel();
-    _pendingCloudChangePollTimer?.cancel();
     _pendingTransactionUploadTimer?.cancel();
     _listener?.cancel();
     _catalogListener?.cancel();
@@ -2548,7 +2555,6 @@ class CloudSyncService {
     _deletionsListener = null;
     _orderDeletionsListener = null;
     _permissionsListener = null;
-    _pendingCloudChangePollTimer = null;
     _pendingTransactionUploadTimer = null;
   }
 
@@ -3704,10 +3710,10 @@ class CloudSyncService {
       // 4. حفظ نسخة في الـ History
       if (!isSilent) {
         try {
-          String historyId = DateTime.now().toUtc().toIso8601String().replaceAll(
-            ':',
-            '-',
-          );
+          String historyId = DateTime.now()
+              .toUtc()
+              .toIso8601String()
+              .replaceAll(':', '-');
           await _firestore
               .collection('workshops')
               .doc(_workshopId)

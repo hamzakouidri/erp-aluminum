@@ -460,6 +460,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   bool _profileUsesLinearMeter(BomItem item) {
+    if (_isExcludedFromPricing(item)) return false;
     final mode = _profileCalculationRuleFor(
       item,
     )?['calculation_mode']?.toString().trim().toLowerCase();
@@ -474,6 +475,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         role == 'batmo' ||
         role == 'plant';
   }
+
+  bool _isExcludedFromPricing(BomItem item) {
+    if (item.category != 'profile') return false;
+    final rule = _profileCalculationRuleFor(item);
+    return rule?['exclude_from_pricing'] == 1 ||
+        rule?['exclude_from_pricing'] == true;
+  }
+
+  double _pricedTotal(BomItem item) =>
+      _isExcludedFromPricing(item) ? 0.0 : item.total;
 
   double _profileLinearMultiplier(BomItem item) {
     final rule = _profileCalculationRuleFor(item);
@@ -2523,8 +2534,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         if (value) {
           final savedCap = _disabledBladeEndCap;
           if (savedCap != null) {
-            widget.model.componentOverrides[capKey] =
-                Map<String, dynamic>.from(savedCap);
+            widget.model.componentOverrides[capKey] = Map<String, dynamic>.from(
+              savedCap,
+            );
             _disabledBladeEndCap = null;
           }
         } else {
@@ -3069,13 +3081,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // الحلقة الرئيسية: تصنيف كل عنصر مفعّل حسب فئته وتجميع تكلفته في المتغيرات أعلاه
     for (var item in activeItems) {
       if (item.category == 'profile') {
-        profileCost += item.total; // إضافة تكلفة كل بروفيل إلى الإجمالي العام
         // The administrator may override the automatic role classification
         // from Price Management > Profile Prices > Calculation Rules.
         final role = (item.roleKey ?? item.selectorType ?? '')
             .trim()
             .toLowerCase();
         final rule = _profileCalculationRuleFor(item);
+        if (rule?['exclude_from_pricing'] == 1 ||
+            rule?['exclude_from_pricing'] == true) {
+          continue;
+        }
+        profileCost += item.total;
         final ruleMode = rule?['calculation_mode']
             ?.toString()
             .trim()
@@ -3777,7 +3793,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           _kitGroupExpanded[kitName] ?? false; // حالة الطي/التوسعة الحالية
       final totalPrice = children.fold<double>(
         0,
-        (sum, i) => sum + i.total,
+        (sum, i) => sum + _pricedTotal(i),
       ); // مجموع تكلفة كل عناصر المجموعة
       // دالة داخلية: تحدد هل عنصر معين هو "رأس كيت" (وليس عنصرًا فرعيًا داخله)
       bool isKitItem(String name) =>
@@ -5455,7 +5471,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      '${item.unitPrice} $currency',
+                      '${_isExcludedFromPricing(item) ? 0.0 : item.unitPrice} $currency',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white70 : Colors.black87,
@@ -5481,7 +5497,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // السعر التقديري: المطلوب الفعلي × سعر الوحدة.
             _cell(
               Text(
-                '${(item.requiredQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
+                '${(_isExcludedFromPricing(item) ? 0.0 : item.requiredQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -5495,7 +5511,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // «المطلوب الحقيقي» ككمية مستقلة لأن هذا العمود للتسعير النقدي.
             _cell(
               Text(
-                '${item.total.toStringAsFixed(2)} $currency',
+                '${_pricedTotal(item).toStringAsFixed(2)} $currency',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,

@@ -892,7 +892,7 @@ class WindowPainter extends CustomPainter {
     final isBardage =
         spec.finishOuter == GlassFinish.bardage ||
         spec.finishInner == GlassFinish.bardage ||
-        (spec.panneauSubtype ?? '').toLowerCase().contains('bardage');
+        isBardagePanelSubtype(spec.panneauSubtype);
     if (isBardage && spec.bardageUsesFrameColor) {
       return model.getBardageColorNameForSpec(spec);
     }
@@ -3704,21 +3704,18 @@ class WindowPainter extends CustomPainter {
     fillPaint.style = PaintingStyle.fill;
     canvas.drawRect(r, fillPaint);
 
-    if (activeFinish == GlassFinish.bardage) {
+    if (activeFinish == GlassFinish.bardage ||
+        isBardagePanelSubtype(effectiveSpec?.panneauSubtype)) {
       // 🟢 رسم البارداج كشرائح أفقية أو عمودية بعرضها الحقيقي من قاعدة البيانات
       final String? panneauSub = effectiveSpec?.panneauSubtype;
       final bool isVertical = effectiveSpec?.isVerticalBardage ?? false;
 
       double realSlatHeight = 100.0; // قيمة افتراضية للبارداج
-      if (model.componentOverrides.containsKey('البارداج (Bardage)')) {
-        final bardageOverride = model.componentOverrides['البارداج (Bardage)'];
-        if (bardageOverride != null) {
-          final dbWidth =
-              (bardageOverride['visible_width'] ?? bardageOverride['thickness'])
-                  as num?;
-          if (dbWidth != null && dbWidth > 0) {
-            realSlatHeight = dbWidth.toDouble();
-          }
+      final bardageOverride = model.getBardageProfileOverride();
+      if (bardageOverride != null) {
+        final dbWidth = bardageOverride['visible_width'] as num?;
+        if (dbWidth != null && dbWidth > 0) {
+          realSlatHeight = dbWidth.toDouble();
         }
       } else if (effectiveSpec != null) {
         Map<String, dynamic> dbMatch = <String, dynamic>{};

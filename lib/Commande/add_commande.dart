@@ -1776,11 +1776,23 @@ class _CommandePageState extends State<CommandePage> {
   /// is unsafe here because changing series can also change mullions, kits,
   /// parcloses, glass and the selected pricing basis at the same time.
   Future<void> _recalculateProductSellingPrice(WindowModel product) async {
+    final pricingRules = await SqlDatabase().getProfileCalculationRules();
+    final excludedProfiles = pricingRules
+        .where((rule) => rule['exclude_from_pricing'] == 1 ||
+            rule['exclude_from_pricing'] == true)
+        .map((rule) => rule['section_id'])
+        .toSet();
     final bom = ComponentCalculator.generateBom(
       product,
       _bulkPricingVariants(product),
-    ).where((item) => item.isActive && item.requiredQuantity > 0).toList();
-    if (bom.isEmpty) return;
+    ).where((item) => item.isActive && item.requiredQuantity > 0 &&
+        !(item.category == 'profile' &&
+            excludedProfiles.contains(item.catalogItemId))).toList();
+    if (bom.isEmpty) {
+      product.manualPriceOverride = null;
+      product.totalCost = 0;
+      return;
+    }
 
     var profileCost = 0.0;
     var glassCost = 0.0;

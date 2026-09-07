@@ -6019,7 +6019,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: 160,
+            height: 175,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: entries.map((e) {
@@ -6031,22 +6031,35 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                   child: Padding(
                     padding: EdgeInsets.only(right: isLast ? 0 : 6),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (e.value > 0)
-                          Text(
-                            e.value.toString(),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFF2563EB),
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Cairo',
+                        // Keep the value in a separate, fixed-height area.
+                        // This is important on desktop where the bar column
+                        // can be laid out with tighter vertical constraints.
+                        SizedBox(
+                          height: 14,
+                          child: Center(
+                            child: Text(
+                              e.value.toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF2563EB),
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Cairo',
+                              ),
                             ),
                           ),
+                        ),
                         const SizedBox(height: 4),
-                        AnimatedContainer(
-                          duration: Duration.zero,
-                          height: 120 * ratio,
+                        SizedBox(
+                          height: 110,
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: AnimatedContainer(
+                              duration: Duration.zero,
+                              height: 110 * ratio,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors:
@@ -6070,6 +6083,8 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                                 offset: const Offset(0, 4),
                               ),
                             ],
+                          ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 6),

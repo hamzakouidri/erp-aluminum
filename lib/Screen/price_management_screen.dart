@@ -3044,6 +3044,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           profileCalculationRules[sectionId]?['calculation_mode']?.toString() ??
           'auto',
       linearMeterMultiplier: value,
+      excludeFromPricing:
+          profileCalculationRules[sectionId]?['exclude_from_pricing'] == 1 ||
+              profileCalculationRules[sectionId]?['exclude_from_pricing'] == true,
     );
     if (!mounted) return;
     setState(() {
@@ -3062,17 +3065,20 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     String mode,
     double multiplier,
   ) async {
+    final exclude = mode == 'excluded';
     await db.saveProfileCalculationRule(
       sectionId: sectionId,
-      calculationMode: mode,
+      calculationMode: exclude ? 'auto' : mode,
       linearMeterMultiplier: multiplier,
+      excludeFromPricing: exclude,
     );
     if (!mounted) return;
     setState(() {
       profileCalculationRules[sectionId] = {
         ...?profileCalculationRules[sectionId],
         'section_id': sectionId,
-        'calculation_mode': mode,
+        'calculation_mode': exclude ? 'auto' : mode,
+        'exclude_from_pricing': exclude ? 1 : 0,
         'linear_meter_multiplier': multiplier,
       };
     });
@@ -3138,11 +3144,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               final sectionId = (section['id'] as num).toInt();
               final rule = profileCalculationRules[sectionId];
               final storedMode = rule?['calculation_mode']?.toString() ?? 'auto';
-              final mode = const {'auto', 'linear_meter', 'base_price'}
+              final mode = (rule?['exclude_from_pricing'] == 1 ||
+                      rule?['exclude_from_pricing'] == true)
+                  ? 'excluded'
+                  : const {'auto', 'linear_meter', 'base_price'}
                       .contains(storedMode)
                   ? storedMode
                   : 'auto';
-              final multiplier =
+      final multiplier =
                   (rule?['linear_meter_multiplier'] as num?)?.toDouble() ??
                   1.0;
               return Card(
@@ -3162,15 +3171,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               isExpanded: true,
-                              initialValue: mode,
+                              initialValue: mode == 'auto' ? null : mode,
                               decoration: InputDecoration(
                                 labelText: Localization.translate('طريقة الحساب', lang),
                                 border: OutlineInputBorder(),
                               ),
                               items: [
                                 DropdownMenuItem(
-                                  value: 'auto',
-                                  child: Text(Localization.translate('تلقائي', lang)),
+                                  value: 'excluded',
+                                  child: Text(Localization.translate('لا يُحتسب بدون سعر', lang)),
                                 ),
                                 DropdownMenuItem(
                                   value: 'linear_meter',

@@ -6,7 +6,12 @@ import 'package:flutter/gestures.dart'
     show GestureBinding, PointerEvent, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show KeyDownEvent, KeyEvent, KeyRepeatEvent, LogicalKeyboardKey;
+    show
+        HardwareKeyboard,
+        KeyDownEvent,
+        KeyEvent,
+        KeyRepeatEvent,
+        LogicalKeyboardKey;
 
 /// Coordinates Windows mouse-wheel input across nested ScrollViews.
 ///
@@ -20,7 +25,7 @@ class DesktopScrollCoordinator {
 
   static final Set<_DesktopScrollableRegistration> _registrations = {};
   static final Map<PointerSignalEvent, Set<_DesktopScrollableRegistration>>
-      _hits = {};
+  _hits = {};
   static Offset? _lastPointerPosition;
 
   static void _register(_DesktopScrollableRegistration registration) {
@@ -39,9 +44,25 @@ class DesktopScrollCoordinator {
     PointerSignalEvent event,
   ) {
     if (event is! PointerScrollEvent) return;
-    _hits.putIfAbsent(event, () => <_DesktopScrollableRegistration>{}).add(
-      registration,
-    );
+    _hits
+        .putIfAbsent(event, () => <_DesktopScrollableRegistration>{})
+        .add(registration);
+
+    // PointerSignalEvent objects are unique per wheel tick.  They must not
+    // remain as keys in this static map: pages are opened and closed during a
+    // session, and retaining every wheel event eventually makes hit testing
+    // sluggish and can make scrolling appear to stop.  The normal Flutter
+    // scroll handler has already consumed the event by the next frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hits.remove(event);
+    });
+    // Force a frame to actually be scheduled. If nothing else in the tree
+    // calls setState after this wheel tick (e.g. the pointer is over empty
+    // page chrome, or every scrollable under it is already at its edge), no
+    // frame would otherwise be produced, and this cleanup callback — along
+    // with the fallback logic in handlePointerSignal below — would stay
+    // pending indefinitely instead of running on the next tick.
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   static void rememberPointerPosition(PointerEvent event) {
@@ -55,13 +76,12 @@ class DesktopScrollCoordinator {
     // A scrollable can receive the signal before its scrollbar registration
     // is reached in the hit-test path. Use all registered viewports under the
     // pointer as a reliable fallback instead of waiting for a thumb drag.
-    final markedTargets = _hits.remove(event) ??
-        <_DesktopScrollableRegistration>{};
+    final markedTargets =
+        _hits.remove(event) ?? <_DesktopScrollableRegistration>{};
     final hitTargets = <_DesktopScrollableRegistration>{
       ...markedTargets,
       ..._registrations.where(
-        (registration) =>
-            registration.bounds?.contains(event.position) == true,
+        (registration) => registration.bounds?.contains(event.position) == true,
       ),
     };
     if (hitTargets.isEmpty) return;
@@ -75,7 +95,8 @@ class DesktopScrollCoordinator {
     final candidates = hitTargets
         .where(
           (registration) =>
-              registration.axis == (useVertical ? Axis.vertical : Axis.horizontal) &&
+              registration.axis ==
+                  (useVertical ? Axis.vertical : Axis.horizontal) &&
               registration.bounds?.contains(event.position) == true &&
               registration.controller.hasClients,
         )
@@ -90,8 +111,9 @@ class DesktopScrollCoordinator {
       return aArea.compareTo(bArea);
     });
     final offsets = <_DesktopScrollableRegistration, double>{
-      for (final candidate in candidates
-          .where((candidate) => candidate.controller.hasClients))
+      for (final candidate in candidates.where(
+        (candidate) => candidate.controller.hasClients,
+      ))
         candidate: candidate.controller.position.pixels,
     };
 
@@ -112,23 +134,74 @@ class DesktopScrollCoordinator {
         break;
       }
     });
+    // Same reasoning as in _markHit: without an explicit scheduleFrame,
+    // this callback can be left dangling when no scrollable actually moves
+    // (pointer over empty chrome, or every candidate already at its edge),
+    // silently dropping the fallback scroll for that wheel tick.
+    WidgetsBinding.instance.scheduleFrame();
   }
 
-  /// Handles page navigation keys without stealing cursor movement from a
-  /// text field. The focused scrollable wins; otherwise the scrollable under
-  /// the last pointer position is used, with the page viewport as fallback.
+  /// Handles keyboard navigation (arrow keys, Page Up/Down, Home/End) without
+  /// stealing cursor movement from a text field. The focused scrollable wins;
+  /// otherwise the scrollable under the last pointer position is used, with
+  /// the page viewport as fallback.
+  ///
+  /// Up/Down and PageUp/PageDown/Home/End drive vertical scrollables.
+  /// Left/Right drive horizontal scrollables with a small "line" step;
+  /// holding Ctrl with Left/Right uses a larger "page" step instead, mirroring
+  /// PageUp/PageDown behavior on the vertical axis.
   static bool handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
 
     final key = event.logicalKey;
-    final direction = switch (key) {
-      LogicalKeyboardKey.arrowDown || LogicalKeyboardKey.pageDown => 1,
-      LogicalKeyboardKey.arrowUp || LogicalKeyboardKey.pageUp => -1,
-      LogicalKeyboardKey.home => -2,
-      LogicalKeyboardKey.end => 2,
-      _ => 0,
-    };
-    if (direction == 0) return false;
+    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed;
+
+    Axis? axis;
+    var direction = 0; // -1 back, 1 forward, -2 jump to start, 2 jump to end
+    var isLineStep = true;
+
+    switch (key) {
+      case LogicalKeyboardKey.arrowDown:
+        axis = Axis.vertical;
+        direction = 1;
+        break;
+      case LogicalKeyboardKey.arrowUp:
+        axis = Axis.vertical;
+        direction = -1;
+        break;
+      case LogicalKeyboardKey.pageDown:
+        axis = Axis.vertical;
+        direction = 1;
+        isLineStep = false;
+        break;
+      case LogicalKeyboardKey.pageUp:
+        axis = Axis.vertical;
+        direction = -1;
+        isLineStep = false;
+        break;
+      case LogicalKeyboardKey.home:
+        axis = Axis.vertical;
+        direction = -2;
+        break;
+      case LogicalKeyboardKey.end:
+        axis = Axis.vertical;
+        direction = 2;
+        break;
+      case LogicalKeyboardKey.arrowRight:
+        axis = Axis.horizontal;
+        direction = 1;
+        isLineStep = !isCtrlPressed;
+        break;
+      case LogicalKeyboardKey.arrowLeft:
+        axis = Axis.horizontal;
+        direction = -1;
+        isLineStep = !isCtrlPressed;
+        break;
+      default:
+        axis = null;
+    }
+    if (axis == null || direction == 0) return false;
+    final resolvedAxis = axis;
 
     final focusedContext = FocusManager.instance.primaryFocus?.context;
     if (focusedContext != null && _isInsideEditableText(focusedContext)) {
@@ -139,9 +212,11 @@ class DesktopScrollCoordinator {
         ? null
         : Scrollable.maybeOf(focusedContext);
     final registrations = _registrations
-        .where((registration) =>
-            registration.axis == Axis.vertical &&
-            registration.controller.hasClients)
+        .where(
+          (registration) =>
+              registration.axis == resolvedAxis &&
+              registration.controller.hasClients,
+        )
         .toList();
     registrations.sort((a, b) {
       final aArea = a.bounds == null
@@ -156,12 +231,21 @@ class DesktopScrollCoordinator {
     // The focused ScrollableState cannot always be matched to a registration
     // (for example, when a page intentionally hides its scrollbar), so use its
     // position directly when it can move.
-    if (focusedScrollable != null &&
-        (focusedScrollable.axisDirection == AxisDirection.up ||
-            focusedScrollable.axisDirection == AxisDirection.down) &&
+    final focusedMatchesAxis =
+        focusedScrollable != null &&
+        (resolvedAxis == Axis.vertical
+            ? (focusedScrollable.axisDirection == AxisDirection.up ||
+                  focusedScrollable.axisDirection == AxisDirection.down)
+            : (focusedScrollable.axisDirection == AxisDirection.left ||
+                  focusedScrollable.axisDirection == AxisDirection.right));
+    if (focusedMatchesAxis &&
         focusedScrollable.position.hasContentDimensions &&
         _canMovePosition(focusedScrollable.position, direction)) {
-      _applyKeyScroll(focusedScrollable.position, direction);
+      _applyKeyScroll(
+        focusedScrollable.position,
+        direction,
+        isLineStep: isLineStep,
+      );
       return true;
     }
 
@@ -169,7 +253,10 @@ class DesktopScrollCoordinator {
     final underPointer = pointer == null
         ? <_DesktopScrollableRegistration>[]
         : registrations
-              .where((registration) => registration.bounds?.contains(pointer) == true)
+              .where(
+                (registration) =>
+                    registration.bounds?.contains(pointer) == true,
+              )
               .toList();
     final candidates = [...underPointer, ...registrations]
         .fold<List<_DesktopScrollableRegistration>>(
@@ -182,7 +269,7 @@ class DesktopScrollCoordinator {
     for (final registration in candidates) {
       final position = registration.controller.position;
       if (!_canMovePosition(position, direction)) continue;
-      _applyKeyScroll(position, direction);
+      _applyKeyScroll(position, direction, isLineStep: isLineStep);
       return true;
     }
     return false;
@@ -200,17 +287,29 @@ class DesktopScrollCoordinator {
     return position.pixels < position.maxScrollExtent;
   }
 
-  static void _applyKeyScroll(ScrollPosition position, int direction) {
-    final offset = direction == -2
-        ? position.minScrollExtent
-        : direction == 2
-        ? position.maxScrollExtent
-        : (position.pixels +
-                  (direction > 0
-                      ? (position.viewportDimension * 0.72).clamp(56.0, 520.0)
-                      : -(position.viewportDimension * 0.72).clamp(56.0, 520.0)))
-              .clamp(position.minScrollExtent, position.maxScrollExtent)
-              .toDouble();
+  static void _applyKeyScroll(
+    ScrollPosition position,
+    int direction, {
+    required bool isLineStep,
+  }) {
+    if (direction == -2) {
+      position.jumpTo(position.minScrollExtent);
+      return;
+    }
+    if (direction == 2) {
+      position.jumpTo(position.maxScrollExtent);
+      return;
+    }
+    // Line step: a small, precise nudge (arrow keys / Ctrl+Left/Right at
+    // default). Page step: a large jump tied to the viewport size (PageUp/
+    // PageDown, and Ctrl+Left/Right), matching the previous PageUp/PageDown
+    // sizing exactly.
+    final step = isLineStep
+        ? 48.0
+        : (position.viewportDimension * 0.72).clamp(56.0, 520.0);
+    final offset = (position.pixels + (direction > 0 ? step : -step))
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
     position.jumpTo(offset);
   }
 }
@@ -229,7 +328,10 @@ class _DesktopScrollableRegistration {
   Rect? get bounds {
     if (!context.mounted) return null;
     final renderObject = context.findRenderObject();
-    if (renderObject is! RenderBox || !renderObject.hasSize || !renderObject.attached) return null;
+    if (renderObject is! RenderBox ||
+        !renderObject.hasSize ||
+        !renderObject.attached)
+      return null;
     final offstage = context.findAncestorWidgetOfExactType<Offstage>();
     if (offstage?.offstage == true) return null;
     final origin = renderObject.localToGlobal(Offset.zero);
@@ -349,13 +451,13 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
 
   @override
   Set<PointerDeviceKind> get dragDevices => {
-        PointerDeviceKind.touch,
-        PointerDeviceKind.mouse,
-        PointerDeviceKind.trackpad,
-        PointerDeviceKind.stylus,
-        PointerDeviceKind.invertedStylus,
-        PointerDeviceKind.unknown,
-      };
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+    PointerDeviceKind.unknown,
+  };
 
   @override
   Widget buildScrollbar(
@@ -363,8 +465,8 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
     Widget child,
     ScrollableDetails details,
   ) {
-    final isWindowsDesktop = !kIsWeb &&
-        defaultTargetPlatform == TargetPlatform.windows;
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
     final controller = details.controller;
     final axis = axisDirectionToAxis(details.direction);
 
@@ -467,8 +569,10 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return MouseRegion(
-          onHover: (event) =>
-              _updatePointerPosition(event.localPosition, constraints.maxHeight),
+          onHover: (event) => _updatePointerPosition(
+            event.localPosition,
+            constraints.maxHeight,
+          ),
           onExit: (_) {
             if (mounted) setState(() => _pointerOverScrollbar = false);
           },

@@ -1,5 +1,6 @@
 // Force compile sync trigger
 import 'dart:convert';
+import '../utils/shutter_selection.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/localization.dart';
@@ -11,6 +12,7 @@ import 'package:flutter/foundation.dart';
 
 class DevisLineItem {
   final String? imagePath;
+  final String? imageBase64;
   final String title;
   final List<String> details;
   final double unitPrice;
@@ -24,6 +26,7 @@ class DevisLineItem {
 
   const DevisLineItem({
     required this.imagePath,
+    this.imageBase64,
     required this.title,
     required this.details,
     required this.unitPrice,
@@ -209,7 +212,11 @@ class DevisBuilder {
     String chequeNumber = '',
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final langIndex = prefs.getInt('app_language') ?? 0;
+    // French is the application default. Do not fall back to Arabic merely
+    // because the language preference has not been written yet (for example
+    // when a document is opened immediately after changing language).
+    final langIndex =
+        prefs.getInt('app_language') ?? AppLanguage.french.index;
     _currentLang = overrideLang ?? AppLanguage.values[langIndex];
     final candidate = workshop ?? await loadWorkshopInfo();
     final workshopCode = (prefs.getString('workshop_code') ?? '').trim();
@@ -670,6 +677,9 @@ class DevisBuilder {
     for (final p in prefixes) {
       if (cleanLine.startsWith(p)) {
         if (cleanLine.length == p.length) return true;
+        // A translated/trimmed line can end exactly at the prefix boundary.
+        // Never ask substring for a character past the actual string length.
+        if (cleanLine.length <= p.length) continue;
         final nextChar = cleanLine.substring(p.length, p.length + 1);
         if (RegExp(r'^[\s\:\-\d\.\,\/\|]').hasMatch(nextChar)) {
           return true;
@@ -908,6 +918,7 @@ class DevisBuilder {
       }
       return DevisLineItem(
         imagePath: item['drawing_image_path']?.toString(),
+        imageBase64: item['drawing_image_base64']?.toString(),
         title: title,
         details: exactDetails,
         unitPrice: unitPrice,
@@ -968,6 +979,7 @@ class DevisBuilder {
         // official tunnel asset is used only by old rendering fallbacks when
         // no drawing path exists.
         imagePath: item['drawing_image_path']?.toString().trim(),
+        imageBase64: item['drawing_image_base64']?.toString(),
         title: title,
         details: details,
         unitPrice: unitPrice,
@@ -1025,6 +1037,7 @@ class DevisBuilder {
 
       return DevisLineItem(
         imagePath: 'assets/Icon/media.webp',
+        imageBase64: item['drawing_image_base64']?.toString(),
         title: title,
         details: details,
         unitPrice: unitPrice,
@@ -1068,6 +1081,7 @@ class DevisBuilder {
 
       return DevisLineItem(
         imagePath: item['drawing_image_path']?.toString(),
+        imageBase64: item['drawing_image_base64']?.toString(),
         title: title,
         details: details,
         unitPrice: unitPrice,
@@ -1096,6 +1110,7 @@ class DevisBuilder {
       }
       return DevisLineItem(
         imagePath: item['drawing_image_path']?.toString(),
+        imageBase64: item['drawing_image_base64']?.toString(),
         title: title,
         details: _removeRedundantGlassSummaryLines(details),
         unitPrice: unitPrice,
@@ -1724,8 +1739,9 @@ class DevisBuilder {
         details.add('الستار (Volet): $mechLabel');
       }
 
-      if (map['shutterLame'] != null) {
-        final String lameFullName = map['shutterLame'].toString();
+      {
+        final lameFullName = resolveShutterBladeName(
+          map['componentOverrides'], fallback: map['shutterLame']);
         if (lameFullName.isNotEmpty) {
           if (_currentLang == AppLanguage.french) {
             details.add('Lame: $lameFullName');
@@ -1823,6 +1839,7 @@ class DevisBuilder {
 
     return DevisLineItem(
       imagePath: item['drawing_image_path']?.toString(),
+      imageBase64: item['drawing_image_base64']?.toString(),
       title: title,
       details: _removeRedundantGlassSummaryLines(details),
       unitPrice: unitPrice,
@@ -2607,7 +2624,8 @@ class DevisBuilder {
       });
     }
 
-    final lame = map['shutterLame']?.toString().trim() ?? '';
+    final lame = resolveShutterBladeName(
+      map['componentOverrides'], fallback: map['shutterLame']);
     if (lame.isNotEmpty) {
       lines.add(switch (_currentLang) {
         AppLanguage.french => 'Lame volet: $lame',

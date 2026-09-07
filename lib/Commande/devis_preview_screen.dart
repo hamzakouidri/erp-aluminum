@@ -113,7 +113,33 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     // Generate the PDF in the background. The visual preview must remain
     // usable while PDF bytes are being prepared; putting a full-screen loader
     // here made partial delivery previews look stuck indefinitely.
-    _isLoading = false;
+    _isLoading = true;
+    unawaited(_initializePreviewLanguage());
+  }
+
+  Future<void> _initializePreviewLanguage() async {
+    try {
+      final rawOrder = widget.data.rawOrder;
+      final rawItems = widget.data.rawItems;
+      if (rawOrder != null && rawItems != null) {
+        final rebuilt = await DevisBuilder.build(
+          order: rawOrder,
+          items: rawItems,
+          workshop: widget.data.workshop,
+          isPartial: widget.data.isPartial,
+          hidePrices: widget.data.hidePrices,
+          isProForma: widget.data.isProForma,
+          documentTitleKey: widget.data.documentTitleKey,
+          overrideLang: _invoiceLanguage,
+          chequeNumber: _chequeNumber,
+        );
+        if (mounted) _currentDevisData = rebuilt;
+      }
+    } catch (error) {
+      debugPrint('Initial document language refresh failed: $error');
+    }
+    if (!mounted) return;
+    setState(() => _isLoading = false);
     _initPdfGeneration();
   }
 
@@ -1446,6 +1472,33 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildItemImage(DevisLineItem item) {
     final path = item.imagePath;
+
+    // A drawing path belongs to the device that created the order.  On a
+    // different device the portable Base64 copy may be available even when
+    // that path is invalid.
+    if (item.imageBase64 != null && item.imageBase64!.trim().isNotEmpty) {
+      try {
+        final raw = item.imageBase64!.trim();
+        final separator = raw.indexOf(',');
+        final encoded = raw.startsWith('data:image') && separator >= 0
+            ? raw.substring(separator + 1)
+            : raw;
+        final bytes = base64Decode(encoded);
+        if (bytes.isNotEmpty) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            padding: const EdgeInsets.all(4),
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          );
+        }
+      } catch (_) {
+        // Fall through to the local-path and legacy asset fallbacks.
+      }
+    }
 
     if (item.title.contains('Moustiquaire') ||
         item.title.contains('موستيكير') ||

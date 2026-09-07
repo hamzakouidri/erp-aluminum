@@ -886,7 +886,12 @@ class ComponentCalculator {
     if (_textHasAny(originalName, const ['bronze', 'برونز'])) {
       return 'joint bronze';
     }
-    if (_textHasAny(originalName, const ['vitrage', 'فيتراج'])) {
+    if (_textHasAny(originalName, const [
+      'vitrage',
+      'فيتراج',
+      'جوان الزجاج',
+      'joint glass',
+    ])) {
       return 'joint de vitrage';
     }
     if (_textHasAny(originalName, const ['bourrage', 'بوراج'])) {
@@ -2411,6 +2416,7 @@ class ComponentCalculator {
     double slidingTotalJointBrosse = 0.0;
     double pvcJointBrosseSum = 0.0;
     Map<String, double> slidingGlassJoints = {};
+    double slidingBourrageTargetThickness = 0.0;
 
     // PVC sliding systems have their own cutting rules.  They deliberately
     // live on the *sliding* series so a mixed drawing cannot inherit the
@@ -4591,10 +4597,7 @@ class ComponentCalculator {
 
         // 🟢 جوان بروس للظلفة: لا يُضاف تلقائياً لسلاسل الألمنيوم مثل TPR 67000
         // إلا إذا كان خيار جوان البروس مخصصاً ومحدداً صراحة لهذه السلسلة أو إذا كان النظام PVC
-        if (window.isSlidingPVC ||
-            window.componentOverrides.containsKey(
-              'جوان بروس للظلفة (Joint Brosse Sash)',
-            )) {
+        if (slidingTotalJointBrosse > 0) {
           items.add(
             createJoint(
               'جوان بروس للظلفة (Joint Brosse Sash)',
@@ -6005,8 +6008,12 @@ class ComponentCalculator {
     // Bardage is a profile from the active series, never a priced panel from
     // the glass catalogue. Its visible width controls the slat count and its
     // thickness selects the matching parclose.
+    Map<String, dynamic>? bardageProfileOverride() {
+      return window.getBardageProfileOverride();
+    }
+
     double bardageProfileValue(String key) {
-      final override = window.componentOverrides['البارداج (Bardage)'];
+      final override = bardageProfileOverride();
       final value = override?[key];
       return value is num
           ? value.toDouble()
@@ -6285,14 +6292,33 @@ class ComponentCalculator {
               (isDecorPanelSubtype(cellGlass.panneauSubtype) ||
                   cellGlass.finishOuter == GlassFinish.paneauSandwitchDecore);
 
+          final selectedPanneauProduct = isPanneau
+              ? window.getPanneauProductForSpec(cellGlass)
+              : null;
+          final panneauProductText = selectedPanneauProduct == null
+              ? ''
+              : '${selectedPanneauProduct['subtype'] ?? ''} '
+                        '${selectedPanneauProduct['name'] ?? ''} '
+                        '${selectedPanneauProduct['type'] ?? ''}'
+                    .toLowerCase();
+          final resolvedBardageProfile = bardageProfileOverride();
+          int? intValue(Object? value) {
+            if (value is num) return value.toInt();
+            return int.tryParse(value?.toString() ?? '');
+          }
+
+          final selectedProductId = intValue(cellGlass.panneauProductId);
+          final bardageProfileId = intValue(resolvedBardageProfile?['id']);
           final isBardage =
               isPanneau &&
-              (cellGlass.panneauSubtype?.toLowerCase().contains('bardage') ==
-                      true ||
-                  cellGlass.finishOuter == GlassFinish.bardage);
+              (isBardagePanelSubtype(cellGlass.panneauSubtype) ||
+                  isBardagePanelSubtype(panneauProductText) ||
+                  cellGlass.finishOuter == GlassFinish.bardage ||
+                  cellGlass.finishInner == GlassFinish.bardage ||
+                  (selectedProductId != null &&
+                      selectedProductId == bardageProfileId));
 
-          if (isBardage &&
-              window.componentOverrides.containsKey('البارداج (Bardage)')) {
+          if (isBardage && resolvedBardageProfile != null) {
             // البارداج مادة بروفيل، لكن تسعيره يكون بعدد قطع المخزون
             // الكاملة وليس بالمتر الخطي، ولا يُضاف كبانو مساحي.
             final double slatW = getBardageVisibleWidth();
@@ -6307,7 +6333,7 @@ class ComponentCalculator {
                 : (cellGw / 1000.0);
 
             for (int i = 0; i < slatsCount; i++) {
-              for (int q = 0; q < pieceMultiplier; q++) {
+              for (int q = 0; q < pieceMultiplier * window.quantity; q++) {
                 addBardagePiece(cellGlass, pieceLength);
               }
             }
@@ -6324,13 +6350,36 @@ class ComponentCalculator {
                   getBardageThickness(),
                 );
               }
-              for (int q = 0; q < pieceMultiplier; q++) {
+              for (int q = 0; q < pieceMultiplier * window.quantity; q++) {
                 targetParclosePieces.add(cellGw / 1000.0);
                 targetParclosePieces.add(cellGw / 1000.0);
                 targetParclosePieces.add(cellGh / 1000.0);
                 targetParclosePieces.add(cellGh / 1000.0);
               }
             }
+            return;
+          }
+
+          if (isBardage) {
+            // A bardage must never fall through to the square-metre panneau
+            // branch. If its series profile is not configured, expose the
+            // missing profile explicitly so the configuration can be fixed.
+            items.add(
+              BomItem(
+                category: 'profile',
+                originalName: 'البارداج (Bardage)',
+                name: 'قطاع البرداج غير محدد في قواعد السلسلة',
+                quantity: 0,
+                unit: 'قطعة',
+                unitPrice: 0,
+                isMissing: true,
+                inventoryItemType: 'Section',
+                overrideKey: 'البارداج (Bardage)',
+                selectorCategory: 'profile',
+                selectorType: 'bardage',
+                roleKey: 'bardage',
+              ),
+            );
             return;
           }
 
@@ -6355,15 +6404,21 @@ class ComponentCalculator {
           );
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
-          final double cellThick = window
-              .glassPackThicknessIncludingVitrageJoint(cellGlass);
-          final bool needsDoubleParclose =
-              cellGlass.structure == GlassStructure.double;
           final bool isSlidingSystem =
               window.systemMode == 'sliding' ||
               window.systemMode == 'coulissant' ||
               window.systemMode == 'منزلق' ||
               zone.content == ZoneContent.slidingSash;
+          final double cellThick = window
+              .glassPackThicknessIncludingVitrageJoint(cellGlass);
+          final double rawCellGlassPackThickness =
+              cellGlass.structure == GlassStructure.double
+              ? (cellGlass.thicknessOuter ?? 4.0) +
+                    (cellGlass.thicknessInner ?? 4.0) +
+                    cellGlass.intercallThickness
+              : (cellGlass.thicknessOuter ?? 4.0);
+          final bool needsDoubleParclose =
+              cellGlass.structure == GlassStructure.double;
           final bool isPvcSlidingSystem =
               isSlidingSystem && window.isSlidingPVC;
           final String slidingSeriesLabel =
@@ -6405,13 +6460,34 @@ class ComponentCalculator {
             }
           }
 
-          void addSlidingVitrageJoint() {
+          void addSlidingBourrageJoint() {
             final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
             final double sides = cellGlass.jointTwoSides ? 2.0 : 1.0;
             final double qty = perimeter * sides * totalPieces;
-            const jointName = 'جوان الزجاج (Joint Vitrage)';
+            const jointName = 'جوان البوراج (Joint Bourrage)';
             slidingGlassJoints[jointName] =
                 (slidingGlassJoints[jointName] ?? 0.0) + qty;
+
+            final sash =
+                window.slidingSashOverride ??
+                window.getSlidingSectionByType('sash_sliding')?.toMap() ??
+                window.getSlidingSectionByType('sash')?.toMap();
+            final rawCapacity = sash?['max_glass_thickness'];
+            final capacity = rawCapacity is num
+                ? rawCapacity.toDouble()
+                : double.tryParse(rawCapacity?.toString() ?? '') ?? 0.0;
+            final glassThickness = cellGlass.structure == GlassStructure.double
+                ? (cellGlass.thicknessOuter ?? 4.0) +
+                      (cellGlass.thicknessInner ?? 4.0) +
+                      cellGlass.intercallThickness
+                : (cellGlass.thicknessOuter ?? 4.0);
+            if (capacity > glassThickness) {
+              final perSide = (capacity - glassThickness) / sides;
+              slidingBourrageTargetThickness = math.max(
+                slidingBourrageTargetThickness,
+                perSide,
+              );
+            }
           }
 
           if (isSlidingSystem) {
@@ -6461,7 +6537,7 @@ class ComponentCalculator {
                   cellGlass.structure == GlassStructure.simple) {
                 addReducteurPieces(pieceMultiplier);
               }
-              addSlidingVitrageJoint();
+              addSlidingBourrageJoint();
             } else if (!isPvcSlidingSystem &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
@@ -6492,7 +6568,7 @@ class ComponentCalculator {
                 remaining =
                     2.0; // fallback to ensure glass gasket is calculated
               }
-              if (remaining > 0) addSlidingVitrageJoint();
+              if (remaining > 0) addSlidingBourrageJoint();
             }
           } else {
             if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
@@ -6508,7 +6584,7 @@ class ComponentCalculator {
             } else if (needsDoubleParclose) {
               maxOpeningDoubleGlassPackThickness = math.max(
                 maxOpeningDoubleGlassPackThickness,
-                cellThick,
+                rawCellGlassPackThickness,
               );
               requiredOpeningParcloseDoubleThickness = math.max(
                 requiredOpeningParcloseDoubleThickness,
@@ -6523,7 +6599,7 @@ class ComponentCalculator {
             } else {
               maxOpeningSimpleGlassPackThickness = math.max(
                 maxOpeningSimpleGlassPackThickness,
-                cellThick,
+                rawCellGlassPackThickness,
               );
               for (int q = 0; q < pieceMultiplier; q++) {
                 parcloseSimplePieces.add(cellGw / 1000.0);
@@ -7003,15 +7079,18 @@ class ComponentCalculator {
     // so they must be appended after the glass loop.  The earlier accessory
     // section runs before this data exists.
     final pendingSlidingVitrageJoints = slidingGlassJoints.entries
-        .where(
-          (entry) => _selectorTypeForJoint(entry.key) == 'joint de vitrage',
-        )
+        .where((entry) => _selectorTypeForJoint(entry.key) == 'joint bourrage')
         .toList();
     final modelQuantity = window.quantity <= 0 ? 1 : window.quantity;
     for (final entry in pendingSlidingVitrageJoints) {
       if (entry.value > 0) {
         items.add(
-          createJoint(entry.key, qty: entry.value / modelQuantity, unit: 'متر'),
+          createJoint(
+            entry.key,
+            qty: entry.value / modelQuantity,
+            unit: 'متر',
+            targetThicknessMm: slidingBourrageTargetThickness,
+          ),
         );
       }
       slidingGlassJoints.remove(entry.key);
@@ -7484,20 +7563,20 @@ class ComponentCalculator {
     // =========================================================================
     // --- 4.6 البارداج كبروفيل (Bardage Profile) ---
     // =========================================================================
-    if (bardagePiecesByColor.isNotEmpty &&
-        window.componentOverrides.containsKey('البارداج (Bardage)')) {
-      final rawBardageOverride =
-          window.componentOverrides['البارداج (Bardage)'];
+    if (bardagePiecesByColor.isNotEmpty && bardageProfileOverride() != null) {
+      final rawBardageOverride = bardageProfileOverride();
+      final usesSpecificBardageRole =
+          window.componentOverrides['البارداج (Bardage)'] is Map;
       for (final entry in bardagePiecesByColor.entries) {
         final selectedName = bardageColorNames[entry.key] ?? colorName;
         final selectedColor = bardageColorData[entry.key];
-        final pricedOverride = rawBardageOverride is Map
-            ? Map<String, dynamic>.from(rawBardageOverride)
-            : <String, dynamic>{};
-        pricedOverride['calculated_price'] = window.getBardagePriceForColor(
-          selectedColor,
-          selectedName,
-        );
+        final pricedOverride = Map<String, dynamic>.from(rawBardageOverride!);
+        pricedOverride['calculated_price'] = usesSpecificBardageRole
+            ? window.getBardagePriceForColor(selectedColor, selectedName)
+            : window.getPanneauProfilePriceForColor(
+                selectedColor,
+                selectedName,
+              );
         items.add(
           createProfile(
             'البارداج (Bardage)',
@@ -7507,6 +7586,8 @@ class ComponentCalculator {
             overrideMap: pricedOverride,
             preferOverrideMap: true,
             priceByWholeBar: true,
+            roleKey: usesSpecificBardageRole ? 'bardage' : 'panneau',
+            selectorType: usesSpecificBardageRole ? 'bardage' : 'panneau',
           ),
         );
       }
@@ -7721,7 +7802,7 @@ class ComponentCalculator {
           return 'بانو';
         }
         if (s.contains('aluco') || s.contains('الوكو')) return 'الوكو';
-        if (s.contains('bardage') || s.contains('بارداش')) return 'بارداش';
+        if (isBardagePanelSubtype(s)) return 'بارداش';
         return sub;
       }
 

@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
+import '../widgets/section_image.dart';
 
 /// Administrator-only definition of the main profile roles for each series.
 /// This temporary page is intentionally independent from the quantity table.
@@ -104,7 +108,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       fr: 'Montant central coulissant',
       descriptionAr: 'القطع التي يمكن أن تستبدل القائم الوسطي في المنزلق',
       descriptionFr:
-        'Profils interchangeables pour le montant central coulissant',
+          'Profils interchangeables pour le montant central coulissant',
     ),
     _SeriesRole(
       key: 'montant_central_slim',
@@ -507,6 +511,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       var role = item['role_key']?.toString() ?? '';
       // Keep legacy role names readable when older rules are loaded.
       if (role == 'pattes' || role == 'patte') role = 'triangle';
+      if (role == 'panneau') role = 'bardage';
       if (role == 'c' || role == 'profil_c' || role == 'profile_c') continue;
       final sectionId = (item['section_id'] as num?)?.toInt();
       if (!_sectionIdsByRole.containsKey(role) || sectionId == null) continue;
@@ -690,7 +695,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final sourceProfile = section['source_profile_name']?.toString().trim();
     final sourceSeries = section['source_series_name']?.toString().trim();
     if (section['is_shared'] == 1 &&
-        (sourceProfile?.isNotEmpty == true || sourceSeries?.isNotEmpty == true)) {
+        (sourceProfile?.isNotEmpty == true ||
+            sourceSeries?.isNotEmpty == true)) {
       final owner = [
         if (sourceProfile?.isNotEmpty == true) sourceProfile,
         if (sourceSeries?.isNotEmpty == true) sourceSeries,
@@ -766,9 +772,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         ),
                       ),
                     ],
-                    onChanged: (value) => setDialogState(
-                      () => targetScope = value ?? 'profile',
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => targetScope = value ?? 'profile'),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -784,13 +789,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final section = candidates[index];
-                        final sectionId =
-                            (section['id'] as num?)?.toInt();
+                        final sectionId = (section['id'] as num?)?.toInt();
                         final selected = sectionId == selectedSectionId;
-                        final owner = [
-                          section['profile_name']?.toString().trim(),
-                          section['series_name']?.toString().trim(),
-                        ].where((value) => value?.isNotEmpty == true).join(' / ');
+                        final owner =
+                            [
+                                  section['profile_name']?.toString().trim(),
+                                  section['series_name']?.toString().trim(),
+                                ]
+                                .where((value) => value?.isNotEmpty == true)
+                                .join(' / ');
                         return ListTile(
                           selected: selected,
                           leading: Icon(
@@ -803,8 +810,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           onTap: sectionId == null
                               ? null
                               : () => setDialogState(
-                                    () => selectedSectionId = sectionId,
-                                  ),
+                                  () => selectedSectionId = sectionId,
+                                ),
                         );
                       },
                     ),
@@ -909,10 +916,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       }
     }
     try {
-      await widget.db.saveSeriesDesignRoles(seriesId: seriesId, roles: roles);
+      await widget.db.saveSeriesDesignRoles(
+        seriesId: seriesId,
+        roles: roles,
+        syncCatalog: false,
+      );
       await widget.db.saveSectionJointLinksForSeries(
         seriesId: seriesId,
         links: jointLinks,
+        syncCatalog: false,
       );
       await widget.db.upsertSeriesTableConfig(
         seriesId: seriesId,
@@ -932,7 +944,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         slidingChicanePiecesPerJunction: _positiveInt(_chicanePiecesController),
         slidingRailClearance: _decimal(_railClearanceController, fallback: 1),
         customFormulaNotes: _formulaNotesController.text.trim(),
+        notifySync: false,
       );
+      // Saving the three local rule groups is one user action. Return control
+      // immediately and upload the combined catalogue change once in the
+      // background instead of awaiting two full cloud uploads in sequence.
+      unawaited(CloudSyncService().notifyCatalogChange());
       if (mounted) {
         _showMessage(
           _t(
@@ -1283,7 +1300,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     ].whereType<Object>().join(' ').trim().toLowerCase();
     return text.contains('bardage') ||
         text.contains('بارداج') ||
-        text.contains('بارداش');
+        text.contains('بارداش') ||
+        text.contains('برداج') ||
+        text.contains('برداش');
   }
 
   Widget _selectedRoleRulesList(_SeriesRole role) {
@@ -1328,9 +1347,46 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       margin: const EdgeInsets.only(bottom: 6),
       child: ListTile(
         dense: true,
-        leading: Icon(
-          isDefault ? Icons.star_rounded : Icons.rule_folder_outlined,
-          color: isDefault ? Colors.amber.shade700 : null,
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: SectionImageWidget(
+                code: section['code']?.toString(),
+                name: section['name']?.toString(),
+                imagePath: section['image_path']?.toString(),
+                size: 40,
+                fallbackIcon: Icons.view_in_ar_rounded,
+              ),
+            ),
+            if (isDefault)
+              PositionedDirectional(
+                top: -5,
+                end: -5,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.star_rounded,
+                    size: 17,
+                    color: Colors.amber.shade700,
+                  ),
+                ),
+              ),
+          ],
         ),
         title: Text(_sectionLabel(section)),
         subtitle: Text(badges.join(' • ')),
@@ -1636,12 +1692,14 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
                             ),
                           ),
                           child: Text(
@@ -1651,7 +1709,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                             softWrap: true,
                             style: TextStyle(
                               fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -1690,10 +1750,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           controller: supportedTracksCtrl,
                           decoration: InputDecoration(
                             labelText: _t('السكك المقبولة', 'Totaux acceptés'),
-                            hintText: _t(
-                              'مثال: 3,4,5,6',
-                              'Exemple : 3,4,5,6',
-                            ),
+                            hintText: _t('مثال: 3,4,5,6', 'Exemple : 3,4,5,6'),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -1705,7 +1762,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText: _t('تصحيح العرض (مم)', 'Correction largeur (mm)'),
+                          labelText: _t(
+                            'تصحيح العرض (مم)',
+                            'Correction largeur (mm)',
+                          ),
                           hintText: _t(
                             'مثال: +60 أو -10',
                             'Exemple : +60 ou -10',
@@ -1720,11 +1780,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText: _t('تصحيح الارتفاع (مم)', 'Correction hauteur (mm)'),
-                          hintText: _t(
-                            'مثال: +5 أو -6',
-                            'Exemple : +5 ou -6',
+                          labelText: _t(
+                            'تصحيح الارتفاع (مم)',
+                            'Correction hauteur (mm)',
                           ),
+                          hintText: _t('مثال: +5 أو -6', 'Exemple : +5 ou -6'),
                         ),
                       ),
                       const SizedBox(height: 10),

@@ -358,6 +358,15 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
     'roulette',
     'entrematique',
     'other',
+    // Gaskets are catalogue items shared by compatible aluminium series.
+    // Their BOM formulas decide whether a material/system may use them;
+    // keeping only brush here made every other global gasket rule disappear.
+    'joint_vitrage',
+    'joint_bourrage',
+    'joint_frappe',
+    'joint_central',
+    'joint_brosse',
+    'joint_bronze',
     'shutter_joint_brosse',
   };
   return globallyShareableRoles.contains(roleKey.trim().toLowerCase());
@@ -462,7 +471,7 @@ List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
       t.contains('haut et bas')) {
     return const ['complement_haut_base'];
   }
-  if (t == 'bardage' || t.contains('bardage') || t.contains('بارداج')) {
+  if (isBardagePanelSubtype(t)) {
     return const ['bardage'];
   }
   if (t == 'frame' || t == 'cadre' || t == 'إطار') {

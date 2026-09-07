@@ -819,14 +819,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 final colorPriceRes = await dbInstance.query(
                   'AccessoryColorPrices',
                   where: 'accessory_id = ? AND color_id = ?',
-                    whereArgs: [selectedEspItem['id'], accessoryColorId],
+                  whereArgs: [selectedEspItem['id'], accessoryColorId],
                 );
                 if (colorPriceRes.isNotEmpty &&
                     _safeDouble(colorPriceRes.first['price']) > 0) {
                   price = _safeDouble(colorPriceRes.first['price']);
                 } else {
                   price = _safeDouble(
-                      selectedEspItem['price_dzd'] ?? selectedEspItem['price'],
+                    selectedEspItem['price_dzd'] ?? selectedEspItem['price'],
                   );
                 }
               } else {
@@ -1645,8 +1645,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       roleKey: existing.roleKey ?? bom.roleKey,
                       sourceSeriesId:
                           existing.sourceSeriesId ?? bom.sourceSeriesId,
-                      materialType:
-                          existing.materialType ?? bom.materialType,
+                      materialType: existing.materialType ?? bom.materialType,
                       targetThicknessMm:
                           existing.targetThicknessMm ?? bom.targetThicknessMm,
                     );
@@ -2859,10 +2858,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             child: ResizableColumnsTable(
               key: ValueKey('required-goods-${_aggregatedItems.length}'),
               persistenceKey: 'order_required_goods',
-              headerColor:
-                  isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
-              borderColor:
-                  isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+              headerColor: isDark
+                  ? Colors.grey.shade900
+                  : Colors.blueGrey.shade800,
+              borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
               rowColor: isDark ? const Color(0xFF171721) : Colors.white,
               headerMinHeight: 42,
               rowMinHeight: 54,
@@ -2872,71 +2871,71 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               ),
               reorderableRows: true,
               columns: [
-          ResizableTableColumn(
-            id: 'image',
-            label: Text(_t('الصورة'), style: headerStyle),
-            initialWidth: 72,
-            minWidth: 58,
-            maxWidth: 110,
-            alignment: Alignment.center,
-          ),
-          ResizableTableColumn(
-            id: 'category',
-            label: Text(_t('الفئة'), style: headerStyle),
-            initialWidth: 160,
-            minWidth: 120,
-            maxWidth: 240,
-          ),
-          ResizableTableColumn(
-            id: 'name',
-            label: Text(_t('Libellé / Description'), style: headerStyle),
-            initialWidth: 330,
-            minWidth: 220,
-            maxWidth: 620,
-          ),
-          ResizableTableColumn(
-            id: 'details',
-            label: Text(_t('التفاصيل'), style: headerStyle),
-            initialWidth: 300,
-            minWidth: 180,
-            maxWidth: 520,
-          ),
-          ResizableTableColumn(
-            id: 'actual',
-            label: Text(_t('المطلوب الفعلي'), style: headerStyle),
-            initialWidth: 140,
-            minWidth: 110,
-            maxWidth: 220,
-          ),
-          ResizableTableColumn(
-            id: 'purchase',
-            label: Text(_t('كمية الشراء'), style: headerStyle),
-            initialWidth: 140,
-            minWidth: 110,
-            maxWidth: 220,
-          ),
-          ResizableTableColumn(
-            id: 'unit_price',
-            label: Text(_t('سعر الوحدة'), style: headerStyle),
-            initialWidth: 130,
-            minWidth: 105,
-            maxWidth: 210,
-          ),
-          ResizableTableColumn(
-            id: 'estimated',
-            label: Text(_t('السعر التقديري'), style: headerStyle),
-            initialWidth: 150,
-            minWidth: 120,
-            maxWidth: 240,
-          ),
-          ResizableTableColumn(
-            id: 'actions',
-            label: Text(_t('إجراء'), style: headerStyle),
-            initialWidth: 110,
-            minWidth: 90,
-            maxWidth: 180,
-            alignment: Alignment.center,
-          ),
+                ResizableTableColumn(
+                  id: 'image',
+                  label: Text(_t('الصورة'), style: headerStyle),
+                  initialWidth: 72,
+                  minWidth: 58,
+                  maxWidth: 110,
+                  alignment: Alignment.center,
+                ),
+                ResizableTableColumn(
+                  id: 'category',
+                  label: Text(_t('الفئة'), style: headerStyle),
+                  initialWidth: 160,
+                  minWidth: 120,
+                  maxWidth: 240,
+                ),
+                ResizableTableColumn(
+                  id: 'name',
+                  label: Text(_t('Libellé / Description'), style: headerStyle),
+                  initialWidth: 330,
+                  minWidth: 220,
+                  maxWidth: 620,
+                ),
+                ResizableTableColumn(
+                  id: 'details',
+                  label: Text(_t('التفاصيل'), style: headerStyle),
+                  initialWidth: 300,
+                  minWidth: 180,
+                  maxWidth: 520,
+                ),
+                ResizableTableColumn(
+                  id: 'actual',
+                  label: Text(_t('المطلوب الفعلي'), style: headerStyle),
+                  initialWidth: 140,
+                  minWidth: 110,
+                  maxWidth: 220,
+                ),
+                ResizableTableColumn(
+                  id: 'purchase',
+                  label: Text(_t('كمية الشراء'), style: headerStyle),
+                  initialWidth: 140,
+                  minWidth: 110,
+                  maxWidth: 220,
+                ),
+                ResizableTableColumn(
+                  id: 'unit_price',
+                  label: Text(_t('سعر الوحدة'), style: headerStyle),
+                  initialWidth: 130,
+                  minWidth: 105,
+                  maxWidth: 210,
+                ),
+                ResizableTableColumn(
+                  id: 'estimated',
+                  label: Text(_t('السعر التقديري'), style: headerStyle),
+                  initialWidth: 150,
+                  minWidth: 120,
+                  maxWidth: 240,
+                ),
+                ResizableTableColumn(
+                  id: 'actions',
+                  label: Text(_t('إجراء'), style: headerStyle),
+                  initialWidth: 110,
+                  minWidth: 90,
+                  maxWidth: 180,
+                  alignment: Alignment.center,
+                ),
               ],
               rows: rows,
             ),
@@ -3035,7 +3034,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     ].join(' • ');
 
     return ResizableTableRow(
-      reorderId: 'kit-child:${child.kitGroupName ?? ''}:${child.originalName}:${child.catalogItemId ?? child.name}:${child.unit}',
+      reorderId:
+          'kit-child:${child.kitGroupName ?? ''}:${child.originalName}:${child.catalogItemId ?? child.name}:${child.unit}',
       color: isDark
           ? Colors.white.withValues(alpha: 0.03)
           : Colors.grey.shade50,
@@ -3250,20 +3250,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     });
   }
 
-  String _aggregatedGoodReorderKey(
-    AggregatedGoodItem item,
-    String category,
-  ) => [
-    category,
-    item.catalogItemId ?? '',
-    item.inventoryItemType ?? '',
-    item.profileCode ?? '',
-    item.originalName,
-    item.name,
-    item.unit,
-    item.colorId ?? item.colorName ?? '',
-    item.stockLength ?? '',
-  ].join('|');
+  String _aggregatedGoodReorderKey(AggregatedGoodItem item, String category) =>
+      [
+        category,
+        item.catalogItemId ?? '',
+        item.inventoryItemType ?? '',
+        item.profileCode ?? '',
+        item.originalName,
+        item.name,
+        item.unit,
+        item.colorId ?? item.colorName ?? '',
+        item.stockLength ?? '',
+      ].join('|');
 
   String _cuttingKeyForItem(AggregatedGoodItem item) =>
       '${item.inventoryItemType}:${item.catalogItemId}:${item.colorId}:'
@@ -3742,10 +3740,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           'item': item,
           'stock_rows': stockAllocations,
           'stock_used': stockUsed,
-          'missing': (item.totalQuantity - stockUsed).clamp(
-            0,
-            double.infinity,
-          ),
+          'missing': (item.totalQuantity - stockUsed).clamp(0, double.infinity),
         });
       }
     }
@@ -3757,7 +3752,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           orderId: _safeInt(widget.orderData['id'])!,
           db: widget.db,
           reports: reports,
-          customerName: widget.orderData['client_name']?.toString() ??
+          customerName:
+              widget.orderData['client_name']?.toString() ??
               widget.orderData['client_display']?.toString(),
           autoApply: autoApply,
         ),
@@ -4585,11 +4581,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   String _actualRequiredLabel(AggregatedGoodItem item) {
-    final isBardage = item.category == 'profile' &&
+    final isBardage =
+        item.category == 'profile' &&
         (item.unit.trim().toLowerCase() == 'قطعة' ||
-            item.originalName.toLowerCase().contains('bardage') ||
-            item.originalName.contains('بارداج') ||
-            item.originalName.contains('بارداش'));
+            isBardagePanelSubtype(item.originalName));
     if (isBardage) return _purchaseQuantityLabel(item);
     if (item.cuttingPieces.isNotEmpty) {
       final actualMeters = item.cuttingPieces.fold<double>(
@@ -4951,7 +4946,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       code: bom.profileCode,
                       name: bom.name,
                       imagePath: bom.imagePath,
-                      size: _isPlintheItem(bom.name, bom.originalName) ? 30 : 18,
+                      size: _isPlintheItem(bom.name, bom.originalName)
+                          ? 30
+                          : 18,
                       fallbackIcon: _categoryIcon(bom.category),
                       fallbackColor: Colors.grey,
                     ),
@@ -5099,7 +5096,9 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            t('لا يمكن اعتماد الصرف قبل توفير كل النواقص. راجع تقرير النقص ثم سجّل الشراء أو الاستلام.'),
+            t(
+              'لا يمكن اعتماد الصرف قبل توفير كل النواقص. راجع تقرير النقص ثم سجّل الشراء أو الاستلام.',
+            ),
           ),
           backgroundColor: Colors.orange,
         ),

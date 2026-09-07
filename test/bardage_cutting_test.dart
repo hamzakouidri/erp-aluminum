@@ -1,6 +1,7 @@
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
+import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,22 @@ import 'package:flutter_test/flutter_test.dart';
 class FakeSqlDatabase extends SqlDatabase {}
 
 void main() {
+  test('global aluminium gasket rules apply to a selected series', () {
+    for (final role in const [
+      'joint_vitrage',
+      'joint_bourrage',
+      'joint_frappe',
+      'joint_central',
+      'joint_brosse',
+    ]) {
+      expect(
+        catalogRuleMatchesExactScope({'series_id': null, 'role_key': role}, 7),
+        isTrue,
+        reason: role,
+      );
+    }
+  });
+
   test('side covers default to enabled and preserve an explicit off state', () {
     final model = WindowModel(db: FakeSqlDatabase());
 
@@ -630,6 +647,180 @@ void main() {
     expect(item.inventoryItemType, 'Section');
     expect(item.unit, 'قطعة');
     expect(item.total, 8000);
+  });
+
+  test(
+    'ordinary panneau remains area-priced even when a legacy profile is configured',
+    () {
+      final frame = AluminumSection(
+        id: 1,
+        seriesId: 1,
+        code: 'F-1',
+        name: 'Frame',
+        type: 'frame',
+        isFrame: true,
+        visibleWidth: 60,
+      );
+      final panneau = AluminumSection(
+        id: 4,
+        seriesId: 1,
+        code: 'P-4',
+        name: 'Panneau profile',
+        type: 'panneau',
+        thickness: 10,
+        visibleWidth: 100,
+        barLength: 6,
+      );
+      final model = WindowModel(db: FakeSqlDatabase(), width: 460, height: 910);
+      model.activeSeries = AluminumSeries(
+        id: 1,
+        profileId: 1,
+        name: 'Test',
+        type: 'Aluminium',
+        sections: [frame, panneau],
+      );
+      model.frameOverride = frame.toMap();
+      model.componentOverrides['البانو (Panneau)'] = {
+        ...panneau.toMap(),
+        'calculated_price': 3000.0,
+      };
+      model.zones = [
+        WindowZone(
+          id: 'z1',
+          boundary: const Rect.fromLTWH(0, 0, 460, 910),
+          glass: const GlassSpecification(
+            structure: GlassStructure.closed,
+            finishOuter: GlassFinish.resine,
+            finishInner: GlassFinish.resine,
+            panneauSubtype: 'resine',
+          ),
+        ),
+      ];
+
+      final bom = ComponentCalculator.generateBom(model, {});
+      expect(bom.where((row) => row.category == 'panneau'), isNotEmpty);
+      expect(
+        bom.where((row) => row.originalName == 'البانو (Panneau)'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'Arabic برداج spelling is emitted as profile bars, never as panneau',
+    () {
+      final bardage = AluminumSection(
+        id: 6,
+        seriesId: 1,
+        code: 'BR-6',
+        name: 'برداج',
+        type: 'برداج',
+        thickness: 10,
+        visibleWidth: 100,
+        barLength: 6,
+      );
+      final model = WindowModel(db: FakeSqlDatabase(), width: 460, height: 910);
+      model.componentOverrides['البارداج (Bardage)'] = {
+        ...bardage.toMap(),
+        'calculated_price': 2700.0,
+      };
+      model.zones = [
+        WindowZone(
+          id: 'z1',
+          boundary: const Rect.fromLTWH(0, 0, 460, 910),
+          glass: const GlassSpecification(
+            structure: GlassStructure.closed,
+            finishOuter: GlassFinish.resine,
+            finishInner: GlassFinish.resine,
+            panneauSubtype: 'برداج',
+          ),
+        ),
+      ];
+
+      final bom = ComponentCalculator.generateBom(model, {});
+      final item = bom.firstWhere(
+        (row) => row.originalName == 'البارداج (Bardage)',
+      );
+
+      expect(item.category, 'profile');
+      expect(item.inventoryItemType, 'Section');
+      expect(item.catalogItemId, 6);
+      expect(item.unit, 'قطعة');
+      expect(item.pieces, hasLength(9));
+      expect(item.quantity, 1);
+      expect(bom.where((row) => row.category == 'panneau'), isEmpty);
+    },
+  );
+
+  test('bardage without a configured section never falls back to glass', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 460, height: 910);
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(0, 0, 460, 910),
+        glass: const GlassSpecification(
+          structure: GlassStructure.closed,
+          finishOuter: GlassFinish.paneauSandwitch,
+          finishInner: GlassFinish.paneauSandwitch,
+          panneauSubtype: 'البرداش',
+        ),
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final missingBardage = bom.firstWhere(
+      (row) => row.originalName == 'البارداج (Bardage)',
+    );
+
+    expect(missingBardage.category, 'profile');
+    expect(missingBardage.isMissing, isTrue);
+    expect(missingBardage.unit, 'قطعة');
+    expect(bom.where((row) => row.category == 'panneau'), isEmpty);
+  });
+
+  test('bardage uses the configured panneau role as a profile', () {
+    final panneau = AluminumSection(
+      id: 5,
+      seriesId: 1,
+      code: 'P-B',
+      name: 'Bardage panneau profile',
+      type: 'bardage',
+      thickness: 10,
+      visibleWidth: 100,
+      barLength: 6,
+    );
+    final model = WindowModel(db: FakeSqlDatabase(), width: 460, height: 910);
+    model.componentOverrides['البانو (Panneau)'] = {
+      ...panneau.toMap(),
+      'calculated_price': 2500.0,
+    };
+    expect(model.bardageVisibleWidth, 100);
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(0, 0, 460, 910),
+        glass: const GlassSpecification(
+          structure: GlassStructure.closed,
+          finishOuter: GlassFinish.bardage,
+          finishInner: GlassFinish.bardage,
+          panneauSubtype: 'bardage',
+        ),
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final item = bom.firstWhere(
+      (row) => row.originalName == 'البارداج (Bardage)',
+    );
+
+    expect(item.category, 'profile');
+    expect(item.roleKey, 'panneau');
+    expect(item.inventoryItemType, 'Section');
+    expect(item.catalogItemId, 5);
+    expect(item.pieces, hasLength(9));
+    expect(item.quantity, 1);
+    expect(item.total, 2500);
+    expect(bom.where((row) => row.category == 'panneau'), isEmpty);
   });
 
   test('bardage follows the frame colour until the user overrides it', () {

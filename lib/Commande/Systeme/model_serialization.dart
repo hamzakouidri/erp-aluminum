@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../utils/shutter_selection.dart';
 import 'package:flutter/material.dart';
 import 'model.dart';
 
@@ -536,7 +537,8 @@ extension WindowModelSerialization on WindowModel {
       'shutterMechanism': shutterMechanism,
       'motorHasInterrupteur': motorHasInterrupteur,
       'motorHasTelecommande': motorHasTelecommande,
-      'shutterLame': shutterLame,
+      'shutterLame': resolveShutterBladeName(
+        componentOverrides, fallback: shutterLame),
       'shutterGlissiere': shutterGlissiere,
       'shutterPosition': shutterPosition,
       'shutterDriveSide': shutterDriveSide,
@@ -671,7 +673,10 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   }
   model.motorHasInterrupteur = map['motorHasInterrupteur'] ?? false;
   model.motorHasTelecommande = map['motorHasTelecommande'] ?? false;
-  model.shutterLame = map['shutterLame'] ?? 'Lame Injectée';
+  model.shutterLame = resolveShutterBladeName(
+    map['componentOverrides'],
+    fallback: map['shutterLame'] ?? 'Lame Injectée',
+  );
   model.shutterGlissiere = map['shutterGlissiere'] ?? 'Glissière 25';
   model.shutterPosition = (map['shutterPosition'] as num?)?.toDouble() ?? 0.5;
   model.shutterDriveSide = map['shutterDriveSide'] ?? 'right';

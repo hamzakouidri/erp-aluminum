@@ -262,7 +262,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             behavior: HitTestBehavior.translucent,
             onPointerHover: DesktopScrollCoordinator.rememberPointerPosition,
             onPointerMove: DesktopScrollCoordinator.rememberPointerPosition,
-            onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
             child: MediaQuery(
               data: MediaQuery.of(
                 context,

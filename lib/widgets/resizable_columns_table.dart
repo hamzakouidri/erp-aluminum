@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show KeyDownEvent, KeyEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ResizableTableColumn {
@@ -70,6 +72,16 @@ class ResizableColumnsTable extends StatefulWidget {
   final String? persistenceKey;
   final ValueChanged<List<String>>? onColumnOrderChanged;
 
+  /// Color used to highlight the row currently focused via keyboard
+  /// navigation (arrow keys / Home / End) or a row click. Defaults to the
+  /// theme's primary color blended over the row's own background.
+  final Color? focusedRowColor;
+
+  /// Called whenever the focused/highlighted row changes, with the row's
+  /// [ResizableTableRow.reorderId] (or its display index if none was given).
+  /// Null means no row is currently focused.
+  final ValueChanged<String?>? onFocusedRowChanged;
+
   const ResizableColumnsTable({
     super.key,
     required this.columns,
@@ -90,6 +102,8 @@ class ResizableColumnsTable extends StatefulWidget {
     this.reorderableColumns = true,
     this.persistenceKey,
     this.onColumnOrderChanged,
+    this.focusedRowColor,
+    this.onFocusedRowChanged,
   });
 
   @override
@@ -102,11 +116,21 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   String? _draggingHandleColumnId;
   late final ScrollController _ownHorizontalController;
   late final ScrollController _ownVerticalController;
+  late final FocusNode _tableFocusNode;
   List<String> _rowOrder = [];
   List<String> _columnOrder = [];
   int _preferencesLoadGeneration = 0;
   Future<void> _persistenceQueue = Future<void>.value();
   Future<SharedPreferences>? _preferencesFuture;
+
+  /// Index (within the currently displayed row order) of the row highlighted
+  /// via keyboard navigation or a row click. Null means no row is focused.
+  int? _focusedRowIndex;
+
+  /// Stable per-row keys (keyed by row id) used to scroll a row into view
+  /// with [Scrollable.ensureVisible] regardless of its actual rendered
+  /// height.
+  final Map<String, GlobalKey> _rowKeysById = {};
 
   ScrollController get _horizontalController =>
       widget.horizontalController ?? _ownHorizontalController;
@@ -119,6 +143,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     super.initState();
     _ownHorizontalController = ScrollController();
     _ownVerticalController = ScrollController();
+    _tableFocusNode = FocusNode(debugLabel: 'ResizableColumnsTable');
     _syncRowOrder();
     _syncColumnOrder();
     unawaited(_loadTablePreferences());
@@ -139,6 +164,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     }
     _syncRowOrder();
     _syncColumnOrder();
+    // The row set can shrink (filtering, deletion, etc.) between rebuilds;
+    // keep the focused index inside the valid range instead of pointing at a
+    // row that no longer exists.
+    if (_focusedRowIndex != null && _focusedRowIndex! >= widget.rows.length) {
+      _focusedRowIndex = widget.rows.isEmpty ? null : widget.rows.length - 1;
+    }
     if (namespaceChanged || columnsChanged) {
       unawaited(_loadTablePreferences());
     }
@@ -152,6 +183,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     if (widget.verticalController == null) {
       _ownVerticalController.dispose();
     }
+    _tableFocusNode.dispose();
     super.dispose();
   }
 
@@ -383,6 +415,92 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     widget.onColumnOrderChanged?.call(List<String>.unmodifiable(next));
   }
 
+  /// Returns the (and lazily creates a) stable [GlobalKey] for a given row id,
+  /// so [Scrollable.ensureVisible] can locate that row's real, current
+  /// on-screen position regardless of its rendered height.
+  GlobalKey _rowKeyFor(String rowId) =>
+      _rowKeysById.putIfAbsent(rowId, () => GlobalKey());
+
+  /// Drops cached keys for rows that are no longer displayed, so the map
+  /// doesn't grow unbounded as rows are filtered or removed over time.
+  void _pruneRowKeys(Set<String> validRowIds) {
+    _rowKeysById.removeWhere((id, _) => !validRowIds.contains(id));
+  }
+
+  /// Marks [index] as the focused/highlighted row (e.g. after a click) and
+  /// moves keyboard focus onto the table so arrow-key navigation continues
+  /// from that row.
+  void _focusRow(int index) {
+    if (_focusedRowIndex != index) {
+      setState(() => _focusedRowIndex = index);
+      widget.onFocusedRowChanged?.call(_rowIdAt(index));
+    }
+    _tableFocusNode.requestFocus();
+  }
+
+  String? _rowIdAt(int index) {
+    final rows = _orderedRows();
+    if (index < 0 || index >= rows.length) return null;
+    return rows[index].id;
+  }
+
+  /// Scrolls (any ancestor Scrollable, including the table's own vertical
+  /// viewport) so the row with [rowId] becomes visible. Deferred to the next
+  /// frame so the row's key already has a laid-out context to look up.
+  void _ensureRowVisible(String rowId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final rowContext = _rowKeysById[rowId]?.currentContext;
+      if (rowContext == null) return;
+      Scrollable.ensureVisible(
+        rowContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  /// Moves the focused-row highlight with ArrowUp/ArrowDown/Home/End.
+  ///
+  /// This fully consumes those keys while the table (or a descendant, such as
+  /// a row's InkWell) holds focus, so row navigation doesn't also trigger a
+  /// competing page-level scroll for the same key press.
+  KeyEventResult _handleTableKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final rows = _orderedRows();
+    if (rows.isEmpty) return KeyEventResult.ignored;
+
+    final current = _focusedRowIndex ?? -1;
+    int nextIndex;
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.arrowDown:
+        nextIndex = (current + 1).clamp(0, rows.length - 1);
+        break;
+      case LogicalKeyboardKey.arrowUp:
+        nextIndex = (current - 1).clamp(0, rows.length - 1);
+        break;
+      case LogicalKeyboardKey.home:
+        nextIndex = 0;
+        break;
+      case LogicalKeyboardKey.end:
+        nextIndex = rows.length - 1;
+        break;
+      default:
+        return KeyEventResult.ignored;
+    }
+
+    if (nextIndex != current) {
+      setState(() => _focusedRowIndex = nextIndex);
+      widget.onFocusedRowChanged?.call(rows[nextIndex].id);
+      _ensureRowVisible(rows[nextIndex].id);
+    }
+    // Handled even when already at the first/last row, so the key press
+    // doesn't fall through to a page-level scroll while a row is focused.
+    return KeyEventResult.handled;
+  }
+
   Widget _buildReorderableRow(
     ({String id, ResizableTableRow row}) entry,
     int index,
@@ -395,7 +513,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         index: index,
         child: Stack(
           children: [
-            _buildRow(entry.row, rowColor, borderColor),
+            _buildRow(entry.id, index, entry.row, rowColor, borderColor),
             PositionedDirectional(
               top: 0,
               end: 3,
@@ -442,6 +560,8 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         final bodyIsBounded = bodyHeight != null && bodyHeight.isFinite;
 
         final orderedRows = _orderedRows();
+        _pruneRowKeys(orderedRows.map((entry) => entry.id).toSet());
+
         Widget bodyContent = widget.reorderableRows
             ? ReorderableListView.builder(
                 shrinkWrap: true,
@@ -465,8 +585,14 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final entry in orderedRows)
-                    _buildRow(entry.row, rowColor, borderColor),
+                  for (var i = 0; i < orderedRows.length; i++)
+                    _buildRow(
+                      orderedRows[i].id,
+                      i,
+                      orderedRows[i].row,
+                      rowColor,
+                      borderColor,
+                    ),
                 ],
               );
 
@@ -503,22 +629,26 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           ),
         );
 
-        return ScrollConfiguration(
-          behavior: ScrollConfiguration.of(context).copyWith(
-            dragDevices: {
-              PointerDeviceKind.touch,
-              PointerDeviceKind.mouse,
-              PointerDeviceKind.trackpad,
-              PointerDeviceKind.stylus,
-            },
-          ),
-          child: SingleChildScrollView(
-            controller: _horizontalController,
-            scrollDirection: Axis.horizontal,
-            primary: false,
-            child: bodyIsBounded
-                ? SizedBox(height: bodyHeight, child: tableContent)
-                : tableContent,
+        return Focus(
+          focusNode: _tableFocusNode,
+          onKeyEvent: _handleTableKeyEvent,
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: {
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.trackpad,
+                PointerDeviceKind.stylus,
+              },
+            ),
+            child: SingleChildScrollView(
+              controller: _horizontalController,
+              scrollDirection: Axis.horizontal,
+              primary: false,
+              child: bodyIsBounded
+                  ? SizedBox(height: bodyHeight, child: tableContent)
+                  : tableContent,
+            ),
           ),
         );
       },
@@ -780,13 +910,33 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     );
   }
 
-  Widget _buildRow(ResizableTableRow row, Color rowColor, Color borderColor) {
+  Widget _buildRow(
+    String rowId,
+    int index,
+    ResizableTableRow row,
+    Color rowColor,
+    Color borderColor,
+  ) {
     final columns = _orderedColumns();
     final originalIndexById = <String, int>{
       for (var i = 0; i < widget.columns.length; i++) widget.columns[i].id: i,
     };
-    final content = Container(
-      color: row.color ?? rowColor,
+
+    final isFocused = _focusedRowIndex == index;
+    final theme = Theme.of(context);
+    final accentColor = widget.focusedRowColor ?? theme.colorScheme.primary;
+    final baseColor = row.color ?? rowColor;
+    final effectiveColor = isFocused
+        ? Color.alphaBlend(accentColor.withValues(alpha: 0.16), baseColor)
+        : baseColor;
+
+    final rowBody = Container(
+      decoration: BoxDecoration(
+        color: effectiveColor,
+        border: isFocused
+            ? BorderDirectional(start: BorderSide(color: accentColor, width: 3))
+            : null,
+      ),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -803,17 +953,25 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         ),
       ),
     );
-    if (row.onTap == null && row.onSecondaryTapDown == null) return content;
-    return Material(
-      color: Colors.transparent,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onSecondaryTapDown: row.onSecondaryTapDown == null
-            ? null
-            : (details) => row.onSecondaryTapDown!(details.globalPosition),
-        child: InkWell(onTap: row.onTap, child: content),
-      ),
+
+    // A plain onTapDown (not a full tap gesture) always marks the row as
+    // focused/highlighted on pointer-down, independent of whatever the row's
+    // own onTap/InkWell does with the completed tap.
+    final interactiveRow = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _focusRow(index),
+      onSecondaryTapDown: row.onSecondaryTapDown == null
+          ? null
+          : (details) => row.onSecondaryTapDown!(details.globalPosition),
+      child: row.onTap == null
+          ? rowBody
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(onTap: row.onTap, child: rowBody),
+            ),
     );
+
+    return KeyedSubtree(key: _rowKeyFor(rowId), child: interactiveRow);
   }
 
   Widget _buildCell(

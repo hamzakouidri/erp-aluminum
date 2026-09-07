@@ -40,7 +40,9 @@ class SupabaseWorkshopSyncService {
   factory SupabaseWorkshopSyncService() => _instance;
 
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
-  static const Duration _backgroundSyncInterval = Duration(seconds: 30);
+  // Realtime handles normal changes. This slow pass only repairs a missed
+  // event after sleep/network loss and must not behave like a UI refresh loop.
+  static const Duration _backgroundSyncInterval = Duration(minutes: 3);
   static const int _batchSize = 200;
   static const int _downloadPageSize = 500;
   static const String _workshopProfileTable = '__WorkshopProfile';
@@ -599,7 +601,15 @@ class SupabaseWorkshopSyncService {
   }
 
   Future<void> _runBackgroundSyncCycle() async {
-    if (!isReady || _isApplyingRemoteData) return;
+    // Realtime and explicit local-write notifications are the primary sync
+    // triggers. This pass is only a recovery mechanism and must never overlap
+    // an upload/download already in progress.
+    if (!isReady ||
+        _isApplyingRemoteData ||
+        _activeDownload != null ||
+        _activeUpload != null) {
+      return;
+    }
     try {
       await refreshWorkshopIdentity();
       // Realtime normally triggers this immediately. The periodic pass is a

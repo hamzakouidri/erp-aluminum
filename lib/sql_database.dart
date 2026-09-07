@@ -476,9 +476,7 @@ class SqlDatabase {
       );
     } catch (_) {}
     try {
-      await db.execute(
-        "ALTER TABLE Commandes ADD COLUMN updated_by TEXT;",
-      );
+      await db.execute("ALTER TABLE Commandes ADD COLUMN updated_by TEXT;");
     } catch (_) {}
     try {
       // A purchase invoice can contain several glass rows with the same
@@ -3723,28 +3721,26 @@ class SqlDatabase {
     required int sectionId,
     required String calculationMode,
     required double linearMeterMultiplier,
+    bool excludeFromPricing = false,
   }) async {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureProfileCalculationRulesTable(myDb);
-    final mode = const {'auto', 'linear_meter', 'base_price'}
-            .contains(calculationMode)
+    final mode =
+        const {'auto', 'linear_meter', 'base_price'}.contains(calculationMode)
         ? calculationMode
         : 'auto';
-    final multiplier = linearMeterMultiplier.isFinite &&
-            linearMeterMultiplier > 0
+    final multiplier =
+        linearMeterMultiplier.isFinite && linearMeterMultiplier > 0
         ? linearMeterMultiplier
         : 1.0;
-    await myDb.insert(
-      'ProfileCalculationRules',
-      {
-        'section_id': sectionId,
-        'calculation_mode': mode,
-        'linear_meter_multiplier': multiplier,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await myDb.insert('ProfileCalculationRules', {
+      'section_id': sectionId,
+      'calculation_mode': mode,
+      'linear_meter_multiplier': multiplier,
+      'exclude_from_pricing': excludeFromPricing ? 1 : 0,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     await CloudSyncService().notifyCatalogChange();
   }
 
@@ -4019,8 +4015,7 @@ class SqlDatabase {
     }
 
     final local = await readSectionsBySeries(seriesId);
-    final shared = await myDb.rawQuery(
-      '''
+    final shared = await myDb.rawQuery('''
       SELECT s.*, 1 AS is_shared, r.id AS sharing_rule_id,
              r.role_key AS sharing_role_key,
              r.usage_scope AS sharing_usage_scope,
@@ -4036,9 +4031,7 @@ class SqlDatabase {
       JOIN Profile ownerProfile ON ownerProfile.id = ownerSer.profile_id
       WHERE ${where.toString()}
       ORDER BY r.is_default DESC, r.sort_order ASC, r.id ASC
-      ''',
-      args,
-    );
+      ''', args);
 
     final result = <Map<String, dynamic>>[...local];
     final seen = local
@@ -4047,7 +4040,8 @@ class SqlDatabase {
         .toSet();
     for (final row in shared) {
       final id = (row['id'] as num?)?.toInt();
-      if (id == null || seen.add(id)) result.add(Map<String, dynamic>.from(row));
+      if (id == null || seen.add(id))
+        result.add(Map<String, dynamic>.from(row));
     }
     return result;
   }
@@ -4079,8 +4073,7 @@ class SqlDatabase {
       conditions.add('r.role_key = ?');
       args.add(roleKey.trim());
     }
-    return myDb.rawQuery(
-      '''
+    return myDb.rawQuery('''
       SELECT r.*, s.code AS source_section_code,
              s.name AS source_section_name,
              ser.name AS source_series_name,
@@ -4092,9 +4085,7 @@ class SqlDatabase {
       WHERE ${conditions.join(' AND ')}
       ORDER BY r.target_scope ASC, r.target_id ASC,
                r.role_key ASC, r.sort_order ASC, r.id ASC
-      ''',
-      args,
-    );
+      ''', args);
   }
 
   Future<int> saveSectionSharingRule({
@@ -4982,13 +4973,7 @@ class SqlDatabase {
 
     // The local database is authoritative for the current action. Cloud
     // delivery continues in the background and must never freeze the UI.
-    unawaited(
-      _uploadOrderStatusToCloud(
-        id,
-        newStatus,
-        updatedBy: updatedBy,
-      ),
-    );
+    unawaited(_uploadOrderStatusToCloud(id, newStatus, updatedBy: updatedBy));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6584,7 +6569,8 @@ class SqlDatabase {
                 'reserve_notes': alloc['reserve_notes'],
                 'reserve_at': alloc['reserve_at'],
                 'updated_at':
-                    alloc['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+                    alloc['updated_at'] ??
+                    DateTime.now().toUtc().toIso8601String(),
                 'cloud_synced_at': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true))
               .timeout(const Duration(seconds: 10));
@@ -6745,7 +6731,8 @@ class SqlDatabase {
               'quantity': data['quantity'] ?? 1,
               'worker_price': data['worker_price'] ?? 0.0,
               'assigned_at':
-                  data['assigned_at'] ?? DateTime.now().toUtc().toIso8601String(),
+                  data['assigned_at'] ??
+                  DateTime.now().toUtc().toIso8601String(),
               'unit_index': data['unit_index'],
               'unit_position': data['unit_position'],
               'is_settled': 0,
@@ -6766,7 +6753,8 @@ class SqlDatabase {
               'has_reserve': data['has_reserve'] ?? 0,
               'reserve_notes': data['reserve_notes'],
               'reserve_at': data['reserve_at'],
-              'updated_at': cloudUpdatedAt ?? DateTime.now().toUtc().toIso8601String(),
+              'updated_at':
+                  cloudUpdatedAt ?? DateTime.now().toUtc().toIso8601String(),
             });
           }
         }
@@ -7452,7 +7440,10 @@ class SqlDatabase {
     if (myDb == null) return;
     await myDb.update(
       'WorkerAllocations',
-      {'worker_price': price, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      {
+        'worker_price': price,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [allocationId],
     );
@@ -8347,7 +8338,10 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes_details',
-      {'delivered_qty': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      {
+        'delivered_qty': 0,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
       where: 'id_commandes = ?',
       whereArgs: [idCommande],
     );
@@ -8863,7 +8857,10 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Achats',
-      {'status': status, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      {
+        'status': status,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -8918,7 +8915,10 @@ class SqlDatabase {
     Database? myDb = await db;
     final res = await myDb!.update(
       'Achats',
-      {'created_at': createdAt, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      {
+        'created_at': createdAt,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -10165,7 +10165,8 @@ class SqlDatabase {
         await txn.update(
           'Accessories',
           {'is_default': 0},
-          where: "(type = ? OR type LIKE ?) AND material_type = ? AND scope = ?",
+          where:
+              "(type = ? OR type LIKE ?) AND material_type = ? AND scope = ?",
           whereArgs: [category, '$category|%', material, scope],
         );
         await txn.update(
@@ -12154,7 +12155,11 @@ class SqlDatabase {
     Map<String, dynamic> row,
   ) {
     if (table == 'Commandes_details') {
-      row.remove('drawing_image_base64');
+      // The path is device-local and must never be synchronized: it points to
+      // a cache/app-support file that does not exist on another phone.  The
+      // image bytes, however, are the portable copy of the drawing and must
+      // travel with the order.  Removing them here made drawings disappear
+      // after an order was downloaded on another device.
       row.remove('drawing_image_path');
     }
     return row;
@@ -13790,13 +13795,19 @@ class SqlDatabase {
         if (issueAlreadyApplied) {
           await txn.update(
             'MaterialRemnants',
-            {'status': 'available', 'updated_at': DateTime.now().toUtc().toIso8601String()},
+            {
+              'status': 'available',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            },
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
           await txn.update(
             'MaterialScrap',
-            {'status': 'posted', 'updated_at': DateTime.now().toUtc().toIso8601String()},
+            {
+              'status': 'posted',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            },
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
@@ -13983,11 +13994,7 @@ class SqlDatabase {
       });
       await txn.update(
         'MaterialRemnants',
-        {
-          'status': 'scrapped',
-          'note': note?.trim(),
-          'updated_at': timestamp,
-        },
+        {'status': 'scrapped', 'note': note?.trim(), 'updated_at': timestamp},
         where: 'id = ? AND status = ?',
         whereArgs: [remnantId, 'available'],
       );
@@ -14059,13 +14066,19 @@ class SqlDatabase {
         if (completeIssue) {
           await txn.update(
             'MaterialRemnants',
-            {'status': 'available', 'updated_at': DateTime.now().toUtc().toIso8601String()},
+            {
+              'status': 'available',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            },
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
           await txn.update(
             'MaterialScrap',
-            {'status': 'posted', 'updated_at': DateTime.now().toUtc().toIso8601String()},
+            {
+              'status': 'posted',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            },
             where: 'source_order_id = ? AND status = ?',
             whereArgs: [orderId, 'pending'],
           );
@@ -14174,7 +14187,8 @@ class SqlDatabase {
             'quantity': -((_readStoredNumber(row['length_mm']) ?? 0) / 1000),
             'transaction_type': 'order_issue_remnant',
             'reference_id': orderId,
-            'note': 'صرف فضلة ${row['ticket_code'] ?? ''} للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
+            'note':
+                'صرف فضلة ${row['ticket_code'] ?? ''} للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
             'created_at': timestamp,
           }),
         );
@@ -14218,7 +14232,8 @@ class SqlDatabase {
             'quantity': -quantity,
             'transaction_type': 'order_issue',
             'reference_id': orderId,
-            'note': 'صرف تلقائي للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
+            'note':
+                'صرف تلقائي للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
             'created_at': timestamp,
           }),
         );
@@ -14407,10 +14422,7 @@ class SqlDatabase {
 
   /// Adds a warehouse without imposing a fixed number of warehouses.
   /// Existing names are returned instead of creating another duplicate row.
-  Future<int> insertLocation(
-    String name, {
-    String type = 'مستودع',
-  }) async {
+  Future<int> insertLocation(String name, {String type = 'مستودع'}) async {
     final myDb = await db;
     if (myDb == null) return 0;
 
@@ -14546,7 +14558,10 @@ class SqlDatabase {
         double newQty = currentQty + quantityChange;
         await txn.update(
           'CurrentStock',
-          {'quantity': newQty, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+          {
+            'quantity': newQty,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
           where: where,
           whereArgs: whereArgs,
         );
@@ -15990,6 +16005,7 @@ class SqlDatabase {
     int slidingChicanePiecesPerJunction = 1,
     double slidingRailClearance = 1.0,
     String customFormulaNotes = '',
+    bool notifySync = true,
   }) async {
     final myDb = await db;
     if (myDb == null) return;
@@ -16032,7 +16048,7 @@ class SqlDatabase {
         DateTime.now().toUtc().toIso8601String(),
       ],
     );
-    CloudSyncService().notifyChange();
+    if (notifySync) CloudSyncService().notifyCatalogChange();
   }
 
   // ── Dynamic design definition (drawing + shutter) ───────────────────────
@@ -16073,6 +16089,7 @@ class SqlDatabase {
   Future<void> saveSeriesDesignRoles({
     required int seriesId,
     required List<Map<String, dynamic>> roles,
+    bool syncCatalog = true,
   }) async {
     final myDb = await db;
     if (myDb == null) return;
@@ -16149,7 +16166,9 @@ class SqlDatabase {
         });
       }
     });
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    if (syncCatalog) {
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    }
   }
 
   Future<List<Map<String, dynamic>>> getSectionJointLinksForSeries(
@@ -16176,6 +16195,7 @@ class SqlDatabase {
   Future<void> saveSectionJointLinksForSeries({
     required int seriesId,
     required List<Map<String, dynamic>> links,
+    bool syncCatalog = true,
   }) async {
     final myDb = await db;
     if (myDb == null) return;
@@ -16212,7 +16232,9 @@ class SqlDatabase {
         });
       }
     });
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    if (syncCatalog) {
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    }
   }
 
   Future<List<Map<String, dynamic>>> getDefaultJointsForSection({
@@ -16413,6 +16435,7 @@ class SqlDatabase {
     required String itemTable,
     int? seriesId,
     required List<Map<String, dynamic>> rules,
+    bool syncCatalog = true,
   }) async {
     final myDb = await db;
     if (myDb == null) return;
@@ -16488,7 +16511,9 @@ class SqlDatabase {
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    if (syncCatalog) {
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    }
   }
 
   /// Saves an entire definition in one transaction. Replacing the rows keeps
@@ -16642,15 +16667,23 @@ class SqlDatabase {
         section_id INTEGER NOT NULL UNIQUE,
         calculation_mode TEXT NOT NULL DEFAULT 'auto',
         linear_meter_multiplier REAL NOT NULL DEFAULT 1.0,
+        exclude_from_pricing INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT ''
       )
     ''');
     // Upgrade the short-lived first schema, if it was created before the
     // table became part of the catalogue sync contract.
     try {
-      await db.execute('ALTER TABLE ProfileCalculationRules ADD COLUMN id INTEGER;');
+      await db.execute(
+        'ALTER TABLE ProfileCalculationRules ADD COLUMN id INTEGER;',
+      );
       await db.execute(
         'UPDATE ProfileCalculationRules SET id = section_id WHERE id IS NULL;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE ProfileCalculationRules ADD COLUMN exclude_from_pricing INTEGER NOT NULL DEFAULT 0',
       );
     } catch (_) {}
   }
@@ -16717,16 +16750,12 @@ class SqlDatabase {
             profileText.contains('plant') ||
             profileText.contains('plinthe') ||
             profileText.contains('بلانت');
-        await txn.insert(
-          'ProfileCalculationRules',
-          {
-            'section_id': sectionId,
-            'calculation_mode': isMainProfile ? 'linear_meter' : 'base_price',
-            'linear_meter_multiplier': isPlant ? 2.0 : 1.0,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          },
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
+        await txn.insert('ProfileCalculationRules', {
+          'section_id': sectionId,
+          'calculation_mode': isMainProfile ? 'linear_meter' : 'base_price',
+          'linear_meter_multiplier': isPlant ? 2.0 : 1.0,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
   }
@@ -16785,8 +16814,7 @@ class SqlDatabase {
       if (requireDialog) 'r.show_in_dialog = 1',
       if (requireQuantity) 'r.show_in_quantity = 1',
       if (requireDrawing) 'r.show_in_drawing = 1',
-      if (usageScope != null)
-        "r.usage_scope IN ('auto', 'both', ?)",
+      if (usageScope != null) "r.usage_scope IN ('auto', 'both', ?)",
     ].join('\n        AND ');
     return myDb.rawQuery(
       '''
@@ -16812,11 +16840,7 @@ class SqlDatabase {
         AND (s.is_active = 1 OR s.is_active IS NULL)
       ORDER BY r.is_default DESC, r.sort_order ASC, s.name ASC
     ''',
-      [
-        seriesId,
-        if (usageScope != null) usageScope,
-        ...keys,
-      ],
+      [seriesId, if (usageScope != null) usageScope, ...keys],
     );
   }
 
