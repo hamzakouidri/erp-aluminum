@@ -325,6 +325,7 @@ extension WindowZoneSerialization on WindowZone {
       'innerH': innerH,
       'innerV': innerV,
       'slidingSashesCount': slidingSashesCount,
+      'slidingTrackCount': slidingTrackCount,
       'cutSlidingGlassRebate': cutSlidingGlassRebate,
       'rightInnerH': rightInnerH,
       'rightInnerV': rightInnerV,
@@ -400,6 +401,9 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     innerH: map['innerH'] ?? 0,
     innerV: map['innerV'] ?? 0,
     slidingSashesCount: map['slidingSashesCount'] ?? 2,
+    // Old drawings used the leaf count as an implicit rail count.
+    slidingTrackCount:
+        map['slidingTrackCount'] ?? map['slidingSashesCount'] ?? 2,
     cutSlidingGlassRebate: map['cutSlidingGlassRebate'] ?? true,
     rightInnerH: map['rightInnerH'] ?? 0,
     rightInnerV: map['rightInnerV'] ?? 0,
@@ -538,7 +542,9 @@ extension WindowModelSerialization on WindowModel {
       'motorHasInterrupteur': motorHasInterrupteur,
       'motorHasTelecommande': motorHasTelecommande,
       'shutterLame': resolveShutterBladeName(
-        componentOverrides, fallback: shutterLame),
+        componentOverrides,
+        fallback: shutterLame,
+      ),
       'shutterGlissiere': shutterGlissiere,
       'shutterPosition': shutterPosition,
       'shutterDriveSide': shutterDriveSide,

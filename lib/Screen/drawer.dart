@@ -1361,7 +1361,8 @@ class _AppDrawerState extends State<AppDrawer> {
       child: _buildScrollableDrawerList(
         children: [
           StreamBuilder<DocumentSnapshot>(
-            stream: AppAuthService().currentUser != null
+            stream: AppAuthService().currentUser != null &&
+                    !AppAuthService().usesSupabase
                 ? FirebaseFirestore.instance
                       .collection('users')
                       .doc(AppAuthService().currentUser!.uid)

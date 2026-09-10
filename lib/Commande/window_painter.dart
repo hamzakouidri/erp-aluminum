@@ -1588,6 +1588,13 @@ class WindowPainter extends CustomPainter {
     return fallback;
   }
 
+  bool _frameTopTouchesShutterBox(double top) {
+    return model.hasShutter &&
+        !model.isCaissonTunnel &&
+        model.shutterBoxHeight > 0 &&
+        (top - model.shutterBoxHeight).abs() <= 0.01;
+  }
+
   void _drawInternalSlidingSideCover(Canvas canvas, Rect frameRect) {
     if (!model.hasInternalSlidingSideCover) return;
     final coverWidth = model.internalSlidingSideCoverWidth;
@@ -2114,6 +2121,12 @@ class WindowPainter extends CustomPainter {
     final pieces = <({FrameEdgeSegment edge, double visible})>[];
 
     for (final edge in edges) {
+      // The box already has an outer cover. Its contact with the frame is
+      // an internal seam, so it must not receive another top cover.
+      if (edge.side == 'top' &&
+          _frameTopTouchesShutterBox(edge.coordinate)) {
+        continue;
+      }
       if (model.hiddenSideCoverSegments.contains(edge.side) ||
           model.removedShutterSides.contains(edge.side) ||
           (edge.side == 'bottom' && !_hasEffectiveBottomFrame)) {
@@ -3247,13 +3260,23 @@ class WindowPainter extends CustomPainter {
 
       int sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
       final configuredSashDeduction = model.slidingSashWidthDeduction(sashes);
-      double cuttingW = configuredSashDeduction > 0
+      double cuttingW = configuredSashDeduction != 0
           ? (wForCalc - configuredSashDeduction) / sashes
           : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
-      if (configuredSashDeduction <= 0 && model.isPVC) {
+      if (configuredSashDeduction == 0 && model.isPVC) {
         cuttingW = (wForCalc + ((sashes - 1) * slidingOverlap)) / sashes;
       }
-      double cuttingH = hForCalc + slidingOverlap * 2;
+      final configuredHeightDeduction = model.slidingSashHeightDeduction();
+      final usableWindowHeight = math.max(
+        0.0,
+        model.height -
+            (model.hasShutter && !model.isCaissonTunnel
+                ? model.shutterBoxHeight
+                : 0.0),
+      );
+      double cuttingH = configuredHeightDeduction != 0
+          ? usableWindowHeight - configuredHeightDeduction
+          : hForCalc + slidingOverlap * 2;
       final String seriesName =
           model.activeSlidingSeries?.name.toLowerCase() ??
           model.activeSeries?.name.toLowerCase() ??
@@ -3262,12 +3285,10 @@ class WindowPainter extends CustomPainter {
           seriesName.contains('67000') || seriesName.contains('tpi');
       bool hasThreePiece =
           (model.activeSlidingSeries?.hasThreePieceSash ?? false) || isTPI67000;
-      if (hasThreePiece) {
-        cuttingH = model.height - 64.0;
-      } else {
-        if (!model.isPVC) {
-          cuttingH = model.height - 81.0;
-        }
+      if (!hasThreePiece &&
+          configuredHeightDeduction == 0 &&
+          model.isPVC) {
+        cuttingH = hForCalc + slidingOverlap;
       }
 
       displayWidth = cuttingW;

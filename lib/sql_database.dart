@@ -1740,6 +1740,10 @@ class SqlDatabase {
         skip_glazing_bead INTEGER NOT NULL DEFAULT 0,
         requires_plant INTEGER NOT NULL DEFAULT 0,
         joint_length_multiplier REAL NOT NULL DEFAULT 1.0,
+        track_mode TEXT NOT NULL DEFAULT '',
+        track_count INTEGER NOT NULL DEFAULT 0,
+        track_adds INTEGER NOT NULL DEFAULT 0,
+        supported_track_counts TEXT NOT NULL DEFAULT '',
         is_required INTEGER NOT NULL DEFAULT 0,
         is_default INTEGER NOT NULL DEFAULT 0,
         is_visible INTEGER NOT NULL DEFAULT 1,
@@ -1795,6 +1799,11 @@ class SqlDatabase {
         usage_scope TEXT NOT NULL DEFAULT 'global',
         show_when_glass TEXT NOT NULL DEFAULT 'any',
         selection_mode TEXT NOT NULL DEFAULT 'always',
+        assembly_target TEXT NOT NULL DEFAULT '',
+        top_corner_qty INTEGER NOT NULL DEFAULT 1,
+        bottom_corner_qty INTEGER NOT NULL DEFAULT 1,
+        assembly_section_id INTEGER,
+        assembly_section_ids TEXT NOT NULL DEFAULT '',
         integrated_side_cover INTEGER NOT NULL DEFAULT 0,
         allows_side_cover INTEGER NOT NULL DEFAULT 1,
         allowed_with_shutter INTEGER NOT NULL DEFAULT 1,
@@ -1826,6 +1835,10 @@ class SqlDatabase {
       'ALTER TABLE SeriesDesignRoles ADD COLUMN skip_glazing_bead INTEGER NOT NULL DEFAULT 0;',
       'ALTER TABLE SeriesDesignRoles ADD COLUMN requires_plant INTEGER NOT NULL DEFAULT 0;',
       'ALTER TABLE SeriesDesignRoles ADD COLUMN joint_length_multiplier REAL NOT NULL DEFAULT 1.0;',
+      "ALTER TABLE SeriesDesignRoles ADD COLUMN track_mode TEXT NOT NULL DEFAULT '';",
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN track_count INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN track_adds INTEGER NOT NULL DEFAULT 0;',
+      "ALTER TABLE SeriesDesignRoles ADD COLUMN supported_track_counts TEXT NOT NULL DEFAULT '';",
     ]) {
       try {
         await db.execute(statement);
@@ -1835,6 +1848,11 @@ class SqlDatabase {
       "ALTER TABLE CatalogItemRules ADD COLUMN usage_scope TEXT NOT NULL DEFAULT 'global';",
       "ALTER TABLE CatalogItemRules ADD COLUMN show_when_glass TEXT NOT NULL DEFAULT 'any';",
       "ALTER TABLE CatalogItemRules ADD COLUMN selection_mode TEXT NOT NULL DEFAULT 'always';",
+      "ALTER TABLE CatalogItemRules ADD COLUMN assembly_target TEXT NOT NULL DEFAULT '';",
+      'ALTER TABLE CatalogItemRules ADD COLUMN top_corner_qty INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN bottom_corner_qty INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN assembly_section_id INTEGER;',
+      "ALTER TABLE CatalogItemRules ADD COLUMN assembly_section_ids TEXT NOT NULL DEFAULT '';",
       'ALTER TABLE CatalogItemRules ADD COLUMN integrated_side_cover INTEGER NOT NULL DEFAULT 0;',
       'ALTER TABLE CatalogItemRules ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
       'ALTER TABLE CatalogItemRules ADD COLUMN allowed_with_shutter INTEGER NOT NULL DEFAULT 1;',
@@ -10099,6 +10117,19 @@ class SqlDatabase {
   //////////////////////////////////// Accessories //////////////////////////////////////
   Future<List<Map<String, dynamic>>> readAccessories() async {
     Database? myDb = await db;
+    // Some installations skipped the historical version that introduced
+    // accessory-to-accessory relations. The rules screen writes these fields
+    // directly, so guarantee the schema before it can render an editor.
+    for (final statement in const [
+      'ALTER TABLE Accessories ADD COLUMN screw_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE Accessories ADD COLUMN screw_accessory_id INTEGER',
+      'ALTER TABLE Accessories ADD COLUMN gache_accessory_id INTEGER',
+      'ALTER TABLE Accessories ADD COLUMN gache_count INTEGER NOT NULL DEFAULT 0',
+    ]) {
+      try {
+        await myDb!.execute(statement);
+      } catch (_) {}
+    }
     try {
       await myDb!.execute(
         "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
@@ -11800,7 +11831,9 @@ class SqlDatabase {
     }
   }
 
-  Future<PendingCloudChanges> exportPendingCloudChanges() async {
+  Future<PendingCloudChanges> exportPendingCloudChanges({
+    Set<String>? allowedTables,
+  }) async {
     final myDb = await db;
     if (myDb == null) {
       return const PendingCloudChanges(
@@ -11815,8 +11848,24 @@ class SqlDatabase {
       throw StateError('database image malformed (code 11)');
     }
 
+    final safeAllowedTables = allowedTables
+        ?.where(_isSafeSqlIdentifier)
+        .toSet();
+    if (safeAllowedTables != null && safeAllowedTables.isEmpty) {
+      return const PendingCloudChanges(
+        data: <String, dynamic>{},
+        acknowledgements: <CloudChangeAcknowledgement>[],
+        changedRows: 0,
+        deletedRows: 0,
+      );
+    }
+    final allowedTableList = safeAllowedTables?.toList(growable: false);
     final logRows = await myDb.query(
       '_sync_change_log',
+      where: allowedTableList == null
+          ? null
+          : 'table_name IN (${List.filled(allowedTableList.length, '?').join(',')})',
+      whereArgs: allowedTableList,
       orderBy: 'changed_at ASC, table_name ASC, row_id ASC',
     );
     if (logRows.isEmpty) {
@@ -11997,16 +12046,29 @@ class SqlDatabase {
       if (orderRows.isEmpty) continue;
       upsertExportRow('Commandes', Map<String, dynamic>.from(orderRows.first));
 
-      final detailRows = await myDb.query(
+      // Read only ids in the first response. Drawing images are base64 text
+      // and returning all detail rows in one Android platform-channel message
+      // can require a contiguous 70-110 MB allocation and kill the process.
+      final detailIds = await myDb.query(
         'Commandes_details',
+        columns: ['id'],
         where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
         whereArgs: [orderId, orderId],
       );
-      for (final detailRow in detailRows) {
-        upsertExportRow(
+      for (final detailIdRow in detailIds) {
+        final detailId = detailIdRow['id'];
+        final detailRows = await myDb.query(
           'Commandes_details',
-          Map<String, dynamic>.from(detailRow),
+          where: 'id = ?',
+          whereArgs: [detailId],
+          limit: 1,
         );
+        if (detailRows.isNotEmpty) {
+          upsertExportRow(
+            'Commandes_details',
+            Map<String, dynamic>.from(detailRows.first),
+          );
+        }
       }
 
       try {
@@ -12956,11 +13018,46 @@ class SqlDatabase {
     await _backfillOrderCodes(myDb);
   }
 
+  Future<Map<String, dynamic>> _exportSelectedTables(
+    Iterable<String> selectedTables,
+  ) async {
+    final myDb = await db;
+    final result = <String, dynamic>{};
+    if (myDb == null) return result;
+    if (!await isDatabaseHealthy()) {
+      throw StateError('database image malformed (code 11)');
+    }
+
+    // sqflite_sqlcipher serializes every query result into one Android method
+    // channel message. Keep that message bounded even when rows contain
+    // drawing_image_base64 or other large text fields.
+    const pageSize = 20;
+    for (final table in selectedTables.where(_isSafeSqlIdentifier)) {
+      final exists = await myDb.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        [table],
+      );
+      if (exists.isEmpty) continue;
+
+      final exportedRows = <Map<String, dynamic>>[];
+      var offset = 0;
+      while (true) {
+        final page = await myDb.query(table, limit: pageSize, offset: offset);
+        for (final row in page) {
+          exportedRows.add(
+            _sanitizeCloudExportRow(table, Map<String, dynamic>.from(row)),
+          );
+        }
+        if (page.length < pageSize) break;
+        offset += pageSize;
+      }
+      result[table] = exportedRows;
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> exportGlobalCatalog() async {
-    final allData = await exportAllData();
-    return Map.fromEntries(
-      allData.entries.where((entry) => catalogTables.contains(entry.key)),
-    );
+    return _exportSelectedTables(catalogTables);
   }
 
   Future<void> importGlobalCatalog(Map<String, dynamic> data) async {
@@ -12979,19 +13076,11 @@ class SqlDatabase {
   }
 
   Future<Map<String, dynamic>> exportWorkshopData() async {
-    final allData = await exportAllData();
-    return Map.fromEntries(
-      allData.entries.where((entry) => workshopTables.contains(entry.key)),
-    );
+    return _exportSelectedTables(workshopTables);
   }
 
   Future<Map<String, dynamic>> exportWorkshopCatalogConfiguration() async {
-    final allData = await exportAllData();
-    return Map.fromEntries(
-      allData.entries.where(
-        (entry) => workshopCatalogConfigurationTables.contains(entry.key),
-      ),
-    );
+    return _exportSelectedTables(workshopCatalogConfigurationTables);
   }
 
   Future<void> importWorkshopCatalogConfiguration(
@@ -16153,6 +16242,11 @@ class SqlDatabase {
               ? 1
               : 0,
           'joint_length_multiplier': role['joint_length_multiplier'] ?? 1.0,
+          'track_mode': role['track_mode']?.toString() ?? '',
+          'track_count': role['track_count'] ?? 0,
+          'track_adds': role['track_adds'] ?? 0,
+          'supported_track_counts':
+              role['supported_track_counts']?.toString() ?? '',
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -16471,6 +16565,12 @@ class SqlDatabase {
           'usage_scope': rule['usage_scope']?.toString() ?? 'global',
           'show_when_glass': rule['show_when_glass']?.toString() ?? 'any',
           'selection_mode': rule['selection_mode']?.toString() ?? 'always',
+          'assembly_target': rule['assembly_target']?.toString() ?? '',
+          'top_corner_qty': rule['top_corner_qty'] ?? 1,
+          'bottom_corner_qty': rule['bottom_corner_qty'] ?? 1,
+          'assembly_section_id': rule['assembly_section_id'],
+          'assembly_section_ids':
+              rule['assembly_section_ids']?.toString() ?? '',
           'integrated_side_cover':
               rule['integrated_side_cover'] == true ||
                   rule['integrated_side_cover'] == 1
@@ -16597,6 +16697,11 @@ class SqlDatabase {
               ? 1
               : 0,
           'joint_length_multiplier': role['joint_length_multiplier'] ?? 1.0,
+          'track_mode': role['track_mode']?.toString() ?? '',
+          'track_count': role['track_count'] ?? 0,
+          'track_adds': role['track_adds'] ?? 0,
+          'supported_track_counts':
+              role['supported_track_counts']?.toString() ?? '',
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -16832,6 +16937,10 @@ class SqlDatabase {
              r.skip_glazing_bead AS design_skip_glazing_bead,
              r.requires_plant AS design_requires_plant,
              r.joint_length_multiplier AS design_joint_length_multiplier,
+             r.track_mode AS design_track_mode,
+             r.track_count AS design_track_count,
+             r.track_adds AS design_track_adds,
+             r.supported_track_counts AS design_supported_track_counts,
              r.is_default AS design_is_default
       FROM Sections s
       INNER JOIN SeriesDesignRoles r ON r.section_id = s.id

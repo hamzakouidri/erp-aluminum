@@ -1,0 +1,170 @@
+import 'model.dart';
+
+const assemblyAccessoryRoles = <String>{
+  'clam',
+  'clamp', // legacy spelling
+  'frame_clamp',
+  'sash_clamp',
+  'frame_clamp_support',
+  'sash_clamp_support',
+  'sliding_clamp',
+  'assembly_screw',
+};
+
+class AssemblyDemand {
+  const AssemblyDemand({
+    required this.target,
+    required this.sliding,
+    required this.topCorners,
+    required this.bottomCorners,
+    this.sectionId,
+  });
+  final String target;
+  final bool sliding;
+  final int topCorners;
+  final int bottomCorners;
+  final int? sectionId;
+}
+
+int? assemblyInt(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('${value ?? ''}');
+
+Set<int> assemblySectionIds(Map<String, dynamic> rule) {
+  final ids = <int>{};
+  final raw = '${rule['assembly_section_ids'] ?? ''}'.trim();
+  for (final token in raw.split(',')) {
+    final id = int.tryParse(token.trim());
+    if (id != null && id > 0) ids.add(id);
+  }
+  final legacyId = assemblyInt(rule['assembly_section_id']);
+  if (legacyId != null && legacyId > 0) ids.add(legacyId);
+  return ids;
+}
+
+/// Every catalogue section that is physically selected in the drawing.
+Set<int> drawingSectionIds(WindowModel window) {
+  final ids = <int>{};
+  void add(dynamic value) {
+    if (value is! Map) return;
+    final id = assemblyInt(value['id']);
+    if (id != null && id > 0 && value.containsKey('code')) ids.add(id);
+  }
+
+  add(window.frameOverride);
+  add(window.slidingFrameOverride);
+  add(window.sashOverride);
+  add(window.slidingSashOverride);
+  add(window.sideCoverOverride);
+  add(window.internalSlidingSideCoverOverride);
+  for (final value in window.componentOverrides.values) {
+    add(value);
+  }
+  for (final demand in assemblyDemands(window)) {
+    final id = demand.sectionId;
+    if (id != null && id > 0) ids.add(id);
+  }
+  return ids;
+}
+
+/// Physical corners, independent of glazing cells and catalogue item names.
+List<AssemblyDemand> assemblyDemands(WindowModel window) {
+  if (window.isShutterOnly) return [];
+  final demands = <AssemblyDemand>[];
+  int? sectionId(bool sliding, bool frame) {
+    final section = frame
+        ? (sliding
+              ? window.getSlidingBaseFrameSection()?.toMap()
+              : window.frameOverride ??
+                    window.getSectionByType('frame')?.toMap())
+        : (sliding
+              ? window.slidingSashOverride ??
+                    window.getSlidingSectionByType('sash')?.toMap()
+              : window.sashOverride ??
+                    window.getSectionByType('sash')?.toMap());
+    return assemblyInt(section?['id']);
+  }
+
+  for (final rect in window.getFrameRects()) {
+    final zones = window.zones.where(
+      (zone) => rect.contains(zone.boundary.center),
+    );
+    final sliding =
+        window.usesSlidingPrimaryProfiles ||
+        (zones.isNotEmpty &&
+            zones.every((z) => z.content == ZoneContent.slidingSash));
+    demands.add(
+      AssemblyDemand(
+        target: 'frame',
+        sliding: sliding,
+        topCorners: 2,
+        bottomCorners:
+            !window.hasBottomFrame && rect.bottom >= window.height - 0.01
+            ? 0
+            : 2,
+        sectionId: sectionId(sliding, true),
+      ),
+    );
+  }
+  void addSashes(int count, bool sliding) {
+    if (count <= 0) return;
+    demands.add(
+      AssemblyDemand(
+        target: 'sash',
+        sliding: sliding,
+        topCorners: count * 2,
+        bottomCorners: count * 2,
+        sectionId: sectionId(sliding, false),
+      ),
+    );
+  }
+
+  for (final zone in window.zones) {
+    final sliding = zone.content == ZoneContent.slidingSash;
+    final count = switch (zone.content) {
+      ZoneContent.singleSash => 1,
+      ZoneContent.doubleSash => 2,
+      ZoneContent.slidingSash =>
+        zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2,
+      _ => 0,
+    };
+    addSashes(count, sliding);
+    final nestedKeys = {...zone.cellIsSash.keys, ...zone.cellIsDoubleSash.keys};
+    for (final key in nestedKeys) {
+      addSashes(
+        zone.cellIsDoubleSash[key] == true
+            ? 2
+            : zone.cellIsSash[key] == true
+            ? 1
+            : 0,
+        false,
+      );
+    }
+  }
+  return demands;
+}
+
+int assemblyQuantity(
+  Map<String, dynamic> rule,
+  Iterable<AssemblyDemand> demands,
+) {
+  final role = '${rule['role_key'] ?? ''}';
+  final configuredTarget = '${rule['assembly_target'] ?? ''}';
+  final target = const {'frame', 'sash', 'both'}.contains(configuredTarget)
+      ? configuredTarget
+      : role.startsWith('frame_')
+      ? 'frame'
+      : 'sash';
+  final linkedSections = assemblySectionIds(rule);
+  final top = (assemblyInt(rule['top_corner_qty']) ?? 1).clamp(0, 100000);
+  final bottom = (assemblyInt(rule['bottom_corner_qty']) ?? 1).clamp(0, 100000);
+  var quantity = 0;
+  for (final demand in demands) {
+    if (target != 'both' && target != demand.target) continue;
+    if (linkedSections.isNotEmpty &&
+        !linkedSections.contains(demand.sectionId)) {
+      continue;
+    }
+    quantity += demand.topCorners * top + demand.bottomCorners * bottom;
+  }
+  return quantity;
+}

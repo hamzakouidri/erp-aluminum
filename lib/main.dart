@@ -1,22 +1,21 @@
+import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/app_theme.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_config.dart';
 import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/desktop_window_frame.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
-import 'package:database_data/firebase_options.dart';
-import 'dart:io' show Platform;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
-import 'package:database_data/Commande/texture_cache.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -38,18 +37,78 @@ void main() async {
     return true; // تم التعامل مع الخطأ دون إغلاق التطبيق
   };
 
-  // Initialize SQLite for Windows/Linux
-  try {
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
-    }
-  } catch (e) {
-    debugPrint('SQLite FFI init error: $e');
+  // Paint the first Flutter frame immediately. Platform services, Supabase,
+  // preferences, synchronization, and image decoding are intentionally moved
+  // behind this lightweight bootstrap screen.
+  runApp(const AppBootstrap());
+}
+
+class AppBootstrap extends StatefulWidget {
+  const AppBootstrap({super.key});
+
+  @override
+  State<AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<AppBootstrap> {
+  Object? _startupError;
+  bool _ready = false;
+  bool _starting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startServices());
   }
 
-  // Initialize SQLite for Web
-  try {
+  Future<void> _startServices() async {
+    if (_starting) return;
+    setState(() {
+      _starting = true;
+      _startupError = null;
+    });
+
+    try {
+      _configureDatabaseFactory();
+
+      if (!SupabaseConfig.isConfigured) {
+        throw StateError('إعدادات Supabase غير مكتملة.');
+      }
+      await supabase.Supabase.initialize(
+        url: SupabaseConfig.url,
+        publishableKey: SupabaseConfig.publishableKey,
+      );
+
+      // This is a small local read. It is needed before calculations can run,
+      // but no database restore or network synchronization blocks this step.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        CuttingSettings.setSawKerfMm(
+          prefs.getDouble('saw_kerf_mm') ?? CuttingSettings.defaultSawKerfMm,
+        );
+      } catch (error) {
+        debugPrint('Cutting settings cache warning: $error');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _ready = true;
+        _starting = false;
+      });
+
+      // Desktop window decoration is cosmetic and must never hold up startup.
+      unawaited(_initializeDesktopWindow());
+    } catch (error, stack) {
+      debugPrint('Application bootstrap failed: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _startupError = error;
+        _starting = false;
+      });
+    }
+  }
+
+  void _configureDatabaseFactory() {
     if (kIsWeb) {
       sqfliteFfiInit();
       databaseFactory = createDatabaseFactoryFfiWeb(
@@ -59,17 +118,20 @@ void main() async {
         ),
         tag: 'erp_web',
       );
+    } else if (Platform.isWindows || Platform.isLinux) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
     }
-  } catch (e) {
-    debugPrint('SQLite Web init error: $e');
   }
 
-  // Initialize window_manager
-  try {
-    if (!kIsWeb &&
-        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+  Future<void> _initializeDesktopWindow() async {
+    if (kIsWeb ||
+        !(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      return;
+    }
+    try {
       await windowManager.ensureInitialized();
-      final WindowOptions windowOptions = Platform.isWindows
+      final options = Platform.isWindows
           ? const WindowOptions(
               size: Size(1280, 800),
               minimumSize: Size(900, 600),
@@ -79,88 +141,78 @@ void main() async {
               titleBarStyle: TitleBarStyle.hidden,
               windowButtonVisibility: false,
             )
-          : const WindowOptions(
-              backgroundColor: Colors.transparent,
-              skipTaskbar: false,
-            );
-      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+          : const WindowOptions(backgroundColor: Colors.transparent);
+      await windowManager.waitUntilReadyToShow(options, () async {
         await windowManager.show();
         await windowManager.focus();
       });
-      // Safety guarantee: Ensure window is shown immediately on launch
-      await windowManager.show();
-      await windowManager.focus();
+    } catch (error) {
+      debugPrint('Window Manager init warning: $error');
     }
-  } catch (e) {
-    debugPrint('Window Manager init error: $e');
   }
 
-  // Initialize texture cache for wood drawing textures
-  try {
-    await TextureCache.init();
-  } catch (e) {
-    debugPrint('TextureCache init warning: $e');
-  }
+  @override
+  Widget build(BuildContext context) {
+    if (_ready) {
+      return MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
+          ChangeNotifierProvider(create: (_) => WorkspaceController()),
+        ],
+        child: const MyApp(),
+      );
+    }
 
-  // Load the last saved kerf before any synchronous BOM is generated.
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    CuttingSettings.setSawKerfMm(
-      prefs.getDouble('saw_kerf_mm') ?? CuttingSettings.defaultSawKerfMm,
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: _startupError == null
+                  ? const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.home_repair_service, size: 64),
+                        SizedBox(height: 20),
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('جاري تجهيز التطبيق…'),
+                      ],
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cloud_off, size: 56),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'تعذر الاتصال بـ Supabase.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _startupError.toString(),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: _starting ? null : _startServices,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('إعادة المحاولة'),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
     );
-  } catch (e) {
-    debugPrint('Cutting settings cache warning: $e');
   }
-
-  String? firebaseError;
-  String? supabaseError;
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    final errStr = e.toString();
-    if (errStr.contains('already-exists') ||
-        errStr.contains('already exists')) {
-      debugPrint(
-        "Firebase was already initialized on the native side. Ignoring error.",
-      );
-    } else {
-      debugPrint("Firebase Initialization Error: $e");
-      firebaseError = e.toString();
-    }
-  }
-
-  try {
-    if (SupabaseConfig.isConfigured) {
-      await supabase.Supabase.initialize(
-        url: SupabaseConfig.url,
-        publishableKey: SupabaseConfig.publishableKey,
-      );
-    }
-  } catch (e) {
-    debugPrint("Supabase Initialization Error: $e");
-    supabaseError = e.toString();
-  }
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
-        ChangeNotifierProvider(create: (_) => WorkspaceController()),
-      ],
-      child: MyApp(firebaseError: firebaseError, supabaseError: supabaseError),
-    ),
-  );
 }
 
 class MyApp extends StatefulWidget {
-  final String? firebaseError;
-  final String? supabaseError;
-
-  const MyApp({super.key, this.firebaseError, this.supabaseError});
+  const MyApp({super.key});
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -178,7 +230,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // [إضافة هامة]: تهيئة خدمة المزامنة السحابية وبدء الاستماع بمجرد فتح التطبيق مع حماية ضد الانهيار
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        if (widget.firebaseError != null) return;
         final syncService = CloudSyncService();
         await syncService.init().timeout(const Duration(seconds: 10));
         syncService.startListeningForUpdates(() {
@@ -271,49 +322,32 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ),
         );
       },
-      home: widget.firebaseError != null
-          ? Scaffold(
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Text(
-                    '${Localization.translate('Firebase connection error', settings.language)}:\n${widget.firebaseError}\n\n${Localization.translate('Check your platform setup, for example add Windows support if you run on desktop', settings.language)}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 16 * settings.fontSizeScale,
-                    ),
-                    textDirection: TextDirection.rtl,
-                  ),
-                ),
-              ),
-            )
-          : StreamBuilder<AppAuthUser?>(
-              stream: AppAuthService().authStateChanges,
-              initialData: AppAuthService().currentUser,
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  const authenticatedContent = SubscriptionChecker();
-                  if (!kIsWeb && Platform.isWindows) {
-                    return DesktopWindowFrame(
-                      topBar: const WorkspaceTabStrip(),
-                      child: authenticatedContent,
-                    );
-                  }
-                  return authenticatedContent;
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                final loginContent = const LoginScreen();
-                if (!kIsWeb && Platform.isWindows) {
-                  return DesktopWindowFrame(child: loginContent);
-                }
-                return loginContent;
-              },
-            ),
+      home: StreamBuilder<AppAuthUser?>(
+        stream: AppAuthService().authStateChanges,
+        initialData: AppAuthService().currentUser,
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            const authenticatedContent = SubscriptionChecker();
+            if (!kIsWeb && Platform.isWindows) {
+              return DesktopWindowFrame(
+                topBar: const WorkspaceTabStrip(),
+                child: authenticatedContent,
+              );
+            }
+            return authenticatedContent;
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final loginContent = const LoginScreen();
+          if (!kIsWeb && Platform.isWindows) {
+            return DesktopWindowFrame(child: loginContent);
+          }
+          return loginContent;
+        },
+      ),
     );
   }
 }

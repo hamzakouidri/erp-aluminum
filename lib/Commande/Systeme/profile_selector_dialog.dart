@@ -181,6 +181,12 @@ bool isWindowHandleAccessory(Map<String, dynamic> accessory) {
 List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   final tLower = normalizeArabic(selectorType.toLowerCase().trim());
   const directRoles = {
+    'clam',
+    'clamp',
+    'frame_clamp',
+    'sash_clamp',
+    'frame_clamp_support',
+    'sash_clamp_support',
     'kit_screw',
     'box_screw',
     'motor_screw',
@@ -192,6 +198,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'assembly_screw',
     'installation_screw',
     'accessory_screw',
+    'kit',
     'gache_simple',
     'gache_double',
     'gache_door',
@@ -214,6 +221,9 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'roulette',
     'entrematique',
   };
+  if (tLower == 'clam' || tLower == 'clamp' || tLower == 'sliding_clamp') {
+    return const ['clam', 'clamp', 'sliding_clamp'];
+  }
   if (directRoles.contains(tLower)) return [tLower];
   if (tLower == 'is_kit_screw') return const ['kit_screw'];
   if (tLower == 'is_caisson_screw') return const ['box_screw'];
@@ -245,10 +255,11 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
               tLower.contains('40000')))) {
     return const ['sliding_kit'];
   }
+  if (tLower == 'kit' || tLower == 'كيت') return const ['kit'];
   if (tLower.contains('clamp') ||
       tLower.contains('clam') ||
       tLower.contains('كلام')) {
-    return const ['sliding_clamp'];
+    return const ['clam', 'clamp', 'sliding_clamp'];
   }
   if (tLower.contains('gache couliss') ||
       tLower.contains('gâche couliss') ||
@@ -325,6 +336,9 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
   // series. A series-specific rule still has priority because
   // getCatalogItemRules suppresses the global row for that item/series.
   const globallyShareableRoles = {
+    'clam',
+    'clamp',
+    'frame_clamp', 'sash_clamp', 'frame_clamp_support', 'sash_clamp_support',
     'kit_screw',
     'box_screw',
     'motor_screw',
@@ -797,13 +811,17 @@ class CatalogCandidateResolver {
     final roleKeys = _mergedRoleKeys(
       query.roleKeys,
       seriesRoleKeysForProfileSelectorType(query.selectorType),
-    );
+    ).toList();
+    if (roleKeys.contains('reducer')) {
+      roleKeys.add('Réducteur');
+      roleKeys.add('Reducteur');
+      roleKeys.add('Réducteure');
+    }
     if (query.seriesId == null || roleKeys.isEmpty) {
       return const <Map<String, dynamic>>[];
     }
     if (roleKeys.contains('reducer') &&
-        (query.hasSimpleGlassForReducer == false ||
-            query.hasDoubleGlassForRules == true)) {
+        query.hasSimpleGlassForReducer == false) {
       return const <Map<String, dynamic>>[];
     }
 
@@ -816,7 +834,7 @@ class CatalogCandidateResolver {
         : roleKeys.contains('sash')
         ? roleKeys.where((role) => role == 'sash').toList()
         : roleKeys;
-    final sections = query.drawingMode == null
+    var sections = query.drawingMode == null
         ? await _db.getDesignSectionsForRoles(
             query.seriesId!,
             scopedRoleKeys,
@@ -949,15 +967,14 @@ class CatalogCandidateResolver {
     final seen = <int>{};
     for (final rule in surfaceRules) {
       final itemId = _catalogInt(rule['item_id']);
-      if (itemId == null || !seen.add(itemId)) continue;
+      if (itemId == null || seen.contains(itemId)) continue;
       final row = byId[itemId];
       if (row == null) continue;
       final ruleRole = (rule['role_key'] ?? '').toString().trim();
-      final roleMatches =
-          roleKeys.contains(ruleRole) ||
-          _catalogRowMatchesRole(row, table, roleKeys);
+      final roleMatches = roleKeys.contains(ruleRole);
       if (roleMatches && _catalogRuleRowMatchesMaterial(row, query)) {
-        result.add(row);
+        seen.add(itemId);
+        result.add({...row, 'catalog_rule': Map<String, dynamic>.from(rule)});
       }
     }
     _sortByTargetThicknessIfNeeded(result, query);
@@ -990,6 +1007,7 @@ class CatalogCandidateResolver {
     Map<String, dynamic> rule,
     CatalogCandidateQuery query,
   ) {
+    if (rule['is_active'] == 0 || rule['is_active'] == false) return false;
     if (query.requireDialog && rule['show_in_dialog'] == 0) return false;
     if (query.requireQuantity && rule['show_in_quantity'] == 0) return false;
     if (!catalogRuleMatchesExactScope(rule, query.seriesId)) return false;
@@ -1040,6 +1058,17 @@ class CatalogCandidateResolver {
     CatalogCandidateQuery query,
   ) {
     if (query.category == 'joint') return true;
+    final assignedSeries = '${row['series_ids'] ?? ''}'
+        .split(',')
+        .map((id) => int.tryParse(id.trim()))
+        .whereType<int>()
+        .toSet();
+    final singleSeries = _catalogInt(row['series_id']);
+    if (singleSeries != null && singleSeries > 0)
+      assignedSeries.add(singleSeries);
+    if (assignedSeries.isNotEmpty && !assignedSeries.contains(query.seriesId)) {
+      return false;
+    }
     final requested = (query.materialType ?? '').toLowerCase().trim();
     if (requested.isEmpty || requested == 'shutter') return true;
     final rawMaterial = row['material_type'];
@@ -1050,168 +1079,6 @@ class CatalogCandidateResolver {
         material == 'both' ||
         material == 'global' ||
         material.isEmpty;
-  }
-
-  bool _catalogRowMatchesRole(
-    Map<String, dynamic> row,
-    String table,
-    List<String> roleKeys,
-  ) {
-    if (table == 'Joints') {
-      final role = _jointRoleFromRow(row);
-      return role != null && roleKeys.contains(role);
-    }
-    final roles = _accessoryRolesFromRow(row);
-    return roles.any(roleKeys.contains);
-  }
-
-  String? _jointRoleFromRow(Map<String, dynamic> row) {
-    final gasketType = normalizeArabic(
-      '${row['gasket_type'] ?? ''} ${row['name'] ?? ''} ${row['code'] ?? ''}'
-          .toLowerCase()
-          .trim(),
-    );
-    if (gasketType.replaceAll(RegExp(r'[\s_-]+'), '').contains('n245')) {
-      return 'joint_central';
-    }
-    if (gasketType.contains('فيتراج') || gasketType.contains('vitrage')) {
-      return 'joint_vitrage';
-    }
-    if (gasketType.contains('بوراج') || gasketType.contains('bourrage')) {
-      return 'joint_bourrage';
-    }
-    if (gasketType.contains('فراب') || gasketType.contains('frappe')) {
-      return 'joint_frappe';
-    }
-    if (gasketType.contains('سنترال') || gasketType.contains('central')) {
-      return 'joint_central';
-    }
-    if (gasketType.contains('برونز') || gasketType.contains('bronze')) {
-      return 'joint_bronze';
-    }
-    if (gasketType.contains('بروس') || gasketType.contains('bross')) {
-      return 'joint_brosse';
-    }
-    return null;
-  }
-
-  Set<String> _accessoryRolesFromRow(Map<String, dynamic> row) {
-    final roles = <String>{};
-    bool flag(String key) {
-      final value = row[key];
-      if (value is bool) return value;
-      if (value is num) return value != 0;
-      final text = value?.toString().trim().toLowerCase();
-      return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
-    }
-
-    const flagRoles = {
-      'is_kit_screw': 'kit_screw',
-      'is_caisson_screw': 'box_screw',
-      'is_moteur_screw': 'motor_screw',
-      'is_batmo_screw': 'batmo_screw',
-      'is_bouchon_batmo_screw': 'bouchon_batmo_screw',
-      'is_renfort_screw': 'renfort_screw',
-      'is_manivelle_screw': 'manivelle_screw',
-      'is_assembly_screw': 'assembly_screw',
-      'is_installation_screw': 'installation_screw',
-      'is_accessory_screw': 'accessory_screw',
-      'is_gache_simple': 'gache_simple',
-      'is_gache_double': 'gache_double',
-      'is_gache_porte': 'gache_door',
-      'is_lock_clef': 'lock_clef',
-      'is_lock_condamnation': 'lock_condamnation',
-    };
-    for (final entry in flagRoles.entries) {
-      if (flag(entry.key)) roles.add(entry.value);
-    }
-
-    final type = normalizeArabic(
-      (row['type'] ?? '').toString().toLowerCase().trim(),
-    );
-    final name = normalizeArabic(
-      (row['name'] ?? '').toString().toLowerCase().trim(),
-    );
-    final text = '$name $type';
-    if ((text.contains('bouchon') ||
-            text.contains('bochon') ||
-            text.contains('بوشون')) &&
-        (text.contains('batmo') || text.contains('باتمو'))) {
-      roles.add('bouchon_batmo');
-    }
-    if (type.contains('clam')) roles.add('sliding_clamp');
-    if (type.contains('kit') || type.contains('كيت')) {
-      roles.add('sliding_kit');
-    }
-    if (type.contains('gache couliss') ||
-        type.contains('gâche couliss') ||
-        type.contains('قاش منزلق')) {
-      roles.add('sliding_lock');
-    } else if (type.contains('gache') || type.contains('gâche')) {
-      if (type.contains('double')) {
-        roles.add('gache_double');
-      } else if (type.contains('porte')) {
-        roles.add('gache_door');
-      } else {
-        roles.add('gache_simple');
-      }
-    }
-    if (text.contains('tringle') ||
-        text.contains('tangle') ||
-        text.contains('triangle') ||
-        text.contains('تراينغل') ||
-        text.contains('تريانغل')) {
-      roles.add('tringle');
-    }
-    if (type.contains('crémone') || type.contains('cremone')) {
-      roles.add('cremone');
-    }
-    if (type.contains('verrou')) roles.add('verrou');
-    if (type.contains('espagnolette') || type.contains('سبانيول')) {
-      roles.add('espagnolette');
-    }
-    if (type.contains('canon') || type.contains('أسطوانة')) {
-      roles.add('canon');
-    }
-    if (type.contains('poignee porte') || type.contains('poignée porte')) {
-      if (type.contains('condamnation')) {
-        roles.add('door_handle_condamnation');
-      } else {
-        roles.add('door_handle_key');
-      }
-    }
-    if (type.contains('poignee') ||
-        type.contains('poignée') ||
-        type.contains('مقبض')) {
-      roles.add('handle');
-    }
-    if (type.contains('paumelle') || type.contains('مفاصل')) {
-      roles.add('hinge');
-    }
-    if (type.contains('tasso') || type.contains('طاسو')) roles.add('tasso');
-    if (text.contains('ekar') ||
-        text.contains('ikar') ||
-        text.contains('إيكار') ||
-        text.contains('ايكار')) {
-      roles.add('ekar');
-    }
-    if (type.contains('roulette') || type.contains('عجلات')) {
-      roles.add('roulette');
-    }
-    if (type.contains('intramatique') ||
-        type.contains('entrematique') ||
-        type.contains('أونتروماتيك') ||
-        type.contains('انتراميتيك')) {
-      roles.add('entrematique');
-    }
-    if (type.contains('serrure')) {
-      if (type.contains('condamnation')) {
-        roles.add('lock_condamnation');
-      } else {
-        roles.add('lock_clef');
-      }
-    }
-    return roles;
   }
 
   List<String> _mergedRoleKeys(

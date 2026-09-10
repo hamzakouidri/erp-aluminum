@@ -44,7 +44,9 @@ class SupabaseWorkshopSyncService {
   // event after sleep/network loss and must not behave like a UI refresh loop.
   static const Duration _backgroundSyncInterval = Duration(minutes: 3);
   static const int _batchSize = 200;
-  static const int _downloadPageSize = 500;
+  // Keep each decoded response small on Android. JSON payloads occupy several
+  // times their wire size while PostgREST and Dart maps coexist in memory.
+  static const int _downloadPageSize = 200;
   static const String _workshopProfileTable = '__WorkshopProfile';
   static const String _workshopProfileRowId = 'current';
   static const String _workshopCatalogConfigurationTable =
@@ -243,7 +245,9 @@ class SupabaseWorkshopSyncService {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final user = _client.auth.currentUser!;
-    final pendingBeforeUpload = await _db.exportPendingCloudChanges();
+    final pendingBeforeUpload = await _db.exportPendingCloudChanges(
+      allowedTables: SqlDatabase.workshopTables.toSet(),
+    );
     final data = await _db.exportWorkshopData();
     final uploadData = <String, dynamic>{...data};
     final pendingTombstones = pendingBeforeUpload.data['SyncTombstones'];
@@ -280,7 +284,9 @@ class SupabaseWorkshopSyncService {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final user = _client.auth.currentUser!;
-    final pendingBeforeUpload = await _db.exportPendingCloudChanges();
+    final pendingBeforeUpload = await _db.exportPendingCloudChanges(
+      allowedTables: SqlDatabase.workshopTables.toSet(),
+    );
     final data = await _db.exportWorkshopData();
     final rows = _flattenDataForUpload(
       data,
@@ -810,7 +816,9 @@ class SupabaseWorkshopSyncService {
 
   Future<void> _performPendingUpload() async {
     await _ensureReady();
-    final pending = await _db.exportPendingCloudChanges();
+    final pending = await _db.exportPendingCloudChanges(
+      allowedTables: SqlDatabase.workshopTables.toSet(),
+    );
     if (pending.isEmpty) return;
 
     final workshopUuid = _workshopUuid!;

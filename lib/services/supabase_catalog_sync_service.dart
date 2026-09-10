@@ -158,7 +158,9 @@ class SupabaseCatalogSyncService {
 
     // Keep the local SQLite change log clean after the central upload. These
     // rows are deliberately not part of workshop_sync_rows anymore.
-    final pendingBeforeUpload = await _db.exportPendingCloudChanges();
+    final pendingBeforeUpload = await _db.exportPendingCloudChanges(
+      allowedTables: SqlDatabase.catalogTables.toSet(),
+    );
 
     final catalogData = await _db.exportGlobalCatalog();
     for (final requiredTable in const ['Colors', 'ShutterComponents']) {

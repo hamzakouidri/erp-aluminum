@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart'; // For Matrix4
 
 class TextureCache {
+  static Future<void>? _initTask;
   static ui.Image? woodTexture;
   static ui.Image? woodTextureD0;
   static ui.Image? woodTextureAntique;
@@ -121,7 +122,15 @@ class TextureCache {
     }
   }
 
+  /// Starts decoding only when a drawing actually requests a wood texture.
+  /// Keeping the future prevents several painters from decoding the same
+  /// assets concurrently on memory-constrained phones.
+  static void ensureLoading() {
+    _initTask ??= init();
+  }
+
   static ui.Shader? getShaderD0() {
+    if (woodTextureD0 == null) ensureLoading();
     if (_shaderD0 == null && woodTextureD0 != null) {
       _shaderD0 = ui.ImageShader(
         woodTextureD0!,
@@ -134,6 +143,7 @@ class TextureCache {
   }
 
   static ui.Shader? getShaderMahogany() {
+    if (woodTexture == null) ensureLoading();
     if (_shaderMahogany == null && woodTexture != null) {
       _shaderMahogany = ui.ImageShader(
         woodTexture!,
@@ -146,6 +156,7 @@ class TextureCache {
   }
 
   static ui.Shader? getShaderAntique() {
+    if (woodTextureAntique == null) ensureLoading();
     if (_shaderAntique == null && woodTextureAntique != null) {
       _shaderAntique = ui.ImageShader(
         woodTextureAntique!,
@@ -158,6 +169,7 @@ class TextureCache {
   }
 
   static ui.Shader? getShaderDark() {
+    if (woodTextureDark == null) ensureLoading();
     if (_shaderDark == null && woodTextureDark != null) {
       _shaderDark = ui.ImageShader(
         woodTextureDark!,
@@ -170,6 +182,7 @@ class TextureCache {
   }
 
   static ui.Shader? getShaderGrey() {
+    if (woodTextureGrey == null) ensureLoading();
     if (_shaderGrey == null && woodTextureGrey != null) {
       _shaderGrey = ui.ImageShader(
         woodTextureGrey!,

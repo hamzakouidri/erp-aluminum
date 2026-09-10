@@ -1930,7 +1930,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // visible until the screen was recreated.
     final rawBomItems = _generateRawBomItems();
     await engine.stabilizeSelections(window: widget.model, items: rawBomItems);
-    final visibleBomItems = await _generateStrictVisibleBomItems(engine);
+    final dbReady = await SqlDatabase().db != null;
+    final visibleBomItems = dbReady
+        ? await _generateStrictVisibleBomItems(engine)
+        : rawBomItems;
     if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
     setState(() => _visibleBomItems = visibleBomItems);
   }
@@ -1963,10 +1966,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
       final sqlDb = SqlDatabase();
       final dbInstance = await sqlDb.db;
-      if (dbInstance == null) return;
-
       _setFetchProgress(0.35);
-      await _loadStrictKitBundles(dbInstance, sqlDb);
+      if (dbInstance != null) {
+        await _loadStrictKitBundles(dbInstance, sqlDb);
+      }
       _setFetchProgress(0.55);
       var bomItems = _generateRawBomItems();
       final engine = BomEngineV2(database: sqlDb);
@@ -1975,9 +1978,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _setFetchProgress(0.72);
       bomItems = _generateRawBomItems();
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
-      visibleBomItems = await _generateStrictVisibleBomItems(engine);
+      // If the local database is still opening, the strict catalogue query
+      // has no candidates and would blank the whole table. Show the computed
+      // BOM now; it will be revalidated when the model/database is ready.
+      visibleBomItems = dbInstance == null
+          ? bomItems
+          : await _generateStrictVisibleBomItems(engine);
       _setFetchProgress(0.88);
-      await _loadPricesFromDb();
+      if (dbInstance != null) await _loadPricesFromDb();
       _setFetchProgress(0.96);
     } finally {
       if (mounted) {

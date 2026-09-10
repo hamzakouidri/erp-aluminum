@@ -205,7 +205,8 @@ class CloudSyncService {
   /// يبث خريطة الصلاحيات الحالية فور تغييرها في Firestore (بدون إعادة تشغيل
   /// التطبيق). الشاشات التي تعتمد على صلاحية معينة (رؤية/تعديل الزبائن،
   /// رؤية/تعديل المنتجات...) تستمع لهذا الـ Stream لتحدّث نفسها فورياً.
-  Stream<Map<String, dynamic>> get permissionsStream =>
+  Stream<Map<String, dynamic>>
+  get permission_startPendingCloudChangePollsStream =>
       _permissionsController.stream;
 
   /// آخر خريطة صلاحيات معروفة لهذا الحساب (قراءة متزامنة فورية بدون انتظار).

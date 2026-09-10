@@ -733,8 +733,9 @@ class ComponentCalculator {
     ])) {
       return 'sliding_kit';
     }
+    if (_textHasAny(originalName, const ['kit', 'كيت'])) return 'kit';
     if (_textHasAny(originalName, const ['clamp', 'clam', 'كلامب', 'كلام'])) {
-      return 'clamp';
+      return 'clam';
     }
     if (_textHasAny(originalName, const ['قاش دوبل', 'gache double'])) {
       return 'is_gache_double';
@@ -1021,8 +1022,11 @@ class ComponentCalculator {
         return 'installation_screw';
       case 'sliding_kit':
         return 'sliding_kit';
+      case 'kit':
+        return 'kit';
+      case 'clam':
       case 'clamp':
-        return 'sliding_clamp';
+        return 'clam';
       case 'is_gache_simple':
         return 'gache_simple';
       case 'is_gache_double':
@@ -1106,6 +1110,17 @@ class ComponentCalculator {
     // Opening battements keep their opening-series role even when the
     // drawing's primary system is sliding.
     if (lower == 'batmo' || lower == 'bouchon_batmo') return false;
+
+    // Réducteure is a sliding-series role. Its selector uses the catalogue
+    // code 67114, so it must resolve against the sliding series even inside a
+    // mixed opening/sliding drawing.
+    if (lower == '67114' ||
+        lower == 'reducer' ||
+        lower == 'réducteur' ||
+        lower == 'réducteure' ||
+        lower == 'reducteur') {
+      return true;
+    }
 
     // 1. هل يحتوي الرسم على أي منطقة/خلية سحاب (سواء النافذة كاملة سحاب أو جزء منها)؟
     final bool hasSlidingZones = window.zones.any(
@@ -1883,8 +1898,11 @@ class ComponentCalculator {
       String? cuttingList,
       String unit = 'حبة',
       bool sliding = false,
+      String? roleKeyOverride,
+      String? selectorTypeOverride,
     }) {
-      final selectorType = _selectorTypeForAccessory(originalName);
+      final selectorType =
+          selectorTypeOverride ?? _selectorTypeForAccessory(originalName);
       return _createAccessory(
         window.componentOverrides,
         originalName,
@@ -1896,7 +1914,7 @@ class ComponentCalculator {
         overrideKey: originalName,
         selectorCategory: 'accessory',
         selectorType: selectorType,
-        roleKey: _roleKeyForAccessorySelector(selectorType),
+        roleKey: roleKeyOverride ?? _roleKeyForAccessorySelector(selectorType),
         sourceSeriesId: sliding || window.systemMode == 'sliding'
             ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
             : window.activeSeries?.id,
@@ -2070,8 +2088,11 @@ class ComponentCalculator {
       double? targetThicknessMm,
       String? overrideKey,
       String? kitGroupName,
+      String? roleKeyOverride,
+      String? selectorTypeOverride,
     }) {
-      final selectorType = _selectorTypeForJoint(originalName);
+      final selectorType =
+          selectorTypeOverride ?? _selectorTypeForJoint(originalName);
       final isShutterJoint = _textHasAny(originalName, const [
         'للستار',
         'shutter',
@@ -2098,9 +2119,11 @@ class ComponentCalculator {
         overrideKey: effectiveKey,
         selectorCategory: 'joint',
         selectorType: selectorType,
-        roleKey: isShutterJoint
-            ? 'shutter_joint_brosse'
-            : _roleKeyForJointSelector(selectorType),
+        roleKey:
+            roleKeyOverride ??
+            (isShutterJoint
+                ? 'shutter_joint_brosse'
+                : _roleKeyForJointSelector(selectorType)),
         targetThicknessMm: targetThicknessMm,
         sourceSeriesId: isShutterJoint
             ? null
@@ -2620,7 +2643,7 @@ class ComponentCalculator {
             : int.tryParse(value?.toString() ?? '') ?? 0;
         if (count > 0) return count;
       }
-      return 0;
+      return 1;
     }
 
     final gacheQtyPerDoubleSash = configuredGacheCount([
@@ -3569,22 +3592,28 @@ class ComponentCalculator {
           final configuredSashDeduction = window.slidingSashWidthDeduction(
             sashes,
           );
-          double sashW = configuredSashDeduction > 0
+          double sashW = configuredSashDeduction != 0
               ? (wForCalc - configuredSashDeduction) / sashes
               : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
-          double sashH = hForCalc + slidingOverlap * 2;
+          final configuredHeightDeduction = window.slidingSashHeightDeduction();
+          final usableWindowHeight = math.max(
+            0.0,
+            window.height -
+                (window.hasShutter && !window.isCaissonTunnel
+                    ? window.shutterBoxHeight
+                    : 0.0),
+          );
+          double sashH = configuredHeightDeduction != 0
+              ? usableWindowHeight - configuredHeightDeduction
+              : hForCalc + slidingOverlap * 2;
           bool hasThreePiece =
               !window.isSlidingPVC &&
               ((window.activeSlidingSeries?.hasThreePieceSash ?? false) ||
                   '${window.activeSlidingSeries?.name ?? ''}'
                       .toLowerCase()
                       .contains('tpr'));
-          if (hasThreePiece) {
-            sashH = window.height - 64.0;
-          } else {
-            sashH = window.isSlidingPVC
-                ? hForCalc + slidingOverlap
-                : window.height - 81.0;
+          if (configuredHeightDeduction == 0 && window.isSlidingPVC) {
+            sashH = hForCalc + slidingOverlap;
           }
 
           if (hasThreePiece) {
@@ -3695,7 +3724,7 @@ class ComponentCalculator {
           // extension for every track beyond those first two.
           final monorailSection = window.getSlidingFrameExtensionSection();
           final additionalTracks = window.slidingSingleTrackAdditionCount(
-            sashes,
+            zone.slidingTrackCount,
           );
           if (monorailSection != null && additionalTracks > 0) {
             for (var track = 0; track < additionalTracks; track++) {
@@ -4154,7 +4183,10 @@ class ComponentCalculator {
       final bool isEspagnoletteActive = !isSystemObActive && !isDemiObActive;
       final int espagnoletteQty = totalHandles;
 
-      if (espagnoletteQty > 0 && window.isPVC) {
+      // Espagnolette is an independent accessory role for opening windows,
+      // not a PVC-only component. Aluminium series can define its own
+      // espagnolette rule as well.
+      if (espagnoletteQty > 0 && !hasSlidingSash) {
         double heightCm = window.height / 10.0;
         double targetH = window.hasShutter ? (heightCm - 35) : (heightCm - 20);
 
@@ -4172,6 +4204,8 @@ class ComponentCalculator {
             'إسبانيوليت $espLength (Espagnolette)',
             isActive: isEspagnoletteActive,
             qty: espagnoletteQty,
+            roleKeyOverride: 'espagnolette',
+            selectorTypeOverride: 'espagnolette',
           ),
         );
       }
@@ -6188,14 +6222,14 @@ class ComponentCalculator {
         final configuredSashDeduction = window.slidingSashWidthDeduction(
           sashes,
         );
-        final double sashCutW = configuredSashDeduction > 0
+        final double sashCutW = configuredSashDeduction != 0
             ? (wForCalc - configuredSashDeduction) / sashes
             : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
         final configuredGlassSafety = slidingRuleNumber('glass_w_deduction');
         final glassSafety = configuredGlassSafety > 0
             ? configuredGlassSafety
             : videVerre;
-        baseGw = configuredSashDeduction > 0 || window.isSlidingPVC
+        baseGw = configuredSashDeduction != 0 || window.isSlidingPVC
             ? sashCutW - slidingSashVisibleWidth - glassSafety
             : sashCutW - (sw * 2) - videVerre;
         // The height formula stays unchanged for the sliding glazing groove.
@@ -6438,17 +6472,14 @@ class ComponentCalculator {
                   slidingSeriesLabel.contains('atpr') ||
                   slidingSeriesLabel.contains('tpi') ||
                   slidingFamily != null);
-          final AluminumSeries? reducerSeries =
-              window.activeSlidingSeries ?? window.activeSeries;
-          final bool reducerConfigured = window.seriesUsesReducer(
-            reducerSeries,
+          // Build the geometric demand first. The catalogue resolver decides
+          // whether this series has an enabled reducer, including roles that
+          // are enabled for quantities but not loaded for drawing.
+          // Reducer eligibility is controlled exclusively by the configured
+          // series role; drawing mode or product name must not enable it.
+          final bool reducerAllowed = window.seriesUsesReducer(
+            window.activeSlidingSeries ?? window.activeSeries,
           );
-          final bool reducerConfigExists = window.seriesHasConfiguredRoles(
-            reducerSeries,
-          );
-          final bool reducerAllowed =
-              reducerConfigured ||
-              (!reducerConfigExists && isSlidingSystem && !isPvcSlidingSystem);
 
           void addReducteurPieces(int multiplier) {
             hasSimpleGlassReducerPieces = true;
@@ -6461,6 +6492,9 @@ class ComponentCalculator {
           }
 
           void addSlidingBourrageJoint() {
+            // PVC sliding glazing uses its dedicated gasket rules; the
+            // aluminium Bourrage profile must never be added to its BOM.
+            if (isPvcSlidingSystem) return;
             final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
             final double sides = cellGlass.jointTwoSides ? 2.0 : 1.0;
             final double qty = perimeter * sides * totalPieces;
@@ -6571,7 +6605,9 @@ class ComponentCalculator {
               if (remaining > 0) addSlidingBourrageJoint();
             }
           } else {
-            if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
+            if (!window.isPVC &&
+                !isPanneau &&
+                cellGlass.structure != GlassStructure.closed) {
               final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
               final double mult = cellGlass.jointTwoSides ? 2.0 : 1.0;
               final double gasketQty = perimeter * mult * totalPieces;
@@ -7498,28 +7534,35 @@ class ComponentCalculator {
       // Joint Central = محيط الإطار (فتحات مزدوجة فقط)
       if (swingCentralFramePerim > 0) {
         items.add(
-          createJoint('N 245', qty: swingCentralFramePerim, unit: 'متر'),
+          createJoint(
+            'جوان سنترال (Joint Central)',
+            qty: swingCentralFramePerim,
+            unit: 'متر',
+            selectorTypeOverride: 'joint_central',
+            roleKeyOverride: 'joint_central',
+          ),
         );
       }
     }
 
-    final bool reducerGlassIsStrictlySimple =
-        hasSimpleGlassReducerPieces &&
-        window.hasSimpleGlassForReducer &&
-        !window.hasDoubleGlassForRules;
+    // A mixed drawing may contain both simple and double glazing. Reducer
+    // pieces are accumulated only for the simple-glass cells above, so the
+    // presence of a separate double-glass cell must not hide those pieces.
+    final bool hasReducerDemand =
+        hasSimpleGlassReducerPieces && window.hasSimpleGlassForReducer;
 
-    if (reducteurPieces.isNotEmpty && reducerGlassIsStrictlySimple) {
+    if (reducteurPieces.isNotEmpty && hasReducerDemand) {
       Map<String, dynamic>? reducteurOverride =
           window.componentOverrides['ريديكتور (Réducteur)'] ??
           window.componentOverrides['مخفض الزجاج (Réducteur)'];
 
+      // Reducer demand is produced by sliding cells. In a mixed drawing the
+      // outer frame belongs to the opening series, but Réducteure must still
+      // be resolved against the selected sliding series.
       final reductionSeries = window.activeSlidingSeries ?? window.activeSeries;
       final bool reducerAllowedForSeries =
-          window.seriesUsesReducer(reductionSeries) ||
-          !window.seriesHasConfiguredRoles(reductionSeries);
-      if (reducerAllowedForSeries &&
-          reducteurOverride == null &&
-          reductionSeries != null) {
+          reductionSeries != null && window.seriesUsesReducer(reductionSeries);
+      if (reducerAllowedForSeries && reducteurOverride == null) {
         bool isReducteurSection(dynamic s) {
           final n = s.name.toLowerCase();
           final t = s.type.toLowerCase();
@@ -7547,6 +7590,9 @@ class ComponentCalculator {
         } catch (_) {}
       }
 
+      // A manually selected reducer is already a valid catalogue selection;
+      // do not hide its quantity row just because the active series has not
+      // finished loading (this is common immediately after app startup).
       if (reducerAllowedForSeries) {
         items.add(
           createProfile(
@@ -7555,6 +7601,8 @@ class ComponentCalculator {
             pieces: reducteurPieces,
             unit: 'قطاع',
             overrideMap: reducteurOverride,
+            selectorType: '67114',
+            roleKey: 'reducer',
           ),
         );
       }

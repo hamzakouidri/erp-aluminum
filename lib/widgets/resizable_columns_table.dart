@@ -487,6 +487,16 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       case LogicalKeyboardKey.end:
         nextIndex = rows.length - 1;
         break;
+      case LogicalKeyboardKey.arrowLeft:
+      case LogicalKeyboardKey.arrowRight:
+        // Left/right still belong to the horizontal viewport, but ensure a
+        // visible active row exists while the user navigates the table.
+        if (_focusedRowIndex == null) {
+          setState(() => _focusedRowIndex = 0);
+          widget.onFocusedRowChanged?.call(rows.first.id);
+          _ensureRowVisible(rows.first.id);
+        }
+        return KeyEventResult.ignored;
       default:
         return KeyEventResult.ignored;
     }
@@ -629,25 +639,30 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           ),
         );
 
-        return Focus(
-          focusNode: _tableFocusNode,
-          onKeyEvent: _handleTableKeyEvent,
-          child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(context).copyWith(
-              dragDevices: {
-                PointerDeviceKind.touch,
-                PointerDeviceKind.mouse,
-                PointerDeviceKind.trackpad,
-                PointerDeviceKind.stylus,
-              },
-            ),
-            child: SingleChildScrollView(
-              controller: _horizontalController,
-              scrollDirection: Axis.horizontal,
-              primary: false,
-              child: bodyIsBounded
-                  ? SizedBox(height: bodyHeight, child: tableContent)
-                  : tableContent,
+        return MouseRegion(
+          onEnter: (_) {
+            if (!_tableFocusNode.hasFocus) _tableFocusNode.requestFocus();
+          },
+          child: Focus(
+            focusNode: _tableFocusNode,
+            onKeyEvent: _handleTableKeyEvent,
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: {
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.mouse,
+                  PointerDeviceKind.trackpad,
+                  PointerDeviceKind.stylus,
+                },
+              ),
+              child: SingleChildScrollView(
+                controller: _horizontalController,
+                scrollDirection: Axis.horizontal,
+                primary: false,
+                child: bodyIsBounded
+                    ? SizedBox(height: bodyHeight, child: tableContent)
+                    : tableContent,
+              ),
             ),
           ),
         );

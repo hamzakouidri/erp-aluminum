@@ -351,9 +351,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   }
 
   bool get _isPvcProfile =>
-      (_selectedProfile?['name']?.toString().toLowerCase() ?? '').contains(
-        'pvc',
-      );
+      '${_selectedProfile?['name'] ?? ''} '
+              '${_selectedProfile?['type'] ?? ''} '
+              '${_selectedProfile?['material_type'] ?? ''}'
+          .toLowerCase()
+          .contains('pvc');
   Iterable<_SeriesRole> get _availableRoles =>
       _roles.where((role) => !_isPvcProfile || role.key != 'reducer');
 
@@ -673,12 +675,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       } else {
         selectedIds.remove(sectionId);
         _roleOptionsByRoleSection.remove(_roleOptionKey(role, sectionId));
-        if (role == 'frame' ||
-            role == 'sash' ||
-            role == 'glazing_bead' ||
-            role == 'porte_joint') {
-          _gasketTypeBySectionPosition.remove(sectionId);
-        }
+        // A gasket belongs to the physical section, not to the role chip.
+        // Only remove it when that section is no longer selected in any role.
+        final selectedElsewhere = _sectionIdsByRole.entries.any(
+          (entry) => entry.key != role && entry.value.contains(sectionId),
+        );
+        if (!selectedElsewhere) _gasketTypeBySectionPosition.remove(sectionId);
         if (_defaultSectionByRole[role] == sectionId) {
           _defaultSectionByRole[role] = selectedIds.isEmpty
               ? null
@@ -894,18 +896,18 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       }
     }
     final jointLinks = <Map<String, dynamic>>[];
-    final jointPositionsByRole = <String, List<String>>{
-      if (!_isSlidingSeries) 'frame': const ['frame_inner', 'frame_outer'],
-      'sash': const ['sash_inner', 'sash_outer'],
-      'glazing_bead': const ['parclose_gasket'],
-      'porte_joint': const ['porte_joint_brosse'],
-    };
+    final savedJointLinks = <String>{};
+    final jointPositionsByRole = _jointPositionsByRole();
     for (final entry in jointPositionsByRole.entries) {
       for (final sectionId in _sectionIdsByRole[entry.key] ?? const <int>{}) {
         final links = _gasketTypeBySectionPosition[sectionId] ?? const {};
         for (final position in entry.value) {
           final gasketType = links[position]?.trim() ?? '';
           if (gasketType.isEmpty) continue;
+          // The same physical profile may be assigned to more than one role.
+          // Persist its groove once so the database unique key is respected.
+          if (!savedJointLinks.add('$sectionId:$position:$gasketType'))
+            continue;
           jointLinks.add({
             'section_id': sectionId,
             'gasket_type': gasketType,
@@ -1966,7 +1968,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     }).toList();
   }
 
-  List<String> _availableGasketTypes() {
+  List<String> _availableGasketTypes({bool brushOnly = false}) {
     const preferredOrder = [
       'جوان فيتراج',
       'جوان فراب',
@@ -1977,8 +1979,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final types = <String>{};
     for (final joint in _joints) {
       final material = joint['type']?.toString().toLowerCase() ?? '';
-      if (material.contains('pvc')) continue;
+      if (_isPvcProfile) {
+        if (material.contains('aluminium') || material.contains('aluminum')) {
+          continue;
+        }
+      } else if (material.contains('pvc')) {
+        continue;
+      }
       final canonical = _canonicalGasketType(joint);
+      if (brushOnly && canonical != 'جوان براش') continue;
       if (canonical != null) {
         types.add(canonical);
         continue;
@@ -2104,33 +2113,31 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   }
 
   Widget _aluminumJointLinksCard() {
-    final frameSections = _isSlidingSeries
-        ? const <Map<String, dynamic>>[]
-        : _selectedSectionsForRole('frame');
-    final sashSections = _selectedSectionsForRole('sash');
-    final parcloseSections = _selectedSectionsForRole('glazing_bead');
-    final porteJointSections = _selectedSectionsForRole('porte_joint');
-    if (frameSections.isEmpty &&
-        sashSections.isEmpty &&
-        parcloseSections.isEmpty &&
-        porteJointSections.isEmpty) {
+    final positionsByRole = _jointPositionsByRole();
+    final linkedRoles = _orderedAvailableRoles
+        .where((role) => positionsByRole.containsKey(role.key))
+        .where((role) => _selectedSectionsForRole(role.key).isNotEmpty)
+        .toList(growable: false);
+    if (linkedRoles.isEmpty) {
       return const SizedBox.shrink();
     }
-    final gasketTypes = _availableGasketTypes();
+    final gasketTypes = _availableGasketTypes(
+      brushOnly: _isPvcProfile && _isSlidingSeries,
+    );
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ExpansionTile(
         leading: const Icon(Icons.linear_scale_rounded),
-        title: Text(_t('ربط أنواع الجوانات', 'Types de joints liés')),
+        title: Text(_t('ربط الجوانات بالقطاعات', 'Joints liés aux profilés')),
         subtitle: Text(
           _t(
-            _isSlidingSeries
-                ? 'الضلفة المنزلقة لها جوان داخلي وخارجي، والباكلوز له جوان واحد. إطار المنزلق لا يحمل جوان في هذه السلاسل.'
-                : 'إطار الفتح يمكن أن يحمل جواناً أو جوانين، والضلفة لها جوانان، والباكلوز له جوان واحد. يختار الحساب السماكة المناسبة من النوع المرتبط.',
-            _isSlidingSeries
-                ? 'L’ouvrant coulissant a un joint intérieur et extérieur, et la parclose un joint. Le dormant coulissant n’a pas de joint ici.'
-                : 'Le dormant ouvrant peut avoir un ou deux joints, l’ouvrant deux joints, et la parclose un joint. Le calcul choisit l’épaisseur adaptée du type lié.',
+            _isPvcProfile
+                ? 'في PVC المنزلق اربط ضلفات المنزلق مباشرة بجوان البروس.'
+                : 'يمكن ربط كل قطاع ألمنيوم مختار بالجوان أو الجوانين اللذين يركبان عليه، بما في ذلك الإطار والضلفة والسيل والبلانت والباكلوز والأغطية والشيكان وبقية القطاعات.',
+            _isPvcProfile
+                ? 'En PVC coulissant, liez directement les ouvrants au joint brosse.'
+                : 'Chaque profilé aluminium sélectionné peut être lié à un ou deux joints : dormant, ouvrant, seuil, plinthe, parclose, caches, chicane et autres profilés.',
           ),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
@@ -2143,36 +2150,84 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               ),
             )
           else ...[
-            _jointRoleSection(_t('الإطار', 'Dormant'), frameSections, const [
-              ('frame_inner', 'جوان الإطار الداخلي', 'Joint dormant intérieur'),
-              ('frame_outer', 'جوان الإطار الخارجي', 'Joint dormant extérieur'),
-            ], gasketTypes),
-            _jointRoleSection(_t('الضلفة', 'Ouvrant'), sashSections, const [
-              ('sash_inner', 'جوان الظلفة الداخلي', 'Joint ouvrant intérieur'),
-              ('sash_outer', 'جوان الظلفة الخارجي', 'Joint ouvrant extérieur'),
-            ], gasketTypes),
-            _jointRoleSection(
-              _t('الباكلوز', 'Parclose'),
-              parcloseSections,
-              const [('parclose_gasket', 'جوان الباكلوز', 'Joint parclose')],
-              gasketTypes,
-            ),
-            _jointRoleSection(
-              _t('حامل الجوان', 'Porte-joint'),
-              porteJointSections,
-              const [
-                (
-                  'porte_joint_brosse',
-                  'جوان بروس حامل الجوان',
-                  'Joint brosse porte-joint',
-                ),
-              ],
-              gasketTypes,
-            ),
+            for (final role in linkedRoles)
+              _jointRoleSection(
+                _t(role.ar, role.fr),
+                _selectedSectionsForRole(role.key),
+                positionsByRole[role.key]!,
+                gasketTypes,
+              ),
           ],
         ],
       ),
     );
+  }
+
+  Map<String, List<(String, String, String)>> _jointPositionsByRole() {
+    if (_isPvcProfile) {
+      if (!_isSlidingSeries) return const {};
+      return const {
+        'sash': [
+          (
+            'sash_inner',
+            'جوان بروس الضلفة الداخلي',
+            'Joint brosse ouvrant intérieur',
+          ),
+          (
+            'sash_outer',
+            'جوان بروس الضلفة الخارجي',
+            'Joint brosse ouvrant extérieur',
+          ),
+        ],
+        'sash_lateral': [
+          ('sash_inner', 'جوان بروس الجانب الأول', 'Joint brosse côté 1'),
+          ('sash_outer', 'جوان بروس الجانب الثاني', 'Joint brosse côté 2'),
+        ],
+        'sash_central': [
+          ('sash_inner', 'جوان بروس الجانب الأول', 'Joint brosse côté 1'),
+          ('sash_outer', 'جوان بروس الجانب الثاني', 'Joint brosse côté 2'),
+        ],
+        'sash_traverse': [
+          ('sash_inner', 'جوان بروس الجانب الأول', 'Joint brosse côté 1'),
+          ('sash_outer', 'جوان بروس الجانب الثاني', 'Joint brosse côté 2'),
+        ],
+      };
+    }
+
+    final result = <String, List<(String, String, String)>>{};
+    for (final role in _roles) {
+      result[role.key] = const [
+        (
+          'profile_gasket_1',
+          'جوان القطاع — الجانب الأول',
+          'Joint du profilé — côté 1',
+        ),
+        (
+          'profile_gasket_2',
+          'جوان القطاع — الجانب الثاني',
+          'Joint du profilé — côté 2',
+        ),
+      ];
+    }
+    result['frame'] = const [
+      ('frame_inner', 'جوان الإطار الداخلي', 'Joint dormant intérieur'),
+      ('frame_outer', 'جوان الإطار الخارجي', 'Joint dormant extérieur'),
+    ];
+    result['sash'] = const [
+      ('sash_inner', 'جوان الضلفة الداخلي', 'Joint ouvrant intérieur'),
+      ('sash_outer', 'جوان الضلفة الخارجي', 'Joint ouvrant extérieur'),
+    ];
+    result['glazing_bead'] = const [
+      ('parclose_gasket', 'جوان الباكلوز', 'Joint parclose'),
+    ];
+    result['porte_joint'] = const [
+      (
+        'porte_joint_brosse',
+        'جوان بروس حامل الجوان',
+        'Joint brosse porte-joint',
+      ),
+    ];
+    return result;
   }
 
   Widget _jointRoleSection(

@@ -588,6 +588,21 @@ bool isSlidingSeriesForDrawing(AluminumSeries series) {
       value.contains('hps');
 }
 
+String normalizeSeriesDesignRoleKey(dynamic raw) {
+  final value = raw?.toString().trim().toLowerCase() ?? '';
+  if (const {
+    'reducer',
+    'reducteur',
+    'réducteur',
+    'réducteure',
+    'ريديكتور',
+    'مخفض الزجاج',
+  }.contains(value)) {
+    return 'reducer';
+  }
+  return value;
+}
+
 bool isOpeningSeriesForDrawing(
   AluminumSeries series,
   AluminumProfileSystem profile,
@@ -1015,6 +1030,10 @@ class WindowZone {
   int innerH;
   int innerV;
   int slidingSashesCount;
+
+  /// Physical rails in the frame. This is deliberately independent from
+  /// [slidingSashesCount]: three/four leaves may run on two or more rails.
+  int slidingTrackCount;
   bool cutSlidingGlassRebate;
   int rightInnerH;
   int rightInnerV;
@@ -1084,6 +1103,7 @@ class WindowZone {
     this.innerH = 0,
     this.innerV = 0,
     this.slidingSashesCount = 2,
+    this.slidingTrackCount = 2,
     this.cutSlidingGlassRebate = true,
     this.rightInnerH = 0,
     this.rightInnerV = 0,
@@ -1142,6 +1162,7 @@ class WindowZone {
     innerH: innerH,
     innerV: innerV,
     slidingSashesCount: slidingSashesCount,
+    slidingTrackCount: slidingTrackCount,
     cutSlidingGlassRebate: cutSlidingGlassRebate,
     rightInnerH: rightInnerH,
     rightInnerV: rightInnerV,
@@ -1194,6 +1215,7 @@ class WindowZone {
     innerH: innerH,
     innerV: innerV,
     slidingSashesCount: slidingSashesCount,
+    slidingTrackCount: slidingTrackCount,
     cutSlidingGlassRebate: cutSlidingGlassRebate,
     rightInnerH: rightInnerH,
     rightInnerV: rightInnerV,
@@ -1243,6 +1265,7 @@ class WindowZone {
     int? innerH,
     int? innerV,
     int? slidingSashesCount,
+    int? slidingTrackCount,
     bool? cutSlidingGlassRebate,
     int? rightInnerH,
     int? rightInnerV,
@@ -1285,6 +1308,7 @@ class WindowZone {
     innerH: innerH ?? this.innerH,
     innerV: innerV ?? this.innerV,
     slidingSashesCount: slidingSashesCount ?? this.slidingSashesCount,
+    slidingTrackCount: slidingTrackCount ?? this.slidingTrackCount,
     cutSlidingGlassRebate: cutSlidingGlassRebate ?? this.cutSlidingGlassRebate,
     rightInnerH: rightInnerH ?? this.rightInnerH,
     rightInnerV: rightInnerV ?? this.rightInnerV,
@@ -2796,6 +2820,8 @@ class WindowModel extends ChangeNotifier {
       {};
   final Map<int, Map<String, Map<int, bool>>>
   _seriesDesignRoleIntegratedSideCover = {};
+  final Map<int, Map<String, Map<int, Map<String, dynamic>>>>
+  _seriesDesignRoleOptions = {};
 
   // Cutting rules are catalog data, separate from the drawing definition.
   // Keep the sliding copy distinct so a mixed drawing never applies an
@@ -2918,14 +2944,14 @@ class WindowModel extends ChangeNotifier {
     List<Map<String, dynamic>> rows,
   ) {
     _seriesDesignRoleKeys[series.id] = rows
-        .map((row) => row['role_key']?.toString().trim())
-        .whereType<String>()
+        .map((row) => normalizeSeriesDesignRoleKey(row['role_key']))
         .where((role) => role.isNotEmpty)
         .toSet();
     final roleIds = <String, Set<int>>{};
     final roleScopes = <String, Map<int, String>>{};
     final roleAllowsSideCover = <String, Map<int, bool>>{};
     final roleIntegratedSideCover = <String, Map<int, bool>>{};
+    final roleOptions = <String, Map<int, Map<String, dynamic>>>{};
     bool? readBool(Object? value) {
       if (value is bool) return value;
       if (value is num) return value != 0;
@@ -2942,13 +2968,15 @@ class WindowModel extends ChangeNotifier {
     }
 
     for (final row in rows) {
-      final role = row['role_key']?.toString().trim();
+      final role = normalizeSeriesDesignRoleKey(row['role_key']);
       final rawId = row['section_id'];
       final sectionId = rawId is num
           ? rawId.toInt()
           : int.tryParse(rawId?.toString() ?? '');
-      if (role == null || role.isEmpty || sectionId == null) continue;
+      if (role.isEmpty || sectionId == null) continue;
       roleIds.putIfAbsent(role, () => <int>{}).add(sectionId);
+      roleOptions.putIfAbsent(role, () => {})[sectionId] =
+          Map<String, dynamic>.from(row);
       roleScopes.putIfAbsent(role, () => {})[sectionId] =
           row['usage_scope']?.toString().trim().toLowerCase() ?? 'auto';
       final allowsSideCover = readBool(row['allows_side_cover']);
@@ -2966,6 +2994,7 @@ class WindowModel extends ChangeNotifier {
     _seriesDesignRoleUsageScopes[series.id] = roleScopes;
     _seriesDesignRoleAllowsSideCover[series.id] = roleAllowsSideCover;
     _seriesDesignRoleIntegratedSideCover[series.id] = roleIntegratedSideCover;
+    _seriesDesignRoleOptions[series.id] = roleOptions;
   }
 
   bool _roleScopeMatches(String? scope, {required bool sliding}) {
@@ -3373,9 +3402,7 @@ class WindowModel extends ChangeNotifier {
         type.contains('فريم');
   }
 
-  /// Multi-frame drawings start with the side-cover option disabled. This is
-  /// only a default: once the user explicitly enables it, keep that choice
-  /// and let the normal cover calculation run for the physical frames.
+  /// Multi-frame drawings keep the side-cover option enabled by default.
   void _enforceMultiFramePlainFrameRule() {
     final isMultiFrame = getFrameRects().length > 1;
     if (!isMultiFrame) {
@@ -3388,8 +3415,9 @@ class WindowModel extends ChangeNotifier {
     // Do not overwrite an explicit user choice on every notifyListeners().
     if (_multiFrameSideCoverManuallyEnabled) return;
 
-    // Default state for a multi-frame drawing: no couvre-joint is active.
-    hasSideCovers = false;
+    // The cover button is enabled by default; the perimeter calculation below
+    // removes every shared/internal edge between adjacent frames.
+    hasSideCovers = true;
     useCustomSideCoverLayout = false;
     sideCoverSegments = [];
     hiddenSideCoverSegments.clear();
@@ -3455,6 +3483,10 @@ class WindowModel extends ChangeNotifier {
         RegExp(r'(^|[^0-9])36([^0-9]|$)').hasMatch(label)) {
       return 'h36';
     }
+    // TPR is a named sliding family in the catalogue (not a numeric
+    // millimetre series). Keep it in the same family resolver so all
+    // quantity/cost component rules can select it consistently.
+    if (label.contains('tpr') || label.contains('tpi')) return 'tpr';
     return null;
   }
 
@@ -3614,7 +3646,9 @@ class WindowModel extends ChangeNotifier {
     // when the selected plain frame supports it.
     if (manualSelection) {
       final frameHasIntegratedCover = _overrideHasIntegratedSideCover(mutable);
-      hasSideCovers = frameHasIntegratedCover;
+      hasSideCovers =
+          frameHasIntegratedCover ||
+          _overrideAllowsStandaloneSideCover(mutable);
       _multiFrameSideCoverManuallyEnabled = false;
       useCustomSideCoverLayout = false;
       sideCoverSegments = [];
@@ -3640,6 +3674,13 @@ class WindowModel extends ChangeNotifier {
   }
 
   int? _slidingTrackCountFromFrame(Map<String, dynamic> frame) {
+    final configured = frame['design_track_count'] ?? frame['track_count'];
+    final configuredCount = configured is num
+        ? configured.toInt()
+        : int.tryParse(configured?.toString() ?? '');
+    if (configuredCount != null && configuredCount >= 2) {
+      return configuredCount.clamp(2, 6).toInt();
+    }
     final label =
         '${frame['name'] ?? ''} ${frame['type'] ?? ''} '
                 '${frame['code'] ?? ''}'
@@ -3653,6 +3694,7 @@ class WindowModel extends ChangeNotifier {
       ).hasMatch(label);
     }
 
+    if (mentions(5)) return 5;
     if (mentions(4)) return 4;
     if (mentions(3)) return 3;
     if (mentions(2)) return 2;
@@ -3663,9 +3705,36 @@ class WindowModel extends ChangeNotifier {
     final trackCount = _slidingTrackCountFromFrame(frame);
     if (trackCount == null) return;
 
+    var updated = false;
+    final isCompleteFrame =
+        frame['design_track_mode']?.toString().toLowerCase() == 'complete';
     for (final zone in zones) {
       if (zone.content == ZoneContent.slidingSash) {
-        zone.slidingSashesCount = trackCount;
+        zone.slidingTrackCount = trackCount;
+        if (isCompleteFrame || zone.slidingSashesCount < trackCount) {
+          zone.slidingSashesCount = trackCount.clamp(2, 6).toInt();
+        }
+        updated = true;
+      }
+    }
+
+    // Selecting a complete multi-rail frame is also an explicit drawing
+    // choice. If the current drawing has not yet been made sliding, promote
+    // the selected zone (or the sole zone) immediately to the matching sash
+    // count so a 3-rail frame visibly becomes a 3-sash drawing.
+    if (!updated) {
+      final target = selectedZone ?? (zones.length == 1 ? zones.first : null);
+      if (target != null) {
+        target.content = ZoneContent.slidingSash;
+        target.slidingTrackCount = trackCount;
+        // A complete N-rail frame starts with an intuitive N-leaf drawing,
+        // but the user can then change leaves and rails independently.
+        target.slidingSashesCount = trackCount.clamp(2, 6).toInt();
+        target.innerH = 0;
+        target.innerV = 0;
+        target.rightInnerH = 0;
+        target.rightInnerV = 0;
+        target.openDirection = OpenDirection.right;
       }
     }
   }
@@ -7144,6 +7213,16 @@ class WindowModel extends ChangeNotifier {
     return double.tryParse(value?.toString() ?? '') ?? 0.0;
   }
 
+  /// Vertical deduction configured for the sliding sash. The database keeps
+  /// the legacy column name `sash_overlap_val`, but the series form defines
+  /// it as a value deducted from the usable height.
+  double slidingSashHeightDeduction() {
+    final config = slidingSeriesTableConfig ?? seriesTableConfig;
+    final value = config?['sash_overlap_val'];
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
   double getSectionThickness(String type, {double fallback = 45.0}) {
     final useSliding = systemMode == 'sliding' || usesSlidingPrimaryProfiles;
     final series = useSliding ? activeSlidingSeries : activeSeries;
@@ -7507,13 +7586,90 @@ class WindowModel extends ChangeNotifier {
     return null;
   }
 
-  /// Number of one-track additions needed after the mandatory two-track
-  /// base.  A sliding drawing with N leaves needs N physical tracks, so the
-  /// two-track frame supplies the first two and each remaining track is one
-  /// monorail section.
-  int slidingSingleTrackAdditionCount(int sashCount) {
-    final safeCount = sashCount.clamp(2, 4).toInt();
-    return math.max(0, safeCount - 2);
+  /// Number of one-track additions needed after a two-track base frame.
+  int slidingSingleTrackAdditionCount(int trackCount) {
+    final safeCount = trackCount.clamp(2, 6).toInt();
+    final frameMode =
+        slidingFrameOverride?['design_track_mode']?.toString().toLowerCase() ??
+        '';
+    if (frameMode == 'complete') return 0;
+    final baseRaw = slidingFrameOverride?['design_track_count'];
+    final baseCount = baseRaw is num
+        ? baseRaw.toInt()
+        : int.tryParse(baseRaw?.toString() ?? '') ?? 2;
+    final missingTracks = math.max(0, safeCount - baseCount);
+    final extension = getSlidingFrameExtensionSection();
+    final seriesId = activeSlidingSeries?.id;
+    final addsRaw = seriesId == null || extension == null
+        ? null
+        : _seriesDesignRoleOptions[seriesId]?['frame_extension']?[extension
+              .id]?['track_adds'];
+    final tracksPerExtension = addsRaw is num
+        ? addsRaw.toInt()
+        : int.tryParse(addsRaw?.toString() ?? '') ?? 1;
+    return (missingTracks / math.max(1, tracksPerExtension)).ceil();
+  }
+
+  bool get selectedSlidingFrameIsComplete =>
+      slidingFrameOverride?['design_track_mode']?.toString().toLowerCase() ==
+      'complete';
+
+  Set<int> get supportedSlidingTrackCounts {
+    final seriesId = activeSlidingSeries?.id;
+    final result = <int>{2};
+
+    void addCounts(Map<String, dynamic> options) {
+      final count = options['design_track_count'] ?? options['track_count'];
+      final parsedCount = count is num
+          ? count.toInt()
+          : int.tryParse(count?.toString() ?? '');
+      if (parsedCount != null && parsedCount >= 2 && parsedCount <= 6) {
+        result.add(parsedCount);
+      }
+      for (final token
+          in (options['design_supported_track_counts'] ??
+                  options['supported_track_counts'] ??
+                  '')
+              .toString()
+              .split(',')) {
+        final value = int.tryParse(token.trim());
+        if (value != null && value >= 2 && value <= 6) result.add(value);
+      }
+    }
+
+    if (slidingFrameOverride != null) addCounts(slidingFrameOverride!);
+    if (seriesId == null) return result;
+    final roles = _seriesDesignRoleOptions[seriesId];
+    if (roles == null || roles.isEmpty) {
+      // Compatibility for old catalogues that predate explicit frame rules.
+      return {...result, 3, 4};
+    }
+    final frameOptions = roles['frame'];
+    if (frameOptions != null) {
+      for (final options in frameOptions.values) {
+        addCounts(options);
+      }
+    }
+    final extensionOptions = roles['frame_extension'];
+    if (extensionOptions != null) {
+      for (final options in extensionOptions.values) {
+        addCounts(options);
+      }
+    }
+    return result;
+  }
+
+  /// Leaf choices follow the catalogue capability. A composable frame may
+  /// expose 5/6 leaves; a closed three-track system remains limited to 3.
+  Set<int> get supportedSlidingSashCounts {
+    final tracks = supportedSlidingTrackCounts;
+    final maxCount = tracks.reduce(math.max);
+    final minimum = selectedZone?.content == ZoneContent.slidingSash
+        ? selectedZone!.slidingTrackCount.clamp(2, 6).toInt()
+        : 2;
+    return {
+      for (var count = minimum; count <= maxCount; count++) count,
+    };
   }
 
   /// Returns a manually selected sliding profile only when it belongs to the
@@ -7605,8 +7761,7 @@ class WindowModel extends ChangeNotifier {
         return false;
       }
       final glassRule = row['show_when_glass']?.toString().trim() ?? 'any';
-      if (glassRule == 'simple' &&
-          (!hasSimpleGlassForReducer || hasDoubleGlassForRules)) {
+      if (glassRule == 'simple' && !hasSimpleGlassForReducer) {
         return false;
       }
       if (glassRule == 'double' && !hasDoubleGlassForRules) return false;
@@ -7618,7 +7773,9 @@ class WindowModel extends ChangeNotifier {
       final ids = configuredRoleRows
           .where(
             (row) =>
-                roleKeys.contains(row['role_key']?.toString().trim()) &&
+                roleKeys.contains(
+                  normalizeSeriesDesignRoleKey(row['role_key']),
+                ) &&
                 configuredRoleRowAllowed(row),
           )
           .map((row) {
@@ -7819,9 +7976,7 @@ class WindowModel extends ChangeNotifier {
     }
 
     final reducers = configuredSectionsFor(const ['reducer']);
-    if (reducers.isNotEmpty &&
-        hasSimpleGlassForReducer &&
-        !hasDoubleGlassForRules) {
+    if (reducers.isNotEmpty && hasSimpleGlassForReducer) {
       final rMap = Map<String, dynamic>.from(reducers.first.toMap());
       final rId = rMap['id'] as int?;
       if (rId != null) {
@@ -8663,8 +8818,7 @@ class WindowModel extends ChangeNotifier {
         return false;
       }
       final glassRule = row['show_when_glass']?.toString().trim() ?? 'any';
-      if (glassRule == 'simple' &&
-          (!hasSimpleGlassForReducer || hasDoubleGlassForRules)) {
+      if (glassRule == 'simple' && !hasSimpleGlassForReducer) {
         return false;
       }
       if (glassRule == 'double' && !hasDoubleGlassForRules) return false;
@@ -8676,7 +8830,9 @@ class WindowModel extends ChangeNotifier {
       final ids = configuredRoleRows
           .where(
             (row) =>
-                roleKeys.contains(row['role_key']?.toString().trim()) &&
+                roleKeys.contains(
+                  normalizeSeriesDesignRoleKey(row['role_key']),
+                ) &&
                 configuredRoleRowAllowed(row),
           )
           .map((row) {
@@ -8922,9 +9078,7 @@ class WindowModel extends ChangeNotifier {
     }
 
     final reducers = configuredSectionsFor(const ['reducer']);
-    if (reducers.isNotEmpty &&
-        hasSimpleGlassForReducer &&
-        !hasDoubleGlassForRules) {
+    if (reducers.isNotEmpty && hasSimpleGlassForReducer) {
       final rMap = Map<String, dynamic>.from(reducers.first.toMap());
       final rId = rMap['id'] as int?;
       if (rId != null) {
@@ -14919,7 +15073,19 @@ class WindowModel extends ChangeNotifier {
   void setSlidingSashesCount(int count) {
     if (selectedZone == null) return;
     _saveSnapshot();
-    selectedZone!.slidingSashesCount = count.clamp(2, 4).toInt();
+    selectedZone!.slidingSashesCount = count.clamp(2, 6).toInt();
+    notifyListeners();
+  }
+
+  void setSelectedZoneSlidingTracks(int count) {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.slidingSash) return;
+    _saveSnapshot();
+    if (!supportedSlidingTrackCounts.contains(count)) return;
+    zone.slidingTrackCount = count.clamp(2, 6).toInt();
+    if (zone.slidingSashesCount < zone.slidingTrackCount) {
+      zone.slidingSashesCount = zone.slidingTrackCount;
+    }
     notifyListeners();
   }
 
@@ -14929,7 +15095,11 @@ class WindowModel extends ChangeNotifier {
     if (zone == null) return;
     _saveSnapshot();
     zone.content = ZoneContent.slidingSash;
-    zone.slidingSashesCount = count.clamp(2, 4).toInt();
+    if (!supportedSlidingSashCounts.contains(count) ||
+        count < zone.slidingTrackCount) {
+      return;
+    }
+    zone.slidingSashesCount = count.clamp(2, 6).toInt();
     zone.cutSlidingGlassRebate =
         cutSlidingGlassRebate ?? zone.cutSlidingGlassRebate;
     zone.sashThickness = _calculateSashThickness(zone.isSash105);
@@ -15907,7 +16077,7 @@ class WindowModel extends ChangeNotifier {
       }
       if (lower.contains('kit') || key.contains('كيت')) return 'sliding_kit';
       if (lower.contains('clam') || key.contains('كلام')) {
-        return 'sliding_clamp';
+        return 'clam';
       }
       return null;
     }
@@ -19249,7 +19419,10 @@ class WindowModel extends ChangeNotifier {
     final rects = getFrameRects();
     if (rects.length <= 1) return const <FrameEdgeSegment>[];
 
-    const tolerance = 2.0;
+    // Adjacent frames can differ by a few logical pixels after proportional
+    // layout/rounding. Treat that seam as shared so no cover or visual gap is
+    // produced between the frames.
+    const tolerance = 5.0;
     final raw = <FrameEdgeSegment>[];
 
     void addVisiblePieces({

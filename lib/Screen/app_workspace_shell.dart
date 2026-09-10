@@ -699,7 +699,7 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
       child: SafeArea(
         bottom: false,
         child: StreamBuilder<DocumentSnapshot>(
-          stream: user == null
+          stream: user == null || AppAuthService().usesSupabase
               ? null
               : FirebaseFirestore.instance
                     .collection('users')
@@ -1051,7 +1051,7 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
         ? _workshopName
         : Localization.translate('اسم الورشة', language);
     return StreamBuilder<DocumentSnapshot>(
-      stream: user == null
+      stream: user == null || AppAuthService().usesSupabase
           ? null
           : FirebaseFirestore.instance
                 .collection('users')
@@ -1205,7 +1205,7 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
   Widget build(BuildContext context) {
     final user = AppAuthService().currentUser;
     return StreamBuilder<DocumentSnapshot>(
-      stream: user == null
+      stream: user == null || AppAuthService().usesSupabase
           ? null
           : FirebaseFirestore.instance
                 .collection('users')

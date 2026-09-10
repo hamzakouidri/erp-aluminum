@@ -470,33 +470,19 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
     final controller = details.controller;
     final axis = axisDirectionToAxis(details.direction);
 
-    if (isWindowsDesktop && controller != null) {
-      if (axis == Axis.horizontal) {
-        return _RegisteredDesktopScrollable(
-          controller: controller,
-          axis: axis,
-          child: _HorizontalWheelScrollbar(
-            controller: controller,
-            child: child,
-          ),
-        );
-      }
-
-      // Bind the visible scrollbar to the exact controller used by the
-      // scrollable. This prevents pages with nested lists from waiting until
-      // the user drags the thumb before the wheel/scroll position is active.
+    if (isWindowsDesktop && controller != null && axis == Axis.horizontal) {
       return _RegisteredDesktopScrollable(
         controller: controller,
         axis: axis,
-        child: Scrollbar(
-          controller: controller,
-          thumbVisibility: true,
-          interactive: true,
-          child: child,
-        ),
+        child: _HorizontalWheelScrollbar(controller: controller, child: child),
       );
     }
 
+    // Keep vertical scrolling on Flutter's native route. Wrapping every
+    // vertical ScrollView in an always-interactive Scrollbar caused stale
+    // controller registrations after page/tab rebuilds; subsequent wheel
+    // signals could then be resolved against the detached viewport and all
+    // vertical scrolling appeared to stop until the page was reopened.
     return super.buildScrollbar(context, child, details);
   }
 }

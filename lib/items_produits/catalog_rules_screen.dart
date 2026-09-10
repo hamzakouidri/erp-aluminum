@@ -8,6 +8,7 @@ import '../settings/localization.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/section_image.dart';
+import '../Commande/Systeme/accessory_assembly.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
   const CatalogRulesScreen({super.key, required this.db});
@@ -53,6 +54,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   final _tables = const ['Accessories', 'Joints'];
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
   final Map<String, Map<String, dynamic>> _rulesByItem = {};
+  List<Map<String, dynamic>> _assemblySections = [];
+  List<Map<String, dynamic>> _seriesOptions = [];
+  int? _selectedSeriesId;
   bool _loading = true;
   bool _saving = false;
 
@@ -92,9 +96,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final results = await Future.wait<dynamic>([
       widget.db.readAccessories(),
       widget.db.readJoints(),
-      widget.db.getCatalogItemRules(itemTable: 'Accessories'),
-      widget.db.getCatalogItemRules(itemTable: 'Joints'),
     ]);
+    final database = await widget.db.db;
+    _seriesOptions =
+        await database?.rawQuery('''
+      SELECT s.id, s.name, s.type, p.name AS profile_name
+      FROM Series s
+      LEFT JOIN Profile p ON p.id = s.profile_id
+      ORDER BY p.name ASC, s.name ASC
+    ''') ??
+        [];
+    _assemblySections = [];
     if (!mounted) return;
     _itemsByTable
       ..clear()
@@ -103,21 +115,50 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         'Joints': results[1] as List<Map<String, dynamic>>,
       });
     _rulesByItem.clear();
-    for (final raw in [
-      ...(results[2] as List<Map<String, dynamic>>),
-      ...(results[3] as List<Map<String, dynamic>>),
-    ]) {
+    setState(() => _loading = false);
+  }
+
+  Future<void> _selectSeries(int seriesId) async {
+    setState(() {
+      _selectedSeriesId = seriesId;
+      _loading = true;
+    });
+    final results = await Future.wait([
+      widget.db.getCatalogItemRules(
+        itemTable: 'Accessories',
+        seriesId: seriesId,
+      ),
+      widget.db.getCatalogItemRules(itemTable: 'Joints', seriesId: seriesId),
+    ]);
+    final database = await widget.db.db;
+    final sections =
+        await database?.query(
+          'Sections',
+          where: 'series_id = ?',
+          whereArgs: [seriesId],
+          orderBy: 'code',
+        ) ??
+        [];
+    if (!mounted || _selectedSeriesId != seriesId) return;
+    _rulesByItem.clear();
+    for (final raw in [...results[0], ...results[1]]) {
       final table = raw['item_table']?.toString() ?? '';
       final itemId = (raw['item_id'] as num?)?.toInt();
       if (table.isEmpty || itemId == null) continue;
-      _rulesByItem[_itemKey(table, itemId)] = Map<String, dynamic>.from(raw);
+      final rule = Map<String, dynamic>.from(raw)..['series_id'] = seriesId;
+      final storedRole = rule['role_key']?.toString();
+      if (storedRole == 'sliding_clamp' || storedRole == 'clamp') {
+        rule['role_key'] = 'clam';
+        if (storedRole == 'sliding_clamp') rule['usage_scope'] = 'sliding';
+      }
+      _rulesByItem[_itemKey(table, itemId)] = rule;
     }
+    _assemblySections = sections;
     for (final table in _tables) {
       for (final item
           in _itemsByTable[table] ?? const <Map<String, dynamic>>[]) {
         final itemId = _itemId(item);
-        if (itemId == null) continue;
-        _ruleFor(table, itemId);
+        if (itemId != null) _ruleFor(table, itemId)['series_id'] = seriesId;
       }
     }
     setState(() => _loading = false);
@@ -152,8 +193,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('renfort_screw', 'براغي حديد الدعم', 'Vis renfort'),
           _RuleRole('manivelle_screw', 'براغي المانيفال', 'Vis manivelle'),
           _RuleRole('assembly_screw', 'براغي التجميع', 'Vis assemblage'),
+          _RuleRole('clam', 'كلام', 'Clam'),
+          _RuleRole('frame_clamp', 'كلام الإطار', 'Équerre dormant'),
+          _RuleRole('sash_clamp', 'كلام الظلفة', 'Équerre ouvrant'),
+          _RuleRole(
+            'frame_clamp_support',
+            'حامل / مكمل كلام الإطار',
+            'Support équerre dormant',
+          ),
+          _RuleRole(
+            'sash_clamp_support',
+            'حامل / مكمل كلام الظلفة',
+            'Support équerre ouvrant',
+          ),
           _RuleRole('installation_screw', 'براغي التركيب', 'Vis pose'),
           _RuleRole('accessory_screw', 'براغي الإكسسوارات', 'Vis accessoires'),
+          _RuleRole('kit', 'كيت السلسلة', 'Kit de série'),
           _RuleRole('sliding_kit', 'كيت المنزلق', 'Kit coulissant'),
           _RuleRole('gache_simple', 'قاش بسيط', 'Gâche simple'),
           _RuleRole('gache_double', 'قاش مزدوج', 'Gâche double'),
@@ -164,7 +219,6 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             'قفل كونداناسيون',
             'Serrure condamnation',
           ),
-          _RuleRole('sliding_clamp', 'كلام منزلق', 'Clam coulissant'),
           _RuleRole('sliding_lock', 'قفل/قاش منزلق', 'Gâche coulissant'),
           _RuleRole('verrou', 'فيرو', 'Verrou'),
           _RuleRole('cremone', 'كريمون', 'Crémone'),
@@ -325,6 +379,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'usage_scope': 'global',
       'show_when_glass': 'any',
       'selection_mode': 'always',
+      'assembly_target': '',
+      'assembly_section_ids': '',
+      'top_corner_qty': 1,
+      'bottom_corner_qty': 1,
       'integrated_side_cover': false,
       'allows_side_cover': true,
       'allowed_with_shutter': true,
@@ -445,6 +503,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         roleKeys: {'hinge'},
       ),
       _CatalogGroup(
+        key: 'clamps',
+        ar: 'الكلام وحامل الكلام',
+        fr: 'Équerres et supports',
+        icon: Icons.crop_square_rounded,
+        roleKeys: {
+          'clam',
+          'clamp',
+          'sliding_clamp',
+          'frame_clamp',
+          'sash_clamp',
+          'frame_clamp_support',
+          'sash_clamp_support',
+        },
+      ),
+      _CatalogGroup(
         key: 'moving',
         ar: 'الطاسو والإيكار والعجلات',
         fr: 'Tasso, Ekar et roulettes',
@@ -453,10 +526,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           'tasso',
           'ekar',
           'roulette',
+          'kit',
           'sliding_kit',
           'sliding_kit_40000',
           'sliding_kit_67000',
-          'sliding_clamp',
         },
       ),
       _CatalogGroup(
@@ -503,6 +576,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   List<_RuleRole> _rolesForItem(String table, Map<String, dynamic> item) {
+    // A catalogue name/type is only a suggestion. Administrators can bind
+    // any accessory to its actual construction role.
+    if (table == 'Accessories') return _rolesForTable(table);
     final group = _groupsForTable(table).firstWhere(
       (candidate) => _itemBelongsToGroup(table, item, candidate),
       orElse: () => _groupsForTable(table).last,
@@ -596,8 +672,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           (text.contains('kit') || text.contains('كيت'))) {
         return 'sliding_kit_67000';
       }
-      if (text.contains('kit') || text.contains('كيت')) return 'sliding_kit';
-      if (text.contains('clam')) return 'sliding_clamp';
+      if (text.contains('kit') || text.contains('كيت')) return 'kit';
+      if (text.contains('clam') || text.contains('كلام')) return 'clam';
       if (text.contains('gache couliss') || text.contains('gâche couliss')) {
         return 'sliding_lock';
       }
@@ -690,7 +766,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    final seriesId = _selectedSeriesId;
+    if (_saving || seriesId == null) return;
     setState(() => _saving = true);
     try {
       for (final table in _tables) {
@@ -705,6 +782,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             .toList();
         await widget.db.saveCatalogItemRules(
           itemTable: table,
+          seriesId: seriesId,
           rules: rules,
           syncCatalog: false,
         );
@@ -716,7 +794,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text(
-              _t('تم حفظ قواعد الكتالوج العامة.', 'Règles enregistrées.'),
+              _t('تم حفظ قواعد السلسلة.', 'Règles de la série enregistrées.'),
             ),
           ),
         );
@@ -779,7 +857,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         actions: [
           IconButton(
             tooltip: _t('حفظ', 'Enregistrer'),
-            onPressed: _saving ? null : _save,
+            onPressed: _saving || _selectedSeriesId == null ? null : _save,
             icon: _saving
                 ? const SizedBox(
                     width: 20,
@@ -790,12 +868,53 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: _tables.map(_tableView).toList(growable: false),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+            child: DropdownButtonFormField<int>(
+              initialValue: _selectedSeriesId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _t(
+                  'اختر السلسلة أولاً',
+                  'Choisissez d’abord la série',
+                ),
+                border: const OutlineInputBorder(),
+              ),
+              items: _seriesOptions.map((series) {
+                final id = (series['id'] as num).toInt();
+                final profile = series['profile_name']?.toString() ?? '';
+                final name = series['name']?.toString() ?? '';
+                return DropdownMenuItem(
+                  value: id,
+                  child: Text(profile.isEmpty ? name : '$profile — $name'),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) unawaited(_selectSeries(value));
+              },
             ),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _selectedSeriesId == null
+                ? Center(
+                    child: Text(
+                      _t(
+                        'اختر سلسلة لربط أدوار الأكسسوارات والجوانات بها.',
+                        'Choisissez une série pour lier les rôles des accessoires et des joints.',
+                      ),
+                    ),
+                  )
+                : TabBarView(
+                    controller: _tabController,
+                    children: _tables.map(_tableView).toList(growable: false),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -954,6 +1073,104 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     );
   }
 
+  Widget _assemblyRuleEditor(Map<String, dynamic> rule) {
+    final role = rule['role_key'].toString();
+    final defaultTarget = role.startsWith('frame_') ? 'frame' : 'sash';
+    final target =
+        const {'frame', 'sash', 'both'}.contains(rule['assembly_target'])
+        ? rule['assembly_target'].toString()
+        : defaultTarget;
+    final selectedSectionIds = assemblySectionIds(rule);
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: target,
+          decoration: InputDecoration(
+            labelText: _t('يُركّب على', 'Assemblage de'),
+          ),
+          items: [
+            DropdownMenuItem(
+              value: 'frame',
+              child: Text(_t('الإطار', 'Dormant')),
+            ),
+            DropdownMenuItem(
+              value: 'sash',
+              child: Text(_t('الظلفة', 'Ouvrant')),
+            ),
+            DropdownMenuItem(
+              value: 'both',
+              child: Text(_t('الإطار والظلفة', 'Dormant et ouvrant')),
+            ),
+          ],
+          onChanged: (value) => setState(() => rule['assembly_target'] = value),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            _t(
+              'القطاعات المرتبطة (يمكن اختيار أكثر من قطاع)',
+              'Profils associés (sélection multiple)',
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: _assemblySections.map((section) {
+            final id = (section['id'] as num).toInt();
+            return FilterChip(
+              label: Text(
+                '${section['code'] ?? ''} — ${section['name'] ?? ''}',
+              ),
+              selected: selectedSectionIds.contains(id),
+              onSelected: (selected) => setState(() {
+                final next = {...selectedSectionIds};
+                selected ? next.add(id) : next.remove(id);
+                final sorted = next.toList()..sort();
+                rule['assembly_section_ids'] = sorted.join(',');
+                // Keep old databases/readers compatible when exactly one
+                // profile is linked. The CSV field remains authoritative.
+                rule['assembly_section_id'] = sorted.length == 1
+                    ? sorted.first
+                    : null;
+              }),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 8),
+        for (final entry in {
+          'top_corner_qty': _t(
+            'العدد في كل زاوية علوية',
+            'Quantité par angle supérieur',
+          ),
+          'bottom_corner_qty': _t(
+            'العدد في كل زاوية سفلية',
+            'Quantité par angle inférieur',
+          ),
+        }.entries)
+          TextFormField(
+            key: ValueKey('${rule['item_id']}:${entry.key}'),
+            initialValue: '${rule[entry.key] ?? 1}',
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: entry.value),
+            onChanged: (value) {
+              final count = int.tryParse(value);
+              if (count != null && count >= 0) rule[entry.key] = count;
+            },
+          ),
+        Text(
+          _t(
+            'فعّل كل نوع مطلوب على حدة؛ تُجمع الكلامات وحواملها. لا تُحسب الزوايا السفلية عند غياب أسفل الإطار.',
+            'Activez chaque type nécessaire : équerres et supports se cumulent. Aucun angle inférieur sans traverse basse.',
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildRuleCard(String table, Map<String, dynamic> item) {
     final itemId = _itemId(item);
     if (itemId == null) return const SizedBox.shrink();
@@ -1045,6 +1262,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 },
               ),
               if (table == 'Accessories') ...[
+                _assemblyRuleEditor(rule),
                 const SizedBox(height: 10),
                 _accessoryRelationEditor(item),
               ],

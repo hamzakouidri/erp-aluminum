@@ -587,6 +587,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
       setState(() {
         _userEmail = user.email ?? 'لا يوجد بريد';
       });
+      // Supabase owns the active account and workshop profile. Constructing a
+      // Firestore stream here used to initialize Firebase again on every app
+      // open, even though workshop synchronization had already moved away.
+      if (AppAuthService().usesSupabase) return;
       _userSub = FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)

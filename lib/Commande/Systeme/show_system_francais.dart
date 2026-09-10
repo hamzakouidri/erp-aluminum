@@ -56,6 +56,60 @@ class _WindowViewState extends State<WindowView> {
   String _tr(String key) =>
       Localization.translate(key, context.read<AppSettingsProvider>().language);
 
+  String _trackCountLabel(int count, AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => '$count سكك',
+    AppLanguage.french => '$count rails',
+    AppLanguage.english => '$count tracks',
+  };
+
+  String _trackTitle(AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => 'عدد السكك في الإطار:',
+    AppLanguage.french => 'Nombre de rails du cadre :',
+    AppLanguage.english => 'Frame track count:',
+  };
+
+  String _trackShortTitle(AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => 'السكك:',
+    AppLanguage.french => 'Rails :',
+    AppLanguage.english => 'Tracks:',
+  };
+
+  String _slidingCountLabel(int count, AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => 'منزلق $count',
+    AppLanguage.french => 'Coulissant $count vantaux',
+    AppLanguage.english => '$count-sash sliding',
+  };
+
+  String _frameTrackCompositionLabel(
+    int trackCount,
+    bool complete,
+    AppLanguage lang,
+  ) {
+    if (complete) {
+      return switch (lang) {
+        AppLanguage.arabic => 'إطار كامل بـ $trackCount سكك',
+        AppLanguage.french => 'Cadre complet à $trackCount rails',
+        AppLanguage.english => 'Complete $trackCount-track frame',
+      };
+    }
+    if (trackCount <= 2) {
+      return switch (lang) {
+        AppLanguage.arabic => 'إطار أساسي بسكتين',
+        AppLanguage.french => 'Cadre de base à 2 rails',
+        AppLanguage.english => 'Two-track base frame',
+      };
+    }
+    final additions = trackCount - 2;
+    return switch (lang) {
+      AppLanguage.arabic =>
+        'إطار أساسي بسكتين + $additions سكة إضافية',
+      AppLanguage.french =>
+        'Cadre de base à 2 rails + $additions rail(s) ajouté(s)',
+      AppLanguage.english =>
+        'Two-track base frame + $additions additional track(s)',
+    };
+  }
+
   bool _seriesMatchesScope(
     AluminumSeries series,
     AluminumProfileSystem system,
@@ -9710,6 +9764,8 @@ class _WindowViewState extends State<WindowView> {
     );
     bool fromTrailing = false;
     bool useEndOffset = false;
+    SideCoverSegment? segmentToSave;
+    bool removeExistingSegment = false;
 
     double readValue(TextEditingController controller) =>
         double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? -1;
@@ -9824,10 +9880,8 @@ class _WindowViewState extends State<WindowView> {
                   TextButton.icon(
                     onPressed: () {
                       if (!dialogContext.mounted) return;
+                      removeExistingSegment = true;
                       Navigator.of(dialogContext).pop();
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) model.removeSideCoverSegment(side);
-                      });
                     },
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     label: Text(
@@ -9889,19 +9943,13 @@ class _WindowViewState extends State<WindowView> {
                     }
 
                     if (!mounted || !dialogContext.mounted) return;
-                    final segment = SideCoverSegment(
+                    segmentToSave = SideCoverSegment(
                       side: side,
                       startOffset: start,
                       endOffset: end,
                       visibleWidth: visible,
                     );
                     Navigator.of(dialogContext).pop();
-                    // Let the route finish dismissing before notifyListeners()
-                    // rebuilds WindowView. This prevents a transient rebuild
-                    // of the dialog with a context that is already closing.
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) model.saveSideCoverSegment(segment);
-                    });
                   },
                   child: Text(Localization.translate('حفظ', lang)),
                 ),
@@ -9910,6 +9958,18 @@ class _WindowViewState extends State<WindowView> {
           },
         ),
       );
+
+      // `showDialog` completes when Navigator.pop is called, while the dialog
+      // widgets can remain mounted during the reverse route animation. Do not
+      // notify the drawing model in that interval: rebuilding the page would
+      // make inherited-context lookups run from a deactivating dialog tree.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (!mounted) return;
+      if (removeExistingSegment) {
+        model.removeSideCoverSegment(side);
+      } else if (segmentToSave != null) {
+        model.saveSideCoverSegment(segmentToSave!);
+      }
     } finally {
       startController.dispose();
       secondController.dispose();
@@ -11335,7 +11395,7 @@ class _WindowViewState extends State<WindowView> {
                     if (widget.systemMode == 'mixed' && isSlidingSupported) ...[
                       const SizedBox(width: 8),
                       _ContentButton(
-                        label: 'منزلق 2',
+                        label: _slidingCountLabel(2, lang),
                         icon: Icons.sync_alt_rounded,
                         selected:
                             zone.content == ZoneContent.slidingSash &&
@@ -11366,7 +11426,7 @@ class _WindowViewState extends State<WindowView> {
                           slidingSeriesName.contains('tpr')) ...[
                         const SizedBox(width: 8),
                         _ContentButton(
-                          label: 'منزلق 3',
+                          label: _slidingCountLabel(3, lang),
                           icon: Icons.sync_alt_rounded,
                           selected:
                               zone.content == ZoneContent.slidingSash &&
@@ -11394,7 +11454,7 @@ class _WindowViewState extends State<WindowView> {
                           slidingSeriesName.contains('hps')) ...[
                         const SizedBox(width: 8),
                         _ContentButton(
-                          label: 'منزلق 4',
+                          label: _slidingCountLabel(4, lang),
                           icon: Icons.sync_alt_rounded,
                           selected:
                               zone.content == ZoneContent.slidingSash &&
@@ -11422,7 +11482,7 @@ class _WindowViewState extends State<WindowView> {
                   ],
                   if (widget.systemMode == 'sliding' && isSlidingSupported) ...[
                     _ContentButton(
-                      label: 'منزلق 2',
+                      label: _slidingCountLabel(2, lang),
                       icon: Icons.sync_alt_rounded,
                       selected:
                           zone.content == ZoneContent.slidingSash &&
@@ -11453,7 +11513,7 @@ class _WindowViewState extends State<WindowView> {
                         slidingSeriesName.contains('tpr')) ...[
                       const SizedBox(width: 8),
                       _ContentButton(
-                        label: 'منزلق 3',
+                        label: _slidingCountLabel(3, lang),
                         icon: Icons.sync_alt_rounded,
                         selected:
                             zone.content == ZoneContent.slidingSash &&
@@ -11481,7 +11541,7 @@ class _WindowViewState extends State<WindowView> {
                         slidingSeriesName.contains('hps')) ...[
                       const SizedBox(width: 8),
                       _ContentButton(
-                        label: 'منزلق 4',
+                        label: _slidingCountLabel(4, lang),
                         icon: Icons.sync_alt_rounded,
                         selected:
                             zone.content == ZoneContent.slidingSash &&
@@ -11509,6 +11569,49 @@ class _WindowViewState extends State<WindowView> {
                 ],
               ),
             ),
+            if (zone.content == ZoneContent.slidingSash) ...[
+              const SizedBox(height: 12),
+              Text(
+                _trackTitle(context.read<AppSettingsProvider>().language),
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [2, 3, 4, 5]
+                      .map(
+                        (count) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _ContentButton(
+                            label: _trackCountLabel(
+                              count,
+                              context.read<AppSettingsProvider>().language,
+                            ),
+                            icon: Icons.view_week_rounded,
+                            selected: zone.slidingTrackCount == count,
+                            onPressed: () => widget.model
+                                .setSelectedZoneSlidingTracks(count),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _frameTrackCompositionLabel(
+                  zone.slidingTrackCount,
+                  widget.model.selectedSlidingFrameIsComplete,
+                  context.read<AppSettingsProvider>().language,
+                ),
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+              ),
+            ],
             if (widget.model.activeSubZone != null &&
                 (widget.model.activeSubZone!.contains('cell_') ||
                     zone.content == ZoneContent.fixedGlass)) ...[
@@ -12872,12 +12975,8 @@ class _WindowViewState extends State<WindowView> {
     final zone = widget.model.selectedZone;
     if (zone == null) return [];
 
-    String seriesName = activeSeriesForSystem != null
-        ? activeSeriesForSystem!.name.toLowerCase()
-        : '';
-    String slidingSeriesName = widget.model.activeSlidingSeries != null
-        ? widget.model.activeSlidingSeries!.name.toLowerCase()
-        : seriesName;
+    final supportedSlidingCounts = widget.model.supportedSlidingSashCounts;
+    final supportedTrackCounts = widget.model.supportedSlidingTrackCounts;
 
     List<Widget> children = [];
 
@@ -13006,12 +13105,7 @@ class _WindowViewState extends State<WindowView> {
               ),
             );
 
-            if (slidingSeriesName.contains('h36') ||
-                slidingSeriesName.contains('67000') ||
-                slidingSeriesName.contains('67000ld') ||
-                slidingSeriesName.contains('70kp') ||
-                slidingSeriesName.contains('hps') ||
-                slidingSeriesName.contains('tpr')) {
+            if (supportedSlidingCounts.contains(3)) {
               children.add(const SizedBox(width: 8));
               children.add(
                 _ContentButton(
@@ -13042,8 +13136,7 @@ class _WindowViewState extends State<WindowView> {
               );
             }
 
-            if (slidingSeriesName.contains('h36') ||
-                slidingSeriesName.contains('hps')) {
+            if (supportedSlidingCounts.contains(4)) {
               children.add(const SizedBox(width: 8));
               children.add(
                 _ContentButton(
@@ -13077,7 +13170,7 @@ class _WindowViewState extends State<WindowView> {
         } else if (isSlidingSupported) {
           children.add(
             _ContentButton(
-              label: 'منزلق 2',
+              label: _slidingCountLabel(2, lang),
               icon: Icons.sync_alt_rounded,
               selected:
                   zone.content == ZoneContent.slidingSash &&
@@ -13100,16 +13193,11 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
 
-          if (slidingSeriesName.contains('h36') ||
-              slidingSeriesName.contains('67000') ||
-              slidingSeriesName.contains('67000ld') ||
-              slidingSeriesName.contains('70kp') ||
-              slidingSeriesName.contains('hps') ||
-              slidingSeriesName.contains('tpr')) {
+          if (supportedSlidingCounts.contains(3)) {
             children.add(const SizedBox(width: 8));
             children.add(
               _ContentButton(
-                label: 'منزلق 3',
+                label: _slidingCountLabel(3, lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
                     zone.content == ZoneContent.slidingSash &&
@@ -13133,12 +13221,11 @@ class _WindowViewState extends State<WindowView> {
             );
           }
 
-          if (slidingSeriesName.contains('h36') ||
-              slidingSeriesName.contains('hps')) {
+          if (supportedSlidingCounts.contains(4)) {
             children.add(const SizedBox(width: 8));
             children.add(
               _ContentButton(
-                label: 'منزلق 4',
+                label: _slidingCountLabel(4, lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
                     zone.content == ZoneContent.slidingSash &&
@@ -13158,6 +13245,58 @@ class _WindowViewState extends State<WindowView> {
                     await _setSelectedZoneSlidingSashesFromUi(4);
                   }
                 },
+              ),
+            );
+          }
+        }
+        if (isSlidingSupported &&
+            (widget.systemMode == 'sliding' || widget.systemMode == 'mixed')) {
+          for (final count in const [5, 6]) {
+            if (!supportedSlidingCounts.contains(count)) continue;
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: _slidingCountLabel(count, lang),
+                icon: Icons.sync_alt_rounded,
+                selected:
+                    zone.content == ZoneContent.slidingSash &&
+                    zone.slidingSashesCount == count,
+                onPressed: () async {
+                  if (widget.model.hasArchOrSlant) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'نظام المنزلق لا يدعم الشكل المائل والمقوس',
+                          textDirection: TextDirection.rtl,
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  } else {
+                    await _setSelectedZoneSlidingSashesFromUi(count);
+                  }
+                },
+              ),
+            );
+          }
+        }
+        if (zone.content == ZoneContent.slidingSash) {
+          children.add(const SizedBox(width: 16));
+          children.add(
+            Text(
+              _trackShortTitle(lang),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          );
+          for (final count in supportedTrackCounts.toList()..sort()) {
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: _trackCountLabel(count, lang),
+                icon: Icons.view_week_rounded,
+                selected: zone.slidingTrackCount == count,
+                onPressed: () =>
+                    widget.model.setSelectedZoneSlidingTracks(count),
               ),
             );
           }
