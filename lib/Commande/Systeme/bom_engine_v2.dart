@@ -14,6 +14,10 @@ class BomEngineV2 {
   BomEngineV2({SqlDatabase? database}) : _db = database ?? SqlDatabase();
 
   final SqlDatabase _db;
+  String _catalogLabel(String value) => value.replaceAll(
+    RegExp(r'\s*\([^)]*(?:جودة|رفيعة|رديئة|تجارية|قياسية|qualit[ée]|quality|premium|standard|commercial)[^)]*\)', caseSensitive: false),
+    '',
+  ).trim();
   final Map<String, Future<List<Map<String, dynamic>>>> _candidatesCache = {};
 
   Future<void> stabilizeSelections({
@@ -84,13 +88,16 @@ class BomEngineV2 {
   Future<List<BomItem>> _seriesKitItems(WindowModel window) async {
     final result = <BomItem>[];
     final contexts = <({int id, bool sliding, String material})>{
-      if (window.activeSeries != null)
+      if (window.activeSeries != null && !window.isShutterOnly)
         (
           id: window.activeSeries!.id,
-          sliding: false,
+          sliding: window.usesSlidingPrimaryProfiles,
           material: window.isPVC ? 'pvc' : 'aluminium',
         ),
-      if (window.activeSlidingSeries != null)
+      if (window.activeSlidingSeries != null &&
+          !window.isShutterOnly &&
+          window.zones.any((zone) => zone.content == ZoneContent.slidingSash) &&
+          window.activeSlidingSeries!.id != window.activeSeries?.id)
         (
           id: window.activeSlidingSeries!.id,
           sliding: true,
@@ -104,7 +111,12 @@ class BomEngineV2 {
         CatalogCandidateQuery(
           category: 'accessory',
           selectorType: 'kit',
-          roleKeys: const ['kit'],
+          roleKeys: const [
+            'kit',
+            'sliding_kit',
+            'sliding_kit_40000',
+            'sliding_kit_67000',
+          ],
           seriesId: context.id,
           materialType: context.material,
           drawingMode: context.sliding
@@ -112,15 +124,20 @@ class BomEngineV2 {
               : AccessoryDrawingMode.opening,
           requireDialog: false,
           requireQuantity: true,
+          hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+          hasDoubleGlassForRules: window.hasDoubleGlassForRules,
         ),
       );
       for (final candidate in candidates) {
         final id = _catalogInt(candidate['id']);
+        final kitRole = (candidate['catalog_rule'] as Map?)?['role_key']
+                ?.toString() ??
+            'kit';
         result.add(
           BomItem(
             category: 'accessory',
-            originalName: candidate['name']?.toString() ?? 'Kit',
-            name: candidate['name']?.toString() ?? 'Kit',
+            originalName: _catalogLabel(candidate['name']?.toString() ?? 'Kit'),
+            name: _catalogLabel(candidate['name']?.toString() ?? 'Kit'),
             quantity: window.quantity.toDouble(),
             unit: 'kit',
             unitPrice: await _accessoryPrice(database, candidate),
@@ -130,8 +147,8 @@ class BomEngineV2 {
             imagePath: candidate['image_path']?.toString(),
             overrideKey: 'series-kit:${context.id}:${id ?? 0}',
             selectorCategory: 'accessory',
-            selectorType: 'kit',
-            roleKey: 'kit',
+            selectorType: kitRole,
+            roleKey: kitRole,
             sourceSeriesId: context.id,
             materialType: context.material,
           ),
@@ -158,28 +175,30 @@ class BomEngineV2 {
       final material = (sliding ? window.isSlidingPVC : window.isPVC)
           ? 'pvc'
           : 'aluminium';
-      final candidates = await _resolveCandidates(
-        CatalogCandidateQuery(
-          category: 'accessory',
-          selectorType: '',
-          roleKeys: assemblyAccessoryRoles.toList(),
-          seriesId: seriesId,
-          materialType: material,
-          drawingMode: sliding
-              ? AccessoryDrawingMode.sliding
-              : AccessoryDrawingMode.opening,
-          requireDialog: false,
-          requireQuantity: true,
-          hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
-          hasDoubleGlassForRules: window.hasDoubleGlassForRules,
-        ),
-      );
-      final seriesName = sliding
-          ? (window.activeSlidingSeries?.name ??
-                window.activeSeries?.name ??
-                '')
-          : (window.activeSeries?.name ?? '');
-      var clampAdded = false;
+      final candidates = <Map<String, dynamic>>[];
+      // The picker deduplicates by accessory ID. Resolve each role separately
+      // so one accessory can supply both frame and sash corners.
+      for (final assemblyRole in assemblyAccessoryRoles) {
+        candidates.addAll(
+          await _resolveCandidates(
+            CatalogCandidateQuery(
+              category: 'accessory',
+              selectorType: '',
+              roleKeys: [assemblyRole],
+              seriesId: seriesId,
+              materialType: material,
+              drawingMode: sliding
+                  ? AccessoryDrawingMode.sliding
+                  : AccessoryDrawingMode.opening,
+              requireDialog: false,
+              requireQuantity: true,
+              hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+              hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+            ),
+          ),
+        );
+      }
+      final addedRules = <String>{};
       for (final candidate in candidates) {
         final rule = Map<String, dynamic>.from(
           candidate['catalog_rule'] as Map,
@@ -189,16 +208,16 @@ class BomEngineV2 {
         if (quantity <= 0) continue;
         final id = _catalogInt(candidate['id']);
         final role = rule['role_key'].toString();
-        final normalizedRole = role.toLowerCase().trim();
-        final isClamp = normalizedRole.contains('clam');
-        if (isClamp && clampAdded) continue;
-        if (isClamp) clampAdded = true;
         final key = 'assembly:$seriesId:$sliding:$role:$id';
-        final displayName = isClamp
-            ? [
-                'Clam',
-                seriesName.trim(),
-              ].where((part) => part.isNotEmpty).join(' ')
+        // Frame, sash and support rules are additive, even for one accessory.
+        // Suppress only a repeated candidate for the same rule.
+        final ruleKey = '$key:${rule['id'] ?? ''}';
+        if (!addedRules.add(ruleKey)) continue;
+        final seriesName = sliding
+            ? window.activeSlidingSeries?.name ?? window.activeSeries?.name ?? ''
+            : window.activeSeries?.name ?? '';
+        final displayName = const {'clam', 'clamp', 'sliding_clamp', 'frame_clamp', 'sash_clamp'}.contains(role)
+            ? 'Clam ${_catalogLabel(seriesName)}'.trim()
             : candidate['name']?.toString() ?? role;
         items.add(
           BomItem(

@@ -205,6 +205,8 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'lock_clef',
     'lock_condamnation',
     'sliding_kit',
+    'sliding_kit_40000',
+    'sliding_kit_67000',
     'sliding_clamp',
     'sliding_lock',
     'verrou',
@@ -874,6 +876,7 @@ class CatalogCandidateResolver {
               sectionType.contains('ouvrant') ||
               sectionType.contains('opening');
           if (selectingSlidingMontant &&
+              !roleKeys.contains(section['design_role_key']?.toString()) &&
               isOpeningSash &&
               !sectionName.contains('coulissant') &&
               !sectionName.contains('منزلق') &&

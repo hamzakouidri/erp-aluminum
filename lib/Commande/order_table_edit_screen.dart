@@ -1209,7 +1209,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
         return lang == AppLanguage.english
             ? 'Base frame:'
             : lang == AppLanguage.french
-            ? 'De base:'
+            ? 'Cadre de base:'
             : 'الإطار السفلي:';
       case 'closure':
         return lang == AppLanguage.english
@@ -1321,7 +1321,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           'كوفرو جوان:',
         ];
       case 'base':
-        return const ['De base:', 'Base frame:', 'الإطار السفلي:'];
+        return const ['Cadre de base:', 'De base:', 'Base frame:', 'الإطار السفلي:'];
       case 'closure':
         return const ['Fermeture:', 'Closure:', 'الإغلاق', 'نوعية الغلق:'];
       case 'shutter':

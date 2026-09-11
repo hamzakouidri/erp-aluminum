@@ -1961,7 +1961,7 @@ class DevisBuilder {
         details.addAll(_coverJointDetails(map));
         details.add(switch (_currentLang) {
           AppLanguage.french =>
-            'De base: ${map['hasBottomFrame'] == false ? "absent" : "présent"}',
+            'Cadre de base: ${map['hasBottomFrame'] == false ? "absent" : "présent"}',
           AppLanguage.english =>
             'Base frame: ${map['hasBottomFrame'] == false ? "absent" : "present"}',
           AppLanguage.arabic =>
@@ -2212,13 +2212,30 @@ class DevisBuilder {
   }) {
     final specs = <Map<String, dynamic>>[];
     for (final z in _zonesFromMap(map)) {
-      final glass = z['glass'];
-      if (glass is Map) specs.add(Map<String, dynamic>.from(glass));
-      final cellGlass = z['cellGlassSpec'];
-      if (cellGlass is Map) {
-        for (final value in cellGlass.values) {
-          if (value is Map) specs.add(Map<String, dynamic>.from(value));
+      final content = z['content']?.toString() ?? '';
+      if (content.endsWith('empty')) continue;
+      final keys = <String>[];
+      void grid(String prefix, String h, String v) {
+        for (var r = 0; r <= ((z[h] as num?)?.toInt() ?? 0); r++) {
+          for (var c = 0; c <= ((z[v] as num?)?.toInt() ?? 0); c++) {
+            keys.add('${prefix}_cell_${r}_$c');
+          }
         }
+      }
+      if (content.contains('slidingSash')) {
+        for (var i = 0; i < ((z['slidingSashesCount'] as num?)?.toInt() ?? 2); i++) {
+          keys.add('main_cell_0_$i');
+        }
+      } else if (content.contains('doubleSash')) {
+        grid('left', 'innerH', 'innerV');
+        grid('right', 'rightInnerH', 'rightInnerV');
+      } else {
+        grid('main', 'innerH', 'innerV');
+      }
+      final cells = z['cellGlassSpec'];
+      for (final key in keys) {
+        final glass = (cells is Map ? cells[key] : null) ?? z['glass'];
+        if (glass is Map) specs.add(Map<String, dynamic>.from(glass));
       }
     }
 
@@ -2439,11 +2456,24 @@ class DevisBuilder {
             ?.map((side) => side.toString().toLowerCase())
             .toSet() ??
         <String>{};
-    final hasTop = !removedSides.contains('top');
+    final customSegments = map['sideCoverSegments'];
+    final customSides = customSegments is List &&
+            map['useCustomSideCoverLayout'] == true && customSegments.isNotEmpty
+        ? customSegments.whereType<Map>().where((segment) =>
+            ((segment['endOffset'] as num?) ?? 0) > ((segment['startOffset'] as num?) ?? 0) &&
+            ((segment['visibleWidth'] as num?) ?? 0) > 0)
+            .map((segment) => segment['side']?.toString()).toSet()
+        : null;
+    final hidden = (map['hiddenSideCoverSegments'] as List? ?? const [])
+        .map((side) => side.toString()).toSet();
+    bool hasSide(String side) => map['hasSideCovers'] != false &&
+        !hidden.contains(side) && !removedSides.contains(side) &&
+        (customSides == null || customSides.contains(side));
+    final hasTop = hasSide('top');
     final hasBottom =
-        !removedSides.contains('bottom') && map['hasBottomFrame'] != false;
-    final hasRight = !removedSides.contains('right');
-    final hasLeft = !removedSides.contains('left');
+        hasSide('bottom') && map['hasBottomFrame'] != false && map['showBottomWall'] != false;
+    final hasRight = hasSide('right');
+    final hasLeft = hasSide('left');
     final activeSides = <String>[];
 
     if (_currentLang == AppLanguage.french) {
@@ -2557,49 +2587,42 @@ class DevisBuilder {
         .toList();
     if (slidingZones.isEmpty) return const [];
 
-    final first = slidingZones.first;
-    final sashes = (first['slidingSashesCount'] as num?)?.toInt() ?? 2;
-    final centralCount = sashes > 1 ? (sashes - 1) * 2 : 0;
-    var centralReinforced = false;
-    var lateralReinforced = false;
-    final reinforcedMap = first['slidingMontantReinforced'];
-    if (reinforcedMap is Map) {
-      for (final entry in reinforcedMap.entries) {
-        final key = entry.key.toString();
-        if (key.startsWith('central_') && entry.value == true) {
-          centralReinforced = true;
-        }
-        if (key.startsWith('lateral_') && entry.value == true) {
-          lateralReinforced = true;
-        }
+    var centralCount = 0;
+    var lateralCount = 0;
+    var centralReinforced = 0;
+    var lateralReinforced = 0;
+    for (final zone in slidingZones) {
+      final sashes = (zone['slidingSashesCount'] as num?)?.toInt() ?? 2;
+      final count = sashes > 1 ? (sashes - 1) * 2 : 0;
+      centralCount += count;
+      lateralCount += 2;
+      final flags = zone['slidingMontantReinforced'];
+      bool reinforced(String kind, int index) {
+        if (flags is! Map) return false;
+        return (flags['${kind}_$index'] ??
+            flags['${kind}_${index.isEven ? 'left' : 'right'}']) == true;
+      }
+      for (var i = 0; i < count; i++) {
+        if (reinforced('central', i)) centralReinforced++;
+      }
+      for (var i = 0; i < 2; i++) {
+        if (reinforced('lateral', i)) lateralReinforced++;
       }
     }
-
-    final centralType = switch (_currentLang) {
-      AppLanguage.french => centralReinforced ? 'renforcé' : 'simple',
-      AppLanguage.english => centralReinforced ? 'reinforced' : 'simple',
-      AppLanguage.arabic => centralReinforced ? 'مدعم' : 'عادي',
-    };
-    final lateralType = switch (_currentLang) {
-      AppLanguage.french => lateralReinforced ? 'renforcé' : 'simple',
-      AppLanguage.english => lateralReinforced ? 'reinforced' : 'simple',
-      AppLanguage.arabic => lateralReinforced ? 'مدعم' : 'عادي',
-    };
-
-    final lines = <String>[
-      switch (_currentLang) {
-        AppLanguage.french => 'Montant central: $centralCount - $centralType',
-        AppLanguage.english => 'Central montant: $centralCount - $centralType',
-        AppLanguage.arabic => 'مونتو مركزي: $centralCount - $centralType',
-      },
-    ];
-    if (isTpr) {
-      lines.add(switch (_currentLang) {
-        AppLanguage.french => 'Montant: $lateralType',
-        AppLanguage.english => 'Montant: $lateralType',
-        AppLanguage.arabic => 'المونتو: $lateralType',
-      });
+    String describe(String fr, String en, String ar, int total, int reinforced) {
+      final regular = total - reinforced;
+      return switch (_currentLang) {
+        AppLanguage.french => '$fr: $reinforced renforcé(s), $regular non renforcé(s)',
+        AppLanguage.english => '$en: $reinforced reinforced, $regular standard',
+        AppLanguage.arabic => '$ar: $reinforced معزز، $regular عادي',
+      };
     }
+    final lines = <String>[
+      describe('Montant central', 'Central montant', 'القائم الوسطي',
+          centralCount, centralReinforced),
+      describe('Montant latéral', 'Lateral montant', 'القائم الجانبي',
+          lateralCount, lateralReinforced),
+    ];
     return lines;
   }
 

@@ -6601,7 +6601,12 @@ class ComponentCalculator {
               if (remaining > 0) addSlidingBourrageJoint();
             }
           } else {
-            if (!window.isPVC &&
+            // Opening glazing with parclose is counted below in the
+            // simple/double Bourrage rows. Only a sash without parclose needs
+            // this direct gasket demand; adding both doubles its consumption.
+            if (usesOpeningSashProfile &&
+                openingSashSkipsGlazingBead &&
+                !window.isPVC &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
               final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
@@ -7761,10 +7766,167 @@ class ComponentCalculator {
       }
     }
 
+    items = _mergeIdenticalJoints(items);
+
     if (window.isShutterOnly) {
       return items.where((item) => item.category == 'shutter').toList();
     }
     return items;
+  }
+
+  /// دمج الجوانات المتطابقة (من نفس النوع ونفس الكود/المعرف) في سطر واحد
+  /// مع جمع أطوالها وكميات إطاراتها، بينما الجوانات ذات الأكواد المختلفة
+  /// (مثل 52 0 34 مقابل 52 0 35) تبقى منفصلة.
+  static List<BomItem> _mergeIdenticalJoints(List<BomItem> items) {
+    if (items.isEmpty) return items;
+
+    final result = <BomItem>[];
+    final jointGroups = <String, List<BomItem>>{};
+    final jointFirstIndex = <String, int>{};
+
+    for (final item in items) {
+      if (item.category != 'joint') {
+        result.add(item);
+        continue;
+      }
+
+      final normalizedCode = (item.profileCode ?? '')
+          .replaceAll(RegExp(r'\s+'), '')
+          .trim()
+          .toUpperCase();
+      final catId = item.catalogItemId;
+      final color = (item.colorName ?? '').trim();
+      final unit = item.unit.trim().toLowerCase();
+
+      String key;
+      if (catId != null && catId > 0) {
+        key = 'id:' + catId.toString() + ':' + color + ':' + unit;
+      } else if (normalizedCode.isNotEmpty) {
+        key = 'code:' + normalizedCode + ':' + color + ':' + unit;
+      } else {
+        key = 'name:' + item.originalName.trim().toLowerCase() + ':' + color + ':' + unit;
+      }
+
+      if (!jointGroups.containsKey(key)) {
+        jointGroups[key] = [];
+        jointFirstIndex[key] = result.length;
+        result.add(item);
+      }
+      jointGroups[key]!.add(item);
+    }
+
+    for (final entry in jointGroups.entries) {
+      final key = entry.key;
+      final group = entry.value;
+      final insertIndex = jointFirstIndex[key]!;
+
+      if (group.length == 1) {
+        result[insertIndex] = group.first;
+        continue;
+      }
+
+      final first = group.first;
+      double totalExact = 0.0;
+      double totalQty = 0.0;
+      final allPieces = <double>[];
+      final roleNames = <String>[];
+      String? catalogLine;
+
+      for (final item in group) {
+        final exact = item.exactQuantity ?? item.quantity;
+        totalExact += exact;
+        totalQty += item.quantity;
+        if (item.pieces != null) {
+          allPieces.addAll(item.pieces!);
+        }
+
+        final lines = item.name.split('\n');
+        final role = lines.isNotEmpty ? lines[0].trim() : item.originalName;
+        if (role.isNotEmpty && !roleNames.contains(role)) {
+          roleNames.add(role);
+        }
+
+        if (catalogLine == null && lines.length > 1) {
+          for (var i = 1; i < lines.length; i++) {
+            final l = lines[i].trim();
+            if (!l.contains('المطلوب الفعلي')) {
+              catalogLine = l;
+              break;
+            }
+          }
+        }
+      }
+
+      totalExact = ((totalExact * 100).round()) / 100.0;
+      final normalizedUnit = first.unit.toLowerCase().trim();
+      final isLinear = normalizedUnit.contains('متر') ||
+          normalizedUnit.contains('meter') ||
+          normalizedUnit == 'm' ||
+          normalizedUnit == 'ml';
+
+      final finalQty = isLinear
+          ? (totalExact <= 0 ? 0.0 : totalExact.ceilToDouble())
+          : totalQty;
+
+      final buffer = StringBuffer();
+      buffer.write(roleNames.join(' + '));
+      if (catalogLine != null && catalogLine.isNotEmpty) {
+        buffer.write('\n' + catalogLine);
+      }
+      if (isLinear && totalExact > 0) {
+        buffer.write('\n(المطلوب الفعلي: ' + totalExact.toStringAsFixed(2) + ' ' + first.unit + ')');
+      }
+
+      String? cuttingListText;
+      if (allPieces.isNotEmpty) {
+        final counts = <int, int>{};
+        for (final p in allPieces) {
+          final mm = (p * 1000).round();
+          if (mm <= 0) continue;
+          counts[mm] = (counts[mm] ?? 0) + 1;
+        }
+        final sortedMm = counts.keys.toList()..sort((a, b) => b.compareTo(a));
+        final parts = <String>[];
+        for (final mm in sortedMm) {
+          parts.add(counts[mm].toString() + ' × ' + mm.toString() + ' مم');
+        }
+        cuttingListText = 'قطع القص: ' + parts.join(' ، ');
+      }
+
+      final merged = BomItem(
+        category: 'joint',
+        originalName: roleNames.join(' + '),
+        profileCode: first.profileCode,
+        name: buffer.toString(),
+        imagePath: first.imagePath,
+        colorName: first.colorName,
+        length: first.length,
+        quantity: finalQty,
+        unit: first.unit,
+        unitPrice: first.unitPrice,
+        isMissing: group.every((item) => item.isMissing),
+        isInteractive: first.isInteractive,
+        isActive: group.any((item) => item.isActive),
+        pieces: allPieces.isNotEmpty ? allPieces : null,
+        cuttingList: cuttingListText ?? first.cuttingList,
+        kitGroupName: first.kitGroupName,
+        exactQuantity: totalExact,
+        catalogItemId: first.catalogItemId,
+        inventoryItemType: first.inventoryItemType,
+        colorId: first.colorId,
+        overrideKey: first.overrideKey,
+        selectorCategory: first.selectorCategory,
+        selectorType: first.selectorType,
+        roleKey: first.roleKey,
+        sourceSeriesId: first.sourceSeriesId,
+        materialType: first.materialType,
+        targetThicknessMm: first.targetThicknessMm,
+      );
+
+      result[insertIndex] = merged;
+    }
+
+    return result;
   }
 
   /// دمج أسماء قطع الزجاج عند تشابه أبعادها:

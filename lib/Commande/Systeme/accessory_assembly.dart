@@ -158,6 +158,12 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
   return demands;
 }
 
+String defaultAssemblyTarget(String role) {
+  if (role.startsWith('frame_')) return 'frame';
+  if (role == 'clam' || role == 'clamp') return 'both';
+  return 'sash';
+}
+
 int assemblyQuantity(
   Map<String, dynamic> rule,
   Iterable<AssemblyDemand> demands,
@@ -166,9 +172,7 @@ int assemblyQuantity(
   final configuredTarget = '${rule['assembly_target'] ?? ''}';
   final target = const {'frame', 'sash', 'both'}.contains(configuredTarget)
       ? configuredTarget
-      : role.startsWith('frame_')
-      ? 'frame'
-      : 'sash';
+      : defaultAssemblyTarget(role);
   final linkedSections = assemblySectionIds(rule);
   final sectionCornerQuantities = assemblySectionCornerQuantities(rule);
   final top = (assemblyInt(rule['top_corner_qty']) ?? 1).clamp(0, 100000);

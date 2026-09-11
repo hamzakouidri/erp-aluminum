@@ -425,6 +425,9 @@ class SqlDatabase {
         path,
         options: OpenDatabaseOptions(
           version: 66,
+          onConfigure: (db) async {
+            await db.execute('PRAGMA busy_timeout = 5000');
+          },
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -437,6 +440,9 @@ class SqlDatabase {
       path,
       version: 66,
       password: password,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA busy_timeout = 5000');
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -2151,6 +2157,9 @@ class SqlDatabase {
       return await _openEncryptedDb(path, dbPassword);
     } catch (e) {
       Text('Failed to open encrypted database: $e');
+      // A busy/locked database is still valid. Never rename the live file or
+      // create a replacement for a transient lock, permissions or open error.
+      if (!isCorruptionError(e)) rethrow;
       if (!kIsWeb && await _dbFactory.databaseExists(path)) {
         try {
           final file = File(path);
@@ -16439,6 +16448,7 @@ class SqlDatabase {
     int? itemId,
     int? seriesId,
     Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
   }) async {
     final myDb = await db;
     if (myDb == null) return [];
@@ -16454,24 +16464,29 @@ class SqlDatabase {
       args.add(itemId);
     }
     if (seriesId != null) {
-      // A series-specific rule always overrides the global rule for the same
-      // catalogue item. This includes an explicit disabled rule: otherwise a
-      // disabled local rule would silently fall back to the global one.
-      where.add('''(
-        series_id = ?
-        OR (
-          series_id IS NULL
-          AND NOT EXISTS (
-            SELECT 1
-            FROM CatalogItemRules scoped_rule
-            WHERE scoped_rule.item_table = CatalogItemRules.item_table
-              AND scoped_rule.item_id = CatalogItemRules.item_id
-              AND scoped_rule.series_id = ?
+      if (exactSeriesOnly) {
+        where.add('series_id = ?');
+        args.add(seriesId);
+      } else {
+        // A series-specific rule always overrides the global rule for the same
+        // catalogue item. This includes an explicit disabled rule: otherwise a
+        // disabled local rule would silently fall back to the global one.
+        where.add('''(
+          series_id = ?
+          OR (
+            series_id IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM CatalogItemRules scoped_rule
+              WHERE scoped_rule.item_table = CatalogItemRules.item_table
+                AND scoped_rule.item_id = CatalogItemRules.item_id
+                AND scoped_rule.series_id = ?
+            )
           )
-        )
-      )''');
-      args.add(seriesId);
-      args.add(seriesId);
+        )''');
+        args.add(seriesId);
+        args.add(seriesId);
+      }
     }
     final keys = roleKeys
         .map((key) => key.trim())

@@ -2370,22 +2370,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           shutterSqmPrice = _safeDouble(exactRows.first['price_per_sqm']);
         }
       }
-      if (shutterSqmPrice == 0.0) {
-        // Fallback to the default price from ShutterComponents table
-        final compRows = await dbInstance.query(
-          'ShutterComponents',
-          columns: ['price'],
-          where: 'LOWER(name) = ? OR name = ?',
-          whereArgs: [actualBladeName.toLowerCase(), actualBladeName],
-          limit: 1,
-        );
-        if (compRows.isNotEmpty) {
-          shutterSqmPrice = _safeDouble(compRows.first['price']);
-          print(
-            "✅ [DEBUG] تم جلب السعر الافتراضي للشفرة من ShutterComponents: $shutterSqmPrice",
-          );
-        }
-      }
     }
     // 3. تحميل أجور التركيب الخاصة (تُخزَّن كصفوف خاصة داخل ShutterSqmPrices بـ blade_type مميز و color_id=0)
     final moteurRes = await dbInstance.query(
@@ -4092,7 +4076,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     Text(
                       officialKitUnitPrice > 0
                           ? '${officialKitUnitPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}'
-                          : '-',
+                          : '${(kitQuantity > 0 ? totalPrice / kitQuantity : 0.0).toStringAsFixed(2)} ${Localization.translate('دج', lang)}',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.grey,
@@ -4103,9 +4087,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   // إجمالي سعر الكيت الرسمي × كميته.
                   _cell(
                     Text(
-                      officialKitUnitPrice > 0
-                          ? '${totalPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}'
-                          : '-',
+                      '${totalPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.grey,
@@ -5594,10 +5576,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ),
               _wPrice,
             ),
-            // السعر التقديري: المطلوب الفعلي × سعر الوحدة.
+            // Purchase estimate uses whole stock units; real cost below uses
+            // fractional consumption (for example 0.75 bars).
             _cell(
               Text(
-                '${(_isExcludedFromPricing(item) ? 0.0 : item.requiredQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
+                '${(_isExcludedFromPricing(item) || !item.isActive ? 0.0 : item.category == 'glass' ? item.total : item.purchaseQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,

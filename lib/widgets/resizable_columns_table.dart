@@ -945,28 +945,37 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         ? Color.alphaBlend(accentColor.withValues(alpha: 0.16), baseColor)
         : baseColor;
 
-    final rowBody = Container(
-      decoration: BoxDecoration(
-        color: effectiveColor,
-        border: isFocused
-            ? BorderDirectional(start: BorderSide(color: accentColor, width: 3))
-            : null,
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final column in columns)
-              _buildCell(
-                row.cells.length > (originalIndexById[column.id] ?? -1)
-                    ? row.cells[originalIndexById[column.id]!]
-                    : const SizedBox.shrink(),
-                column,
-                borderColor,
-              ),
-          ],
+    final rowBody = Stack(
+      children: [
+        Container(
+          color: effectiveColor,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final column in columns)
+                  _buildCell(
+                    row.cells.length > (originalIndexById[column.id] ?? -1)
+                        ? row.cells[originalIndexById[column.id]!]
+                        : const SizedBox.shrink(),
+                    column,
+                    borderColor,
+                  ),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (isFocused)
+          PositionedDirectional(
+            start: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            child: IgnorePointer(
+              child: Container(color: accentColor),
+            ),
+          ),
+      ],
     );
 
     // A plain onTapDown (not a full tap gesture) always marks the row as
@@ -1005,7 +1014,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         ),
       ),
       alignment: column.alignment,
-      child: child,
+      child: ClipRect(child: child),
     );
   }
 }

@@ -3810,6 +3810,14 @@ class WindowModel extends ChangeNotifier {
     final code = (profile['code'] ?? '').toString().trim().toLowerCase();
     final name = (profile['name'] ?? '').toString().toLowerCase();
     final type = (profile['type'] ?? '').toString().toLowerCase();
+    final description = '$name $type';
+    if (description.contains('غير معزز') ||
+        description.contains('غير معزّز') ||
+        RegExp(r'(non|sans)[\s-]*renfor').hasMatch(description) ||
+        description.contains('not reinforced') ||
+        description.contains('unreinforced')) {
+      return false;
+    }
     return code.endsWith(central ? '107' : '108') ||
         name.contains('معزز') ||
         name.contains('renforc') ||
@@ -17032,6 +17040,20 @@ class WindowModel extends ChangeNotifier {
       }
       componentOverrides[entry.key] = accessory;
     }
+  }
+
+  void updateAllSlidingJointSides(bool twoSides) {
+    final targets = zones.where((z) => z.content == ZoneContent.slidingSash);
+    if (isPVC || targets.isEmpty) return;
+    _saveSnapshot();
+    for (final zone in targets) {
+      zone.glass = zone.glass.copyWith(jointTwoSides: twoSides);
+      zone.cellGlassSpec = zone.cellGlassSpec.map(
+        (key, value) => MapEntry(key, value.copyWith(jointTwoSides: twoSides)),
+      );
+    }
+    unawaited(updateGlassGasket());
+    notifyListeners();
   }
 
   void updateSelectedZoneGlassDecor({

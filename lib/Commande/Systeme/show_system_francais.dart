@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FilteringTextInputFormatter, LengthLimitingTextInputFormatter;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
@@ -4482,6 +4483,10 @@ class _WindowViewState extends State<WindowView> {
               zone?.getGlassForCell(widget.model.activeSubZone) ??
               _tempGlassSpec;
           final structure = spec.structure;
+          final slidingJointSpecs = widget.model.zones
+              .where((z) => z.content == ZoneContent.slidingSash)
+              .expand((z) => [z.glass, ...z.cellGlassSpec.values])
+              .toList();
 
           GlassSpecification fitDoubleGlassToParclose(
             GlassSpecification candidate,
@@ -5481,7 +5486,16 @@ class _WindowViewState extends State<WindowView> {
                       ),
                       const SizedBox(width: 8),
                       ToggleButtons(
-                        isSelected: [spec.jointTwoSides, !spec.jointTwoSides],
+                        isSelected: [
+                          slidingJointSpecs.isEmpty
+                              ? spec.jointTwoSides
+                              : slidingJointSpecs.every((s) => s.jointTwoSides),
+                          slidingJointSpecs.isEmpty
+                              ? !spec.jointTwoSides
+                              : slidingJointSpecs.every(
+                                  (s) => !s.jointTwoSides,
+                                ),
+                        ],
                         borderRadius: BorderRadius.circular(8),
                         selectedColor: Colors.white,
                         fillColor: Colors.teal,
@@ -5492,27 +5506,30 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         onPressed: (idx) {
                           final twoSides = idx == 0;
-                          final double tOuter =
-                              spec.thicknessOuter ?? kDefaultGlassPaneThickness;
-                          final double tInner =
-                              spec.thicknessInner ?? kDefaultGlassPaneThickness;
-                          final int intercall = spec.intercallThickness;
-                          final bool isValid =
-                              spec.structure == GlassStructure.double
-                              ? isDoubleGlassValid(
-                                  tOuter,
-                                  intercall,
-                                  tInner,
-                                  twoSides,
-                                  widget.model,
-                                  widget.systemMode,
-                                )
-                              : isGlassThicknessValid(
-                                  tOuter,
-                                  spec.copyWith(jointTwoSides: twoSides),
-                                  widget.model,
-                                  widget.systemMode,
-                                );
+                          final bool isValid = slidingJointSpecs.every((spec) {
+                            final double tOuter =
+                                spec.thicknessOuter ??
+                                kDefaultGlassPaneThickness;
+                            final double tInner =
+                                spec.thicknessInner ??
+                                kDefaultGlassPaneThickness;
+                            final int intercall = spec.intercallThickness;
+                            return spec.structure == GlassStructure.double
+                                ? isDoubleGlassValid(
+                                    tOuter,
+                                    intercall,
+                                    tInner,
+                                    twoSides,
+                                    widget.model,
+                                    widget.systemMode,
+                                  )
+                                : isGlassThicknessValid(
+                                    tOuter,
+                                    spec.copyWith(jointTwoSides: twoSides),
+                                    widget.model,
+                                    widget.systemMode,
+                                  );
+                          });
 
                           if (!isValid) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -5530,14 +5547,9 @@ class _WindowViewState extends State<WindowView> {
                           final newSpec = spec.copyWith(
                             jointTwoSides: twoSides,
                           );
-                          if (zone != null) {
-                            widget.model.updateSelectedZoneGlassDecor(
-                              jointTwoSides: twoSides,
-                            );
-                          } else {
-                            setState(() => _tempGlassSpec = newSpec);
-                          }
-                          _startPaintbrushMode(glassSpec: newSpec);
+                          _cancelPaintbrushMode();
+                          setState(() => _tempGlassSpec = newSpec);
+                          widget.model.updateAllSlidingJointSides(twoSides);
                         },
                         children: [
                           Text(Localization.translate('جهتان', lang)),
@@ -9222,11 +9234,21 @@ class _WindowViewState extends State<WindowView> {
       listen: false,
     ).language;
     final widthCtrl = TextEditingController(
-      text: widget.model.width.toInt().toString(),
+      text: widget.model.width > 0 ? widget.model.width.toInt().toString() : '',
     );
     final heightCtrl = TextEditingController(
-      text: widget.model.height.toInt().toString(),
+      text: widget.model.height > 0 ? widget.model.height.toInt().toString() : '',
     );
+    final heightFocus = FocusNode();
+    void apply() {
+      final w = double.tryParse(widthCtrl.text);
+      final h = double.tryParse(heightCtrl.text);
+      if (w == null || h == null ||
+          w < widget.model.profileThickness * 3 ||
+          h < widget.model.profileThickness * 3) return;
+      widget.model.resizeWindow(w, h);
+      Navigator.pop(context);
+    }
     showDialog(
       context: context,
       builder: (context) {
@@ -9247,6 +9269,14 @@ class _WindowViewState extends State<WindowView> {
               children: [
                 TextField(
                   controller: widthCtrl,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+                  onChanged: (value) {
+                    if (value.length == 4) {
+                      heightFocus.requestFocus();
+                      heightCtrl.selection = TextSelection(baseOffset: 0, extentOffset: heightCtrl.text.length);
+                    }
+                  },
+                  onSubmitted: (_) => apply(),
                   autofocus: focusWidth,
                   keyboardType: TextInputType.number,
                   style: TextStyle(
@@ -9275,6 +9305,9 @@ class _WindowViewState extends State<WindowView> {
                 const SizedBox(height: 20),
                 TextField(
                   controller: heightCtrl,
+                  focusNode: heightFocus,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+                  onSubmitted: (_) => apply(),
                   autofocus: !focusWidth,
                   keyboardType: TextInputType.number,
                   style: TextStyle(
@@ -9316,16 +9349,7 @@ class _WindowViewState extends State<WindowView> {
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
               ),
-              onPressed: () {
-                final w = double.tryParse(widthCtrl.text) ?? widget.model.width;
-                final h =
-                    double.tryParse(heightCtrl.text) ?? widget.model.height;
-                if (w >= widget.model.profileThickness * 3 &&
-                    h >= widget.model.profileThickness * 3) {
-                  widget.model.resizeWindow(w, h);
-                }
-                Navigator.pop(context);
-              },
+              onPressed: apply,
               child: Text(
                 Localization.translate('تطبيق', lang),
                 style: const TextStyle(color: Colors.white),

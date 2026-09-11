@@ -197,6 +197,13 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'Profil de battement propre à cette série',
     ),
     _SeriesRole(
+      key: 'bouchon_batmo',
+      ar: 'بوشون باتمون',
+      fr: 'Bouchon battement',
+      descriptionAr: 'مقطع بوشون الباتمون الخاص بهذه السلسلة',
+      descriptionFr: 'Profil de bouchon battement propre à cette série',
+    ),
+    _SeriesRole(
       key: 'plant',
       ar: 'البلانت',
       fr: 'Plinthe',

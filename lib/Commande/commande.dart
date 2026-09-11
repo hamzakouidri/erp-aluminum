@@ -790,6 +790,19 @@ class _CommandeState extends State<Commande> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              ExpansionTile(
+                                title: const Text('تفاصيل الخطأ / Détails'),
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: SelectableText(
+                                      snapshot.error.toString(),
+                                      textDirection: TextDirection.ltr,
+                                    ),
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 30),
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(

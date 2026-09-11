@@ -1739,16 +1739,6 @@ class _CommandePageState extends State<CommandePage> {
       );
       if (rows.isNotEmpty) price = _readMapPrice(rows.first);
     }
-    if (price <= 0 && bladeName.trim().isNotEmpty) {
-      final rows = await database.query(
-        'ShutterComponents',
-        columns: const ['price'],
-        where: 'LOWER(name) = ?',
-        whereArgs: [bladeName.trim().toLowerCase()],
-        limit: 1,
-      );
-      if (rows.isNotEmpty) price = _readMapPrice(rows.first);
-    }
     return price;
   }
 

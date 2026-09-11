@@ -51,7 +51,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   // Keep accessories and joints as separate grouped rule pages. Shutter
   // components and side-cover profiles continue to use their dedicated
   // profile/shutter selectors and are not mixed into this catalogue page.
-  final _tables = const ['Accessories', 'Joints'];
+  final _tables = const ['Accessories', 'Joints', 'ShutterComponents'];
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
   final Map<String, Map<String, dynamic>> _rulesByItem = {};
   List<Map<String, dynamic>> _assemblySections = [];
@@ -81,7 +81,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tables.length, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _searchControllers = {
       for (final table in _tables) table: TextEditingController(),
     };
@@ -103,15 +103,27 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       widget.db.readAccessories(),
       widget.db.readJoints(),
       widget.db.readProfile(),
+      widget.db.readShutterComponents(),
     ]);
     if (!mounted) return;
     _itemsByTable
       ..clear()
       ..addAll({
-        'Accessories': results[0] as List<Map<String, dynamic>>,
-        'Joints': results[1] as List<Map<String, dynamic>>,
+        // Database query rows are read-only; the inspector updates its local
+        // item after saving accessory links, counts and other fields.
+        'Accessories': (results[0] as List<Map<String, dynamic>>)
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(),
+        'Joints': (results[1] as List<Map<String, dynamic>>)
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(),
       });
     _profiles = results[2] as List<Map<String, dynamic>>;
+    _itemsByTable['ShutterComponents'] =
+        (results[3] as List<Map<String, dynamic>>)
+            .where((row) => _guessRole('ShutterComponents', row) == 'shutter_kit')
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
     _rulesByItem.clear();
     setState(() => _loadingProfiles = false);
   }
@@ -150,8 +162,18 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       widget.db.getCatalogItemRules(
         itemTable: 'Accessories',
         seriesId: seriesId,
+        exactSeriesOnly: true,
       ),
-      widget.db.getCatalogItemRules(itemTable: 'Joints', seriesId: seriesId),
+      widget.db.getCatalogItemRules(
+        itemTable: 'Joints',
+        seriesId: seriesId,
+        exactSeriesOnly: true,
+      ),
+      widget.db.getCatalogItemRules(
+        itemTable: 'ShutterComponents',
+        seriesId: seriesId,
+        exactSeriesOnly: true,
+      ),
     ]);
     final database = await widget.db.db;
     final sections =
@@ -164,7 +186,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         [];
     if (!mounted || _selectedSeriesId != seriesId) return;
     _rulesByItem.clear();
-    for (final raw in [...results[0], ...results[1]]) {
+    for (final raw in results.expand((rows) => rows)) {
       final table = raw['item_table']?.toString() ?? '';
       final itemId = (raw['item_id'] as num?)?.toInt();
       if (table.isEmpty || itemId == null) continue;
@@ -456,6 +478,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   List<_CatalogGroup> _groupsForTable(String table) {
+    if (table == 'ShutterComponents') {
+      return const [
+        _CatalogGroup(
+          key: 'shutter_kits',
+          ar: 'كيت الفولي',
+          fr: 'Kits volet',
+          icon: Icons.inventory_2_outlined,
+          roleKeys: {'shutter_kit'},
+        ),
+      ];
+    }
     if (table == 'Joints') {
       return const [
         _CatalogGroup(
@@ -476,7 +509,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ),
       ];
     }
-    return const [
+    const iconGroups = [
       _CatalogGroup(
         key: 'screws',
         ar: 'الفيس',
@@ -510,22 +543,41 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       _CatalogGroup(
         key: 'locks',
         ar: 'الأقفال',
-        fr: 'Serrures et verrous',
+        fr: 'Serrures',
         icon: Icons.lock_outline,
-        roleKeys: {'lock_clef', 'lock_condamnation', 'verrou', 'canon'},
+        roleKeys: {'lock_clef', 'lock_condamnation', 'canon'},
+      ),
+      _CatalogGroup(
+        key: 'verrous',
+        ar: 'الفيرو',
+        fr: 'Verrous',
+        icon: Icons.lock_outline,
+        roleKeys: {'verrou'},
       ),
       _CatalogGroup(
         key: 'handles',
-        ar: 'المقابض والكريمون',
-        fr: 'Poignées et crémone',
+        ar: 'المقابض',
+        fr: 'Poignées',
         icon: Icons.pan_tool_outlined,
         roleKeys: {
           'handle',
           'door_handle_key',
           'door_handle_condamnation',
-          'cremone',
-          'tringle',
         },
+      ),
+      _CatalogGroup(
+        key: 'cremones',
+        ar: 'الكريمون',
+        fr: 'Crémones',
+        icon: Icons.pan_tool_outlined,
+        roleKeys: {'cremone', 'tringle'},
+      ),
+      _CatalogGroup(
+        key: 'entrematique',
+        ar: 'الإندراماتيك',
+        fr: 'Entrematique',
+        icon: Icons.pan_tool_outlined,
+        roleKeys: {'entrematique'},
       ),
       _CatalogGroup(
         key: 'hinges',
@@ -550,13 +602,18 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         },
       ),
       _CatalogGroup(
+        key: 'tasso_ekar',
+        ar: 'الطاسو والإيكار',
+        fr: 'Tasso et Ekar',
+        icon: Icons.crop_square_rounded,
+        roleKeys: {'tasso', 'ekar'},
+      ),
+      _CatalogGroup(
         key: 'moving',
-        ar: 'الطاسو والإيكار والعجلات',
-        fr: 'Tasso, Ekar et roulettes',
+        ar: 'العجلات والكيت',
+        fr: 'Roulettes et kits',
         icon: Icons.circle_outlined,
         roleKeys: {
-          'tasso',
-          'ekar',
           'roulette',
           'kit',
           'sliding_kit',
@@ -569,12 +626,32 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'أكسسوارات أخرى',
         fr: 'Autres accessoires',
         icon: Icons.extension_outlined,
-        roleKeys: {'other', 'entrematique'},
+        roleKeys: {'other'},
       ),
     ];
+    return _rolesForTable(table).map((role) {
+      final iconGroup = iconGroups.where(
+        (group) => group.roleKeys.contains(role.key),
+      ).firstOrNull;
+      return _CatalogGroup(
+        key: role.key,
+        ar: role.ar,
+        fr: role.fr,
+        icon: iconGroup?.icon ?? Icons.extension_outlined,
+        roleKeys: {role.key},
+      );
+    }).toList(growable: false);
   }
 
   String _groupRoleForItem(String table, Map<String, dynamic> item) {
+    final itemId = _itemId(item);
+    final savedRole = itemId == null
+        ? null
+        : _rulesByItem[_itemKey(table, itemId)]?['role_key']?.toString();
+    if (savedRole != null &&
+        _rolesForTable(table).any((role) => role.key == savedRole)) {
+      return savedRole;
+    }
     final guessed = _guessRole(table, item);
     if (table == 'Accessories' && guessed == 'other' && _isScrewItem(item)) {
       return 'accessory_screw';
@@ -754,6 +831,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         return 'roulette';
       }
       if (text.contains('entrematique') ||
+          text.contains('الإندراماتيك') ||
+          text.contains('اندراماتيك') ||
           text.contains('أونتروماتيك') ||
           text.contains('انتراميتيك') ||
           text.contains('intra')) {
@@ -906,9 +985,26 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           ? _emptyState()
           : TabBarView(
               controller: _tabController,
-              children: _tables
-                  .map(_tableView)
-                  .toList(growable: false),
+              children: [
+                DefaultTabController(
+                  length: 2,
+                  child: Column(
+                    children: [
+                      TabBar(tabs: [
+                        Tab(text: _t('الأكسسوارات', 'Accessoires')),
+                        Tab(text: _t('كيت الفولي', 'Kits volet')),
+                      ]),
+                      Expanded(
+                        child: TabBarView(children: [
+                          _tableView('Accessories'),
+                          _tableView('ShutterComponents'),
+                        ]),
+                      ),
+                    ],
+                  ),
+                ),
+                _tableView('Joints'),
+              ],
             ),
       floatingActionButton: _selectedSeriesId == null
           ? null
@@ -1075,11 +1171,25 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     }
     final searchController = _searchControllers[table]!;
     final query = searchController.text;
-    final filteredItems = items
+    final matchingItems = items
         .where((item) => _matchesSearch(table, item, query))
         .toList(growable: false);
+    final filteredItems = [
+      ...matchingItems.where((item) => _itemRuleEnabled(table, item)),
+      ...matchingItems.where((item) => !_itemRuleEnabled(table, item)),
+    ];
     final isJoints = table == 'Joints';
-    final groups = _groupsForTable(table);
+    final originalGroups = _groupsForTable(table);
+    final enabledRoles = items
+        .where((item) => _itemRuleEnabled(table, item))
+        .map((item) => _groupRoleForItem(table, item))
+        .toSet();
+    bool groupEnabled(_CatalogGroup group) =>
+        group.roleKeys.any(enabledRoles.contains);
+    final groups = [
+      ...originalGroups.where(groupEnabled),
+      ...originalGroups.where((group) => !groupEnabled(group)),
+    ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1184,9 +1294,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       .toList(growable: false);
 
                   return Card(
+                    key: ValueKey('catalog-group:$_selectedSeriesId:$table:${group.key}'),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ExpansionTile(
-                      initiallyExpanded: enabledItems.isNotEmpty,
+                      key: ValueKey('role-group:$_selectedSeriesId:$table:${group.key}'),
+                      initiallyExpanded: false,
                       leading: Icon(group.icon),
                       title: Text(_t(group.ar, group.fr)),
                       subtitle: Text(
@@ -1437,7 +1549,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   Widget _assemblyRuleEditor(Map<String, dynamic> rule) {
     final role = rule['role_key'].toString();
-    final defaultTarget = role.startsWith('frame_') ? 'frame' : 'sash';
+    final defaultTarget = defaultAssemblyTarget(role);
     final target =
         const {'frame', 'sash', 'both'}.contains(rule['assembly_target'])
         ? rule['assembly_target'].toString()
@@ -1565,8 +1677,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     if (itemId == null) return const SizedBox.shrink();
     final rule = _ruleFor(table, itemId);
     final itemRoles = _rolesForItem(table, item);
+    final storedRole = rule['role_key']?.toString();
+    final selectedRole = itemRoles.any((role) => role.key == storedRole)
+        ? storedRole
+        : null;
 
     return Card(
+      key: ValueKey('inspector:$_selectedSeriesId:$table:$itemId'),
       elevation: 0,
       color: Theme.of(
         context,
@@ -1617,7 +1734,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ),
             const Divider(height: 24),
             DropdownButtonFormField<String>(
-              initialValue: rule['role_key']?.toString(),
+              initialValue: selectedRole,
               isExpanded: true,
               decoration: InputDecoration(
                 labelText: _t('الدور / العنوان', 'Rôle / rubrique'),

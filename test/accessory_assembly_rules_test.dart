@@ -66,6 +66,7 @@ class RuleDatabase extends SqlDatabase {
     int? itemId,
     int? seriesId,
     Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
   }) async => rules;
 }
 
