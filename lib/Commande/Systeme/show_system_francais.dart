@@ -101,8 +101,7 @@ class _WindowViewState extends State<WindowView> {
     }
     final additions = trackCount - 2;
     return switch (lang) {
-      AppLanguage.arabic =>
-        'إطار أساسي بسكتين + $additions سكة إضافية',
+      AppLanguage.arabic => 'إطار أساسي بسكتين + $additions سكة إضافية',
       AppLanguage.french =>
         'Cadre de base à 2 rails + $additions rail(s) ajouté(s)',
       AppLanguage.english =>
@@ -543,7 +542,9 @@ class _WindowViewState extends State<WindowView> {
               'sash',
               'sash_extension',
               'sash_lateral',
+              'sash_lateral_reinforced',
               'sash_central',
+              'sash_central_reinforced',
               'sash_traverse',
               'chicane',
             ]
@@ -4527,12 +4528,25 @@ class _WindowViewState extends State<WindowView> {
                 : Icons.warning_amber_rounded;
 
             String message;
+            final hasOpeningSystem = widget.model.zones.any(
+              (candidate) =>
+                  candidate.content == ZoneContent.singleSash ||
+                  candidate.content == ZoneContent.doubleSash,
+            );
+            final hasSlidingSystem = widget.model.zones.any(
+              (candidate) => candidate.content == ZoneContent.slidingSash,
+            );
+            final openingPrefix = hasOpeningSystem && hasSlidingSystem
+                ? 'نظام الفتح (${widget.model.activeSeries?.name ?? ''}): '
+                : '';
             if (widget.model.isPVC || jointVitrage <= 0) {
-              message = isExact
-                  ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang)}: ${glassTotal.toStringAsFixed(0)} مم'
-                  : isAbove
-                  ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
-                  : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
+              message =
+                  openingPrefix +
+                  (isExact
+                      ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang)}: ${glassTotal.toStringAsFixed(0)} مم'
+                      : isAbove
+                      ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
+                      : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم');
             } else {
               final glassStr = glassTotal.toStringAsFixed(0);
               final jointStr = jointVitrage.toStringAsFixed(0);
@@ -4542,12 +4556,15 @@ class _WindowViewState extends State<WindowView> {
 
               if (isAbove) {
                 message =
+                    openingPrefix +
                     'تنبيه: سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم يتجاوز سعة البيركلوز ($maxStr مم) بـ $gapStr مم.';
               } else if (remainingGap < 2.0) {
                 message =
+                    openingPrefix +
                     'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم (سعة البيركلوز: $maxStr مم). الفراغ المتبقي لـ Joint Bourrage ضيق جداً ($gapStr مم).';
               } else {
                 message =
+                    openingPrefix +
                     'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | سعة البيركلوز: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
               }
             }
@@ -4584,7 +4601,113 @@ class _WindowViewState extends State<WindowView> {
             );
           }
 
+          Widget? buildSlidingParcloseThicknessInfo() {
+            final hasOpeningSystem = widget.model.zones.any(
+              (candidate) =>
+                  candidate.content == ZoneContent.singleSash ||
+                  candidate.content == ZoneContent.doubleSash,
+            );
+            final hasSlidingSystem = widget.model.zones.any(
+              (candidate) => candidate.content == ZoneContent.slidingSash,
+            );
+            if (!hasOpeningSystem ||
+                !hasSlidingSystem ||
+                spec.structure == GlassStructure.closed) {
+              return null;
+            }
+
+            double? capacityOf(dynamic value) {
+              if (value is! Map) return null;
+              final raw = value['max_glass_thickness'];
+              final parsed = raw is num
+                  ? raw.toDouble()
+                  : double.tryParse('${raw ?? ''}');
+              return parsed != null && parsed > 0 ? parsed : null;
+            }
+
+            final overrideKey = spec.structure == GlassStructure.double
+                ? 'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)'
+                : 'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)';
+            double? maximum = capacityOf(
+              widget.model.componentOverrides[overrideKey],
+            );
+            if (maximum == null) {
+              final candidates = widget.model.activeSlidingSeries?.sections
+                  .where((section) {
+                    final text = '${section.type} ${section.name}'
+                        .toLowerCase();
+                    final isParclose =
+                        text.contains('parclose') || text.contains('باكيت');
+                    if (!isParclose || section.maxGlassThickness <= 0) {
+                      return false;
+                    }
+                    return spec.structure == GlassStructure.double
+                        ? section.maxGlassThickness > 16
+                        : section.maxGlassThickness <= 16;
+                  })
+                  .map((section) => section.maxGlassThickness)
+                  .toList();
+              if (candidates != null && candidates.isNotEmpty) {
+                candidates.sort();
+                maximum = candidates.first;
+              }
+            }
+            // Sliding single-glass systems conventionally use a 12 mm
+            // parclose when the catalogue has no explicit capacity.
+            maximum ??= spec.structure == GlassStructure.double ? 24.0 : 12.0;
+
+            final glassTotal = spec.totalThickness(widget.model.allGlassCache);
+            final sides = spec.jointTwoSides ? 2 : 1;
+            final requiredPerSide = (maximum - glassTotal) / sides;
+            final isAbove = requiredPerSide < 0;
+            final color = isAbove ? Colors.red.shade700 : Colors.blue.shade700;
+            final icon = isAbove
+                ? Icons.warning_amber_rounded
+                : Icons.info_outline_rounded;
+            final glassStr = glassTotal.toStringAsFixed(0);
+            final maxStr = maximum.toStringAsFixed(0);
+            final jointStr = requiredPerSide.abs().toStringAsFixed(1);
+            final sideText = sides == 2 ? 'من جهتين' : 'من جهة واحدة';
+            final seriesName = widget.model.activeSlidingSeries?.name ?? '';
+            final message = isAbove
+                ? 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم يتجاوز سعة البيركلوز $maxStr مم بـ $jointStr مم.'
+                : 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم، الجوان المطلوب $jointStr مم $sideText، وسعة البيركلوز $maxStr مم.';
+
+            return Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(icon, color: color, size: 18),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
           final parcloseThicknessInfo = buildParcloseThicknessInfo();
+          final slidingParcloseThicknessInfo =
+              buildSlidingParcloseThicknessInfo();
           final fallbackIntercallChoices = <Map<String, dynamic>>[
             {'thickness': 6, 'name': '6 مم'},
             {'thickness': 8, 'name': '8 مم'},
@@ -5045,6 +5168,8 @@ class _WindowViewState extends State<WindowView> {
               ),
               const Divider(),
               if (parcloseThicknessInfo != null) parcloseThicknessInfo,
+              if (slidingParcloseThicknessInfo != null)
+                slidingParcloseThicknessInfo,
               if (targetZone != null &&
                   targetZone.content == ZoneContent.doubleSash) ...[
                 Row(
@@ -12019,6 +12144,19 @@ class _WindowViewState extends State<WindowView> {
     Map<String, dynamic> item, {
     required bool central,
   }) {
+    final name = (item['name'] ?? '').toString().toLowerCase();
+    final type = (item['type'] ?? '').toString().toLowerCase();
+    final isOpeningSash =
+        type.contains('ouvrant') ||
+        type.contains('opening') ||
+        name.contains('ouvrant') ||
+        name.contains('opening');
+    if (isOpeningSash &&
+        !type.contains('sliding') &&
+        !name.contains('coulissant') &&
+        !name.contains('منزلق')) {
+      return false;
+    }
     final id = _catalogRowId(item);
     if (id != null) {
       final inCentralRole = _slidingCentralProfileIds.contains(id);
@@ -12030,8 +12168,6 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final code = (item['code'] ?? '').toString().trim().toLowerCase();
-    final name = (item['name'] ?? '').toString().toLowerCase();
-    final type = (item['type'] ?? '').toString().toLowerCase();
     if (central) {
       return type.contains('central') ||
           type.contains('وسطي') ||
@@ -12099,6 +12235,7 @@ class _WindowViewState extends State<WindowView> {
           central: true,
           reinforced: reinforced,
           manualSelection: true,
+          updateAllMembers: false,
         );
       } else {
         widget.model.applySlidingMontantOverride(
@@ -12106,6 +12243,7 @@ class _WindowViewState extends State<WindowView> {
           central: false,
           reinforced: reinforced,
           manualSelection: true,
+          updateAllMembers: false,
         );
       }
       widget.model.refreshUI();
@@ -13567,23 +13705,45 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else if (isSliding) {
-          final lateralProfiles = sashProfiles
-              .where(
-                (s) =>
-                    _isSlidingMontantCandidate(s, central: false) &&
-                    (!_pvcMontantReinforcementDisabled ||
-                        !_isReinforcedMontant(s, central: false)),
-              )
-              .toList();
+          List<Map<String, dynamic>> uniqueProfiles(
+            Iterable<Map<String, dynamic>> profiles,
+          ) {
+            final seen = <String>{};
+            return profiles.where((profile) {
+              final key =
+                  _catalogRowId(profile)?.toString() ??
+                  '${profile['code'] ?? ''}|${profile['name'] ?? ''}';
+              return seen.add(key);
+            }).toList();
+          }
 
-          final centralProfiles = sashProfiles
-              .where(
-                (s) =>
-                    _isSlidingMontantCandidate(s, central: true) &&
-                    (!_pvcMontantReinforcementDisabled ||
-                        !_isReinforcedMontant(s, central: true)),
-              )
-              .toList();
+          final lateralProfiles = uniqueProfiles(
+            sashProfiles.where(
+              (s) =>
+                  _isSlidingMontantCandidate(s, central: false) &&
+                  (!_pvcMontantReinforcementDisabled ||
+                      !_isReinforcedMontant(s, central: false)),
+            ),
+          );
+
+          final centralProfiles = uniqueProfiles(
+            sashProfiles.where(
+              (s) =>
+                  _isSlidingMontantCandidate(s, central: true) &&
+                  (!_pvcMontantReinforcementDisabled ||
+                      !_isReinforcedMontant(s, central: true)),
+            ),
+          );
+          final traverseProfiles = uniqueProfiles(
+            sashProfiles.where((profile) {
+              final type = '${profile['type'] ?? ''}'.toLowerCase();
+              final name = '${profile['name'] ?? ''}'.toLowerCase();
+              return type.contains('sash_traverse') ||
+                  type.contains('traverse') ||
+                  name.contains('traverse') ||
+                  name.contains('ترافيرس');
+            }),
+          );
 
           bool isLateralSelected(Map<String, dynamic> item) {
             final current =
@@ -13749,6 +13909,53 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ),
             );
+          }
+          if (traverseProfiles.isNotEmpty) {
+            children.add(const SizedBox(width: 12));
+            children.add(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Text(
+                  Localization.translate('سكة الظلفة (Sash Traverse)', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+            );
+            for (final item in traverseProfiles) {
+              final selected =
+                  widget
+                      .model
+                      .componentOverrides['سكة الظلفة (Sash Traverse)']?['id']
+                      ?.toString() ==
+                  item['id']?.toString();
+              children.add(
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _ProfileButton(
+                    label: '${item['code'] ?? ''} - ${item['name'] ?? ''}',
+                    code: item['code']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    selected: selected,
+                    onPressed: () async {
+                      final chosen = Map<String, dynamic>.from(item);
+                      chosen['calculated_price'] =
+                          await _sectionPriceForSelectedColor(chosen);
+                      setState(() {
+                        widget
+                                .model
+                                .componentOverrides['سكة الظلفة (Sash Traverse)'] =
+                            chosen;
+                        widget.model.refreshUI();
+                      });
+                    },
+                  ),
+                ),
+              );
+            }
           }
         } else {
           for (var item in sashProfiles) {

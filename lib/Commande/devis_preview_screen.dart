@@ -36,8 +36,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   String _chequeNumber = '';
   Timer? _debounceTimer;
   bool _isLoaded = false;
+  bool _imageUnderPrices = false;
   static const _blue = Color(0xFF1565C0);
   static const _headerBlue = Color(0xFF1976D2);
+
   // The visual Devis is already available from DevisData. PDF bytes are
   // prepared in the background and must not block opening the preview.
   bool _isLoading = false;
@@ -55,6 +57,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   AppLanguage get lang => _invoiceLanguage;
 
   DevisData get data => _currentDevisData;
+
   bool get _isOfficial =>
       data.isProForma ||
       data.documentTitleKey == 'FACTURE_VENTE' ||
@@ -114,6 +117,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     // usable while PDF bytes are being prepared; putting a full-screen loader
     // here made partial delivery previews look stuck indefinitely.
     _isLoading = true;
+    // Start PDF generation immediately. Previously this was delayed until
+    // _initializePreviewLanguage finished, so the first Share/Print tap had
+    // to pay the full PDF-build cost and appeared to hang.
+    unawaited(_initPdfGeneration());
     unawaited(_initializePreviewLanguage());
   }
 
@@ -423,6 +430,110 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               ),
             ],
           ),
+          if (!_isOfficial) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.dashboard_customize_outlined,
+                      color: _blue,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _invoiceLanguage == AppLanguage.french
+                          ? 'Disposition de l\'image :'
+                          : 'مكان وشكل الصورة :',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        fontFamily: 'Cairo',
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          if (_imageUnderPrices) {
+                            setState(() => _imageUnderPrices = false);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: !_imageUnderPrices
+                                ? _blue
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Text(
+                            _invoiceLanguage == AppLanguage.french
+                                ? 'A (Latérale)'
+                                : 'A (جانبية)',
+                            style: TextStyle(
+                              color: !_imageUnderPrices
+                                  ? Colors.white
+                                  : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontFamily: 'Cairo',
+                            ),
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          if (!_imageUnderPrices) {
+                            setState(() => _imageUnderPrices = true);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _imageUnderPrices
+                                ? _blue
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Text(
+                            _invoiceLanguage == AppLanguage.french
+                                ? 'B (Sous prix)'
+                                : 'B (تحت الأسعار)',
+                            style: TextStyle(
+                              color: _imageUnderPrices
+                                  ? Colors.white
+                                  : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontFamily: 'Cairo',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (_isOfficial) ...[
             const SizedBox(height: 12),
             Row(
@@ -865,7 +976,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final isBonDeCharge = data.documentTitleKey == 'BON_CHARGE';
+    //final isBonDeCharge = data.documentTitleKey == 'BON_CHARGE';
 
     return Scaffold(
       backgroundColor: isDark
@@ -1209,18 +1320,17 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildTableHeader() {
     final hidePrices = data.hidePrices;
+    final bool showLeftImage = !_isOfficial && !_imageUnderPrices;
+
     return Container(
       color: _headerBlue,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       child: Row(
         children: [
-          if (!_isOfficial)
-            SizedBox(
-              width: 88,
-              child: Text(t('Image'), style: _headerStyle),
-            ),
+          if (showLeftImage)
+            SizedBox(width: 88, child: Text(t('Image'), style: _headerStyle)),
           Expanded(
-            flex: hidePrices ? 8 : 4,
+            flex: hidePrices ? 8 : (showLeftImage ? 4 : 5),
             child: Text(t('Désignation'), style: _headerStyle),
           ),
           if (!hidePrices)
@@ -1234,7 +1344,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             ),
           SizedBox(
             width: 38,
-            child: Text(t('Qté'), style: _headerStyle, textAlign: TextAlign.end),
+            child: Text(
+              t('Qté'),
+              style: _headerStyle,
+              textAlign: TextAlign.end,
+            ),
           ),
           if (!hidePrices)
             Expanded(
@@ -1264,6 +1378,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         : Colors.grey.shade800;
     final priceColor = item.isReplaced ? Colors.grey.shade500 : _blue;
     final hidePrices = data.hidePrices;
+    final bool showLeftImage = !_isOfficial && !_imageUnderPrices;
     final List<String> displayDetails = _isOfficial
         ? [
             if (_invoiceLanguage == AppLanguage.french)
@@ -1291,7 +1406,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!_isOfficial) ...[
+                if (showLeftImage) ...[
                   SizedBox(
                     width: 88,
                     height: 88,
@@ -1303,7 +1418,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   const SizedBox(width: 8),
                 ],
                 Expanded(
-                  flex: hidePrices ? 8 : 4,
+                  flex: hidePrices ? 8 : (showLeftImage ? 4 : 5),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1324,43 +1439,79 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     ],
                   ),
                 ),
-                if (!hidePrices)
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      '${_formatMoney(item.unitPrice)} D.A',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: textColor,
+                if (!_imageUnderPrices) ...[
+                  if (!hidePrices)
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        '${_formatMoney(item.unitPrice)} D.A',
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
                       ),
                     ),
-                  ),
-                SizedBox(
-                  width: 38,
-                  child: Text(
-                    '${item.quantity}',
-                    textAlign: TextAlign.end,
-                    style: TextStyle(fontSize: 12, color: textColor),
-                  ),
-                ),
-                if (!hidePrices)
-                  Expanded(
-                    flex: 2,
+                  SizedBox(
+                    width: 38,
                     child: Text(
-                      '${_formatMoney(item.unitPrice * item.quantity)} D.A',
+                      '${item.quantity}',
                       textAlign: TextAlign.end,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: priceColor,
-                      ),
+                      style: TextStyle(fontSize: 12, color: textColor),
                     ),
                   ),
+                  if (!hidePrices)
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        '${_formatMoney(item.unitPrice * item.quantity)} D.A',
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: priceColor,
+                        ),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),
+          // Mode B: صورة بعرض كامل تحترم نسبة أبعاد النافذة الحقيقية
+          if (_imageUnderPrices && !_isOfficial) ...[
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final double ratio = (item.width > 0 && item.height > 0)
+                    ? item.width / item.height
+                    : 4 / 3;
+                final double imgWidth = constraints.maxWidth;
+                final double imgHeight = imgWidth / ratio;
+                return Container(
+                  width: imgWidth,
+                  height: imgHeight,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Opacity(
+                    opacity: item.isReplaced ? 0.6 : 1.0,
+                    child: _buildItemImage(item),
+                  ),
+                );
+              },
+            ),
+          ],
           if (item.isReplaced && item.replacementReason.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
@@ -1419,10 +1570,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final value in values)
-          _detailRichText(
-            value,
-            style: TextStyle(fontSize: 11, color: color),
-          ),
+          _detailRichText(value, style: TextStyle(fontSize: 11, color: color)),
       ],
     );
 

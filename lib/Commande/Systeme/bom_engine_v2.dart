@@ -1,7 +1,7 @@
-import 'package:database_data/Commande/Systeme/calculate_component.dart';
-import 'package:database_data/Commande/Systeme/model.dart';
-import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart';
-import 'package:database_data/sql_database.dart';
+import 'calculate_component.dart';
+import 'model.dart';
+import 'profile_selector_dialog.dart';
+import '../../sql_database.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'accessory_assembly.dart';
 
@@ -67,10 +67,15 @@ class BomEngineV2 {
       }
     }
     kept.addAll(await _assemblyItems(window));
-    final existingIds = kept.map((item) => item.catalogItemId).whereType<int>().toSet();
+    final existingIds = kept
+        .map((item) => item.catalogItemId)
+        .whereType<int>()
+        .toSet();
     kept.addAll(
       (await _seriesKitItems(window)).where(
-        (item) => item.catalogItemId == null || !existingIds.contains(item.catalogItemId),
+        (item) =>
+            item.catalogItemId == null ||
+            !existingIds.contains(item.catalogItemId),
       ),
     );
     return kept;
@@ -169,6 +174,12 @@ class BomEngineV2 {
           hasDoubleGlassForRules: window.hasDoubleGlassForRules,
         ),
       );
+      final seriesName = sliding
+          ? (window.activeSlidingSeries?.name ??
+                window.activeSeries?.name ??
+                '')
+          : (window.activeSeries?.name ?? '');
+      var clampAdded = false;
       for (final candidate in candidates) {
         final rule = Map<String, dynamic>.from(
           candidate['catalog_rule'] as Map,
@@ -178,12 +189,22 @@ class BomEngineV2 {
         if (quantity <= 0) continue;
         final id = _catalogInt(candidate['id']);
         final role = rule['role_key'].toString();
+        final normalizedRole = role.toLowerCase().trim();
+        final isClamp = normalizedRole.contains('clam');
+        if (isClamp && clampAdded) continue;
+        if (isClamp) clampAdded = true;
         final key = 'assembly:$seriesId:$sliding:$role:$id';
+        final displayName = isClamp
+            ? [
+                'Clam',
+                seriesName.trim(),
+              ].where((part) => part.isNotEmpty).join(' ')
+            : candidate['name']?.toString() ?? role;
         items.add(
           BomItem(
             category: 'accessory',
-            originalName: candidate['name']?.toString() ?? role,
-            name: candidate['name']?.toString() ?? role,
+            originalName: displayName,
+            name: displayName,
             quantity: quantity.toDouble(),
             unit: 'حبة',
             unitPrice: await _accessoryPrice(database, candidate),
@@ -214,8 +235,7 @@ class BomEngineV2 {
           ...seriesRoleKeysForProfileSelectorType(selectorType),
         }.toList();
         if (roleKeys.isEmpty) return false;
-        if (roleKeys.contains('reducer') &&
-            !window.hasSimpleGlassForReducer) {
+        if (roleKeys.contains('reducer') && !window.hasSimpleGlassForReducer) {
           return false;
         }
         // An explicitly selected reducer is already a valid catalogue
@@ -264,6 +284,9 @@ class BomEngineV2 {
           ...catalogRuleKeysForAccessorySelectorType(selectorType),
         }.toList();
         if (roleKeys.isEmpty) return false;
+        if (_isShutterScrewRole(roleKeys) && item.catalogItemId != null) {
+          return true;
+        }
         if (_requiresDoubleSash(roleKeys) && !_hasDoubleSash(window)) {
           return false;
         }
@@ -324,8 +347,7 @@ class BomEngineV2 {
       ...seriesRoleKeysForProfileSelectorType(selectorType),
     }.toList();
     if (roleKeys.isEmpty) return;
-    if (roleKeys.contains('reducer') &&
-        !window.hasSimpleGlassForReducer) {
+    if (roleKeys.contains('reducer') && !window.hasSimpleGlassForReducer) {
       window.clearReducerOverride();
       return;
     }
@@ -430,7 +452,7 @@ class BomEngineV2 {
 
     final seriesId = _seriesIdForItem(window, item);
     final materialType = _materialTypeForItem(window, item);
-    final resolvedCandidates = await _resolveCandidates(
+    var resolvedCandidates = await _resolveCandidates(
       CatalogCandidateQuery(
         category: 'accessory',
         selectorType: selectorType,
@@ -445,8 +467,16 @@ class BomEngineV2 {
         targetThicknessMm: item.targetThicknessMm,
       ),
     );
+    if (resolvedCandidates.isEmpty && _isShutterScrewRole(ruleKeys)) {
+      resolvedCandidates = await _legacyShutterScrewCandidates(
+        database,
+        ruleKeys,
+      );
+    }
     final candidates = resolvedCandidates
-        .where((candidate) => _accessoryMatchesLinkedSections(candidate, window))
+        .where(
+          (candidate) => _accessoryMatchesLinkedSections(candidate, window),
+        )
         .toList();
     if (candidates.isEmpty) {
       _clearComponentSelection(window, item);
@@ -477,6 +507,36 @@ class BomEngineV2 {
     final linkedSections = assemblySectionIds(rule);
     if (linkedSections.isEmpty) return true;
     return linkedSections.any(drawingSectionIds(window).contains);
+  }
+
+  bool _isShutterScrewRole(Iterable<String> roles) {
+    const shutterScrewRoles = {
+      'kit_screw',
+      'box_screw',
+      'motor_screw',
+      'manivelle_screw',
+    };
+    return roles.any(shutterScrewRoles.contains);
+  }
+
+  Future<List<Map<String, dynamic>>> _legacyShutterScrewCandidates(
+    Database database,
+    Iterable<String> roles,
+  ) async {
+    final roleSet = roles.toSet();
+    final flag = roleSet.contains('kit_screw')
+        ? 'is_kit_screw'
+        : roleSet.contains('box_screw')
+        ? 'is_caisson_screw'
+        : roleSet.contains('motor_screw')
+        ? 'is_moteur_screw'
+        : 'is_manivelle_screw';
+    final rows = await database.query(
+      'Accessories',
+      where: '($flag = 1) AND (is_active = 1 OR is_active IS NULL)',
+      orderBy: 'id ASC',
+    );
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
   Future<void> _resolveJoint(
@@ -603,6 +663,7 @@ class BomEngineV2 {
 
   String _materialTypeForItem(WindowModel window, BomItem item) {
     final materialType = item.materialType?.toLowerCase().trim();
+    if (materialType == 'shutter') return 'shutter';
     if (materialType == 'pvc' ||
         materialType == 'aluminium' ||
         materialType == 'aluminum') {

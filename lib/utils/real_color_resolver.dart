@@ -192,6 +192,7 @@ List<Color>? _namedGradient(Object? rawName) {
     return const [Color(0xFFF5F5F7), Color(0xFFC0C0C0), Color(0xFF7D7D80)];
   }
   if (name.contains('champagne') ||
+      name.contains('chompagne') ||
       name.contains('شامبان') ||
       name.contains('شمبان') ||
       name.contains('شومبان') ||

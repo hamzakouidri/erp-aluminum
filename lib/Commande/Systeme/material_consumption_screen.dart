@@ -69,6 +69,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   bool _isFetchingDefaults = false;
   double _fetchProgress = 0.0;
   bool _hasFetchedDefaults = false;
+  int? _lastBomColorId;
   List<BomItem> _visibleBomItems = const [];
   int _bomRefreshGeneration = 0;
   final Map<String, double> _accessoryPriceCache = {};
@@ -1271,14 +1272,44 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     Database database,
     String kitName,
   ) async {
-    final catalogRows = await database.query(
+    var catalogRows = await database.query(
       'ShutterComponents',
+      // ShutterComponents has only the canonical `price` column.  Do not
+      // project optional UI fields here: SQLite would fail the whole BOM load
+      // when an older database does not contain them.
       columns: const ['id', 'price'],
       where:
           "LOWER(TRIM(name)) = LOWER(TRIM(?)) AND LOWER(TRIM(component_type)) = 'kit' AND (is_active = 1 OR is_active IS NULL)",
       whereArgs: [kitName],
       orderBy: 'id DESC',
     );
+    if (catalogRows.isEmpty) {
+      // KitBundles and ShutterComponents may differ only by punctuation,
+      // accents or a trailing unit such as "mm". Match their normalized
+      // catalogue names before deciding that the saved official price is 0.
+      final allKitRows = await database.query(
+        'ShutterComponents',
+        columns: const ['id', 'name', 'price'],
+        where:
+            "LOWER(TRIM(component_type)) = 'kit' AND (is_active = 1 OR is_active IS NULL)",
+        orderBy: 'id DESC',
+      );
+      String normalize(String value) => value
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06ff]+'), ' ')
+          .replaceAll(RegExp(r'\bmm\b'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      final wanted = normalize(kitName);
+      catalogRows = allKitRows.where((row) {
+        final candidate = normalize('${row['name'] ?? ''}');
+        return candidate == wanted ||
+            (candidate.isNotEmpty &&
+                wanted.isNotEmpty &&
+                (candidate.contains(wanted) || wanted.contains(candidate)));
+      }).toList();
+    }
     if (catalogRows.isEmpty) return null;
 
     final kitProduct = catalogRows.first;
@@ -1929,11 +1960,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // this pass, a selection resolved for the previous series could remain
     // visible until the screen was recreated.
     final rawBomItems = _generateRawBomItems();
-    await engine.stabilizeSelections(window: widget.model, items: rawBomItems);
-    final dbReady = await SqlDatabase().db != null;
-    final visibleBomItems = dbReady
-        ? await _generateStrictVisibleBomItems(engine)
-        : rawBomItems;
+    var visibleBomItems = rawBomItems;
+    try {
+      await engine.stabilizeSelections(
+        window: widget.model,
+        items: rawBomItems,
+      );
+      final dbReady = await SqlDatabase().db != null;
+      if (dbReady) {
+        visibleBomItems = await _generateStrictVisibleBomItems(engine);
+      }
+    } catch (error, stackTrace) {
+      // A catalogue/schema error must not erase quantities that the component
+      // calculator has already produced. Keep the raw BOM visible and let the
+      // next refresh retry the strict catalogue validation.
+      debugPrint('Material BOM refresh failed; showing raw BOM: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
     if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
     setState(() => _visibleBomItems = visibleBomItems);
   }
@@ -1972,6 +2015,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       _setFetchProgress(0.55);
       var bomItems = _generateRawBomItems();
+      // Keep a usable fallback before running any catalogue queries. A single
+      // incompatible/old database column must not leave the table empty.
+      visibleBomItems = bomItems;
       final engine = BomEngineV2(database: sqlDb);
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
 
@@ -1987,6 +2033,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _setFetchProgress(0.88);
       if (dbInstance != null) await _loadPricesFromDb();
       _setFetchProgress(0.96);
+    } catch (error, stackTrace) {
+      debugPrint('Material defaults load failed; showing raw BOM: $error');
+      debugPrintStack(stackTrace: stackTrace);
     } finally {
       if (mounted) {
         setState(() {
@@ -2113,6 +2162,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // لا تعرض نسخة BOM أولية؛ انشر فقط النتيجة بعد اكتمال الفحص الصارم.
     _visibleBomItems = const <BomItem>[];
     _hasFetchedDefaults = false;
+    final initialColorId = widget.model.selectedDbColor?['id'];
+    _lastBomColorId = initialColorId is num
+        ? initialColorId.toInt()
+        : int.tryParse('${initialColorId ?? ''}');
     unawaited(_loadTableColumnLayout());
     // استدعاء الجلب الذكي فور فتح الشاشة (لملء كل المكونات والفحص الصارم)
     _fetchDefaults();
@@ -2127,8 +2180,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   void _onModelChanged() {
+    final rawColorId = widget.model.selectedDbColor?['id'];
+    final colorId = rawColorId is num
+        ? rawColorId.toInt()
+        : int.tryParse('${rawColorId ?? ''}');
+    final colorChanged = colorId != _lastBomColorId;
+    _lastBomColorId = colorId;
     if (mounted) {
       setState(() {});
+    }
+    if (colorChanged && _hasFetchedDefaults && !_isFetchingDefaults) {
+      // A colour changes section prices, shutter colour prices and accessory
+      // prices; refreshing only the existing rows leaves stale/empty totals.
+      unawaited(_fetchDefaults());
+      return;
     }
     if (_hasFetchedDefaults && !_isFetchingDefaults) {
       unawaited(_refreshVisibleBomItems());
@@ -2275,6 +2340,24 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         colorId: colorId,
         prices: allSqmPrices,
       );
+      // Prefer the exact blade + selected-colour row over fuzzy matching.
+      // Fuzzy matching could pick a generic 730 DZD row when the catalogue
+      // contains the explicitly configured 8500 DZD price.
+      if (colorId != null) {
+        final exactColorRows = await dbInstance.query(
+          'ShutterSqmPrices',
+          columns: ['price_per_sqm'],
+          where:
+              'LOWER(TRIM(blade_type)) = ? AND color_id = ? AND price_per_sqm > 0',
+          whereArgs: [actualBladeName.trim().toLowerCase(), colorId],
+          orderBy: 'id DESC',
+          limit: 1,
+        );
+        if (exactColorRows.isNotEmpty) {
+          final exactPrice = _safeDouble(exactColorRows.first['price_per_sqm']);
+          if (exactPrice > 0) shutterSqmPrice = exactPrice;
+        }
+      }
       if (shutterSqmPrice == 0.0) {
         final exactRows = await dbInstance.query(
           'ShutterSqmPrices',
@@ -3799,10 +3882,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final children = entry.value;
       final isExpanded =
           _kitGroupExpanded[kitName] ?? false; // حالة الطي/التوسعة الحالية
-      final totalPrice = children.fold<double>(
+      final childTotalPrice = children.fold<double>(
         0,
         (sum, i) => sum + _pricedTotal(i),
-      ); // مجموع تكلفة كل عناصر المجموعة
+      );
+      final officialKitUnitPrice = _kitBundlePrices[kitName] ?? 0.0;
       // دالة داخلية: تحدد هل عنصر معين هو "رأس كيت" (وليس عنصرًا فرعيًا داخله)
       bool isKitItem(String name) =>
           name == 'كيت (Kit)' ||
@@ -3872,6 +3956,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         (c) => isKitItem(c.originalName),
         orElse: () => children.first,
       );
+      final kitQuantity = math.max(1, widget.model.quantity).toDouble();
+      final totalPrice = officialKitUnitPrice > 0
+          ? officialKitUnitPrice * kitQuantity
+          : childTotalPrice;
       // هل المجموعة مفعّلة حاليًا؟ (تُحدد من activeVariants حسب نوعها)
       final isGroupActive = isSystemOb
           ? (activeVariants['System OB'] ?? false)
@@ -3999,10 +4087,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ),
                     _wActualMeters,
                   ),
-                  // عمود سعر الوحدة: لا معنى له لصف المجموعة، يُعرض "-"
+                  // سعر الكيت الرسمي المخزن في كتالوج مكونات الستار.
                   _cell(
                     Text(
-                      '-',
+                      officialKitUnitPrice > 0
+                          ? '${officialKitUnitPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}'
+                          : '-',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.grey,
@@ -4010,10 +4100,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ),
                     _wPrice,
                   ),
-                  // السعر التقديري لا ينطبق على صف المجموعة.
+                  // إجمالي سعر الكيت الرسمي × كميته.
                   _cell(
                     Text(
-                      '-',
+                      officialKitUnitPrice > 0
+                          ? '${totalPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}'
+                          : '-',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.grey,
@@ -5606,8 +5698,26 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         item.originalName.contains('بلانت') ||
         pType.toLowerCase().contains('plinthe') ||
         pType.contains('بلانت');
+    final rowRoleText =
+        '${item.originalName} ${item.roleKey ?? ''} ${item.selectorType ?? ''}'
+            .toLowerCase();
+    final isSlidingLateralRow =
+        rowRoleText.contains('sash_lateral') ||
+        rowRoleText.contains('sash lateral') ||
+        rowRoleText.contains('قائم جانبي');
+    final isSlidingCentralRow =
+        rowRoleText.contains('sash_central') ||
+        rowRoleText.contains('sash central') ||
+        rowRoleText.contains('قائم وسطي');
+    // A montant can be changed in both directions. Restricting a reinforced
+    // row to the reinforced role made the regular profile disappear from the
+    // selector, so the user could never switch it back to normal.
     final dialogRoleKeys = rowLooksPlinthe
         ? const <String>['plant']
+        : isSlidingLateralRow
+        ? const <String>['sash_lateral', 'sash_lateral_reinforced']
+        : isSlidingCentralRow
+        ? const <String>['sash_central', 'sash_central_reinforced']
         : explicitRoleKey.isEmpty
         ? const <String>[]
         : <String>[explicitRoleKey];
@@ -6386,7 +6496,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           setState(() {
             // Bidirectional synchronization between B.O.M. profile selection and drawer stiles/montants checkboxes
             final selectedType = swapTarget.profileType.toLowerCase();
+            final selectionHint = [
+              selectedType,
+              item.originalName,
+              item.overrideKey ?? '',
+              swapTarget.overrideKey ?? '',
+            ].join(' ').toLowerCase();
             if (selectedType.contains('lateral') ||
+                selectionHint.contains('montant lateral') ||
+                selectionHint.contains('sash lateral') ||
                 item.originalName.contains('Sash Lateral') ||
                 item.originalName.contains('قائم جانبي') ||
                 item.originalName == 'قائم جانبي (Lateral)') {
@@ -6396,6 +6514,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 manualSelection: true,
               );
             } else if (selectedType.contains('central') ||
+                selectionHint.contains('montant central') ||
+                selectionHint.contains('sash central') ||
                 item.originalName.contains('Sash Central') ||
                 item.originalName.contains('قائم وسطي') ||
                 item.originalName == 'قائم وسطي (Central)') {

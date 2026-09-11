@@ -236,6 +236,40 @@ void main() {
     expect(model.supportedSlidingSashCounts, isNot(contains(2)));
   });
 
+  test('three-track frame with integrated cover is rejected by shutter', () {
+    final allowed = slidingFrameRoleAllowedForDrawing(
+      {
+        'allowed_with_shutter': 1,
+        'integrated_side_cover': 1,
+        'couvre_joint_width': 35,
+      },
+      hasShutter: true,
+      isCaissonTunnel: false,
+      isPvc: false,
+    );
+
+    expect(allowed, isFalse);
+  });
+
+  test('rail extension uses its own shutter permission', () {
+    for (final permitted in [true, false]) {
+      expect(
+        slidingFrameRoleAllowedForDrawing(
+          {
+            'allowed_with_shutter': permitted ? 1 : 0,
+            'integrated_side_cover': 1,
+            'couvre_joint_width': 35,
+          },
+          hasShutter: true,
+          isCaissonTunnel: false,
+          isPvc: false,
+          isFrameExtension: true,
+        ),
+        permitted,
+      );
+    }
+  });
+
   test('PVC sliding keeps brush joint but excludes bourrage joint', () {
     final model = WindowModel(
       db: FakeSqlDatabase(),

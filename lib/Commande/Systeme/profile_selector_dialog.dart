@@ -860,6 +860,26 @@ class CatalogCandidateResolver {
 
     return sections
         .where((section) {
+          final sectionName = (section['name'] ?? '').toString().toLowerCase();
+          final sectionType = (section['type'] ?? '').toString().toLowerCase();
+          final selectingSlidingMontant = roleKeys.any(
+            (role) => role == 'sash_central' ||
+                role == 'central' ||
+                role == 'sash_lateral' ||
+                role == 'lateral' ||
+                role == 'chicane',
+          );
+          final isOpeningSash = sectionName.contains('ouvrant') ||
+              sectionName.contains('opening') ||
+              sectionType.contains('ouvrant') ||
+              sectionType.contains('opening');
+          if (selectingSlidingMontant &&
+              isOpeningSash &&
+              !sectionName.contains('coulissant') &&
+              !sectionName.contains('منزلق') &&
+              !sectionType.contains('sliding')) {
+            return false;
+          }
           if (!_designRoleMatchesGlass(section, query)) {
             return false;
           }

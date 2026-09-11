@@ -41,6 +41,21 @@ Set<int> assemblySectionIds(Map<String, dynamic> rule) {
   return ids;
 }
 
+Map<int, int> assemblySectionCornerQuantities(Map<String, dynamic> rule) {
+  final result = <int, int>{};
+  final raw = '${rule['assembly_section_quantities'] ?? ''}'.trim();
+  for (final token in raw.split(',')) {
+    final parts = token.split(':');
+    if (parts.length != 2) continue;
+    final sectionId = int.tryParse(parts[0].trim());
+    final quantity = int.tryParse(parts[1].trim());
+    if (sectionId != null && sectionId > 0 && quantity != null && quantity >= 0) {
+      result[sectionId] = quantity;
+    }
+  }
+  return result;
+}
+
 /// Every catalogue section that is physically selected in the drawing.
 Set<int> drawingSectionIds(WindowModel window) {
   final ids = <int>{};
@@ -155,6 +170,7 @@ int assemblyQuantity(
       ? 'frame'
       : 'sash';
   final linkedSections = assemblySectionIds(rule);
+  final sectionCornerQuantities = assemblySectionCornerQuantities(rule);
   final top = (assemblyInt(rule['top_corner_qty']) ?? 1).clamp(0, 100000);
   final bottom = (assemblyInt(rule['bottom_corner_qty']) ?? 1).clamp(0, 100000);
   var quantity = 0;
@@ -164,7 +180,15 @@ int assemblyQuantity(
         !linkedSections.contains(demand.sectionId)) {
       continue;
     }
-    quantity += demand.topCorners * top + demand.bottomCorners * bottom;
+    final sectionQuantity = demand.sectionId == null
+        ? null
+        : sectionCornerQuantities[demand.sectionId];
+    if (sectionQuantity != null) {
+      quantity +=
+          (demand.topCorners + demand.bottomCorners) * sectionQuantity;
+    } else {
+      quantity += demand.topCorners * top + demand.bottomCorners * bottom;
+    }
   }
   return quantity;
 }

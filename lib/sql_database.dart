@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_common;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
@@ -165,6 +164,7 @@ class SqlDatabase {
       return '#B68B55';
     }
     if (normalized.contains('champagne') ||
+        normalized.contains('chompagne') ||
         normalized.contains('شامبان') ||
         normalized.contains('شمبان')) {
       return '#F7E7CE';
@@ -1804,6 +1804,7 @@ class SqlDatabase {
         bottom_corner_qty INTEGER NOT NULL DEFAULT 1,
         assembly_section_id INTEGER,
         assembly_section_ids TEXT NOT NULL DEFAULT '',
+        assembly_section_quantities TEXT NOT NULL DEFAULT '',
         integrated_side_cover INTEGER NOT NULL DEFAULT 0,
         allows_side_cover INTEGER NOT NULL DEFAULT 1,
         allowed_with_shutter INTEGER NOT NULL DEFAULT 1,
@@ -1853,6 +1854,7 @@ class SqlDatabase {
       'ALTER TABLE CatalogItemRules ADD COLUMN bottom_corner_qty INTEGER NOT NULL DEFAULT 1;',
       'ALTER TABLE CatalogItemRules ADD COLUMN assembly_section_id INTEGER;',
       "ALTER TABLE CatalogItemRules ADD COLUMN assembly_section_ids TEXT NOT NULL DEFAULT '';",
+      "ALTER TABLE CatalogItemRules ADD COLUMN assembly_section_quantities TEXT NOT NULL DEFAULT '';",
       'ALTER TABLE CatalogItemRules ADD COLUMN integrated_side_cover INTEGER NOT NULL DEFAULT 0;',
       'ALTER TABLE CatalogItemRules ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
       'ALTER TABLE CatalogItemRules ADD COLUMN allowed_with_shutter INTEGER NOT NULL DEFAULT 1;',
@@ -2072,43 +2074,6 @@ class SqlDatabase {
     } catch (_) {}
   }
 
-  Future<void> _ensureShutterComponentSeeds(DatabaseExecutor db) async {
-    final List<Map<String, dynamic>> itemsToSeed = [
-      {
-        'name': 'Ø§Ù„Ù…Ø­Ø±Ùƒ (Moteur)',
-        'component_type': 'Moteur',
-        'price': 0.0,
-        'unit': 'pcs',
-        'is_active': 1,
-      },
-      {
-        'name': 'Ø§Ù„Ù…Ø§Ù†ÙŠÙØ§Ù„ (Manivelle)',
-        'component_type': 'Manivelle',
-        'price': 0.0,
-        'unit': 'pcs',
-        'is_active': 1,
-      },
-      {
-        'name': 'Ø§Ù„Ø³ÙƒÙƒ (Coulisses)',
-        'component_type': 'Glissiere',
-        'price': 0.0,
-        'unit': 'pcs',
-        'is_active': 1,
-      },
-    ];
-
-    for (final item in itemsToSeed) {
-      final name = item['name'] as String;
-      final existing = await db.query(
-        'ShutterComponents',
-        where: 'name = ?',
-        whereArgs: [name],
-      );
-      if (existing.isEmpty) {
-        await db.insert('ShutterComponents', item);
-      }
-    }
-  }
 
   Future<Database?> get db async {
     final current = _db;
@@ -4230,7 +4195,7 @@ class SqlDatabase {
     // hot restart.  Ensure the independent drawing-role columns exist before
     // creating a section, rather than silently losing the selected roles.
     await _ensureSectionDrawingRoleColumns(myDb!);
-    var res = await myDb!.insert('Sections', {
+    var res = await myDb.insert('Sections', {
       'series_id': seriesId,
       'code': code,
       'name': name,
@@ -4263,7 +4228,7 @@ class SqlDatabase {
   Future<int> updateSection(int id, Map<String, dynamic> data) async {
     Database? myDb = await db;
     await _ensureSectionDrawingRoleColumns(myDb!);
-    var res = await myDb!.update(
+    var res = await myDb.update(
       'Sections',
       data,
       where: 'id = ?',
@@ -9577,7 +9542,7 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readColors() async {
     Database? myDb = await db;
     await _repairKnownColorRows(myDb!);
-    return myDb!.query(
+    return myDb.query(
       'Colors',
       where: 'is_active = 1 OR is_active IS NULL',
       orderBy: 'name COLLATE NOCASE ASC',
@@ -9745,7 +9710,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return <int>[];
     await _ensureProfileColorsSyncIds(myDb);
-    var res = await myDb!.query(
+    var res = await myDb.query(
       'ProfileColors',
       where: 'color_id = ?',
       whereArgs: [colorId],
@@ -10086,7 +10051,7 @@ class SqlDatabase {
       profileId: profileId,
     );
     if (initialized) CloudSyncService().notifyCatalogChange();
-    return myDb!.rawQuery(
+    return myDb.rawQuery(
       '''
       SELECT DISTINCT c.* FROM Colors c
       INNER JOIN ProfileColors pc
@@ -16571,6 +16536,8 @@ class SqlDatabase {
           'assembly_section_id': rule['assembly_section_id'],
           'assembly_section_ids':
               rule['assembly_section_ids']?.toString() ?? '',
+          'assembly_section_quantities':
+              rule['assembly_section_quantities']?.toString() ?? '',
           'integrated_side_cover':
               rule['integrated_side_cover'] == true ||
                   rule['integrated_side_cover'] == 1

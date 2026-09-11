@@ -2802,9 +2802,7 @@ class ComponentCalculator {
             final groupMatches =
                 !isWeight ||
                 selectedCompatibilityGroup == null ||
-                (selectedCompatibilityGroup != null &&
-                    (rangeGroup == 0 ||
-                        rangeGroup == selectedCompatibilityGroup));
+                ((rangeGroup == 0 || rangeGroup == selectedCompatibilityGroup));
             // The range matches if dimValue falls within [mn, mx)
             if (groupMatches && dimValue >= mn && dimValue <= mx) {
               matchedRanges.add(r);
@@ -3414,6 +3412,8 @@ class ComponentCalculator {
       List<double> slidingSashPieces = [];
       List<double> slidingSashTraversePieces = [];
       List<double> slidingSashLateralPieces = [];
+      List<double> slidingSashLateralReinforcedPieces = [];
+      List<double> slidingSashLateralNormalPieces = [];
       List<double> slidingSashCentralPieces = [];
       List<double> sashPlinthePieces = [];
 
@@ -3631,7 +3631,15 @@ class ComponentCalculator {
 
             // Lateral pieces (2 lateral profiles per window/sash assembly)
             for (int i = 0; i < 2; i++) {
-              slidingSashLateralPieces.add(sashH / 1000.0);
+              final legacyKey = i == 0 ? 'lateral_left' : 'lateral_right';
+              final reinforced =
+                  zone.slidingMontantReinforced['lateral_$i'] ??
+                  zone.slidingMontantReinforced[legacyKey] ??
+                  false;
+              (reinforced
+                      ? slidingSashLateralReinforcedPieces
+                      : slidingSashLateralNormalPieces)
+                  .add(sashH / 1000.0);
             }
 
             // Central / chicane pieces (2 pieces for 2-sash, 4 pieces for 3-sash, 6 pieces for 4-sash)
@@ -3821,14 +3829,16 @@ class ComponentCalculator {
         );
       }
 
-      if (slidingSashLateralPieces.isNotEmpty) {
+      // Keep legacy aggregate output when no per-side flag exists, but split
+      // the BOM whenever the two lateral montants use different profiles.
+      slidingSashLateralPieces = [
+        ...slidingSashLateralNormalPieces,
+        ...slidingSashLateralReinforcedPieces,
+      ];
+      if (slidingSashLateralNormalPieces.isNotEmpty) {
         const lateralName = 'قائم جانبي (Sash Lateral)';
         final baseLateral =
-            slidingOverrideFor([
-              'قائم جانبي معزز (Sash Lateral Renforcé)',
-              lateralName,
-              'قائم جانبي (Lateral)',
-            ]) ??
+            slidingOverrideFor([lateralName, 'قائم جانبي (Lateral)']) ??
             window.getSlidingSectionByType('sash_lateral')?.toMap() ??
             window.getSlidingSectionByType('lateral')?.toMap();
 
@@ -3836,11 +3846,26 @@ class ComponentCalculator {
           createProfile(
             lateralName,
             colorName,
-            pieces: slidingSashLateralPieces,
+            pieces: slidingSashLateralNormalPieces,
             unit: 'قطاع',
             overrideMap: baseLateral,
             preferOverrideMap: true,
             roleKey: 'sash_lateral',
+          ),
+        );
+      }
+      if (slidingSashLateralReinforcedPieces.isNotEmpty) {
+        items.add(
+          createProfile(
+            'قائم جانبي معزز (Sash Lateral Renforcé)',
+            colorName,
+            pieces: slidingSashLateralReinforcedPieces,
+            unit: 'قطاع',
+            overrideMap: slidingOverrideFor([
+              'قائم جانبي معزز (Sash Lateral Renforcé)',
+            ]),
+            preferOverrideMap: true,
+            roleKey: 'sash_lateral_reinforced',
           ),
         );
       }
@@ -5060,27 +5085,14 @@ class ComponentCalculator {
       }
 
       // ===== 3. المحور (Axe) =====
-      // In tunnel mode the axe follows the shutter rules and is always a
-      // standalone row. For a regular shutter only the external 60 mm axe is
-      // separate from its regular shutter kit.
+      // The physical shutter always has an axis, whether it was selected
+      // directly or supplied by a kit. Keep it as an explicit BOM row so its
+      // quantity and official catalogue price never disappear.
       {
-        final axeOvr = window.componentOverrides['المحور (Axe)'];
-        final axeNm = axeOvr?['name']?.toString() ?? '';
-        final axeDm = axeOvr?['motor_diameter']?.toString() ?? '';
-        final axeStr = axeDm.isNotEmpty ? axeDm : axeNm;
-        final axeMtch = RegExp(r'(\d+)').firstMatch(axeStr);
-        final int selAxeDiam = axeMtch != null
-            ? (int.tryParse(axeMtch.group(1)!) ?? 0)
-            : 0;
-        // Tunnel shutter parts are calculated independently from the CT kit.
-        // For a regular shutter only the external 60 mm axe is separate.
-        final showAxe = isTunnel || selAxeDiam == 60;
-        if (showAxe) {
-          List<double> axePieces = [(window.width - 75) / 1000.0];
-          items.add(
-            createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
-          );
-        }
+        List<double> axePieces = [(window.width - 75) / 1000.0];
+        items.add(
+          createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
+        );
       }
 
       // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
@@ -5300,17 +5312,9 @@ class ComponentCalculator {
             ),
           );
         }
-        final String seriesName =
-            window.activeSlidingSeries?.name.toLowerCase() ??
-            window.activeSeries?.name.toLowerCase() ??
-            '';
-        final bool isTPI67000 =
-            seriesName.contains('67000') ||
-            seriesName.contains('tpi') ||
-            seriesName.contains('tpr');
-        if (isTPI67000) {
-          items.add(createAccessory('Clam 67000', qty: 4));
-        }
+        // Clam/Clamp rows are resolved below by BomEngineV2 from the exact
+        // catalogue rules of each active system. Do not inject a hard-coded
+        // "Clam 67000" row here; it caused duplicates and wrong series names.
       }
     }
 
@@ -5617,8 +5621,6 @@ class ComponentCalculator {
                     }
                     pieceStart = -1;
                   }
-                } else {
-                  pieceStart = -1;
                 }
               }
             }
@@ -5675,8 +5677,6 @@ class ComponentCalculator {
                     }
                     pieceTop = -1;
                   }
-                } else {
-                  pieceTop = -1;
                 }
               }
             }
@@ -5765,8 +5765,6 @@ class ComponentCalculator {
                     }
                     pieceStart = -1;
                   }
-                } else {
-                  pieceStart = -1;
                 }
               }
             }
@@ -5823,8 +5821,6 @@ class ComponentCalculator {
                     }
                     pieceTop = -1;
                   }
-                } else {
-                  pieceTop = -1;
                 }
               }
             }
@@ -8086,7 +8082,7 @@ class ComponentCalculator {
     String? imagePath;
     String subName = '';
     if (isLinked) {
-      final ov = selectedOverride!;
+      final ov = selectedOverride;
       profileCode = ov['code']?.toString();
       imagePath = ov['image_path']?.toString();
       subName = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
@@ -8104,7 +8100,7 @@ class ComponentCalculator {
     if (pieces != null && pieces.isNotEmpty) {
       double barLength = 0.0;
       if (isLinked) {
-        final ov = selectedOverride!;
+        final ov = selectedOverride;
         barLength = (ov['bar_length'] as num?)?.toDouble() ?? 0.0;
       }
 
@@ -8144,7 +8140,7 @@ class ComponentCalculator {
     }
 
     if (isLinked && (finalLength == null || finalLength == 0.0)) {
-      final ov = selectedOverride!;
+      final ov = selectedOverride;
       finalLength = (ov['bar_length'] as num?)?.toDouble() ?? 0.0;
     }
 

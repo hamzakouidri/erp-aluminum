@@ -55,10 +55,16 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
   final Map<String, Map<String, dynamic>> _rulesByItem = {};
   List<Map<String, dynamic>> _assemblySections = [];
-  List<Map<String, dynamic>> _seriesOptions = [];
+  List<Map<String, dynamic>> _profiles = [];
+  List<Map<String, dynamic>> _series = [];
+  Map<String, dynamic>? _selectedProfile;
+  Map<String, dynamic>? _selectedSeries;
   int? _selectedSeriesId;
-  bool _loading = true;
+  bool _loadingProfiles = true;
+  bool _loadingSeries = false;
+  bool _loading = false;
   bool _saving = false;
+  String? _inspectedItemKey;
 
   String _t(String ar, String fr) {
     final language = context.read<AppSettingsProvider>().language;
@@ -92,21 +98,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() => _loadingProfiles = true);
     final results = await Future.wait<dynamic>([
       widget.db.readAccessories(),
       widget.db.readJoints(),
+      widget.db.readProfile(),
     ]);
-    final database = await widget.db.db;
-    _seriesOptions =
-        await database?.rawQuery('''
-      SELECT s.id, s.name, s.type, p.name AS profile_name
-      FROM Series s
-      LEFT JOIN Profile p ON p.id = s.profile_id
-      ORDER BY p.name ASC, s.name ASC
-    ''') ??
-        [];
-    _assemblySections = [];
     if (!mounted) return;
     _itemsByTable
       ..clear()
@@ -114,14 +111,40 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         'Accessories': results[0] as List<Map<String, dynamic>>,
         'Joints': results[1] as List<Map<String, dynamic>>,
       });
+    _profiles = results[2] as List<Map<String, dynamic>>;
     _rulesByItem.clear();
-    setState(() => _loading = false);
+    setState(() => _loadingProfiles = false);
   }
 
-  Future<void> _selectSeries(int seriesId) async {
+  Future<void> _selectProfile(Map<String, dynamic> profile) async {
     setState(() {
+      _selectedProfile = profile;
+      _selectedSeries = null;
+      _selectedSeriesId = null;
+      _series = [];
+      _loadingSeries = true;
+      _rulesByItem.clear();
+      _inspectedItemKey = null;
+    });
+    final profileId = (profile['id'] as num?)?.toInt();
+    final series = profileId == null
+        ? <Map<String, dynamic>>[]
+        : await widget.db.readSeriesByProfile(profileId);
+    if (!mounted) return;
+    setState(() {
+      _series = series;
+      _loadingSeries = false;
+    });
+  }
+
+  Future<void> _selectSeries(Map<String, dynamic> series) async {
+    final seriesId = (series['id'] as num?)?.toInt();
+    if (seriesId == null) return;
+    setState(() {
+      _selectedSeries = series;
       _selectedSeriesId = seriesId;
       _loading = true;
+      _inspectedItemKey = null;
     });
     final results = await Future.wait([
       widget.db.getCatalogItemRules(
@@ -381,6 +404,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'selection_mode': 'always',
       'assembly_target': '',
       'assembly_section_ids': '',
+      'assembly_section_quantities': '',
       'top_corner_qty': 1,
       'bottom_corner_qty': 1,
       'integrated_side_cover': false,
@@ -415,10 +439,18 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final itemId = _itemId(item);
     if (itemId == null) return;
     final rule = _ruleFor(table, itemId);
+    final key = _itemKey(table, itemId);
     setState(() {
       rule['is_active'] = enabled;
-      if (enabled && (rule['role_key']?.toString().trim().isEmpty ?? true)) {
-        rule['role_key'] = _guessRole(table, item);
+      if (enabled) {
+        if (rule['role_key']?.toString().trim().isEmpty ?? true) {
+          rule['role_key'] = _guessRole(table, item);
+        }
+        _inspectedItemKey = key;
+      } else {
+        if (_inspectedItemKey == key) {
+          _inspectedItemKey = null;
+        }
       }
     });
   }
@@ -868,55 +900,173 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-            child: DropdownButtonFormField<int>(
-              initialValue: _selectedSeriesId,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: _t(
-                  'اختر السلسلة أولاً',
-                  'Choisissez d’abord la série',
-                ),
-                border: const OutlineInputBorder(),
-              ),
-              items: _seriesOptions.map((series) {
-                final id = (series['id'] as num).toInt();
-                final profile = series['profile_name']?.toString() ?? '';
-                final name = series['name']?.toString() ?? '';
-                return DropdownMenuItem(
-                  value: id,
-                  child: Text(profile.isEmpty ? name : '$profile — $name'),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) unawaited(_selectSeries(value));
-              },
+      body: _loadingProfiles
+          ? const Center(child: CircularProgressIndicator())
+          : _selectedSeriesId == null && _profiles.isEmpty
+          ? _emptyState()
+          : TabBarView(
+              controller: _tabController,
+              children: _tables
+                  .map(_tableView)
+                  .toList(growable: false),
             ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _selectedSeriesId == null
-                ? Center(
-                    child: Text(
-                      _t(
-                        'اختر سلسلة لربط أدوار الأكسسوارات والجوانات بها.',
-                        'Choisissez une série pour lier les rôles des accessoires et des joints.',
+      floatingActionButton: _selectedSeriesId == null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                    ),
-                  )
-                : TabBarView(
-                    controller: _tabController,
-                    children: _tables.map(_tableView).toList(growable: false),
+                    )
+                  : const Icon(Icons.save_rounded),
+              label: Text(_t('حفظ القواعد', 'Enregistrer les règles')),
+            ),
+    );
+  }
+
+  Widget _profileSelector() => Container(
+    color: Theme.of(context).colorScheme.primaryContainer,
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _t('1. اختر النظام (البروفيل)', '1. Choisissez le profil'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 42,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _profiles.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (_, index) {
+              final profile = _profiles[index];
+              final isSelected = profile['id'] == _selectedProfile?['id'];
+              return ChoiceChip(
+                label: Text(profile['name']?.toString() ?? ''),
+                selected: isSelected,
+                onSelected: (_) => _selectProfile(profile),
+              );
+            },
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _seriesSelector() => Container(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+    child: _loadingSeries
+        ? const LinearProgressIndicator()
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t('2. اختر السلسلة', '2. Choisissez la série'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (_series.isEmpty)
+                Text(
+                  _t(
+                    'لا توجد سلاسل في هذا النظام.',
+                    'Ce profil ne contient aucune série.',
                   ),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: _series.map((s) {
+                    final id = (s['id'] as num?)?.toInt();
+                    final selected = id == _selectedSeriesId;
+                    return ChoiceChip(
+                      label: Text(s['name']?.toString() ?? ''),
+                      selected: selected,
+                      onSelected: (_) => _selectSeries(s),
+                    );
+                  }).toList(),
+                ),
+            ],
+          ),
+  );
+
+  Widget _emptyState() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.account_tree_outlined,
+            size: 64,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _selectedProfile == null
+                ? _t(
+                    'اختر النظام ثم السلسلة بالأعلى لتحديد قواعد الأكسسوارات والجوانات.',
+                    'Choisissez un profil puis une série en haut pour configurer les règles.',
+                  )
+                : _t(
+                    'اختر السلسلة لتحديد قواعد الأكسسوارات والجوانات التابعة لها.',
+                    'Choisissez une série pour configurer les accessoires et joints associés.',
+                  ),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+
+  Widget _informationCard({
+    required IconData icon,
+    required String title,
+    required String text,
+  }) => Card(
+    color: Theme.of(
+      context,
+    ).colorScheme.secondaryContainer.withValues(alpha: 0.7),
+    margin: const EdgeInsets.only(bottom: 12),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(text, style: const TextStyle(fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _tableView(String table) {
     final items = _itemsByTable[table] ?? const <Map<String, dynamic>>[];
@@ -931,119 +1081,326 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final isJoints = table == 'Joints';
     final groups = _groupsForTable(table);
 
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      children: [
-        TextField(
-          controller: searchController,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: searchController.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: _t('مسح البحث', 'Effacer la recherche'),
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () {
-                      searchController.clear();
-                      setState(() {});
-                    },
-                  ),
-            hintText: _t(
-              'بحث بالكود، الاسم، النوع أو العنوان...',
-              'Rechercher code, nom, type ou rubrique...',
-            ),
-            border: const OutlineInputBorder(),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          _t(
-            isJoints
-                ? 'اختر عنوان الجوان ثم فعّل النوع الذي تريد تخصيصه'
-                : 'اختر عنوان الإكسسوار ثم فعّل النوع الذي تريد تخصيصه',
-            isJoints
-                ? 'Ouvrez la rubrique des joints puis activez les articles à configurer'
-                : 'Ouvrez une rubrique puis activez les articles à configurer',
-          ),
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        if (filteredItems.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              query.trim().isEmpty
-                  ? _t(
-                      isJoints ? 'لا توجد جوانات.' : 'لا توجد إكسسوارات.',
-                      isJoints ? 'Aucun joint.' : 'Aucun accessoire.',
-                    )
-                  : _t('لا توجد نتائج.', 'Aucun résultat.'),
-              textAlign: TextAlign.center,
-            ),
-          )
-        else
-          ...groups.map((group) {
-            final groupItems = filteredItems
-                .where((item) => _itemBelongsToGroup(table, item, group))
-                .toList(growable: false);
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ExpansionTile(
-                leading: Icon(group.icon),
-                title: Text(_t(group.ar, group.fr)),
-                subtitle: Text(
-                  '${groupItems.length} ${_t('نوع موجود', 'article(s) disponible(s)')}',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWideScreen = constraints.maxWidth >= 900;
+
+        // Find currently inspected item if any
+        Map<String, dynamic>? inspectedItem;
+        if (_inspectedItemKey != null &&
+            _inspectedItemKey!.startsWith('$table:')) {
+          final parts = _inspectedItemKey!.split(':');
+          final id = int.tryParse(parts.last);
+          if (id != null) {
+            inspectedItem = items.where((it) => _itemId(it) == id).firstOrNull;
+          }
+        }
+        if (inspectedItem == null && isWideScreen) {
+          inspectedItem = items
+              .where((it) => _itemRuleEnabled(table, it))
+              .firstOrNull;
+          if (inspectedItem != null) {
+            final id = _itemId(inspectedItem);
+            if (id != null) _inspectedItemKey = _itemKey(table, id);
+          }
+        }
+
+        final masterList = ListView(
+          padding: const EdgeInsets.all(14),
+          children: [
+            // اختيار النظام والسلسلة — يتمرران مع القائمة للأعلى
+            _profileSelector(),
+            if (_selectedProfile != null) _seriesSelector(),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_selectedSeriesId == null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: _emptyState(),
+              )
+            else ...[
+              _informationCard(
+                icon: isJoints
+                    ? Icons.linear_scale_outlined
+                    : Icons.extension_outlined,
+                title: '${_t(isJoints ? 'قواعد الجوانات للسلسلة' : 'قواعد الأكسسوارات للسلسلة', isJoints ? 'Règles des joints de la série' : 'Règles des accessoires de la série')}${_selectedSeries?['name'] != null ? ' — ${_selectedSeries!['name']}' : ''}',
+                text: _t(
+                  isJoints
+                      ? 'فعّل الجوانات التي تستعملها هذه السلسلة وحدد أدوارها (جوان فيتراج، فراب، بروس...).'
+                      : 'فعّل الملحقات التي تستعملها هذه السلسلة (براغي، كلام، أقفال، مقابض...) واضبط قواعد تركيبها وكمياتها.',
+                  isJoints
+                      ? 'Activez les joints utilisés par cette série et configurez leurs rôles.'
+                      : 'Activez les accessoires utilisés par cette série et configurez leurs règles.',
                 ),
-                children: groupItems.isEmpty
-                    ? [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          child: Text(
-                            _t(
-                              'لا توجد عناصر لهذا العنوان في قاعدة البيانات.',
-                              'Aucun article de cette rubrique dans la base de données.',
-                            ),
-                          ),
+              ),
+              TextField(
+                controller: searchController,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: _t('مسح البحث', 'Effacer la recherche'),
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            searchController.clear();
+                            setState(() {});
+                          },
                         ),
-                      ]
-                    : [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                          child: Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: Text(
+                  hintText: _t(
+                    'بحث بالكود، الاسم، النوع أو العنوان...',
+                    'Rechercher code, nom, type ou rubrique...',
+                  ),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              if (filteredItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    query.trim().isEmpty
+                        ? _t(
+                            isJoints ? 'لا توجد جوانات.' : 'لا توجد إكسسوارات.',
+                            isJoints ? 'Aucun joint.' : 'Aucun accessoire.',
+                          )
+                        : _t('لا توجد نتائج.', 'Aucun résultat.'),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                ...groups.map((group) {
+                  final groupItems = filteredItems
+                      .where((item) => _itemBelongsToGroup(table, item, group))
+                      .toList(growable: false);
+                  final enabledItems = groupItems
+                      .where((item) => _itemRuleEnabled(table, item))
+                      .toList(growable: false);
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ExpansionTile(
+                      initiallyExpanded: enabledItems.isNotEmpty,
+                      leading: Icon(group.icon),
+                      title: Text(_t(group.ar, group.fr)),
+                      subtitle: Text(
+                        '${groupItems.length} ${_t('عنصر', 'article(s)')} • ${enabledItems.length} ${_t('مفعل', 'actif(s)')}',
+                      ),
+                      children: groupItems.isEmpty
+                          ? [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: Text(
+                                  _t(
+                                    'لا توجد عناصر لهذا العنوان في قاعدة البيانات.',
+                                    'Aucun article de cette rubrique dans la base de données.',
+                                  ),
+                                ),
+                              ),
+                            ]
+                          : [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                                child: Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: Text(
+                                    _t(
+                                      'اضغط على الزر لتفعيل أو إيقاف العنصر في هذه السلسلة:',
+                                      'Activez ou désactivez les articles pour cette série :',
+                                    ),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: groupItems
+                                      .map(
+                                        (item) => _itemToggleChip(
+                                          table,
+                                          item,
+                                          isWideScreen,
+                                        ),
+                                      )
+                                      .toList(growable: false),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (enabledItems.isNotEmpty) ...[
+                                const Divider(height: 1),
+                                ...enabledItems.map(
+                                  (item) =>
+                                      _activeItemTile(table, item, isWideScreen),
+                                ),
+                              ],
+                            ],
+                    ),
+                  );
+                }),
+              const SizedBox(height: 80),
+            ],
+          ],
+        );
+
+        if (!isWideScreen) {
+          return masterList;
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 6, child: masterList),
+            const VerticalDivider(width: 1),
+            Expanded(
+              flex: 4,
+              child: inspectedItem != null
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: _buildItemInspector(table, inspectedItem),
+                    )
+                  : Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 48,
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
                               _t(
-                                'فعّل الزر لفتح تخصيص العنصر ودوره.',
-                                'Activez le bouton pour ouvrir la configuration et le rôle.',
+                                'اختر ملحقاً أو قُم بتفعيله لتعديل خصائصه وقواعده هنا.',
+                                'Sélectionnez un article actif pour modifier ses règles ici.',
+                              ),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: groupItems
-                                .map((item) => _itemToggleChip(table, item))
-                                .toList(growable: false),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        ...groupItems
-                            .where((item) => _itemRuleEnabled(table, item))
-                            .map((item) => _buildRuleCard(table, item)),
-                      ],
-              ),
-            );
-          }),
-      ],
+                      ),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _itemToggleChip(String table, Map<String, dynamic> item) {
+  Widget _activeItemTile(
+    String table,
+    Map<String, dynamic> item,
+    bool isWideScreen,
+  ) {
+    final itemId = _itemId(item);
+    if (itemId == null) return const SizedBox.shrink();
+    final rule = _ruleFor(table, itemId);
+    final key = _itemKey(table, itemId);
+    final isInspected = _inspectedItemKey == key;
+    final roleKey = rule['role_key']?.toString() ?? '';
+    final role = _rolesForTable(
+      table,
+    ).where((r) => r.key == roleKey).firstOrNull;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isInspected && isWideScreen
+            ? Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isInspected && isWideScreen
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isInspected && isWideScreen ? 1.5 : 1.0,
+        ),
+      ),
+      child: ListTile(
+        dense: true,
+        leading: SectionImageWidget(
+          code: item['code']?.toString(),
+          name: item['name']?.toString(),
+          imagePath: item['image_path']?.toString(),
+          size: 38,
+          fallbackIcon: Icons.inventory_2_outlined,
+        ),
+        title: Text(
+          _itemTitle(item),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        subtitle: Text(
+          role != null
+              ? '${_t('الدور:', 'Rôle :')} ${_t(role.ar, role.fr)}'
+              : _t('الدور غير محدد', 'Rôle non défini'),
+          style: TextStyle(
+            fontSize: 12,
+            color: role != null
+                ? Theme.of(context).colorScheme.primary
+                : Colors.orange.shade700,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                isWideScreen ? Icons.chevron_right_rounded : Icons.tune_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              tooltip: _t('تعديل القواعد', 'Modifier les règles'),
+              onPressed: () {
+                setState(() => _inspectedItemKey = key);
+                if (!isWideScreen) {
+                  _openMobileInspector(table, item);
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              tooltip: _t('تعطيل من هذه السلسلة', 'Désactiver'),
+              onPressed: () => _toggleItem(table, item, false),
+            ),
+          ],
+        ),
+        onTap: () {
+          setState(() => _inspectedItemKey = key);
+          if (!isWideScreen) {
+            _openMobileInspector(table, item);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _itemToggleChip(
+    String table,
+    Map<String, dynamic> item, [
+    bool isWideScreen = false,
+  ]) {
     final enabled = _itemRuleEnabled(table, item);
     final itemId = _itemId(item);
     final role = itemId == null
@@ -1066,7 +1423,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ),
       label: Text(_itemTitle(item)),
       selected: enabled,
-      onSelected: (value) => _toggleItem(table, item, value),
+      onSelected: (value) {
+        _toggleItem(table, item, value);
+        if (value && !isWideScreen) {
+          _openMobileInspector(table, item);
+        }
+      },
       tooltip: role == null
           ? null
           : _t('الدور: ${role.ar}', 'Rôle : ${role.fr}'),
@@ -1081,6 +1443,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ? rule['assembly_target'].toString()
         : defaultTarget;
     final selectedSectionIds = assemblySectionIds(rule);
+    final sectionCornerQuantities = assemblySectionCornerQuantities(rule);
+    void saveSectionQuantities(Map<int, int> values) {
+      final ids = values.keys.toList()..sort();
+      rule['assembly_section_quantities'] = ids
+          .map((id) => '$id:${values[id]}')
+          .join(',');
+    }
     return Column(
       children: [
         const SizedBox(height: 8),
@@ -1129,6 +1498,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               onSelected: (selected) => setState(() {
                 final next = {...selectedSectionIds};
                 selected ? next.add(id) : next.remove(id);
+                final nextQuantities = {
+                  ...assemblySectionCornerQuantities(rule),
+                };
+                if (selected) {
+                  nextQuantities.putIfAbsent(id, () => 1);
+                } else {
+                  nextQuantities.remove(id);
+                }
+                saveSectionQuantities(nextQuantities);
                 final sorted = next.toList()..sort();
                 rule['assembly_section_ids'] = sorted.join(',');
                 // Keep old databases/readers compatible when exactly one
@@ -1141,155 +1519,221 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           }).toList(),
         ),
         const SizedBox(height: 8),
-        for (final entry in {
-          'top_corner_qty': _t(
-            'العدد في كل زاوية علوية',
-            'Quantité par angle supérieur',
+        for (final section in _assemblySections.where(
+          (candidate) => selectedSectionIds.contains(
+            (candidate['id'] as num).toInt(),
           ),
-          'bottom_corner_qty': _t(
-            'العدد في كل زاوية سفلية',
-            'Quantité par angle inférieur',
-          ),
-        }.entries)
+        ))
           TextFormField(
-            key: ValueKey('${rule['item_id']}:${entry.key}'),
-            initialValue: '${rule[entry.key] ?? 1}',
+            key: ValueKey(
+              '${rule['item_id']}:section:${section['id']}',
+            ),
+            initialValue:
+                '${sectionCornerQuantities[(section['id'] as num).toInt()] ?? 1}',
             keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: entry.value),
+            decoration: InputDecoration(
+              labelText: _t(
+                'عدد الـClam في كل زاوية للقطاع ${section['code'] ?? ''}',
+                'Clam par angle du profilé ${section['code'] ?? ''}',
+              ),
+            ),
             onChanged: (value) {
               final count = int.tryParse(value);
-              if (count != null && count >= 0) rule[entry.key] = count;
+              if (count != null && count >= 0) {
+                final next = {...assemblySectionCornerQuantities(rule)};
+                next[(section['id'] as num).toInt()] = count;
+                saveSectionQuantities(next);
+              }
             },
           ),
         Text(
           _t(
-            'فعّل كل نوع مطلوب على حدة؛ تُجمع الكلامات وحواملها. لا تُحسب الزوايا السفلية عند غياب أسفل الإطار.',
-            'Activez chaque type nécessaire : équerres et supports se cumulent. Aucun angle inférieur sans traverse basse.',
+            'كمية الـClam تتبع القطاع نفسه. الروليت والمقبض وبقية الإكسسوارات تُحسب بقواعدها الخاصة ولا تستخدم عدد الزوايا.',
+            'La quantité de Clam dépend du profilé. Les roulettes, poignées et autres accessoires gardent leurs propres règles.',
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRuleCard(String table, Map<String, dynamic> item) {
+  Widget _buildItemInspector(
+    String table,
+    Map<String, dynamic> item, {
+    VoidCallback? onClose,
+  }) {
     final itemId = _itemId(item);
     if (itemId == null) return const SizedBox.shrink();
     final rule = _ruleFor(table, itemId);
     final itemRoles = _rolesForItem(table, item);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: Card(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SectionImageWidget(
-                    code: item['code']?.toString(),
-                    name: item['name']?.toString(),
-                    imagePath: item['image_path']?.toString(),
-                    size: 56,
-                    fallbackIcon: Icons.inventory_2_outlined,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _itemTitle(item),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              if (_itemSubtitle(item).isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(
-                  _itemSubtitle(item),
-                  style: Theme.of(context).textTheme.bodySmall,
+
+    return Card(
+      elevation: 0,
+      color: Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SectionImageWidget(
+                  code: item['code']?.toString(),
+                  name: item['name']?.toString(),
+                  imagePath: item['image_path']?.toString(),
+                  size: 56,
+                  fallbackIcon: Icons.inventory_2_outlined,
                 ),
-              ],
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: rule['role_key']?.toString(),
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: _t('الدور / العنوان', 'Rôle / rubrique'),
-                ),
-                items: itemRoles
-                    .map(
-                      (role) => DropdownMenuItem(
-                        value: role.key,
-                        child: Text(_t(role.ar, role.fr)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _itemTitle(item),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
                       ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() => rule['role_key'] = value);
-                },
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _validUsageScope(rule['usage_scope']),
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: _t('مجال استعمال العنصر', 'Domaine d’utilisation'),
+                      if (_itemSubtitle(item).isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _itemSubtitle(item),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                items: [
-                  DropdownMenuItem(
-                    value: 'global',
-                    child: Text(_t('كل الحالات', 'Tous les cas')),
+                if (onClose != null)
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: onClose,
                   ),
-                  DropdownMenuItem(
-                    value: 'opening',
-                    child: Text(_t('فتح فقط', 'Ouvrant seulement')),
-                  ),
-                  DropdownMenuItem(
-                    value: 'sliding',
-                    child: Text(_t('منزلق فقط', 'Coulissant seulement')),
-                  ),
-                  DropdownMenuItem(
-                    value: 'both',
-                    child: Text(_t('فتح ومنزلق', 'Ouvrant et coulissant')),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() => rule['usage_scope'] = value);
-                },
-              ),
-              if (table == 'Accessories') ...[
-                _assemblyRuleEditor(rule),
-                const SizedBox(height: 10),
-                _accessoryRelationEditor(item),
               ],
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut')),
-                  _ruleChip(
-                    rule,
-                    'show_in_quantity',
-                    _t('جدول الكمية', 'Quantité'),
-                  ),
-                  _ruleChip(
-                    rule,
-                    'show_in_dialog',
-                    _t('نافذة التغيير', 'Choix'),
-                  ),
-                  _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
-                ],
+            ),
+            const Divider(height: 24),
+            DropdownButtonFormField<String>(
+              initialValue: rule['role_key']?.toString(),
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _t('الدور / العنوان', 'Rôle / rubrique'),
+                border: const OutlineInputBorder(),
+                isDense: true,
               ),
+              items: itemRoles
+                  .map(
+                    (role) => DropdownMenuItem(
+                      value: role.key,
+                      child: Text(_t(role.ar, role.fr)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => rule['role_key'] = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _validUsageScope(rule['usage_scope']),
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _t('مجال استعمال العنصر', 'Domaine d’utilisation'),
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: 'global',
+                  child: Text(_t('كل الحالات', 'Tous les cas')),
+                ),
+                DropdownMenuItem(
+                  value: 'opening',
+                  child: Text(_t('فتح فقط', 'Ouvrant seulement')),
+                ),
+                DropdownMenuItem(
+                  value: 'sliding',
+                  child: Text(_t('منزلق فقط', 'Coulissant seulement')),
+                ),
+                DropdownMenuItem(
+                  value: 'both',
+                  child: Text(_t('فتح ومنزلق', 'Ouvrant et coulissant')),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => rule['usage_scope'] = value);
+              },
+            ),
+            if (table == 'Accessories') ...[
+              const SizedBox(height: 14),
+              _assemblyRuleEditor(rule),
+              const SizedBox(height: 14),
+              _accessoryRelationEditor(item),
             ],
-          ),
+            const SizedBox(height: 14),
+            Text(
+              _t(
+                'خيارات الظهور والاعتماد:',
+                'Options d\'affichage et statut :',
+              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut')),
+                _ruleChip(
+                  rule,
+                  'show_in_quantity',
+                  _t('جدول الكمية', 'Quantité'),
+                ),
+                _ruleChip(rule, 'show_in_dialog', _t('نافذة التغيير', 'Choix')),
+                _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
+              ],
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  void _openMobileInspector(String table, Map<String, dynamic> item) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.all(16),
+              child: _buildItemInspector(
+                table,
+                item,
+                onClose: () => Navigator.pop(ctx),
+              ),
+            );
+          },
+        );
+      },
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   String _validUsageScope(dynamic value) {

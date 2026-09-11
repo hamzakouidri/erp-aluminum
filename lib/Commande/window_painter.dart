@@ -2123,8 +2123,7 @@ class WindowPainter extends CustomPainter {
     for (final edge in edges) {
       // The box already has an outer cover. Its contact with the frame is
       // an internal seam, so it must not receive another top cover.
-      if (edge.side == 'top' &&
-          _frameTopTouchesShutterBox(edge.coordinate)) {
+      if (edge.side == 'top' && _frameTopTouchesShutterBox(edge.coordinate)) {
         continue;
       }
       if (model.hiddenSideCoverSegments.contains(edge.side) ||
@@ -3285,9 +3284,7 @@ class WindowPainter extends CustomPainter {
           seriesName.contains('67000') || seriesName.contains('tpi');
       bool hasThreePiece =
           (model.activeSlidingSeries?.hasThreePieceSash ?? false) || isTPI67000;
-      if (!hasThreePiece &&
-          configuredHeightDeduction == 0 &&
-          model.isPVC) {
+      if (!hasThreePiece && configuredHeightDeduction == 0 && model.isPVC) {
         cuttingH = hForCalc + slidingOverlap;
       }
 
@@ -4173,7 +4170,18 @@ class WindowPainter extends CustomPainter {
       'centrale',
       45.0,
     );
-    final double lateralT = _getSlidingSectionWidth('lateral', 'poignee', 45.0);
+    final double normalLateralT = _getSlidingSectionWidth(
+      'lateral',
+      'poignee',
+      45.0,
+      reinforced: false,
+    );
+    final double reinforcedLateralT = _getSlidingSectionWidth(
+      'lateral',
+      'poignee',
+      normalLateralT,
+      reinforced: true,
+    );
 
     // sashWidth is calculated using chicaneT (overlap)
     double sashWidth = (r.width + (count - 1) * chicaneT) / count;
@@ -4201,8 +4209,20 @@ class WindowPainter extends CustomPainter {
         Rect sashRect = Rect.fromLTRB(left, r.top, left + sashWidth, r.bottom);
 
         // Calculate left and right profile widths for this specific sash
-        final double leftProfileW = (i == 0) ? lateralT : chicaneT;
-        final double rightProfileW = (i == count - 1) ? lateralT : chicaneT;
+        final leftLateralReinforced =
+            zone.slidingMontantReinforced['lateral_0'] ??
+            zone.slidingMontantReinforced['lateral_left'] ??
+            false;
+        final rightLateralReinforced =
+            zone.slidingMontantReinforced['lateral_1'] ??
+            zone.slidingMontantReinforced['lateral_right'] ??
+            false;
+        final double leftProfileW = (i == 0)
+            ? (leftLateralReinforced ? reinforcedLateralT : normalLateralT)
+            : chicaneT;
+        final double rightProfileW = (i == count - 1)
+            ? (rightLateralReinforced ? reinforcedLateralT : normalLateralT)
+            : chicaneT;
         final double topProfileW = traverseT;
         final double bottomProfileW = zone.hasSashPlintheBottom
             ? model.plintheHeight
@@ -5363,8 +5383,9 @@ class WindowPainter extends CustomPainter {
   double _getSlidingSectionWidth(
     String typeName,
     String fallbackName,
-    double defaultVal,
-  ) {
+    double defaultVal, {
+    bool? reinforced,
+  }) {
     final series = model.activeSlidingSeries;
     if (series == null) return defaultVal;
 
@@ -5376,18 +5397,35 @@ class WindowPainter extends CustomPainter {
         'سكة الظلفة (Sash Traverse)',
       ]);
     } else if (tName == 'chicane') {
-      overrideKeys.addAll(const [
-        'قائم وسطي معزز (Sash Central Renforcé)',
-        'قائم وسطي (Sash Central)',
-        'قائم وسطي (Central)',
-        'الشيكان (Chicane)',
-      ]);
+      overrideKeys.addAll(
+        reinforced == true
+            ? const [
+                'قائم وسطي معزز (Sash Central Renforcé)',
+                'قائم وسطي (Sash Central)',
+                'قائم وسطي (Central)',
+                'الشيكان (Chicane)',
+              ]
+            : const [
+                'قائم وسطي (Sash Central)',
+                'قائم وسطي (Central)',
+                'الشيكان (Chicane)',
+                'قائم وسطي معزز (Sash Central Renforcé)',
+              ],
+      );
     } else if (tName == 'lateral') {
-      overrideKeys.addAll(const [
-        'قائم جانبي معزز (Sash Lateral Renforcé)',
-        'قائم جانبي (Sash Lateral)',
-        'قائم جانبي (Lateral)',
-      ]);
+      overrideKeys.addAll(
+        reinforced == true
+            ? const [
+                'قائم جانبي معزز (Sash Lateral Renforcé)',
+                'قائم جانبي (Sash Lateral)',
+                'قائم جانبي (Lateral)',
+              ]
+            : const [
+                'قائم جانبي (Sash Lateral)',
+                'قائم جانبي (Lateral)',
+                'قائم جانبي معزز (Sash Lateral Renforcé)',
+              ],
+      );
     }
 
     double widthFromOverride(Map<String, dynamic> override) {

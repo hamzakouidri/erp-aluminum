@@ -1129,14 +1129,13 @@ class WindowZone {
     Map<String, GlassSpecification>? cellGlassSpec,
   }) : glass = glass ?? globalDefaultGlass,
        cellGlassSpec = cellGlassSpec ?? const {},
-       slidingMontantReinforced =
-           slidingMontantReinforced ??
-           const {
+       slidingMontantReinforced = Map<String, bool>.from(
+           slidingMontantReinforced ?? const {
              'lateral_left': false,
              'lateral_right': false,
              'central_left': false,
              'central_right': false,
-           };
+           });
 
   WindowZone clone() => WindowZone(
     id: id,
@@ -1714,6 +1713,7 @@ List<Color> getEffectiveGradientColors(
     }
 
     if (name.contains('champagne') ||
+        name.contains('chompagne') ||
         name.contains('شامبان') ||
         name.contains('شمبان') ||
         name.contains('شومبان') ||
@@ -1922,6 +1922,7 @@ Color getEffectiveBorderColor(
     }
 
     if (name.contains('champagne') ||
+        name.contains('chompagne') ||
         name.contains('شامبان') ||
         name.contains('شمبان') ||
         name.contains('وايت')) {
@@ -1955,6 +1956,50 @@ Color getEffectiveBorderColor(
     return FrameColor.white.borderColor;
   }
   return baseColor.borderColor;
+}
+
+bool slidingFrameRoleAllowedForDrawing(
+  Map<String, dynamic> options, {
+  required bool hasShutter,
+  required bool isCaissonTunnel,
+  required bool isPvc,
+  bool isFrameExtension = false,
+}) {
+  bool truthy(dynamic value, {bool fallback = false}) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value.toString().trim().toLowerCase();
+    if (text == '1' || text == 'true' || text == 'yes') return true;
+    if (text == '0' || text == 'false' || text == 'no') return false;
+    return fallback;
+  }
+
+  if (!hasShutter) return true;
+  if (!truthy(options['allowed_with_shutter'], fallback: true)) return false;
+  // The integrated-cover restriction concerns the main frame, not the
+  // additional rail profile. Extensions retain their own shutter permission.
+  if (isFrameExtension || isCaissonTunnel || isPvc) return true;
+  final integrated = truthy(
+    options['design_integrated_side_cover'] ?? options['integrated_side_cover'],
+  );
+  final rawWidth = options['couvre_joint_width'];
+  final coverWidth = rawWidth is num
+      ? rawWidth.toDouble()
+      : double.tryParse(rawWidth?.toString() ?? '') ?? 0;
+  final label =
+      '${options['section_name'] ?? options['name'] ?? ''} '
+              '${options['section_type'] ?? options['type'] ?? ''}'
+          .toLowerCase();
+  return !(integrated ||
+      coverWidth > 0 ||
+      label.contains('مدمج') ||
+      label.contains('intégré') ||
+      label.contains('integre') ||
+      label.contains('monobloc') ||
+      label.contains('sunset') ||
+      label.contains('sontara') ||
+      label.contains('suntara'));
 }
 
 class WindowModel extends ChangeNotifier {
@@ -3776,6 +3821,7 @@ class WindowModel extends ChangeNotifier {
     required bool central,
     bool? reinforced,
     bool manualSelection = false,
+    bool updateAllMembers = true,
   }) {
     final mutable = Map<String, dynamic>.from(profile);
     if (manualSelection) {
@@ -3790,7 +3836,11 @@ class WindowModel extends ChangeNotifier {
         (reinforced ?? isSlidingMontantReinforced(mutable, central: central));
 
     for (final zone in zones) {
+      if (!updateAllMembers) break;
       if (zone.content != ZoneContent.slidingSash) continue;
+      zone.slidingMontantReinforced = Map<String, bool>.from(
+        zone.slidingMontantReinforced,
+      );
       if (central) {
         final sashes = zone.slidingSashesCount > 0
             ? zone.slidingSashesCount
@@ -3806,22 +3856,27 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (central) {
-      componentOverrides.remove('قائم وسطي (Sash Central)');
-      componentOverrides.remove('قائم وسطي معزز (Sash Central Renforcé)');
+      if (updateAllMembers) {
+        componentOverrides.remove('قائم وسطي (Sash Central)');
+        componentOverrides.remove('قائم وسطي معزز (Sash Central Renforcé)');
+      }
       componentOverrides.remove('قائم وسطي (Central)');
       componentOverrides[isReinforced
               ? 'قائم وسطي معزز (Sash Central Renforcé)'
               : 'قائم وسطي (Sash Central)'] =
           mutable;
     } else {
-      componentOverrides.remove('قائم جانبي (Sash Lateral)');
-      componentOverrides.remove('قائم جانبي معزز (Sash Lateral Renforcé)');
+      if (updateAllMembers) {
+        componentOverrides.remove('قائم جانبي (Sash Lateral)');
+        componentOverrides.remove('قائم جانبي معزز (Sash Lateral Renforcé)');
+      }
       componentOverrides.remove('قائم جانبي (Lateral)');
       componentOverrides[isReinforced
               ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
               : 'قائم جانبي (Sash Lateral)'] =
           mutable;
     }
+    notifyListeners();
   }
 
   bool get hasSimpleGlassForReducer {
@@ -7616,7 +7671,20 @@ class WindowModel extends ChangeNotifier {
 
   Set<int> get supportedSlidingTrackCounts {
     final seriesId = activeSlidingSeries?.id;
-    final result = <int>{2};
+    final result = <int>{};
+
+    bool allowedForCurrentDrawing(
+      Map<String, dynamic> options, {
+      bool isFrameExtension = false,
+    }) {
+      return slidingFrameRoleAllowedForDrawing(
+        options,
+        hasShutter: hasShutter,
+        isCaissonTunnel: isCaissonTunnel,
+        isPvc: isSlidingPVC,
+        isFrameExtension: isFrameExtension,
+      );
+    }
 
     void addCounts(Map<String, dynamic> options) {
       final count = options['design_track_count'] ?? options['track_count'];
@@ -7637,26 +7705,50 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    if (slidingFrameOverride != null) addCounts(slidingFrameOverride!);
-    if (seriesId == null) return result;
+    if (seriesId == null) {
+      if (slidingFrameOverride != null &&
+          allowedForCurrentDrawing(slidingFrameOverride!)) {
+        addCounts(slidingFrameOverride!);
+      }
+      return result.isEmpty ? const {2} : result;
+    }
     final roles = _seriesDesignRoleOptions[seriesId];
     if (roles == null || roles.isEmpty) {
       // Compatibility for old catalogues that predate explicit frame rules.
-      return {...result, 3, 4};
+      return const {2, 3, 4};
     }
     final frameOptions = roles['frame'];
+    var hasEligibleBaseFrame = false;
     if (frameOptions != null) {
       for (final options in frameOptions.values) {
-        addCounts(options);
+        if (!allowedForCurrentDrawing(options)) continue;
+        final mode = options['track_mode']?.toString().toLowerCase() ?? 'base';
+        if (mode == 'complete') {
+          final count = options['track_count'];
+          final parsed = count is num
+              ? count.toInt()
+              : int.tryParse(count?.toString() ?? '');
+          if (parsed != null && parsed >= 2 && parsed <= 6) result.add(parsed);
+        } else {
+          hasEligibleBaseFrame = true;
+          final count = options['track_count'];
+          final parsed = count is num
+              ? count.toInt()
+              : int.tryParse(count?.toString() ?? '');
+          result.add(parsed != null && parsed >= 2 && parsed <= 6 ? parsed : 2);
+        }
       }
     }
     final extensionOptions = roles['frame_extension'];
-    if (extensionOptions != null) {
+    if (hasEligibleBaseFrame && extensionOptions != null) {
       for (final options in extensionOptions.values) {
+        if (!allowedForCurrentDrawing(options, isFrameExtension: true)) {
+          continue;
+        }
         addCounts(options);
       }
     }
-    return result;
+    return result.isEmpty ? const {2} : result;
   }
 
   /// Leaf choices follow the catalogue capability. A composable frame may
@@ -7667,9 +7759,7 @@ class WindowModel extends ChangeNotifier {
     final minimum = selectedZone?.content == ZoneContent.slidingSash
         ? selectedZone!.slidingTrackCount.clamp(2, 6).toInt()
         : 2;
-    return {
-      for (var count = minimum; count <= maxCount; count++) count,
-    };
+    return {for (var count = minimum; count <= maxCount; count++) count};
   }
 
   /// Returns a manually selected sliding profile only when it belongs to the
