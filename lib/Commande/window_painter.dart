@@ -144,7 +144,9 @@ class WindowPainter extends CustomPainter {
     return isInternal || model.showInternalHardware;
   }
 
-  bool get _hasEffectiveBottomFrame => model.effectiveHasBottomFrame;
+  bool? _localBottomFrame;
+  bool get _hasEffectiveBottomFrame =>
+      _localBottomFrame ?? model.effectiveHasBottomFrame;
 
   double get _drawableStandaloneSideCoverWidth {
     final width = model.sideCoverWidth;
@@ -1408,7 +1410,7 @@ class WindowPainter extends CustomPainter {
       bool isFixed =
           matchingZone.content == ZoneContent.fixedGlass ||
           matchingZone.content == ZoneContent.empty;
-      if (isFixed) {
+      if (isFixed || matchingZone.content == ZoneContent.slidingSash) {
         return original; // الثابت يستقر على الإطار السفلي عند (h - t)
       }
       return Rect.fromLTRB(original.left, original.top, original.right, h);
@@ -1553,8 +1555,14 @@ class WindowPainter extends CustomPainter {
         final localThickness = _frameRectIsSlidingOnly(r)
             ? _slidingFrameWidth(t)
             : t;
-        _drawOuterFrame(canvas, r.width, r.height, localThickness, 0.0);
-        canvas.restore();
+        final previousBottomFrame = _localBottomFrame;
+        _localBottomFrame = model.hasBottomFrameForRect(r);
+        try {
+          _drawOuterFrame(canvas, r.width, r.height, localThickness, 0.0);
+        } finally {
+          _localBottomFrame = previousBottomFrame;
+          canvas.restore();
+        }
       }
     }
   }

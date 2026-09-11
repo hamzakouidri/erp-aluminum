@@ -3807,6 +3807,11 @@ class WindowModel extends ChangeNotifier {
     Map<String, dynamic> profile, {
     required bool central,
   }) {
+    final role = (profile['design_role_key'] ?? '').toString();
+    if (role == 'sash_central_reinforced' || role == 'sash_lateral_reinforced') {
+      return true;
+    }
+    if (role == 'sash_central' || role == 'sash_lateral') return false;
     final code = (profile['code'] ?? '').toString().trim().toLowerCase();
     final name = (profile['name'] ?? '').toString().toLowerCase();
     final type = (profile['type'] ?? '').toString().toLowerCase();
@@ -14216,6 +14221,18 @@ class WindowModel extends ChangeNotifier {
 
   bool get effectiveHasBottomFrame => hasBottomFrame || !canDisableBottomFrame;
 
+  /// Plinthe belongs to its opening frame, not neighbouring sliding frames.
+  bool hasBottomFrameForRect(Rect frameRect) {
+    final frameZones = zones.where(
+      (zone) => frameRect.contains(zone.boundary.center),
+    );
+    if (frameZones.isNotEmpty &&
+        frameZones.every((zone) => zone.content == ZoneContent.slidingSash)) {
+      return true;
+    }
+    return effectiveHasBottomFrame;
+  }
+
   bool _normalizeBottomFrameForCurrentContent() {
     if (canDisableBottomFrame && systemMode != 'sliding') return false;
 
@@ -14419,6 +14436,10 @@ class WindowModel extends ChangeNotifier {
     _normalizeBottomFrameForCurrentContent();
 
     for (var z in zones) {
+      if (z.content == ZoneContent.slidingSash) {
+        z.hasSashPlintheBottom = false;
+        continue;
+      }
       final hasPlintheBottom = !hasBottomFrame && z.hasSashPlintheBottom;
       final targetBottom = hasPlintheBottom
           ? height
@@ -14437,6 +14458,7 @@ class WindowModel extends ChangeNotifier {
 
     if (!hasBottomFrame) {
       for (var z in zones) {
+        if (z.content == ZoneContent.slidingSash) continue;
         if (z.openDirection == OpenDirection.top ||
             z.openDirection == OpenDirection.bottom) {
           z.openDirection = OpenDirection.left;

@@ -1840,13 +1840,13 @@ class ComponentCalculator {
           selectorType ?? _selectorTypeForProfile(originalName);
       final resolvedRoleKey =
           roleKey ?? _roleKeyForProfileSelector(resolvedSelectorType);
+      final usesSlidingSeries =
+          _profileSelectorUsesSlidingSeries(window, originalName) ||
+          _profileSelectorUsesSlidingSeries(window, resolvedSelectorType);
       final configuredOverride = window
           .getConfiguredSectionForRole(
             resolvedRoleKey ?? resolvedSelectorType,
-            useSlidingSeries: _profileSelectorUsesSlidingSeries(
-              window,
-              resolvedSelectorType,
-            ),
+            useSlidingSeries: usesSlidingSeries,
           )
           ?.toMap();
       final selectedOverride = preferOverrideMap && overrideMap != null
@@ -1884,7 +1884,9 @@ class ComponentCalculator {
         selectorCategory: 'profile',
         selectorType: resolvedSelectorType,
         roleKey: resolvedRoleKey,
-        sourceSeriesId: _sourceSeriesIdForProfile(window, resolvedSelectorType),
+        sourceSeriesId: usesSlidingSeries
+            ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+            : window.activeSeries?.id,
         materialType: _materialTypeForProfile(window, resolvedSelectorType),
       );
     }
@@ -3085,7 +3087,7 @@ class ComponentCalculator {
           ? slidingOuterFramePieces
           : framePieces;
 
-      if (window.hasBottomFrame) {
+      if (window.hasBottomFrameForRect(r)) {
         targetFramePieces.addAll([wPiece, wPiece, hPiece, hPiece]);
       } else {
         targetFramePieces.addAll([wPiece, hPiece, hPiece]);
@@ -3415,6 +3417,7 @@ class ComponentCalculator {
       List<double> slidingSashLateralReinforcedPieces = [];
       List<double> slidingSashLateralNormalPieces = [];
       List<double> slidingSashCentralPieces = [];
+      List<double> slidingSashCentralReinforcedPieces = [];
       List<double> sashPlinthePieces = [];
 
       // The plinthe is cut inside the sash, not across the complete sash
@@ -3645,7 +3648,14 @@ class ComponentCalculator {
             // Central / chicane pieces (2 pieces for 2-sash, 4 pieces for 3-sash, 6 pieces for 4-sash)
             int centralsCount = (sashes * 2) - 2;
             for (int s = 0; s < centralsCount; s++) {
-              slidingSashCentralPieces.add(sashH / 1000.0);
+              final legacyKey = s.isEven ? 'central_left' : 'central_right';
+              final reinforced =
+                  zone.slidingMontantReinforced['central_$s'] ??
+                  zone.slidingMontantReinforced[legacyKey] ?? false;
+              (reinforced
+                      ? slidingSashCentralReinforcedPieces
+                      : slidingSashCentralPieces)
+                  .add(sashH / 1000.0);
             }
 
             // joint brosse: 3 ضلفات H×8+W×12 ، غيرها (H×6+W×8) × (عدد الأزواج)
@@ -3874,7 +3884,6 @@ class ComponentCalculator {
         const centralName = 'قائم وسطي (Sash Central)';
         final baseCentral =
             slidingOverrideFor([
-              'قائم وسطي معزز (Sash Central Renforcé)',
               centralName,
               'قائم وسطي (Central)',
             ]) ??
@@ -3892,6 +3901,19 @@ class ComponentCalculator {
             roleKey: 'sash_central',
           ),
         );
+      }
+
+      if (slidingSashCentralReinforcedPieces.isNotEmpty) {
+        items.add(createProfile(
+          'قائم وسطي معزز (Sash Central Renforcé)',
+          colorName,
+          pieces: slidingSashCentralReinforcedPieces,
+          overrideMap: slidingOverrideFor([
+            'قائم وسطي معزز (Sash Central Renforcé)',
+          ]),
+          preferOverrideMap: true,
+          roleKey: 'sash_central_reinforced',
+        ));
       }
 
       if (slidingChicanePieces.isNotEmpty) {

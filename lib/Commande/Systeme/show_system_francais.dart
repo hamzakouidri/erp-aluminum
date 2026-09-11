@@ -12155,19 +12155,19 @@ class _WindowViewState extends State<WindowView> {
     Map<String, dynamic> item, {
     required bool central,
   }) {
-    final code = (item['code'] ?? '').toString().trim().toLowerCase();
-    final name = (item['name'] ?? '').toString().toLowerCase();
-    final type = (item['type'] ?? '').toString().toLowerCase();
-    return code.endsWith(central ? '107' : '108') ||
-        name.contains('معزز') ||
-        name.contains('renforc') ||
-        type.contains('renforc');
+    return widget.model.isSlidingMontantReinforced(item, central: central);
   }
 
   bool _isSlidingMontantCandidate(
     Map<String, dynamic> item, {
     required bool central,
   }) {
+    final role = (item['design_role_key'] ?? '').toString();
+    if (role.isNotEmpty) {
+      return central
+          ? const ['sash_central', 'sash_central_reinforced', 'central', 'chicane'].contains(role)
+          : const ['sash_lateral', 'sash_lateral_reinforced', 'lateral'].contains(role);
+    }
     final name = (item['name'] ?? '').toString().toLowerCase();
     final type = (item['type'] ?? '').toString().toLowerCase();
     final isOpeningSash =

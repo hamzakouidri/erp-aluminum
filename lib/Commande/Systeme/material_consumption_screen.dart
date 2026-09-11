@@ -5685,11 +5685,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         '${item.originalName} ${item.roleKey ?? ''} ${item.selectorType ?? ''}'
             .toLowerCase();
     final isSlidingLateralRow =
-        rowRoleText.contains('sash_lateral') ||
+        explicitRoleKey.isNotEmpty
+        ? explicitRoleKey.startsWith('sash_lateral') || explicitRoleKey == 'lateral'
+        : rowRoleText.contains('sash_lateral') ||
         rowRoleText.contains('sash lateral') ||
         rowRoleText.contains('قائم جانبي');
     final isSlidingCentralRow =
-        rowRoleText.contains('sash_central') ||
+        explicitRoleKey.isNotEmpty
+        ? explicitRoleKey.startsWith('sash_central') || explicitRoleKey == 'central'
+        : rowRoleText.contains('sash_central') ||
         rowRoleText.contains('sash central') ||
         rowRoleText.contains('قائم وسطي');
     // A montant can be changed in both directions. Restricting a reinforced
@@ -6485,18 +6489,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               item.overrideKey ?? '',
               swapTarget.overrideKey ?? '',
             ].join(' ').toLowerCase();
-            if (selectedType.contains('lateral') ||
+            if (isSlidingLateralRow || (!isSlidingCentralRow && (selectedType.contains('lateral') ||
                 selectionHint.contains('montant lateral') ||
                 selectionHint.contains('sash lateral') ||
                 item.originalName.contains('Sash Lateral') ||
                 item.originalName.contains('قائم جانبي') ||
-                item.originalName == 'قائم جانبي (Lateral)') {
+                item.originalName == 'قائم جانبي (Lateral)'))) {
               widget.model.applySlidingMontantOverride(
                 mutableSelected,
                 central: false,
                 manualSelection: true,
               );
-            } else if (selectedType.contains('central') ||
+            } else if (isSlidingCentralRow || selectedType.contains('central') ||
                 selectionHint.contains('montant central') ||
                 selectionHint.contains('sash central') ||
                 item.originalName.contains('Sash Central') ||

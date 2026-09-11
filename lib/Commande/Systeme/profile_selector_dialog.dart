@@ -810,10 +810,11 @@ class CatalogCandidateResolver {
   Future<List<Map<String, dynamic>>> _resolveProfiles(
     CatalogCandidateQuery query,
   ) async {
-    final roleKeys = _mergedRoleKeys(
-      query.roleKeys,
-      seriesRoleKeysForProfileSelectorType(query.selectorType),
-    ).toList();
+    // An explicit profile role is authoritative: product names can contain
+    // both "central" and "lateral" and must not broaden the requested role.
+    final roleKeys = (query.roleKeys.isNotEmpty
+        ? query.roleKeys
+        : seriesRoleKeysForProfileSelectorType(query.selectorType)).toList();
     if (roleKeys.contains('reducer')) {
       roleKeys.add('Réducteur');
       roleKeys.add('Reducteur');
@@ -1248,7 +1249,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           multiFrameDrawing: widget.multiFrameDrawing,
           drawingMode: widget.accessoryDrawingMode,
           requireDialog: true,
-          requireQuantity: true,
+          requireQuantity: widget.category != 'profile',
           hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
           targetThicknessMm: widget.targetThicknessMm,
