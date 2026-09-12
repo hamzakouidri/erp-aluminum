@@ -424,9 +424,11 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 66,
+          version: 67,
           onConfigure: (db) async {
-            await db.execute('PRAGMA busy_timeout = 5000');
+            // This PRAGMA returns a row, including when setting its value.
+            // Android SQLCipher rejects it through execute/executeSql.
+            await db.rawQuery('PRAGMA busy_timeout = 5000');
           },
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
@@ -438,10 +440,11 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 66,
+      version: 67,
       password: password,
       onConfigure: (db) async {
-        await db.execute('PRAGMA busy_timeout = 5000');
+        // Android SQLCipher requires the query API for row-returning PRAGMAs.
+        await db.rawQuery('PRAGMA busy_timeout = 5000');
       },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -1944,6 +1947,7 @@ class SqlDatabase {
       'ALTER TABLE KitItemRanges ADD COLUMN family_id INTEGER;',
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_name TEXT NOT NULL DEFAULT 'Console Quissonnel Standard';",
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_name TEXT NOT NULL DEFAULT 'Console Quissonnel Spécial';",
+      "ALTER TABLE KitBundles ADD COLUMN price REAL NOT NULL DEFAULT 0.0;",
     ]) {
       try {
         await db.execute(statement);
@@ -2472,6 +2476,8 @@ class SqlDatabase {
           triangle_deduction_mm REAL NOT NULL DEFAULT 0.0,
           triangle_position_mode TEXT NOT NULL DEFAULT 'center',
           triangle_position_mm REAL NOT NULL DEFAULT 0.0,
+          triangle_link_mode TEXT NOT NULL DEFAULT 'none',
+          triangle_quantity INTEGER NOT NULL DEFAULT 1,
           is_active INTEGER NOT NULL DEFAULT 1
         )
       ''');
@@ -3107,6 +3113,16 @@ class SqlDatabase {
     }
     if (oldVersion < 66) {
       await _ensureSectionSharingSchema(db);
+    }
+    if (oldVersion < 67) {
+      for (final sql in const [
+        "ALTER TABLE Accessories ADD COLUMN triangle_link_mode TEXT NOT NULL DEFAULT 'none'",
+        'ALTER TABLE Accessories ADD COLUMN triangle_quantity INTEGER NOT NULL DEFAULT 1',
+      ]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {}
+      }
     }
   }
 
@@ -12375,6 +12391,8 @@ class SqlDatabase {
         triangle_deduction_mm REAL NOT NULL DEFAULT 0.0,
         triangle_position_mode TEXT NOT NULL DEFAULT 'center',
         triangle_position_mm REAL NOT NULL DEFAULT 0.0,
+        triangle_link_mode TEXT NOT NULL DEFAULT 'none',
+        triangle_quantity INTEGER NOT NULL DEFAULT 1,
         is_active INTEGER NOT NULL DEFAULT 1
       )
     ''');
@@ -15284,13 +15302,26 @@ class SqlDatabase {
     );
   }
 
-  /// Ø­Ø°Ù Kit (Ù†Ø§Ø¹Ù…)
+  /// Ø­Ø°Ù  Kit (Ù†Ø§Ø¹Ù…)
   Future<void> deleteKitBundle(int id) async {
     final database = await db;
     if (database == null) return;
     await database.update(
       'KitBundles',
       {'is_active': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// تحديث سعر Kit الإجمالي
+  Future<void> updateKitBundlePrice(int id, double price) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    await database.update(
+      'KitBundles',
+      {'price': price},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -15545,6 +15576,20 @@ class SqlDatabase {
         } else {
           familyId = null;
           row['family_id'] = null;
+        }
+      }
+      if (componentId == null &&
+          row['product_name'] != null &&
+          row['product_name'].toString().trim().isNotEmpty) {
+        final fallbackRows = await database.query(
+          'ShutterComponents',
+          where: 'LOWER(TRIM(name)) = LOWER(TRIM(?))',
+          whereArgs: [row['product_name'].toString().trim()],
+          limit: 1,
+        );
+        if (fallbackRows.isNotEmpty) {
+          componentId = (fallbackRows.first['id'] as num?)?.toInt();
+          row['shutter_component_id'] = componentId;
         }
       }
       if (componentId != null) {
@@ -15848,6 +15893,26 @@ class SqlDatabase {
       final itemFamilyId = rawFamilyId is num
           ? rawFamilyId.toInt()
           : int.tryParse('$rawFamilyId');
+
+      if (itemMap['qty_mode'] == 'fixed' &&
+          ((itemMap['price'] as num?)?.toDouble() ?? 0.0) <= 0) {
+        final compType = (itemMap['component_type'] ?? '').toString().trim();
+        if (compType.isNotEmpty) {
+          final compRows = await database.query(
+            'ShutterComponents',
+            columns: const ['id', 'name', 'price'],
+            where:
+                'LOWER(TRIM(name)) = LOWER(TRIM(?)) OR LOWER(TRIM(component_type)) = LOWER(TRIM(?))',
+            whereArgs: [compType, compType],
+            limit: 1,
+          );
+          if (compRows.isNotEmpty) {
+            itemMap['price'] = compRows.first['price'];
+            itemMap['shutter_component_id'] = compRows.first['id'];
+          }
+        }
+      }
+
       result.add({
         ...itemMap,
         'ranges': ranges,

@@ -2,6 +2,7 @@
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'dart:math' as math;
+import 'dart:ui' show Rect;
 
 class BomItem {
   final String category;
@@ -3018,6 +3019,7 @@ class ComponentCalculator {
         : frameRects.map((rect) => rect.bottom).reduce(math.max);
     List<double> framePieces = [];
     List<double> slidingOuterFramePieces = [];
+    final frameCutsByRect = <Rect, List<double>>{};
     List<double> renfortFramePieces = [];
     List<double> fixedPlinthePieces = [];
 
@@ -3087,11 +3089,11 @@ class ComponentCalculator {
           ? slidingOuterFramePieces
           : framePieces;
 
-      if (window.hasBottomFrameForRect(r)) {
-        targetFramePieces.addAll([wPiece, wPiece, hPiece, hPiece]);
-      } else {
-        targetFramePieces.addAll([wPiece, hPiece, hPiece]);
-      }
+      final frameCuts = window.hasBottomFrameForRect(r)
+          ? <double>[wPiece, wPiece, hPiece, hPiece]
+          : <double>[wPiece, hPiece, hPiece];
+      targetFramePieces.addAll(frameCuts);
+      frameCutsByRect[r] = frameCuts;
 
       if (isOuterFramePvc) {
         double rw = r.width - renfortFrameDeduction;
@@ -3172,6 +3174,43 @@ class ComponentCalculator {
           preferOverrideMap: true,
         ),
       );
+    }
+
+    // Keep the series identity of each physical frame throughout costing.
+    for (final sliding in [false, true]) {
+      final scopedFrames = frameRects.where(
+        (frame) => window.frameUsesSlidingSeries(frame) == sliding,
+      );
+      for (final role in ['cache_dormant', 'seuil', 'cache_rail']) {
+        if (role == 'cache_rail' && !sliding) continue;
+        if (!window.usesFrameRole(role, sliding: sliding)) continue;
+        final section = window.getConfiguredSectionForRole(role, useSlidingSeries: sliding);
+        if (section == null) continue;
+        final pieces = <double>[];
+        for (final frame in scopedFrames) {
+          if (role == 'cache_dormant') {
+            // Reuse the actual frame cuts, including deductions and welding.
+            pieces.addAll(frameCutsByRect[frame] ?? const []);
+          } else if (role == 'seuil') {
+            pieces.add(frame.width / 1000.0);
+          } else {
+            final counts = window.cacheRailCountsForRect(frame);
+            pieces.addAll(List.filled(counts.$1 + counts.$2, frame.height / 1000.0));
+          }
+        }
+        if (pieces.isEmpty) continue;
+        final label = role == 'cache_dormant' ? 'Cache dormant'
+            : role == 'seuil' ? 'Seuil' : 'Cache-rail';
+        final scope = sliding ? 'Coulissant' : 'Ouvrant';
+        items.add(createProfile(
+          '$label ($scope)', colorName, pieces: pieces,
+          overrideMap: section.toMap(), preferOverrideMap: true,
+          selectorType: role, roleKey: role,
+        ).copyWith(
+          sourceSeriesId: (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
+          materialType: (sliding ? window.isSlidingPVC : window.isPVC) ? 'pvc' : 'aluminium',
+        ));
+      }
     }
 
     if (slidingMonorailPieces.isNotEmpty) {
@@ -3651,7 +3690,8 @@ class ComponentCalculator {
               final legacyKey = s.isEven ? 'central_left' : 'central_right';
               final reinforced =
                   zone.slidingMontantReinforced['central_$s'] ??
-                  zone.slidingMontantReinforced[legacyKey] ?? false;
+                  zone.slidingMontantReinforced[legacyKey] ??
+                  false;
               (reinforced
                       ? slidingSashCentralReinforcedPieces
                       : slidingSashCentralPieces)
@@ -3883,10 +3923,7 @@ class ComponentCalculator {
       if (slidingSashCentralPieces.isNotEmpty) {
         const centralName = 'قائم وسطي (Sash Central)';
         final baseCentral =
-            slidingOverrideFor([
-              centralName,
-              'قائم وسطي (Central)',
-            ]) ??
+            slidingOverrideFor([centralName, 'قائم وسطي (Central)']) ??
             window.getSlidingSectionByType('sash_central')?.toMap() ??
             window.getSlidingSectionByType('central')?.toMap();
 
@@ -3904,16 +3941,18 @@ class ComponentCalculator {
       }
 
       if (slidingSashCentralReinforcedPieces.isNotEmpty) {
-        items.add(createProfile(
-          'قائم وسطي معزز (Sash Central Renforcé)',
-          colorName,
-          pieces: slidingSashCentralReinforcedPieces,
-          overrideMap: slidingOverrideFor([
+        items.add(
+          createProfile(
             'قائم وسطي معزز (Sash Central Renforcé)',
-          ]),
-          preferOverrideMap: true,
-          roleKey: 'sash_central_reinforced',
-        ));
+            colorName,
+            pieces: slidingSashCentralReinforcedPieces,
+            overrideMap: slidingOverrideFor([
+              'قائم وسطي معزز (Sash Central Renforcé)',
+            ]),
+            preferOverrideMap: true,
+            roleKey: 'sash_central_reinforced',
+          ),
+        );
       }
 
       if (slidingChicanePieces.isNotEmpty) {
@@ -7826,7 +7865,13 @@ class ComponentCalculator {
       } else if (normalizedCode.isNotEmpty) {
         key = 'code:' + normalizedCode + ':' + color + ':' + unit;
       } else {
-        key = 'name:' + item.originalName.trim().toLowerCase() + ':' + color + ':' + unit;
+        key =
+            'name:' +
+            item.originalName.trim().toLowerCase() +
+            ':' +
+            color +
+            ':' +
+            unit;
       }
 
       if (!jointGroups.containsKey(key)) {
@@ -7881,7 +7926,8 @@ class ComponentCalculator {
 
       totalExact = ((totalExact * 100).round()) / 100.0;
       final normalizedUnit = first.unit.toLowerCase().trim();
-      final isLinear = normalizedUnit.contains('متر') ||
+      final isLinear =
+          normalizedUnit.contains('متر') ||
           normalizedUnit.contains('meter') ||
           normalizedUnit == 'm' ||
           normalizedUnit == 'ml';
@@ -7896,7 +7942,13 @@ class ComponentCalculator {
         buffer.write('\n' + catalogLine);
       }
       if (isLinear && totalExact > 0) {
-        buffer.write('\n(المطلوب الفعلي: ' + totalExact.toStringAsFixed(2) + ' ' + first.unit + ')');
+        buffer.write(
+          '\n(المطلوب الفعلي: ' +
+              totalExact.toStringAsFixed(2) +
+              ' ' +
+              first.unit +
+              ')',
+        );
       }
 
       String? cuttingListText;

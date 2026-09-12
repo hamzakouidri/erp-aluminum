@@ -521,6 +521,10 @@ extension WindowModelSerialization on WindowModel {
       'bottomSlantRightY': bottomSlantRightY,
       'profileThickness': profileThickness,
       'hasBottomFrame': hasBottomFrame,
+      'useOptionalSeuil': useOptionalSeuil,
+      'useOptionalCacheDormant': useOptionalCacheDormant,
+      'cacheRailLeftCount': cacheRailLeftCount,
+      'cacheRailRightCount': cacheRailRightCount,
       'hasFramePlintheBottom': hasFramePlintheBottom,
       'isInternalView': isInternalView,
       'showInternalHardware': showInternalHardware,
@@ -633,6 +637,11 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.profileThickness =
       (map['profileThickness'] as num?)?.toDouble() ?? 40.0;
   model.hasBottomFrame = map['hasBottomFrame'] ?? true;
+  model.useOptionalSeuil = map['useOptionalSeuil'] == true;
+  model.useOptionalCacheDormant = map['useOptionalCacheDormant'] == true;
+  model.cacheRailLeftCount = (map['cacheRailLeftCount'] as num?)?.toInt() ?? 0;
+  model.cacheRailRightCount =
+      (map['cacheRailRightCount'] as num?)?.toInt() ?? 0;
   model.hasFramePlintheBottom = map['hasFramePlintheBottom'] ?? false;
   model.isInternalView = map['isInternalView'] ?? false;
   model.showInternalHardware = map['showInternalHardware'] == true;

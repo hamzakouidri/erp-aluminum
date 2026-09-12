@@ -82,7 +82,42 @@ class BomEngineV2 {
             !existingIds.contains(item.catalogItemId),
       ),
     );
+    kept.addAll(await _frameRoleJoints(kept));
     return kept;
+  }
+
+  Future<List<BomItem>> _frameRoleJoints(List<BomItem> items) async {
+    final result = <BomItem>[];
+    for (final profile in items.where((item) =>
+        const ['cache_rail', 'seuil', 'cache_dormant'].contains(item.roleKey))) {
+      final series = profile.sourceSeriesId;
+      final section = profile.catalogItemId;
+      final metres = profile.actualUsedMeters ?? 0;
+      if (series == null || section == null || metres <= 0) continue;
+      final rows = await _db.getDefaultJointsForSection(
+        seriesId: series, sectionId: section,
+        positionKeys: const ['cache_rail_inner', 'cache_rail_outer',
+          'profile_gasket_1', 'profile_gasket_2'],
+      );
+      // A link can return several products in the same gasket family.
+      // The database sorts the default first: use one product per position.
+      final positions = <String>{};
+      for (final row in rows) {
+        final position = '${row['position_key']}';
+        if (!positions.add(position)) continue;
+        final name = '${row['name'] ?? 'Joint Cache-rail'}';
+        result.add(BomItem(
+          category: 'joint', originalName: 'Joint ${profile.roleKey} ($position)',
+          name: name, profileCode: row['code']?.toString(),
+          quantity: metres, unit: 'متر',
+          unitPrice: _safeDouble(row['price_per_meter'] ?? row['price_dzd'] ?? row['price']),
+          catalogItemId: _catalogInt(row['id']), sourceSeriesId: series,
+          materialType: profile.materialType, selectorCategory: 'joint',
+          overrideKey: 'frame-role-joint:${profile.roleKey}:$series:$section:$position',
+        ));
+      }
+    }
+    return result;
   }
 
   Future<List<BomItem>> _seriesKitItems(WindowModel window) async {

@@ -496,6 +496,7 @@ class WindowPainter extends CustomPainter {
           ? 0.0
           : topOffset;
       _drawConfiguredSideCovers(canvas, w, h, sideCoverTopY);
+      _drawFrameRoleProfiles(canvas, w, h, topOffset);
     }
 
     if (model.hasShutter &&
@@ -1567,6 +1568,41 @@ class WindowPainter extends CustomPainter {
     }
   }
 
+  void _drawFrameRoleProfiles(Canvas canvas, double w, double h, double top) {
+    final frames = model.getFrameRects();
+    for (final raw in frames) {
+      final r = frames.length == 1 ? Rect.fromLTRB(0, top, w, h) : raw;
+      final sliding = model.frameUsesSlidingSeries(raw);
+      void drawProfile(Rect rect) {
+        if (rect.isEmpty) return;
+        canvas.drawRect(rect, _buildPaint(rect));
+        canvas.drawRect(rect, Paint()..color = _fb
+          ..style = PaintingStyle.stroke..strokeWidth = 1);
+      }
+      for (final role in ['cache_dormant', 'cache_rail', 'seuil']) {
+        if (!model.usesFrameRole(role, sliding: sliding)) continue;
+        final section = model.getConfiguredSectionForRole(role, useSlidingSeries: sliding);
+        if (section == null || section.visibleWidth <= 0) continue;
+        final visible = section.visibleWidth.clamp(0.0, math.min(r.width / 2, r.height / 2));
+        if (role == 'seuil') {
+          // Straight ends meet the jambs at 90 degrees.
+          drawProfile(Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom));
+        } else if (role == 'cache_dormant') {
+          drawProfile(Rect.fromLTRB(r.left, r.top, r.right, r.top + visible));
+          drawProfile(Rect.fromLTRB(r.left, r.top + visible, r.left + visible, r.bottom));
+          drawProfile(Rect.fromLTRB(r.right - visible, r.top + visible, r.right, r.bottom));
+          if (model.hasBottomFrameForRect(raw)) {
+            drawProfile(Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom));
+          }
+        } else if (sliding) {
+          final counts = model.cacheRailCountsForRect(raw);
+          drawProfile(Rect.fromLTRB(r.left, r.top, r.left + visible * counts.$1, r.bottom));
+          drawProfile(Rect.fromLTRB(r.right - visible * counts.$2, r.top, r.right, r.bottom));
+        }
+      }
+    }
+  }
+
   bool _frameRectIsSlidingOnly(Rect frameRect) {
     if (model.usesSlidingPrimaryProfiles) return true;
     if (model.getFrameRects().length <= 1) return false;
@@ -1766,85 +1802,9 @@ class WindowPainter extends CustomPainter {
         bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
       );
 
-      // ── رسم الإطار السفلي النظيف تحت الثوابت الجانبية ──
-      bool leftHasFixed = false;
-      bool rightHasFixed = false;
-      final mullionT = model.mullionThickness;
-
-      bool hasVerticalJoinAt(double x) {
-        if (x <= t + 2.0 || x >= w - t - 2.0) return false;
-        var hasLeftZone = false;
-        var hasRightZone = false;
-        for (final zone in model.zones) {
-          final r = zone.boundary;
-          if (r.bottom < h - t - 2.0) continue;
-          if ((r.right - x).abs() <= mullionT + 3.0) {
-            hasLeftZone = true;
-          }
-          if ((r.left - x).abs() <= mullionT + 3.0) {
-            hasRightZone = true;
-          }
-        }
-        return hasLeftZone && hasRightZone;
-      }
-
-      for (final zone in model.zones) {
-        final r = zone.boundary;
-        final isBottomBound =
-            (r.bottom - (h - t)).abs() < 5.0 || r.bottom >= h - t - 2.0;
-        final isFixed =
-            zone.content == ZoneContent.fixedGlass ||
-            zone.content == ZoneContent.empty;
-        if (!isBottomBound || !isFixed) continue;
-
-        final touchesLeft = (r.left - t).abs() < 5.0 || r.left <= t;
-        final touchesRight =
-            (r.right - (w - t)).abs() < 5.0 || r.right >= w - t;
-
-        if (touchesLeft) leftHasFixed = true;
-        if (touchesRight) rightHasFixed = true;
-
-        final joinsLeftMullion = !touchesLeft && hasVerticalJoinAt(r.left);
-        final joinsRightMullion = !touchesRight && hasVerticalJoinAt(r.right);
-        final double segLeft = touchesLeft
-            ? 0.0
-            : r.left - (joinsLeftMullion ? mullionT / 2 : 0.0);
-        final double segRight = touchesRight
-            ? w
-            : r.right + (joinsRightMullion ? mullionT / 2 : 0.0);
-        final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
-
-        // رسم قطاع الإطار الكامل بتعبئته المصمتة وتجويفه العلوي فقط للزجاج (وبدون تجويف سفلي)
-        _drawGroovedMullionProfile(
-          canvas,
-          segRect,
-          isHorizontal: true,
-          fill: _buildPaint(outerRect),
-          border: bp,
-          cavityOnPositiveSide:
-              false, // تجويف علوي فقط للزجاج، والأسفل مستوٍ على الأرض
-        );
-
-        // وصلة 45° في الزاوية الخارجية أو 90° عند التقسيم الداخلي
-        if (touchesLeft) {
-          canvas.drawLine(Offset(0, h), Offset(t, h - t), bp);
-        } else if (!joinsLeftMullion) {
-          canvas.drawLine(Offset(r.left, h - t), Offset(r.left, h), bp);
-        }
-        if (touchesRight) {
-          canvas.drawLine(Offset(w, h), Offset(w - t, h - t), bp);
-        } else if (!joinsRightMullion) {
-          canvas.drawLine(Offset(r.right, h - t), Offset(r.right, h), bp);
-        }
-      }
-
-      // إغلاق مستقيم 90° للقائم فقط إذا لم يكن متصلاً بإطار ثابت سفلي
-      if (!leftHasFixed) {
-        canvas.drawLine(Offset(0, h), Offset(t, h), bp);
-      }
-      if (!rightHasFixed) {
-        canvas.drawLine(Offset(w - t, h), Offset(w, h), bp);
-      }
+      // With no lower frame, both jambs terminate with square cuts.
+      canvas.drawLine(Offset(0, h), Offset(t, h), bp);
+      canvas.drawLine(Offset(w - t, h), Offset(w, h), bp);
     }
 
     _drawMiterCorners(

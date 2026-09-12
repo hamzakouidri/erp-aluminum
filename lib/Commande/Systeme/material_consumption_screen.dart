@@ -1272,6 +1272,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     Database database,
     String kitName,
   ) async {
+    // Check KitBundles table first (set via PriceManagementScreen)
+    final bundleRows = await database.query(
+      'KitBundles',
+      where: 'LOWER(TRIM(name)) = LOWER(TRIM(?))',
+      whereArgs: [kitName],
+      limit: 1,
+    );
+    if (bundleRows.isNotEmpty) {
+      final bPrice = (bundleRows.first['price'] as num?)?.toDouble() ?? 0.0;
+      if (bPrice > 0) return bPrice;
+    }
+
     var catalogRows = await database.query(
       'ShutterComponents',
       // ShutterComponents has only the canonical `price` column.  Do not
@@ -3941,9 +3953,31 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         orElse: () => children.first,
       );
       final kitQuantity = math.max(1, widget.model.quantity).toDouble();
-      final totalPrice = officialKitUnitPrice > 0
-          ? officialKitUnitPrice * kitQuantity
-          : childTotalPrice;
+      final isMotorKit = shutterKitCode == 'MT' ||
+          isMatch('كيت فولي موتور (Kit Volet Moteur)', [
+            'kit volet moteur',
+            'kit_volet_moteur',
+            'kitvoletmoteur',
+            'moteur',
+          ]) ||
+          kitName.toLowerCase().contains('moteur');
+      // إذا كان كيت موتور (أو كيت مفصول/معدل) نجمع أسعار العناصر المتبقية بداخله.
+      // أما إذا كان كيت عادي كامل (مثل kit volant 155/185/205) وسعره الإجمالي مدخل > 0 نأخذ سعره،
+      // وإن كان صفرًا نرجع لمجموع عناصره.
+      final double totalPrice = isMotorKit
+          ? (childTotalPrice > 0
+              ? childTotalPrice
+              : (officialKitUnitPrice > 0
+                  ? officialKitUnitPrice * kitQuantity
+                  : 0.0))
+          : (officialKitUnitPrice > 0
+              ? officialKitUnitPrice * kitQuantity
+              : childTotalPrice);
+      final double effectiveKitUnitPrice = isMotorKit
+          ? (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0)
+          : (officialKitUnitPrice > 0
+              ? officialKitUnitPrice
+              : (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0));
       // هل المجموعة مفعّلة حاليًا؟ (تُحدد من activeVariants حسب نوعها)
       final isGroupActive = isSystemOb
           ? (activeVariants['System OB'] ?? false)
@@ -4071,12 +4105,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ),
                     _wActualMeters,
                   ),
-                  // سعر الكيت الرسمي المخزن في كتالوج مكونات الستار.
+                  // سعر الكيت الرسمي المخزن في كتالوج مكونات الستار أو مجموع عناصره.
                   _cell(
                     Text(
-                      officialKitUnitPrice > 0
-                          ? '${officialKitUnitPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}'
-                          : '${(kitQuantity > 0 ? totalPrice / kitQuantity : 0.0).toStringAsFixed(2)} ${Localization.translate('دج', lang)}',
+                      '${effectiveKitUnitPrice.toStringAsFixed(2)} ${Localization.translate('دج', lang)}',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.grey,

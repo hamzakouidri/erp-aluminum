@@ -1016,13 +1016,20 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   Widget _buildShutterComponentsList(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    if (shutterList.isEmpty) {
+    if (shutterList.isEmpty && kitBundlesList.isEmpty) {
       return Center(
         child: Text(Localization.translate('لا توجد بيانات.', lang)),
       );
     }
 
     final query = _shutterSearchQuery.trim().toLowerCase();
+    final filteredKits = kitBundlesList.where((kit) {
+      if (query.isEmpty) return true;
+      final name = (kit['name'] ?? '').toString().toLowerCase();
+      final desc = (kit['description'] ?? '').toString().toLowerCase();
+      return name.contains(query) || desc.contains(query);
+    }).toList();
+
     final filteredShutters = shutterList.where((item) {
       if (query.isEmpty) return true;
       final name = (item['name'] ?? '').toString().toLowerCase();
@@ -1037,7 +1044,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           measurement.contains(query);
     }).toList();
 
-    if (filteredShutters.isEmpty) {
+    final totalCount = filteredKits.length + filteredShutters.length;
+    if (totalCount == 0) {
       return Center(
         child: Text(
           Localization.translate('لا توجد نتائج مطابقة للبحث.', lang),
@@ -1048,9 +1056,133 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     return ListView.builder(
       key: const PageStorageKey<String>('price-shutter-components-list'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: filteredShutters.length,
+      itemCount: totalCount,
       itemBuilder: (context, index) {
-        final shutter = filteredShutters[index];
+        if (index < filteredKits.length) {
+          final kit = filteredKits[index];
+          final kitId = kit['id'] as int;
+          final kitName = kit['name'].toString();
+          final currentPrice = _readStoredPrice(kit['price']);
+          final pendingKey = 'kit-bundle-$kitId';
+
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.purple.shade600.withValues(alpha: 0.5),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.purple.withValues(alpha: 0.08),
+                  spreadRadius: 1,
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.inventory_2_outlined,
+                        color: Colors.purple,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              kitName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Colors.purple,
+                              ),
+                            ),
+                            if ((kit['description'] ?? '')
+                                .toString()
+                                .isNotEmpty)
+                              Text(
+                                kit['description'].toString(),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.purple.shade200),
+                        ),
+                        child: Text(
+                          Localization.translate('حزمة كيت كاملة (Kit)', lang),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.purple.shade700,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, thickness: 0.7),
+                PriceEditRow(
+                  title: Localization.translate(
+                    'السعر الإجمالي للكيت (دج)',
+                    lang,
+                  ),
+                  titleIcon: const Icon(
+                    Icons.sell_outlined,
+                    color: Colors.purple,
+                    size: 20,
+                  ),
+                  currentPrice: currentPrice,
+                  canChangePrices: canChangePrices,
+                  onSave: (parsed) => _updateKitBundlePrice(kitId, parsed),
+                  onPriceChanged: (parsed) {
+                    if (parsed == null) {
+                      _removeQueuedShutterPrice(pendingKey);
+                      return;
+                    }
+                    _queueShutterPrice(
+                      key: pendingKey,
+                      price: parsed,
+                      currentPrice: currentPrice,
+                      save: (price) => _updateKitBundlePrice(
+                        kitId,
+                        price,
+                        showConfirmation: false,
+                      ),
+                    );
+                  },
+                  onSaveCompleted: () =>
+                      _removeQueuedShutterPrice(pendingKey),
+                ),
+                const SizedBox(height: 4),
+              ],
+            ),
+          );
+        }
+
+        final shutter = filteredShutters[index - filteredKits.length];
         final shutterId = shutter['id'] as int;
         final shutterName = shutter['name'].toString();
 
@@ -1195,6 +1327,43 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     ],
                   );
                 }),
+              ] else ...[
+                Builder(
+                  builder: (context) {
+                    final currentPrice = _readStoredPrice(shutter['price']);
+                    final pendingKey = 'shutter-base-$shutterId';
+                    return PriceEditRow(
+                      title: Localization.translate('السعر (قطعة)', lang),
+                      titleIcon: const Icon(
+                        Icons.sell_outlined,
+                        color: Colors.deepPurple,
+                        size: 20,
+                      ),
+                      currentPrice: currentPrice,
+                      canChangePrices: canChangePrices,
+                      onSave: (parsed) =>
+                          _updateShutterComponentBasePrice(shutterId, parsed),
+                      onPriceChanged: (parsed) {
+                        if (parsed == null) {
+                          _removeQueuedShutterPrice(pendingKey);
+                          return;
+                        }
+                        _queueShutterPrice(
+                          key: pendingKey,
+                          price: parsed,
+                          currentPrice: currentPrice,
+                          save: (price) => _updateShutterComponentBasePrice(
+                            shutterId,
+                            price,
+                            showConfirmation: false,
+                          ),
+                        );
+                      },
+                      onSaveCompleted: () =>
+                          _removeQueuedShutterPrice(pendingKey),
+                    );
+                  },
+                ),
               ],
               const SizedBox(height: 4),
             ],
@@ -1865,6 +2034,90 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ),
       );
     }
+  }
+
+  Future<void> _updateShutterComponentBasePrice(
+    int shutterId,
+    double price, {
+    bool showConfirmation = true,
+  }) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final dbInstance = await db.db;
+    if (dbInstance == null) return;
+    await dbInstance.update(
+      'ShutterComponents',
+      {'price': price},
+      where: 'id = ?',
+      whereArgs: [shutterId],
+    );
+    if (!mounted) return;
+    setState(() {
+      final idx = shutterList.indexWhere((item) => item['id'] == shutterId);
+      if (idx != -1) {
+        final mutable = Map<String, dynamic>.from(shutterList[idx]);
+        mutable['price'] = price;
+        shutterList[idx] = mutable;
+      }
+    });
+    if (showConfirmation && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+    _loadAllData();
+  }
+
+  Future<void> _updateKitBundlePrice(
+    int kitId,
+    double price, {
+    bool showConfirmation = true,
+  }) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    await db.updateKitBundlePrice(kitId, price);
+    final dbInstance = await db.db;
+    if (dbInstance != null) {
+      final kitRow = kitBundlesList.firstWhere(
+        (k) => k['id'] == kitId,
+        orElse: () => {},
+      );
+      final kitName = kitRow['name']?.toString();
+      if (kitName != null && kitName.isNotEmpty) {
+        await dbInstance.update(
+          'ShutterComponents',
+          {'price': price},
+          where:
+              "LOWER(TRIM(name)) = LOWER(TRIM(?)) AND LOWER(TRIM(component_type)) = 'kit'",
+          whereArgs: [kitName],
+        );
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      final idx = kitBundlesList.indexWhere((k) => k['id'] == kitId);
+      if (idx != -1) {
+        final mutable = Map<String, dynamic>.from(kitBundlesList[idx]);
+        mutable['price'] = price;
+        kitBundlesList[idx] = mutable;
+      }
+    });
+    if (showConfirmation && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+    _loadAllData();
   }
 
   Future<void> _updateShutterColorPrice(

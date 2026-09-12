@@ -1130,12 +1130,14 @@ class WindowZone {
   }) : glass = glass ?? globalDefaultGlass,
        cellGlassSpec = cellGlassSpec ?? const {},
        slidingMontantReinforced = Map<String, bool>.from(
-           slidingMontantReinforced ?? const {
-             'lateral_left': false,
-             'lateral_right': false,
-             'central_left': false,
-             'central_right': false,
-           });
+         slidingMontantReinforced ??
+             const {
+               'lateral_left': false,
+               'lateral_right': false,
+               'central_left': false,
+               'central_right': false,
+             },
+       );
 
   WindowZone clone() => WindowZone(
     id: id,
@@ -3330,6 +3332,30 @@ class WindowModel extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  bool isConfiguredRoleRequired(String roleKey, {bool? useSlidingSeries}) {
+    final series = _seriesForConfiguredRole(useSlidingSeries: useSlidingSeries);
+    if (series == null) return false;
+    final ids = _seriesDesignRoleSectionIds[series.id]?[roleKey.trim()];
+    if (ids == null || ids.isEmpty) return false;
+    final sliding =
+        useSlidingSeries ??
+        (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
+    return ids.any((id) {
+      if (!_configuredSectionMatchesScope(
+        series,
+        roleKey,
+        id,
+        sliding: sliding,
+      )) {
+        return false;
+      }
+      final value =
+          _seriesDesignRoleOptions[series.id]?[roleKey
+              .trim()]?[id]?['is_required'];
+      return value == true || value == 1 || value?.toString() == '1';
+    });
+  }
+
   bool seriesUsesReducer(AluminumSeries? series) {
     if (series == null) return false;
     return _seriesDesignRoleKeys[series.id]?.contains('reducer') == true;
@@ -3808,7 +3834,8 @@ class WindowModel extends ChangeNotifier {
     required bool central,
   }) {
     final role = (profile['design_role_key'] ?? '').toString();
-    if (role == 'sash_central_reinforced' || role == 'sash_lateral_reinforced') {
+    if (role == 'sash_central_reinforced' ||
+        role == 'sash_lateral_reinforced') {
       return true;
     }
     if (role == 'sash_central' || role == 'sash_lateral') return false;
@@ -4361,6 +4388,10 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool hasBottomFrame = true;
+  bool useOptionalSeuil = false;
+  bool useOptionalCacheDormant = false;
+  int cacheRailLeftCount = 0;
+  int cacheRailRightCount = 0;
   bool hasFramePlintheBottom = false;
   bool isInternalView = true;
   bool showInternalHardware = false;
@@ -14215,22 +14246,89 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get canDisableBottomFrame {
+    if (usesSeuil) return true;
     if (systemMode == 'sliding') return false;
     return true;
   }
 
-  bool get effectiveHasBottomFrame => hasBottomFrame || !canDisableBottomFrame;
+  bool usesFrameRole(String role, {required bool sliding}) {
+    if (getConfiguredSectionForRole(role, useSlidingSeries: sliding) == null) return false;
+    if (isConfiguredRoleRequired(role, useSlidingSeries: sliding)) return true;
+    return role == 'seuil' ? useOptionalSeuil
+        : role == 'cache_dormant' ? useOptionalCacheDormant
+        : role == 'cache_rail' && (cacheRailLeftCount > 0 || cacheRailRightCount > 0);
+  }
+
+  bool hasFrameRole(String role) =>
+      getConfiguredSectionForRole(role, useSlidingSeries: false) != null ||
+      getConfiguredSectionForRole(role, useSlidingSeries: true) != null;
+
+  bool frameRoleRequiredInAllScopes(String role) {
+    final scopes = [false, true].where((sliding) =>
+        getConfiguredSectionForRole(role, useSlidingSeries: sliding) != null);
+    return scopes.isNotEmpty && scopes.every((sliding) =>
+        isConfiguredRoleRequired(role, useSlidingSeries: sliding));
+  }
+
+  bool frameRoleEnabledInAnyScope(String role) =>
+      [false, true].any((sliding) => usesFrameRole(role, sliding: sliding));
+
+  (int, int) cacheRailCountsForRect(Rect frame) {
+    if (!usesFrameRole('cache_rail', sliding: true)) return (0, 0);
+    final tracks = zones.where((zone) => frame.contains(zone.boundary.center))
+        .fold<int>(1, (count, zone) => math.max(count, zone.slidingTrackCount));
+    // A one-track frame still has one cover on each side.
+    final maximum = math.max(1, tracks - 1);
+    if (isConfiguredRoleRequired('cache_rail', useSlidingSeries: true)) {
+      return (maximum, maximum);
+    }
+    return (cacheRailLeftCount.clamp(0, maximum), cacheRailRightCount.clamp(0, maximum));
+  }
+
+  bool frameUsesSlidingSeries(Rect frame) {
+    final members = zones.where((zone) => frame.contains(zone.boundary.center)).toList();
+    return members.isNotEmpty
+        ? members.every((zone) => zone.content == ZoneContent.slidingSash)
+        : usesSlidingPrimaryProfiles;
+  }
+
+  bool get usesSeuil => usesFrameRole('seuil', sliding: usesSlidingPrimaryProfiles);
+  bool get usesCacheDormant =>
+      useOptionalCacheDormant || isConfiguredRoleRequired('cache_dormant');
+  bool get usesCacheRail =>
+      cacheRailLeftCount > 0 ||
+      cacheRailRightCount > 0 ||
+      isConfiguredRoleRequired('cache_rail', useSlidingSeries: true);
+
+  void toggleSeuil(bool value) {
+    if (value && !hasFrameRole('seuil')) return;
+    _saveSnapshot();
+    useOptionalSeuil = value;
+    notifyListeners();
+  }
+
+  void toggleCacheDormant(bool value) {
+    if (value && !hasFrameRole('cache_dormant')) return;
+    _saveSnapshot();
+    useOptionalCacheDormant = value;
+    notifyListeners();
+  }
+
+  void setCacheRailCounts(int left, int right) {
+    _saveSnapshot();
+    cacheRailLeftCount = math.max(0, left);
+    cacheRailRightCount = math.max(0, right);
+    notifyListeners();
+  }
+
+  bool get effectiveHasBottomFrame =>
+      (hasBottomFrame && !usesSeuil) || !canDisableBottomFrame;
 
   /// Plinthe belongs to its opening frame, not neighbouring sliding frames.
   bool hasBottomFrameForRect(Rect frameRect) {
-    final frameZones = zones.where(
-      (zone) => frameRect.contains(zone.boundary.center),
-    );
-    if (frameZones.isNotEmpty &&
-        frameZones.every((zone) => zone.content == ZoneContent.slidingSash)) {
-      return true;
-    }
-    return effectiveHasBottomFrame;
+    final sliding = frameUsesSlidingSeries(frameRect);
+    if (usesFrameRole('seuil', sliding: sliding)) return false;
+    return sliding || hasBottomFrame;
   }
 
   bool _normalizeBottomFrameForCurrentContent() {

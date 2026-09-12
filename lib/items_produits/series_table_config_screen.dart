@@ -295,6 +295,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   final Map<String, int?> _defaultSectionByRole = {
     for (final role in _roles) role.key: null,
   };
+  final Map<String, bool> _requiredByRole = {
+    for (final role in _roles) role.key: role.required,
+  };
   final Map<String, Map<String, dynamic>> _roleOptionsByRoleSection = {};
   final Map<int, Map<String, String?>> _gasketTypeBySectionPosition = {};
 
@@ -433,6 +436,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     for (final role in _roles) {
       _sectionIdsByRole[role.key]!.clear();
       _defaultSectionByRole[role.key] = null;
+      _requiredByRole[role.key] = role.required;
     }
     _tableConfig = null;
     _roleOptionsByRoleSection.clear();
@@ -527,6 +531,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _sectionIdsByRole[role]!.add(sectionId);
       _roleOptionsByRoleSection[_roleOptionKey(role, sectionId)] =
           _roleOptionsFromRow(item);
+      _requiredByRole[role] =
+          item['is_required'] == true || item['is_required'] == 1;
       if (item['is_default'] == 1 || _defaultSectionByRole[role] == null) {
         _defaultSectionByRole[role] = sectionId;
       }
@@ -896,7 +902,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           'role_key': role.key,
           'section_id': sectionId,
           ...options,
-          'is_required': role.required,
+          'is_required': _requiredByRole[role.key] ?? role.required,
           'is_default': _defaultSectionByRole[role.key] == sectionId,
           'is_visible': true,
         });
@@ -1206,6 +1212,20 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             alignment: AlignmentDirectional.centerStart,
             child: Text(_t(role.descriptionAr, role.descriptionFr)),
           ),
+          if (!role.required)
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: Text(_t('استعمال حتمي', 'Utilisation obligatoire')),
+              subtitle: Text(
+                _t(
+                  'يُطبّق تلقائيًا عند استعمال السلسلة.',
+                  'Appliqué automatiquement avec cette série.',
+                ),
+              ),
+              value: _requiredByRole[role.key] ?? false,
+              onChanged: (value) =>
+                  setState(() => _requiredByRole[role.key] = value),
+            ),
           const SizedBox(height: 10),
           Align(
             alignment: AlignmentDirectional.centerStart,
@@ -2219,6 +2239,18 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     result['frame'] = const [
       ('frame_inner', 'جوان الإطار الداخلي', 'Joint dormant intérieur'),
       ('frame_outer', 'جوان الإطار الخارجي', 'Joint dormant extérieur'),
+    ];
+    result['cache_rail'] = const [
+      (
+        'cache_rail_inner',
+        'جوان الكاشري الداخلي',
+        'Joint intérieur cache-rail',
+      ),
+      (
+        'cache_rail_outer',
+        'جوان الكاشري الخارجي',
+        'Joint extérieur cache-rail',
+      ),
     ];
     result['sash'] = const [
       ('sash_inner', 'جوان الضلفة الداخلي', 'Joint ouvrant intérieur'),

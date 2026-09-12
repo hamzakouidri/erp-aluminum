@@ -7,7 +7,8 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show FilteringTextInputFormatter, LengthLimitingTextInputFormatter;
+import 'package:flutter/services.dart'
+    show FilteringTextInputFormatter, LengthLimitingTextInputFormatter;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
@@ -8218,6 +8219,122 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ],
 
+              if (widget.model.hasFrameRole('seuil'))
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Seuil (بروفيل C)'),
+                  subtitle: Text(
+                    widget.model.frameRoleRequiredInAllScopes('seuil')
+                        ? 'مفعل حتميًا حسب قواعد السلسلة'
+                        : 'يستبدل الإطار السفلي',
+                  ),
+                  value: widget.model.frameRoleEnabledInAnyScope('seuil'),
+                  activeThumbColor: Colors.blue,
+                  onChanged: widget.model.frameRoleRequiredInAllScopes('seuil')
+                      ? null
+                      : widget.model.toggleSeuil,
+                ),
+
+              if (widget.model.hasFrameRole('cache_dormant'))
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('كاش الإطار (Cache dormant)'),
+                  subtitle: Text(
+                    widget.model.frameRoleRequiredInAllScopes('cache_dormant')
+                        ? 'مفعل حتميًا حسب قواعد السلسلة'
+                        : 'يتبع فقط جهات الإطار الموجودة',
+                  ),
+                  value: widget.model.frameRoleEnabledInAnyScope('cache_dormant'),
+                  activeThumbColor: Colors.blue,
+                  onChanged:
+                      widget.model.frameRoleRequiredInAllScopes('cache_dormant')
+                      ? null
+                      : widget.model.toggleCacheDormant,
+                ),
+
+              if (widget.model.getConfiguredSectionForRole(
+                    'cache_rail',
+                    useSlidingSeries: true,
+                  ) !=
+                  null)
+                Builder(
+                  builder: (context) {
+                    final tracks = widget.model.zones
+                        .where(
+                          (zone) => zone.content == ZoneContent.slidingSash,
+                        )
+                        .fold<int>(
+                          2,
+                          (current, zone) => math.max(
+                            current,
+                            zone.slidingTrackCount > 0
+                                ? zone.slidingTrackCount
+                                : zone.slidingSashesCount,
+                          ),
+                        );
+                    final maximum = math.max(1, tracks - 1);
+                    final required = widget.model.isConfiguredRoleRequired(
+                      'cache_rail',
+                      useSlidingSeries: true,
+                    );
+                    final left = required
+                        ? maximum
+                        : widget.model.cacheRailLeftCount.clamp(0, maximum);
+                    final right = required
+                        ? maximum
+                        : widget.model.cacheRailRightCount.clamp(0, maximum);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'كاش راي (Cache-rail)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          required
+                              ? 'مفعل حتميًا: يغطي $maximum سكة من كل جانب.'
+                              : 'اختر عدد السكك المغطاة في كل جانب.',
+                        ),
+                        if (!required)
+                          Row(
+                            children: [
+                              const Text('يمين: '),
+                              DropdownButton<int>(
+                                value: right,
+                                items: [
+                                  for (var i = 0; i <= maximum; i++)
+                                    DropdownMenuItem(
+                                      value: i,
+                                      child: Text('$i'),
+                                    ),
+                                ],
+                                onChanged: (value) => widget.model
+                                    .setCacheRailCounts(left, value ?? 0),
+                              ),
+                              const SizedBox(width: 18),
+                              const Text('يسار: '),
+                              DropdownButton<int>(
+                                value: left,
+                                items: [
+                                  for (var i = 0; i <= maximum; i++)
+                                    DropdownMenuItem(
+                                      value: i,
+                                      child: Text('$i'),
+                                    ),
+                                ],
+                                onChanged: (value) => widget.model
+                                    .setCacheRailCounts(value ?? 0, right),
+                              ),
+                            ],
+                          ),
+                      ],
+                    );
+                  },
+                ),
+
               if (widget.model.hasBottomFrame &&
                   widget.model.canUseOpeningOnlyOptions) ...[
                 SwitchListTile(
@@ -9237,21 +9354,33 @@ class _WindowViewState extends State<WindowView> {
       text: widget.model.width > 0 ? widget.model.width.toInt().toString() : '',
     );
     final heightCtrl = TextEditingController(
-      text: widget.model.height > 0 ? widget.model.height.toInt().toString() : '',
+      text: widget.model.height > 0
+          ? widget.model.height.toInt().toString()
+          : '',
     );
     final heightFocus = FocusNode();
+    BuildContext? dialogContext;
     void apply() {
       final w = double.tryParse(widthCtrl.text);
       final h = double.tryParse(heightCtrl.text);
-      if (w == null || h == null ||
+      if (w == null ||
+          h == null ||
           w < widget.model.profileThickness * 3 ||
-          h < widget.model.profileThickness * 3) return;
+          h < widget.model.profileThickness * 3)
+        return;
       widget.model.resizeWindow(w, h);
-      Navigator.pop(context);
+      // `context` here belongs to the drawing route. Popping it returns the
+      // user to the system selector instead of dismissing this dialog.
+      final activeDialogContext = dialogContext;
+      if (activeDialogContext != null) {
+        Navigator.of(activeDialogContext, rootNavigator: true).pop();
+      }
     }
+
     showDialog(
       context: context,
       builder: (context) {
+        dialogContext = context;
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
@@ -9269,11 +9398,17 @@ class _WindowViewState extends State<WindowView> {
               children: [
                 TextField(
                   controller: widthCtrl,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
                   onChanged: (value) {
                     if (value.length == 4) {
                       heightFocus.requestFocus();
-                      heightCtrl.selection = TextSelection(baseOffset: 0, extentOffset: heightCtrl.text.length);
+                      heightCtrl.selection = TextSelection(
+                        baseOffset: 0,
+                        extentOffset: heightCtrl.text.length,
+                      );
                     }
                   },
                   onSubmitted: (_) => apply(),
@@ -9306,7 +9441,10 @@ class _WindowViewState extends State<WindowView> {
                 TextField(
                   controller: heightCtrl,
                   focusNode: heightFocus,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
                   onSubmitted: (_) => apply(),
                   autofocus: !focusWidth,
                   keyboardType: TextInputType.number,
@@ -12165,8 +12303,17 @@ class _WindowViewState extends State<WindowView> {
     final role = (item['design_role_key'] ?? '').toString();
     if (role.isNotEmpty) {
       return central
-          ? const ['sash_central', 'sash_central_reinforced', 'central', 'chicane'].contains(role)
-          : const ['sash_lateral', 'sash_lateral_reinforced', 'lateral'].contains(role);
+          ? const [
+              'sash_central',
+              'sash_central_reinforced',
+              'central',
+              'chicane',
+            ].contains(role)
+          : const [
+              'sash_lateral',
+              'sash_lateral_reinforced',
+              'lateral',
+            ].contains(role);
     }
     final name = (item['name'] ?? '').toString().toLowerCase();
     final type = (item['type'] ?? '').toString().toLowerCase();
