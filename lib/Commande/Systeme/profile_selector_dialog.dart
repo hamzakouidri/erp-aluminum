@@ -966,16 +966,11 @@ class CatalogCandidateResolver {
     final rules = await _db.getCatalogItemRules(
       itemTable: table,
       seriesId: query.seriesId,
+      // Accessories and joints are strictly owned by the selected series.
+      // A global rule must not leak catalogue items into a newly-created
+      // series which has no rules of its own.
+      exactSeriesOnly: query.seriesId != null,
     );
-    if (table == 'Accessories' &&
-        query.seriesId != null &&
-        roleKeys.any(
-          const {'assembly_screw', 'installation_screw'}.contains,
-        )) {
-      rules.addAll(
-        await _db.getAssignedAccessoryScrewRuleFallbacks(query.seriesId!),
-      );
-    }
     final surfaceRules = rules
         .where((rule) => _ruleVisibleOnSurface(rule, query))
         .toList();

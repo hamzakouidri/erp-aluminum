@@ -1269,6 +1269,111 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           }
         }
 
+        List<Widget> ruleStatusSection({required bool enabled}) {
+          final statusItems = filteredItems
+              .where((item) => _itemRuleEnabled(table, item) == enabled)
+              .toList(growable: false);
+          final colorScheme = Theme.of(context).colorScheme;
+          final sectionColor = enabled
+              ? colorScheme.primaryContainer
+              : colorScheme.surfaceContainerHighest;
+          final sectionIcon = enabled
+              ? Icons.check_circle_outline_rounded
+              : Icons.pause_circle_outline_rounded;
+          final widgets = <Widget>[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 8, bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: sectionColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(sectionIcon, size: 21),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _t(
+                        enabled ? 'القواعد المفعلة' : 'القواعد غير المفعلة',
+                        enabled ? 'Règles activées' : 'Règles désactivées',
+                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Text('${statusItems.length}'),
+                ],
+              ),
+            ),
+          ];
+          if (statusItems.isEmpty) {
+            widgets.add(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                child: Text(
+                  _t(
+                    enabled
+                        ? 'لا توجد قواعد مفعلة لهذه السلسلة.'
+                        : 'لا توجد قواعد غير مفعلة.',
+                    enabled
+                        ? 'Aucune règle activée pour cette série.'
+                        : 'Aucune règle désactivée.',
+                  ),
+                ),
+              ),
+            );
+            return widgets;
+          }
+          for (final group in groups) {
+            final groupItems = statusItems
+                .where((item) => _itemBelongsToGroup(table, item, group))
+                .toList(growable: false);
+            if (groupItems.isEmpty) continue;
+            widgets.add(
+              Card(
+                key: ValueKey(
+                  'catalog-group:$_selectedSeriesId:$table:${group.key}:$enabled',
+                ),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ExpansionTile(
+                  key: ValueKey(
+                    'role-group:$_selectedSeriesId:$table:${group.key}:$enabled',
+                  ),
+                  initiallyExpanded: enabled,
+                  leading: Icon(group.icon),
+                  title: Text(_t(group.ar, group.fr)),
+                  subtitle: Text(
+                    '${groupItems.length} ${_t('عنصر', 'article(s)')}',
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: groupItems
+                            .map(
+                              (item) =>
+                                  _itemToggleChip(table, item, isWideScreen),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
+                    if (enabled) ...[
+                      const Divider(height: 1),
+                      ...groupItems.map(
+                        (item) => _activeItemTile(table, item, isWideScreen),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }
+          return widgets;
+        }
+
         final masterList = ListView(
           padding: const EdgeInsets.all(14),
           children: [
@@ -1339,162 +1444,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     textAlign: TextAlign.center,
                   ),
                 )
-              else
-                ...groups.map((group) {
-                  final groupItems = filteredItems
-                      .where((item) => _itemBelongsToGroup(table, item, group))
-                      .toList(growable: false);
-                  final enabledItems = groupItems
-                      .where((item) => _itemRuleEnabled(table, item))
-                      .toList(growable: false);
-                  final disabledItems = groupItems
-                      .where((item) => !_itemRuleEnabled(table, item))
-                      .toList(growable: false);
-
-                  Widget sectionCaption(String arabic, String french) {
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(
-                          _t(arabic, french),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  return Card(
-                    key: ValueKey(
-                      'catalog-group:$_selectedSeriesId:$table:${group.key}',
-                    ),
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ExpansionTile(
-                      key: ValueKey(
-                        'role-group:$_selectedSeriesId:$table:${group.key}',
-                      ),
-                      initiallyExpanded: false,
-                      leading: Icon(group.icon),
-                      title: Text(_t(group.ar, group.fr)),
-                      subtitle: Text(
-                        '${groupItems.length} ${_t('عنصر', 'article(s)')} • ${enabledItems.length} ${_t('مفعل', 'actif(s)')}',
-                      ),
-                      children: groupItems.isEmpty
-                          ? [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  16,
-                                ),
-                                child: Text(
-                                  _t(
-                                    'لا توجد عناصر لهذا العنوان في قاعدة البيانات.',
-                                    'Aucun article de cette rubrique dans la base de données.',
-                                  ),
-                                ),
-                              ),
-                            ]
-                          : [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  0,
-                                  12,
-                                  4,
-                                ),
-                                child: Align(
-                                  alignment: AlignmentDirectional.centerStart,
-                                  child: Text(
-                                    _t(
-                                      'اضغط على الزر لتفعيل أو إيقاف العنصر في هذه السلسلة:',
-                                      'Activez ou désactivez les articles pour cette série :',
-                                    ),
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                ),
-                              ),
-                              if (enabledItems.isNotEmpty) ...[
-                                sectionCaption('مفعّلة', 'Activés'),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: enabledItems
-                                        .map(
-                                          (item) => _itemToggleChip(
-                                            table,
-                                            item,
-                                            isWideScreen,
-                                          ),
-                                        )
-                                        .toList(growable: false),
-                                  ),
-                                ),
-                              ],
-                              if (disabledItems.isNotEmpty) ...[
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    12,
-                                    12,
-                                    2,
-                                  ),
-                                  child: Divider(
-                                    height: 2,
-                                    thickness: 1.5,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.outlineVariant,
-                                  ),
-                                ),
-                                sectionCaption('غير مفعّلة', 'Désactivés'),
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    0,
-                                    12,
-                                    0,
-                                  ),
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: disabledItems
-                                        .map(
-                                          (item) => _itemToggleChip(
-                                            table,
-                                            item,
-                                            isWideScreen,
-                                          ),
-                                        )
-                                        .toList(growable: false),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
-                              if (enabledItems.isNotEmpty) ...[
-                                const Divider(height: 1),
-                                ...enabledItems.map(
-                                  (item) => _activeItemTile(
-                                    table,
-                                    item,
-                                    isWideScreen,
-                                  ),
-                                ),
-                              ],
-                            ],
-                    ),
-                  );
-                }),
+              else ...[
+                ...ruleStatusSection(enabled: true),
+                const SizedBox(height: 8),
+                ...ruleStatusSection(enabled: false),
+              ],
               const SizedBox(height: 80),
             ],
           ],

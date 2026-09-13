@@ -1542,7 +1542,14 @@ class WindowPainter extends CustomPainter {
   ) {
     final frameRects = model.getFrameRects();
     if (frameRects.length <= 1) {
-      _drawOuterFrame(canvas, w, h, t, topOffset);
+      _drawOuterFrame(
+        canvas,
+        w,
+        h,
+        t,
+        topOffset,
+        sourceFrame: Rect.fromLTRB(0, topOffset, w, h),
+      );
     } else {
       for (final r in frameRects) {
         // A frame rectangle already starts below the shutter box.  Drawing it
@@ -1559,7 +1566,14 @@ class WindowPainter extends CustomPainter {
         final previousBottomFrame = _localBottomFrame;
         _localBottomFrame = model.hasBottomFrameForRect(r);
         try {
-          _drawOuterFrame(canvas, r.width, r.height, localThickness, 0.0);
+          _drawOuterFrame(
+            canvas,
+            r.width,
+            r.height,
+            localThickness,
+            0.0,
+            sourceFrame: r,
+          );
         } finally {
           _localBottomFrame = previousBottomFrame;
           canvas.restore();
@@ -1918,8 +1932,9 @@ class WindowPainter extends CustomPainter {
     double w,
     double h,
     double t,
-    double topY,
-  ) {
+    double topY, {
+    Rect? sourceFrame,
+  }) {
     final outerPath = _buildOuterShapePath(w, h, topY);
     final innerPath = _buildInnerShapePath(w, h, t, topY);
 
@@ -2008,6 +2023,35 @@ class WindowPainter extends CustomPainter {
       // With no lower frame, both jambs terminate with square cuts.
       canvas.drawLine(Offset(0, h), Offset(t, h), bp);
       canvas.drawLine(Offset(w - t, h), Offset(w, h), bp);
+
+      // Removing the bottom frame applies only below opening sashes. Fixed
+      // cells still sit on their own lower frame segment. Zone coordinates
+      // are global, so translate them into this physical frame's local space.
+      final frame = sourceFrame ?? Rect.fromLTRB(0, topY, w, h);
+      for (final zone in model.zones) {
+        if (!frame.contains(zone.boundary.center)) continue;
+        final isBottomBound =
+            (zone.boundary.bottom - (frame.bottom - t)).abs() < 5.0 ||
+            zone.boundary.bottom >= frame.bottom - t;
+        final isFixed =
+            zone.content == ZoneContent.fixedGlass ||
+            zone.content == ZoneContent.empty;
+        if (!isBottomBound || !isFixed) continue;
+
+        final touchesLeft = (zone.boundary.left - (frame.left + t)).abs() < 5.0;
+        final touchesRight =
+            (zone.boundary.right - (frame.right - t)).abs() < 5.0;
+        final left = touchesLeft ? 0.0 : zone.boundary.left - frame.left;
+        final right = touchesRight ? w : zone.boundary.right - frame.left;
+        if (right <= left) continue;
+
+        final segment = Rect.fromLTRB(left, h - t, right, h);
+        canvas.drawRect(segment, _buildPaint(segment));
+        canvas.drawRect(
+          segment,
+          bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
+        );
+      }
     }
 
     _drawMiterCorners(
