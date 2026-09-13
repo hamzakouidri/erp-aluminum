@@ -4570,16 +4570,20 @@ class WindowModel extends ChangeNotifier {
   List<Map<String, dynamic>> verrouCentralComponents = [];
 
   int get cremoneLengthCm {
-    double heightCm = height / 10.0;
-    double targetH = (hasShutter && !hasArchOrSlant)
-        ? (heightCm - 35)
-        : (heightCm - 20);
+    final targetH = effectiveEspagnoletteHeightMm / 10.0;
 
     if (targetH >= 180) return 180;
     if (targetH >= 40) return (targetH / 20.0).floor() * 20;
     if (targetH >= 30) return 30;
     return 30;
   }
+
+  /// Height governed by espagnolette catalogue ranges. The shutter box is
+  /// drawn first and occupies part of the opening; only the remaining height
+  /// selects the matching min/max rule. Without a shutter, use the full
+  /// drawing height.
+  double get effectiveEspagnoletteHeightMm =>
+      math.max(0.0, height.toDouble() - (hasShutter ? shutterBoxHeight : 0.0));
 
   int get gachePerEspagnolette {
     int len = cremoneLengthCm;
@@ -14521,6 +14525,37 @@ class WindowModel extends ChangeNotifier {
         (sliding ? getSlidingBaseFrameSection() : getSectionByType('frame'));
   }
 
+  /// Visible workshop width of the exact frame selected for this rectangle.
+  /// The painter must not reuse the generic profile thickness after a role
+  /// rule has selected a different PVC frame.
+  double frameVisibleWidthForRect(Rect frame, {double? fallback}) {
+    final section = frameSectionForRect(frame);
+    if (section != null) {
+      final row = section.toMap();
+      for (final key in const ['visible_width', 'thickness']) {
+        final raw = row[key];
+        final value = raw is num
+            ? raw.toDouble()
+            : double.tryParse(raw?.toString() ?? '');
+        if (value != null && value > 0) return value;
+      }
+    }
+    return fallback ?? profileThickness;
+  }
+
+  bool frameHasIntegratedSideCoverForRect(Rect frame) {
+    final section = frameSectionForRect(frame);
+    return section != null && _sectionHasIntegratedSideCover(section);
+  }
+
+  bool get selectedOuterFrameHasIntegratedSideCover {
+    final frames = getFrameRects();
+    final frame = frames.isEmpty
+        ? Rect.fromLTWH(0, 0, width, height)
+        : frames.first;
+    return frameHasIntegratedSideCoverForRect(frame);
+  }
+
   bool frameCanUseCacheRainure(Rect frame) {
     final section = frameSectionForRect(frame);
     return section != null && _sectionAllowsStandaloneSideCover(section);
@@ -16908,9 +16943,9 @@ class WindowModel extends ChangeNotifier {
           itemTable: 'Accessories',
           seriesId: seriesId,
           roleKeys: ruleKeys,
+          exactSeriesOnly: true,
         );
-        final effectiveEspagnoletteHeight =
-            height.toDouble() - (hasShutter ? 350.0 : 200.0);
+        final effectiveEspagnoletteHeight = effectiveEspagnoletteHeightMm;
         bool ruleMatchesEspagnoletteRange(Map<String, dynamic> rule) {
           if (ruleKey != 'espagnolette') return true;
           return catalogEspagnoletteRuleMatches(
@@ -16942,6 +16977,8 @@ class WindowModel extends ChangeNotifier {
             selected['linked_accessory'] = linkedGache;
             selected['gache_accessory'] = linkedGache;
           }
+          selected['linked_accessories'] = await db
+              .readAccessoryLinksWithDetails(itemId);
           componentOverrides[key] = selected;
           return;
         }
@@ -17148,6 +17185,12 @@ class WindowModel extends ChangeNotifier {
         }
         final linkedScrew = await loadRelatedAccessory(m['screw_accessory_id']);
         if (linkedScrew != null) m['screw_accessory'] = linkedScrew;
+        final selectedId = (m['id'] as num?)?.toInt();
+        if (selectedId != null) {
+          m['linked_accessories'] = await db.readAccessoryLinksWithDetails(
+            selectedId,
+          );
+        }
         componentOverrides[key] = m;
       }
     }

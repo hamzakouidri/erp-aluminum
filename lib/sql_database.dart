@@ -60,6 +60,8 @@ class SqlDatabase {
   static Future<void>? _seriesDesignSchemaTask;
   static Object? _advancedKitSchemaOwner;
   static Future<void>? _advancedKitSchemaTask;
+  static Object? _accessoryLinksSchemaOwner;
+  static Future<void>? _accessoryLinksSchemaTask;
   static bool _knownColorsRepaired = false;
   static final Random _distributedIdRandom = Random.secure();
   static int _lastDistributedId = 0;
@@ -339,6 +341,8 @@ class SqlDatabase {
     _seriesDesignSchemaTask = null;
     _advancedKitSchemaOwner = null;
     _advancedKitSchemaTask = null;
+    _accessoryLinksSchemaOwner = null;
+    _accessoryLinksSchemaTask = null;
   }
 
   static Future<void> clearAllLocalData() async {
@@ -10127,24 +10131,25 @@ class SqlDatabase {
         await myDb!.execute(statement);
       } catch (_) {}
     }
+    await _ensureAccessoryLinksSchema(myDb!);
     try {
-      await myDb!.execute(
+      await myDb.execute(
         "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
       );
     } catch (_) {}
     try {
-      await myDb!.execute(
+      await myDb.execute(
         "UPDATE Accessories SET is_active = 1 WHERE is_active IS NULL;",
       );
     } catch (_) {}
     try {
-      return await myDb!.query(
+      return await myDb.query(
         'Accessories',
         where: 'is_active = 1 OR is_active IS NULL',
       );
     } catch (_) {
       try {
-        return await myDb!.query('Accessories');
+        return await myDb.query('Accessories');
       } catch (e) {
         return [];
       }
@@ -15342,6 +15347,136 @@ class SqlDatabase {
       );
     }
     CloudSyncService().notifyChange();
+  }
+
+  Future<void> _ensureAccessoryLinksSchema(DatabaseExecutor executor) {
+    final cachedTask = _accessoryLinksSchemaTask;
+    if (identical(_accessoryLinksSchemaOwner, executor) && cachedTask != null) {
+      return cachedTask;
+    }
+    final task = _ensureAccessoryLinksSchemaImpl(executor);
+    _accessoryLinksSchemaOwner = executor;
+    _accessoryLinksSchemaTask = task;
+    return task;
+  }
+
+  Future<void> _ensureAccessoryLinksSchemaImpl(
+    DatabaseExecutor executor,
+  ) async {
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS AccessoryLinks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_accessory_id INTEGER NOT NULL,
+        target_accessory_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(source_accessory_id, target_accessory_id)
+      )
+    ''');
+    await executor.execute('''
+      INSERT OR IGNORE INTO AccessoryLinks
+        (source_accessory_id, target_accessory_id, quantity, is_active)
+      SELECT id, linked_accessory_id,
+             CASE WHEN linked_accessory_count > 0 THEN linked_accessory_count ELSE 1 END,
+             1
+      FROM Accessories
+      WHERE linked_accessory_id IS NOT NULL
+    ''');
+    await executor.execute('''
+      INSERT OR IGNORE INTO AccessoryLinks
+        (source_accessory_id, target_accessory_id, quantity, is_active)
+      SELECT id, gache_accessory_id,
+             CASE WHEN gache_count > 0 THEN gache_count ELSE 1 END,
+             1
+      FROM Accessories
+      WHERE gache_accessory_id IS NOT NULL
+    ''');
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS AccessoryRoleLinks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_accessory_id INTEGER NOT NULL,
+        target_role_key TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(source_accessory_id, target_role_key)
+      )
+    ''');
+    // Convert legacy product-to-product links into role links whenever the
+    // target already has a configured catalogue role.
+    await executor.execute('''
+      INSERT OR IGNORE INTO AccessoryRoleLinks
+        (source_accessory_id, target_role_key, quantity, is_active)
+      SELECT l.source_accessory_id, r.role_key, l.quantity, l.is_active
+      FROM AccessoryLinks l
+      INNER JOIN CatalogItemRules r
+        ON r.item_table = 'Accessories'
+       AND r.item_id = l.target_accessory_id
+       AND r.is_active = 1
+      WHERE TRIM(COALESCE(r.role_key, '')) != ''
+    ''');
+  }
+
+  Future<List<Map<String, dynamic>>> readAccessoryLinksWithDetails(
+    int sourceAccessoryId,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureAccessoryLinksSchema(myDb);
+    final roleLinks = await myDb.rawQuery(
+      '''
+      SELECT id AS link_id, source_accessory_id, target_role_key,
+             quantity AS linked_quantity
+      FROM AccessoryRoleLinks
+      WHERE source_accessory_id = ? AND is_active = 1
+      ORDER BY id ASC
+      ''',
+      [sourceAccessoryId],
+    );
+    if (roleLinks.isNotEmpty) return roleLinks;
+    return myDb.rawQuery(
+      '''
+      SELECT l.id AS link_id, l.source_accessory_id, l.target_accessory_id,
+             l.quantity AS linked_quantity, a.*
+      FROM AccessoryLinks l
+      INNER JOIN Accessories a ON a.id = l.target_accessory_id
+      WHERE l.source_accessory_id = ?
+        AND l.is_active = 1
+        AND (a.is_active = 1 OR a.is_active IS NULL)
+      ORDER BY l.id ASC
+      ''',
+      [sourceAccessoryId],
+    );
+  }
+
+  Future<void> saveAccessoryLinks(
+    int sourceAccessoryId,
+    List<Map<String, dynamic>> links, {
+    bool syncCatalog = true,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureAccessoryLinksSchema(myDb);
+    await myDb.transaction((txn) async {
+      await txn.delete(
+        'AccessoryRoleLinks',
+        where: 'source_accessory_id = ?',
+        whereArgs: [sourceAccessoryId],
+      );
+      for (final link in links) {
+        final targetRole = link['target_role_key']?.toString().trim() ?? '';
+        final quantity = (link['quantity'] as num?)?.toInt() ?? 0;
+        if (targetRole.isEmpty || quantity <= 0) {
+          continue;
+        }
+        await txn.insert('AccessoryRoleLinks', {
+          'source_accessory_id': sourceAccessoryId,
+          'target_role_key': targetRole,
+          'quantity': quantity,
+          'is_active': 1,
+        });
+      }
+    });
+    if (syncCatalog) CloudSyncService().notifyCatalogChange();
   }
 
   // ========================= KIT BUNDLE FAMILIES CRUD =========================

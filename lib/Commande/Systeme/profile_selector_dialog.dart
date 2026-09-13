@@ -771,6 +771,7 @@ class CatalogCandidateQuery {
     this.hasSimpleGlassForReducer,
     this.hasDoubleGlassForRules,
     this.targetThicknessMm,
+    this.effectiveHeightMm,
   });
 
   final String category;
@@ -788,6 +789,7 @@ class CatalogCandidateQuery {
   final bool? hasSimpleGlassForReducer;
   final bool? hasDoubleGlassForRules;
   final double? targetThicknessMm;
+  final double? effectiveHeightMm;
 }
 
 class CatalogCandidateResolver {
@@ -1010,10 +1012,8 @@ class CatalogCandidateResolver {
           query.seriesId != null &&
           rule['series_id']?.toString() == query.seriesId.toString();
       // A configured global rule for a deliberately shareable role is also
-      // authoritative. Legacy Accessory rows often still carry the ID of the
-      // first series where they were created (commonly a sliding series); that
-      // metadata must not hide an assembly screw from an opening series after
-      // the administrator enabled it as a shared catalogue rule.
+      // authoritative when the accessory itself is global. Series selections
+      // made on the Accessory page remain a hard compatibility boundary.
       final authoritativeSharedRule =
           rule['series_id'] == null &&
           catalogRuleAllowsGlobalFallback(ruleRole);
@@ -1063,6 +1063,14 @@ class CatalogCandidateResolver {
     if (!catalogRuleMatchesExactScope(rule, query.seriesId)) return false;
     if (!_ruleUsageScopeMatches(rule, query.drawingMode)) return false;
     final ruleRole = (rule['role_key'] ?? '').toString();
+    if (ruleRole.trim().toLowerCase() == 'espagnolette' &&
+        query.effectiveHeightMm != null &&
+        !catalogEspagnoletteRuleMatches(
+          rule,
+          effectiveHeightMm: query.effectiveHeightMm!,
+        )) {
+      return false;
+    }
     if (_roleIgnoresGlassRule(ruleRole)) return true;
     final glassRule = (rule['show_when_glass'] ?? 'any')
         .toString()
@@ -1125,9 +1133,7 @@ class CatalogCandidateResolver {
     final singleSeries = _catalogInt(row['series_id']);
     if (singleSeries != null && singleSeries > 0)
       assignedSeries.add(singleSeries);
-    if (!explicitSeriesRule &&
-        assignedSeries.isNotEmpty &&
-        !assignedSeries.contains(query.seriesId)) {
+    if (assignedSeries.isNotEmpty && !assignedSeries.contains(query.seriesId)) {
       return false;
     }
     final requested = (query.materialType ?? '').toLowerCase().trim();

@@ -4345,35 +4345,34 @@ class ComponentCalculator {
             ),
           );
         }
+        int screwsAlong(double lengthMm) =>
+            lengthMm <= 0 ? 0 : (lengthMm / 400.0).ceil() + 1;
+
         int totalRenfortScrews = 0;
-        double frameWidthScrews = ((window.width / 500.0) + 1).ceilToDouble();
-        double frameHeightScrews = ((netHeight / 500.0) + 1).ceilToDouble();
-        totalRenfortScrews += (frameWidthScrews * 2 + frameHeightScrews * 2)
-            .toInt();
+        final frameWidthScrews = screwsAlong(window.width.toDouble());
+        final frameHeightScrews = screwsAlong(netHeight);
+        totalRenfortScrews += frameWidthScrews * 2 + frameHeightScrews * 2;
 
         for (var zone in window.zones) {
           if (zone.content == ZoneContent.singleSash) {
             double sashWidth = zone.boundary.width;
             double sashHeight = zone.boundary.height;
-            double sashWidthScrews = (sashWidth / 1000.0).ceilToDouble();
-            double sashHeightScrews = (sashHeight / 1000.0).ceilToDouble();
-            totalRenfortScrews += (sashWidthScrews * 2 + sashHeightScrews * 2)
-                .toInt();
+            final sashWidthScrews = screwsAlong(sashWidth);
+            final sashHeightScrews = screwsAlong(sashHeight);
+            totalRenfortScrews += sashWidthScrews * 2 + sashHeightScrews * 2;
           } else if (zone.content == ZoneContent.doubleSash) {
             double sashWidthLeft = zone.boundary.width * zone.doubleSashRatio;
             double sashWidthRight =
                 zone.boundary.width * (1.0 - zone.doubleSashRatio);
             double sashHeight = zone.boundary.height;
 
-            double leftWidthScrews = (sashWidthLeft / 1000.0).ceilToDouble();
-            double leftHeightScrews = (sashHeight / 1000.0).ceilToDouble();
-            double rightWidthScrews = (sashWidthRight / 1000.0).ceilToDouble();
-            double rightHeightScrews = (sashHeight / 1000.0).ceilToDouble();
+            final leftWidthScrews = screwsAlong(sashWidthLeft);
+            final leftHeightScrews = screwsAlong(sashHeight);
+            final rightWidthScrews = screwsAlong(sashWidthRight);
+            final rightHeightScrews = screwsAlong(sashHeight);
 
-            totalRenfortScrews += (leftWidthScrews * 2 + leftHeightScrews * 2)
-                .toInt();
-            totalRenfortScrews += (rightWidthScrews * 2 + rightHeightScrews * 2)
-                .toInt();
+            totalRenfortScrews += leftWidthScrews * 2 + leftHeightScrews * 2;
+            totalRenfortScrews += rightWidthScrews * 2 + rightHeightScrews * 2;
           }
         }
 
@@ -4516,8 +4515,7 @@ class ComponentCalculator {
       // not a PVC-only component. Aluminium series can define its own
       // espagnolette rule as well.
       if (espagnoletteQty > 0 && !hasSlidingSash) {
-        double heightCm = window.height / 10.0;
-        double targetH = window.hasShutter ? (heightCm - 35) : (heightCm - 20);
+        final targetH = window.effectiveEspagnoletteHeightMm / 10.0;
 
         int espLength = 30;
         if (targetH >= 180) {
@@ -4543,7 +4541,13 @@ class ComponentCalculator {
       // selected for this series, material, height and shutter state. The
       // drawing decides its BOM role; the linked catalogue item and count
       // always come from that selected espagnolette.
-      if (windowSingleSashCount > 0) {
+      final espagnoletteOverride =
+          window.componentOverrides['إسبانيوليت (Espagnolette)'];
+      final usesMultiAccessoryLinks =
+          espagnoletteOverride is Map &&
+          espagnoletteOverride['linked_accessories'] is List &&
+          (espagnoletteOverride['linked_accessories'] as List).isNotEmpty;
+      if (!usesMultiAccessoryLinks && windowSingleSashCount > 0) {
         items.add(
           createRelatedAccessory(
             'إسبانيوليت (Espagnolette)',
@@ -4552,7 +4556,7 @@ class ComponentCalculator {
           ),
         );
       }
-      if (windowDoubleSashCount > 0) {
+      if (!usesMultiAccessoryLinks && windowDoubleSashCount > 0) {
         items.add(
           createRelatedAccessory(
             'إسبانيوليت (Espagnolette)',
@@ -5664,7 +5668,7 @@ class ComponentCalculator {
       }
     }
 
-    if (hasSingleSash || hasDoubleSash) {
+    {
       int totalAccessoryScrews = 0;
       final linkedScrewTotals = <int, int>{};
       final linkedScrews = <int, Map<String, dynamic>>{};
@@ -5717,23 +5721,24 @@ class ComponentCalculator {
       for (final entry in linkedScrewTotals.entries) {
         final linked = linkedScrews[entry.key];
         if (linked == null || entry.value <= 0) continue;
-        final linkedName = 'براغي مرتبطة: ${linked['name'] ?? 'براغي التجميع'}';
+        const linkedName = 'براغي الإكسسوارات';
+        final linkedKey = 'linked-accessory:screw:${entry.key}';
         final relatedOverrides = Map<String, dynamic>.from(
           window.componentOverrides,
-        )..[linkedName] = linked;
+        )..[linkedKey] = linked;
         items.add(
           _createAccessory(
             relatedOverrides,
             linkedName,
             qty: entry.value,
-            overrideKey: linkedName,
+            overrideKey: linkedKey,
             catalogItemId: linked['id'] is num
                 ? (linked['id'] as num).toInt()
                 : int.tryParse('${linked['id'] ?? ''}'),
             colorId: catalogueColorId(accessoryColorName, accessory: true),
             selectorCategory: 'accessory',
-            selectorType: 'assembly_screw',
-            roleKey: 'assembly_screw',
+            selectorType: 'is_accessory_screw',
+            roleKey: 'accessory_screw',
             sourceSeriesId: window.activeSeries?.id,
             materialType: window.isPVC ? 'pvc' : 'aluminium',
           ),
@@ -8248,6 +8253,10 @@ class ComponentCalculator {
           window.componentOverrides[sourceItem.overrideKey] ??
           window.componentOverrides[sourceItem.originalName];
       if (rawSource is! Map) continue;
+      if (rawSource['linked_accessories'] is List &&
+          (rawSource['linked_accessories'] as List).isNotEmpty) {
+        continue;
+      }
       final linked = rawSource['linked_accessory'];
       if (linked is! Map || linked['id'] == null) continue;
       final rawCount = rawSource['linked_accessory_count'];

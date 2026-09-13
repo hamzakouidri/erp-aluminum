@@ -81,6 +81,86 @@ void main() {
     expect(items.map((item) => item.catalogItemId), isNot(contains(10)));
   });
 
+  test('generic kit is a fallback for a sliding series', () async {
+    final db = fixtures.RuleDatabase();
+    db.rules
+      ..clear()
+      ..add({
+        'item_id': 10,
+        'series_id': 1,
+        'role_key': 'kit',
+        'show_in_quantity': 1,
+      });
+    final window = fixtures.makeWindow(db)
+      ..systemMode = 'sliding'
+      ..activeSlidingSeries = fixtures.makeWindow(db).activeSeries
+      ..zones = [
+        WindowZone(
+          id: 'sliding',
+          content: ZoneContent.slidingSash,
+          boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+        ),
+      ];
+
+    final items = await BomEngineV2(
+      database: db,
+    ).filterItemsByAvailableCandidates(window: window, items: []);
+
+    expect(items.single.catalogItemId, 10);
+    expect(items.single.roleKey, 'kit');
+  });
+
+  test('mixed drawing resolves each series kit independently', () async {
+    final db = fixtures.RuleDatabase();
+    db.rules
+      ..clear()
+      ..addAll([
+        {
+          'item_id': 10,
+          'series_id': 1,
+          'role_key': 'kit',
+          'show_in_quantity': 1,
+        },
+        {
+          'item_id': 11,
+          'series_id': 2,
+          'role_key': 'sliding_kit',
+          'show_in_quantity': 1,
+        },
+      ]);
+    final window = fixtures.makeWindow(db);
+    window
+      ..activeSlidingSeries = AluminumSeries(
+        id: 2,
+        profileId: 2,
+        name: 'Sliding series',
+        type: 'sliding',
+        sections: const [],
+      )
+      ..zones = [
+        WindowZone(
+          id: 'opening',
+          content: ZoneContent.singleSash,
+          boundary: const Rect.fromLTWH(0, 0, 500, 1200),
+        ),
+        WindowZone(
+          id: 'sliding',
+          content: ZoneContent.slidingSash,
+          slidingSashesCount: 2,
+          boundary: const Rect.fromLTWH(500, 0, 500, 1200),
+        ),
+      ];
+
+    final items = await BomEngineV2(
+      database: db,
+    ).filterItemsByAvailableCandidates(window: window, items: []);
+
+    expect(
+      items.map((item) => (item.catalogItemId, item.sourceSeriesId)).toSet(),
+      {(10, 1), (11, 2)},
+    );
+  });
+
   test('three sliding leaves use one kit and four alignment squares', () async {
     final db = fixtures.RuleDatabase();
     db.rules

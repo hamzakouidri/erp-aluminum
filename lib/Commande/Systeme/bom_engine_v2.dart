@@ -31,74 +31,84 @@ class BomEngineV2 {
   }) async {
     final database = await _db.db;
     if (database == null) return;
-    for (final item in items) {
-      // Kit children are owned by the kit definition. They do not need an
-      // independent CatalogItemRules row and must not be resolved as if they
-      // were standalone components.
-      if (item.isActive && item.kitGroupName != null) {
-        continue;
-      }
-      switch (item.selectorCategory ?? item.category) {
-        case 'profile':
-          await _resolveProfile(window, item);
-          break;
-        case 'accessory':
-        case 'other':
-          await _resolveAccessory(database, window, item);
-          break;
-        case 'joint':
-          await _resolveJoint(database, window, item);
-          break;
-      }
-    }
+    await Future.wait(
+      items.map((item) async {
+        // A screw/accessory explicitly linked from its parent is already the
+        // exact catalogue product to use. Do not replace it with the first
+        // standalone rule candidate during stabilization.
+        if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
+          return;
+        }
+        // Kit children are owned by the kit definition. They do not need an
+        // independent CatalogItemRules row and must not be resolved as if they
+        // were standalone components.
+        if (item.isActive && item.kitGroupName != null) {
+          return;
+        }
+        switch (item.selectorCategory ?? item.category) {
+          case 'profile':
+            await _resolveProfile(window, item);
+            break;
+          case 'accessory':
+          case 'other':
+            await _resolveAccessory(database, window, item);
+            break;
+          case 'joint':
+            await _resolveJoint(database, window, item);
+            break;
+        }
+      }),
+    );
   }
 
   Future<List<BomItem>> filterItemsByAvailableCandidates({
     required WindowModel window,
     required List<BomItem> items,
   }) async {
-    final kept = <BomItem>[];
-    for (final item in items) {
-      final role = (item.roleKey ?? item.selectorType ?? '')
-          .trim()
-          .toLowerCase();
-      // Assembly hardware is additive and bound to physical frames/sashes.
-      // Rebuild it from rules instead of selecting just the first screw.
-      if (item.originalName == 'براغي التجميع' ||
-          (item.overrideKey ?? '').startsWith('assembly:') ||
-          assemblyAccessoryRoles.contains(role)) {
-        continue;
-      }
-      // An accessory dependency was explicitly linked from its parent in the
-      // catalogue. It does not need a second standalone series rule.
-      if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
-        kept.add(item);
-        continue;
-      }
-      // A configured Kit is authoritative: its active child rows are the
-      // complete list saved on the Kits page. They must remain available for
-      // the expandable Kit row even when a child has no standalone rule row.
-      if (item.isActive && item.kitGroupName != null) {
-        kept.add(item);
-        continue;
-      }
-      // Series kits are also additive rule rows. Legacy BOM generation still
-      // creates placeholder kit rows, sometimes without a catalogue id. If
-      // retained, the rule row below is displayed a second time and may carry
-      // stale linked-accessory data from another hardware family.
-      if (const {
-        'kit',
-        'sliding_kit',
-        'sliding_kit_40000',
-        'sliding_kit_67000',
-      }.contains(role)) {
-        continue;
-      }
-      if (await _itemHasRuleCandidate(window, item)) {
-        kept.add(item);
-      }
-    }
+    final resolved = await Future.wait(
+      items.map((item) async {
+        final role = (item.roleKey ?? item.selectorType ?? '')
+            .trim()
+            .toLowerCase();
+        // Assembly hardware is additive and bound to physical frames/sashes.
+        // Rebuild it from rules instead of selecting just the first screw.
+        if (item.originalName == 'براغي التجميع' ||
+            (item.overrideKey ?? '').startsWith('assembly:') ||
+            assemblyAccessoryRoles.contains(role)) {
+          return null;
+        }
+        // An accessory dependency was explicitly linked from its parent in the
+        // catalogue. It does not need a second standalone series rule.
+        if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
+          return item;
+        }
+        // A configured Kit is authoritative: its active child rows are the
+        // complete list saved on the Kits page. They must remain available for
+        // the expandable Kit row even when a child has no standalone rule row.
+        if (item.isActive && item.kitGroupName != null) {
+          return item;
+        }
+        // Series kits are also additive rule rows. Legacy BOM generation still
+        // creates placeholder kit rows, sometimes without a catalogue id. If
+        // retained, the rule row below is displayed a second time and may carry
+        // stale linked-accessory data from another hardware family.
+        if (const {
+          'kit',
+          'sliding_kit',
+          'sliding_kit_40000',
+          'sliding_kit_67000',
+        }.contains(role)) {
+          return null;
+        }
+        if (await _itemHasRuleCandidate(window, item)) {
+          return item;
+        }
+        return null;
+      }),
+    );
+    final kept = resolved.whereType<BomItem>().toList();
     kept.addAll(await _assemblyItems(window, kept));
+    kept.addAll(await _linkedAccessoryItems(window, kept));
     final existingIds = kept
         .map((item) => item.catalogItemId)
         .whereType<int>()
@@ -111,7 +121,164 @@ class BomEngineV2 {
       ),
     );
     kept.addAll(await _frameRoleJoints(kept));
-    return kept;
+    return _deduplicateRoleAccessories(kept);
+  }
+
+  List<BomItem> _deduplicateRoleAccessories(List<BomItem> items) {
+    const singularRoles = {
+      'espagnolette',
+      'gache_simple',
+      'gache_double',
+      'gache_door',
+    };
+    final result = <BomItem>[];
+    final indexes = <String, int>{};
+    for (final item in items) {
+      final role = (item.roleKey ?? '').trim().toLowerCase();
+      if (!singularRoles.contains(role) || item.catalogItemId == null) {
+        result.add(item);
+        continue;
+      }
+      final key = '${item.sourceSeriesId ?? 0}:$role:${item.catalogItemId}';
+      final previousIndex = indexes[key];
+      if (previousIndex == null) {
+        indexes[key] = result.length;
+        result.add(item);
+        continue;
+      }
+      final previous = result[previousIndex];
+      final itemIsRoleLink = (item.overrideKey ?? '').startsWith(
+        'linked-accessory:',
+      );
+      final previousIsRoleLink = (previous.overrideKey ?? '').startsWith(
+        'linked-accessory:',
+      );
+      // A role link is the authoritative strike row. For two copies from the
+      // same path keep one calculated quantity instead of adding it twice.
+      if (itemIsRoleLink && !previousIsRoleLink) {
+        result[previousIndex] = item;
+      } else if (item.quantity > previous.quantity) {
+        result[previousIndex] = item;
+      }
+    }
+    return result;
+  }
+
+  Future<List<BomItem>> _linkedAccessoryItems(
+    WindowModel window,
+    List<BomItem> sourceItems,
+  ) async {
+    final seriesId = window.activeSeries?.id;
+    if (seriesId == null) return const [];
+    final presentSections = drawingSectionIds(window);
+    final totals = <int, double>{};
+    final targets = <int, Map<String, dynamic>>{};
+    final sourceSeries = <int, int?>{};
+    final sourceMaterial = <int, String?>{};
+    final expandedSources = <String>{};
+
+    bool roleMatchesDrawing(String role) {
+      final normalized = role.trim().toLowerCase();
+      if (normalized == 'gache_simple') {
+        return window.zones.any((z) => z.content == ZoneContent.singleSash);
+      }
+      if (normalized == 'gache_double') {
+        return window.zones.any((z) => z.content == ZoneContent.doubleSash);
+      }
+      if (normalized == 'gache_door') {
+        return window.zones.any(
+          (z) => z.content == ZoneContent.singleSash && z.isSash105,
+        );
+      }
+      return true;
+    }
+
+    for (final source in sourceItems) {
+      if (source.category != 'accessory' ||
+          source.catalogItemId == null ||
+          source.quantity <= 0 ||
+          (source.overrideKey ?? '').startsWith('linked-accessory:')) {
+        continue;
+      }
+      final sourceKey = [
+        source.sourceSeriesId ?? seriesId,
+        source.roleKey ?? source.selectorType ?? '',
+        source.catalogItemId,
+        source.quantity,
+      ].join(':');
+      if (!expandedSources.add(sourceKey)) continue;
+      final links = await _db.readAccessoryLinksWithDetails(
+        source.catalogItemId!,
+      );
+      for (final link in links) {
+        final targetRole = '${link['target_role_key'] ?? ''}'.trim();
+        final count = _catalogInt(link['linked_quantity'] ?? link['quantity']);
+        if (targetRole.isEmpty || count == null || count <= 0) continue;
+        final targetSeriesId = source.sourceSeriesId ?? seriesId;
+        final candidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'accessory',
+            selectorType: targetRole,
+            roleKeys: [targetRole],
+            seriesId: targetSeriesId,
+            materialType: source.materialType,
+            requireDialog: false,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+            hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+            effectiveHeightMm: window.effectiveEspagnoletteHeightMm,
+          ),
+        );
+        final validCandidates = candidates.where((candidate) {
+          final rawRule = candidate['catalog_rule'];
+          if (rawRule is! Map) return false;
+          final rule = Map<String, dynamic>.from(rawRule);
+          if (!roleMatchesDrawing('${rule['role_key'] ?? ''}')) return false;
+          final requiredSections = assemblySectionIds(rule);
+          return requiredSections.isEmpty ||
+              requiredSections.any(presentSections.contains);
+        }).toList();
+        if (validCandidates.isEmpty) continue;
+        // Resolver ordering puts the role's default rule first. The remaining
+        // candidates stay available through the ordinary selector dialog.
+        final target = Map<String, dynamic>.from(validCandidates.first);
+        final targetId = _catalogInt(target['id']);
+        if (targetId == null) continue;
+        totals[targetId] =
+            (totals[targetId] ?? 0.0) + (count * source.quantity);
+        targets[targetId] = target;
+        sourceSeries[targetId] = targetSeriesId;
+        sourceMaterial[targetId] = source.materialType;
+      }
+    }
+
+    final database = await _db.db;
+    if (database == null) return const [];
+    return totals.entries.map((entry) {
+      final target = targets[entry.key]!;
+      final name = '${target['name'] ?? 'Accessory ${entry.key}'}';
+      final role = '${target['catalog_rule']?['role_key'] ?? ''}'.trim();
+      return BomItem(
+        category: 'accessory',
+        originalName: name,
+        name: name,
+        profileCode: target['code']?.toString(),
+        imagePath: target['image_path']?.toString(),
+        quantity: entry.value,
+        unit: 'حبة',
+        unitPrice: _safeDouble(
+          target['calculated_price'] ?? target['price_dzd'] ?? target['price'],
+        ),
+        catalogItemId: entry.key,
+        inventoryItemType: 'Accessory',
+        overrideKey: 'linked-accessory:${entry.key}',
+        selectorCategory: 'accessory',
+        selectorType: role,
+        roleKey: role,
+        sourceSeriesId: sourceSeries[entry.key],
+        materialType: sourceMaterial[entry.key],
+      );
+    }).toList();
   }
 
   Future<List<BomItem>> _frameRoleJoints(List<BomItem> items) async {
@@ -212,7 +379,7 @@ class BomEngineV2 {
       final roleKeys = context.sliding
           ? const ['sliding_kit', 'sliding_kit_40000', 'sliding_kit_67000']
           : const ['kit'];
-      final candidates = context.kitCount <= 0
+      var candidates = context.kitCount <= 0
           ? const <Map<String, dynamic>>[]
           : await _resolveCandidates(
               CatalogCandidateQuery(
@@ -230,6 +397,26 @@ class BomEngineV2 {
                 hasDoubleGlassForRules: window.hasDoubleGlassForRules,
               ),
             );
+      // Some catalogues configure the ordinary `kit` role for a sliding
+      // series (notably TPR 40000). Prefer a dedicated sliding-kit rule, but
+      // do not make an explicitly enabled generic kit disappear when no
+      // dedicated rule exists for that same series.
+      if (context.sliding && context.kitCount > 0 && candidates.isEmpty) {
+        candidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'accessory',
+            selectorType: 'kit',
+            roleKeys: const ['kit'],
+            seriesId: context.id,
+            materialType: context.material,
+            drawingMode: AccessoryDrawingMode.sliding,
+            requireDialog: false,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+            hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+          ),
+        );
+      }
       for (final candidate in candidates) {
         final id = _catalogInt(candidate['id']);
         final kitRole =
@@ -492,6 +679,7 @@ class BomEngineV2 {
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
             hasDoubleGlassForRules: window.hasDoubleGlassForRules,
             targetThicknessMm: item.targetThicknessMm,
+            effectiveHeightMm: window.effectiveEspagnoletteHeightMm,
           ),
         );
         return candidates.isNotEmpty;
@@ -522,6 +710,7 @@ class BomEngineV2 {
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
             hasDoubleGlassForRules: window.hasDoubleGlassForRules,
             targetThicknessMm: item.targetThicknessMm,
+            effectiveHeightMm: window.effectiveEspagnoletteHeightMm,
           ),
         );
         return candidates.any(
@@ -602,6 +791,7 @@ class BomEngineV2 {
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,
         targetThicknessMm: item.targetThicknessMm,
+        effectiveHeightMm: window.effectiveEspagnoletteHeightMm,
       ),
     );
     if (sections.isEmpty) {
@@ -685,6 +875,7 @@ class BomEngineV2 {
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,
         targetThicknessMm: item.targetThicknessMm,
+        effectiveHeightMm: window.effectiveEspagnoletteHeightMm,
       ),
     );
     if (resolvedCandidates.isEmpty && _isShutterScrewRole(ruleKeys)) {
@@ -714,6 +905,12 @@ class BomEngineV2 {
     }
     final selected = Map<String, dynamic>.from(candidates.first);
     selected['calculated_price'] = await _accessoryPrice(database, selected);
+    final selectedId = _catalogInt(selected['id']);
+    if (selectedId != null) {
+      selected['linked_accessories'] = await _db.readAccessoryLinksWithDetails(
+        selectedId,
+      );
+    }
     final key = item.overrideKey ?? item.originalName;
     window.componentOverrides[key] = selected;
     if (key != item.originalName) {
@@ -845,6 +1042,7 @@ class BomEngineV2 {
       query.hasSimpleGlassForReducer == true ? '1' : '0',
       query.hasDoubleGlassForRules == true ? '1' : '0',
       query.targetThicknessMm?.toStringAsFixed(3) ?? '',
+      query.effectiveHeightMm?.toStringAsFixed(3) ?? '',
     ].join('|');
     return _candidatesCache.putIfAbsent(
       key,

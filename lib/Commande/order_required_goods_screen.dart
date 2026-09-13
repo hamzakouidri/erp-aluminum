@@ -70,8 +70,7 @@ String requiredGoodsDisplayName(BomItem item) => item.name
 
 String requiredGoodsAggregationKey(BomItem item, String category) {
   final usesOrderCutting = bomUsesOrderLevelCutting(item);
-  final itemIdentifier =
-      item.catalogItemId != null
+  final itemIdentifier = item.catalogItemId != null
       ? '${item.inventoryItemType ?? category}:${item.catalogItemId}'
       : (item.profileCode != null && item.profileCode!.isNotEmpty)
       ? 'CODE:${item.profileCode}'
@@ -733,8 +732,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     // priced.
     final shutterGreyColorId = await _shutterGreyColorId();
 
-    // Generate initial BOM
-    final bomItems = ComponentCalculator.generateBom(
+    // Resolve the rule-driven BOM first. The legacy name search below is only
+    // a fallback for genuinely unresolved old orders; running it before the
+    // resolver caused one or more database queries for nearly every row.
+    final engine = BomEngineV2(database: widget.db);
+    var bomItems = ComponentCalculator.generateBom(
+      model,
+      activeVariants,
+      kitBundleData: kitBundleData,
+      kitPerLeafMap: kitPerLeafMap,
+      kitBundleMetadata: kitBundleMetadata,
+    );
+    await engine.stabilizeSelections(window: model, items: bomItems);
+    bomItems = ComponentCalculator.generateBom(
       model,
       activeVariants,
       kitBundleData: kitBundleData,
@@ -1372,7 +1382,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     // quantity/cost table. Resolving it a second time by product names was
     // the source of ghost rows and missing real components.
     try {
-      final engine = BomEngineV2(database: widget.db);
       await engine.stabilizeSelections(window: model, items: resolvedBom);
       return await engine.filterItemsByAvailableCandidates(
         window: model,

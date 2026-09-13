@@ -54,6 +54,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   final _tables = const ['Accessories', 'Joints', 'ShutterComponents'];
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
   final Map<String, Map<String, dynamic>> _rulesByItem = {};
+  final Map<int, List<Map<String, dynamic>>> _accessoryLinks = {};
+  final Set<int> _dirtyAccessoryLinkIds = {};
   List<Map<String, dynamic>> _assemblySections = [];
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _series = [];
@@ -105,13 +107,40 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       widget.db.readProfile(),
       widget.db.readShutterComponents(),
     ]);
+    final accessoryRows = results[0] as List<Map<String, dynamic>>;
+    final loadedLinks = await Future.wait(
+      accessoryRows.map((item) async {
+        final id = (item['id'] as num?)?.toInt();
+        return (
+          id: id,
+          links: id == null
+              ? <Map<String, dynamic>>[]
+              : (await widget.db.readAccessoryLinksWithDetails(id))
+                    .map(
+                      (link) => {
+                        ...link,
+                        'quantity':
+                            (link['linked_quantity'] as num?)?.toInt() ?? 1,
+                      },
+                    )
+                    .toList(),
+        );
+      }),
+    );
     if (!mounted) return;
+    _accessoryLinks
+      ..clear()
+      ..addEntries(
+        loadedLinks
+            .where((entry) => entry.id != null)
+            .map((entry) => MapEntry(entry.id!, entry.links)),
+      );
     _itemsByTable
       ..clear()
       ..addAll({
         // Database query rows are read-only; the inspector updates its local
         // item after saving accessory links, counts and other fields.
-        'Accessories': (results[0] as List<Map<String, dynamic>>)
+        'Accessories': accessoryRows
             .map((row) => Map<String, dynamic>.from(row))
             .toList(),
         'Joints': (results[1] as List<Map<String, dynamic>>)
@@ -947,6 +976,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           rules: rules,
           syncCatalog: false,
         );
+      }
+      // Save only links changed during this edit. Saving every accessory link
+      // made the button execute hundreds of transactions and appear stuck.
+      for (final sourceId in _dirtyAccessoryLinkIds.toList()) {
+        await _saveAccessoryLinksFor(sourceId, syncCatalog: false);
       }
       // Upload once after both local tables are committed. Do not make the
       // save button wait for Supabase or fail when the server is slow.
@@ -2058,6 +2092,25 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     );
   }
 
+  Future<void> _saveAccessoryLinksFor(
+    int sourceId, {
+    bool syncCatalog = true,
+  }) async {
+    try {
+      await widget.db.saveAccessoryLinks(
+        sourceId,
+        _accessoryLinks[sourceId] ?? const [],
+        syncCatalog: syncCatalog,
+      );
+      _dirtyAccessoryLinkIds.remove(sourceId);
+    } catch (error) {
+      if (!mounted) return;
+      _showError(
+        '${_t('تعذر حفظ روابط الأكسسوار', 'Liens impossibles à enregistrer')}: $error',
+      );
+    }
+  }
+
   Widget _accessoryRelationEditor(Map<String, dynamic> item) {
     final screwItems = _accessoriesForRoles(const {
       'kit_screw',
@@ -2071,26 +2124,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'installation_screw',
       'accessory_screw',
     });
-    final linkedAccessoryItems = _itemsByTable['Accessories'] ?? const [];
+    final linkableRoles = _rolesForTable(
+      'Accessories',
+    ).where((role) => role.key != 'other').toList(growable: false);
     final itemId = _itemId(item);
     final screwIds = screwItems
         .map(_itemId)
         .whereType<int>()
         .where((id) => id != itemId)
         .toSet();
-    final linkedAccessoryIds = linkedAccessoryItems
-        .map(_itemId)
-        .whereType<int>()
-        .where((id) => id != itemId)
-        .toSet();
     final rawScrewId = (item['screw_accessory_id'] as num?)?.toInt();
-    final rawLinkedAccessoryId =
-        (item['linked_accessory_id'] as num?)?.toInt() ??
-        (item['gache_accessory_id'] as num?)?.toInt();
     final screwId = screwIds.contains(rawScrewId) ? rawScrewId : 0;
-    final linkedAccessoryId = linkedAccessoryIds.contains(rawLinkedAccessoryId)
-        ? rawLinkedAccessoryId
-        : 0;
+    final links = itemId == null
+        ? <Map<String, dynamic>>[]
+        : _accessoryLinks.putIfAbsent(itemId, () => []);
 
     return Container(
       padding: const EdgeInsets.all(10),
@@ -2150,50 +2197,108 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               }),
             ),
           ],
-          if (linkedAccessoryItems.length > 1) ...[
+          if (itemId != null && linkableRoles.isNotEmpty) ...[
             const SizedBox(height: 8),
-            DropdownButtonFormField<int>(
-              initialValue: linkedAccessoryId,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: _t(
-                  'الأكسسوار المرتبط بهذا الأكسسوار',
-                  'Accessoire lié à cet accessoire',
-                ),
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: 0,
-                  child: Text(_t('بدون أكسسوار مرتبط', 'Aucun accessoire lié')),
-                ),
-                for (final linked in linkedAccessoryItems)
-                  if (_itemId(linked) != itemId)
-                    DropdownMenuItem(
-                      value: _itemId(linked),
-                      child: Text(_itemTitle(linked)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _t(
+                      'الأكسسوارات المرتبطة وكمياتها',
+                      'Accessoires liés et quantités',
                     ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  tooltip: _t(
+                    'إضافة أكسسوار مرتبط',
+                    'Ajouter un accessoire lié',
+                  ),
+                  icon: const Icon(Icons.add_circle_outline_rounded),
+                  onPressed: () => setState(() {
+                    links.add({'target_role_key': null, 'quantity': 1});
+                    _dirtyAccessoryLinkIds.add(itemId);
+                  }),
+                ),
               ],
-              onChanged: (value) => _updateAccessoryFields(item, {
-                'linked_accessory_id': value == null || value == 0
-                    ? null
-                    : value,
-              }),
             ),
-            const SizedBox(height: 8),
-            TextFormField(
-              initialValue:
-                  '${(item['linked_accessory_count'] as num?)?.toInt() ?? (item['gache_count'] as num?)?.toInt() ?? 0}',
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: _t(
-                  'عدد الأكسسوار المرتبط',
-                  'Nombre d’accessoires liés',
+            for (var index = 0; index < links.length; index++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey('accessory-link:$itemId:$index'),
+                        initialValue: links[index]['target_role_key']
+                            ?.toString(),
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: _t('دور الأكسسوار المرتبط', 'Rôle lié'),
+                        ),
+                        items: [
+                          for (final role in linkableRoles)
+                            DropdownMenuItem(
+                              value: role.key,
+                              child: Text(_t(role.ar, role.fr)),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            links[index]['target_role_key'] = value;
+                            _dirtyAccessoryLinkIds.add(itemId);
+                          });
+                          _saveAccessoryLinksFor(itemId);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        key: ValueKey('accessory-link-count:$itemId:$index'),
+                        initialValue:
+                            '${(links[index]['linked_quantity'] as num?)?.toInt() ?? (links[index]['quantity'] as num?)?.toInt() ?? 1}',
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: _t('العدد', 'Nombre'),
+                        ),
+                        onChanged: (value) {
+                          final parsed = int.tryParse(value.trim());
+                          if (parsed == null || parsed <= 0) return;
+                          links[index]['quantity'] = parsed;
+                          links[index].remove('linked_quantity');
+                          _dirtyAccessoryLinkIds.add(itemId);
+                        },
+                        onTapOutside: (_) {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                        },
+                        onFieldSubmitted: (value) {
+                          final parsed = int.tryParse(value.trim());
+                          links[index]['quantity'] =
+                              parsed != null && parsed > 0 ? parsed : 1;
+                          links[index].remove('linked_quantity');
+                          _dirtyAccessoryLinkIds.add(itemId);
+                          _saveAccessoryLinksFor(itemId);
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _t('حذف الرابط', 'Supprimer le lien'),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      onPressed: () {
+                        setState(() {
+                          links.removeAt(index);
+                          _dirtyAccessoryLinkIds.add(itemId);
+                        });
+                        _saveAccessoryLinksFor(itemId);
+                      },
+                    ),
+                  ],
                 ),
               ),
-              onFieldSubmitted: (value) => _updateAccessoryFields(item, {
-                'linked_accessory_count': int.tryParse(value.trim()) ?? 0,
-              }),
-            ),
           ],
         ],
       ),

@@ -10,6 +10,15 @@ import 'package:sqflite_sqlcipher/sqflite.dart';
 
 class MemoryDatabase implements Database {
   @override
+  Future<void> execute(String sql, [List<Object?>? arguments]) async {}
+
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(
+    String sql, [
+    List<Object?>? arguments,
+  ]) async => [];
+
+  @override
   Future<List<Map<String, Object?>>> query(
     String table, {
     bool? distinct,
@@ -73,6 +82,15 @@ class RuleDatabase extends SqlDatabase {
 
 class LegacyAssignedAccessoryDatabase implements Database {
   @override
+  Future<void> execute(String sql, [List<Object?>? arguments]) async {}
+
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(
+    String sql, [
+    List<Object?>? arguments,
+  ]) async => [];
+
+  @override
   Future<List<Map<String, Object?>>> query(
     String table, {
     bool? distinct,
@@ -91,9 +109,9 @@ class LegacyAssignedAccessoryDatabase implements Database {
             'name': 'Vis assemblage coulissant',
             'is_active': 1,
             'material_type': 'aluminium',
-            // Legacy catalogue assignment; the explicit rule below is
-            // the authoritative assignment to series 1.
-            'series_id': 999,
+            // The product itself is assigned to the same series as its rule.
+            // Accessory-page series selection is a hard compatibility filter.
+            'series_id': 1,
             'price': 5,
           },
         ]
@@ -166,6 +184,71 @@ class ProfileLinkedAssemblyRuleDatabase extends SqlDatabase {
   ];
 }
 
+class MultiAccessoryLinkDatabase extends SqlDatabase {
+  @override
+  Future<Database?> get db async => MemoryDatabase();
+
+  @override
+  Future<List<Map<String, dynamic>>> readAccessoryLinksWithDetails(
+    int sourceAccessoryId,
+  ) async => sourceAccessoryId == 80
+      ? [
+          {'target_role_key': 'gache_double', 'linked_quantity': 2},
+          {'target_role_key': 'other', 'linked_quantity': 1},
+        ]
+      : sourceAccessoryId == 81
+      ? [
+          {'target_role_key': 'gache_double', 'linked_quantity': 3},
+        ]
+      : [];
+
+  @override
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
+    bool includeInactive = false,
+  }) async {
+    final available = [
+      {
+        'id': 800,
+        'item_id': 80,
+        'series_id': 1,
+        'role_key': 'espagnolette',
+        'assembly_section_ids': '',
+        'show_in_quantity': 1,
+        'is_default': 1,
+        'is_active': 1,
+      },
+      {
+        'id': 900,
+        'item_id': 90,
+        'series_id': 1,
+        'role_key': 'gache_double',
+        'assembly_section_ids': '',
+        'show_in_quantity': 1,
+        'is_default': 1,
+        'is_active': 1,
+      },
+      {
+        'id': 910,
+        'item_id': 91,
+        'series_id': 1,
+        'role_key': 'other',
+        'assembly_section_ids': '999',
+        'show_in_quantity': 1,
+        'is_active': 1,
+      },
+    ];
+    return available.where((rule) {
+      if (itemId != null && rule['item_id'] != itemId) return false;
+      return roleKeys.isEmpty || roleKeys.contains(rule['role_key']);
+    }).toList();
+  }
+}
+
 WindowModel makeWindow(SqlDatabase db) {
   final window = WindowModel(
     db: db,
@@ -204,6 +287,40 @@ void main() {
       catalogEspagnoletteRuleMatches(rule, effectiveHeightMm: 1000),
       isTrue,
     );
+  });
+
+  test(
+    'espagnolette effective height subtracts only the actual shutter box',
+    () {
+      final window = makeWindow(RuleDatabase());
+      expect(window.effectiveEspagnoletteHeightMm, window.height);
+
+      window.hasShutter = true;
+      expect(
+        window.effectiveEspagnoletteHeightMm,
+        window.height - window.shutterBoxHeight,
+      );
+    },
+  );
+
+  test('renfort screws use endpoints and maximum 400 mm spacing', () {
+    final window = makeWindow(RuleDatabase());
+    window.activeSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'PVC',
+      type: 'pvc',
+    );
+
+    final screws = ComponentCalculator.generateBom(
+      window,
+      {},
+    ).firstWhere((item) => item.originalName == 'براغي حديد الدعم');
+
+    // Outer frame: 2 × (1000 mm => 4 screws) +
+    // 2 × (1200 mm => 4 screws) = 16.
+    // Two sashes: each 2 × (450 mm => 3) + 2 × (1100 mm => 4) = 14.
+    expect(screws.quantity, 44);
   });
 
   test(
@@ -357,6 +474,152 @@ void main() {
     expect(linked.single.catalogItemId, 51);
     expect(linked.single.quantity, 2);
     expect(linked.single.unitPrice, 3);
+  });
+  test(
+    'multiple accessory links aggregate and enforce section prerequisites',
+    () async {
+      final window = makeWindow(MultiAccessoryLinkDatabase());
+      final sources = [
+        BomItem(
+          category: 'accessory',
+          originalName: 'Espagnolette A',
+          name: 'Espagnolette A',
+          quantity: 2,
+          unit: 'حبة',
+          unitPrice: 1,
+          catalogItemId: 80,
+          kitGroupName: 'test-source-a',
+        ),
+        BomItem(
+          category: 'accessory',
+          originalName: 'Espagnolette B',
+          name: 'Espagnolette B',
+          quantity: 1,
+          unit: 'حبة',
+          unitPrice: 1,
+          catalogItemId: 81,
+          kitGroupName: 'test-source-b',
+        ),
+      ];
+
+      final bom = await BomEngineV2(
+        database: MultiAccessoryLinkDatabase(),
+      ).filterItemsByAvailableCandidates(window: window, items: sources);
+      final linked = bom.where(
+        (item) => item.overrideKey?.startsWith('linked-accessory:') == true,
+      );
+
+      expect(linked, hasLength(1));
+      expect(linked.single.catalogItemId, 90);
+      expect(linked.single.quantity, 7); // (2 × 2) + (3 × 1)
+      expect(bom.any((item) => item.catalogItemId == 91), isFalse);
+    },
+  );
+  test(
+    'duplicate espagnolette and role-linked strike appear only once',
+    () async {
+      final window = makeWindow(MultiAccessoryLinkDatabase());
+      final duplicated = [
+        for (var i = 0; i < 2; i++)
+          BomItem(
+            category: 'accessory',
+            originalName: 'Espagnolette',
+            name: 'Espagnolette',
+            quantity: 1,
+            unit: 'حبة',
+            unitPrice: 1,
+            catalogItemId: 80,
+            selectorCategory: 'accessory',
+            selectorType: 'espagnolette',
+            roleKey: 'espagnolette',
+            sourceSeriesId: 1,
+            materialType: 'aluminium',
+          ),
+      ];
+
+      final bom = await BomEngineV2(
+        database: MultiAccessoryLinkDatabase(),
+      ).filterItemsByAvailableCandidates(window: window, items: duplicated);
+
+      expect(bom.where((item) => item.roleKey == 'espagnolette'), hasLength(1));
+      expect(bom.where((item) => item.roleKey == 'gache_double'), hasLength(1));
+      expect(
+        bom.singleWhere((item) => item.roleKey == 'gache_double').quantity,
+        2,
+      );
+    },
+  );
+  test('accessory screws are grouped by screw product and kept separate', () {
+    final window = makeWindow(RuleDatabase());
+    final screwA = {'id': 70, 'name': 'Vis 4x20', 'price': 2.0};
+    final screwB = {'id': 71, 'name': 'Vis 4x30', 'price': 3.0};
+    window.componentOverrides['كريمون (Cremone)'] = {
+      'id': 50,
+      'name': 'Cremone',
+      'price': 10.0,
+      'screw_count': 2,
+      'screw_accessory': screwA,
+    };
+    window.componentOverrides['المفاصل (Hinges)'] = {
+      'id': 51,
+      'name': 'Hinges',
+      'price': 10.0,
+      'screw_count': 4,
+      'screw_accessory': screwA,
+    };
+    window.componentOverrides['قاش دوبل (Gache Double Ouvrant)'] = {
+      'id': 52,
+      'name': 'Gache Double',
+      'price': 10.0,
+      'screw_count': 3,
+      'screw_accessory': screwB,
+    };
+
+    final bom = ComponentCalculator.generateBom(window, {});
+    final sourceItems = bom.where(
+      (item) => const {
+        'كريمون (Cremone)',
+        'المفاصل (Hinges)',
+        'قاش دوبل (Gache Double Ouvrant)',
+      }.contains(item.originalName),
+    );
+    final expectedA = sourceItems
+        .where(
+          (item) =>
+              item.originalName == 'كريمون (Cremone)' ||
+              item.originalName == 'المفاصل (Hinges)',
+        )
+        .fold<double>(0, (sum, item) {
+          final count = item.originalName == 'كريمون (Cremone)' ? 2 : 4;
+          return sum + count * item.quantity;
+        });
+    final expectedB = sourceItems
+        .where((item) => item.originalName == 'قاش دوبل (Gache Double Ouvrant)')
+        .fold<double>(0, (sum, item) => sum + 3 * item.quantity);
+    final screws = bom
+        .where(
+          (item) =>
+              item.overrideKey?.startsWith('linked-accessory:screw:') == true,
+        )
+        .toList();
+
+    expect(
+      screws,
+      hasLength(2),
+      reason: sourceItems
+          .map((item) => '${item.originalName}:${item.quantity}')
+          .join(', '),
+    );
+    expect(
+      screws.every((item) => item.originalName == 'براغي الإكسسوارات'),
+      isTrue,
+    );
+    expect(
+      {for (final item in screws) item.catalogItemId: item.quantity},
+      {70: expectedA, 71: expectedB},
+    );
+    expect(screws.firstWhere((item) => item.catalogItemId == 70).unitPrice, 2);
+    expect(screws.firstWhere((item) => item.catalogItemId == 71).unitPrice, 3);
   });
   test('a series kit does not expand a stale linked accessory', () {
     final window = makeWindow(RuleDatabase())..hasBottomFrame = false;

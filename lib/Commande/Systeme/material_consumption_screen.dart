@@ -2043,6 +2043,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           ? bomItems
           : await _generateStrictVisibleBomItems(engine);
       _setFetchProgress(0.88);
+      // The strict BOM is ready at this point. Publish it immediately instead
+      // of keeping the table hidden while secondary price caches finish.
+      // Price loading may continue with the progress strip still visible.
+      if (mounted) {
+        setState(() => _visibleBomItems = visibleBomItems);
+      }
       if (dbInstance != null) await _loadPricesFromDb();
       _setFetchProgress(0.96);
     } catch (error, stackTrace) {
@@ -3953,7 +3959,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         orElse: () => children.first,
       );
       final kitQuantity = math.max(1, widget.model.quantity).toDouble();
-      final isMotorKit = shutterKitCode == 'MT' ||
+      final isMotorKit =
+          shutterKitCode == 'MT' ||
           isMatch('كيت فولي موتور (Kit Volet Moteur)', [
             'kit volet moteur',
             'kit_volet_moteur',
@@ -3966,18 +3973,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       // وإن كان صفرًا نرجع لمجموع عناصره.
       final double totalPrice = isMotorKit
           ? (childTotalPrice > 0
-              ? childTotalPrice
-              : (officialKitUnitPrice > 0
-                  ? officialKitUnitPrice * kitQuantity
-                  : 0.0))
+                ? childTotalPrice
+                : (officialKitUnitPrice > 0
+                      ? officialKitUnitPrice * kitQuantity
+                      : 0.0))
           : (officialKitUnitPrice > 0
-              ? officialKitUnitPrice * kitQuantity
-              : childTotalPrice);
+                ? officialKitUnitPrice * kitQuantity
+                : childTotalPrice);
       final double effectiveKitUnitPrice = isMotorKit
           ? (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0)
           : (officialKitUnitPrice > 0
-              ? officialKitUnitPrice
-              : (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0));
+                ? officialKitUnitPrice
+                : (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0));
       // هل المجموعة مفعّلة حاليًا؟ (تُحدد من activeVariants حسب نوعها)
       final isGroupActive = isSystemOb
           ? (activeVariants['System OB'] ?? false)
@@ -5644,7 +5651,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // fractional consumption (for example 0.75 bars).
             _cell(
               Text(
-                '${(_isExcludedFromPricing(item) || !item.isActive ? 0.0 : item.category == 'glass' ? item.total : item.purchaseQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
+                '${(_isExcludedFromPricing(item) || !item.isActive
+                    ? 0.0
+                    : item.category == 'glass'
+                    ? item.total
+                    : item.purchaseQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -5748,18 +5759,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final rowRoleText =
         '${item.originalName} ${item.roleKey ?? ''} ${item.selectorType ?? ''}'
             .toLowerCase();
-    final isSlidingLateralRow =
-        explicitRoleKey.isNotEmpty
-        ? explicitRoleKey.startsWith('sash_lateral') || explicitRoleKey == 'lateral'
+    final isSlidingLateralRow = explicitRoleKey.isNotEmpty
+        ? explicitRoleKey.startsWith('sash_lateral') ||
+              explicitRoleKey == 'lateral'
         : rowRoleText.contains('sash_lateral') ||
-        rowRoleText.contains('sash lateral') ||
-        rowRoleText.contains('قائم جانبي');
-    final isSlidingCentralRow =
-        explicitRoleKey.isNotEmpty
-        ? explicitRoleKey.startsWith('sash_central') || explicitRoleKey == 'central'
+              rowRoleText.contains('sash lateral') ||
+              rowRoleText.contains('قائم جانبي');
+    final isSlidingCentralRow = explicitRoleKey.isNotEmpty
+        ? explicitRoleKey.startsWith('sash_central') ||
+              explicitRoleKey == 'central'
         : rowRoleText.contains('sash_central') ||
-        rowRoleText.contains('sash central') ||
-        rowRoleText.contains('قائم وسطي');
+              rowRoleText.contains('sash central') ||
+              rowRoleText.contains('قائم وسطي');
     // A montant can be changed in both directions. Restricting a reinforced
     // row to the reinforced role made the regular profile disappear from the
     // selector, so the user could never switch it back to normal.
@@ -6553,18 +6564,21 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               item.overrideKey ?? '',
               swapTarget.overrideKey ?? '',
             ].join(' ').toLowerCase();
-            if (isSlidingLateralRow || (!isSlidingCentralRow && (selectedType.contains('lateral') ||
-                selectionHint.contains('montant lateral') ||
-                selectionHint.contains('sash lateral') ||
-                item.originalName.contains('Sash Lateral') ||
-                item.originalName.contains('قائم جانبي') ||
-                item.originalName == 'قائم جانبي (Lateral)'))) {
+            if (isSlidingLateralRow ||
+                (!isSlidingCentralRow &&
+                    (selectedType.contains('lateral') ||
+                        selectionHint.contains('montant lateral') ||
+                        selectionHint.contains('sash lateral') ||
+                        item.originalName.contains('Sash Lateral') ||
+                        item.originalName.contains('قائم جانبي') ||
+                        item.originalName == 'قائم جانبي (Lateral)'))) {
               widget.model.applySlidingMontantOverride(
                 mutableSelected,
                 central: false,
                 manualSelection: true,
               );
-            } else if (isSlidingCentralRow || selectedType.contains('central') ||
+            } else if (isSlidingCentralRow ||
+                selectedType.contains('central') ||
                 selectionHint.contains('montant central') ||
                 selectionHint.contains('sash central') ||
                 item.originalName.contains('Sash Central') ||

@@ -130,6 +130,47 @@ BomItem _frameRow({bool sliding = false}) => BomItem(
 );
 
 void main() {
+  test('PVC drawing uses selected frame visible width', () {
+    final model = _window();
+    addTearDown(model.dispose);
+    final selected = AluminumSection(
+      id: 103,
+      seriesId: 10,
+      code: 'PVC-WIDE-INTEGRATED',
+      name: 'PVC integrated frame',
+      type: 'frame',
+      isFrame: true,
+      visibleWidth: 92,
+      couvreJointWidth: 30,
+      barLength: 6,
+    );
+    model.activeSeries = AluminumSeries(
+      id: 10,
+      profileId: 1,
+      name: 'PVC test series',
+      type: 'opening',
+      sections: [selected],
+    );
+    model.availableSystems = [
+      AluminumProfileSystem(
+        id: 1,
+        name: 'PVC system',
+        type: 'PVC',
+        series: [model.activeSeries!],
+      ),
+    ];
+    model.applyFrameOverride(
+      selected.toMap(),
+      sliding: false,
+      manualSelection: true,
+    );
+
+    final frameRect = model.getFrameRects().first;
+    expect(model.frameVisibleWidthForRect(frameRect), 92);
+    expect(model.selectedOuterFrameHasIntegratedSideCover, isTrue);
+    expect(model.canUseStandaloneSideCover, isFalse);
+  });
+
   for (final material in ['Aluminium', 'PVC']) {
     for (final mode in AccessoryDrawingMode.values) {
       for (final box in ['none', 'regular', 'tunnel']) {
@@ -219,65 +260,71 @@ void main() {
 
   for (final sliding in [false, true]) {
     for (final box in ['none', 'regular', 'tunnel']) {
-      test('cover button replaces incompatible $box frame (sliding=$sliding)',
-          () async {
-        final model = _window(sliding: sliding);
-        addTearDown(model.dispose);
-        model.hasShutter = box != 'none';
-        model.isCaissonTunnel = box == 'tunnel';
-        final incompatibleFrame = {
-          ..._frame(10, integrated: false).toMap(),
-          'id': 103,
-          'code': 'NO-COVER',
-          'allows_side_cover': 1,
-          'design_allows_side_cover': 0,
-          'design_integrated_side_cover': 0,
-        };
-        model.activeFrameSeries!.sections.add(
-          AluminumSection.fromMap(incompatibleFrame),
-        );
-        model.hasSideCovers = true;
-        model.applyFrameOverride(
-          incompatibleFrame,
-          sliding: sliding,
-          manualSelection: true,
-        );
-        model.refreshUI();
-        expect(model.activeFrameOverride?['code'], 'NO-COVER');
-        expect(model.hasSideCovers, isFalse);
-        expect(model.getFrameRects(), hasLength(1));
-
-        for (var repeat = 0; repeat < 2; repeat++) {
-          await model.toggleSideCovers(true);
-          expect(model.hasSideCovers, isTrue);
-          expect(model.activeFrameOverride?['code'],
-              box == 'regular' ? 'PLAIN' : 'INTEGRATED');
-          expect(model.isIntegratedFrame, box != 'regular');
-          await model.toggleSideCovers(false);
+      test(
+        'cover button replaces incompatible $box frame (sliding=$sliding)',
+        () async {
+          final model = _window(sliding: sliding);
+          addTearDown(model.dispose);
+          model.hasShutter = box != 'none';
+          model.isCaissonTunnel = box == 'tunnel';
+          final incompatibleFrame = {
+            ..._frame(10, integrated: false).toMap(),
+            'id': 103,
+            'code': 'NO-COVER',
+            'allows_side_cover': 1,
+            'design_allows_side_cover': 0,
+            'design_integrated_side_cover': 0,
+          };
+          model.activeFrameSeries!.sections.add(
+            AluminumSection.fromMap(incompatibleFrame),
+          );
+          model.hasSideCovers = true;
+          model.applyFrameOverride(
+            incompatibleFrame,
+            sliding: sliding,
+            manualSelection: true,
+          );
+          model.refreshUI();
+          expect(model.activeFrameOverride?['code'], 'NO-COVER');
           expect(model.hasSideCovers, isFalse);
-          expect(model.activeFrameOverride?['code'], 'PLAIN');
-        }
-      });
+          expect(model.getFrameRects(), hasLength(1));
+
+          for (var repeat = 0; repeat < 2; repeat++) {
+            await model.toggleSideCovers(true);
+            expect(model.hasSideCovers, isTrue);
+            expect(
+              model.activeFrameOverride?['code'],
+              box == 'regular' ? 'PLAIN' : 'INTEGRATED',
+            );
+            expect(model.isIntegratedFrame, box != 'regular');
+            await model.toggleSideCovers(false);
+            expect(model.hasSideCovers, isFalse);
+            expect(model.activeFrameOverride?['code'], 'PLAIN');
+          }
+        },
+      );
     }
   }
 
-  test('pending cover activation cannot override a later manual selection',
-      () async {
-    final database = _FrameDatabase()
-      ..pendingFrames = Completer<List<Map<String, dynamic>>>();
-    final model = _window(database: database)..isCaissonTunnel = true;
-    addTearDown(model.dispose);
-    final enabling = model.toggleSideCovers(true);
-    model.applyFrameOverride(
-      _frame(10, integrated: false).toMap(),
-      sliding: false,
-      manualSelection: true,
-    );
-    database.pendingFrames!.complete([_frame(10, integrated: true).toMap()]);
-    await enabling;
-    expect(model.hasSideCovers, isFalse);
-    expect(model.activeFrameOverride?['code'], 'PLAIN');
-  });
+  test(
+    'pending cover activation cannot override a later manual selection',
+    () async {
+      final database = _FrameDatabase()
+        ..pendingFrames = Completer<List<Map<String, dynamic>>>();
+      final model = _window(database: database)..isCaissonTunnel = true;
+      addTearDown(model.dispose);
+      final enabling = model.toggleSideCovers(true);
+      model.applyFrameOverride(
+        _frame(10, integrated: false).toMap(),
+        sliding: false,
+        manualSelection: true,
+      );
+      database.pendingFrames!.complete([_frame(10, integrated: true).toMap()]);
+      await enabling;
+      expect(model.hasSideCovers, isFalse);
+      expect(model.activeFrameOverride?['code'], 'PLAIN');
+    },
+  );
 
   test('no configured alternative never selects an unrelated frame', () async {
     final database = _FrameDatabase()

@@ -131,6 +131,7 @@ class WindowPainter extends CustomPainter {
 
   bool get _hasDrawableStandaloneSideCover =>
       model.hasSideCovers &&
+      !model.selectedOuterFrameHasIntegratedSideCover &&
       model.canUseStandaloneSideCover &&
       _drawableStandaloneSideCoverWidth > 0;
 
@@ -163,8 +164,16 @@ class WindowPainter extends CustomPainter {
     final w = model.width;
     final h = model.height;
 
-    // 🟢 الإطار يأخذ عرضه من القاعدة مباشرة
-    final t = model.profileThickness;
+    // The selected frame owns its visible drawing width. PVC frame roles can
+    // have a width different from the generic system profile thickness.
+    final frameRects = model.getFrameRects();
+    final primaryFrame = frameRects.isEmpty
+        ? Rect.fromLTRB(0, _topOffset, w, h)
+        : frameRects.first;
+    final t = model.frameVisibleWidthForRect(
+      primaryFrame,
+      fallback: model.profileThickness,
+    );
 
     final double topOffset = _topOffset;
 
@@ -1560,9 +1569,7 @@ class WindowPainter extends CustomPainter {
         // instead: (0, 0) → (r.width, r.height).
         canvas.save();
         canvas.translate(r.left, r.top);
-        final localThickness = _frameRectIsSlidingOnly(r)
-            ? _slidingFrameWidth(t)
-            : t;
+        final localThickness = model.frameVisibleWidthForRect(r, fallback: t);
         final previousBottomFrame = _localBottomFrame;
         _localBottomFrame = model.hasBottomFrameForRect(r);
         try {
@@ -1818,24 +1825,6 @@ class WindowPainter extends CustomPainter {
         }
       }
     }
-  }
-
-  bool _frameRectIsSlidingOnly(Rect frameRect) {
-    if (model.usesSlidingPrimaryProfiles) return true;
-    if (model.getFrameRects().length <= 1) return false;
-    final innerLeft = frameRect.left + model.profileThickness - 2.0;
-    final innerTop = frameRect.top + model.profileThickness - 2.0;
-    final innerRight = frameRect.right - model.profileThickness + 2.0;
-    final innerBottom = frameRect.bottom - model.profileThickness + 2.0;
-    final frameZones = model.zones.where((zone) {
-      final r = zone.boundary;
-      return r.left >= innerLeft &&
-          r.top >= innerTop &&
-          r.right <= innerRight &&
-          r.bottom <= innerBottom;
-    }).toList();
-    return frameZones.isNotEmpty &&
-        frameZones.every((zone) => zone.content == ZoneContent.slidingSash);
   }
 
   double _slidingFrameWidth(double fallback) {
