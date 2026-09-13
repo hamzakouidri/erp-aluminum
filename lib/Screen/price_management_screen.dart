@@ -357,7 +357,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final pList = await safeQuery('Profile');
     List<Map<String, dynamic>> kbList = [];
     try {
-      kbList = await safeQuery('KitBundles');
+      // Use the dedicated reader so the compatibility schema (including the
+      // persisted aggregate price column) is guaranteed before loading.
+      kbList = await db.readKitBundles();
     } catch (_) {}
 
     List<Map<String, dynamic>> ctPricesList = [];
@@ -1145,6 +1147,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 ),
                 const Divider(height: 1, thickness: 0.7),
                 PriceEditRow(
+                  key: ValueKey<String>('kit-bundle-price-$kitId'),
                   title: Localization.translate(
                     'السعر الإجمالي للكيت (دج)',
                     lang,
@@ -2117,7 +2120,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ),
       );
     }
-    _loadAllData();
+    // The in-memory row above is already the source for this widget. Reloading
+    // the complete screen while PriceEditRow is still awaiting its save callback
+    // can unmount Provider dependants mid-callback (`_dependents.isEmpty`). The
+    // database-change subscription will perform any later external refresh.
   }
 
   Future<void> _updateShutterColorPrice(
@@ -3255,17 +3261,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     double currentMultiplier,
   ) async {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    final controller = TextEditingController(
-      text: currentMultiplier.toStringAsFixed(
-        currentMultiplier == currentMultiplier.roundToDouble() ? 0 : 2,
-      ),
+    var inputValue = currentMultiplier.toStringAsFixed(
+      currentMultiplier == currentMultiplier.roundToDouble() ? 0 : 2,
     );
     final value = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(Localization.translate('معامل المتر الخطي', lang)),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: inputValue,
+          onChanged: (value) => inputValue = value,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
             labelText: Localization.translate('مثال: 1 أو 2 للبلانت', lang),
@@ -3279,7 +3284,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ),
           FilledButton(
             onPressed: () {
-              final parsed = double.tryParse(controller.text.trim());
+              final parsed = double.tryParse(inputValue.trim());
               if (parsed != null && parsed.isFinite && parsed > 0) {
                 Navigator.pop(dialogContext, parsed);
               }
@@ -3289,7 +3294,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ],
       ),
     );
-    controller.dispose();
     if (value == null || !mounted) return;
     await db.saveProfileCalculationRule(
       sectionId: sectionId,
@@ -3408,6 +3412,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   (rule?['linear_meter_multiplier'] as num?)?.toDouble() ??
                   1.0;
               return Card(
+                key: ValueKey<String>('profile-calculation-rule-$sectionId'),
                 margin: const EdgeInsets.only(bottom: 10),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -3423,6 +3428,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
+                              key: ValueKey<String>(
+                                'profile-calculation-mode-$sectionId-$mode',
+                              ),
                               isExpanded: true,
                               initialValue: mode == 'auto' ? null : mode,
                               decoration: InputDecoration(

@@ -194,6 +194,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       return await PdfInvoiceApi.buildPdfBytes(
         _currentDevisData,
         overrideLang: _invoiceLanguage,
+        imageUnderPrices: _imageUnderPrices,
       ).timeout(const Duration(seconds: 30));
     } catch (e) {
       debugPrint('PDF generation error: $e');
@@ -256,6 +257,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       final bytes = await PdfInvoiceApi.buildPdfBytes(
         rebuiltData,
         overrideLang: newLang,
+        imageUnderPrices: _imageUnderPrices,
       ).timeout(const Duration(seconds: 45));
 
       if (mounted) {
@@ -313,6 +315,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       final bytes = await PdfInvoiceApi.buildPdfBytes(
         rebuiltData,
         overrideLang: _invoiceLanguage,
+        imageUnderPrices: _imageUnderPrices,
       );
 
       if (mounted) {
@@ -466,8 +469,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     children: [
                       GestureDetector(
                         onTap: () {
-                          if (_imageUnderPrices) {
-                            setState(() => _imageUnderPrices = false);
+                          if (_imageUnderPrices && !_isLoading) {
+                            setState(() {
+                              _imageUnderPrices = false;
+                              _pdfBytes = null;
+                            });
                           }
                         },
                         child: Container(
@@ -498,8 +504,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          if (!_imageUnderPrices) {
-                            setState(() => _imageUnderPrices = true);
+                          if (!_imageUnderPrices && !_isLoading) {
+                            setState(() {
+                              _imageUnderPrices = true;
+                              _pdfBytes = null;
+                            });
                           }
                         },
                         child: Container(
@@ -1436,10 +1445,21 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                         detailColor,
                         twoColumns: hidePrices,
                       ),
+                      if (_imageUnderPrices && !_isOfficial) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 180,
+                          child: Opacity(
+                            opacity: item.isReplaced ? 0.6 : 1.0,
+                            child: _buildItemImage(item),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                if (!_imageUnderPrices) ...[
+                ...[
                   if (!hidePrices)
                     Expanded(
                       flex: 2,
@@ -1478,40 +1498,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               ],
             ),
           ),
-          // Mode B: صورة بعرض كامل تحترم نسبة أبعاد النافذة الحقيقية
-          if (_imageUnderPrices && !_isOfficial) ...[
-            const SizedBox(height: 10),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final double ratio = (item.width > 0 && item.height > 0)
-                    ? item.width / item.height
-                    : 4 / 3;
-                final double imgWidth = constraints.maxWidth;
-                final double imgHeight = imgWidth / ratio;
-                return Container(
-                  width: imgWidth,
-                  height: imgHeight,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Opacity(
-                    opacity: item.isReplaced ? 0.6 : 1.0,
-                    child: _buildItemImage(item),
-                  ),
-                );
-              },
-            ),
-          ],
           if (item.isReplaced && item.replacementReason.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(

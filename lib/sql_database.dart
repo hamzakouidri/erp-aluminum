@@ -1817,6 +1817,8 @@ class SqlDatabase {
         integrated_side_cover INTEGER NOT NULL DEFAULT 0,
         allows_side_cover INTEGER NOT NULL DEFAULT 1,
         allowed_with_shutter INTEGER NOT NULL DEFAULT 1,
+        min_height_mm REAL,
+        max_height_mm REAL,
         show_in_drawing INTEGER NOT NULL DEFAULT 1,
         show_in_quantity INTEGER NOT NULL DEFAULT 1,
         show_in_dialog INTEGER NOT NULL DEFAULT 1,
@@ -1867,6 +1869,8 @@ class SqlDatabase {
       'ALTER TABLE CatalogItemRules ADD COLUMN integrated_side_cover INTEGER NOT NULL DEFAULT 0;',
       'ALTER TABLE CatalogItemRules ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
       'ALTER TABLE CatalogItemRules ADD COLUMN allowed_with_shutter INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN min_height_mm REAL;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN max_height_mm REAL;',
       'ALTER TABLE CatalogItemRules ADD COLUMN show_in_drawing INTEGER NOT NULL DEFAULT 1;',
       'ALTER TABLE CatalogItemRules ADD COLUMN show_in_quantity INTEGER NOT NULL DEFAULT 1;',
       'ALTER TABLE CatalogItemRules ADD COLUMN show_in_dialog INTEGER NOT NULL DEFAULT 1;',
@@ -2083,7 +2087,6 @@ class SqlDatabase {
       );
     } catch (_) {}
   }
-
 
   Future<Database?> get db async {
     final current = _db;
@@ -2472,6 +2475,8 @@ class SqlDatabase {
           is_default INTEGER NOT NULL DEFAULT 0,
           gache_accessory_id INTEGER,
           gache_count INTEGER NOT NULL DEFAULT 0,
+          linked_accessory_id INTEGER,
+          linked_accessory_count INTEGER NOT NULL DEFAULT 0,
           screw_accessory_id INTEGER,
           triangle_deduction_mm REAL NOT NULL DEFAULT 0.0,
           triangle_position_mode TEXT NOT NULL DEFAULT 'center',
@@ -10115,6 +10120,8 @@ class SqlDatabase {
       'ALTER TABLE Accessories ADD COLUMN screw_accessory_id INTEGER',
       'ALTER TABLE Accessories ADD COLUMN gache_accessory_id INTEGER',
       'ALTER TABLE Accessories ADD COLUMN gache_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE Accessories ADD COLUMN linked_accessory_id INTEGER',
+      'ALTER TABLE Accessories ADD COLUMN linked_accessory_count INTEGER NOT NULL DEFAULT 0',
     ]) {
       try {
         await myDb!.execute(statement);
@@ -12387,6 +12394,8 @@ class SqlDatabase {
         is_default INTEGER NOT NULL DEFAULT 0,
         gache_accessory_id INTEGER,
         gache_count INTEGER NOT NULL DEFAULT 0,
+        linked_accessory_id INTEGER,
+        linked_accessory_count INTEGER NOT NULL DEFAULT 0,
         screw_accessory_id INTEGER,
         triangle_deduction_mm REAL NOT NULL DEFAULT 0.0,
         triangle_position_mode TEXT NOT NULL DEFAULT 'center',
@@ -15317,14 +15326,22 @@ class SqlDatabase {
   /// تحديث سعر Kit الإجمالي
   Future<void> updateKitBundlePrice(int id, double price) async {
     final database = await db;
-    if (database == null) return;
+    if (database == null) {
+      throw StateError('Database is not available');
+    }
     await _ensureAdvancedKitCompatibilitySchema(database);
-    await database.update(
+    final updatedRows = await database.update(
       'KitBundles',
       {'price': price},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (updatedRows != 1) {
+      throw StateError(
+        'Kit bundle price was not saved (id: $id, rows: $updatedRows)',
+      );
+    }
+    CloudSyncService().notifyChange();
   }
 
   // ========================= KIT BUNDLE FAMILIES CRUD =========================
@@ -16514,11 +16531,13 @@ class SqlDatabase {
     int? seriesId,
     Iterable<String> roleKeys = const [],
     bool exactSeriesOnly = false,
+    bool includeInactive = false,
   }) async {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureSeriesDesignTables(myDb);
-    final where = <String>['is_active = 1'];
+    final where = <String>[];
+    if (!includeInactive) where.add('is_active = 1');
     final args = <Object?>[];
     if (itemTable != null && itemTable.trim().isNotEmpty) {
       where.add('item_table = ?');
@@ -16568,6 +16587,42 @@ class SqlDatabase {
       whereArgs: args,
       orderBy:
           'CASE WHEN series_id IS NULL THEN 1 ELSE 0 END, is_default DESC, sort_order ASC, id ASC',
+    );
+  }
+
+  /// Reuses a screw role in every series explicitly selected on the
+  /// accessory itself. This bridges legacy catalogues where the role row was
+  /// saved for the first series only while `series_ids` already lists two or
+  /// more compatible series.
+  Future<List<Map<String, dynamic>>> getAssignedAccessoryScrewRuleFallbacks(
+    int seriesId,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    return myDb.rawQuery(
+      '''
+      SELECT r.*
+      FROM CatalogItemRules r
+      INNER JOIN Accessories a ON a.id = r.item_id
+      WHERE r.item_table = 'Accessories'
+        AND r.is_active = 1
+        AND r.role_key IN ('assembly_screw', 'installation_screw')
+        AND (
+          a.series_id = ?
+          OR (a.series_ids IS NOT NULL
+              AND TRIM(a.series_ids) != ''
+              AND ',' || REPLACE(a.series_ids, ' ', '') || ',' LIKE ?)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM CatalogItemRules exact_rule
+          WHERE exact_rule.item_table = r.item_table
+            AND exact_rule.item_id = r.item_id
+            AND exact_rule.series_id = ?
+        )
+      ORDER BY r.is_default DESC, r.sort_order ASC, r.id ASC
+      ''',
+      [seriesId, '%,$seriesId,%', seriesId],
     );
   }
 
@@ -16633,6 +16688,8 @@ class SqlDatabase {
                   rule['allowed_with_shutter'] == 0
               ? 0
               : 1,
+          'min_height_mm': rule['min_height_mm'],
+          'max_height_mm': rule['max_height_mm'],
           'show_in_drawing':
               rule['show_in_drawing'] == false || rule['show_in_drawing'] == 0
               ? 0

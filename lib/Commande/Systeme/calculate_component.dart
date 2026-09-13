@@ -170,6 +170,11 @@ class BomItem {
 
   String getLocalizedName(String lang) {
     final original = originalName;
+    if (original == 'براغي التجميع') {
+      if (lang == 'fr') return "vis d'assemblage";
+      if (lang == 'en') return 'Assembly screws';
+      return "براغي التجميع (vis d'assemblage)";
+    }
     if (lang == 'fr') {
       if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') {
         return 'Sash Latéral Renforcé';
@@ -437,6 +442,7 @@ class BomItem {
     int? sourceSeriesId,
     String? materialType,
     int? pieceCount,
+    String? cuttingList,
   }) {
     return BomItem(
       category: category,
@@ -456,7 +462,7 @@ class BomItem {
       isActive: isActive ?? this.isActive,
       exclusionGroup: exclusionGroup,
       pieces: pieces,
-      cuttingList: cuttingList,
+      cuttingList: cuttingList ?? this.cuttingList,
       kitGroupName: kitGroupName ?? this.kitGroupName,
       exactQuantity: exactQuantity,
       catalogItemId: catalogItemId ?? this.catalogItemId,
@@ -721,6 +727,14 @@ class ComponentCalculator {
       return 'is_accessory_screw';
     }
     if (isScrew) return 'is_accessory_screw';
+    if (_textHasAny(originalName, const [
+      'بوشون الكانيفو',
+      'بوشون كانيفو',
+      'bouchon caniveau',
+      'cache caniveau',
+    ])) {
+      return 'bouchon_caniveau';
+    }
     if (_textHasAny(originalName, const ['بوشون باتمو', 'bouchon batmo'])) {
       return 'bouchon_batmo';
     }
@@ -982,6 +996,9 @@ class ComponentCalculator {
       case 'bouchon_batmo':
       case 'bouchon batmo':
         return 'bouchon_batmo';
+      case 'bouchon_caniveau':
+      case 'bouchon caniveau':
+        return 'bouchon_caniveau';
       case 'plant':
         return 'plant';
       case 'porte_joint':
@@ -1938,7 +1955,9 @@ class ComponentCalculator {
       bool sliding = false,
     }) {
       final source = window.componentOverrides[sourceKey];
-      final related = source is Map ? source['gache_accessory'] : null;
+      final related = source is Map
+          ? source['linked_accessory'] ?? source['gache_accessory']
+          : null;
       if (related is Map) {
         final relatedOverrides = Map<String, dynamic>.from(
           window.componentOverrides,
@@ -2438,6 +2457,9 @@ class ComponentCalculator {
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
     int slidingTotalHandles = 0;
+    int slidingTotalKits = 0;
+    int slidingTotalReinforcedLateralKits = 0;
+    int slidingTotalReinforcedCentralKits = 0;
     int slidingTotalGacheCoulissant = 0;
     double slidingTotalJointBrosse = 0.0;
     double pvcJointBrosseSum = 0.0;
@@ -2640,7 +2662,8 @@ class ComponentCalculator {
       for (final key in keys) {
         final override = window.componentOverrides[key];
         if (override is! Map) continue;
-        final value = override['gache_count'];
+        final value =
+            override['linked_accessory_count'] ?? override['gache_count'];
         final count = value is num
             ? value.toInt()
             : int.tryParse(value?.toString() ?? '') ?? 0;
@@ -3184,7 +3207,10 @@ class ComponentCalculator {
       for (final role in ['cache_dormant', 'seuil', 'cache_rail']) {
         if (role == 'cache_rail' && !sliding) continue;
         if (!window.usesFrameRole(role, sliding: sliding)) continue;
-        final section = window.getConfiguredSectionForRole(role, useSlidingSeries: sliding);
+        final section = window.getConfiguredSectionForRole(
+          role,
+          useSlidingSeries: sliding,
+        );
         if (section == null) continue;
         final pieces = <double>[];
         for (final frame in scopedFrames) {
@@ -3195,22 +3221,214 @@ class ComponentCalculator {
             pieces.add(frame.width / 1000.0);
           } else {
             final counts = window.cacheRailCountsForRect(frame);
-            pieces.addAll(List.filled(counts.$1 + counts.$2, frame.height / 1000.0));
+            pieces.addAll(
+              List.filled(counts.$1 + counts.$2, frame.height / 1000.0),
+            );
           }
         }
         if (pieces.isEmpty) continue;
-        final label = role == 'cache_dormant' ? 'Cache dormant'
-            : role == 'seuil' ? 'Seuil' : 'Cache-rail';
+        final label = role == 'cache_dormant'
+            ? 'Cache dormant'
+            : role == 'seuil'
+            ? 'Seuil'
+            : 'Cache-rail';
         final scope = sliding ? 'Coulissant' : 'Ouvrant';
-        items.add(createProfile(
-          '$label ($scope)', colorName, pieces: pieces,
-          overrideMap: section.toMap(), preferOverrideMap: true,
-          selectorType: role, roleKey: role,
-        ).copyWith(
-          sourceSeriesId: (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
-          materialType: (sliding ? window.isSlidingPVC : window.isPVC) ? 'pvc' : 'aluminium',
-        ));
+        items.add(
+          createProfile(
+            '$label ($scope)',
+            colorName,
+            pieces: pieces,
+            overrideMap: section.toMap(),
+            preferOverrideMap: true,
+            selectorType: role,
+            roleKey: role,
+          ).copyWith(
+            sourceSeriesId:
+                (sliding ? window.activeSlidingSeries : window.activeSeries)
+                    ?.id,
+            materialType: (sliding ? window.isSlidingPVC : window.isPVC)
+                ? 'pvc'
+                : 'aluminium',
+          ),
+        );
       }
+    }
+
+    // Cache-rainure closes the seam between two independent outer frames.
+    // Each eligible seam receives two equal cuts: one on the inside and one
+    // on the outside. Contacts already exclude frames with an integrated
+    // cover or frames that do not accept a separate cover.
+    final cacheRainurePieces = <bool, List<double>>{
+      false: <double>[],
+      true: <double>[],
+    };
+    for (final contact in window.getCacheRainureContacts()) {
+      final lengthM = contact.length / 1000.0;
+      if (lengthM <= 0) continue;
+      cacheRainurePieces[contact.useSlidingSeries]!.addAll([lengthM, lengthM]);
+    }
+    for (final sliding in [false, true]) {
+      final pieces = cacheRainurePieces[sliding]!;
+      if (pieces.isEmpty) continue;
+      final section = window.getConfiguredSectionForRole(
+        'cache_rainure',
+        useSlidingSeries: sliding,
+      );
+      if (section == null) continue;
+      items.add(
+        createProfile(
+          'Cache-rainure (${sliding ? 'Coulissant' : 'Ouvrant'})',
+          colorName,
+          pieces: pieces,
+          unit: 'قطاع',
+          overrideMap: section.toMap(),
+          preferOverrideMap: true,
+          selectorType: 'cache_rainure',
+          roleKey: 'cache_rainure',
+        ).copyWith(
+          sourceSeriesId:
+              (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
+          materialType: (sliding ? window.isSlidingPVC : window.isPVC)
+              ? 'pvc'
+              : 'aluminium',
+          cuttingList: 'داخل + خارج لكل التقاء إطارين',
+        ),
+      );
+    }
+
+    // Bavette is an optional cover profile. Mode 1 follows the lower edge;
+    // mode 2 follows all four edges of every physical frame.
+    if (window.usesBavette) {
+      final bavettePieces = <bool, List<double>>{
+        false: <double>[],
+        true: <double>[],
+      };
+      for (final frame in frameRects) {
+        final sliding = window.frameUsesSlidingSeries(frame);
+        final pieces = bavettePieces[sliding]!;
+        pieces.add(frame.width / 1000.0);
+        if (window.optionalBavetteMode == 2) {
+          pieces.add(frame.width / 1000.0);
+          pieces.add(frame.height / 1000.0);
+          pieces.add(frame.height / 1000.0);
+        }
+      }
+      for (final sliding in [false, true]) {
+        final pieces = bavettePieces[sliding]!;
+        if (pieces.isEmpty) continue;
+        final section = window.getConfiguredSectionForRole(
+          'bavette',
+          useSlidingSeries: sliding,
+        );
+        if (section == null) continue;
+        final scope = sliding ? 'Coulissant' : 'Ouvrant';
+        items.add(
+          createProfile(
+            'Bavette ($scope)',
+            colorName,
+            pieces: pieces,
+            unit: 'قطاع',
+            overrideMap: section.toMap(),
+            preferOverrideMap: true,
+            selectorType: 'bavette',
+            roleKey: 'bavette',
+          ).copyWith(
+            sourceSeriesId:
+                (sliding ? window.activeSlidingSeries : window.activeSeries)
+                    ?.id,
+            materialType: (sliding ? window.isSlidingPVC : window.isPVC)
+                ? 'pvc'
+                : 'aluminium',
+            cuttingList: window.optionalBavetteMode == 1
+                ? 'جهة سفلية فقط'
+                : 'الجهات الأربع',
+          ),
+        );
+      }
+    }
+
+    // Caniveau is an outside-only channel fixed under an existing lower
+    // frame. Its upper cache follows the same width, while two Bouchons close
+    // the left and right ends of every physical frame using the channel.
+    final caniveauPieces = <bool, List<double>>{
+      false: <double>[],
+      true: <double>[],
+    };
+    final cacheCaniveauPieces = <bool, List<double>>{
+      false: <double>[],
+      true: <double>[],
+    };
+    final caniveauCapCounts = <bool, int>{false: 0, true: 0};
+    for (final frame in frameRects) {
+      if (!window.usesCaniveauForRect(frame)) continue;
+      final sliding = window.frameUsesSlidingSeries(frame);
+      final length = frame.width / 1000.0;
+      caniveauPieces[sliding]!.add(length);
+      cacheCaniveauPieces[sliding]!.add(length);
+      caniveauCapCounts[sliding] = caniveauCapCounts[sliding]! + 2;
+    }
+    for (final sliding in [false, true]) {
+      final channel = caniveauPieces[sliding]!;
+      if (channel.isEmpty) continue;
+      final caniveau = window.getConfiguredSectionForRole(
+        'caniveau',
+        useSlidingSeries: sliding,
+      );
+      final cache = window.getConfiguredSectionForRole(
+        'cache_caniveau',
+        useSlidingSeries: sliding,
+      );
+      // [usesCaniveauForRect] guarantees both sections; retain this guard for
+      // restored drawings whose old configuration is incomplete.
+      if (caniveau == null || cache == null) continue;
+      final scope = sliding ? 'Coulissant' : 'Ouvrant';
+      items.add(
+        createProfile(
+          'Caniveau ($scope)',
+          colorName,
+          pieces: channel,
+          unit: 'قطاع',
+          overrideMap: caniveau.toMap(),
+          preferOverrideMap: true,
+          selectorType: 'caniveau',
+          roleKey: 'caniveau',
+        ).copyWith(
+          sourceSeriesId:
+              (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
+          materialType: (sliding ? window.isSlidingPVC : window.isPVC)
+              ? 'pvc'
+              : 'aluminium',
+          cuttingList: 'جهة خارجية أسفل الإطار',
+        ),
+      );
+      items.add(
+        createProfile(
+          'Cache-caniveau ($scope)',
+          colorName,
+          pieces: cacheCaniveauPieces[sliding],
+          unit: 'قطاع',
+          overrideMap: cache.toMap(),
+          preferOverrideMap: true,
+          selectorType: 'cache_caniveau',
+          roleKey: 'cache_caniveau',
+        ).copyWith(
+          sourceSeriesId:
+              (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
+          materialType: (sliding ? window.isSlidingPVC : window.isPVC)
+              ? 'pvc'
+              : 'aluminium',
+        ),
+      );
+      items.add(
+        createAccessory(
+          'بوشون الكانيفو (Bouchon Caniveau)',
+          color: accessoryColorName,
+          qty: caniveauCapCounts[sliding]!,
+          sliding: sliding,
+          roleKeyOverride: 'bouchon_caniveau',
+          selectorTypeOverride: 'bouchon_caniveau',
+        ),
+      );
     }
 
     if (slidingMonorailPieces.isNotEmpty) {
@@ -3631,6 +3849,27 @@ class ComponentCalculator {
           int sashes = zone.slidingSashesCount > 0
               ? zone.slidingSashesCount
               : 2;
+          final int slidingKitPairs = (sashes + 1) ~/ 2;
+          final bool hasReinforcedLateral =
+              zone.slidingMontantReinforced['lateral_0'] == true ||
+              zone.slidingMontantReinforced['lateral_1'] == true ||
+              zone.slidingMontantReinforced['lateral_left'] == true ||
+              zone.slidingMontantReinforced['lateral_right'] == true;
+          final bool hasReinforcedCentral = zone
+              .slidingMontantReinforced
+              .entries
+              .any(
+                (entry) =>
+                    entry.key.startsWith('central_') && entry.value == true,
+              );
+          if (hasReinforcedLateral) {
+            slidingTotalReinforcedLateralKits += slidingKitPairs;
+          }
+          if (hasReinforcedCentral) {
+            // The reinforced central kit is sold as two kits per pair of
+            // leaves (one kit for each central post).
+            slidingTotalReinforcedCentralKits += slidingKitPairs * 2;
+          }
           final configuredSashDeduction = window.slidingSashWidthDeduction(
             sashes,
           );
@@ -3728,6 +3967,10 @@ class ComponentCalculator {
           slidingTotalRoulettes += (sashes * 2);
           slidingTotalEspagnolettes += 2;
           slidingTotalHandles += 2;
+          // One sliding-series kit serves one independent pair of leaves.
+          // Count every sliding zone/frame separately and keep an additional
+          // kit for an unpaired leaf in odd 3/5-leaf configurations.
+          slidingTotalKits += (sashes + 1) ~/ 2;
 
           double h = hForCalc;
           final gachesPerEspagnolette = configuredGacheCount([
@@ -3951,6 +4194,27 @@ class ComponentCalculator {
             ]),
             preferOverrideMap: true,
             roleKey: 'sash_central_reinforced',
+          ),
+        );
+      }
+
+      if (slidingTotalReinforcedLateralKits > 0) {
+        items.add(
+          createAccessory(
+            'كيت العمود الجانبي المعزز (Kit Lateral Renforcé)',
+            color: colorName,
+            qty: slidingTotalReinforcedLateralKits,
+            sliding: true,
+          ),
+        );
+      }
+      if (slidingTotalReinforcedCentralKits > 0) {
+        items.add(
+          createAccessory(
+            'كيت العمود الوسطي المعزز (Kit Central Renforcé)',
+            color: colorName,
+            qty: slidingTotalReinforcedCentralKits,
+            sliding: true,
           ),
         );
       }
@@ -4239,27 +4503,6 @@ class ComponentCalculator {
           ),
         );
       }
-
-      if (windowDoubleSashCount > 0 && window.isPVC) {
-        items.add(
-          createRelatedAccessory(
-            'إسبانيوليت (Espagnolette)',
-            'قاش دوبل (Gache Double Ouvrant)',
-            isActive: !isVerrouCentralActive,
-            qty: windowDoubleSashCount * gacheQtyPerDoubleSash,
-          ),
-        );
-      }
-    }
-
-    if (windowSingleSashCount > 0 && window.isPVC) {
-      items.add(
-        createRelatedAccessory(
-          'إسبانيوليت (Espagnolette)',
-          'قاش سامبل (Gache Simple Ouvrant)',
-          qty: windowSingleSashCount * gacheQtyPerDoubleSash,
-        ),
-      );
     }
 
     if (hasSingleSash || hasDoubleSash || hasSlidingSash) {
@@ -4292,6 +4535,30 @@ class ComponentCalculator {
             qty: espagnoletteQty,
             roleKeyOverride: 'espagnolette',
             selectorTypeOverride: 'espagnolette',
+          ),
+        );
+      }
+
+      // The strike is derived only after the actual espagnolette has been
+      // selected for this series, material, height and shutter state. The
+      // drawing decides its BOM role; the linked catalogue item and count
+      // always come from that selected espagnolette.
+      if (windowSingleSashCount > 0) {
+        items.add(
+          createRelatedAccessory(
+            'إسبانيوليت (Espagnolette)',
+            'قاش سامبل (Gache Simple Ouvrant)',
+            qty: windowSingleSashCount * gacheQtyPerDoubleSash,
+          ),
+        );
+      }
+      if (windowDoubleSashCount > 0) {
+        items.add(
+          createRelatedAccessory(
+            'إسبانيوليت (Espagnolette)',
+            'قاش دوبل (Gache Double Ouvrant)',
+            isActive: !isVerrouCentralActive,
+            qty: windowDoubleSashCount * gacheQtyPerDoubleSash,
           ),
         );
       }
@@ -4373,55 +4640,22 @@ class ComponentCalculator {
       }
 
       if (useCremone && cremoneQty > 0) {
-        final triangleOverride =
-            window.componentOverrides['تراينغل الكريمون (Triangle)'];
-        double numberFromTriangle(String key) {
-          final value = triangleOverride?[key];
-          return value is num
-              ? value.toDouble()
-              : double.tryParse(value?.toString() ?? '') ?? 0.0;
-        }
+        final cremoneOverride = window.componentOverrides['كريمون (Cremone)'];
+        final triangleRule = cremoneOverride is Map
+            ? Map<String, dynamic>.from(cremoneOverride)
+            : const <String, dynamic>{};
+        final triangleMode = '${triangleRule['triangle_link_mode'] ?? 'none'}'
+            .toLowerCase();
+        final triangleProfile = window
+            .getConfiguredSectionForRole('triangle')
+            ?.toMap();
+        final useTriangle =
+            triangleProfile != null &&
+            (triangleMode == 'required' ||
+                (triangleMode == 'optional' && window.useOptionalTriangle));
 
-        final triangleDeduction = math.max(
-          0.0,
-          numberFromTriangle('triangle_deduction_mm'),
-        );
-        final trianglePieces = <double>[];
-        final triangleCutPairs = <String>[];
-        for (final run in triangleDrawingRuns) {
-          final double drawingHeight = math
-              .max(0.0, run['height_mm'] ?? 0.0)
-              .toDouble();
-          final double handleRatio = (run['handle_ratio'] ?? 0.5)
-              .clamp(0.0, 1.0)
-              .toDouble();
-          // Deduct the accessory rule first. Moving the handle away from the
-          // centre then transfers the same real distance from one cut to the
-          // other: ratio 0.4 on a 1000 mm sash means 100 mm lower.
-          final triangleTotal = math.max(
-            0.0,
-            drawingHeight - triangleDeduction,
-          );
-          final handleShift = (0.5 - handleRatio) * drawingHeight;
-          final double firstTrianglePiece = math
-              .max(0.0, triangleTotal / 2.0 - handleShift)
-              .toDouble();
-          final double secondTrianglePiece = math
-              .max(0.0, triangleTotal - firstTrianglePiece)
-              .toDouble();
-          triangleCutPairs.add(
-            '${firstTrianglePiece.toStringAsFixed(0)} + '
-            '${secondTrianglePiece.toStringAsFixed(0)}',
-          );
-          for (var i = 0; i < window.quantity; i++) {
-            trianglePieces.addAll([
-              firstTrianglePiece / 1000.0,
-              secondTrianglePiece / 1000.0,
-            ]);
-          }
-        }
-        final triangleCuttingList =
-            'قطع القص: ${triangleCutPairs.join(' ؛ ')} مم لكل تراينغل';
+        // The accessory remains visible whether or not its optional Triangle
+        // link is selected.
         items.add(
           createAccessory(
             'كريمون (Cremone)',
@@ -4429,18 +4663,77 @@ class ComponentCalculator {
             qty: cremoneQty,
           ),
         );
-        items.add(
-          createAccessory(
-            'تراينغل الكريمون (Triangle)',
-            color: accessoryColorName,
-            qty: cremoneQty,
-            unit: 'قطعة',
-            pieces: trianglePieces,
-            cuttingList: triangleCuttingList,
-          ),
-        );
-      }
+        if (useTriangle) {
+          double numberFromRule(String key) {
+            final value = triangleRule[key];
+            return value is num
+                ? value.toDouble()
+                : double.tryParse(value?.toString() ?? '') ?? 0.0;
+          }
 
+          final triangleDeduction = math.max(
+            0.0,
+            numberFromRule('triangle_deduction_mm'),
+          );
+          final triangleMultiplier = math.max(
+            1,
+            numberFromRule('triangle_quantity').round(),
+          );
+          final trianglePieces = <double>[];
+          final triangleCutPairs = <String>[];
+          for (final run in triangleDrawingRuns) {
+            final drawingHeight = math
+                .max(0.0, run['height_mm'] ?? 0.0)
+                .toDouble();
+            final handleRatio = (run['handle_ratio'] ?? 0.5)
+                .clamp(0.0, 1.0)
+                .toDouble();
+            final triangleTotal = math.max(
+              0.0,
+              drawingHeight - triangleDeduction,
+            );
+            final positionMode =
+                '${triangleRule['triangle_position_mode'] ?? 'center'}'
+                    .toLowerCase();
+            final splitFromBottom = positionMode == 'offset'
+                ? numberFromRule(
+                    'triangle_position_mm',
+                  ).clamp(0.0, triangleTotal).toDouble()
+                : (triangleTotal / 2.0) + ((handleRatio - 0.5) * drawingHeight);
+            final firstTrianglePiece = math
+                .max(0.0, splitFromBottom)
+                .toDouble();
+            final secondTrianglePiece = math
+                .max(0.0, triangleTotal - firstTrianglePiece)
+                .toDouble();
+            triangleCutPairs.add(
+              '${firstTrianglePiece.toStringAsFixed(0)} + '
+              '${secondTrianglePiece.toStringAsFixed(0)}',
+            );
+            for (var i = 0; i < window.quantity * triangleMultiplier; i++) {
+              trianglePieces.addAll([
+                firstTrianglePiece / 1000.0,
+                secondTrianglePiece / 1000.0,
+              ]);
+            }
+          }
+          items.add(
+            createProfile(
+              'تراينغل الكريمون (Triangle)',
+              colorName,
+              pieces: trianglePieces,
+              unit: 'قطاع',
+              overrideMap: triangleProfile,
+              preferOverrideMap: true,
+              selectorType: 'triangle',
+              roleKey: 'triangle',
+            ).copyWith(
+              cuttingList:
+                  'قطع القص: ${triangleCutPairs.join(' ؛ ')} مم لكل تراينغل',
+            ),
+          );
+        }
+      }
       if (octoHandles > 0 && window.systemMode != 'sliding') {
         items.add(
           createAccessory(
@@ -4623,7 +4916,7 @@ class ComponentCalculator {
             createAccessory(
               kitKey,
               color: accessoryColorName,
-              qty: 1,
+              qty: slidingTotalKits,
               sliding: true,
             ),
           );
@@ -4675,14 +4968,6 @@ class ComponentCalculator {
               createRelatedAccessory(
                 'اسبانيولات المنزلق (Espagnolette)',
                 'Gâche coulissant TPR',
-                qty: slidingTotalEspagnolettes,
-                sliding: true,
-              ),
-            );
-            items.add(
-              createAccessory(
-                'تراينغل الكريمون (Triangle)',
-                color: accessoryColorName,
                 qty: slidingTotalEspagnolettes,
                 sliding: true,
               ),
@@ -7768,6 +8053,241 @@ class ComponentCalculator {
       );
     }
 
+    // Triangle is a profile, not an accessory.  A profile is generated only
+    // when the accessory selected in the rules explicitly links to it.  This
+    // also lets each accessory use its own quantity, deduction and cut point.
+    // Cremone is handled above because its cut must follow the handle drawn on
+    // every sash; all other linked accessories use the same configurable rule
+    // with the real number of accessories already present in the BOM.
+    final triangleProfileRows = <BomItem>[];
+    final triangleProfileKeys = <String>{};
+    final slidingSeriesId = window.activeSlidingSeries?.id;
+
+    double triangleRuleNumber(Map<String, dynamic> rule, String key) {
+      final value = rule[key];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    Map<String, dynamic>? triangleRuleForAccessory(String key) {
+      final direct = window.componentOverrides[key];
+      if (direct is Map) return Map<String, dynamic>.from(direct);
+
+      // Espagnolettes are displayed with their calculated size (30, 40,
+      // 180…), whereas their rule is stored under the single base accessory.
+      if (_textHasAny(key, const [
+        'اسبانيوليت',
+        'إسبانيوليت',
+        'espagnolette',
+      ])) {
+        final canonical =
+            window.componentOverrides['إسبانيوليت (Espagnolette)'] ??
+            window.componentOverrides['اسبانيولات المنزلق (Espagnolette)'];
+        if (canonical is Map) return Map<String, dynamic>.from(canonical);
+      }
+      return null;
+    }
+
+    // Expanded kits do not keep a visible parent row in [items].  Add an
+    // internal source for the three locking kits so a Triangle rule assigned
+    // to the kit itself still applies without adding a duplicate kit row.
+    final triangleSources = List<BomItem>.from(items);
+    void addExpandedKitTriangleSource(
+      String key, {
+      required bool active,
+      required int count,
+    }) {
+      final hasDirectRow = triangleSources.any(
+        (item) => item.overrideKey == key && item.isActive,
+      );
+      final hasExpandedKit = items.any(
+        (item) => item.kitGroupName == key && item.isActive,
+      );
+      if (!active || hasDirectRow || !hasExpandedKit) return;
+      triangleSources.add(
+        BomItem(
+          category: 'accessory',
+          originalName: key,
+          name: key,
+          quantity: math.max(1, count).toDouble() * window.quantity,
+          unit: 'حبة',
+          unitPrice: 0,
+          overrideKey: key,
+        ),
+      );
+    }
+
+    addExpandedKitTriangleSource(
+      'System OB',
+      active: isSystemObActive,
+      count: 1,
+    );
+    addExpandedKitTriangleSource(
+      'Demi System OB',
+      active: isDemiObActive,
+      count: 1,
+    );
+    addExpandedKitTriangleSource(
+      'Verrou Central',
+      active: isVerrouCentralActive,
+      count: doubleSashCount,
+    );
+
+    for (final accessory in triangleSources) {
+      if (accessory.category != 'accessory' ||
+          !accessory.isActive ||
+          accessory.quantity <= 0) {
+        continue;
+      }
+      final key = accessory.overrideKey ?? accessory.originalName;
+      final rule = triangleRuleForAccessory(key);
+      if (rule == null) continue;
+      final mode = '${rule['triangle_link_mode'] ?? 'none'}'.toLowerCase();
+      if (mode != 'required' &&
+          !(mode == 'optional' && window.useOptionalTriangle)) {
+        continue;
+      }
+      // The cremone row above has the exact drawing-run calculation.
+      if (_textHasAny(key, const ['كريمون', 'cremone', 'crémone'])) {
+        continue;
+      }
+
+      final bool sliding =
+          slidingSeriesId != null &&
+          accessory.sourceSeriesId == slidingSeriesId;
+      final triangleProfile = window
+          .getConfiguredSectionForRole('triangle', useSlidingSeries: sliding)
+          ?.toMap();
+      if (triangleProfile == null) continue;
+
+      final int multiplier = math
+          .max(1, triangleRuleNumber(rule, 'triangle_quantity').round())
+          .toInt();
+      final int baseAccessoryCount = math
+          .max(1, (accessory.quantity / math.max(1, window.quantity)).round())
+          .toInt();
+      final double deduction = math
+          .max(0.0, triangleRuleNumber(rule, 'triangle_deduction_mm'))
+          .toDouble();
+      final positionMode = '${rule['triangle_position_mode'] ?? 'center'}'
+          .toLowerCase();
+      final pieces = <double>[];
+      final cutPairs = <String>[];
+      final sourceRuns = triangleDrawingRuns.isEmpty
+          ? <Map<String, double>>[
+              {'height_mm': math.max(0.0, window.height.toDouble())},
+            ]
+          : triangleDrawingRuns;
+
+      for (var index = 0; index < baseAccessoryCount * multiplier; index++) {
+        final run = sourceRuns[index % sourceRuns.length];
+        final double total = math
+            .max(
+              0.0,
+              (run['height_mm'] ?? window.height.toDouble()) - deduction,
+            )
+            .toDouble();
+        final double first = positionMode == 'offset'
+            ? triangleRuleNumber(
+                rule,
+                'triangle_position_mm',
+              ).clamp(0.0, total).toDouble()
+            : total / 2.0;
+        final double second = math.max(0.0, total - first).toDouble();
+        pieces.addAll([first / 1000.0, second / 1000.0]);
+        cutPairs.add(
+          '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)}',
+        );
+      }
+      if (pieces.isEmpty) continue;
+
+      final uniqueKey =
+          '${accessory.catalogItemId ?? key}:${sliding ? 's' : 'o'}';
+      if (!triangleProfileKeys.add(uniqueKey)) continue;
+      triangleProfileRows.add(
+        createProfile(
+          'تراينغل - ${accessory.originalName}',
+          colorName,
+          pieces: pieces,
+          unit: 'قطاع',
+          overrideMap: triangleProfile,
+          preferOverrideMap: true,
+          selectorType: sliding ? 'triangle_sliding' : 'triangle',
+          roleKey: 'triangle',
+        ).copyWith(cuttingList: 'قطع القص: ${cutPairs.join(' ؛ ')} مم'),
+      );
+    }
+    items.addAll(triangleProfileRows);
+
+    // A catalogue accessory may require any other accessory, not only a
+    // strike or a screw. Expand that explicit relation once for every source
+    // row. Espagnolette strikes keep their dedicated simple/double drawing
+    // role above.
+    final linkedAccessoryRows = <BomItem>[];
+    for (final sourceItem in List<BomItem>.from(items)) {
+      final sourceRole = (sourceItem.roleKey ?? sourceItem.selectorType ?? '')
+          .trim()
+          .toLowerCase();
+      if (sourceItem.category != 'accessory' ||
+          sourceItem.roleKey == 'espagnolette' ||
+          const {
+            'kit',
+            'sliding_kit',
+            'sliding_kit_40000',
+            'sliding_kit_67000',
+            'clam',
+            'clamp',
+            'sliding_clamp',
+            'frame_clamp',
+            'sash_clamp',
+          }.contains(sourceRole)) {
+        continue;
+      }
+      final rawSource =
+          window.componentOverrides[sourceItem.overrideKey] ??
+          window.componentOverrides[sourceItem.originalName];
+      if (rawSource is! Map) continue;
+      final linked = rawSource['linked_accessory'];
+      if (linked is! Map || linked['id'] == null) continue;
+      final rawCount = rawSource['linked_accessory_count'];
+      final count = rawCount is num
+          ? rawCount.toInt()
+          : int.tryParse(rawCount?.toString() ?? '') ?? 0;
+      if (count <= 0 || sourceItem.quantity <= 0) continue;
+      final linkedId = linked['id'] is num
+          ? (linked['id'] as num).toInt()
+          : int.tryParse(linked['id'].toString());
+      if (linkedId == null) continue;
+      final linkedName =
+          'أكسسوار مرتبط: ${linked['name'] ?? 'Accessory $linkedId'}';
+      final linkedKey =
+          'linked-accessory:${sourceItem.catalogItemId}:$linkedId';
+      final relatedOverrides = Map<String, dynamic>.from(
+        window.componentOverrides,
+      )..[linkedKey] = Map<String, dynamic>.from(linked);
+      linkedAccessoryRows.add(
+        _createAccessory(
+          relatedOverrides,
+          linkedName,
+          qty: count * sourceItem.quantity.round(),
+          overrideKey: linkedKey,
+          catalogItemId: linkedId,
+          colorId: catalogueColorId(accessoryColorName, accessory: true),
+          selectorCategory: 'accessory',
+          selectorType: _selectorTypeForAccessory(
+            linked['name']?.toString() ?? '',
+          ),
+          roleKey: _roleKeyForAccessorySelector(
+            _selectorTypeForAccessory(linked['name']?.toString() ?? ''),
+          ),
+          sourceSeriesId: sourceItem.sourceSeriesId,
+          materialType: sourceItem.materialType,
+        ),
+      );
+    }
+    items.addAll(linkedAccessoryRows);
+
     // Do NOT filter out items that are not in the database (isMissing == true)
     // We want them to display in the table with a warning icon so the user can easily swap/map them
     for (int i = 0; i < items.length; i++) {
@@ -8432,7 +8952,11 @@ class ComponentCalculator {
     String? cuttingList,
     String unit = 'حبة',
   }) {
-    String lookupKey = originalName;
+    String lookupKey = overrideKey ?? originalName;
+    if (!overrides.containsKey(lookupKey) &&
+        overrides.containsKey(originalName)) {
+      lookupKey = originalName;
+    }
     if (!overrides.containsKey(lookupKey) &&
         lookupKey.startsWith('إسبانيوليت ') &&
         lookupKey.endsWith(' (Espagnolette)')) {

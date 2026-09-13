@@ -8235,6 +8235,59 @@ class _WindowViewState extends State<WindowView> {
                       : widget.model.toggleSeuil,
                 ),
 
+              if (widget.model.hasCaniveauSupport)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('تفعيل الكانيفو (Système C zéro)'),
+                  subtitle: Text(
+                    widget.model.frameRoleEnabledInAnyScope('seuil')
+                        ? 'غير متاح مع بروفيل C / Seuil'
+                        : 'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً',
+                  ),
+                  value: widget.model.useOptionalCaniveau,
+                  activeThumbColor: Colors.blue,
+                  onChanged:
+                      widget.model.frameRoleEnabledInAnyScope('seuil') ||
+                          !widget.model.canEnableCaniveau
+                      ? null
+                      : widget.model.toggleCaniveau,
+                ),
+
+              if (widget.model.hasBavetteSupport)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('البافيت (Bavette)'),
+                      const SizedBox(height: 4),
+                      ToggleButtons(
+                        isSelected: [0, 1, 2]
+                            .map(
+                              (mode) =>
+                                  widget.model.optionalBavetteMode == mode,
+                            )
+                            .toList(),
+                        onPressed: widget.model.setOptionalBavetteMode,
+                        children: const [
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text('إيقاف'),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text('أسفل فقط'),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text('الجهات الأربع'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
               if (widget.model.hasFrameRole('cache_dormant'))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -8244,12 +8297,31 @@ class _WindowViewState extends State<WindowView> {
                         ? 'مفعل حتميًا حسب قواعد السلسلة'
                         : 'يتبع فقط جهات الإطار الموجودة',
                   ),
-                  value: widget.model.frameRoleEnabledInAnyScope('cache_dormant'),
+                  value: widget.model.frameRoleEnabledInAnyScope(
+                    'cache_dormant',
+                  ),
                   activeThumbColor: Colors.blue,
                   onChanged:
                       widget.model.frameRoleRequiredInAllScopes('cache_dormant')
                       ? null
                       : widget.model.toggleCacheDormant,
+                ),
+
+              if (widget.model.hasOptionalTriangleLink &&
+                  (widget.model.getConfiguredSectionForRole('triangle') !=
+                          null ||
+                      widget.model.getConfiguredSectionForRole(
+                            'triangle',
+                            useSlidingSeries: true,
+                          ) !=
+                          null))
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('تراينغل (Triangle)'),
+                  subtitle: const Text('استعمال اختياري حسب ربط الأكسيسوار'),
+                  value: widget.model.useOptionalTriangle,
+                  activeThumbColor: Colors.blue,
+                  onChanged: widget.model.toggleOptionalTriangle,
                 ),
 
               if (widget.model.getConfiguredSectionForRole(
@@ -10760,6 +10832,88 @@ class _WindowViewState extends State<WindowView> {
           ],
         ),
       ),
+      actions: [
+        Padding(
+          padding: const EdgeInsetsDirectional.only(end: 14, start: 6),
+          child: Center(
+            child: Tooltip(
+              message: Localization.translate('فتح جدول الكمية والتكلفة', lang),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isDark
+                        ? const [Color(0xFF047857), Color(0xFF065F46)]
+                        : const [Color(0xFF10B981), Color(0xFF047857)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF065F46).withValues(alpha: 0.28),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _openMaterialConsumptionScreen(context),
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(
+                        11,
+                        7,
+                        13,
+                        7,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 25,
+                            height: 25,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: const Icon(
+                              Icons.receipt_long_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            Localization.translate('الكمية والتكلفة', lang),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.05,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.1,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 11,
+                            color: Colors.white70,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -10955,12 +11109,51 @@ class _WindowViewState extends State<WindowView> {
   void _showSplitDialog(BuildContext context, bool isHorizontal) {
     final zone = widget.model.selectedZone;
     if (zone == null) return;
+    final isSashTarget =
+        zone.content == ZoneContent.singleSash ||
+        zone.content == ZoneContent.doubleSash;
+    final selectedRight =
+        zone.content == ZoneContent.doubleSash &&
+        widget.model.activeSubZone?.startsWith('right') == true;
+    Rect measurementRect = zone.boundary;
+    if (zone.content == ZoneContent.doubleSash) {
+      final splitX =
+          zone.boundary.left + zone.boundary.width * zone.doubleSashRatio;
+      measurementRect = selectedRight
+          ? Rect.fromLTRB(
+              splitX + 2,
+              zone.boundary.top,
+              zone.boundary.right,
+              zone.boundary.bottom,
+            )
+          : Rect.fromLTRB(
+              zone.boundary.left,
+              zone.boundary.top,
+              splitX - 2,
+              zone.boundary.bottom,
+            );
+    }
+    if (isSashTarget) {
+      measurementRect = widget.model.getSafeGlassRect(
+        measurementRect,
+        zone.sashThickness ?? widget.model.profileThickness,
+      );
+    }
     final double totalNetSize = isHorizontal
-        ? zone.boundary.height - widget.model.profileThickness
-        : zone.boundary.width - widget.model.profileThickness;
+        ? measurementRect.height
+        : measurementRect.width;
+    final sashCount = widget.model.zones.fold<int>(0, (sum, candidate) {
+      return sum +
+          (candidate.content == ZoneContent.doubleSash
+              ? 2
+              : candidate.content == ZoneContent.singleSash
+              ? 1
+              : 0);
+    });
     int parts = 2;
     bool isEqualSplit = true;
     bool fromStart = true;
+    bool applyToAllSashes = false;
     TextEditingController part1Ctrl = TextEditingController();
     TextEditingController part2Ctrl = TextEditingController();
 
@@ -11043,6 +11236,39 @@ class _WindowViewState extends State<WindowView> {
                     Divider(
                       color: isDark ? Colors.white24 : Colors.grey.shade300,
                     ),
+                    if (isSashTarget && sashCount > 1) ...[
+                      RadioListTile<bool>(
+                        title: Text(
+                          Localization.translate(
+                            'تطبيق على الضلفة المحددة فقط',
+                            lang,
+                          ),
+                          style: TextStyle(color: textColor),
+                        ),
+                        value: false,
+                        groupValue: applyToAllSashes,
+                        onChanged: (value) =>
+                            setState(() => applyToAllSashes = value ?? false),
+                        activeColor: Colors.blue,
+                      ),
+                      RadioListTile<bool>(
+                        title: Text(
+                          Localization.translate(
+                            'تطبيق نفس التقسيم على كل الضلفات',
+                            lang,
+                          ),
+                          style: TextStyle(color: textColor),
+                        ),
+                        value: true,
+                        groupValue: applyToAllSashes,
+                        onChanged: (value) =>
+                            setState(() => applyToAllSashes = value ?? true),
+                        activeColor: Colors.blue,
+                      ),
+                      Divider(
+                        color: isDark ? Colors.white24 : Colors.grey.shade300,
+                      ),
+                    ],
                     if (isEqualSplit)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -11343,6 +11569,30 @@ class _WindowViewState extends State<WindowView> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                   onPressed: () {
+                    List<double>? customSizes;
+                    if (!isEqualSplit) {
+                      if (parts == 2) {
+                        customSizes = [
+                          double.tryParse(part1Ctrl.text) ?? (totalNetSize / 2),
+                        ];
+                      } else if (parts == 3) {
+                        customSizes = [
+                          double.tryParse(part1Ctrl.text) ?? (totalNetSize / 3),
+                          double.tryParse(part2Ctrl.text) ?? (totalNetSize / 3),
+                        ];
+                      }
+                    }
+                    if (isSashTarget) {
+                      widget.model.configureSelectedSashDivisions(
+                        horizontal: isHorizontal,
+                        parts: parts,
+                        customSizes: customSizes,
+                        fromStart: fromStart,
+                        applyToAllSashes: applyToAllSashes,
+                      );
+                      Navigator.pop(context);
+                      return;
+                    }
                     if (isEqualSplit) {
                       if (isHorizontal) {
                         widget.model.splitSelectedZoneHorizontal(parts: parts);
@@ -16053,22 +16303,6 @@ class AppWorkspacePainter extends CustomPainter {
       return overridden.isNotEmpty ? overridden : (section?.code ?? '').trim();
     }
 
-    bool frameIsSlidingOnly(Rect frame) {
-      final innerLeft = frame.left + frameThickness - 2.0;
-      final innerTop = frame.top + frameThickness - 2.0;
-      final innerRight = frame.right - frameThickness + 2.0;
-      final innerBottom = frame.bottom - frameThickness + 2.0;
-      final frameZones = model.zones.where((zone) {
-        final center = zone.boundary.center;
-        return center.dx >= innerLeft &&
-            center.dx <= innerRight &&
-            center.dy >= innerTop &&
-            center.dy <= innerBottom;
-      }).toList();
-      return frameZones.isNotEmpty &&
-          frameZones.every((zone) => zone.content == ZoneContent.slidingSash);
-    }
-
     String cutLabel(double value, String code) {
       final rounded = (math.max(0.0, value) * 10).round() / 10;
       final size = (rounded - rounded.round()).abs() < 0.001
@@ -16126,10 +16360,14 @@ class AppWorkspacePainter extends CustomPainter {
     // An integrated cover belongs to the frame profile itself.
     if (!hasIntegratedCover) {
       for (final frame in frameRects) {
+        final frameSectionForLabel = model.frameSectionForRect(frame);
         final effectiveFrameCode =
-            frameIsSlidingOnly(frame) && slidingFrameCode.isNotEmpty
-            ? slidingFrameCode
-            : frameCode;
+            (frameSectionForLabel?.code ?? '').trim().isNotEmpty
+            ? frameSectionForLabel!.code.trim()
+            : (model.frameUsesSlidingSeries(frame) &&
+                      slidingFrameCode.isNotEmpty
+                  ? slidingFrameCode
+                  : frameCode);
         final isOnlyFrame = frameRects.length == 1;
         final netHeight = model.hasShutter && !model.isCaissonTunnel
             ? model.height - model.shutterBoxHeight
@@ -16297,7 +16535,22 @@ class AppWorkspacePainter extends CustomPainter {
 
     canvas.save();
     if (vertical) {
-      final center = Offset(bounds.center.dx, bounds.center.dy);
+      // Keep the full label above the middle hardware band.  This is
+      // especially important for sliding leaves, which can have handles on
+      // both outer stiles at the vertical midpoint.
+      final halfLabelLength = painter.width / 2;
+      final minimumY = bounds.top + halfLabelLength + 4;
+      final maximumY = math.min(
+        bounds.bottom - halfLabelLength - 4,
+        bounds.top + (bounds.height * 0.44) - halfLabelLength,
+      );
+      if (minimumY > maximumY) {
+        canvas.restore();
+        return;
+      }
+      final preferredY = bounds.top + (bounds.height * 0.27);
+      final labelY = preferredY.clamp(minimumY, maximumY).toDouble();
+      final center = Offset(bounds.center.dx, labelY);
       canvas.translate(center.dx, center.dy);
       canvas.rotate(-math.pi / 2);
       painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));

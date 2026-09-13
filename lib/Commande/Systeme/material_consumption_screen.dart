@@ -3993,13 +3993,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (!isGroupActive && (isSystemOb || isDemiOb || isVerrouCentral)) {
         continue;
       }
-      final selectedKit = isShutterKit
+      dynamic selectedKit = isShutterKit
           ? widget.model.componentOverrides[kitItem.originalName]
           : null;
-      final selectedKitName =
-          selectedKit != null && selectedKit['catalog_source'] == 'KitBundles'
-          ? selectedKit['name']?.toString()
-          : null;
+      if (selectedKit == null && isShutterKit) {
+        final seriesMatch = RegExp(r'40\s*000|67\s*000').firstMatch(kitName);
+        final series = seriesMatch?.group(0)?.replaceAll(RegExp(r'\s'), '');
+        for (final entry in widget.model.componentOverrides.entries) {
+          final keyMatch = RegExp(r'40\s*000|67\s*000').firstMatch(entry.key);
+          if (series != null &&
+              keyMatch?.group(0)?.replaceAll(RegExp(r'\s'), '') == series) {
+            selectedKit = entry.value;
+            break;
+          }
+        }
+      }
+      final selectedKitName = selectedKit?['name']?.toString();
       // ---- بناء صف "رأس" المجموعة القابل للنقر لفتح/طي العناصر الفرعية ----
       widgets.add(
         InkWell(
@@ -4049,16 +4058,34 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         ),
                         const SizedBox(width: 4),
                         Expanded(
-                          child: Text(
-                            '📦 ${selectedKitName ?? kitName}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              color: isDark
-                                  ? Colors.purple.shade300
-                                  : Colors.deepPurple,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '📦 $kitName',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? Colors.purple.shade300
+                                      : Colors.deepPurple,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (selectedKitName != null &&
+                                  selectedKitName != kitName)
+                                Text(
+                                  selectedKitName,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isDark
+                                        ? Colors.grey.shade400
+                                        : Colors.grey.shade600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
                           ),
                         ),
                         if (isShutterKit &&
@@ -5461,13 +5488,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                             ),
                           )
                         // لغير عناصر الكيت: عرض الاسم الأصلي (الثانوي) إن اختلف عن الاسم المترجم
-                        else if (item.name != item.originalName) ...[
+                        else ...[
                           (() {
                             final parts = item.name.split('\n');
                             final namePart = parts[0];
                             final subparts = parts.length > 1
                                 ? parts.sublist(1)
-                                : <String>[];
+                                : <String>[
+                                    if (item.profileCode != null &&
+                                        item.profileCode!.trim().isNotEmpty &&
+                                        item.profileCode!.trim() != namePart)
+                                      item.profileCode!.trim(),
+                                  ];
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

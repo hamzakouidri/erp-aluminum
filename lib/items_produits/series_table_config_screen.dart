@@ -142,8 +142,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       key: 'cache_rainure',
       ar: 'Cache-rainure',
       fr: 'Cache-rainure',
-      descriptionAr: 'Cache-rainure',
-      descriptionFr: 'Cache de rainure propre à cette série',
+      descriptionAr:
+          'يُركّب تلقائياً من الداخل والخارج عند التقاء إطارين يقبلان غطاءً جانبياً منفصلاً.',
+      descriptionFr:
+          'Monté automatiquement intérieur et extérieur entre deux dormants compatibles avec un couvre-joint séparé.',
     ),
     _SeriesRole(
       key: 'cache_rail',
@@ -1212,7 +1214,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             alignment: AlignmentDirectional.centerStart,
             child: Text(_t(role.descriptionAr, role.descriptionFr)),
           ),
-          if (!role.required)
+          if (!role.required && role.key != 'cache_rainure')
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: Text(_t('استعمال حتمي', 'Utilisation obligatoire')),

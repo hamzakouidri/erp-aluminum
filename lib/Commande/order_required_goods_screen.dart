@@ -6,6 +6,7 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/widgets/section_image.dart';
@@ -70,16 +71,23 @@ String requiredGoodsDisplayName(BomItem item) => item.name
 String requiredGoodsAggregationKey(BomItem item, String category) {
   final usesOrderCutting = bomUsesOrderLevelCutting(item);
   final itemIdentifier =
-      item.catalogItemId != null && item.inventoryItemType != null
-      ? '${item.inventoryItemType}:${item.catalogItemId}'
+      item.catalogItemId != null
+      ? '${item.inventoryItemType ?? category}:${item.catalogItemId}'
       : (item.profileCode != null && item.profileCode!.isNotEmpty)
       ? 'CODE:${item.profileCode}'
       : usesOrderCutting
       ? 'CUT:${item.originalName}:${requiredGoodsDisplayName(item)}'
       : 'NAME:${item.name}';
+  // Accessory roles such as "window handle" are not a product identity.
+  // Keep the resolved catalogue name in the key so two different handles
+  // (Rotax, Frutto, …) never collapse into one stock row merely because they
+  // share the same functional role.
+  final accessoryName = category == 'accessory'
+      ? requiredGoodsDisplayName(item).toLowerCase()
+      : '';
   return '${category}___${itemIdentifier}___'
       '${item.colorId ?? item.colorName ?? ''}___${item.unit}___'
-      '${item.length ?? ''}___${item.glassHeight ?? ''}';
+      '${item.length ?? ''}___${item.glassHeight ?? ''}___$accessoryName';
 }
 
 /// A Kit is one configured bundle. Its contents can carry different colours,
@@ -1360,10 +1368,24 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       resolvedBom.add(item);
     }
 
-    // The series-configuration page is being redesigned.  Until the new
-    // table rules are defined, the quantity table must use its direct
-    // calculation without any configuration-page filter.
-    return resolvedBom;
+    // Required goods must consume exactly the same resolved BOM as the
+    // quantity/cost table. Resolving it a second time by product names was
+    // the source of ghost rows and missing real components.
+    try {
+      final engine = BomEngineV2(database: widget.db);
+      await engine.stabilizeSelections(window: model, items: resolvedBom);
+      return await engine.filterItemsByAvailableCandidates(
+        window: model,
+        items: resolvedBom,
+      );
+    } catch (error, stackTrace) {
+      // Never turn an order into an empty requirement list because a legacy
+      // catalogue rule is malformed. The direct BOM still represents every
+      // actual drawing component and remains the safe fallback.
+      debugPrint('Required-goods BOM resolution failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return resolvedBom;
+    }
   }
 
   Future<void> _loadAndAggregate() async {
@@ -1558,7 +1580,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           }
 
           final activeBomItems = bomItems
-              .where((bom) => bom.isActive && bom.purchaseQuantity > 0)
+              .where(
+                (bom) =>
+                    bom.isActive &&
+                    (bom.purchaseQuantity > 0 ||
+                        (bom.pieces?.any((piece) => piece > 0) ?? false)),
+              )
               .toList();
           if (activeBomItems.isEmpty) {
             if (model.zones.isEmpty &&
@@ -1608,6 +1635,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   final existingSubIndex = agg.kitSubItems.indexWhere(
                     (sub) =>
                         sub.originalName == bom.originalName &&
+                        requiredGoodsDisplayName(sub) ==
+                            requiredGoodsDisplayName(bom) &&
                         sub.unit == bom.unit &&
                         sub.colorId == bom.colorId &&
                         sub.catalogItemId == bom.catalogItemId &&

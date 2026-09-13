@@ -82,6 +82,67 @@ void main() {
     },
   );
 
+  test('sliding BOM uses one series kit for every pair of leaves', () {
+    final model = WindowModel(
+      db: FakeSqlDatabase(),
+      width: 2400,
+      height: 1200,
+      systemMode: 'sliding',
+    );
+    model.activeSlidingSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'TPR 40000',
+      type: 'sliding',
+    );
+    model.zones = [
+      WindowZone(
+        id: 'four-leaves',
+        content: ZoneContent.slidingSash,
+        boundary: const Rect.fromLTWH(0, 0, 2400, 1200),
+        slidingSashesCount: 4,
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, const {});
+    final kit = bom.firstWhere(
+      (item) => item.originalName == 'كيت 40000 (Kit 40000)',
+    );
+
+    expect(kit.quantity, 2);
+  });
+
+  test('sliding BOM counts a kit for each independent two-leaf frame', () {
+    final model = WindowModel(
+      db: FakeSqlDatabase(),
+      width: 3600,
+      height: 1200,
+      systemMode: 'sliding',
+    );
+    model.activeSlidingSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'TPR 67000',
+      type: 'sliding',
+    );
+    model.zones = List.generate(
+      3,
+      (index) => WindowZone(
+        id: 'frame-$index',
+        content: ZoneContent.slidingSash,
+        boundary: Rect.fromLTWH(index * 1200, 0, 1200, 1200),
+        slidingSashesCount: 2,
+      ),
+    );
+
+    final bom = ComponentCalculator.generateBom(model, const {});
+    final kit = bom.firstWhere(
+      (item) => item.originalName == 'كيت 67000 (Kit 67000)',
+    );
+
+    expect(kit.quantity, 3);
+  });
+
   test(
     'choosing a sliding leaf after drawing the frame promotes the frame',
     () {

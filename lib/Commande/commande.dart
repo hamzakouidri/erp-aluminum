@@ -670,168 +670,264 @@ class _CommandeState extends State<Commande> {
         controller: _scrollController,
         child: Column(
           children: [
-          // 🔍 Filters — shown only on Mobile
-          if (!(MediaQuery.of(context).size.width >= 900 || Platform.isWindows))
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              margin: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  width: 1,
-                  color: Theme.of(context).dividerColor,
+            // 🔍 Filters — shown only on Mobile
+            if (!(MediaQuery.of(context).size.width >= 900 ||
+                Platform.isWindows))
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                margin: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    width: 1,
+                    color: Theme.of(context).dividerColor,
+                  ),
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.filter_alt_outlined, color: Colors.blue),
-                      const SizedBox(width: 10),
-                      Text(
-                        Localization.translate(
-                          "Filters Commandes",
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.filter_alt_outlined,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          Localization.translate(
+                            "Filters Commandes",
+                            Provider.of<AppSettingsProvider>(context).language,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      onChanged: (val) {
+                        setState(() {
+                          _searchQuery = val;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: Localization.translate(
+                          "Search",
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        prefixIcon: const Icon(Icons.search),
+                        border: const OutlineInputBorder(),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: Localization.translate(
-                        "Search",
-                        Provider.of<AppSettingsProvider>(context).language,
-                      ),
-                      prefixIcon: const Icon(Icons.search),
-                      border: const OutlineInputBorder(),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _data,
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    _cachedCommandes = snapshot.data;
-                  }
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                ),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _data,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      _cachedCommandes = snapshot.data;
+                    }
 
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      _cachedCommandes == null) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError && _cachedCommandes == null) {
-                    // 🟢 التصميم التفاعلي لحالة الخطأ (بدون أكواد SQL مرعبة)
-                    return Center(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20.0),
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _cachedCommandes == null) {
+                      return const Center(child: CircularProgressIndicator());
+                    } else if (snapshot.hasError && _cachedCommandes == null) {
+                      // 🟢 التصميم التفاعلي لحالة الخطأ (بدون أكواد SQL مرعبة)
+                      return Center(
+                        child: SingleChildScrollView(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(25),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 70,
+                                    color: Colors.red.shade400,
+                                  ),
+                                ),
+                                const SizedBox(height: 25),
+                                Text(
+                                  'عذراً، حدث خطأ غير متوقع!',
+                                  style: TextStyle(
+                                    color: Colors.red.shade800,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 15),
+                                Container(
+                                  padding: const EdgeInsets.all(15),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color: Colors.red.shade200,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    // 🟢 الرسالة المفهومة للمستخدم بدلاً من snapshot.error
+                                    'تعذر تحميل البيانات حالياً. يرجى التأكد من استقرار النظام أو تحديث الصفحة للمحاولة مرة أخرى.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.red.shade700,
+                                      fontSize: 15,
+                                      height: 1.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                ExpansionTile(
+                                  title: const Text('تفاصيل الخطأ / Détails'),
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: SelectableText(
+                                        snapshot.error.toString(),
+                                        textDirection: TextDirection.ltr,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 30),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: Colors.red.shade600,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 30,
+                                      vertical: 12,
+                                    ),
+                                    elevation: 0,
+                                    side: BorderSide(
+                                      color: Colors.red.shade200,
+                                      width: 1.5,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _data = db.readCommandesWithClients();
+                                    });
+                                  },
+                                  icon: const Icon(
+                                    Icons.refresh_rounded,
+                                    size: 22,
+                                  ),
+                                  label: const Text(
+                                    'تحديث الصفحة',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final rawData = snapshot.hasData
+                        ? snapshot.data!
+                        : (_cachedCommandes ?? <Map<String, dynamic>>[]);
+
+                    // 🟢 التصميم التفاعلي لحالة عدم وجود طلبات
+                    if (rawData.isEmpty) {
+                      return Center(
+                        child: SingleChildScrollView(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(25),
+                                padding: const EdgeInsets.all(30),
                                 decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.1),
+                                  color: Colors.blue.withValues(alpha: 0.1),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
-                                  Icons.warning_amber_rounded,
-                                  size: 70,
-                                  color: Colors.red.shade400,
+                                  Icons.receipt_long_outlined,
+                                  size: 80,
+                                  color: Colors.blue.shade400,
                                 ),
                               ),
                               const SizedBox(height: 25),
                               Text(
-                                'عذراً، حدث خطأ غير متوقع!',
+                                Localization.translate(
+                                  "No Data",
+                                  Provider.of<AppSettingsProvider>(
+                                    context,
+                                  ).language,
+                                ),
                                 style: TextStyle(
-                                  color: Colors.red.shade800,
+                                  color: Colors.blueGrey.shade800,
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(height: 15),
-                              Container(
-                                padding: const EdgeInsets.all(15),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.shade50,
-                                  borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(
-                                    color: Colors.red.shade200,
-                                  ),
+                              const SizedBox(height: 10),
+                              Text(
+                                _t(
+                                  'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
                                 ),
-                                child: Text(
-                                  // 🟢 الرسالة المفهومة للمستخدم بدلاً من snapshot.error
-                                  'تعذر تحميل البيانات حالياً. يرجى التأكد من استقرار النظام أو تحديث الصفحة للمحاولة مرة أخرى.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.red.shade700,
-                                    fontSize: 15,
-                                    height: 1.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 15,
+                                  height: 1.5,
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              ExpansionTile(
-                                title: const Text('تفاصيل الخطأ / Détails'),
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: SelectableText(
-                                      snapshot.error.toString(),
-                                      textDirection: TextDirection.ltr,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 30),
+                              const SizedBox(height: 35),
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: Colors.red.shade600,
+                                  backgroundColor: Colors.blue.shade600,
+                                  foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 30,
-                                    vertical: 12,
+                                    vertical: 15,
                                   ),
-                                  elevation: 0,
-                                  side: BorderSide(
-                                    color: Colors.red.shade200,
-                                    width: 1.5,
+                                  elevation: 4,
+                                  shadowColor: Colors.blue.withValues(
+                                    alpha: 0.4,
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
                                   ),
                                 ),
                                 onPressed: () {
-                                  setState(() {
-                                    _data = db.readCommandesWithClients();
-                                  });
+                                  openOrderInWorkspaceTab(
+                                    context,
+                                    db: db,
+                                    onSaved: _fetchCommandes,
+                                  );
                                 },
                                 icon: const Icon(
-                                  Icons.refresh_rounded,
-                                  size: 22,
+                                  Icons.add_circle_outline,
+                                  size: 24,
                                 ),
-                                label: const Text(
-                                  'تحديث الصفحة',
+                                label: Text(
+                                  _t('إنشاء طلبية جديدة'),
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -841,362 +937,284 @@ class _CommandeState extends State<Commande> {
                             ],
                           ),
                         ),
-                      ),
-                    );
-                  }
+                      );
+                    }
+                    final data = rawData.where((d) {
+                      final query = _searchQuery.toLowerCase().trim();
+                      if (query.isEmpty) return true;
+                      final first = (d['firstname'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final last = (d['lastname'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final phone = (d['phone'] ?? '').toString().toLowerCase();
+                      final full = '$first $last $phone';
+                      return query
+                          .split(' ')
+                          .every((term) => full.contains(term));
+                    }).toList();
 
-                  final rawData = snapshot.hasData
-                      ? snapshot.data!
-                      : (_cachedCommandes ?? <Map<String, dynamic>>[]);
+                    if (data.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'لا توجد نتائج مطابقة للبحث',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      );
+                    }
 
-                  // 🟢 التصميم التفاعلي لحالة عدم وجود طلبات
-                  if (rawData.isEmpty) {
-                    return Center(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(30),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.receipt_long_outlined,
-                                size: 80,
-                                color: Colors.blue.shade400,
+                    if (MediaQuery.of(context).size.width >= 900 ||
+                        Platform.isWindows) {
+                      return _buildDesktopOrdersTableView(
+                        context,
+                        rawData,
+                        lang,
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: _scrollController,
+                      primary: false,
+                      itemCount: data.length,
+                      itemBuilder: (context, index) {
+                        final clientFirst = data[index]['firstname'] ?? '';
+                        final clientLast = data[index]['lastname'] ?? '';
+
+                        final clientPhone = data[index]['phone'];
+                        final bool hasPhone =
+                            clientPhone != null &&
+                            clientPhone.toString().trim().isNotEmpty &&
+                            clientPhone.toString() != 'null';
+
+                        final clientName = '$clientFirst $clientLast'.trim();
+                        final clientDisplay = clientName.isEmpty
+                            ? 'زبون غير معروف'
+                            : clientName;
+
+                        final netPayable =
+                            (data[index]['net_payable'] as num?)?.toDouble() ??
+                            0.0;
+                        final rawTotal =
+                            (data[index]['total'] as num?)?.toDouble() ?? 0.0;
+                        final total = netPayable > 0.0 ? netPayable : rawTotal;
+                        final status = data[index]['status'] ?? 'New';
+                        final isWindows = Platform.isWindows;
+
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(15),
+                            leading: CircleAvatar(
+                              radius: 25,
+                              backgroundColor: Colors.blue.shade100,
+                              child: const Icon(
+                                Icons.receipt_long,
+                                color: Colors.blue,
                               ),
                             ),
-                            const SizedBox(height: 25),
-                            Text(
-                              Localization.translate(
-                                "No Data",
-                                Provider.of<AppSettingsProvider>(
-                                  context,
-                                ).language,
-                              ),
-                              style: TextStyle(
-                                color: Colors.blueGrey.shade800,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _t(
-                                'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
-                              ),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 15,
-                                height: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 35),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue.shade600,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 30,
-                                  vertical: 15,
-                                ),
-                                elevation: 4,
-                                shadowColor: Colors.blue.withValues(alpha: 0.4),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                              ),
-                              onPressed: () {
-                                openOrderInWorkspaceTab(
-                                  context,
-                                  db: db,
-                                  onSaved: _fetchCommandes,
-                                );
-                              },
-                              icon: const Icon(
-                                Icons.add_circle_outline,
-                                size: 24,
-                              ),
-                              label: Text(
-                                _t('إنشاء طلبية جديدة'),
+                            title: RichText(
+                              text: TextSpan(
                                 style: TextStyle(
-                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                  final data = rawData.where((d) {
-                    final query = _searchQuery.toLowerCase().trim();
-                    if (query.isEmpty) return true;
-                    final first = (d['firstname'] ?? '')
-                        .toString()
-                        .toLowerCase();
-                    final last = (d['lastname'] ?? '').toString().toLowerCase();
-                    final phone = (d['phone'] ?? '').toString().toLowerCase();
-                    final full = '$first $last $phone';
-                    return query
-                        .split(' ')
-                        .every((term) => full.contains(term));
-                  }).toList();
-
-                  if (data.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'لا توجد نتائج مطابقة للبحث',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    );
-                  }
-
-                  if (MediaQuery.of(context).size.width >= 900 ||
-                      Platform.isWindows) {
-                    return _buildDesktopOrdersTableView(context, rawData, lang);
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollController,
-                    primary: false,
-                    itemCount: data.length,
-                    itemBuilder: (context, index) {
-                      final clientFirst = data[index]['firstname'] ?? '';
-                      final clientLast = data[index]['lastname'] ?? '';
-
-                      final clientPhone = data[index]['phone'];
-                      final bool hasPhone =
-                          clientPhone != null &&
-                          clientPhone.toString().trim().isNotEmpty &&
-                          clientPhone.toString() != 'null';
-
-                      final clientName = '$clientFirst $clientLast'.trim();
-                      final clientDisplay = clientName.isEmpty
-                          ? 'زبون غير معروف'
-                          : clientName;
-
-                      final netPayable =
-                          (data[index]['net_payable'] as num?)?.toDouble() ??
-                          0.0;
-                      final rawTotal =
-                          (data[index]['total'] as num?)?.toDouble() ?? 0.0;
-                      final total = netPayable > 0.0 ? netPayable : rawTotal;
-                      final status = data[index]['status'] ?? 'New';
-                      final isWindows = Platform.isWindows;
-
-                      return Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 2,
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.all(15),
-                          leading: CircleAvatar(
-                            radius: 25,
-                            backgroundColor: Colors.blue.shade100,
-                            child: const Icon(
-                              Icons.receipt_long,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          title: RichText(
-                            text: TextSpan(
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodyLarge?.color,
-                              ),
-                              children: [
-                                highlightText(clientDisplay, _searchQuery),
-                              ],
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 5),
-                              Text(
-                                formatDate(data[index]),
-                                style: TextStyle(
+                                  fontSize: 16,
                                   color: Theme.of(
                                     context,
-                                  ).textTheme.bodySmall?.color,
+                                  ).textTheme.bodyLarge?.color,
                                 ),
+                                children: [
+                                  highlightText(clientDisplay, _searchQuery),
+                                ],
                               ),
-                              if (hasPhone)
-                                RichText(
-                                  text: TextSpan(
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.color,
-                                      fontSize: 14,
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 5),
+                                Text(
+                                  formatDate(data[index]),
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall?.color,
+                                  ),
+                                ),
+                                if (hasPhone)
+                                  RichText(
+                                    text: TextSpan(
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.color,
+                                        fontSize: 14,
+                                      ),
+                                      children: [
+                                        highlightText(
+                                          clientPhone.toString(),
+                                          _searchQuery,
+                                        ),
+                                      ],
                                     ),
+                                  ),
+                                if (data[index]['project_name'] != null &&
+                                    data[index]['project_name']
+                                        .toString()
+                                        .isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
                                     children: [
-                                      highlightText(
-                                        clientPhone.toString(),
-                                        _searchQuery,
+                                      Flexible(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade50,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.folder,
+                                                size: 12,
+                                                color: Colors.blue.shade700,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Flexible(
+                                                child: Text(
+                                                  data[index]['project_name']
+                                                      .toString(),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                  style: TextStyle(
+                                                    color: Colors.blue.shade800,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
-                                ),
-                              if (data[index]['project_name'] != null &&
-                                  data[index]['project_name']
-                                      .toString()
-                                      .isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Container(
+                                ],
+                                // On Windows, keep the order group and status
+                                // independent. ListTile's trailing area can make
+                                // the central content too narrow on desktop.
+                                if (isWindows) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 6,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        '${total.toStringAsFixed(2)} دج',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      Container(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 8,
-                                          vertical: 2,
+                                          vertical: 3,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: Colors.blue.shade50,
+                                          color: _getStatusColor(status),
                                           borderRadius: BorderRadius.circular(
-                                            6,
+                                            20,
                                           ),
                                         ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.folder,
-                                              size: 12,
-                                              color: Colors.blue.shade700,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Flexible(
-                                              child: Text(
-                                                data[index]['project_name']
-                                                    .toString(),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                                style: TextStyle(
-                                                  color: Colors.blue.shade800,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
+                                        child: Text(
+                                          _translateStatus(
+                                            status,
+                                            Provider.of<AppSettingsProvider>(
+                                              context,
+                                              listen: false,
+                                            ).language,
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
+                                    ],
+                                  ),
+                                ],
                               ],
-                              // On Windows, keep the order group and status
-                              // independent. ListTile's trailing area can make
-                              // the central content too narrow on desktop.
-                              if (isWindows) ...[
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 10,
-                                  runSpacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${total.toStringAsFixed(2)} دج',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _getStatusColor(status),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        _translateStatus(
-                                          status,
-                                          Provider.of<AppSettingsProvider>(
-                                            context,
-                                            listen: false,
-                                          ).language,
-                                        ),
+                            ),
+                            trailing: isWindows
+                                ? null
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '${total.toStringAsFixed(2)} دج',
                                         style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                          fontSize: 16,
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
+                                      const SizedBox(height: 5),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _getStatusColor(status),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _translateStatus(
+                                            status,
+                                            Provider.of<AppSettingsProvider>(
+                                              context,
+                                              listen: false,
+                                            ).language,
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                            onTap: settings.canViewOrderDetails()
+                                ? () {
+                                    _showOrderOptions(context, data[index]);
+                                  }
+                                : null,
                           ),
-                          trailing: isWindows
-                              ? null
-                              : Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${total.toStringAsFixed(2)} دج',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 5),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _getStatusColor(status),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        _translateStatus(
-                                          status,
-                                          Provider.of<AppSettingsProvider>(
-                                            context,
-                                            listen: false,
-                                          ).language,
-                                        ),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                          onTap: settings.canViewOrderDetails()
-                              ? () {
-                                  _showOrderOptions(context, data[index]);
-                                }
-                              : null,
-                        ),
-                      );
-                    },
-                  );
-                },
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
-          ),
           ],
         ),
       ),
@@ -3307,7 +3325,7 @@ class _CommandeState extends State<Commande> {
         final model = WindowModel(db: db);
         await applyWindowModelAndLoadCatalog(model, modelMap);
         applyStoredOrderDetailColorToWindowModel(model, item);
-        final generatedPath = await saveWindowImageToDisk(model, maxSide: 600);
+        final generatedPath = await saveWindowImageToDisk(model, maxSide: 1800);
         if (generatedPath.isEmpty) return;
         item['drawing_image_path'] = generatedPath;
         final detailId = (item['id'] as num?)?.toInt();

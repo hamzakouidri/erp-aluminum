@@ -220,6 +220,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'hinge',
     'tasso',
     'ekar',
+    'alignment_square',
     'roulette',
     'entrematique',
   };
@@ -321,6 +322,13 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
       tLower.contains('ايكار')) {
     return const ['ekar'];
   }
+  if (tLower == 'alignment_square' ||
+      tLower.contains('alignement') ||
+      tLower.contains('alignment') ||
+      tLower.contains('دالينمو') ||
+      tLower.contains('دالينيمو')) {
+    return const ['alignment_square'];
+  }
   if (tLower == 'roulette' || tLower.contains('عجلات')) {
     return const ['roulette'];
   }
@@ -338,9 +346,6 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
   // series. A series-specific rule still has priority because
   // getCatalogItemRules suppresses the global row for that item/series.
   const globallyShareableRoles = {
-    'clam',
-    'clamp',
-    'frame_clamp', 'sash_clamp', 'frame_clamp_support', 'sash_clamp_support',
     'kit_screw',
     'box_screw',
     'motor_screw',
@@ -352,13 +357,11 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
     'assembly_screw',
     'installation_screw',
     'accessory_screw',
-    'sliding_kit',
     'gache_simple',
     'gache_double',
     'gache_door',
     'lock_clef',
     'lock_condamnation',
-    'sliding_clamp',
     'sliding_lock',
     'verrou',
     'cremone',
@@ -370,7 +373,6 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
     'handle',
     'hinge',
     'tasso',
-    'ekar',
     'roulette',
     'entrematique',
     'other',
@@ -812,9 +814,11 @@ class CatalogCandidateResolver {
   ) async {
     // An explicit profile role is authoritative: product names can contain
     // both "central" and "lateral" and must not broaden the requested role.
-    final roleKeys = (query.roleKeys.isNotEmpty
-        ? query.roleKeys
-        : seriesRoleKeysForProfileSelectorType(query.selectorType)).toList();
+    final roleKeys =
+        (query.roleKeys.isNotEmpty
+                ? query.roleKeys
+                : seriesRoleKeysForProfileSelectorType(query.selectorType))
+            .toList();
     if (roleKeys.contains('reducer')) {
       roleKeys.add('Réducteur');
       roleKeys.add('Reducteur');
@@ -866,13 +870,15 @@ class CatalogCandidateResolver {
           final sectionName = (section['name'] ?? '').toString().toLowerCase();
           final sectionType = (section['type'] ?? '').toString().toLowerCase();
           final selectingSlidingMontant = roleKeys.any(
-            (role) => role == 'sash_central' ||
+            (role) =>
+                role == 'sash_central' ||
                 role == 'central' ||
                 role == 'sash_lateral' ||
                 role == 'lateral' ||
                 role == 'chicane',
           );
-          final isOpeningSash = sectionName.contains('ouvrant') ||
+          final isOpeningSash =
+              sectionName.contains('ouvrant') ||
               sectionName.contains('opening') ||
               sectionType.contains('ouvrant') ||
               sectionType.contains('opening');
@@ -961,6 +967,15 @@ class CatalogCandidateResolver {
       itemTable: table,
       seriesId: query.seriesId,
     );
+    if (table == 'Accessories' &&
+        query.seriesId != null &&
+        roleKeys.any(
+          const {'assembly_screw', 'installation_screw'}.contains,
+        )) {
+      rules.addAll(
+        await _db.getAssignedAccessoryScrewRuleFallbacks(query.seriesId!),
+      );
+    }
     final surfaceRules = rules
         .where((rule) => _ruleVisibleOnSurface(rule, query))
         .toList();
@@ -996,7 +1011,23 @@ class CatalogCandidateResolver {
       if (row == null) continue;
       final ruleRole = (rule['role_key'] ?? '').toString().trim();
       final roleMatches = roleKeys.contains(ruleRole);
-      if (roleMatches && _catalogRuleRowMatchesMaterial(row, query)) {
+      final explicitSeriesRule =
+          query.seriesId != null &&
+          rule['series_id']?.toString() == query.seriesId.toString();
+      // A configured global rule for a deliberately shareable role is also
+      // authoritative. Legacy Accessory rows often still carry the ID of the
+      // first series where they were created (commonly a sliding series); that
+      // metadata must not hide an assembly screw from an opening series after
+      // the administrator enabled it as a shared catalogue rule.
+      final authoritativeSharedRule =
+          rule['series_id'] == null &&
+          catalogRuleAllowsGlobalFallback(ruleRole);
+      if (roleMatches &&
+          _catalogRuleRowMatchesMaterial(
+            row,
+            query,
+            explicitSeriesRule: explicitSeriesRule || authoritativeSharedRule,
+          )) {
         seen.add(itemId);
         result.add({...row, 'catalog_rule': Map<String, dynamic>.from(rule)});
       }
@@ -1063,6 +1094,14 @@ class CatalogCandidateResolver {
     AccessoryDrawingMode? drawingMode,
   ) {
     if (drawingMode == null) return true;
+    // Assembly screws are physical corner hardware, not sash-opening
+    // hardware. Older rules were often saved with `sliding` because the first
+    // series configured was a sliding ATP series; that scope must not make the
+    // same enabled screw disappear from an opening-series BOM.
+    if ((rule['role_key'] ?? '').toString().trim().toLowerCase() ==
+        'assembly_screw') {
+      return true;
+    }
     final scope = (rule['usage_scope'] ?? 'global')
         .toString()
         .trim()
@@ -1079,8 +1118,9 @@ class CatalogCandidateResolver {
 
   bool _catalogRuleRowMatchesMaterial(
     Map<String, dynamic> row,
-    CatalogCandidateQuery query,
-  ) {
+    CatalogCandidateQuery query, {
+    bool explicitSeriesRule = false,
+  }) {
     if (query.category == 'joint') return true;
     final assignedSeries = '${row['series_ids'] ?? ''}'
         .split(',')
@@ -1090,7 +1130,9 @@ class CatalogCandidateResolver {
     final singleSeries = _catalogInt(row['series_id']);
     if (singleSeries != null && singleSeries > 0)
       assignedSeries.add(singleSeries);
-    if (assignedSeries.isNotEmpty && !assignedSeries.contains(query.seriesId)) {
+    if (!explicitSeriesRule &&
+        assignedSeries.isNotEmpty &&
+        !assignedSeries.contains(query.seriesId)) {
       return false;
     }
     final requested = (query.materialType ?? '').toLowerCase().trim();

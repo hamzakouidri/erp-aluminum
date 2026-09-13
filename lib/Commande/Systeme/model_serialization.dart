@@ -523,6 +523,9 @@ extension WindowModelSerialization on WindowModel {
       'hasBottomFrame': hasBottomFrame,
       'useOptionalSeuil': useOptionalSeuil,
       'useOptionalCacheDormant': useOptionalCacheDormant,
+      'useOptionalTriangle': useOptionalTriangle,
+      'useOptionalCaniveau': useOptionalCaniveau,
+      'optionalBavetteMode': optionalBavetteMode,
       'cacheRailLeftCount': cacheRailLeftCount,
       'cacheRailRightCount': cacheRailRightCount,
       'hasFramePlintheBottom': hasFramePlintheBottom,
@@ -639,6 +642,11 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.hasBottomFrame = map['hasBottomFrame'] ?? true;
   model.useOptionalSeuil = map['useOptionalSeuil'] == true;
   model.useOptionalCacheDormant = map['useOptionalCacheDormant'] == true;
+  model.useOptionalTriangle = map['useOptionalTriangle'] == true;
+  model.useOptionalCaniveau = map['useOptionalCaniveau'] == true;
+  model.optionalBavetteMode =
+      (map['optionalBavetteMode'] as num?)?.toInt() ??
+      (map['useOptionalBavette'] == true ? 1 : 0);
   model.cacheRailLeftCount = (map['cacheRailLeftCount'] as num?)?.toInt() ?? 0;
   model.cacheRailRightCount =
       (map['cacheRailRightCount'] as num?)?.toInt() ?? 0;

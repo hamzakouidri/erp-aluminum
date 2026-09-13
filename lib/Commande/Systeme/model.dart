@@ -354,6 +354,30 @@ class FrameEdgeSegment {
   double get length => math.max(0.0, end - start);
 }
 
+/// One meeting line between two physical frames that needs a Cache-rainure.
+/// The profile is fitted once on the inside and once on the outside.
+class FrameCacheRainureContact {
+  final Rect firstFrame;
+  final Rect secondFrame;
+  final bool isVertical;
+  final double coordinate;
+  final double start;
+  final double end;
+  final bool useSlidingSeries;
+
+  const FrameCacheRainureContact({
+    required this.firstFrame,
+    required this.secondFrame,
+    required this.isVertical,
+    required this.coordinate,
+    required this.start,
+    required this.end,
+    required this.useSlidingSeries,
+  });
+
+  double get length => math.max(0.0, end - start);
+}
+
 class AluminumSection {
   final int id;
   final int seriesId;
@@ -2002,6 +2026,20 @@ bool slidingFrameRoleAllowedForDrawing(
       label.contains('sunset') ||
       label.contains('sontara') ||
       label.contains('suntara'));
+}
+
+bool catalogEspagnoletteRuleMatches(
+  Map<String, dynamic> rule, {
+  required double effectiveHeightMm,
+}) {
+  double? number(dynamic value) => value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString().replaceAll(',', '.') ?? '');
+  final min = number(rule['min_height_mm']);
+  final max = number(rule['max_height_mm']);
+  if (min != null && effectiveHeightMm < min) return false;
+  if (max != null && effectiveHeightMm > max) return false;
+  return true;
 }
 
 class WindowModel extends ChangeNotifier {
@@ -4390,6 +4428,11 @@ class WindowModel extends ChangeNotifier {
   bool hasBottomFrame = true;
   bool useOptionalSeuil = false;
   bool useOptionalCacheDormant = false;
+  bool useOptionalTriangle = false;
+  bool useOptionalCaniveau = false;
+
+  /// Bavette mode: 0 disabled, 1 bottom only, 2 all four directions.
+  int optionalBavetteMode = 0;
   int cacheRailLeftCount = 0;
   int cacheRailRightCount = 0;
   bool hasFramePlintheBottom = false;
@@ -14067,6 +14110,130 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Applies a regular/custom division pattern inside sash glass without
+  /// replacing the sash with new outer-frame zones.
+  void configureSelectedSashDivisions({
+    required bool horizontal,
+    int parts = 2,
+    List<double>? customSizes,
+    bool fromStart = true,
+    bool applyToAllSashes = false,
+  }) {
+    final selected = selectedZone;
+    if (selected == null ||
+        (selected.content != ZoneContent.singleSash &&
+            selected.content != ZoneContent.doubleSash)) {
+      return;
+    }
+    _saveSnapshot();
+
+    final targets = <(WindowZone, bool, Rect)>[];
+    void addZoneSashes(WindowZone zone, {bool allSides = true}) {
+      if (zone.content == ZoneContent.singleSash) {
+        targets.add((zone, false, zone.boundary));
+        return;
+      }
+      if (zone.content != ZoneContent.doubleSash) return;
+      final splitX =
+          zone.boundary.left + zone.boundary.width * zone.doubleSashRatio;
+      const gap = 4.0;
+      final left = Rect.fromLTRB(
+        zone.boundary.left,
+        zone.boundary.top,
+        splitX - gap / 2,
+        zone.boundary.bottom,
+      );
+      final right = Rect.fromLTRB(
+        splitX + gap / 2,
+        zone.boundary.top,
+        zone.boundary.right,
+        zone.boundary.bottom,
+      );
+      if (allSides) {
+        targets.add((zone, false, left));
+        targets.add((zone, true, right));
+      } else {
+        final selectedRight = activeSubZone?.startsWith('right') == true;
+        targets.add((zone, selectedRight, selectedRight ? right : left));
+      }
+    }
+
+    if (applyToAllSashes) {
+      for (final zone in zones) {
+        addZoneSashes(zone);
+      }
+    } else {
+      addZoneSashes(selected, allSides: false);
+    }
+
+    List<double> positionsFor(Rect sashRect, WindowZone zone) {
+      final sashThickness =
+          zone.sashThickness ??
+          getSectionThickness('sash', fallback: profileThickness);
+      final glass = getSafeGlassRect(sashRect, sashThickness);
+      final extent = horizontal ? glass.height : glass.width;
+      if (extent <= 0 || parts < 2) return const [];
+      if (customSizes == null || customSizes.isEmpty) {
+        return List.generate(parts - 1, (index) => (index + 1) / parts);
+      }
+      if (parts == 2) {
+        final size = customSizes.first.clamp(0.0, extent);
+        final ratio = fromStart ? size / extent : 1.0 - (size / extent);
+        return [ratio.clamp(0.01, 0.99)];
+      }
+      if (parts == 3 && customSizes.length >= 2) {
+        final first = (customSizes[0] / extent).clamp(0.01, 0.98);
+        final second = (1.0 - customSizes[1] / extent).clamp(0.02, 0.99);
+        if (second <= first) return const [];
+        return [first, second];
+      }
+      return const [];
+    }
+
+    for (final target in targets) {
+      final zone = target.$1;
+      final isRight = target.$2;
+      final positions = positionsFor(target.$3, zone);
+      if (positions.isEmpty) continue;
+      if (horizontal) {
+        if (isRight) {
+          zone.rightInnerHPositions = positions;
+          zone.rightInnerH = positions.length;
+          zone.rightPrimaryDivisionAxis ??= 'h';
+          zone.disabledHorizontalDivisions = Map<String, bool>.from(
+            zone.disabledHorizontalDivisions,
+          )..removeWhere((key, _) => key.startsWith('right_'));
+        } else {
+          zone.innerHPositions = positions;
+          zone.innerH = positions.length;
+          zone.primaryDivisionAxis ??= 'h';
+          zone.disabledHorizontalDivisions = Map<String, bool>.from(
+            zone.disabledHorizontalDivisions,
+          )..removeWhere((key, _) => !key.startsWith('right_'));
+        }
+      } else {
+        if (isRight) {
+          zone.rightInnerVPositions = positions;
+          zone.rightInnerV = positions.length;
+          zone.rightPrimaryDivisionAxis ??= 'v';
+          zone.disabledVerticalDivisions = Map<String, bool>.from(
+            zone.disabledVerticalDivisions,
+          )..removeWhere((key, _) => key.startsWith('right_'));
+        } else {
+          zone.innerVPositions = positions;
+          zone.innerV = positions.length;
+          zone.primaryDivisionAxis ??= 'v';
+          zone.disabledVerticalDivisions = Map<String, bool>.from(
+            zone.disabledVerticalDivisions,
+          )..removeWhere((key, _) => !key.startsWith('right_'));
+        }
+      }
+    }
+    selection = SelectionInfo(type: SelectionType.zone, zoneId: selected.id);
+    showZoneMenu = false;
+    notifyListeners();
+  }
+
   void splitSelectedZoneVertical({
     int parts = 2,
     List<double>? customSizes,
@@ -14252,22 +14419,59 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool usesFrameRole(String role, {required bool sliding}) {
-    if (getConfiguredSectionForRole(role, useSlidingSeries: sliding) == null) return false;
+    if (getConfiguredSectionForRole(role, useSlidingSeries: sliding) == null)
+      return false;
     if (isConfiguredRoleRequired(role, useSlidingSeries: sliding)) return true;
-    return role == 'seuil' ? useOptionalSeuil
-        : role == 'cache_dormant' ? useOptionalCacheDormant
-        : role == 'cache_rail' && (cacheRailLeftCount > 0 || cacheRailRightCount > 0);
+    return role == 'seuil'
+        ? useOptionalSeuil
+        : role == 'cache_dormant'
+        ? useOptionalCacheDormant
+        // Cache-rainure is never a drawing option: assigning it to a series
+        // means it is always installed at a compatible frame-to-frame joint.
+        : role == 'cache_rainure'
+        ? true
+        : role == 'cache_rail' &&
+              (cacheRailLeftCount > 0 || cacheRailRightCount > 0);
   }
 
   bool hasFrameRole(String role) =>
       getConfiguredSectionForRole(role, useSlidingSeries: false) != null ||
       getConfiguredSectionForRole(role, useSlidingSeries: true) != null;
 
+  bool supportsCaniveauForScope(bool sliding) =>
+      getConfiguredSectionForRole('caniveau', useSlidingSeries: sliding) !=
+          null &&
+      getConfiguredSectionForRole(
+            'cache_caniveau',
+            useSlidingSeries: sliding,
+          ) !=
+          null;
+
+  bool get hasCaniveauSupport =>
+      supportsCaniveauForScope(false) || supportsCaniveauForScope(true);
+
+  bool get hasBavetteSupport => hasFrameRole('bavette');
+
+  bool get usesBavette => optionalBavetteMode > 0 && hasBavetteSupport;
+
+  void setOptionalBavetteMode(int mode) {
+    final next = mode.clamp(0, 2).toInt();
+    if (next > 0 && !hasBavetteSupport) return;
+    _saveSnapshot();
+    optionalBavetteMode = next;
+    notifyListeners();
+  }
+
   bool frameRoleRequiredInAllScopes(String role) {
-    final scopes = [false, true].where((sliding) =>
-        getConfiguredSectionForRole(role, useSlidingSeries: sliding) != null);
-    return scopes.isNotEmpty && scopes.every((sliding) =>
-        isConfiguredRoleRequired(role, useSlidingSeries: sliding));
+    final scopes = [false, true].where(
+      (sliding) =>
+          getConfiguredSectionForRole(role, useSlidingSeries: sliding) != null,
+    );
+    return scopes.isNotEmpty &&
+        scopes.every(
+          (sliding) =>
+              isConfiguredRoleRequired(role, useSlidingSeries: sliding),
+        );
   }
 
   bool frameRoleEnabledInAnyScope(String role) =>
@@ -14275,24 +14479,140 @@ class WindowModel extends ChangeNotifier {
 
   (int, int) cacheRailCountsForRect(Rect frame) {
     if (!usesFrameRole('cache_rail', sliding: true)) return (0, 0);
-    final tracks = zones.where((zone) => frame.contains(zone.boundary.center))
+    final tracks = zones
+        .where((zone) => frame.contains(zone.boundary.center))
         .fold<int>(1, (count, zone) => math.max(count, zone.slidingTrackCount));
     // A one-track frame still has one cover on each side.
     final maximum = math.max(1, tracks - 1);
     if (isConfiguredRoleRequired('cache_rail', useSlidingSeries: true)) {
       return (maximum, maximum);
     }
-    return (cacheRailLeftCount.clamp(0, maximum), cacheRailRightCount.clamp(0, maximum));
+    return (
+      cacheRailLeftCount.clamp(0, maximum),
+      cacheRailRightCount.clamp(0, maximum),
+    );
   }
 
   bool frameUsesSlidingSeries(Rect frame) {
-    final members = zones.where((zone) => frame.contains(zone.boundary.center)).toList();
-    return members.isNotEmpty
-        ? members.every((zone) => zone.content == ZoneContent.slidingSash)
-        : usesSlidingPrimaryProfiles;
+    final members = zones
+        .where((zone) => frame.contains(zone.boundary.center))
+        .toList();
+    if (members.isEmpty) return usesSlidingPrimaryProfiles;
+
+    final hasSlidingSash = members.any(
+      (zone) => zone.content == ZoneContent.slidingSash,
+    );
+    final hasOpeningSash = members.any(
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash,
+    );
+
+    // Fixed-glass and empty cells do not turn a TPR sliding frame into an
+    // opening frame.  Only an actual opening sash owns the opening series.
+    return hasSlidingSash && !hasOpeningSash;
   }
 
-  bool get usesSeuil => usesFrameRole('seuil', sliding: usesSlidingPrimaryProfiles);
+  AluminumSection? frameSectionForRect(Rect frame) {
+    final sliding = frameUsesSlidingSeries(frame);
+    final selected = sliding ? slidingFrameOverride : activeFrameOverride;
+    if (selected != null) return AluminumSection.fromMap(selected);
+    return getConfiguredSectionForRole('frame', useSlidingSeries: sliding) ??
+        (sliding ? getSlidingBaseFrameSection() : getSectionByType('frame'));
+  }
+
+  bool frameCanUseCacheRainure(Rect frame) {
+    final section = frameSectionForRect(frame);
+    return section != null && _sectionAllowsStandaloneSideCover(section);
+  }
+
+  /// Finds seams shared by two independent frames. A seam is eligible only
+  /// when both frame profiles are plain (no integrated cover) and accept a
+  /// separate side cover. Exactly one configured Cache-rainure section is
+  /// selected for the seam, then installed on both faces.
+  List<FrameCacheRainureContact> getCacheRainureContacts() {
+    const tolerance = 5.0;
+    final frames = getFrameRects();
+    final contacts = <FrameCacheRainureContact>[];
+
+    for (var firstIndex = 0; firstIndex < frames.length; firstIndex++) {
+      for (
+        var secondIndex = firstIndex + 1;
+        secondIndex < frames.length;
+        secondIndex++
+      ) {
+        final first = frames[firstIndex];
+        final second = frames[secondIndex];
+        if (!frameCanUseCacheRainure(first) ||
+            !frameCanUseCacheRainure(second)) {
+          continue;
+        }
+
+        final firstSliding = frameUsesSlidingSeries(first);
+        final secondSliding = frameUsesSlidingSeries(second);
+        // Prefer the first frame's series; when it does not define the role,
+        // use the touching frame's series. This keeps one inside/outside pair
+        // per seam even when the two frames belong to different systems.
+        final bool? roleSeries =
+            usesFrameRole('cache_rainure', sliding: firstSliding)
+            ? firstSliding
+            : usesFrameRole('cache_rainure', sliding: secondSliding)
+            ? secondSliding
+            : null;
+        if (roleSeries == null) continue;
+
+        final vertical =
+            (first.right - second.left).abs() <= tolerance ||
+            (second.right - first.left).abs() <= tolerance;
+        if (vertical) {
+          final start = math.max(first.top, second.top);
+          final end = math.min(first.bottom, second.bottom);
+          if (end <= start + tolerance) continue;
+          final coordinate = (first.right - second.left).abs() <= tolerance
+              ? (first.right + second.left) / 2.0
+              : (second.right + first.left) / 2.0;
+          contacts.add(
+            FrameCacheRainureContact(
+              firstFrame: first,
+              secondFrame: second,
+              isVertical: true,
+              coordinate: coordinate,
+              start: start,
+              end: end,
+              useSlidingSeries: roleSeries,
+            ),
+          );
+          continue;
+        }
+
+        final horizontal =
+            (first.bottom - second.top).abs() <= tolerance ||
+            (second.bottom - first.top).abs() <= tolerance;
+        if (!horizontal) continue;
+        final start = math.max(first.left, second.left);
+        final end = math.min(first.right, second.right);
+        if (end <= start + tolerance) continue;
+        final coordinate = (first.bottom - second.top).abs() <= tolerance
+            ? (first.bottom + second.top) / 2.0
+            : (second.bottom + first.top) / 2.0;
+        contacts.add(
+          FrameCacheRainureContact(
+            firstFrame: first,
+            secondFrame: second,
+            isVertical: false,
+            coordinate: coordinate,
+            start: start,
+            end: end,
+            useSlidingSeries: roleSeries,
+          ),
+        );
+      }
+    }
+    return contacts;
+  }
+
+  bool get usesSeuil =>
+      usesFrameRole('seuil', sliding: usesSlidingPrimaryProfiles);
   bool get usesCacheDormant =>
       useOptionalCacheDormant || isConfiguredRoleRequired('cache_dormant');
   bool get usesCacheRail =>
@@ -14304,6 +14624,7 @@ class WindowModel extends ChangeNotifier {
     if (value && !hasFrameRole('seuil')) return;
     _saveSnapshot();
     useOptionalSeuil = value;
+    if (value) useOptionalCaniveau = false;
     notifyListeners();
   }
 
@@ -14330,6 +14651,44 @@ class WindowModel extends ChangeNotifier {
     if (usesFrameRole('seuil', sliding: sliding)) return false;
     return sliding || hasBottomFrame;
   }
+
+  bool usesCaniveauForRect(Rect frameRect) {
+    if (!useOptionalCaniveau) return false;
+    final sliding = frameUsesSlidingSeries(frameRect);
+    // A caniveau always sits outside an existing lower frame. Seuil/C removes
+    // that frame, so the two profiles can never be used together.
+    return supportsCaniveauForScope(sliding) &&
+        hasBottomFrameForRect(frameRect) &&
+        !usesFrameRole('seuil', sliding: sliding);
+  }
+
+  bool get canEnableCaniveau =>
+      getFrameRects().any(usesCaniveauForRect) ||
+      (hasCaniveauSupport &&
+          !frameRoleEnabledInAnyScope('seuil') &&
+          (hasBottomFrame || systemMode == 'sliding'));
+
+  void toggleCaniveau(bool value) {
+    if (value && (!hasCaniveauSupport || frameRoleEnabledInAnyScope('seuil'))) {
+      return;
+    }
+    _saveSnapshot();
+    useOptionalCaniveau = value;
+    notifyListeners();
+  }
+
+  void toggleOptionalTriangle(bool value) {
+    _saveSnapshot();
+    useOptionalTriangle = value;
+    notifyListeners();
+  }
+
+  bool get hasOptionalTriangleLink => componentOverrides.values.any(
+    (value) =>
+        value is Map &&
+        '${value['triangle_link_mode'] ?? ''}'.trim().toLowerCase() ==
+            'optional',
+  );
 
   bool _normalizeBottomFrameForCurrentContent() {
     if (canDisableBottomFrame && systemMode != 'sliding') return false;
@@ -16131,15 +16490,6 @@ class WindowModel extends ChangeNotifier {
 
   Future<void> _loadAccessoryDefaults(dynamic d, int seriesId) async {
     await _loadJointRuleDefaults(d, seriesId);
-    final strictAccessoryRules = await db.getCatalogItemRules(
-      itemTable: 'Accessories',
-      seriesId: seriesId,
-    );
-    final hasExactAccessoryRules = strictAccessoryRules.any(
-      (rule) => rule['series_id']?.toString() == seriesId.toString(),
-    );
-    if (hasExactAccessoryRules) return;
-
     final isSlidingSeriesContext =
         systemMode == 'sliding' ||
         (activeSlidingSeries?.id == seriesId && activeSeries?.id != seriesId);
@@ -16302,6 +16652,26 @@ class WindowModel extends ChangeNotifier {
 
     Future<void> loadAccessory(String key, List<String> searchPatterns) async {
       if (componentOverrides.containsKey(key)) return;
+
+      Future<Map<String, dynamic>?> loadRelatedAccessory(dynamic rawId) async {
+        final relatedId = rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '');
+        if (relatedId == null) return null;
+        try {
+          final related = await d.query(
+            'Accessories',
+            where: '(is_active = 1 OR is_active IS NULL) AND id = ?',
+            whereArgs: [relatedId],
+            limit: 1,
+          );
+          return related.isEmpty
+              ? null
+              : Map<String, dynamic>.from(related.first);
+        } catch (_) {
+          return null;
+        }
+      }
 
       bool isAccessoryValid(Map<String, dynamic> acc) {
         final n = acc['name'].toString().toLowerCase();
@@ -16539,9 +16909,20 @@ class WindowModel extends ChangeNotifier {
           seriesId: seriesId,
           roleKeys: ruleKeys,
         );
+        final effectiveEspagnoletteHeight =
+            height.toDouble() - (hasShutter ? 350.0 : 200.0);
+        bool ruleMatchesEspagnoletteRange(Map<String, dynamic> rule) {
+          if (ruleKey != 'espagnolette') return true;
+          return catalogEspagnoletteRuleMatches(
+            rule,
+            effectiveHeightMm: effectiveEspagnoletteHeight,
+          );
+        }
+
         for (final rule in ruleRows) {
           if (rule['show_in_quantity'] == 0) continue;
           if (!ruleScopeMatches(rule)) continue;
+          if (!ruleMatchesEspagnoletteRange(rule)) continue;
           final itemId = (rule['item_id'] as num?)?.toInt();
           if (itemId == null) continue;
           final rows = await d.query(
@@ -16554,9 +16935,17 @@ class WindowModel extends ChangeNotifier {
           if (!isAccessoryValid(rows.first)) continue;
           final selected = Map<String, dynamic>.from(rows.first);
           selected['calculated_price'] = await resolveAccessoryPrice(selected);
+          final linkedGache = await loadRelatedAccessory(
+            selected['linked_accessory_id'] ?? selected['gache_accessory_id'],
+          );
+          if (linkedGache != null) {
+            selected['linked_accessory'] = linkedGache;
+            selected['gache_accessory'] = linkedGache;
+          }
           componentOverrides[key] = selected;
           return;
         }
+        if (ruleKey == 'espagnolette' && ruleRows.isNotEmpty) return;
       }
 
       String kitClampExclude = '';
@@ -16750,37 +17139,21 @@ class WindowModel extends ChangeNotifier {
         }
         final m = Map<String, dynamic>.from(selected);
         m['calculated_price'] = await resolveAccessoryPrice(m);
-        Future<Map<String, dynamic>?> loadRelatedAccessory(
-          dynamic rawId,
-        ) async {
-          final relatedId = rawId is num
-              ? rawId.toInt()
-              : int.tryParse(rawId?.toString() ?? '');
-          if (relatedId == null) return null;
-          try {
-            final related = await d.query(
-              'Accessories',
-              where: '(is_active = 1 OR is_active IS NULL) AND id = ?',
-              whereArgs: [relatedId],
-              limit: 1,
-            );
-            return related.isEmpty
-                ? null
-                : Map<String, dynamic>.from(related.first);
-          } catch (_) {
-            return null;
-          }
+        final linkedGache = await loadRelatedAccessory(
+          m['linked_accessory_id'] ?? m['gache_accessory_id'],
+        );
+        if (linkedGache != null) {
+          m['linked_accessory'] = linkedGache;
+          m['gache_accessory'] = linkedGache;
         }
-
-        final linkedGache = await loadRelatedAccessory(m['gache_accessory_id']);
-        if (linkedGache != null) m['gache_accessory'] = linkedGache;
         final linkedScrew = await loadRelatedAccessory(m['screw_accessory_id']);
         if (linkedScrew != null) m['screw_accessory'] = linkedScrew;
         componentOverrides[key] = m;
       }
     }
 
-    // Load defaults
+    // Exact series rules are authoritative. Other roles can still use the
+    // legacy catalogue fallback when this series has no explicit rules.
     await loadAccessory('قاش دوبل (Gache Double Ouvrant)', [
       '%قاش دوبل%',
       '%gache double%',
@@ -16924,6 +17297,12 @@ class WindowModel extends ChangeNotifier {
       '%بوشون بارك لوز%',
       '%bouchon parclose%',
       '%بوشون باكيت%',
+    ]);
+    await loadAccessory('بوشون الكانيفو (Bouchon Caniveau)', [
+      '%بوشون كانيفو%',
+      '%بوشون الكانيفو%',
+      '%bouchon caniveau%',
+      '%cache caniveau bouchon%',
     ]);
     await loadAccessory('أونتروماتيك (Entrematique)', [
       '%entrematique%',
@@ -17150,9 +17529,15 @@ class WindowModel extends ChangeNotifier {
       final value = entry.value;
       if (value is! Map) continue;
       final accessory = Map<String, dynamic>.from(value);
-      if (accessory['gache_accessory'] == null) {
-        final linked = await findAccessory(accessory['gache_accessory_id']);
-        if (linked != null) accessory['gache_accessory'] = linked;
+      if (accessory['linked_accessory'] == null &&
+          accessory['gache_accessory'] == null) {
+        final linked = await findAccessory(
+          accessory['linked_accessory_id'] ?? accessory['gache_accessory_id'],
+        );
+        if (linked != null) {
+          accessory['linked_accessory'] = linked;
+          accessory['gache_accessory'] = linked;
+        }
       }
       if (accessory['screw_accessory'] == null) {
         final linked = await findAccessory(accessory['screw_accessory_id']);

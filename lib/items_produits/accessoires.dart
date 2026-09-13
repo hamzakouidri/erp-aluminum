@@ -189,6 +189,12 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       case 'Bouchon Parclose':
         return 'Bouchon Parclose';
 
+      case 'بوشون الكانيفو':
+      case 'غطاء الكانيفو':
+      case 'Bouchon Caniveau':
+      case 'Cache Caniveau':
+        return 'Bouchon Caniveau';
+
       case 'Clam':
       case 'clam':
         return 'Clam';
@@ -393,6 +399,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
       'Bouchon Parclose',
 
+      'Bouchon Caniveau',
+
       'Clam',
 
       'Intramatique',
@@ -475,7 +483,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
 
-                      value: accessoryCategory,
+                      initialValue: accessoryCategory,
 
                       items: categories.map((String value) {
                         return DropdownMenuItem<String>(
@@ -528,7 +536,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
 
-                      value: quality,
+                      initialValue: quality,
 
                       items: qualities.map((String value) {
                         return DropdownMenuItem<String>(
@@ -810,7 +818,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     const SizedBox(height: 10),
 
                     DropdownButtonFormField<String>(
-                      value: scope,
+                      initialValue: scope,
 
                       items: ['Global', 'Unique'].map((String value) {
                         String translatedValue = value == 'Global'
@@ -1307,6 +1315,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
       'Bouchon Parclose',
 
+      'Bouchon Caniveau',
+
       'Clam',
 
       'Intramatique',
@@ -1412,7 +1422,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                 DropdownButtonFormField<String>(
                   isExpanded: true,
 
-                  value: accessoryCategory,
+                  initialValue: accessoryCategory,
 
                   items: categories.map((String value) {
                     return DropdownMenuItem<String>(
@@ -1463,7 +1473,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                 DropdownButtonFormField<String>(
                   isExpanded: true,
 
-                  value: quality,
+                  initialValue: quality,
 
                   items: qualities.map((String value) {
                     return DropdownMenuItem<String>(
@@ -1732,7 +1742,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                 const SizedBox(height: 10),
 
                 DropdownButtonFormField<String>(
-                  value: scope,
+                  initialValue: scope,
 
                   items: ['Global', 'Unique'].map((String value) {
                     String translatedValue = value == 'Global'
@@ -2148,6 +2158,20 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     final deductionCtrl = TextEditingController(
       text: asDouble(item['triangle_deduction_mm']).toString(),
     );
+    final triangleQtyCtrl = TextEditingController(
+      text: (item['triangle_quantity'] ?? 1).toString(),
+    );
+    final trianglePositionCtrl = TextEditingController(
+      text: asDouble(item['triangle_position_mm']).toString(),
+    );
+    var trianglePositionMode =
+        item['triangle_position_mode']?.toString().trim().toLowerCase() ??
+        'center';
+    var triangleLinkMode =
+        item['triangle_link_mode']?.toString().trim().toLowerCase() ?? 'none';
+    if (!const ['none', 'optional', 'required'].contains(triangleLinkMode)) {
+      triangleLinkMode = 'none';
+    }
     var isDefault = _databaseFlag(item['is_default']);
     var saving = false;
 
@@ -2183,7 +2207,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                   ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<int?>(
-                    value: gacheItems.any((row) => asId(row['id']) == gacheId)
+                    initialValue:
+                        gacheItems.any((row) => asId(row['id']) == gacheId)
                         ? gacheId
                         : null,
                     decoration: InputDecoration(
@@ -2220,7 +2245,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                   ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<int?>(
-                    value: screwItems.any((row) => asId(row['id']) == screwId)
+                    initialValue:
+                        screwItems.any((row) => asId(row['id']) == screwId)
                         ? screwId
                         : null,
                     decoration: InputDecoration(
@@ -2249,6 +2275,73 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    initialValue: triangleLinkMode,
+                    decoration: InputDecoration(
+                      labelText: _t('ربط هذا الأكسيسوار بالتراينغل'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'none',
+                        child: Text('بدون تراينغل'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'optional',
+                        child: Text('اختياري'),
+                      ),
+                      DropdownMenuItem(value: 'required', child: Text('حتمي')),
+                    ],
+                    onChanged: (value) => setDialogState(
+                      () => triangleLinkMode = value ?? 'none',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: triangleQtyCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: _t('عدد التراينغل لهذا الأكسيسوار'),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: trianglePositionMode == 'offset'
+                        ? 'offset'
+                        : 'center',
+                    decoration: InputDecoration(
+                      labelText: _t('موضع التقسيم'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'center',
+                        child: Text('منتصف الضلفة'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'offset',
+                        child: Text('مسافة من الأسفل'),
+                      ),
+                    ],
+                    onChanged: (value) => setDialogState(
+                      () => trianglePositionMode = value ?? 'center',
+                    ),
+                  ),
+                  if (trianglePositionMode == 'offset') ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: trianglePositionCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _t('المسافة من أسفل الضلفة (مم)'),
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
                   TextField(
                     controller: deductionCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -2284,10 +2377,15 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         'triangle_deduction_mm': deduction < 0
                             ? 0.0
                             : deduction,
-                        // The triangle is always split at the centre. Keep
-                        // the legacy columns normalised for old records.
-                        'triangle_position_mode': 'center',
-                        'triangle_position_mm': 0.0,
+                        'triangle_position_mode': trianglePositionMode,
+                        'triangle_position_mm':
+                            double.tryParse(trianglePositionCtrl.text) ?? 0.0,
+                        'triangle_link_mode': triangleLinkMode,
+                        'triangle_quantity':
+                            (int.tryParse(triangleQtyCtrl.text) ?? 1).clamp(
+                              1,
+                              20,
+                            ),
                       });
                       await widget.db.setAccessoryDefault(id, isDefault);
                       await _loadItems();
@@ -2365,6 +2463,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       'Eclipse',
 
       'Bouchon Parclose',
+
+      'Bouchon Caniveau',
 
       'Clam',
 
@@ -2478,6 +2578,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
       'Bouchon Parclose': Colors.grey.shade600,
 
+      'Bouchon Caniveau': Colors.blueGrey.shade500,
+
       'Clam': Colors.indigo.shade600,
 
       'Intramatique': Colors.purple.shade600,
@@ -2545,6 +2647,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       'Eclipse': Icons.brightness_3,
 
       'Bouchon Parclose': Icons.lens,
+
+      'Bouchon Caniveau': Icons.vertical_align_bottom,
 
       'Clam': Icons.settings_input_component,
 

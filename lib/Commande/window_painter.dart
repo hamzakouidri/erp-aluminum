@@ -1576,28 +1576,231 @@ class WindowPainter extends CustomPainter {
       void drawProfile(Rect rect) {
         if (rect.isEmpty) return;
         canvas.drawRect(rect, _buildPaint(rect));
-        canvas.drawRect(rect, Paint()..color = _fb
-          ..style = PaintingStyle.stroke..strokeWidth = 1);
+        canvas.drawRect(
+          rect,
+          Paint()
+            ..color = _fb
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
+        );
       }
+
       for (final role in ['cache_dormant', 'cache_rail', 'seuil']) {
         if (!model.usesFrameRole(role, sliding: sliding)) continue;
-        final section = model.getConfiguredSectionForRole(role, useSlidingSeries: sliding);
+        final section = model.getConfiguredSectionForRole(
+          role,
+          useSlidingSeries: sliding,
+        );
         if (section == null || section.visibleWidth <= 0) continue;
-        final visible = section.visibleWidth.clamp(0.0, math.min(r.width / 2, r.height / 2));
+        final visible = section.visibleWidth.clamp(
+          0.0,
+          math.min(r.width / 2, r.height / 2),
+        );
         if (role == 'seuil') {
           // Straight ends meet the jambs at 90 degrees.
-          drawProfile(Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom));
+          drawProfile(
+            Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom),
+          );
         } else if (role == 'cache_dormant') {
           drawProfile(Rect.fromLTRB(r.left, r.top, r.right, r.top + visible));
-          drawProfile(Rect.fromLTRB(r.left, r.top + visible, r.left + visible, r.bottom));
-          drawProfile(Rect.fromLTRB(r.right - visible, r.top + visible, r.right, r.bottom));
+          drawProfile(
+            Rect.fromLTRB(r.left, r.top + visible, r.left + visible, r.bottom),
+          );
+          drawProfile(
+            Rect.fromLTRB(
+              r.right - visible,
+              r.top + visible,
+              r.right,
+              r.bottom,
+            ),
+          );
           if (model.hasBottomFrameForRect(raw)) {
-            drawProfile(Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom));
+            drawProfile(
+              Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom),
+            );
           }
         } else if (sliding) {
           final counts = model.cacheRailCountsForRect(raw);
-          drawProfile(Rect.fromLTRB(r.left, r.top, r.left + visible * counts.$1, r.bottom));
-          drawProfile(Rect.fromLTRB(r.right - visible * counts.$2, r.top, r.right, r.bottom));
+          drawProfile(
+            Rect.fromLTRB(
+              r.left,
+              r.top,
+              r.left + visible * counts.$1,
+              r.bottom,
+            ),
+          );
+          drawProfile(
+            Rect.fromLTRB(
+              r.right - visible * counts.$2,
+              r.top,
+              r.right,
+              r.bottom,
+            ),
+          );
+        }
+      }
+    }
+
+    // Cache-rainure is fitted on both faces of a compatible junction between
+    // two outer frames. It is intentionally independent from the perimeter
+    // side-cover drawing: only shared frame seams receive it.
+    for (final contact in model.getCacheRainureContacts()) {
+      final section = model.getConfiguredSectionForRole(
+        'cache_rainure',
+        useSlidingSeries: contact.useSlidingSeries,
+      );
+      if (section == null || section.visibleWidth <= 0) continue;
+      final double visible = section.visibleWidth.clamp(0.0, 80.0).toDouble();
+      final paint = _buildPaint(
+        Rect.fromLTWH(
+          contact.isVertical ? contact.coordinate : contact.start,
+          contact.isVertical ? contact.start : contact.coordinate,
+          contact.isVertical ? 1 : contact.length,
+          contact.isVertical ? contact.length : 1,
+        ),
+      );
+      final border = Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1;
+      if (contact.isVertical) {
+        for (final left in [contact.coordinate - visible, contact.coordinate]) {
+          final rect = Rect.fromLTRB(
+            left,
+            contact.start,
+            left + visible,
+            contact.end,
+          );
+          canvas.drawRect(rect, paint);
+          canvas.drawRect(rect, border);
+        }
+      } else {
+        for (final top in [contact.coordinate - visible, contact.coordinate]) {
+          final rect = Rect.fromLTRB(
+            contact.start,
+            top,
+            contact.end,
+            top + visible,
+          );
+          canvas.drawRect(rect, paint);
+          canvas.drawRect(rect, border);
+        }
+      }
+    }
+
+    // Bavette is an optional visible cover. In bottom mode it follows the
+    // lower edge; in four-side mode it follows the complete perimeter.
+    if (model.usesBavette) {
+      for (final frame in frames) {
+        final sliding = model.frameUsesSlidingSeries(frame);
+        final section = model.getConfiguredSectionForRole(
+          'bavette',
+          useSlidingSeries: sliding,
+        );
+        if (section == null) continue;
+        final width = section.visibleWidth.clamp(1.0, 80.0).toDouble();
+        final border = Paint()
+          ..color = _fb
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1;
+        final rects = <Rect>[
+          Rect.fromLTRB(
+            frame.left,
+            frame.bottom - width,
+            frame.right,
+            frame.bottom,
+          ),
+        ];
+        if (model.optionalBavetteMode == 2) {
+          rects.addAll([
+            Rect.fromLTRB(
+              frame.left,
+              frame.top,
+              frame.right,
+              frame.top + width,
+            ),
+            Rect.fromLTRB(
+              frame.left,
+              frame.top,
+              frame.left + width,
+              frame.bottom,
+            ),
+            Rect.fromLTRB(
+              frame.right - width,
+              frame.top,
+              frame.right,
+              frame.bottom,
+            ),
+          ]);
+        }
+        for (final rect in rects) {
+          canvas.drawRect(rect, _buildPaint(rect));
+          canvas.drawRect(rect, border);
+        }
+      }
+    }
+
+    // The caniveau is visible from the exterior only. It stays below the
+    // existing lower frame; the cache-caniveau is the upper strip covering
+    // the channel, so neither replaces nor draws a second lower frame.
+    if (!model.isInternalView) {
+      for (final frame in frames) {
+        if (!model.usesCaniveauForRect(frame)) continue;
+        final sliding = model.frameUsesSlidingSeries(frame);
+        final caniveau = model.getConfiguredSectionForRole(
+          'caniveau',
+          useSlidingSeries: sliding,
+        );
+        final cache = model.getConfiguredSectionForRole(
+          'cache_caniveau',
+          useSlidingSeries: sliding,
+        );
+        if (caniveau == null || cache == null) continue;
+        final double channelHeight = caniveau.visibleWidth
+            .clamp(0.0, 80.0)
+            .toDouble();
+        final double cacheHeight = cache.visibleWidth
+            .clamp(0.0, 80.0)
+            .toDouble();
+        if (channelHeight <= 0 || cacheHeight <= 0) continue;
+        final cacheRect = Rect.fromLTRB(
+          frame.left,
+          frame.bottom,
+          frame.right,
+          frame.bottom + cacheHeight,
+        );
+        final channelRect = Rect.fromLTRB(
+          frame.left,
+          cacheRect.bottom,
+          frame.right,
+          cacheRect.bottom + channelHeight,
+        );
+        final border = Paint()
+          ..color = _fb
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1;
+        canvas.drawRect(cacheRect, _buildPaint(cacheRect));
+        canvas.drawRect(cacheRect, border);
+        canvas.drawRect(channelRect, _buildPaint(channelRect));
+        canvas.drawRect(channelRect, border);
+
+        // The two Bouchons are accessories, but drawing their end caps makes
+        // the outside caniveau unambiguous: one at the right and one at the
+        // left, without changing the sash or glazing dimensions.
+        final double capWidth = math
+            .min(math.max(4.0, cacheHeight), frame.width / 4.0)
+            .toDouble();
+        final capTop = cacheRect.top;
+        final capBottom = channelRect.bottom;
+        for (final left in [frame.left, frame.right - capWidth]) {
+          final capRect = Rect.fromLTRB(
+            left,
+            capTop,
+            left + capWidth,
+            capBottom,
+          );
+          canvas.drawRect(capRect, Paint()..color = _fb.withOpacity(0.82));
+          canvas.drawRect(capRect, border);
         }
       }
     }
@@ -2326,22 +2529,6 @@ class WindowPainter extends CustomPainter {
 
     canvas.drawPath(coverPath, paint);
     canvas.drawPath(coverPath, borderPaint);
-
-    final miterPaint = Paint()
-      ..color = _fb
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.35;
-    for (final piece in pieces) {
-      for (final atStart in [true, false]) {
-        final joint = jointAt(piece, atStart);
-        if (joint == null || joint.width <= 0) continue;
-        canvas.drawLine(
-          endpointOf(piece, atStart),
-          miterOuterPoint(piece, atStart, joint),
-          miterPaint,
-        );
-      }
-    }
   }
 
   void _drawMultiFrameShutterBoxCover(
@@ -3135,8 +3322,18 @@ class WindowPainter extends CustomPainter {
       if (profile.height < text.width + 8 || profile.width < text.height + 4) {
         return;
       }
+      // Handles are normally centred vertically (and sliding systems may
+      // draw one on each outer sash stile).  Reserve the whole middle band
+      // for hardware and keep the complete cut label in the upper part.
+      final halfLabelLength = text.width / 2;
+      final minimumY = profile.top + halfLabelLength + 4;
+      final maximumY = profile.top + (profile.height * 0.44) - halfLabelLength;
+      if (minimumY > maximumY) return;
+      final labelY = (profile.top + profile.height * 0.27)
+          .clamp(minimumY, maximumY)
+          .toDouble();
       canvas.save();
-      canvas.translate(profile.center.dx, profile.center.dy);
+      canvas.translate(profile.center.dx, labelY);
       canvas.rotate(-math.pi / 2);
       text.paint(canvas, Offset(-text.width / 2, -text.height / 2));
       canvas.restore();

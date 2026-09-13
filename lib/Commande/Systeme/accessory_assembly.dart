@@ -42,15 +42,32 @@ Set<int> assemblySectionIds(Map<String, dynamic> rule) {
 }
 
 Map<int, int> assemblySectionCornerQuantities(Map<String, dynamic> rule) {
-  final result = <int, int>{};
+  return {
+    for (final entry in assemblySectionSideQuantities(rule).entries)
+      entry.key: entry.value.$1,
+  };
+}
+
+/// Per linked profile: screws/accessories used at its first and second end.
+/// Legacy `section:quantity` values apply the same quantity to both ends.
+Map<int, (int, int)> assemblySectionSideQuantities(Map<String, dynamic> rule) {
+  final result = <int, (int, int)>{};
   final raw = '${rule['assembly_section_quantities'] ?? ''}'.trim();
   for (final token in raw.split(',')) {
     final parts = token.split(':');
-    if (parts.length != 2) continue;
+    if (parts.length != 2 && parts.length != 3) continue;
     final sectionId = int.tryParse(parts[0].trim());
-    final quantity = int.tryParse(parts[1].trim());
-    if (sectionId != null && sectionId > 0 && quantity != null && quantity >= 0) {
-      result[sectionId] = quantity;
+    final firstSide = int.tryParse(parts[1].trim());
+    final secondSide = parts.length == 3
+        ? int.tryParse(parts[2].trim())
+        : firstSide;
+    if (sectionId != null &&
+        sectionId > 0 &&
+        firstSide != null &&
+        firstSide >= 0 &&
+        secondSide != null &&
+        secondSide >= 0) {
+      result[sectionId] = (firstSide, secondSide);
     }
   }
   return result;
@@ -169,27 +186,49 @@ int assemblyQuantity(
   Iterable<AssemblyDemand> demands,
 ) {
   final role = '${rule['role_key'] ?? ''}';
+  final isClamp = const {
+    'clam',
+    'clamp',
+    'sliding_clamp',
+    'frame_clamp',
+    'sash_clamp',
+    'frame_clamp_support',
+    'sash_clamp_support',
+  }.contains(role.trim().toLowerCase());
   final configuredTarget = '${rule['assembly_target'] ?? ''}';
   final target = const {'frame', 'sash', 'both'}.contains(configuredTarget)
       ? configuredTarget
       : defaultAssemblyTarget(role);
   final linkedSections = assemblySectionIds(rule);
-  final sectionCornerQuantities = assemblySectionCornerQuantities(rule);
+  final sectionSideQuantities = assemblySectionSideQuantities(rule);
   final top = (assemblyInt(rule['top_corner_qty']) ?? 1).clamp(0, 100000);
   final bottom = (assemblyInt(rule['bottom_corner_qty']) ?? 1).clamp(0, 100000);
   var quantity = 0;
   for (final demand in demands) {
-    if (target != 'both' && target != demand.target) continue;
-    if (linkedSections.isNotEmpty &&
-        !linkedSections.contains(demand.sectionId)) {
-      continue;
+    if (linkedSections.isNotEmpty) {
+      // An explicit section link is more precise than the generic
+      // frame/sash target. This also allows assembly hardware to follow a
+      // plinthe, mullion or one component of a multi-piece sliding sash.
+      if (!linkedSections.contains(demand.sectionId)) continue;
+    } else {
+      if (target != 'both' && target != demand.target) continue;
     }
-    final sectionQuantity = demand.sectionId == null
+    final sectionQuantities = demand.sectionId == null
         ? null
-        : sectionCornerQuantities[demand.sectionId];
-    if (sectionQuantity != null) {
-      quantity +=
-          (demand.topCorners + demand.bottomCorners) * sectionQuantity;
+        : sectionSideQuantities[demand.sectionId];
+    if (sectionQuantities != null) {
+      if (isClamp) {
+        // A clamp value is "per corner", not "per profile end". Older rows
+        // may contain different first/second-side values after the generic
+        // screw editor was introduced; using one value for all four corners
+        // restores the physical rule configured by the administrator.
+        quantity +=
+            (demand.topCorners + demand.bottomCorners) * sectionQuantities.$1;
+      } else {
+        quantity +=
+            demand.topCorners * sectionQuantities.$1 +
+            demand.bottomCorners * sectionQuantities.$2;
+      }
     } else {
       quantity += demand.topCorners * top + demand.bottomCorners * bottom;
     }

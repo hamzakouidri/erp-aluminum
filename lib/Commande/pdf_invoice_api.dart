@@ -65,6 +65,7 @@ class PdfInvoiceApi {
   static Future<Uint8List> buildPdfBytes(
     DevisData data, {
     AppLanguage? overrideLang,
+    bool imageUnderPrices = false,
   }) async {
     if (overrideLang != null) {
       _currentLang = overrideLang;
@@ -123,22 +124,7 @@ class PdfInvoiceApi {
             final path = item.imagePath;
             Uint8List? bytes;
 
-            if (item.title.contains('Moustiquaire') ||
-                item.title.contains('موستيكير') ||
-                (path != null && path.contains('moustiquaire'))) {
-              bytes = await loadFirstAvailable([
-                'Icon/media.webp',
-                'assets/Icon/media.webp',
-              ]);
-            } else if (path != null && path.isNotEmpty) {
-              bytes = await loadPath(path);
-            }
-
-            // The path belongs to the device that created the order.  When
-            // the PDF is generated on another device it is usually invalid,
-            // so use the portable copy stored with the detail row.
-            if (bytes == null &&
-                item.imageBase64 != null &&
+            if (item.imageBase64 != null &&
                 item.imageBase64!.trim().isNotEmpty) {
               try {
                 final raw = item.imageBase64!.trim();
@@ -148,6 +134,18 @@ class PdfInvoiceApi {
                     : raw;
                 bytes = base64Decode(encoded);
               } catch (_) {}
+            }
+
+            if (bytes == null &&
+                (item.title.contains('Moustiquaire') ||
+                    item.title.contains('موستيكير') ||
+                    (path != null && path.contains('moustiquaire')))) {
+              bytes = await loadFirstAvailable([
+                'Icon/media.webp',
+                'assets/Icon/media.webp',
+              ]);
+            } else if (bytes == null && path != null && path.isNotEmpty) {
+              bytes = await loadPath(path);
             }
 
             // Compatibility fallback for old tunnel rows whose only image was
@@ -208,7 +206,7 @@ class PdfInvoiceApi {
           ] else ...[
             pw.SizedBox(height: 14),
           ],
-          _buildTable(data, imageWidgets),
+          _buildTable(data, imageWidgets, imageUnderPrices: imageUnderPrices),
           if (!data.hidePrices) ...[
             pw.SizedBox(height: 16),
             pw.Text(
@@ -593,6 +591,7 @@ class PdfInvoiceApi {
     bool hidePrices,
     bool isProForma, {
     bool hasBorder = true,
+    bool imageUnderPrices = false,
   }) {
     pw.Widget hCell(
       double w,
@@ -621,9 +620,11 @@ class PdfInvoiceApi {
     );
     return pw.Row(
       children: [
-        if (!isProForma) hCell(_col0w, t('Image')),
+        if (!isProForma && !imageUnderPrices) hCell(_col0w, t('Image')),
         hCell(
-          isProForma
+          imageUnderPrices
+              ? (_tableW - _col3w - (hidePrices ? 0 : _col2w + _col4w))
+              : isProForma
               ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
               : (hidePrices ? (_tableW - _col0w - _col3w) : _col1w),
           t('Désignation'),
@@ -652,6 +653,7 @@ class PdfInvoiceApi {
     required pw.MemoryImage? image,
     required bool hidePrices,
     required bool isProForma,
+    bool imageUnderPrices = false,
     bool hasBorder = true,
   }) {
     final PdfColor bg = index.isEven ? PdfColors.white : PdfColors.grey100;
@@ -680,7 +682,7 @@ class PdfInvoiceApi {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         // عمود 0: الصورة
-        if (!isProForma)
+        if (!isProForma && !imageUnderPrices)
           _cell(
             _col0w,
             image != null
@@ -696,7 +698,9 @@ class PdfInvoiceApi {
           ),
         // عمود 1: الاسم والتفاصيل
         _cell(
-          isProForma
+          imageUnderPrices
+              ? (_tableW - _col3w - (hidePrices ? 0 : _col2w + _col4w))
+              : isProForma
               ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
               : (hidePrices ? (_tableW - _col0w - _col3w) : _col1w),
           pw.Column(
@@ -712,10 +716,16 @@ class PdfInvoiceApi {
                 ),
               ),
               pw.SizedBox(height: 2),
-              _detailsBlock(
-                displayDetails,
-                twoColumns: hidePrices,
-              ),
+              _detailsBlock(displayDetails, twoColumns: hidePrices),
+              if (imageUnderPrices && image != null) ...[
+                pw.SizedBox(height: 6),
+                pw.Container(
+                  width: double.infinity,
+                  height: 150,
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Image(image, fit: pw.BoxFit.contain),
+                ),
+              ],
             ],
           ),
           bg: bg,
@@ -808,8 +818,9 @@ class PdfInvoiceApi {
 
   static pw.Widget _buildTable(
     DevisData data,
-    Map<int, pw.MemoryImage> imageWidgets,
-  ) {
+    Map<int, pw.MemoryImage> imageWidgets, {
+    bool imageUnderPrices = false,
+  }) {
     final bool hidePrices = data.hidePrices;
     final bool isOfficial =
         data.isProForma ||
@@ -818,7 +829,9 @@ class PdfInvoiceApi {
     final bool hasBorder = data.documentTitleKey != 'BON_ROUTE';
     final bool isCaissonOnly = _isCaissonOnly(data);
 
-    if (isCaissonOnly) {
+    imageUnderPrices = imageUnderPrices && !isOfficial;
+
+    if (isCaissonOnly && !imageUnderPrices) {
       return _buildCaissonTunnelTable(
         data,
         imageWidgets,
@@ -828,7 +841,12 @@ class PdfInvoiceApi {
     }
 
     final List<pw.Widget> rows = [
-      _tableHeader(hidePrices, isOfficial, hasBorder: hasBorder),
+      _tableHeader(
+        hidePrices,
+        isOfficial,
+        hasBorder: hasBorder,
+        imageUnderPrices: imageUnderPrices,
+      ),
     ];
 
     for (var entry in data.items.asMap().entries) {
@@ -842,6 +860,7 @@ class PdfInvoiceApi {
           image: imageWidgets[index],
           hidePrices: hidePrices,
           isProForma: isOfficial,
+          imageUnderPrices: imageUnderPrices,
           hasBorder: hasBorder,
         ),
       );

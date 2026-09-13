@@ -153,7 +153,7 @@ Future<Uint8List> captureWindowImage(
 
 Future<String> saveWindowImageToDisk(
   WindowModel model, {
-  int maxSide = 600,
+  int maxSide = 1800,
   bool showDrawingDimensions = false,
 }) async {
   try {

@@ -67,7 +67,103 @@ class RuleDatabase extends SqlDatabase {
     int? seriesId,
     Iterable<String> roleKeys = const [],
     bool exactSeriesOnly = false,
+    bool includeInactive = false,
   }) async => rules;
+}
+
+class LegacyAssignedAccessoryDatabase implements Database {
+  @override
+  Future<List<Map<String, Object?>>> query(
+    String table, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) async => table == 'Accessories'
+      ? [
+          {
+            'id': 40,
+            'name': 'Vis assemblage coulissant',
+            'is_active': 1,
+            'material_type': 'aluminium',
+            // Legacy catalogue assignment; the explicit rule below is
+            // the authoritative assignment to series 1.
+            'series_id': 999,
+            'price': 5,
+          },
+        ]
+      : [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class SlidingAssemblyRuleDatabase extends SqlDatabase {
+  @override
+  Future<Database?> get db async => LegacyAssignedAccessoryDatabase();
+
+  @override
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
+    bool includeInactive = false,
+  }) async => [
+    {
+      'id': 400,
+      'item_table': 'Accessories',
+      'item_id': 40,
+      'series_id': 1,
+      'role_key': 'assembly_screw',
+      'usage_scope': 'sliding',
+      'assembly_target': 'sash',
+      'assembly_section_ids': '12',
+      'top_corner_qty': 1,
+      'bottom_corner_qty': 1,
+      'show_in_quantity': 1,
+      'is_active': 1,
+    },
+  ];
+}
+
+class ProfileLinkedAssemblyRuleDatabase extends SqlDatabase {
+  @override
+  Future<Database?> get db async => MemoryDatabase();
+
+  @override
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
+    bool includeInactive = false,
+  }) async => [
+    {
+      'id': 410,
+      'item_table': 'Accessories',
+      'item_id': 41,
+      'series_id': 1,
+      'role_key': 'assembly_screw',
+      'usage_scope': 'opening',
+      // The generic target deliberately differs: the explicit profile link
+      // must still make this rule apply to the selected plinthe/mullion.
+      'assembly_target': 'sash',
+      'assembly_section_ids': '30',
+      'assembly_section_quantities': '30:2:2',
+      'top_corner_qty': 1,
+      'bottom_corner_qty': 1,
+      'show_in_quantity': 1,
+      'is_active': 1,
+    },
+  ];
 }
 
 WindowModel makeWindow(SqlDatabase db) {
@@ -94,6 +190,22 @@ WindowModel makeWindow(SqlDatabase db) {
 }
 
 void main() {
+  test('espagnolette rules use effective height with or without shutter', () {
+    final rule = {'min_height_mm': 800, 'max_height_mm': 1200};
+    expect(
+      catalogEspagnoletteRuleMatches(rule, effectiveHeightMm: 1000),
+      isTrue,
+    );
+    expect(
+      catalogEspagnoletteRuleMatches(rule, effectiveHeightMm: 700),
+      isFalse,
+    );
+    expect(
+      catalogEspagnoletteRuleMatches(rule, effectiveHeightMm: 1000),
+      isTrue,
+    );
+  });
+
   test(
     'PVC double-sash strike has a positive default and uses configured count',
     () {
@@ -121,6 +233,158 @@ void main() {
       );
     },
   );
+  test('aluminium strike follows the selected espagnolette link and count', () {
+    final window = makeWindow(RuleDatabase())..hasBottomFrame = false;
+    window.componentOverrides['إسبانيوليت (Espagnolette)'] = {
+      'id': 20,
+      'name': 'Espagnolette 1200',
+      'price': 10.0,
+      'linked_accessory_count': 2,
+      'linked_accessory': {'id': 21, 'name': 'Gache liée', 'price': 4.0},
+    };
+
+    final bom = ComponentCalculator.generateBom(window, {});
+    final espIndex = bom.indexWhere((item) => item.roleKey == 'espagnolette');
+    final strikeIndex = bom.indexWhere(
+      (item) => item.roleKey == 'gache_double',
+    );
+    expect(espIndex, greaterThanOrEqualTo(0));
+    expect(strikeIndex, greaterThan(espIndex));
+    expect(bom[strikeIndex].catalogItemId, 21);
+    expect(bom[strikeIndex].quantity, 2);
+  });
+  test('sliding assembly screw follows its explicit series rule', () async {
+    final db = SlidingAssemblyRuleDatabase();
+    final window = WindowModel(
+      db: db,
+      width: 1000,
+      height: 1200,
+      profileThickness: 50,
+    );
+    final series = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'Coulissant test',
+      type: 'sliding',
+      sections: [
+        AluminumSection(
+          id: 11,
+          seriesId: 1,
+          code: 'D11',
+          name: 'Dormant',
+          type: 'frame',
+          isFrame: true,
+        ),
+        AluminumSection(
+          id: 12,
+          seriesId: 1,
+          code: 'O12',
+          name: 'Ouvrant',
+          type: 'sash',
+          isSash: true,
+        ),
+      ],
+    );
+    window
+      ..systemMode = 'sliding'
+      ..activeSeries = series
+      ..activeSlidingSeries = series
+      ..zones = [
+        WindowZone(
+          id: 'sliding',
+          content: ZoneContent.slidingSash,
+          slidingSashesCount: 2,
+          boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+        ),
+      ];
+
+    final items = await BomEngineV2(
+      database: db,
+    ).filterItemsByAvailableCandidates(window: window, items: []);
+    final screws = items.where((item) => item.roleKey == 'assembly_screw');
+    expect(screws, hasLength(1));
+    expect(screws.single.catalogItemId, 40);
+    expect(screws.single.quantity, 8);
+    expect(screws.single.unitPrice, 5);
+  });
+  test(
+    'assembly screw follows selected plinthe or mullion profile pieces',
+    () async {
+      final db = ProfileLinkedAssemblyRuleDatabase();
+      final window = makeWindow(db);
+      final profiles = [
+        BomItem(
+          category: 'profile',
+          originalName: 'بلانت (Plinthe)',
+          name: 'Plinthe P30',
+          quantity: 1,
+          unit: 'متر',
+          unitPrice: 10,
+          pieces: const [0.8, 0.8],
+          catalogItemId: 30,
+          selectorCategory: 'profile',
+          selectorType: 'plant',
+          roleKey: 'plant',
+          sourceSeriesId: 1,
+          materialType: 'aluminium',
+          overrideKey: 'linked-accessory:test-profile',
+        ),
+      ];
+
+      final items = await BomEngineV2(
+        database: db,
+      ).filterItemsByAvailableCandidates(window: window, items: profiles);
+      final screws = items.where((item) => item.roleKey == 'assembly_screw');
+      expect(screws, hasLength(1));
+      expect(screws.single.catalogItemId, 41);
+      expect(screws.single.quantity, 8);
+    },
+  );
+  test('a generic accessory can add another linked accessory', () {
+    final window = makeWindow(RuleDatabase())..hasBottomFrame = false;
+    window.componentOverrides['المقبض (Handle)'] = {
+      'id': 50,
+      'name': 'Handle source',
+      'price': 10.0,
+      'linked_accessory_count': 2,
+      'linked_accessory': {'id': 51, 'name': 'Accessory target', 'price': 3.0},
+    };
+
+    final linked = ComponentCalculator.generateBom(window, {}).where(
+      (item) => item.overrideKey?.startsWith('linked-accessory:') == true,
+    );
+    expect(linked, hasLength(1));
+    expect(linked.single.catalogItemId, 51);
+    expect(linked.single.quantity, 2);
+    expect(linked.single.unitPrice, 3);
+  });
+  test('a series kit does not expand a stale linked accessory', () {
+    final window = makeWindow(RuleDatabase())..hasBottomFrame = false;
+    window
+      ..systemMode = 'sliding'
+      ..activeSlidingSeries = window.activeSeries
+      ..zones = [
+        WindowZone(
+          id: 'sliding',
+          content: ZoneContent.slidingSash,
+          boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+        ),
+      ];
+    window.componentOverrides['كيت 67000 (Kit 67000)'] = {
+      'id': 60,
+      'name': 'Kit 67000',
+      'price': 10.0,
+      'linked_accessory_count': 1,
+      'linked_accessory': {'id': 61, 'name': 'Ekar opening', 'price': 3.0},
+    };
+
+    final bom = ComponentCalculator.generateBom(window, {});
+    final linkedFromKit = bom.where(
+      (item) => item.overrideKey?.startsWith('linked-accessory:60:') == true,
+    );
+
+    expect(linkedFromKit, isEmpty);
+  });
   test(
     'two different clamps and a support accumulate; sash uses screws',
     () async {
@@ -241,6 +505,34 @@ void main() {
         'bottom_corner_qty': 2,
       }, frameWithoutBottom),
       4,
+    );
+  });
+  test('one clamp per corner gives 12 for one frame and two sashes', () {
+    const demands = [
+      AssemblyDemand(
+        target: 'frame',
+        sliding: false,
+        topCorners: 2,
+        bottomCorners: 2,
+        sectionId: 10,
+      ),
+      AssemblyDemand(
+        target: 'sash',
+        sliding: false,
+        topCorners: 4,
+        bottomCorners: 4,
+        sectionId: 20,
+      ),
+    ];
+
+    expect(
+      assemblyQuantity({
+        'role_key': 'clam',
+        'assembly_section_ids': '10,20',
+        // The second legacy side must not halve a per-corner clamp rule.
+        'assembly_section_quantities': '10:1:0,20:1:0',
+      }, demands),
+      12,
     );
   });
   test(

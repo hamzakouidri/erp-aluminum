@@ -121,7 +121,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     _profiles = results[2] as List<Map<String, dynamic>>;
     _itemsByTable['ShutterComponents'] =
         (results[3] as List<Map<String, dynamic>>)
-            .where((row) => _guessRole('ShutterComponents', row) == 'shutter_kit')
+            .where(
+              (row) => _guessRole('ShutterComponents', row) == 'shutter_kit',
+            )
             .map((row) => Map<String, dynamic>.from(row))
             .toList();
     _rulesByItem.clear();
@@ -163,16 +165,19 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         itemTable: 'Accessories',
         seriesId: seriesId,
         exactSeriesOnly: true,
+        includeInactive: true,
       ),
       widget.db.getCatalogItemRules(
         itemTable: 'Joints',
         seriesId: seriesId,
         exactSeriesOnly: true,
+        includeInactive: true,
       ),
       widget.db.getCatalogItemRules(
         itemTable: 'ShutterComponents',
         seriesId: seriesId,
         exactSeriesOnly: true,
+        includeInactive: true,
       ),
     ]);
     final database = await widget.db.db;
@@ -284,6 +289,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('hinge', 'مفاصل', 'Paumelles'),
           _RuleRole('tasso', 'طاسو', 'Tasso'),
           _RuleRole('ekar', 'إيكار', 'Ekar'),
+          _RuleRole(
+            'alignment_square',
+            'إيكار دالينمو',
+            "Equerre d'alignement",
+          ),
           _RuleRole('roulette', 'عجلات', 'Roulettes'),
           _RuleRole('entrematique', 'أونتروماتيك', 'Entrematique'),
           _RuleRole(
@@ -432,6 +442,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'integrated_side_cover': false,
       'allows_side_cover': true,
       'allowed_with_shutter': true,
+      'min_height_mm': null,
+      'max_height_mm': null,
       'show_in_drawing': true,
       'show_in_quantity': true,
       'show_in_dialog': true,
@@ -467,6 +479,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (enabled) {
         if (rule['role_key']?.toString().trim().isEmpty ?? true) {
           rule['role_key'] = _guessRole(table, item);
+        }
+        if (rule['role_key'] == 'assembly_screw') {
+          // This is a calculated material requirement, not an object painted
+          // on the window canvas.
+          rule['show_in_quantity'] = true;
+          rule['show_in_drawing'] = false;
         }
         _inspectedItemKey = key;
       } else {
@@ -559,11 +577,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'المقابض',
         fr: 'Poignées',
         icon: Icons.pan_tool_outlined,
-        roleKeys: {
-          'handle',
-          'door_handle_key',
-          'door_handle_condamnation',
-        },
+        roleKeys: {'handle', 'door_handle_key', 'door_handle_condamnation'},
       ),
       _CatalogGroup(
         key: 'cremones',
@@ -606,7 +620,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'الطاسو والإيكار',
         fr: 'Tasso et Ekar',
         icon: Icons.crop_square_rounded,
-        roleKeys: {'tasso', 'ekar'},
+        roleKeys: {'tasso', 'ekar', 'alignment_square'},
       ),
       _CatalogGroup(
         key: 'moving',
@@ -629,18 +643,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         roleKeys: {'other'},
       ),
     ];
-    return _rolesForTable(table).map((role) {
-      final iconGroup = iconGroups.where(
-        (group) => group.roleKeys.contains(role.key),
-      ).firstOrNull;
-      return _CatalogGroup(
-        key: role.key,
-        ar: role.ar,
-        fr: role.fr,
-        icon: iconGroup?.icon ?? Icons.extension_outlined,
-        roleKeys: {role.key},
-      );
-    }).toList(growable: false);
+    return _rolesForTable(table)
+        .map((role) {
+          final iconGroup = iconGroups
+              .where((group) => group.roleKeys.contains(role.key))
+              .firstOrNull;
+          return _CatalogGroup(
+            key: role.key,
+            ar: role.ar,
+            fr: role.fr,
+            icon: iconGroup?.icon ?? Icons.extension_outlined,
+            roleKeys: {role.key},
+          );
+        })
+        .toList(growable: false);
   }
 
   String _groupRoleForItem(String table, Map<String, dynamic> item) {
@@ -756,8 +772,36 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (flag('is_renfort_screw')) return 'renfort_screw';
       if (flag('is_manivelle_screw')) return 'manivelle_screw';
       if (flag('is_assembly_screw')) return 'assembly_screw';
+      final looksLikeInstallationScrew =
+          text.contains('montage') ||
+          text.contains('installation') ||
+          text.contains('pose') ||
+          text.contains('تركيب') ||
+          text.contains('تثبيت');
+      if (looksLikeInstallationScrew && isScrew) {
+        return 'installation_screw';
+      }
+      final looksLikeAssemblyRequirement =
+          text.contains('تجميع') ||
+          text.contains('assembl') ||
+          text.contains('assembly');
+      if (looksLikeAssemblyRequirement &&
+          (isScrew ||
+              text.contains('احتياج') ||
+              text.contains('besoin') ||
+              text.contains('requirement'))) {
+        return 'assembly_screw';
+      }
       if (flag('is_installation_screw')) return 'installation_screw';
       if (flag('is_accessory_screw')) return 'accessory_screw';
+      // Legacy screw rows stored the usage in the composite type (for
+      // example `...|التجميع`) without setting the dedicated boolean flag.
+      if (isScrew &&
+          (text.contains('التجميع') ||
+              text.contains('assemblage') ||
+              text.contains('assembly'))) {
+        return 'assembly_screw';
+      }
       if (flag('is_gache_simple')) return 'gache_simple';
       if (flag('is_gache_double')) return 'gache_double';
       if (flag('is_gache_porte')) return 'gache_door';
@@ -821,6 +865,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (text.contains('poign') || text.contains('مقبض')) return 'handle';
       if (text.contains('paum') || text.contains('مفصل')) return 'hinge';
       if (text.contains('tasso') || text.contains('طاسو')) return 'tasso';
+      if (text.contains('alignement') ||
+          text.contains('alignment') ||
+          text.contains('دالينمو') ||
+          text.contains('دالينيمو')) {
+        return 'alignment_square';
+      }
       if (text.contains('ekar') ||
           text.contains('ikar') ||
           text.contains('إيكار') ||
@@ -990,15 +1040,19 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   length: 2,
                   child: Column(
                     children: [
-                      TabBar(tabs: [
-                        Tab(text: _t('الأكسسوارات', 'Accessoires')),
-                        Tab(text: _t('كيت الفولي', 'Kits volet')),
-                      ]),
+                      TabBar(
+                        tabs: [
+                          Tab(text: _t('الأكسسوارات', 'Accessoires')),
+                          Tab(text: _t('كيت الفولي', 'Kits volet')),
+                        ],
+                      ),
                       Expanded(
-                        child: TabBarView(children: [
-                          _tableView('Accessories'),
-                          _tableView('ShutterComponents'),
-                        ]),
+                        child: TabBarView(
+                          children: [
+                            _tableView('Accessories'),
+                            _tableView('ShutterComponents'),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1236,7 +1290,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 icon: isJoints
                     ? Icons.linear_scale_outlined
                     : Icons.extension_outlined,
-                title: '${_t(isJoints ? 'قواعد الجوانات للسلسلة' : 'قواعد الأكسسوارات للسلسلة', isJoints ? 'Règles des joints de la série' : 'Règles des accessoires de la série')}${_selectedSeries?['name'] != null ? ' — ${_selectedSeries!['name']}' : ''}',
+                title:
+                    '${_t(isJoints ? 'قواعد الجوانات للسلسلة' : 'قواعد الأكسسوارات للسلسلة', isJoints ? 'Règles des joints de la série' : 'Règles des accessoires de la série')}${_selectedSeries?['name'] != null ? ' — ${_selectedSeries!['name']}' : ''}',
                 text: _t(
                   isJoints
                       ? 'فعّل الجوانات التي تستعملها هذه السلسلة وحدد أدوارها (جوان فيتراج، فراب، بروس...).'
@@ -1292,12 +1347,35 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   final enabledItems = groupItems
                       .where((item) => _itemRuleEnabled(table, item))
                       .toList(growable: false);
+                  final disabledItems = groupItems
+                      .where((item) => !_itemRuleEnabled(table, item))
+                      .toList(growable: false);
+
+                  Widget sectionCaption(String arabic, String french) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          _t(arabic, french),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
                   return Card(
-                    key: ValueKey('catalog-group:$_selectedSeriesId:$table:${group.key}'),
+                    key: ValueKey(
+                      'catalog-group:$_selectedSeriesId:$table:${group.key}',
+                    ),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ExpansionTile(
-                      key: ValueKey('role-group:$_selectedSeriesId:$table:${group.key}'),
+                      key: ValueKey(
+                        'role-group:$_selectedSeriesId:$table:${group.key}',
+                      ),
                       initiallyExpanded: false,
                       leading: Icon(group.icon),
                       title: Text(_t(group.ar, group.fr)),
@@ -1307,7 +1385,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       children: groupItems.isEmpty
                           ? [
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  16,
+                                ),
                                 child: Text(
                                   _t(
                                     'لا توجد عناصر لهذا العنوان في قاعدة البيانات.',
@@ -1318,7 +1401,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                             ]
                           : [
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  0,
+                                  12,
+                                  4,
+                                ),
                                 child: Align(
                                   alignment: AlignmentDirectional.centerStart,
                                   child: Text(
@@ -1326,34 +1414,81 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                                       'اضغط على الزر لتفعيل أو إيقاف العنصر في هذه السلسلة:',
                                       'Activez ou désactivez les articles pour cette série :',
                                     ),
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ),
                               ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                              if (enabledItems.isNotEmpty) ...[
+                                sectionCaption('مفعّلة', 'Activés'),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: enabledItems
+                                        .map(
+                                          (item) => _itemToggleChip(
+                                            table,
+                                            item,
+                                            isWideScreen,
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                  ),
                                 ),
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: groupItems
-                                      .map(
-                                        (item) => _itemToggleChip(
-                                          table,
-                                          item,
-                                          isWideScreen,
-                                        ),
-                                      )
-                                      .toList(growable: false),
+                              ],
+                              if (disabledItems.isNotEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    12,
+                                    12,
+                                    2,
+                                  ),
+                                  child: Divider(
+                                    height: 2,
+                                    thickness: 1.5,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outlineVariant,
+                                  ),
                                 ),
-                              ),
+                                sectionCaption('غير مفعّلة', 'Désactivés'),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    0,
+                                    12,
+                                    0,
+                                  ),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: disabledItems
+                                        .map(
+                                          (item) => _itemToggleChip(
+                                            table,
+                                            item,
+                                            isWideScreen,
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 8),
                               if (enabledItems.isNotEmpty) ...[
                                 const Divider(height: 1),
                                 ...enabledItems.map(
-                                  (item) =>
-                                      _activeItemTile(table, item, isWideScreen),
+                                  (item) => _activeItemTile(
+                                    table,
+                                    item,
+                                    isWideScreen,
+                                  ),
                                 ),
                               ],
                             ],
@@ -1549,19 +1684,29 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   Widget _assemblyRuleEditor(Map<String, dynamic> rule) {
     final role = rule['role_key'].toString();
+    final isClamp = const {
+      'clam',
+      'clamp',
+      'sliding_clamp',
+      'frame_clamp',
+      'sash_clamp',
+      'frame_clamp_support',
+      'sash_clamp_support',
+    }.contains(role.trim().toLowerCase());
     final defaultTarget = defaultAssemblyTarget(role);
     final target =
         const {'frame', 'sash', 'both'}.contains(rule['assembly_target'])
         ? rule['assembly_target'].toString()
         : defaultTarget;
     final selectedSectionIds = assemblySectionIds(rule);
-    final sectionCornerQuantities = assemblySectionCornerQuantities(rule);
-    void saveSectionQuantities(Map<int, int> values) {
+    final sectionSideQuantities = assemblySectionSideQuantities(rule);
+    void saveSectionQuantities(Map<int, (int, int)> values) {
       final ids = values.keys.toList()..sort();
       rule['assembly_section_quantities'] = ids
-          .map((id) => '$id:${values[id]}')
+          .map((id) => '$id:${values[id]!.$1}:${values[id]!.$2}')
           .join(',');
     }
+
     return Column(
       children: [
         const SizedBox(height: 8),
@@ -1610,11 +1755,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               onSelected: (selected) => setState(() {
                 final next = {...selectedSectionIds};
                 selected ? next.add(id) : next.remove(id);
-                final nextQuantities = {
-                  ...assemblySectionCornerQuantities(rule),
-                };
+                final nextQuantities = {...assemblySectionSideQuantities(rule)};
                 if (selected) {
-                  nextQuantities.putIfAbsent(id, () => 1);
+                  nextQuantities.putIfAbsent(id, () => (1, 1));
                 } else {
                   nextQuantities.remove(id);
                 }
@@ -1632,36 +1775,56 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ),
         const SizedBox(height: 8),
         for (final section in _assemblySections.where(
-          (candidate) => selectedSectionIds.contains(
-            (candidate['id'] as num).toInt(),
-          ),
+          (candidate) =>
+              selectedSectionIds.contains((candidate['id'] as num).toInt()),
         ))
-          TextFormField(
-            key: ValueKey(
-              '${rule['item_id']}:section:${section['id']}',
-            ),
-            initialValue:
-                '${sectionCornerQuantities[(section['id'] as num).toInt()] ?? 1}',
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: _t(
-                'عدد الـClam في كل زاوية للقطاع ${section['code'] ?? ''}',
-                'Clam par angle du profilé ${section['code'] ?? ''}',
-              ),
-            ),
-            onChanged: (value) {
-              final count = int.tryParse(value);
-              if (count != null && count >= 0) {
-                final next = {...assemblySectionCornerQuantities(rule)};
-                next[(section['id'] as num).toInt()] = count;
-                saveSectionQuantities(next);
-              }
-            },
+          Row(
+            key: ValueKey('${rule['item_id']}:section:${section['id']}'),
+            children: [
+              for (final side in (isClamp ? const [0] : const [0, 1])) ...[
+                if (side == 1) const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    initialValue:
+                        '${side == 0 ? sectionSideQuantities[(section['id'] as num).toInt()]?.$1 ?? 1 : sectionSideQuantities[(section['id'] as num).toInt()]?.$2 ?? 1}',
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: _t(
+                        isClamp
+                            ? 'عدد الكلام في كل زاوية للقطاع ${section['code'] ?? ''}'
+                            : 'براغي الجهة ${side + 1} للقطاع ${section['code'] ?? ''}',
+                        isClamp
+                            ? 'Clam par angle du profilé ${section['code'] ?? ''}'
+                            : 'Vis côté ${side + 1} du profilé ${section['code'] ?? ''}',
+                      ),
+                    ),
+                    onChanged: (value) {
+                      final count = int.tryParse(value);
+                      if (count != null && count >= 0) {
+                        final id = (section['id'] as num).toInt();
+                        final next = {...assemblySectionSideQuantities(rule)};
+                        final current = next[id] ?? (1, 1);
+                        next[id] = isClamp
+                            ? (count, count)
+                            : side == 0
+                            ? (count, current.$2)
+                            : (current.$1, count);
+                        saveSectionQuantities(next);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ],
           ),
         Text(
           _t(
-            'كمية الـClam تتبع القطاع نفسه. الروليت والمقبض وبقية الإكسسوارات تُحسب بقواعدها الخاصة ولا تستخدم عدد الزوايا.',
-            'La quantité de Clam dépend du profilé. Les roulettes, poignées et autres accessoires gardent leurs propres règles.',
+            isClamp
+                ? 'يُضرب العدد في عدد الزوايا الفعلية: أربع زوايا لكل إطار أو ظلفة مغلقة.'
+                : 'تُضرب كمية كل جهة في عدد قطع القطاع الموجودة فعليًا في الرسم.',
+            isClamp
+                ? 'La quantité est multipliée par les angles réels : quatre angles par dormant ou ouvrant fermé.'
+                : 'La quantité de chaque côté est multipliée par le nombre réel de pièces du profilé dans le dessin.',
           ),
         ),
       ],
@@ -1681,6 +1844,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final selectedRole = itemRoles.any((role) => role.key == storedRole)
         ? storedRole
         : null;
+    final isEspagnoletteRule =
+        table == 'Accessories' && selectedRole == 'espagnolette';
+    final isAssemblyScrewRule =
+        table == 'Accessories' && selectedRole == 'assembly_screw';
 
     return Card(
       key: ValueKey('inspector:$_selectedSeriesId:$table:$itemId'),
@@ -1786,6 +1953,52 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 setState(() => rule['usage_scope'] = value);
               },
             ),
+            if (isEspagnoletteRule) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      key: ValueKey('min-height:$itemId'),
+                      initialValue: rule['min_height_mm']?.toString() ?? '',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _t(
+                          'أقل ارتفاع للإسبانيوليت (مم)',
+                          'Hauteur minimale (mm)',
+                        ),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (value) => rule['min_height_mm'] =
+                          double.tryParse(value.trim().replaceAll(',', '.')),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      key: ValueKey('max-height:$itemId'),
+                      initialValue: rule['max_height_mm']?.toString() ?? '',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _t(
+                          'أقصى ارتفاع للإسبانيوليت (مم)',
+                          'Hauteur maximale (mm)',
+                        ),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (value) => rule['max_height_mm'] =
+                          double.tryParse(value.trim().replaceAll(',', '.')),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (table == 'Accessories') ...[
               const SizedBox(height: 14),
               _assemblyRuleEditor(rule),
@@ -1812,7 +2025,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   _t('جدول الكمية', 'Quantité'),
                 ),
                 _ruleChip(rule, 'show_in_dialog', _t('نافذة التغيير', 'Choix')),
-                _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
+                if (!isAssemblyScrewRule)
+                  _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
               ],
             ),
           ],
@@ -1903,27 +2117,26 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'installation_screw',
       'accessory_screw',
     });
-    final gacheItems = _accessoriesForRoles(const {
-      'gache_simple',
-      'gache_double',
-      'gache_door',
-      'sliding_lock',
-    });
+    final linkedAccessoryItems = _itemsByTable['Accessories'] ?? const [];
     final itemId = _itemId(item);
     final screwIds = screwItems
         .map(_itemId)
         .whereType<int>()
         .where((id) => id != itemId)
         .toSet();
-    final gacheIds = gacheItems
+    final linkedAccessoryIds = linkedAccessoryItems
         .map(_itemId)
         .whereType<int>()
         .where((id) => id != itemId)
         .toSet();
     final rawScrewId = (item['screw_accessory_id'] as num?)?.toInt();
-    final rawGacheId = (item['gache_accessory_id'] as num?)?.toInt();
+    final rawLinkedAccessoryId =
+        (item['linked_accessory_id'] as num?)?.toInt() ??
+        (item['gache_accessory_id'] as num?)?.toInt();
     final screwId = screwIds.contains(rawScrewId) ? rawScrewId : 0;
-    final gacheId = gacheIds.contains(rawGacheId) ? rawGacheId : 0;
+    final linkedAccessoryId = linkedAccessoryIds.contains(rawLinkedAccessoryId)
+        ? rawLinkedAccessoryId
+        : 0;
 
     return Container(
       padding: const EdgeInsets.all(10),
@@ -1983,44 +2196,48 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               }),
             ),
           ],
-          if (gacheItems.isNotEmpty) ...[
+          if (linkedAccessoryItems.length > 1) ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<int>(
-              initialValue: gacheId,
+              initialValue: linkedAccessoryId,
               isExpanded: true,
               decoration: InputDecoration(
                 labelText: _t(
-                  'القاش المرتبط بهذا القفل/الأكسسوار',
-                  'Gâche liée à cet élément',
+                  'الأكسسوار المرتبط بهذا الأكسسوار',
+                  'Accessoire lié à cet accessoire',
                 ),
               ),
               items: [
                 DropdownMenuItem(
                   value: 0,
-                  child: Text(_t('بدون قاش مرتبط', 'Aucune gâche liée')),
+                  child: Text(_t('بدون أكسسوار مرتبط', 'Aucun accessoire lié')),
                 ),
-                for (final gache in gacheItems)
-                  if (_itemId(gache) != itemId)
+                for (final linked in linkedAccessoryItems)
+                  if (_itemId(linked) != itemId)
                     DropdownMenuItem(
-                      value: _itemId(gache),
-                      child: Text(_itemTitle(gache)),
+                      value: _itemId(linked),
+                      child: Text(_itemTitle(linked)),
                     ),
               ],
               onChanged: (value) => _updateAccessoryFields(item, {
-                'gache_accessory_id': value == null || value == 0
+                'linked_accessory_id': value == null || value == 0
                     ? null
                     : value,
               }),
             ),
             const SizedBox(height: 8),
             TextFormField(
-              initialValue: '${(item['gache_count'] as num?)?.toInt() ?? 0}',
+              initialValue:
+                  '${(item['linked_accessory_count'] as num?)?.toInt() ?? (item['gache_count'] as num?)?.toInt() ?? 0}',
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: _t('عدد القاش المرتبط', 'Nombre de gâches liées'),
+                labelText: _t(
+                  'عدد الأكسسوار المرتبط',
+                  'Nombre d’accessoires liés',
+                ),
               ),
               onFieldSubmitted: (value) => _updateAccessoryFields(item, {
-                'gache_count': int.tryParse(value.trim()) ?? 0,
+                'linked_accessory_count': int.tryParse(value.trim()) ?? 0,
               }),
             ),
           ],

@@ -14,10 +14,15 @@ class BomEngineV2 {
   BomEngineV2({SqlDatabase? database}) : _db = database ?? SqlDatabase();
 
   final SqlDatabase _db;
-  String _catalogLabel(String value) => value.replaceAll(
-    RegExp(r'\s*\([^)]*(?:جودة|رفيعة|رديئة|تجارية|قياسية|qualit[ée]|quality|premium|standard|commercial)[^)]*\)', caseSensitive: false),
-    '',
-  ).trim();
+  String _catalogLabel(String value) => value
+      .replaceAll(
+        RegExp(
+          r'\s*\([^)]*(?:جودة|رفيعة|رديئة|تجارية|قياسية|qualit[ée]|quality|premium|standard|commercial)[^)]*\)',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .trim();
   final Map<String, Future<List<Map<String, dynamic>>>> _candidatesCache = {};
 
   Future<void> stabilizeSelections({
@@ -54,11 +59,22 @@ class BomEngineV2 {
   }) async {
     final kept = <BomItem>[];
     for (final item in items) {
+      final role = (item.roleKey ?? item.selectorType ?? '')
+          .trim()
+          .toLowerCase();
       // Assembly hardware is additive and bound to physical frames/sashes.
       // Rebuild it from rules instead of selecting just the first screw.
       if (item.originalName == 'براغي التجميع' ||
-          (item.overrideKey ?? '').startsWith('assembly:'))
+          (item.overrideKey ?? '').startsWith('assembly:') ||
+          assemblyAccessoryRoles.contains(role)) {
         continue;
+      }
+      // An accessory dependency was explicitly linked from its parent in the
+      // catalogue. It does not need a second standalone series rule.
+      if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
+        kept.add(item);
+        continue;
+      }
       // A configured Kit is authoritative: its active child rows are the
       // complete list saved on the Kits page. They must remain available for
       // the expandable Kit row even when a child has no standalone rule row.
@@ -66,11 +82,23 @@ class BomEngineV2 {
         kept.add(item);
         continue;
       }
+      // Series kits are also additive rule rows. Legacy BOM generation still
+      // creates placeholder kit rows, sometimes without a catalogue id. If
+      // retained, the rule row below is displayed a second time and may carry
+      // stale linked-accessory data from another hardware family.
+      if (const {
+        'kit',
+        'sliding_kit',
+        'sliding_kit_40000',
+        'sliding_kit_67000',
+      }.contains(role)) {
+        continue;
+      }
       if (await _itemHasRuleCandidate(window, item)) {
         kept.add(item);
       }
     }
-    kept.addAll(await _assemblyItems(window));
+    kept.addAll(await _assemblyItems(window, kept));
     final existingIds = kept
         .map((item) => item.catalogItemId)
         .whereType<int>()
@@ -88,16 +116,23 @@ class BomEngineV2 {
 
   Future<List<BomItem>> _frameRoleJoints(List<BomItem> items) async {
     final result = <BomItem>[];
-    for (final profile in items.where((item) =>
-        const ['cache_rail', 'seuil', 'cache_dormant'].contains(item.roleKey))) {
+    for (final profile in items.where(
+      (item) =>
+          const ['cache_rail', 'seuil', 'cache_dormant'].contains(item.roleKey),
+    )) {
       final series = profile.sourceSeriesId;
       final section = profile.catalogItemId;
       final metres = profile.actualUsedMeters ?? 0;
       if (series == null || section == null || metres <= 0) continue;
       final rows = await _db.getDefaultJointsForSection(
-        seriesId: series, sectionId: section,
-        positionKeys: const ['cache_rail_inner', 'cache_rail_outer',
-          'profile_gasket_1', 'profile_gasket_2'],
+        seriesId: series,
+        sectionId: section,
+        positionKeys: const [
+          'cache_rail_inner',
+          'cache_rail_outer',
+          'profile_gasket_1',
+          'profile_gasket_2',
+        ],
       );
       // A link can return several products in the same gasket family.
       // The database sorts the default first: use one product per position.
@@ -106,15 +141,25 @@ class BomEngineV2 {
         final position = '${row['position_key']}';
         if (!positions.add(position)) continue;
         final name = '${row['name'] ?? 'Joint Cache-rail'}';
-        result.add(BomItem(
-          category: 'joint', originalName: 'Joint ${profile.roleKey} ($position)',
-          name: name, profileCode: row['code']?.toString(),
-          quantity: metres, unit: 'متر',
-          unitPrice: _safeDouble(row['price_per_meter'] ?? row['price_dzd'] ?? row['price']),
-          catalogItemId: _catalogInt(row['id']), sourceSeriesId: series,
-          materialType: profile.materialType, selectorCategory: 'joint',
-          overrideKey: 'frame-role-joint:${profile.roleKey}:$series:$section:$position',
-        ));
+        result.add(
+          BomItem(
+            category: 'joint',
+            originalName: 'Joint ${profile.roleKey} ($position)',
+            name: name,
+            profileCode: row['code']?.toString(),
+            quantity: metres,
+            unit: 'متر',
+            unitPrice: _safeDouble(
+              row['price_per_meter'] ?? row['price_dzd'] ?? row['price'],
+            ),
+            catalogItemId: _catalogInt(row['id']),
+            sourceSeriesId: series,
+            materialType: profile.materialType,
+            selectorCategory: 'joint',
+            overrideKey:
+                'frame-role-joint:${profile.roleKey}:$series:$section:$position',
+          ),
+        );
       }
     }
     return result;
@@ -122,58 +167,80 @@ class BomEngineV2 {
 
   Future<List<BomItem>> _seriesKitItems(WindowModel window) async {
     final result = <BomItem>[];
-    final contexts = <({int id, bool sliding, String material})>{
-      if (window.activeSeries != null && !window.isShutterOnly)
-        (
-          id: window.activeSeries!.id,
-          sliding: window.usesSlidingPrimaryProfiles,
-          material: window.isPVC ? 'pvc' : 'aluminium',
-        ),
-      if (window.activeSlidingSeries != null &&
-          !window.isShutterOnly &&
-          window.zones.any((zone) => zone.content == ZoneContent.slidingSash) &&
-          window.activeSlidingSeries!.id != window.activeSeries?.id)
-        (
-          id: window.activeSlidingSeries!.id,
-          sliding: true,
-          material: window.isSlidingPVC ? 'pvc' : 'aluminium',
-        ),
-    };
+    final slidingZones = window.zones.where(
+      (zone) => zone.content == ZoneContent.slidingSash,
+    );
+    final slidingKitCount = slidingZones.fold<int>(0, (sum, zone) {
+      final leaves = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
+      return sum + leaves ~/ 2;
+    });
+    final slidingExtraEkarCount = slidingZones.fold<int>(0, (sum, zone) {
+      final leaves = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
+      return sum + (leaves.isOdd ? 4 : 0);
+    });
+    final contexts =
+        <
+          ({int id, bool sliding, String material, int kitCount, int ekarCount})
+        >{
+          if (window.activeSeries != null && !window.isShutterOnly)
+            (
+              id: window.activeSeries!.id,
+              sliding: window.usesSlidingPrimaryProfiles,
+              material: window.isPVC ? 'pvc' : 'aluminium',
+              kitCount: window.usesSlidingPrimaryProfiles ? slidingKitCount : 1,
+              ekarCount: window.usesSlidingPrimaryProfiles
+                  ? slidingExtraEkarCount
+                  : 0,
+            ),
+          if (window.activeSlidingSeries != null &&
+              !window.isShutterOnly &&
+              window.zones.any(
+                (zone) => zone.content == ZoneContent.slidingSash,
+              ) &&
+              window.activeSlidingSeries!.id != window.activeSeries?.id)
+            (
+              id: window.activeSlidingSeries!.id,
+              sliding: true,
+              material: window.isSlidingPVC ? 'pvc' : 'aluminium',
+              kitCount: slidingKitCount,
+              ekarCount: slidingExtraEkarCount,
+            ),
+        };
     final database = await _db.db;
     if (database == null) return result;
     for (final context in contexts) {
-      final candidates = await _resolveCandidates(
-        CatalogCandidateQuery(
-          category: 'accessory',
-          selectorType: 'kit',
-          roleKeys: const [
-            'kit',
-            'sliding_kit',
-            'sliding_kit_40000',
-            'sliding_kit_67000',
-          ],
-          seriesId: context.id,
-          materialType: context.material,
-          drawingMode: context.sliding
-              ? AccessoryDrawingMode.sliding
-              : AccessoryDrawingMode.opening,
-          requireDialog: false,
-          requireQuantity: true,
-          hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
-          hasDoubleGlassForRules: window.hasDoubleGlassForRules,
-        ),
-      );
+      final roleKeys = context.sliding
+          ? const ['sliding_kit', 'sliding_kit_40000', 'sliding_kit_67000']
+          : const ['kit'];
+      final candidates = context.kitCount <= 0
+          ? const <Map<String, dynamic>>[]
+          : await _resolveCandidates(
+              CatalogCandidateQuery(
+                category: 'accessory',
+                selectorType: context.sliding ? 'sliding_kit' : 'kit',
+                roleKeys: roleKeys,
+                seriesId: context.id,
+                materialType: context.material,
+                drawingMode: context.sliding
+                    ? AccessoryDrawingMode.sliding
+                    : AccessoryDrawingMode.opening,
+                requireDialog: false,
+                requireQuantity: true,
+                hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+                hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+              ),
+            );
       for (final candidate in candidates) {
         final id = _catalogInt(candidate['id']);
-        final kitRole = (candidate['catalog_rule'] as Map?)?['role_key']
-                ?.toString() ??
+        final kitRole =
+            (candidate['catalog_rule'] as Map?)?['role_key']?.toString() ??
             'kit';
         result.add(
           BomItem(
             category: 'accessory',
             originalName: _catalogLabel(candidate['name']?.toString() ?? 'Kit'),
             name: _catalogLabel(candidate['name']?.toString() ?? 'Kit'),
-            quantity: window.quantity.toDouble(),
+            quantity: (context.kitCount * window.quantity).toDouble(),
             unit: 'kit',
             unitPrice: await _accessoryPrice(database, candidate),
             catalogItemId: id,
@@ -189,12 +256,103 @@ class BomEngineV2 {
           ),
         );
       }
+      if (context.sliding && context.ekarCount > 0) {
+        final ekarCandidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'accessory',
+            selectorType: 'alignment_square',
+            roleKeys: const ['alignment_square'],
+            seriesId: context.id,
+            materialType: context.material,
+            drawingMode: AccessoryDrawingMode.sliding,
+            requireDialog: false,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+            hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+          ),
+        );
+        for (final candidate in ekarCandidates) {
+          final id = _catalogInt(candidate['id']);
+          result.add(
+            BomItem(
+              category: 'accessory',
+              originalName: _catalogLabel(
+                candidate['name']?.toString() ?? "Equerre d'alignement",
+              ),
+              name: _catalogLabel(
+                candidate['name']?.toString() ?? "Equerre d'alignement",
+              ),
+              quantity: (context.ekarCount * window.quantity).toDouble(),
+              unit: 'حبة',
+              unitPrice: await _accessoryPrice(database, candidate),
+              catalogItemId: id,
+              inventoryItemType: 'Accessory',
+              profileCode: candidate['code']?.toString(),
+              imagePath: candidate['image_path']?.toString(),
+              overrideKey: 'sliding-ekar:${context.id}:${id ?? 0}',
+              selectorCategory: 'accessory',
+              selectorType: 'alignment_square',
+              roleKey: 'alignment_square',
+              sourceSeriesId: context.id,
+              materialType: context.material,
+            ),
+          );
+        }
+      }
     }
     return result;
   }
 
-  Future<List<BomItem>> _assemblyItems(WindowModel window) async {
-    final demands = assemblyDemands(window);
+  List<AssemblyDemand> _selectedProfileAssemblyDemands(
+    WindowModel window,
+    Iterable<BomItem> items,
+  ) {
+    final demands = <AssemblyDemand>[];
+    final orderQuantity = window.quantity <= 0 ? 1 : window.quantity;
+    for (final item in items) {
+      if ((item.selectorCategory ?? item.category) != 'profile') continue;
+      final sectionId = item.catalogItemId;
+      final pieces = item.pieces;
+      if (sectionId == null || pieces == null || pieces.isEmpty) continue;
+
+      final role = (item.roleKey ?? item.selectorType ?? '')
+          .trim()
+          .toLowerCase();
+      // Outer frames and ordinary sash rectangles already have exact corner
+      // demands from drawing geometry. The remaining profile rows represent
+      // plinthes, mullions and the individual members of sliding sashes.
+      if (role == 'frame' || role == 'sash') continue;
+
+      final pieceCount = (pieces.length / orderQuantity).round();
+      if (pieceCount <= 0) continue;
+      final sliding =
+          item.sourceSeriesId != null &&
+          item.sourceSeriesId == window.activeSlidingSeries?.id &&
+          (window.systemMode == 'sliding' ||
+              item.sourceSeriesId != window.activeSeries?.id);
+      demands.add(
+        AssemblyDemand(
+          target: 'profile',
+          sliding: sliding,
+          // A plinthe, traverse or sliding-sash member has two ends. The
+          // catalogue rule independently defines the screw count at each end.
+          topCorners: pieceCount,
+          bottomCorners: pieceCount,
+          sectionId: sectionId,
+        ),
+      );
+    }
+    return demands;
+  }
+
+  Future<List<BomItem>> _assemblyItems(
+    WindowModel window,
+    Iterable<BomItem> selectedProfiles,
+  ) async {
+    final demands = [
+      ...assemblyDemands(window),
+      ..._selectedProfileAssemblyDemands(window, selectedProfiles),
+    ];
     if (demands.isEmpty) return [];
     final database = await _db.db;
     if (database == null) return [];
@@ -249,16 +407,37 @@ class BomEngineV2 {
         final ruleKey = '$key:${rule['id'] ?? ''}';
         if (!addedRules.add(ruleKey)) continue;
         final seriesName = sliding
-            ? window.activeSlidingSeries?.name ?? window.activeSeries?.name ?? ''
+            ? window.activeSlidingSeries?.name ??
+                  window.activeSeries?.name ??
+                  ''
             : window.activeSeries?.name ?? '';
-        final displayName = const {'clam', 'clamp', 'sliding_clamp', 'frame_clamp', 'sash_clamp'}.contains(role)
+        final isClam = const {
+          'clam',
+          'clamp',
+          'sliding_clamp',
+          'frame_clamp',
+          'sash_clamp',
+        }.contains(role);
+        // Keep existing headings unchanged, except the dedicated assembly
+        // screw heading; the selected catalog item is shown as its detail.
+        final displayName = isClam
             ? 'Clam ${_catalogLabel(seriesName)}'.trim()
-            : candidate['name']?.toString() ?? role;
+            : (role == 'assembly_screw'
+                  ? 'براغي التجميع'
+                  : candidate['name']?.toString() ?? role);
+        final selectedName = candidate['name']?.toString().trim() ?? '';
+        final selectedCode = candidate['code']?.toString().trim() ?? '';
+        final details = [
+          if (selectedName.isNotEmpty && selectedName != displayName)
+            selectedName,
+          if (selectedCode.isNotEmpty && selectedCode != selectedName)
+            selectedCode,
+        ].join('\n');
         items.add(
           BomItem(
             category: 'accessory',
             originalName: displayName,
-            name: displayName,
+            name: details.isEmpty ? displayName : '$displayName\n$details',
             quantity: quantity.toDouble(),
             unit: 'حبة',
             unitPrice: await _accessoryPrice(database, candidate),
@@ -291,20 +470,6 @@ class BomEngineV2 {
         if (roleKeys.isEmpty) return false;
         if (roleKeys.contains('reducer') && !window.hasSimpleGlassForReducer) {
           return false;
-        }
-        // An explicitly selected reducer is already a valid catalogue
-        // section. Keep its quantity row even for older series that have not
-        // yet been migrated to SeriesDesignRoles.
-        if (roleKeys.contains('reducer') && item.catalogItemId != null) {
-          return true;
-        }
-        // The reducer quantity is derived from the glass geometry. Keep that
-        // calculated row visible even when an older catalogue has not yet
-        // migrated its reducer section into SeriesDesignRoles.
-        if (roleKeys.contains('reducer') &&
-            (item.pieces?.isNotEmpty ?? false) &&
-            window.hasSimpleGlassForReducer) {
-          return true;
         }
         if (_requiresDoubleSash(roleKeys) && !_hasDoubleSash(window)) {
           return false;
@@ -360,7 +525,11 @@ class BomEngineV2 {
           ),
         );
         return candidates.any(
-          (candidate) => _accessoryMatchesLinkedSections(candidate, window),
+          (candidate) => _accessoryMatchesLinkedSections(
+            candidate,
+            window,
+            allowLegacyShutter: _isShutterScrewRole(roleKeys),
+          ),
         );
       case 'joint':
         final selectorType = item.selectorType?.trim() ?? '';
@@ -436,9 +605,6 @@ class BomEngineV2 {
       ),
     );
     if (sections.isEmpty) {
-      // Do not erase a valid legacy/explicit reducer merely because the
-      // administrator has not saved its new role rule yet.
-      if (roleKeys.contains('reducer') && item.catalogItemId != null) return;
       _clearInvalidProfileSelection(window, item, roleKeys);
       return;
     }
@@ -529,7 +695,11 @@ class BomEngineV2 {
     }
     final candidates = resolvedCandidates
         .where(
-          (candidate) => _accessoryMatchesLinkedSections(candidate, window),
+          (candidate) => _accessoryMatchesLinkedSections(
+            candidate,
+            window,
+            allowLegacyShutter: _isShutterScrewRole(ruleKeys),
+          ),
         )
         .toList();
     if (candidates.isEmpty) {
@@ -553,10 +723,13 @@ class BomEngineV2 {
 
   bool _accessoryMatchesLinkedSections(
     Map<String, dynamic> candidate,
-    WindowModel window,
-  ) {
+    WindowModel window, {
+    bool allowLegacyShutter = false,
+  }) {
     final rawRule = candidate['catalog_rule'];
-    if (rawRule is! Map) return true;
+    // Every non-shutter accessory must come from a persisted active rule.
+    // The only permitted legacy source is the explicit shutter-screw path.
+    if (rawRule is! Map) return allowLegacyShutter;
     final rule = Map<String, dynamic>.from(rawRule);
     final linkedSections = assemblySectionIds(rule);
     if (linkedSections.isEmpty) return true;
