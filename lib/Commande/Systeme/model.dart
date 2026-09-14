@@ -14659,7 +14659,18 @@ class WindowModel extends ChangeNotifier {
     if (value && !hasFrameRole('seuil')) return;
     _saveSnapshot();
     useOptionalSeuil = value;
-    if (value) useOptionalCaniveau = false;
+    if (value) {
+      useOptionalCaniveau = false;
+    } else {
+      // C/Seuil physically replaces the lower frame member. Switching it
+      // off must therefore restore that member, even when an older drawing
+      // had its bottom frame disabled before C was selected.
+      final wasBottomFrame = hasBottomFrame;
+      hasBottomFrame = true;
+      showBottomWall = true;
+      if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
+      updateBottomZoneBoundaries();
+    }
     notifyListeners();
   }
 

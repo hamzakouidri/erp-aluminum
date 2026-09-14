@@ -2172,6 +2172,12 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     if (!const ['none', 'optional', 'required'].contains(triangleLinkMode)) {
       triangleLinkMode = 'none';
     }
+    final accessoryRuleText = '${item['name'] ?? ''} ${item['type'] ?? ''}'
+        .toLowerCase();
+    final isCremoneRule =
+        accessoryRuleText.contains('كريمون') ||
+        accessoryRuleText.contains('cremone') ||
+        accessoryRuleText.contains('crémone');
     var isDefault = _databaseFlag(item['is_default']);
     var saving = false;
 
@@ -2275,71 +2281,82 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
-                    initialValue: triangleLinkMode,
-                    decoration: InputDecoration(
-                      labelText: _t('ربط هذا الأكسيسوار بالتراينغل'),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'none',
-                        child: Text('بدون تراينغل'),
+                  if (isCremoneRule)
+                    Text(
+                      _t(
+                        'الكريمون يولّد قطعتين تراينغل تلقائيًا، وموضع المقبض يؤخذ من الرسم.',
                       ),
-                      DropdownMenuItem(
-                        value: 'optional',
-                        child: Text('اختياري'),
+                    )
+                  else ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: triangleLinkMode,
+                      decoration: InputDecoration(
+                        labelText: _t('ربط هذا الأكسيسوار بالتراينغل'),
+                        border: const OutlineInputBorder(),
                       ),
-                      DropdownMenuItem(value: 'required', child: Text('حتمي')),
-                    ],
-                    onChanged: (value) => setDialogState(
-                      () => triangleLinkMode = value ?? 'none',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: triangleQtyCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: _t('عدد التراينغل لهذا الأكسيسوار'),
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: trianglePositionMode == 'offset'
-                        ? 'offset'
-                        : 'center',
-                    decoration: InputDecoration(
-                      labelText: _t('موضع التقسيم'),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'center',
-                        child: Text('منتصف الضلفة'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'none',
+                          child: Text('بدون تراينغل'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'optional',
+                          child: Text('اختياري'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'required',
+                          child: Text('حتمي'),
+                        ),
+                      ],
+                      onChanged: (value) => setDialogState(
+                        () => triangleLinkMode = value ?? 'none',
                       ),
-                      DropdownMenuItem(
-                        value: 'offset',
-                        child: Text('مسافة من الأسفل'),
-                      ),
-                    ],
-                    onChanged: (value) => setDialogState(
-                      () => trianglePositionMode = value ?? 'center',
                     ),
-                  ),
-                  if (trianglePositionMode == 'offset') ...[
                     const SizedBox(height: 8),
                     TextField(
-                      controller: trianglePositionCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      controller: triangleQtyCtrl,
+                      keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: _t('المسافة من أسفل الضلفة (مم)'),
+                        labelText: _t('عدد التراينغل لهذا الأكسيسوار'),
                         border: const OutlineInputBorder(),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: trianglePositionMode == 'offset'
+                          ? 'offset'
+                          : 'center',
+                      decoration: InputDecoration(
+                        labelText: _t('موضع التقسيم'),
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'center',
+                          child: Text('منتصف الضلفة'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'offset',
+                          child: Text('مسافة من الأسفل'),
+                        ),
+                      ],
+                      onChanged: (value) => setDialogState(
+                        () => trianglePositionMode = value ?? 'center',
+                      ),
+                    ),
+                    if (trianglePositionMode == 'offset') ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: trianglePositionCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _t('المسافة من أسفل الضلفة (مم)'),
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 8),
                   TextField(
@@ -2377,15 +2394,21 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         'triangle_deduction_mm': deduction < 0
                             ? 0.0
                             : deduction,
-                        'triangle_position_mode': trianglePositionMode,
-                        'triangle_position_mm':
-                            double.tryParse(trianglePositionCtrl.text) ?? 0.0,
-                        'triangle_link_mode': triangleLinkMode,
-                        'triangle_quantity':
-                            (int.tryParse(triangleQtyCtrl.text) ?? 1).clamp(
-                              1,
-                              20,
-                            ),
+                        'triangle_position_mode': isCremoneRule
+                            ? 'center'
+                            : trianglePositionMode,
+                        'triangle_position_mm': isCremoneRule
+                            ? 0.0
+                            : double.tryParse(trianglePositionCtrl.text) ?? 0.0,
+                        'triangle_link_mode': isCremoneRule
+                            ? 'required'
+                            : triangleLinkMode,
+                        'triangle_quantity': isCremoneRule
+                            ? 1
+                            : (int.tryParse(triangleQtyCtrl.text) ?? 1).clamp(
+                                1,
+                                20,
+                              ),
                       });
                       await widget.db.setAccessoryDefault(id, isDefault);
                       await _loadItems();

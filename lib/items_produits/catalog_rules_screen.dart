@@ -519,7 +519,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         if (rule['role_key']?.toString().trim().isEmpty ?? true) {
           rule['role_key'] = _guessRole(table, item);
         }
-        if (rule['role_key'] == 'assembly_screw') {
+        if (rule['role_key'] == 'assembly_screw' ||
+            rule['role_key'] == 'accessory_screw' ||
+            rule['role_key'] == 'installation_screw' ||
+            rule['role_key'] == 'bouchon_batmo_screw') {
           // This is a calculated material requirement, not an object painted
           // on the window canvas.
           rule['show_in_quantity'] = true;
@@ -569,21 +572,39 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     const iconGroups = [
       _CatalogGroup(
         key: 'screws',
-        ar: 'الفيس',
-        fr: 'Vis',
+        ar: 'براغي أخرى',
+        fr: 'Autres vis',
         icon: Icons.build_outlined,
         roleKeys: {
           'kit_screw',
           'box_screw',
           'motor_screw',
           'batmo_screw',
-          'bouchon_batmo_screw',
           'renfort_screw',
           'manivelle_screw',
           'assembly_screw',
-          'installation_screw',
-          'accessory_screw',
         },
+      ),
+      _CatalogGroup(
+        key: 'accessory_screws',
+        ar: 'براغي الأكسسوارات',
+        fr: 'Vis accessoires',
+        icon: Icons.build_outlined,
+        roleKeys: {'accessory_screw'},
+      ),
+      _CatalogGroup(
+        key: 'installation_screws',
+        ar: 'براغي التركيب',
+        fr: 'Vis de pose',
+        icon: Icons.home_repair_service_outlined,
+        roleKeys: {'installation_screw'},
+      ),
+      _CatalogGroup(
+        key: 'bouchon_batmo_screws',
+        ar: 'براغي بوشون باتمو',
+        fr: 'Vis bouchon Batmo',
+        icon: Icons.build_circle_outlined,
+        roleKeys: {'bouchon_batmo_screw'},
       ),
       _CatalogGroup(
         key: 'gaches',
@@ -699,6 +720,16 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   String _groupRoleForItem(String table, Map<String, dynamic> item) {
+    if (table == 'Accessories') {
+      final classifiedRole = _guessRole(table, item);
+      if (const {
+        'accessory_screw',
+        'installation_screw',
+        'bouchon_batmo_screw',
+      }.contains(classifiedRole)) {
+        return classifiedRole;
+      }
+    }
     final itemId = _itemId(item);
     final savedRole = itemId == null
         ? null
@@ -745,6 +776,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     Map<String, dynamic> item,
     _CatalogGroup group,
   ) {
+    if (table == 'Accessories') {
+      final explicitRoles = <String>{
+        if (_truthy(item['is_accessory_screw'])) 'accessory_screw',
+        if (_truthy(item['is_installation_screw'])) 'installation_screw',
+        if (_truthy(item['is_bouchon_batmo_screw'])) 'bouchon_batmo_screw',
+      };
+      if (explicitRoles.isNotEmpty &&
+          group.roleKeys.any(explicitRoles.contains)) {
+        return true;
+      }
+    }
     return group.roleKeys.contains(_groupRoleForItem(table, item));
   }
 
@@ -1846,7 +1888,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final itemId = _itemId(item);
     if (itemId == null) return const SizedBox.shrink();
     final rule = _ruleFor(table, itemId);
-    final itemRoles = _rolesForItem(table, item);
+    final itemRolesByKey = <String, _RuleRole>{};
+    for (final role in _rolesForItem(table, item)) {
+      itemRolesByKey.putIfAbsent(role.key, () => role);
+    }
+    final itemRoles = itemRolesByKey.values.toList(growable: false);
     final storedRole = rule['role_key']?.toString();
     final selectedRole = itemRoles.any((role) => role.key == storedRole)
         ? storedRole

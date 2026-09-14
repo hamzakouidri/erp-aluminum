@@ -78,6 +78,12 @@ class BomEngineV2 {
     required WindowModel window,
     required List<BomItem> items,
   }) async {
+    final calculatedRoles = <String>{};
+    for (final role in const ['installation_screw', 'bouchon_batmo_screw']) {
+      if (await _calculatedMaterialRoleEnabled(window, role)) {
+        calculatedRoles.add(role);
+      }
+    }
     final resolved = await Future.wait(
       items.map((item) async {
         final role = (item.roleKey ?? item.selectorType ?? '')
@@ -113,6 +119,7 @@ class BomEngineV2 {
         }.contains(role)) {
           return null;
         }
+        if (calculatedRoles.contains(role)) return item;
         if (await _itemHasRuleCandidate(window, item)) {
           return item;
         }
@@ -134,7 +141,253 @@ class BomEngineV2 {
       ),
     );
     kept.addAll(await _frameRoleJoints(kept));
-    return _deduplicateRoleAccessories(kept);
+    final visibleItems = _deduplicateRoleAccessories(kept);
+    // Rebuild accessory screws only after every rule, Kit and linked
+    // accessory has been resolved and duplicate visible rows have been
+    // removed. The screw calculation must use exactly the quantities shown
+    // to the user, otherwise a hidden duplicate is counted twice.
+    visibleItems.removeWhere(_isAccessoryScrewRow);
+    visibleItems.addAll(await _accessoryScrewItems(window, visibleItems));
+    return visibleItems;
+  }
+
+  Future<bool> _calculatedMaterialRoleEnabled(
+    WindowModel window,
+    String role,
+  ) async {
+    final seriesIds = <int>{
+      if (window.activeSeries?.id != null) window.activeSeries!.id,
+      if (window.activeSlidingSeries?.id != null)
+        window.activeSlidingSeries!.id,
+    };
+    for (final seriesId in seriesIds) {
+      final rules = await _db.getCatalogItemRules(
+        itemTable: 'Accessories',
+        seriesId: seriesId,
+        roleKeys: [role],
+      );
+      if (rules.any((rule) => _catalogInt(rule['show_in_quantity']) != 0)) {
+        return true;
+      }
+      final flagColumn = switch (role) {
+        'accessory_screw' => 'is_accessory_screw',
+        'installation_screw' => 'is_installation_screw',
+        'bouchon_batmo_screw' => 'is_bouchon_batmo_screw',
+        _ => null,
+      };
+      final database = await _db.db;
+      if (database != null && flagColumn != null) {
+        final flaggedRules = await database.rawQuery(
+          '''
+          SELECT r.show_in_quantity
+          FROM CatalogItemRules r
+          INNER JOIN Accessories a ON a.id = r.item_id
+          WHERE r.item_table = 'Accessories'
+            AND r.is_active = 1
+            AND r.series_id = ?
+            AND a.$flagColumn = 1
+          ''',
+          [seriesId],
+        );
+        if (flaggedRules.any(
+          (rule) => _catalogInt(rule['show_in_quantity']) != 0,
+        )) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _isAccessoryScrewRow(BomItem item) {
+    final role = (item.roleKey ?? item.selectorType ?? '').toLowerCase();
+    return role == 'accessory_screw' ||
+        role == 'is_accessory_screw' ||
+        (item.overrideKey ?? '').startsWith('linked-accessory:screw:');
+  }
+
+  Future<List<BomItem>> _accessoryScrewItems(
+    WindowModel window,
+    List<BomItem> sourceItems,
+  ) async {
+    final showAccessoryScrews = await _calculatedMaterialRoleEnabled(
+      window,
+      'accessory_screw',
+    );
+    // Accessory-screw relations remain stored on each accessory. The role
+    // only controls whether their calculated, grouped result is published in
+    // the quantity table, just like the other rule-driven materials.
+    if (!showAccessoryScrews) return const [];
+
+    final database = await _db.db;
+    if (database == null) return const [];
+
+    final quantitiesByAccessoryId = <int, double>{};
+    final sourceSeriesByAccessoryId = <int, int?>{};
+    final materialByAccessoryId = <int, String?>{};
+    for (final item in sourceItems) {
+      final id = item.catalogItemId;
+      if (item.category != 'accessory' ||
+          !item.isActive ||
+          item.quantity <= 0 ||
+          id == null ||
+          _isAccessoryScrewRow(item)) {
+        continue;
+      }
+      quantitiesByAccessoryId[id] =
+          (quantitiesByAccessoryId[id] ?? 0.0) + item.quantity;
+      sourceSeriesByAccessoryId[id] = item.sourceSeriesId;
+      materialByAccessoryId[id] = item.materialType;
+    }
+    if (quantitiesByAccessoryId.isEmpty) return const [];
+
+    final totalsByScrewId = <int, double>{};
+    final screwSeries = <int, int?>{};
+    final screwMaterials = <int, String?>{};
+    final sourcesUsingRoleLinks = <int>{};
+
+    // New rules store "this accessory uses N accessory screws" as a role
+    // link. Resolve that role to the real screw product selected for the
+    // series. These links are authoritative over the legacy columns below.
+    for (final sourceId in quantitiesByAccessoryId.keys) {
+      final links = await _db.readAccessoryLinksWithDetails(sourceId);
+      for (final link in links) {
+        final targetRole = '${link['target_role_key'] ?? ''}'
+            .trim()
+            .toLowerCase();
+        final isScrewRelation =
+            targetRole == 'accessory_screw' || targetRole.endsWith('_screw');
+        if (!isScrewRelation) {
+          continue;
+        }
+        final count =
+            _catalogInt(link['linked_quantity'] ?? link['quantity']) ?? 0;
+        if (count <= 0) continue;
+        final seriesId =
+            sourceSeriesByAccessoryId[sourceId] ?? window.activeSeries?.id;
+        if (seriesId == null) continue;
+        final candidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'accessory',
+            selectorType: 'is_accessory_screw',
+            roleKeys: const ['accessory_screw'],
+            seriesId: seriesId,
+            materialType: materialByAccessoryId[sourceId],
+            requireDialog: false,
+            requireQuantity: true,
+          ),
+        );
+        Map<String, dynamic>? selectedScrew = candidates.isEmpty
+            ? null
+            : Map<String, dynamic>.from(candidates.first);
+        // Older catalogues often marked the physical screw with
+        // is_accessory_screw while its single CatalogItemRules row carried
+        // another screw role (box/bouchon/assembly). A role link from a
+        // Paumelle must still resolve that explicitly flagged product.
+        if (selectedScrew == null) {
+          final flagged = await database.query(
+            'Accessories',
+            where:
+                'is_accessory_screw = 1 AND (is_active = 1 OR is_active IS NULL)',
+            orderBy: 'is_default DESC, id ASC',
+          );
+          final expectedMaterial = (materialByAccessoryId[sourceId] ?? '')
+              .trim()
+              .toLowerCase();
+          selectedScrew = flagged
+              .map((row) => Map<String, dynamic>.from(row))
+              .where((row) {
+                final material = '${row['material_type'] ?? ''}'
+                    .trim()
+                    .toLowerCase();
+                return expectedMaterial.isEmpty ||
+                    material.isEmpty ||
+                    material == 'both' ||
+                    material == expectedMaterial;
+              })
+              .firstOrNull;
+        }
+        if (selectedScrew == null) continue;
+        final screwId = _catalogInt(selectedScrew['id']);
+        if (screwId == null) continue;
+        sourcesUsingRoleLinks.add(sourceId);
+        totalsByScrewId[screwId] =
+            (totalsByScrewId[screwId] ?? 0.0) +
+            ((quantitiesByAccessoryId[sourceId] ?? 0.0) * count);
+        screwSeries[screwId] = seriesId;
+        screwMaterials[screwId] = materialByAccessoryId[sourceId];
+      }
+    }
+
+    final sourceIds = quantitiesByAccessoryId.keys
+        .where((id) => !sourcesUsingRoleLinks.contains(id))
+        .toList();
+    if (sourceIds.isEmpty && totalsByScrewId.isEmpty) return const [];
+    final sourceRows = sourceIds.isEmpty
+        ? const <Map<String, Object?>>[]
+        : await database.query(
+            'Accessories',
+            columns: const ['id', 'screw_count', 'screw_accessory_id'],
+            where: 'id IN (${List.filled(sourceIds.length, '?').join(',')})',
+            whereArgs: sourceIds,
+          );
+    for (final row in sourceRows) {
+      final sourceId = _catalogInt(row['id']);
+      final screwId = _catalogInt(row['screw_accessory_id']);
+      final screwCount = _catalogInt(row['screw_count']) ?? 0;
+      if (sourceId == null || screwId == null || screwCount <= 0) continue;
+      final sourceQuantity = quantitiesByAccessoryId[sourceId] ?? 0.0;
+      if (sourceQuantity <= 0) continue;
+      totalsByScrewId[screwId] =
+          (totalsByScrewId[screwId] ?? 0.0) + (sourceQuantity * screwCount);
+      screwSeries[screwId] = sourceSeriesByAccessoryId[sourceId];
+      screwMaterials[screwId] = materialByAccessoryId[sourceId];
+    }
+    if (totalsByScrewId.isEmpty) return const [];
+
+    final screwIds = totalsByScrewId.keys.toList();
+    final screwRows = await database.query(
+      'Accessories',
+      where: 'id IN (${List.filled(screwIds.length, '?').join(',')})',
+      whereArgs: screwIds,
+    );
+    final screwsById = <int, Map<String, dynamic>>{
+      for (final row in screwRows)
+        if (_catalogInt(row['id']) != null)
+          _catalogInt(row['id'])!: Map<String, dynamic>.from(row),
+    };
+
+    final result = <BomItem>[];
+    for (final entry in totalsByScrewId.entries) {
+      final screw = screwsById[entry.key];
+      if (screw == null || entry.value <= 0) continue;
+      final productName = '${screw['name'] ?? 'Vis ${entry.key}'}'.trim();
+      final code = '${screw['code'] ?? ''}'.trim();
+      result.add(
+        BomItem(
+          category: 'accessory',
+          originalName: 'براغي الإكسسوارات',
+          name: code.isEmpty ? productName : '$code - $productName',
+          profileCode: code.isEmpty ? null : code,
+          imagePath: screw['image_path']?.toString(),
+          quantity: entry.value,
+          unit: 'حبة',
+          unitPrice: _safeDouble(
+            screw['calculated_price'] ?? screw['price_dzd'] ?? screw['price'],
+          ),
+          catalogItemId: entry.key,
+          inventoryItemType: 'Accessory',
+          overrideKey: 'linked-accessory:screw:${entry.key}',
+          selectorCategory: 'accessory',
+          selectorType: 'is_accessory_screw',
+          roleKey: 'accessory_screw',
+          sourceSeriesId: screwSeries[entry.key] ?? window.activeSeries?.id,
+          materialType:
+              screwMaterials[entry.key] ?? (window.isPVC ? 'pvc' : 'aluminium'),
+        ),
+      );
+    }
+    return result;
   }
 
   List<BomItem> _deduplicateRoleAccessories(List<BomItem> items) {

@@ -1016,7 +1016,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType == 'montant_central_slim' ||
                       selectedType == 'complement_haut_base' ||
                       selectedType == 'bardage' ||
-                      selectedType == 'plinthe') ...[
+                      selectedType == 'plinthe' ||
+                      selectedType == 'seuil') ...[
                     TextField(
                       controller: visibleWidthCtrl,
                       keyboardType: TextInputType.number,
@@ -1678,7 +1679,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType == 'montant_central_slim' ||
                       selectedType == 'complement_haut_base' ||
                       selectedType == 'bardage' ||
-                      selectedType == 'plinthe') ...[
+                      selectedType == 'plinthe' ||
+                      selectedType == 'seuil') ...[
                     TextField(
                       controller: visibleWidthCtrl,
                       keyboardType: TextInputType.number,

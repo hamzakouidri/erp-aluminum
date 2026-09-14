@@ -480,6 +480,26 @@ class BomItem {
 }
 
 class ComponentCalculator {
+  /// Returns the lower and upper Tringle cuts driven by one Cremone.
+  ///
+  /// The deduction is applied to the total usable length. The handle's
+  /// displacement from the sash centre is then shared equally by the two
+  /// cuts, so the two returned lengths always add up to `height - deduction`.
+  static List<double> cremoneTringleCutsMm({
+    required double heightMm,
+    required double deductionMm,
+    required double handleRatio,
+  }) {
+    final height = math.max(0.0, heightMm).toDouble();
+    final usableLength = math.max(0.0, height - math.max(0.0, deductionMm));
+    final normalizedHandleRatio = handleRatio.clamp(0.0, 1.0).toDouble();
+    final handleDisplacement = (normalizedHandleRatio - 0.5) * height;
+    final lowerCut = ((usableLength / 2.0) + (handleDisplacement / 2.0))
+        .clamp(0.0, usableLength)
+        .toDouble();
+    return <double>[lowerCut, usableLength - lowerCut];
+  }
+
   static bool _textHasAny(String value, Iterable<String> needles) {
     final lower = value.toLowerCase();
     for (final needle in needles) {
@@ -4648,15 +4668,13 @@ class ComponentCalculator {
         final triangleRule = cremoneOverride is Map
             ? Map<String, dynamic>.from(cremoneOverride)
             : const <String, dynamic>{};
-        final triangleMode = '${triangleRule['triangle_link_mode'] ?? 'none'}'
-            .toLowerCase();
         final triangleProfile = window
             .getConfiguredSectionForRole('triangle')
             ?.toMap();
-        final useTriangle =
-            triangleProfile != null &&
-            (triangleMode == 'required' ||
-                (triangleMode == 'optional' && window.useOptionalTriangle));
+        // A Cremone always drives two Tringle cuts when the series has a
+        // Tringle profile.  The manager configures only the total deduction;
+        // the drawing supplies the real handle position.
+        final useTriangle = triangleProfile != null;
 
         // The accessory remains visible whether or not its optional Triangle
         // link is selected.
@@ -4679,10 +4697,6 @@ class ComponentCalculator {
             0.0,
             numberFromRule('triangle_deduction_mm'),
           );
-          final triangleMultiplier = math.max(
-            1,
-            numberFromRule('triangle_quantity').round(),
-          );
           final trianglePieces = <double>[];
           final triangleCutPairs = <String>[];
           for (final run in triangleDrawingRuns) {
@@ -4692,29 +4706,21 @@ class ComponentCalculator {
             final handleRatio = (run['handle_ratio'] ?? 0.5)
                 .clamp(0.0, 1.0)
                 .toDouble();
-            final triangleTotal = math.max(
-              0.0,
-              drawingHeight - triangleDeduction,
+            // Split the handle displacement equally between the two cuts.
+            // Example: H=1200, D=200, handle=400 (200 below centre) gives
+            // 400 mm below and 600 mm above, rather than 300/700.
+            final cuts = cremoneTringleCutsMm(
+              heightMm: drawingHeight,
+              deductionMm: triangleDeduction,
+              handleRatio: handleRatio,
             );
-            final positionMode =
-                '${triangleRule['triangle_position_mode'] ?? 'center'}'
-                    .toLowerCase();
-            final splitFromBottom = positionMode == 'offset'
-                ? numberFromRule(
-                    'triangle_position_mm',
-                  ).clamp(0.0, triangleTotal).toDouble()
-                : (triangleTotal / 2.0) + ((handleRatio - 0.5) * drawingHeight);
-            final firstTrianglePiece = math
-                .max(0.0, splitFromBottom)
-                .toDouble();
-            final secondTrianglePiece = math
-                .max(0.0, triangleTotal - firstTrianglePiece)
-                .toDouble();
+            final firstTrianglePiece = cuts[0];
+            final secondTrianglePiece = cuts[1];
             triangleCutPairs.add(
               '${firstTrianglePiece.toStringAsFixed(0)} + '
               '${secondTrianglePiece.toStringAsFixed(0)}',
             );
-            for (var i = 0; i < window.quantity * triangleMultiplier; i++) {
+            for (var i = 0; i < window.quantity; i++) {
               trianglePieces.addAll([
                 firstTrianglePiece / 1000.0,
                 secondTrianglePiece / 1000.0,
@@ -4733,7 +4739,7 @@ class ComponentCalculator {
               roleKey: 'triangle',
             ).copyWith(
               cuttingList:
-                  'قطع القص: ${triangleCutPairs.join(' ؛ ')} مم لكل تراينغل',
+                  'قطع القص: ${triangleCutPairs.join(' ؛ ')} مم لكل كريمون',
             ),
           );
         }

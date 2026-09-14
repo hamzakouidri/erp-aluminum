@@ -14071,6 +14071,37 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         }
+
+        final selectedFrameUsesSlidingSeries = selectedZoneUsesSlidingFrame;
+        final selectedSeriesHasC =
+            widget.model.getConfiguredSectionForRole(
+              'seuil',
+              useSlidingSeries: selectedFrameUsesSlidingSeries,
+            ) !=
+            null;
+        if (selectedSeriesHasC) {
+          final cIsRequired = widget.model.isConfiguredRoleRequired(
+            'seuil',
+            useSlidingSeries: selectedFrameUsesSlidingSeries,
+          );
+          final cIsEnabled = widget.model.usesFrameRole(
+            'seuil',
+            sliding: selectedFrameUsesSlidingSeries,
+          );
+          children.add(const SizedBox(width: 8));
+          children.add(
+            _ContentButton(
+              label: cIsEnabled ? 'إلغاء بروفيل C' : 'تفعيل بروفيل C',
+              icon: Icons.horizontal_rule_rounded,
+              selected: cIsEnabled,
+              onPressed: () {
+                if (cIsRequired) return;
+                widget.model.toggleSeuil(!cIsEnabled);
+                setState(() {});
+              },
+            ),
+          );
+        }
         break;
 
       case 2: // ورقة (Sash settings)
