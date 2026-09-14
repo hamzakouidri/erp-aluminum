@@ -110,6 +110,64 @@ void main() {
     expect(items.single.roleKey, 'kit');
   });
 
+  test('TPR 40000 opening drawing accepts its specialised kit role', () async {
+    final db = fixtures.RuleDatabase();
+    db.rules
+      ..clear()
+      ..add({
+        'item_id': 10,
+        'series_id': 1,
+        'role_key': 'sliding_kit_40000',
+        'show_in_quantity': 1,
+      });
+    final window = fixtures.makeWindow(db);
+    window.activeSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: '40000 TPR',
+      type: 'opening',
+    );
+
+    final items = await BomEngineV2(
+      database: db,
+    ).filterItemsByAvailableCandidates(window: window, items: []);
+
+    expect(items.single.catalogItemId, 10);
+    expect(items.single.roleKey, 'sliding_kit_40000');
+  });
+
+  test('opening kit count follows independent double-leaf frames', () async {
+    final db = fixtures.RuleDatabase();
+    db.rules
+      ..clear()
+      ..add({
+        'item_id': 10,
+        'series_id': 1,
+        'role_key': 'kit',
+        'show_in_quantity': 1,
+      });
+    final window = fixtures.makeWindow(db);
+    window.zones = [
+      WindowZone(
+        id: 'frame-a',
+        content: ZoneContent.doubleSash,
+        boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+      ),
+      WindowZone(
+        id: 'frame-b',
+        content: ZoneContent.doubleSash,
+        boundary: const Rect.fromLTWH(1000, 0, 1000, 1200),
+      ),
+    ];
+
+    final items = await BomEngineV2(
+      database: db,
+    ).filterItemsByAvailableCandidates(window: window, items: []);
+
+    expect(items.single.quantity, 2);
+    expect(items.single.name, contains('\n'));
+  });
+
   test('mixed drawing resolves each series kit independently', () async {
     final db = fixtures.RuleDatabase();
     db.rules

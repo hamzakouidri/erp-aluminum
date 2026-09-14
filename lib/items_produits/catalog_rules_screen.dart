@@ -102,7 +102,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   Future<void> _load() async {
     setState(() => _loadingProfiles = true);
     final results = await Future.wait<dynamic>([
-      widget.db.readAccessories(),
+      widget.db.readAccessories(includeInactive: true),
       widget.db.readJoints(),
       widget.db.readProfile(),
       widget.db.readShutterComponents(),
@@ -229,6 +229,16 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (storedRole == 'sliding_clamp' || storedRole == 'clamp') {
         rule['role_key'] = 'clam';
         if (storedRole == 'sliding_clamp') rule['usage_scope'] = 'sliding';
+      }
+      if (table == 'Accessories' && storedRole == 'kit') {
+        final item = (_itemsByTable[table] ?? const <Map<String, dynamic>>[])
+            .where((candidate) => _itemId(candidate) == itemId)
+            .firstOrNull;
+        if (item != null && _guessRole(table, item) == 'alignment_square') {
+          // Present legacy EKD/Ekar d'alignement rows under their real role.
+          // The corrected role is persisted when the administrator saves.
+          rule['role_key'] = 'alignment_square';
+        }
       }
       _rulesByItem[_itemKey(table, itemId)] = rule;
     }
@@ -706,9 +716,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   bool _isScrewItem(Map<String, dynamic> item) {
     final text = '${item['name'] ?? ''} ${item['type'] ?? ''}'.toLowerCase();
-    return text.contains('vis') ||
-        text.contains('screw') ||
-        text.contains('برغ') ||
+    return _textLooksLikeScrew(text) ||
         _truthy(item['is_kit_screw']) ||
         _truthy(item['is_caisson_screw']) ||
         _truthy(item['is_moteur_screw']) ||
@@ -719,6 +727,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         _truthy(item['is_assembly_screw']) ||
         _truthy(item['is_installation_screw']) ||
         _truthy(item['is_accessory_screw']);
+  }
+
+  bool _textLooksLikeScrew(String text) {
+    final normalized = _foldSearchText(text);
+    return normalized.contains('vis') ||
+        normalized.contains('screw') ||
+        normalized.contains('برغ') ||
+        // «فيس» is the common local spelling of the French word
+        // «vis». Catalogue rows often use it in names such as
+        // «فيس بوشون باتمو» and «فيس الاكسسوار».
+        normalized.contains('فيس');
   }
 
   bool _itemBelongsToGroup(
@@ -789,10 +808,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               text.contains('bochon') ||
               text.contains('بوشون')) &&
           (text.contains('batmo') || text.contains('باتمو'));
-      final isScrew =
-          text.contains('vis') ||
-          text.contains('screw') ||
-          text.contains('براغ');
+      final isScrew = _textLooksLikeScrew(text);
       if (flag('is_kit_screw')) return 'kit_screw';
       if (flag('is_caisson_screw')) return 'box_screw';
       if (flag('is_moteur_screw')) return 'motor_screw';
@@ -836,14 +852,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (flag('is_gache_porte')) return 'gache_door';
       if (flag('is_lock_clef')) return 'lock_clef';
       if (flag('is_lock_condamnation')) return 'lock_condamnation';
-      if (text.contains('kit') &&
-          (text.contains('vis') || text.contains('براغ'))) {
+      if (text.contains('kit') && isScrew) {
         return 'kit_screw';
       }
       if (isBouchonBatmo && isScrew) return 'bouchon_batmo_screw';
       if (isBouchonBatmo) return 'bouchon_batmo';
-      if ((text.contains('caisson') || text.contains('صندوق')) &&
-          (text.contains('vis') || text.contains('براغ'))) {
+      if ((text.contains('caisson') || text.contains('صندوق')) && isScrew) {
         return 'box_screw';
       }
       if ((text.contains('40000') || text.contains('40000')) &&
@@ -896,6 +910,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (text.contains('tasso') || text.contains('طاسو')) return 'tasso';
       if (text.contains('alignement') ||
           text.contains('alignment') ||
+          text.contains('ekd') ||
           text.contains('دالينمو') ||
           text.contains('دالينيمو')) {
         return 'alignment_square';
@@ -917,6 +932,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           text.contains('intra')) {
         return 'entrematique';
       }
+      // Any screw without a more specific purpose belongs to the generic
+      // accessory-screw rule. This also covers legacy rows whose dedicated
+      // is_accessory_screw flag was never populated.
+      if (isScrew) return 'accessory_screw';
       return 'other';
     }
     if (table == 'Joints') {

@@ -11,6 +11,7 @@ import 'package:database_data/Screen/show_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/show_system_francais.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
@@ -1268,8 +1269,11 @@ class _CommandePageState extends State<CommandePage> {
     await Future.delayed(const Duration(milliseconds: 100));
 
     final syncService = CloudSyncService();
-    await syncService.beginLocalWrite();
     try {
+      // Final safety net for users who save/reserve the order without ever
+      // opening the quantity-and-cost table.
+      await _ensureAutomaticProductPrices(addedProducts, onlyMissing: true);
+      await syncService.beginLocalWrite();
       if (!mounted) return;
       double rawTotal = addedProducts
           .where((p) => !p.isReplaced)
@@ -1768,16 +1772,40 @@ class _CommandePageState extends State<CommandePage> {
   Future<void> _recalculateProductSellingPrice(WindowModel product) async {
     final pricingRules = await SqlDatabase().getProfileCalculationRules();
     final excludedProfiles = pricingRules
-        .where((rule) => rule['exclude_from_pricing'] == 1 ||
-            rule['exclude_from_pricing'] == true)
+        .where(
+          (rule) =>
+              rule['exclude_from_pricing'] == 1 ||
+              rule['exclude_from_pricing'] == true,
+        )
         .map((rule) => rule['section_id'])
         .toSet();
-    final bom = ComponentCalculator.generateBom(
+    final engine = BomEngineV2(database: widget.db);
+    var bom = ComponentCalculator.generateBom(
       product,
       _bulkPricingVariants(product),
-    ).where((item) => item.isActive && item.requiredQuantity > 0 &&
-        !(item.category == 'profile' &&
-            excludedProfiles.contains(item.catalogItemId))).toList();
+    );
+    // Resolve the same catalogue selections and prices used by the material
+    // table. Pricing an un-stabilized raw BOM is what previously left newly
+    // drawn products at zero until that table was opened.
+    await engine.stabilizeSelections(window: product, items: bom);
+    bom = ComponentCalculator.generateBom(
+      product,
+      _bulkPricingVariants(product),
+    );
+    await engine.stabilizeSelections(window: product, items: bom);
+    bom = await engine.filterItemsByAvailableCandidates(
+      window: product,
+      items: bom,
+    );
+    bom = bom
+        .where(
+          (item) =>
+              item.isActive &&
+              item.requiredQuantity > 0 &&
+              !(item.category == 'profile' &&
+                  excludedProfiles.contains(item.catalogItemId)),
+        )
+        .toList();
     if (bom.isEmpty) {
       product.manualPriceOverride = null;
       product.totalCost = 0;
@@ -1880,6 +1908,26 @@ class _CommandePageState extends State<CommandePage> {
       // keeping the old override would make the invoice display stale data.
       product.manualPriceOverride = null;
       product.totalCost = unitPrice;
+    }
+  }
+
+  Future<void> _ensureAutomaticProductPrices(
+    Iterable<WindowModel> products, {
+    bool onlyMissing = false,
+  }) async {
+    final automaticProducts = products.where(
+      (product) =>
+          !product.isCustomProduct &&
+          !product.isGlassWork &&
+          !product.isMoustiquaire &&
+          product.manualPriceOverride == null &&
+          (!onlyMissing || product.totalCost <= 0),
+    );
+    final pending = automaticProducts.toList(growable: false);
+    if (pending.isEmpty) return;
+    await _prepareBulkCatalog(pending);
+    for (final product in pending) {
+      await _recalculateProductSellingPrice(product);
     }
   }
 
@@ -3522,6 +3570,11 @@ class _CommandePageState extends State<CommandePage> {
     if (!mounted) return;
 
     if (result is WindowModel) {
+      // Calculate the selling price before publishing the card. Previously
+      // this happened only after opening the quantity/cost table, so saving
+      // the order directly could persist a zero-priced item.
+      await _ensureAutomaticProductPrices([result]);
+      if (!mounted) return;
       _saveLastSettings(result);
       setState(() {
         addedProducts.add(result);
@@ -3529,6 +3582,8 @@ class _CommandePageState extends State<CommandePage> {
       });
       _scrollToHighlightedProduct();
     } else if (result is List<WindowModel> && result.isNotEmpty) {
+      await _ensureAutomaticProductPrices(result);
+      if (!mounted) return;
       _saveLastSettings(result.last);
       setState(() {
         addedProducts.addAll(result);
@@ -4157,6 +4212,8 @@ class _CommandePageState extends State<CommandePage> {
                                       ),
                                     ),
                                   );
+                                  await _ensureAutomaticProductPrices([p]);
+                                  if (!mounted) return;
                                   _saveLastSettings(p);
                                   // بمجرد العودة (حتى لو لم يضغط إضافة للطلبية، فالمودل يعدل مباشرة في الذاكرة)
                                   // نعمل setState لتحديث الصورة والتكلفة ونحدد الإضاءة والتحريك

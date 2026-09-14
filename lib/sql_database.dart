@@ -10114,7 +10114,9 @@ class SqlDatabase {
   }
 
   //////////////////////////////////// Accessories //////////////////////////////////////
-  Future<List<Map<String, dynamic>>> readAccessories() async {
+  Future<List<Map<String, dynamic>>> readAccessories({
+    bool includeInactive = false,
+  }) async {
     Database? myDb = await db;
     // Some installations skipped the historical version that introduced
     // accessory-to-accessory relations. The rules screen writes these fields
@@ -10145,7 +10147,7 @@ class SqlDatabase {
     try {
       return await myDb.query(
         'Accessories',
-        where: 'is_active = 1 OR is_active IS NULL',
+        where: includeInactive ? null : 'is_active = 1 OR is_active IS NULL',
       );
     } catch (_) {
       try {

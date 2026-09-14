@@ -973,6 +973,33 @@ class CatalogCandidateResolver {
       // series which has no rules of its own.
       exactSeriesOnly: query.seriesId != null,
     );
+    // Older catalogues commonly saved an assembly/installation screw rule
+    // for the first series only, while the accessory itself was explicitly
+    // assigned to several series. Reuse that rule for another assigned
+    // series so the screw does not disappear from sliding-series BOMs.
+    if (table == 'Accessories' && query.seriesId != null) {
+      final requestedRoles = query.roleKeys.map((role) => role.trim()).toSet();
+      if (requestedRoles.contains('assembly_screw') ||
+          requestedRoles.contains('installation_screw')) {
+        final existingItemIds = rules
+            .map((rule) => _catalogInt(rule['item_id']))
+            .whereType<int>()
+            .toSet();
+        final fallbacks = await _db.getAssignedAccessoryScrewRuleFallbacks(
+          query.seriesId!,
+        );
+        for (final fallback in fallbacks) {
+          final role = '${fallback['role_key'] ?? ''}'.trim();
+          final itemId = _catalogInt(fallback['item_id']);
+          if (!requestedRoles.contains(role) ||
+              itemId == null ||
+              !existingItemIds.add(itemId)) {
+            continue;
+          }
+          rules.add({...fallback, 'series_id': query.seriesId});
+        }
+      }
+    }
     final surfaceRules = rules
         .where((rule) => _ruleVisibleOnSurface(rule, query))
         .toList();

@@ -151,6 +151,35 @@ class SlidingAssemblyRuleDatabase extends SqlDatabase {
   ];
 }
 
+class MixedAssemblyRuleDatabase extends SqlDatabase {
+  @override
+  Future<Database?> get db async => MemoryDatabase();
+
+  @override
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
+    bool includeInactive = false,
+  }) async => [
+    {
+      'id': seriesId == 2 ? 802 : 801,
+      'item_table': 'Accessories',
+      'item_id': seriesId == 2 ? 81 : 80,
+      'series_id': seriesId,
+      'role_key': 'assembly_screw',
+      'assembly_target': 'sash',
+      'assembly_section_ids': seriesId == 2 ? '30' : '20',
+      'top_corner_qty': 1,
+      'bottom_corner_qty': 1,
+      'show_in_quantity': 1,
+      'is_active': 1,
+    },
+  ];
+}
+
 class ProfileLinkedAssemblyRuleDatabase extends SqlDatabase {
   @override
   Future<Database?> get db async => MemoryDatabase();
@@ -423,6 +452,76 @@ void main() {
     expect(screws.single.catalogItemId, 40);
     expect(screws.single.quantity, 8);
     expect(screws.single.unitPrice, 5);
+  });
+  test('mixed drawing counts opening and sliding assembly screws', () async {
+    final db = MixedAssemblyRuleDatabase();
+    final window =
+        WindowModel(db: db, width: 2000, height: 1200, profileThickness: 50)
+          ..systemMode = 'mixed'
+          ..activeSeries = AluminumSeries(
+            id: 1,
+            profileId: 1,
+            name: 'Opening',
+            type: 'opening',
+          )
+          ..activeSlidingSeries = AluminumSeries(
+            id: 2,
+            profileId: 2,
+            name: 'Sliding',
+            type: 'sliding',
+          )
+          ..zones = [
+            WindowZone(
+              id: 'opening',
+              content: ZoneContent.singleSash,
+              boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+            ),
+            WindowZone(
+              id: 'sliding',
+              content: ZoneContent.slidingSash,
+              slidingSashesCount: 2,
+              boundary: const Rect.fromLTWH(1000, 0, 1000, 1200),
+            ),
+          ];
+    final profiles = [
+      BomItem(
+        category: 'profile',
+        originalName: 'Opening sash',
+        name: 'Opening sash',
+        quantity: 1,
+        unit: 'متر',
+        unitPrice: 1,
+        catalogItemId: 20,
+        selectorCategory: 'profile',
+        selectorType: 'sash',
+        roleKey: 'sash',
+        sourceSeriesId: 1,
+      ),
+      BomItem(
+        category: 'profile',
+        originalName: 'Sliding sash',
+        name: 'Sliding sash',
+        quantity: 1,
+        unit: 'متر',
+        unitPrice: 1,
+        catalogItemId: 30,
+        selectorCategory: 'profile',
+        selectorType: 'sash',
+        roleKey: 'sash',
+        sourceSeriesId: 2,
+      ),
+    ];
+
+    final items = await BomEngineV2(
+      database: db,
+    ).filterItemsByAvailableCandidates(window: window, items: profiles);
+    final quantities = {
+      for (final item in items.where(
+        (item) => item.roleKey == 'assembly_screw',
+      ))
+        item.catalogItemId: item.quantity,
+    };
+    expect(quantities, {80: 4, 81: 8});
   });
   test(
     'assembly screw follows selected plinthe or mullion profile pieces',

@@ -23,6 +23,19 @@ class BomEngineV2 {
         '',
       )
       .trim();
+  bool _looksLikeAlignmentSquare(Map<String, dynamic> item) {
+    final text =
+        '${item['name'] ?? ''} ${item['type'] ?? ''} ${item['code'] ?? ''}'
+            .toLowerCase();
+    return text.contains('alignement') ||
+        text.contains('alignment') ||
+        text.contains('d align') ||
+        text.contains("d'align") ||
+        text.contains('دالينمو') ||
+        text.contains('دالينيمو') ||
+        text.contains('ekd');
+  }
+
   final Map<String, Future<List<Map<String, dynamic>>>> _candidatesCache = {};
 
   Future<void> stabilizeSelections({
@@ -114,7 +127,7 @@ class BomEngineV2 {
         .whereType<int>()
         .toSet();
     kept.addAll(
-      (await _seriesKitItems(window)).where(
+      (await _seriesKitItems(window, kept)).where(
         (item) =>
             item.catalogItemId == null ||
             !existingIds.contains(item.catalogItemId),
@@ -332,8 +345,24 @@ class BomEngineV2 {
     return result;
   }
 
-  Future<List<BomItem>> _seriesKitItems(WindowModel window) async {
+  Future<List<BomItem>> _seriesKitItems(
+    WindowModel window,
+    Iterable<BomItem> selectedProfiles,
+  ) async {
     final result = <BomItem>[];
+    final actualProfileIds = selectedProfiles
+        .where((item) => (item.selectorCategory ?? item.category) == 'profile')
+        .map((item) => item.catalogItemId)
+        .whereType<int>()
+        .toSet();
+    final hasOpeningSashPlant = selectedProfiles.any((item) {
+      final role = (item.roleKey ?? item.selectorType ?? '')
+          .trim()
+          .toLowerCase();
+      return (item.selectorCategory ?? item.category) == 'profile' &&
+          role == 'plant' &&
+          item.sourceSeriesId == window.activeSeries?.id;
+    });
     final slidingZones = window.zones.where(
       (zone) => zone.content == ZoneContent.slidingSash,
     );
@@ -341,10 +370,30 @@ class BomEngineV2 {
       final leaves = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
       return sum + leaves ~/ 2;
     });
-    final slidingExtraEkarCount = slidingZones.fold<int>(0, (sum, zone) {
-      final leaves = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
-      return sum + (leaves.isOdd ? 4 : 0);
-    });
+    // Equerre d'alignement is a 45-degree assembly corner for one opening
+    // sash, not a sliding-kit supplement. A sash closed by a bottom plinthe
+    // does not use these four corners.
+    final openingAlignmentSquareCount = hasOpeningSashPlant
+        ? 0
+        : window.zones
+                  .where((zone) => zone.content == ZoneContent.singleSash)
+                  .length *
+              4;
+    final openingLeaves = window.zones
+        .where(
+          (zone) =>
+              zone.content == ZoneContent.singleSash ||
+              zone.content == ZoneContent.doubleSash,
+        )
+        .fold<int>(0, (sum, zone) {
+          final leaves = zone.content == ZoneContent.doubleSash
+              ? 2
+              : (zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 1);
+          return sum + leaves;
+        });
+    // An opening-series kit serves a complete pair of leaves. Never create a
+    // kit for zero or one opening sash.
+    final openingKitCount = openingLeaves ~/ 2;
     final contexts =
         <
           ({int id, bool sliding, String material, int kitCount, int ekarCount})
@@ -354,10 +403,12 @@ class BomEngineV2 {
               id: window.activeSeries!.id,
               sliding: window.usesSlidingPrimaryProfiles,
               material: window.isPVC ? 'pvc' : 'aluminium',
-              kitCount: window.usesSlidingPrimaryProfiles ? slidingKitCount : 1,
+              kitCount: window.usesSlidingPrimaryProfiles
+                  ? slidingKitCount
+                  : openingKitCount,
               ekarCount: window.usesSlidingPrimaryProfiles
-                  ? slidingExtraEkarCount
-                  : 0,
+                  ? 0
+                  : openingAlignmentSquareCount,
             ),
           if (window.activeSlidingSeries != null &&
               !window.isShutterOnly &&
@@ -370,14 +421,22 @@ class BomEngineV2 {
               sliding: true,
               material: window.isSlidingPVC ? 'pvc' : 'aluminium',
               kitCount: slidingKitCount,
-              ekarCount: slidingExtraEkarCount,
+              ekarCount: 0,
             ),
         };
     final database = await _db.db;
     if (database == null) return result;
+    final addedAlignmentSquareIds = <int>{};
     for (final context in contexts) {
+      final seriesLabel = window.activeSeries?.name.toLowerCase() ?? '';
+      final isTpr40000 =
+          !context.sliding &&
+          (seriesLabel.contains('tpr') || seriesLabel.contains('tp')) &&
+          (seriesLabel.contains('40000') || seriesLabel.contains('4000'));
       final roleKeys = context.sliding
           ? const ['sliding_kit', 'sliding_kit_40000', 'sliding_kit_67000']
+          : isTpr40000
+          ? const ['kit', 'sliding_kit_40000']
           : const ['kit'];
       var candidates = context.kitCount <= 0
           ? const <Map<String, dynamic>>[]
@@ -418,15 +477,68 @@ class BomEngineV2 {
         );
       }
       for (final candidate in candidates) {
+        final rule = Map<String, dynamic>.from(
+          candidate['catalog_rule'] as Map,
+        );
+        final linkedProfiles = assemblySectionIds(rule);
+        // A linked profile is a presence condition, not merely editor
+        // metadata. In particular, a 4NF kit linked to Batmo must disappear
+        // when that Batmo profile is not part of the actual BOM.
+        if (linkedProfiles.isNotEmpty &&
+            !linkedProfiles.any(actualProfileIds.contains)) {
+          continue;
+        }
         final id = _catalogInt(candidate['id']);
-        final kitRole =
-            (candidate['catalog_rule'] as Map?)?['role_key']?.toString() ??
-            'kit';
+        // Repair legacy catalogues where Ekar d'alignement was saved under
+        // `kit`. It remains a piece-counted assembly corner and must never be
+        // displayed as "Kit de série".
+        if (_looksLikeAlignmentSquare(candidate)) {
+          if (!context.sliding &&
+              context.ekarCount > 0 &&
+              id != null &&
+              addedAlignmentSquareIds.add(id)) {
+            final label = _catalogLabel(
+              candidate['name']?.toString() ?? "Equerre d'alignement",
+            );
+            result.add(
+              BomItem(
+                category: 'accessory',
+                originalName: label,
+                name: label,
+                quantity: (context.ekarCount * window.quantity).toDouble(),
+                unit: 'حبة',
+                unitPrice: await _accessoryPrice(database, candidate),
+                catalogItemId: id,
+                inventoryItemType: 'Accessory',
+                profileCode: candidate['code']?.toString(),
+                imagePath: candidate['image_path']?.toString(),
+                overrideKey: 'opening-alignment-square:${context.id}:$id',
+                selectorCategory: 'accessory',
+                selectorType: 'alignment_square',
+                roleKey: 'alignment_square',
+                sourceSeriesId: context.id,
+                materialType: context.material,
+              ),
+            );
+          }
+          continue;
+        }
+        final kitRole = rule['role_key']?.toString() ?? 'kit';
+        final selectedName = _catalogLabel(
+          candidate['name']?.toString() ?? 'Kit',
+        );
+        final selectedCode = candidate['code']?.toString().trim() ?? '';
+        final heading = context.sliding ? 'كيت المنزلق' : 'كيت السلسلة';
+        final details = [
+          if (selectedName.isNotEmpty && selectedName != heading) selectedName,
+          if (selectedCode.isNotEmpty && selectedCode != selectedName)
+            selectedCode,
+        ].join('\n');
         result.add(
           BomItem(
             category: 'accessory',
-            originalName: _catalogLabel(candidate['name']?.toString() ?? 'Kit'),
-            name: _catalogLabel(candidate['name']?.toString() ?? 'Kit'),
+            originalName: heading,
+            name: details.isEmpty ? heading : '$heading\n$details',
             quantity: (context.kitCount * window.quantity).toDouble(),
             unit: 'kit',
             unitPrice: await _accessoryPrice(database, candidate),
@@ -443,7 +555,7 @@ class BomEngineV2 {
           ),
         );
       }
-      if (context.sliding && context.ekarCount > 0) {
+      if (!context.sliding && context.ekarCount > 0) {
         final ekarCandidates = await _resolveCandidates(
           CatalogCandidateQuery(
             category: 'accessory',
@@ -451,7 +563,7 @@ class BomEngineV2 {
             roleKeys: const ['alignment_square'],
             seriesId: context.id,
             materialType: context.material,
-            drawingMode: AccessoryDrawingMode.sliding,
+            drawingMode: AccessoryDrawingMode.opening,
             requireDialog: false,
             requireQuantity: true,
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
@@ -460,6 +572,7 @@ class BomEngineV2 {
         );
         for (final candidate in ekarCandidates) {
           final id = _catalogInt(candidate['id']);
+          if (id == null || !addedAlignmentSquareIds.add(id)) continue;
           result.add(
             BomItem(
               category: 'accessory',
@@ -476,7 +589,7 @@ class BomEngineV2 {
               inventoryItemType: 'Accessory',
               profileCode: candidate['code']?.toString(),
               imagePath: candidate['image_path']?.toString(),
-              overrideKey: 'sliding-ekar:${context.id}:${id ?? 0}',
+              overrideKey: 'opening-alignment-square:${context.id}:$id',
               selectorCategory: 'accessory',
               selectorType: 'alignment_square',
               roleKey: 'alignment_square',
@@ -536,14 +649,22 @@ class BomEngineV2 {
     WindowModel window,
     Iterable<BomItem> selectedProfiles,
   ) async {
+    final selectedProfileList = selectedProfiles.toList(growable: false);
+    final geometricDemands = assemblyDemands(window);
+    _reconcileBaseAssemblySectionIds(
+      window,
+      geometricDemands,
+      selectedProfileList,
+    );
     final demands = [
-      ...assemblyDemands(window),
-      ..._selectedProfileAssemblyDemands(window, selectedProfiles),
+      ...geometricDemands,
+      ..._selectedProfileAssemblyDemands(window, selectedProfileList),
     ];
     if (demands.isEmpty) return [];
     final database = await _db.db;
     if (database == null) return [];
     final items = <BomItem>[];
+    final assemblyScrewIndexByCatalogId = <int, int>{};
     for (final sliding in [false, true]) {
       final contextDemands = demands
           .where((d) => d.sliding == sliding)
@@ -620,29 +741,118 @@ class BomEngineV2 {
           if (selectedCode.isNotEmpty && selectedCode != selectedName)
             selectedCode,
         ].join('\n');
-        items.add(
-          BomItem(
-            category: 'accessory',
-            originalName: displayName,
-            name: details.isEmpty ? displayName : '$displayName\n$details',
-            quantity: quantity.toDouble(),
-            unit: 'حبة',
-            unitPrice: await _accessoryPrice(database, candidate),
-            catalogItemId: id,
-            inventoryItemType: 'Accessory',
-            profileCode: candidate['code']?.toString(),
-            imagePath: candidate['image_path']?.toString(),
-            overrideKey: key,
-            selectorCategory: 'accessory',
-            selectorType: role,
-            roleKey: role,
-            sourceSeriesId: seriesId,
-            materialType: material,
-          ),
+        final item = BomItem(
+          category: 'accessory',
+          originalName: displayName,
+          name: details.isEmpty ? displayName : '$displayName\n$details',
+          quantity: quantity.toDouble(),
+          unit: 'حبة',
+          unitPrice: await _accessoryPrice(database, candidate),
+          catalogItemId: id,
+          inventoryItemType: 'Accessory',
+          profileCode: candidate['code']?.toString(),
+          imagePath: candidate['image_path']?.toString(),
+          overrideKey: key,
+          selectorCategory: 'accessory',
+          selectorType: role,
+          roleKey: role,
+          sourceSeriesId: seriesId,
+          materialType: material,
         );
+        if (role == 'assembly_screw' && id != null) {
+          final existingIndex = assemblyScrewIndexByCatalogId[id];
+          if (existingIndex != null) {
+            final existing = items[existingIndex];
+            items[existingIndex] = _bomItemWithQuantity(
+              existing,
+              existing.quantity + item.quantity,
+              overrideKey: 'assembly:combined:assembly_screw:$id',
+            );
+            continue;
+          }
+          assemblyScrewIndexByCatalogId[id] = items.length;
+        }
+        items.add(item);
       }
     }
     return items;
+  }
+
+  void _reconcileBaseAssemblySectionIds(
+    WindowModel window,
+    List<AssemblyDemand> demands,
+    Iterable<BomItem> selectedProfiles,
+  ) {
+    for (final profile in selectedProfiles) {
+      if ((profile.selectorCategory ?? profile.category) != 'profile') {
+        continue;
+      }
+      final sectionId = profile.catalogItemId;
+      final role = (profile.roleKey ?? profile.selectorType ?? '')
+          .trim()
+          .toLowerCase();
+      if (sectionId == null || (role != 'frame' && role != 'sash')) continue;
+      final sliding =
+          profile.sourceSeriesId != null &&
+          profile.sourceSeriesId == window.activeSlidingSeries?.id &&
+          (window.systemMode == 'sliding' ||
+              profile.sourceSeriesId != window.activeSeries?.id);
+      final target = role == 'frame' ? 'frame' : 'sash';
+      for (var index = 0; index < demands.length; index++) {
+        final demand = demands[index];
+        if (demand.sliding != sliding || demand.target != target) continue;
+        // The strictly resolved BOM row is the actual profile selected for
+        // this series. In mixed drawings the model-level shortcut may still
+        // be null or point at the opening profile, causing a linked sliding
+        // assembly rule to calculate zero.
+        demands[index] = AssemblyDemand(
+          target: demand.target,
+          sliding: demand.sliding,
+          topCorners: demand.topCorners,
+          bottomCorners: demand.bottomCorners,
+          sectionId: sectionId,
+        );
+      }
+    }
+  }
+
+  BomItem _bomItemWithQuantity(
+    BomItem item,
+    double quantity, {
+    String? overrideKey,
+  }) {
+    return BomItem(
+      category: item.category,
+      originalName: item.originalName,
+      profileCode: item.profileCode,
+      name: item.name,
+      imagePath: item.imagePath,
+      colorName: item.colorName,
+      length: item.length,
+      glassHeight: item.glassHeight,
+      pieceCount: item.pieceCount,
+      quantity: quantity,
+      unit: item.unit,
+      unitPrice: item.unitPrice,
+      isMissing: item.isMissing,
+      isInteractive: item.isInteractive,
+      isActive: item.isActive,
+      exclusionGroup: item.exclusionGroup,
+      pieces: item.pieces,
+      cuttingList: item.cuttingList,
+      kitGroupName: item.kitGroupName,
+      exactQuantity: item.exactQuantity == null ? null : quantity,
+      catalogItemId: item.catalogItemId,
+      inventoryItemType: item.inventoryItemType,
+      colorId: item.colorId,
+      overrideKey: overrideKey ?? item.overrideKey,
+      selectorCategory: item.selectorCategory,
+      selectorType: item.selectorType,
+      roleKey: item.roleKey,
+      sourceSeriesId: item.sourceSeriesId,
+      materialType: item.materialType,
+      targetThicknessMm: item.targetThicknessMm,
+    );
   }
 
   Future<bool> _itemHasRuleCandidate(WindowModel window, BomItem item) async {
