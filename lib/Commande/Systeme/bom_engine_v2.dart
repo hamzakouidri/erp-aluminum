@@ -629,7 +629,9 @@ class BomEngineV2 {
     );
     final slidingKitCount = slidingZones.fold<int>(0, (sum, zone) {
       final leaves = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
-      return sum + leaves ~/ 2;
+      // One sliding kit serves at most two leaves:
+      // 2 => 1, 3-4 => 2, 5-6 => 3, and so on.
+      return sum + ((leaves + 1) ~/ 2);
     });
     // Equerre d'alignement is a 45-degree assembly corner for one opening
     // sash, not a sliding-kit supplement. A sash closed by a bottom plinthe
@@ -695,7 +697,15 @@ class BomEngineV2 {
           (seriesLabel.contains('tpr') || seriesLabel.contains('tp')) &&
           (seriesLabel.contains('40000') || seriesLabel.contains('4000'));
       final roleKeys = context.sliding
-          ? const ['sliding_kit', 'sliding_kit_40000', 'sliding_kit_67000']
+          // Generic `kit` rules may be additive kits linked to a particular
+          // reinforced lateral/central montant. They must be queried even
+          // when the series also has its ordinary sliding kit.
+          ? const [
+              'sliding_kit',
+              'sliding_kit_40000',
+              'sliding_kit_67000',
+              'kit',
+            ]
           : isTpr40000
           ? const ['kit', 'sliding_kit_40000']
           : const ['kit'];
@@ -788,10 +798,25 @@ class BomEngineV2 {
         final selectedName = _catalogLabel(
           candidate['name']?.toString() ?? 'Kit',
         );
+        final normalizedKitName = selectedName.toLowerCase();
+        final isCentralReinforcementKit =
+            (normalizedKitName.contains('central') ||
+                normalizedKitName.contains('centrale') ||
+                normalizedKitName.contains('وسطي')) &&
+            (normalizedKitName.contains('renfor') ||
+                normalizedKitName.contains('معزز'));
+        // One lateral reinforced post consumes one kit. A pair of reinforced
+        // central posts consumes two kits. The linked-profile condition above
+        // ensures these additive kits appear only with their own section.
+        final candidateKitCount = isCentralReinforcementKit
+            ? context.kitCount * 2
+            : context.kitCount;
         final selectedCode = candidate['code']?.toString().trim() ?? '';
+        // Keep the stable category title, and show the exact catalogue name
+        // underneath it as the secondary grey line.
         final heading = context.sliding ? 'كيت المنزلق' : 'كيت السلسلة';
         final details = [
-          if (selectedName.isNotEmpty && selectedName != heading) selectedName,
+          if (selectedName.isNotEmpty) selectedName,
           if (selectedCode.isNotEmpty && selectedCode != selectedName)
             selectedCode,
         ].join('\n');
@@ -800,7 +825,7 @@ class BomEngineV2 {
             category: 'accessory',
             originalName: heading,
             name: details.isEmpty ? heading : '$heading\n$details',
-            quantity: (context.kitCount * window.quantity).toDouble(),
+            quantity: (candidateKitCount * window.quantity).toDouble(),
             unit: 'kit',
             unitPrice: await _accessoryPrice(database, candidate),
             catalogItemId: id,

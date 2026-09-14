@@ -5490,7 +5490,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       children: [
                         Text(
                           isKitElement
-                              ? Localization.translate(item.name, lang)
+                              ? Localization.translate(
+                                  item.name.split('\n').first,
+                                  lang,
+                                )
                               : item.getLocalizedName(_lang),
                           style: TextStyle(
                             fontSize: isKitElement ? 13.5 : 12,
@@ -5509,6 +5512,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                 : null,
                           ),
                         ),
+                        if (isKitElement && item.name.contains('\n'))
+                          Text(
+                            item.name
+                                .split('\n')
+                                .skip(1)
+                                .join(' • '),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.normal,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade700,
+                              decoration: inactive
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
                         // لعناصر الكيت: عرض الكمية والوحدة تحت الاسم مباشرة
                         if (isKitElement)
                           Text(

@@ -377,7 +377,17 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   /// when at least one section has been assigned to it; unassigned roles stay
   /// below them while preserving the administrator's stable role order.
   List<_SeriesRole> get _orderedAvailableRoles {
-    final roles = _availableRoles.toList(growable: false);
+    final roles = _availableRoles
+        .where((role) {
+          if (role.key != 'bardage') return true;
+          final hasLinkedSection =
+              _sectionIdsByRole[role.key]?.isNotEmpty ?? false;
+          final hasAvailableBardage = _sections.any(_isBardageSection);
+          // Do not display the legacy empty Bardage block. The useful block stays
+          // visible as soon as it has a linked/available Bardage profile.
+          return hasLinkedSection || hasAvailableBardage;
+        })
+        .toList(growable: false);
     final active = roles.where(
       (role) => _sectionIdsByRole[role.key]?.isNotEmpty ?? false,
     );
@@ -611,7 +621,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           : isFrameRole
           ? 2
           : 0,
-      'track_adds': role == 'frame_extension' || role == 'rail' ? 1 : 0,
+      'track_adds':
+          role == 'frame_extension' || role == 'rail' || role == 'seuil'
+          ? 1
+          : 0,
       'supported_track_counts': role == 'frame_extension' ? '3,4,5,6,7' : '2',
     };
   }
@@ -1422,7 +1435,49 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           ],
         ),
         title: Text(_sectionLabel(section)),
-        subtitle: Text(badges.join(' • ')),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(badges.join(' • ')),
+            if (role.key == 'seuil') ...[
+              const SizedBox(height: 8),
+              Text(
+                _t(
+                  'عدد السكك التي يغطيها قطاع Seuil واحد:',
+                  'Rails couverts par un profil Seuil :',
+                ),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 5),
+              Wrap(
+                spacing: 6,
+                children: [1, 2, 3].map((count) {
+                  final current = (_number(
+                    options['track_adds'],
+                    fallback: 1,
+                  )).round().clamp(1, 3);
+                  return ChoiceChip(
+                    label: Text(
+                      _t('$count سكة', '$count rail${count > 1 ? 's' : ''}'),
+                    ),
+                    selected: current == count,
+                    onSelected: (_) {
+                      setState(() {
+                        _roleOptionsByRoleSection[_roleOptionKey(
+                          role.key,
+                          sectionId,
+                        )] = {
+                          ...options,
+                          'track_adds': count,
+                        };
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
         trailing: IconButton(
           tooltip: _t('تعديل القواعد', 'Modifier les règles'),
           icon: const Icon(Icons.tune_rounded),
@@ -1484,7 +1539,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final trackAddsCtrl = TextEditingController(
       text: (_number(
         original['track_adds'],
-        fallback: role.key == 'frame_extension' || role.key == 'rail' ? 1 : 0,
+        fallback:
+            role.key == 'frame_extension' ||
+                role.key == 'rail' ||
+                role.key == 'seuil'
+            ? 1
+            : 0,
       )).round().toString(),
     );
     final supportedTracksCtrl = TextEditingController(
@@ -1821,7 +1881,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         ),
                         const SizedBox(height: 10),
                       ],
-                      if (role.key == 'rail') ...[
+                      if (role.key == 'rail' || role.key == 'seuil') ...[
                         DropdownButtonFormField<int>(
                           initialValue:
                               (int.tryParse(trackAddsCtrl.text.trim()) ?? 1)
@@ -1829,8 +1889,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                                   .toInt(),
                           decoration: InputDecoration(
                             labelText: _t(
-                              'عدد السكك التي تمثلها قطعة واحدة',
-                              'Rails représentés par une pièce',
+                              role.key == 'seuil'
+                                  ? 'عدد السكك التي يغطيها قطاع Seuil واحد'
+                                  : 'عدد السكك التي تمثلها قطعة واحدة',
+                              role.key == 'seuil'
+                                  ? 'Rails couverts par un profil Seuil'
+                                  : 'Rails représentés par une pièce',
                             ),
                             helperText: _t(
                               'مثال: القيمة 1 مع إطار 6 سكك تعطي 6 قطع',
@@ -1923,14 +1987,16 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         'track_mode': draft['track_mode']?.toString() ?? 'base',
                         'track_count':
                             int.tryParse(trackCountCtrl.text.trim()) ?? 0,
-                        'track_adds':
-                            role.key == 'frame_extension' || role.key == 'rail'
-                            ? (int.tryParse(trackAddsCtrl.text.trim()) ?? 1)
-                                  .clamp(1, 3)
-                            : 0,
                         'supported_track_counts': supportedTracksCtrl.text
                             .trim(),
                       },
+                      'track_adds':
+                          role.key == 'frame_extension' ||
+                              role.key == 'rail' ||
+                              role.key == 'seuil'
+                          ? (int.tryParse(trackAddsCtrl.text.trim()) ?? 1)
+                                .clamp(1, 3)
+                          : 0,
                     };
                     Navigator.pop(dialogContext, draft);
                   },

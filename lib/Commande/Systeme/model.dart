@@ -7788,6 +7788,21 @@ class WindowModel extends ChangeNotifier {
     return (trackCount.clamp(0, 7) / railsPerPiece).ceil();
   }
 
+  int slidingTrackCountForRect(Rect frame) => zones
+      .where((zone) => frame.contains(zone.boundary.center))
+      .fold<int>(1, (count, zone) => math.max(count, zone.slidingTrackCount));
+
+  /// Number of physical Seuil/C pieces required below a sliding frame.
+  /// The catalogue rule defines whether one profile covers 1, 2 or 3 rails.
+  int slidingSeuilPieceCount(int trackCount) {
+    final raw = _selectedSlidingRoleOption('seuil', 'track_adds');
+    final configured = raw is num
+        ? raw.toInt()
+        : int.tryParse('${raw ?? ''}') ?? 1;
+    final tracksPerPiece = configured.clamp(1, 3);
+    return (trackCount.clamp(0, 7) / tracksPerPiece).ceil();
+  }
+
   /// Final catalogue-rule correction applied after calculating the clear
   /// internal rail width. A saved rule has priority over inferred defaults.
   double get slidingRailWidthAdjustmentMm {

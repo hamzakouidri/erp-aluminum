@@ -1551,14 +1551,17 @@ class WindowPainter extends CustomPainter {
   ) {
     final frameRects = model.getFrameRects();
     if (frameRects.length <= 1) {
-      _drawOuterFrame(
-        canvas,
-        w,
-        h,
-        t,
-        topOffset,
-        sourceFrame: Rect.fromLTRB(0, topOffset, w, h),
-      );
+      final frame = Rect.fromLTRB(0, topOffset, w, h);
+      final sliding = model.frameUsesSlidingSeries(frame);
+      final previousBottomFrame = _localBottomFrame;
+      if (model.usesFrameRole('seuil', sliding: sliding)) {
+        _localBottomFrame = false;
+      }
+      try {
+        _drawOuterFrame(canvas, w, h, t, topOffset, sourceFrame: frame);
+      } finally {
+        _localBottomFrame = previousBottomFrame;
+      }
     } else {
       for (final r in frameRects) {
         // A frame rectangle already starts below the shutter box.  Drawing it
@@ -1572,6 +1575,12 @@ class WindowPainter extends CustomPainter {
         final localThickness = model.frameVisibleWidthForRect(r, fallback: t);
         final previousBottomFrame = _localBottomFrame;
         _localBottomFrame = model.hasBottomFrameForRect(r);
+        if (model.usesFrameRole(
+          'seuil',
+          sliding: model.frameUsesSlidingSeries(r),
+        )) {
+          _localBottomFrame = false;
+        }
         try {
           _drawOuterFrame(
             canvas,
@@ -1606,6 +1615,21 @@ class WindowPainter extends CustomPainter {
         );
       }
 
+      void drawSeuil(Rect rect) {
+        if (rect.isEmpty) return;
+        canvas.drawRect(rect, _buildPaint(rect));
+        final border = Paint()
+          ..color = _fb
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        // In elevation the seuil replaces the lower frame. Its upper edge is
+        // not another frame perimeter, so only the exposed lower edge and the
+        // two square ends are drawn.
+        canvas.drawLine(rect.bottomLeft, rect.bottomRight, border);
+        canvas.drawLine(rect.topLeft, rect.bottomLeft, border);
+        canvas.drawLine(rect.topRight, rect.bottomRight, border);
+      }
+
       for (final role in ['cache_dormant', 'cache_rail', 'seuil']) {
         if (!model.usesFrameRole(role, sliding: sliding)) continue;
         final section = model.getConfiguredSectionForRole(
@@ -1619,7 +1643,7 @@ class WindowPainter extends CustomPainter {
         );
         if (role == 'seuil') {
           // Straight ends meet the jambs at 90 degrees.
-          drawProfile(
+          drawSeuil(
             Rect.fromLTRB(r.left, r.bottom - visible, r.right, r.bottom),
           );
         } else if (role == 'cache_dormant') {

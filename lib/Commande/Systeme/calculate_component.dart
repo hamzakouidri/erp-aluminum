@@ -4,6 +4,16 @@ import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
+String _withoutAccessoryQualityLabel(String value) => value
+    .replaceAll(
+      RegExp(
+        r'\s*\([^)]*(?:جودة|قياسية|رفيعة|تجارية|qualit[ée]|quality|standard|premium|commercial)[^)]*\)',
+        caseSensitive: false,
+      ),
+      '',
+    )
+    .trim();
+
 class BomItem {
   final String category;
   final String originalName;
@@ -134,7 +144,7 @@ class BomItem {
     this.sourceSeriesId,
     this.materialType,
     this.targetThicknessMm,
-  }) : this.name = name.replaceAll(RegExp(r'\s*\(\s*جودة[^)]*\)'), '').trim();
+  }) : this.name = _withoutAccessoryQualityLabel(name);
 
   double get exactTotal {
     if (!isActive) return 0.0;
@@ -3239,7 +3249,12 @@ class ComponentCalculator {
             // Reuse the actual frame cuts, including deductions and welding.
             pieces.addAll(frameCutsByRect[frame] ?? const []);
           } else if (role == 'seuil') {
-            pieces.add(frame.width / 1000.0);
+            final count = sliding
+                ? window.slidingSeuilPieceCount(
+                    window.slidingTrackCountForRect(frame),
+                  )
+                : 1;
+            pieces.addAll(List.filled(count, frame.width / 1000.0));
           } else {
             final counts = window.cacheRailCountsForRect(frame);
             pieces.addAll(
