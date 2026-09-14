@@ -41,6 +41,21 @@ void main() {
     expect(model.hasSideCovers, isTrue);
   });
 
+  test('belt shutter defaults left and preserves an explicit saved side', () {
+    final model = WindowModel(db: FakeSqlDatabase());
+    expect(model.shutterMechanism, 'حزام');
+    expect(model.shutterDriveSide, 'left');
+
+    applyWindowModelFromMap(model, const {'shutterMechanism': 'حزام'});
+    expect(model.shutterDriveSide, 'left');
+
+    applyWindowModelFromMap(model, const {
+      'shutterMechanism': 'حزام',
+      'shutterDriveSide': 'right',
+    });
+    expect(model.shutterDriveSide, 'right');
+  });
+
   test('shutter curtain weight follows the actual blade cuts', () {
     final weight = ComponentCalculator.shutterCurtainWeightKg(
       windowWidthMm: 1200,

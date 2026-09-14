@@ -702,7 +702,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   );
   model.shutterGlissiere = map['shutterGlissiere'] ?? 'Glissière 25';
   model.shutterPosition = (map['shutterPosition'] as num?)?.toDouble() ?? 0.5;
-  model.shutterDriveSide = map['shutterDriveSide'] ?? 'right';
+  model.shutterDriveSide =
+      map['shutterDriveSide'] ??
+      (model.shutterMechanism == 'حزام' ? 'left' : model.shutterDriveSide);
   model.customShutterBoxHeight = (map['customShutterBoxHeight'] as num?)
       ?.toDouble();
   model.selectedShutterLameId = (map['selectedShutterLameId'] as num?)?.toInt();

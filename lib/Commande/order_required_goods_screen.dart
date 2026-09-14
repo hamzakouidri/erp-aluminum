@@ -54,6 +54,40 @@ String requiredGoodsCategoryForBom(BomItem item) {
   return 'accessory';
 }
 
+String _canonicalInventoryItemType(String? value) {
+  final normalized = (value ?? '').trim().toLowerCase().replaceAll(' ', '');
+  if (const {
+    'profile',
+    'profiles',
+    'section',
+    'sections',
+  }.contains(normalized)) {
+    return 'Section';
+  }
+  if (const {'accessory', 'accessories'}.contains(normalized)) {
+    return 'Accessory';
+  }
+  if (const {
+    'shuttercomponent',
+    'shuttercomponents',
+    'lame',
+    'glissiere',
+    'axe',
+    'caisson',
+  }.contains(normalized)) {
+    return 'ShutterComponent';
+  }
+  if (const {'joint', 'joints'}.contains(normalized)) return 'Joints';
+  if (normalized == 'glass') return 'Glass';
+  return value?.trim() ?? '';
+}
+
+String requiredGoodsInventoryKey({
+  required String? itemType,
+  required int itemId,
+  int? colorId,
+}) => '${_canonicalInventoryItemType(itemType)}_${itemId}_${colorId ?? 0}';
+
 bool bomUsesOrderLevelCutting(BomItem item) {
   final unit = item.unit.trim().toLowerCase();
   final isStockBar = const {'قطاع', 'بارة', 'bar', 'section'}.contains(unit);
@@ -486,6 +520,61 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   bool _manufacturingIssueRequested = false;
   late AppLanguage _currentLang;
   Future<int>? _shutterGreyColorIdFuture;
+  String _selectedCategory = 'all';
+  Map<String, double> _mainWarehouseStock = const {};
+  String _mainWarehouseName = 'المستودع الرئيسي';
+
+  List<AggregatedGoodItem> get _visibleItems => _selectedCategory == 'all'
+      ? _aggregatedItems
+      : _aggregatedItems
+            .where((item) => item.category == _selectedCategory)
+            .toList();
+
+  Future<(Map<String, double>, String)> _loadMainWarehouseStock() async {
+    final locations = await widget.db.readLocations();
+    if (locations.isEmpty)
+      return (const <String, double>{}, 'المستودع الرئيسي');
+    final location = locations.firstWhere((row) {
+      final name = (row['name']?.toString() ?? '').trim();
+      final type = (row['type']?.toString() ?? '').trim();
+      return name == 'المستودع الرئيسي' || type == 'مستودع رئيسي';
+    }, orElse: () => locations.first);
+    final locationId = _safeInt(location['id']);
+    if (locationId == null) {
+      return (const <String, double>{}, 'المستودع الرئيسي');
+    }
+    final rows = await widget.db.readAllPossibleStock(locationId);
+    final quantities = <String, double>{};
+    for (final row in rows) {
+      final itemId = _safeInt(row['item_id']);
+      if (itemId == null) continue;
+      quantities[requiredGoodsInventoryKey(
+        itemType: row['item_type']?.toString(),
+        itemId: itemId,
+        colorId: _safeInt(row['color_id']),
+      )] = _safeDouble(
+        row['quantity'],
+      );
+    }
+    return (quantities, location['name']?.toString() ?? 'المستودع الرئيسي');
+  }
+
+  double? _stockQuantityFor({
+    required int? itemId,
+    required String? itemType,
+    int? colorId,
+  }) {
+    if (itemId == null || (itemType ?? '').trim().isEmpty) return null;
+    return _mainWarehouseStock[requiredGoodsInventoryKey(
+          itemType: itemType,
+          itemId: itemId,
+          colorId: colorId,
+        )] ??
+        0;
+  }
+
+  String _stockLabel(double? quantity, String unit) =>
+      quantity == null ? '—' : '${_roundQuantity(quantity, unit)} ${_t(unit)}';
 
   @override
   void initState() {
@@ -1814,8 +1903,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return a.name.compareTo(b.name);
       });
 
+      final stockSnapshot = await _loadMainWarehouseStock();
       setState(() {
         _aggregatedItems = sorted;
+        _mainWarehouseStock = stockSnapshot.$1;
+        _mainWarehouseName = stockSnapshot.$2;
         _productCount = successCount;
         _productBreakdowns = breakdownsTemp;
         _processingWarnings = warnings;
@@ -2657,9 +2749,54 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         // شريط معلومات الملخص
         _buildInfoBanner(),
         if (_processingWarnings.isNotEmpty) _buildWarningsBanner(),
+        _buildCategoryFilters(),
         // القائمة
         Expanded(child: _buildGroupedList()),
       ],
+    );
+  }
+
+  Widget _buildCategoryFilters() {
+    const filters = <(String, String, IconData)>[
+      ('all', 'الكل', Icons.apps_rounded),
+      ('accessory', 'الإكسسوارات', Icons.build_outlined),
+      ('profile', 'البروفيلات', Icons.view_stream_outlined),
+      ('joint', 'الجوانات', Icons.horizontal_rule_rounded),
+      ('shutter', 'مكونات الستار', Icons.blinds_outlined),
+    ];
+    return SizedBox(
+      height: 58,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        scrollDirection: Axis.horizontal,
+        itemCount: filters.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final filter = filters[index];
+          final selected = _selectedCategory == filter.$1;
+          final color = filter.$1 == 'all'
+              ? const Color(0xFF1A237E)
+              : _categoryColor(filter.$1);
+          return FilterChip(
+            selected: selected,
+            showCheckmark: false,
+            avatar: Icon(
+              filter.$3,
+              size: 17,
+              color: selected ? Colors.white : color,
+            ),
+            label: Text(_t(filter.$2)),
+            labelStyle: TextStyle(
+              color: selected ? Colors.white : color,
+              fontWeight: FontWeight.w700,
+            ),
+            selectedColor: color,
+            backgroundColor: color.withValues(alpha: 0.08),
+            side: BorderSide(color: color.withValues(alpha: 0.35)),
+            onSelected: (_) => setState(() => _selectedCategory = filter.$1),
+          );
+        },
+      ),
     );
   }
 
@@ -2758,7 +2895,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   Widget _buildGroupedList() {
     // تجميع العناصر حسب الفئة ثم اللون للبروفيلات والإكسسوارات.
     final Map<String, List<AggregatedGoodItem>> grouped = {};
-    for (final item in _aggregatedItems) {
+    for (final item in _visibleItems) {
       grouped.putIfAbsent(item.category, () => []).add(item);
     }
     final categories = grouped.keys.toList()
@@ -2769,7 +2906,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       children: [
         for (final category in categories) ...[
           Builder(
@@ -2860,7 +2997,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
     final rows = <ResizableTableRow>[];
 
-    for (final item in _aggregatedItems) {
+    for (final item in _visibleItems) {
       rows.add(_buildDesktopRequiredGoodsRow(item, item.category, isDark));
       final kitName = item.kitGroupName;
       if (kitName != null &&
@@ -2880,7 +3017,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2894,7 +3031,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           const SizedBox(height: 5),
           Expanded(
             child: ResizableColumnsTable(
-              key: ValueKey('required-goods-${_aggregatedItems.length}'),
+              key: ValueKey(
+                'required-goods-$_selectedCategory-${_visibleItems.length}',
+              ),
               persistenceKey: 'order_required_goods',
               headerColor: isDark
                   ? Colors.grey.shade900
@@ -2951,6 +3090,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   initialWidth: 140,
                   minWidth: 110,
                   maxWidth: 220,
+                ),
+                ResizableTableColumn(
+                  id: 'stock',
+                  label: Text(
+                    '${_t('المخزون')} (${_t(_mainWarehouseName)})',
+                    style: headerStyle,
+                  ),
+                  initialWidth: 165,
+                  minWidth: 125,
+                  maxWidth: 250,
                 ),
                 ResizableTableColumn(
                   id: 'unit_price',
@@ -3045,6 +3194,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           fontWeight: FontWeight.w800,
         ),
         _desktopTextCell(
+          _stockLabel(
+            _stockQuantityFor(
+              itemId: item.catalogItemId,
+              itemType: item.inventoryItemType,
+              colorId: item.colorId,
+            ),
+            item.unit,
+          ),
+          isDark: isDark,
+          color: Colors.teal,
+          fontWeight: FontWeight.w800,
+        ),
+        _desktopTextCell(
           item.unitPrice > 0
               ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}'
               : _t('السعر غير محدد'),
@@ -3097,6 +3259,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           fontWeight: FontWeight.w700,
         ),
         _desktopTextCell(
+          _stockLabel(
+            _stockQuantityFor(
+              itemId: child.catalogItemId,
+              itemType: child.inventoryItemType,
+              colorId: child.colorId,
+            ),
+            child.unit,
+          ),
+          isDark: isDark,
+          color: Colors.teal,
+          fontWeight: FontWeight.w700,
+        ),
+        _desktopTextCell(
           '${child.unitPrice.toStringAsFixed(2)} دج / ${_t(child.unit)}',
           isDark: isDark,
         ),
@@ -3140,6 +3315,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             isDark: isDark,
             maxLines: 2,
           ),
+          _desktopTextCell('-', isDark: isDark),
           _desktopTextCell('-', isDark: isDark),
           _desktopTextCell('-', isDark: isDark),
           _desktopTextCell('-', isDark: isDark),
@@ -4238,6 +4414,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                           ),
                           const SizedBox(width: 12),
                           Text(
+                            '${_t('المخزون')}: ${_stockLabel(_stockQuantityFor(itemId: sub.catalogItemId, itemType: sub.inventoryItemType, colorId: sub.colorId), sub.unit)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.teal.shade600,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
                             '${subCost.toStringAsFixed(2)} دج',
                             style: TextStyle(
                               fontSize: 11,
@@ -4415,6 +4600,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         color: isDark ? Colors.white70 : Colors.grey.shade700,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_t('المخزون')}: ${_stockLabel(_stockQuantityFor(itemId: item.catalogItemId, itemType: item.inventoryItemType, colorId: item.colorId), item.unit)}',
+                      style: TextStyle(
+                        color: Colors.teal.shade600,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],

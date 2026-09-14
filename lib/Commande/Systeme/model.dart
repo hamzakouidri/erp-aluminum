@@ -4471,7 +4471,9 @@ class WindowModel extends ChangeNotifier {
   bool motorHasTelecommande = false;
 
   String shutterMechanism = 'حزام';
-  String shutterDriveSide = 'right';
+  // Belt shutters are left-driven by default. An explicit saved/user choice
+  // still replaces this value during deserialization or from the UI.
+  String shutterDriveSide = 'left';
   String shutterLame = 'Lame Injectée';
   String shutterGlissiere = 'Glissière 25';
   String? shutterHeightWarning;

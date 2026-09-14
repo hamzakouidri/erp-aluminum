@@ -63,6 +63,21 @@ void main() {
       );
     });
 
+    test('inventory keys normalize legacy stock type aliases and colors', () {
+      expect(
+        requiredGoodsInventoryKey(itemType: 'Profile', itemId: 12, colorId: 4),
+        'Section_12_4',
+      );
+      expect(
+        requiredGoodsInventoryKey(itemType: 'Shutter Components', itemId: 7),
+        'ShutterComponent_7_0',
+      );
+      expect(
+        requiredGoodsInventoryKey(itemType: 'Joint', itemId: 3),
+        'Joints_3_0',
+      );
+    });
+
     test('a Kit keeps its configured name and its header is not a child', () {
       const kitName = 'Kit Volet 155';
       final header = BomItem(

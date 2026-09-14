@@ -278,6 +278,37 @@ class MultiAccessoryLinkDatabase extends SqlDatabase {
   }
 }
 
+class AccessoryScrewOverrideDatabase extends SqlDatabase {
+  @override
+  Future<Database?> get db async => MemoryDatabase();
+
+  @override
+  Future<List<Map<String, dynamic>>> readAccessoryLinksWithDetails(
+    int sourceAccessoryId,
+  ) async => [
+    // Deliberately stale: the selected accessory override below says 7.
+    {'target_role_key': 'accessory_screw', 'linked_quantity': 3},
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
+    bool includeInactive = false,
+  }) async => [
+    {
+      'item_id': 70,
+      'series_id': 1,
+      'role_key': 'accessory_screw',
+      'show_in_quantity': 1,
+      'is_active': 1,
+    },
+  ];
+}
+
 WindowModel makeWindow(SqlDatabase db) {
   final window = WindowModel(
     db: db,
@@ -719,6 +750,45 @@ void main() {
     );
     expect(screws.firstWhere((item) => item.catalogItemId == 70).unitPrice, 2);
     expect(screws.firstWhere((item) => item.catalogItemId == 71).unitPrice, 3);
+  });
+  test('selected hinge screw count overrides a stale relation', () async {
+    final database = AccessoryScrewOverrideDatabase();
+    final window = makeWindow(database);
+    window.componentOverrides['المفاصل (Hinges)'] = {
+      'id': 51,
+      'name': 'Paumelles',
+      'screw_count': 7,
+      'screw_accessory': {'id': 70, 'name': 'Vis 4x20'},
+    };
+
+    Future<double> screwQuantity(double hingeQuantity) async {
+      final result = await BomEngineV2(database: database)
+          .filterItemsByAvailableCandidates(
+            window: window,
+            items: [
+              BomItem(
+                category: 'accessory',
+                originalName: 'المفاصل (Hinges)',
+                name: 'Paumelles',
+                quantity: hingeQuantity,
+                unit: 'حبة',
+                unitPrice: 10,
+                catalogItemId: 51,
+                inventoryItemType: 'Accessory',
+                overrideKey: 'linked-accessory:parent:51',
+                roleKey: 'hinge',
+                sourceSeriesId: 1,
+              ),
+            ],
+          );
+      return result
+          .singleWhere((item) => item.roleKey == 'accessory_screw')
+          .quantity;
+    }
+
+    expect(await screwQuantity(6), 42);
+    expect(await screwQuantity(8), 56);
+    expect(await screwQuantity(8) - await screwQuantity(6), 14);
   });
   test('a series kit does not expand a stale linked accessory', () {
     final window = makeWindow(RuleDatabase())..hasBottomFrame = false;

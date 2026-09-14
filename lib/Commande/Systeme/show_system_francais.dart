@@ -1101,11 +1101,15 @@ class _WindowViewState extends State<WindowView> {
     return null;
   }
 
+  String _currentSelectionKey() {
+    final selection = widget.model.selection;
+    return '${selection.type}|${selection.zoneId}|${selection.mullionPosition}|'
+        '${selection.innerDivisionIndex}|${widget.model.activeSubZone ?? ''}';
+  }
+
   void _onModelChanged() {
     final selection = widget.model.selection;
-    final currentSelectionKey =
-        '${selection.type}|${selection.zoneId}|${selection.mullionPosition}|'
-        '${selection.innerDivisionIndex}|${widget.model.activeSubZone ?? ''}';
+    final currentSelectionKey = _currentSelectionKey();
     final selectionChanged = currentSelectionKey != _previousSelectionKey;
     if (selectionChanged) {
       if (selection.type == null) {
@@ -1114,9 +1118,13 @@ class _WindowViewState extends State<WindowView> {
         _isBottomPanelExpanded = false;
       } else {
         // Selecting any drawing element opens its contextual bottom panel.
+        // If the panel is already open, keep the tab the user just chose.
+        // Resetting it to "Common" here made the first tap on Frame, Ouvrant
+        // or any other tab appear to open and immediately close.
+        final wasExpanded = _isBottomPanelExpanded;
         _isShutterSelected = false;
         _isBottomPanelExpanded = true;
-        _activeBottomTab = 0;
+        if (!wasExpanded) _activeBottomTab = 0;
       }
       _previousSelectionKey = currentSelectionKey;
     }
@@ -8071,7 +8079,14 @@ class _WindowViewState extends State<WindowView> {
                       icon: Icons.line_weight,
                       selected: widget.model.shutterMechanism == 'حزام',
                       onPressed: () {
-                        setState(() => widget.model.shutterMechanism = 'حزام');
+                        setState(() {
+                          final switchingToBelt =
+                              widget.model.shutterMechanism != 'حزام';
+                          widget.model.shutterMechanism = 'حزام';
+                          if (switchingToBelt) {
+                            widget.model.shutterDriveSide = 'left';
+                          }
+                        });
                         widget.model.refreshUI();
                         unawaited(widget.model.updateShutterDefaultsIfNeeded());
                       },
@@ -13473,6 +13488,10 @@ class _WindowViewState extends State<WindowView> {
                         widget.model.zones.first.id,
                       );
                     }
+                    // This selection was created by the bottom bar itself.
+                    // Mark it consumed so the following model notification
+                    // cannot reset the newly chosen tab.
+                    _previousSelectionKey = _currentSelectionKey();
                   }
                 });
               },

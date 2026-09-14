@@ -15338,6 +15338,9 @@ class SqlDatabase {
     if (database == null) {
       throw StateError('Database is not available');
     }
+    if (!price.isFinite || price < 0) {
+      throw ArgumentError.value(price, 'price', 'Invalid Kit bundle price');
+    }
     await _ensureAdvancedKitCompatibilitySchema(database);
     final updatedRows = await database.update(
       'KitBundles',
@@ -15350,7 +15353,25 @@ class SqlDatabase {
         'Kit bundle price was not saved (id: $id, rows: $updatedRows)',
       );
     }
-    CloudSyncService().notifyChange();
+    final savedRows = await database.query(
+      'KitBundles',
+      columns: const ['price'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    final savedPrice = savedRows.isEmpty
+        ? null
+        : (savedRows.first['price'] as num?)?.toDouble();
+    if (savedPrice == null || (savedPrice - price).abs() > 0.000001) {
+      throw StateError(
+        'Kit bundle price verification failed (id: $id, expected: $price, actual: $savedPrice)',
+      );
+    }
+    // KitBundles belongs to the shared catalogue. A generic workshop-data
+    // notification leaves the catalogue marked clean, so the next catalogue
+    // download can restore the old price and make the save appear ineffective.
+    await CloudSyncService().notifyCatalogChange();
   }
 
   Future<void> _ensureAccessoryLinksSchema(DatabaseExecutor executor) {

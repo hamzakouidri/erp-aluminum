@@ -72,6 +72,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   int? _lastBomColorId;
   List<BomItem> _visibleBomItems = const [];
   int _bomRefreshGeneration = 0;
+  bool _isRefreshingVisibleBom = false;
+  Timer? _modelRefreshDebounce;
   final Map<String, double> _accessoryPriceCache = {};
   Map<int, Map<String, dynamic>> _profileCalculationRules = {};
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
@@ -1988,34 +1990,60 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   Future<void> _refreshVisibleBomItems() async {
-    final refreshGeneration = ++_bomRefreshGeneration;
-    final engine = BomEngineV2(database: SqlDatabase());
-    // Revalidate saved selections whenever the window/series changes. Without
-    // this pass, a selection resolved for the previous series could remain
-    // visible until the screen was recreated.
-    final rawBomItems = _generateRawBomItems();
-    var visibleBomItems = _resolvedFallbackBomItems(rawBomItems);
+    if (_isRefreshingVisibleBom || _isFetchingDefaults) return;
+    _isRefreshingVisibleBom = true;
     try {
-      await engine.stabilizeSelections(
-        window: widget.model,
-        items: rawBomItems,
-      );
-      final dbReady = await SqlDatabase().db != null;
-      if (dbReady) {
-        final strictItems = await _generateStrictVisibleBomItems(engine);
-        if (strictItems.isNotEmpty || visibleBomItems.isEmpty) {
-          visibleBomItems = strictItems;
+      final refreshGeneration = ++_bomRefreshGeneration;
+      final engine = BomEngineV2(database: SqlDatabase());
+      // Revalidate saved selections whenever the window/series changes. Without
+      // this pass, a selection resolved for the previous series could remain
+      // visible until the screen was recreated.
+      final rawBomItems = _generateRawBomItems();
+      var visibleBomItems = _resolvedFallbackBomItems(rawBomItems);
+      try {
+        await engine.stabilizeSelections(
+          window: widget.model,
+          items: rawBomItems,
+        );
+        final dbReady = await SqlDatabase().db != null;
+        if (dbReady) {
+          final strictItems = await _generateStrictVisibleBomItems(engine);
+          if (strictItems.isNotEmpty || visibleBomItems.isEmpty) {
+            visibleBomItems = strictItems;
+          }
         }
+      } catch (error, stackTrace) {
+        // Keep resolved rows visible without restoring unlinked placeholders.
+        visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
+        debugPrint(
+          'Material BOM refresh failed; showing resolved rows: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
       }
-    } catch (error, stackTrace) {
-      // Keep resolved rows visible without restoring unlinked placeholders.
-      visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
-      debugPrint('Material BOM refresh failed; showing resolved rows: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
+      if (_bomItemsSignature(_visibleBomItems) !=
+          _bomItemsSignature(visibleBomItems)) {
+        setState(() => _visibleBomItems = visibleBomItems);
+      }
+    } finally {
+      _isRefreshingVisibleBom = false;
     }
-    if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
-    setState(() => _visibleBomItems = visibleBomItems);
   }
+
+  String _bomItemsSignature(Iterable<BomItem> items) => items
+      .map(
+        (item) => [
+          item.catalogItemId,
+          item.originalName,
+          item.name,
+          item.category,
+          item.colorId,
+          item.quantity,
+          item.unitPrice,
+          item.isActive,
+        ].join('|'),
+      )
+      .join('||');
 
   void _setFetchProgress(double value) {
     if (!mounted || !_isFetchingDefaults) return;
@@ -2234,17 +2262,21 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         : int.tryParse('${rawColorId ?? ''}');
     final colorChanged = colorId != _lastBomColorId;
     _lastBomColorId = colorId;
-    if (mounted) {
-      setState(() {});
-    }
+    // Catalogue stabilization mutates resolved selections and notifies the
+    // model. Ignore those internal notifications; treating them as a fresh
+    // user edit created a self-sustaining refresh loop.
+    if (_isFetchingDefaults || _isRefreshingVisibleBom) return;
+    _modelRefreshDebounce?.cancel();
     if (colorChanged && _hasFetchedDefaults && !_isFetchingDefaults) {
       // A colour changes section prices, shutter colour prices and accessory
       // prices; refreshing only the existing rows leaves stale/empty totals.
       unawaited(_fetchDefaults());
       return;
     }
-    if (_hasFetchedDefaults && !_isFetchingDefaults) {
-      unawaited(_refreshVisibleBomItems());
+    if (_hasFetchedDefaults) {
+      _modelRefreshDebounce = Timer(const Duration(milliseconds: 180), () {
+        if (mounted) unawaited(_refreshVisibleBomItems());
+      });
     }
   }
 
@@ -2254,6 +2286,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   void dispose() {
     widget.model.removeListener(_onModelChanged);
+    _modelRefreshDebounce?.cancel();
     _tableColumnSaveDebounce?.cancel();
     if (_tableColumnWidths.isNotEmpty) {
       _persistTableColumnLayout();
@@ -2780,7 +2813,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_isFetchingDefaults) _buildFetchProgress(lang),
+            // Keep refreshes invisible once a valid table is already shown.
+            // The progress panel is only useful for the initial empty load.
+            if (_isFetchingDefaults && _visibleBomItems.isEmpty)
+              _buildFetchProgress(lang),
             // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
             if (widget.model.shutterHeightWarning != null) ...[
               Container(
@@ -4908,6 +4944,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final double sellingPrice = totals['total']?['selling'] ?? 0.0;
     // سعر القطعة الواحدة = السعر الإجمالي ÷ الكمية (بحد أدنى 1 لتفادي القسمة على صفر)
     final double unitPrice = sellingPrice / math.max(1, widget.model.quantity);
+    // Never create an order line with a zero/unknown selling price. This can
+    // happen when a catalogue item has no price yet or when all resolved
+    // components are still priced at zero.
+    final canSaveAndAdd = unitPrice > 0.0 && sellingPrice > 0.0;
     return SafeArea(
       child: AnimatedContainer(
         // تحريك سلس عند تغيّر ارتفاع الشريط (طي/توسعة)
@@ -5153,16 +5193,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
-                        // حفظ السعر النهائي للقطعة الواحدة في النموذج لمنع مضاعفته عند ضربه في الكمية في الفاتورة
-                        widget.model.totalCost = unitPrice;
-                        widget.model.manualPriceOverride = unitPrice;
-                        Navigator.pop(context, true);
-                      },
+                      onPressed: canSaveAndAdd
+                          ? () {
+                              // حفظ السعر النهائي للقطعة الواحدة في النموذج لمنع مضاعفته عند ضربه في الكمية في الفاتورة
+                              widget.model.totalCost = unitPrice;
+                              widget.model.manualPriceOverride = unitPrice;
+                              Navigator.pop(context, true);
+                            }
+                          : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isDark
-                            ? Colors.blue.shade700
-                            : const Color(0xFF1976D2),
+                        backgroundColor: canSaveAndAdd
+                            ? (isDark
+                                  ? Colors.blue.shade700
+                                  : const Color(0xFF1976D2))
+                            : Colors.grey,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -5514,10 +5558,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         ),
                         if (isKitElement && item.name.contains('\n'))
                           Text(
-                            item.name
-                                .split('\n')
-                                .skip(1)
-                                .join(' • '),
+                            item.name.split('\n').skip(1).join(' • '),
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.normal,

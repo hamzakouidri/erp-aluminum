@@ -179,7 +179,11 @@ class BomItem {
   }
 
   String getLocalizedName(String lang) {
-    final original = originalName;
+    // Catalogue labels can contain a quality suffix such as
+    // "(جودة قياسية)".  Use the cleaned value for the primary display too;
+    // otherwise non-Kit rows that localize [originalName] would reintroduce
+    // the suffix after [name] had already been cleaned.
+    final original = _withoutAccessoryQualityLabel(originalName);
     if (original == 'براغي التجميع') {
       if (lang == 'fr') return "vis d'assemblage";
       if (lang == 'en') return 'Assembly screws';
@@ -432,7 +436,18 @@ class BomItem {
       }
       if (original == 'قفل نقطة') return 'Point lock';
     }
-    return originalName;
+    // Fallback labels are commonly stored as "Arabic (Français)". Keep one
+    // language per UI locale instead of displaying both names or parentheses.
+    if (lang == 'ar') {
+      return original.split('(').first.trim();
+    }
+    final open = original.indexOf('(');
+    final close = original.lastIndexOf(')');
+    if ((lang == 'fr' || lang == 'en') && open >= 0 && close > open) {
+      final foreign = original.substring(open + 1, close).trim();
+      if (foreign.isNotEmpty) return foreign;
+    }
+    return original;
   }
 
   BomItem copyWith({

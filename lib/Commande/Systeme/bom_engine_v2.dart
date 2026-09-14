@@ -258,6 +258,37 @@ class BomEngineV2 {
     // link. Resolve that role to the real screw product selected for the
     // series. These links are authoritative over the legacy columns below.
     for (final sourceId in quantitiesByAccessoryId.keys) {
+      // The resolved accessory override is the source of truth for the
+      // currently selected product. In particular, a Paumelle configured
+      // with 7 screws must always contribute quantity × 7, even when a stale
+      // AccessoryLinks row still contains an older value. ComponentCalculator
+      // used this override correctly, but this final rebuilding pass used to
+      // discard its result and recalculate from the stale link.
+      final sourceItem = sourceItems.firstWhere(
+        (item) =>
+            item.category == 'accessory' && item.catalogItemId == sourceId,
+      );
+      final directOverride =
+          window.componentOverrides[sourceItem.overrideKey] ??
+          window.componentOverrides[sourceItem.originalName];
+      if (directOverride is Map) {
+        final screwCount = _catalogInt(directOverride['screw_count']) ?? 0;
+        final linkedScrew = directOverride['screw_accessory'];
+        final screwId = linkedScrew is Map
+            ? _catalogInt(linkedScrew['id'])
+            : _catalogInt(directOverride['screw_accessory_id']);
+        if (screwCount > 0 && screwId != null) {
+          sourcesUsingRoleLinks.add(sourceId);
+          totalsByScrewId[screwId] =
+              (totalsByScrewId[screwId] ?? 0.0) +
+              ((quantitiesByAccessoryId[sourceId] ?? 0.0) * screwCount);
+          screwSeries[screwId] =
+              sourceSeriesByAccessoryId[sourceId] ?? window.activeSeries?.id;
+          screwMaterials[screwId] = materialByAccessoryId[sourceId];
+          continue;
+        }
+      }
+
       final links = await _db.readAccessoryLinksWithDetails(sourceId);
       for (final link in links) {
         final targetRole = '${link['target_role_key'] ?? ''}'
@@ -812,11 +843,10 @@ class BomEngineV2 {
             ? context.kitCount * 2
             : context.kitCount;
         final selectedCode = candidate['code']?.toString().trim() ?? '';
-        // Keep the stable category title, and show the exact catalogue name
-        // underneath it as the secondary grey line.
-        final heading = context.sliding ? 'كيت المنزلق' : 'كيت السلسلة';
+        // Use the exact catalogue Kit name as the primary title (for example
+        // Kit 40000 or Kit 67000).
+        final heading = selectedName.isEmpty ? 'Kit' : selectedName;
         final details = [
-          if (selectedName.isNotEmpty) selectedName,
           if (selectedCode.isNotEmpty && selectedCode != selectedName)
             selectedCode,
         ].join('\n');
