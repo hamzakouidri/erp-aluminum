@@ -1955,6 +1955,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     );
   }
 
+  /// Safe local fallback while the catalogue database is opening or when a
+  /// legacy rule query fails. It keeps real resolved rows and non-catalogue
+  /// calculated materials (notably glass), but never restores the unresolved
+  /// warning placeholders that caused the original ghost-item problem.
+  List<BomItem> _resolvedFallbackBomItems(Iterable<BomItem> items) {
+    return items
+        .where((item) {
+          if (!item.isActive || item.requiredQuantity <= 0) return false;
+          final category = item.selectorCategory ?? item.category;
+          final requiresCatalogueIdentity = const {
+            'profile',
+            'accessory',
+            'other',
+            'joint',
+          }.contains(category);
+          if (!requiresCatalogueIdentity) return true;
+          return (item.catalogItemId ?? 0) > 0 ||
+              _bomItemHasResolvedSelection(item);
+        })
+        .toList(growable: false);
+  }
+
   Future<List<BomItem>> _generateStrictVisibleBomItems(
     BomEngineV2 engine,
   ) async {
@@ -1972,7 +1994,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // this pass, a selection resolved for the previous series could remain
     // visible until the screen was recreated.
     final rawBomItems = _generateRawBomItems();
-    var visibleBomItems = rawBomItems;
+    var visibleBomItems = _resolvedFallbackBomItems(rawBomItems);
     try {
       await engine.stabilizeSelections(
         window: widget.model,
@@ -1980,13 +2002,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       );
       final dbReady = await SqlDatabase().db != null;
       if (dbReady) {
-        visibleBomItems = await _generateStrictVisibleBomItems(engine);
+        final strictItems = await _generateStrictVisibleBomItems(engine);
+        if (strictItems.isNotEmpty || visibleBomItems.isEmpty) {
+          visibleBomItems = strictItems;
+        }
       }
     } catch (error, stackTrace) {
-      // A catalogue/schema error must not erase quantities that the component
-      // calculator has already produced. Keep the raw BOM visible and let the
-      // next refresh retry the strict catalogue validation.
-      debugPrint('Material BOM refresh failed; showing raw BOM: $error');
+      // Keep resolved rows visible without restoring unlinked placeholders.
+      visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
+      debugPrint('Material BOM refresh failed; showing resolved rows: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
     if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
@@ -2027,21 +2051,24 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       _setFetchProgress(0.55);
       var bomItems = _generateRawBomItems();
-      // Keep a usable fallback before running any catalogue queries. A single
-      // incompatible/old database column must not leave the table empty.
-      visibleBomItems = bomItems;
+      visibleBomItems = _resolvedFallbackBomItems(bomItems);
       final engine = BomEngineV2(database: sqlDb);
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
 
       _setFetchProgress(0.72);
       bomItems = _generateRawBomItems();
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
-      // If the local database is still opening, the strict catalogue query
-      // has no candidates and would blank the whole table. Show the computed
-      // BOM now; it will be revalidated when the model/database is ready.
-      visibleBomItems = dbInstance == null
-          ? bomItems
-          : await _generateStrictVisibleBomItems(engine);
+      // Do not expose the raw BOM while the database is opening: only rows
+      // validated against the rule pages belong in this table.
+      if (dbInstance == null) {
+        visibleBomItems = _resolvedFallbackBomItems(bomItems);
+      } else {
+        final strictItems = await _generateStrictVisibleBomItems(engine);
+        final resolvedItems = _resolvedFallbackBomItems(bomItems);
+        visibleBomItems = strictItems.isEmpty && resolvedItems.isNotEmpty
+            ? resolvedItems
+            : strictItems;
+      }
       _setFetchProgress(0.88);
       // The strict BOM is ready at this point. Publish it immediately instead
       // of keeping the table hidden while secondary price caches finish.
@@ -2052,7 +2079,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (dbInstance != null) await _loadPricesFromDb();
       _setFetchProgress(0.96);
     } catch (error, stackTrace) {
-      debugPrint('Material defaults load failed; showing raw BOM: $error');
+      visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
+      debugPrint(
+        'Material defaults load failed; showing resolved rows: $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
     } finally {
       if (mounted) {

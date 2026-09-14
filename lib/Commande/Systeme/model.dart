@@ -3788,7 +3788,7 @@ class WindowModel extends ChangeNotifier {
         ? configured.toInt()
         : int.tryParse(configured?.toString() ?? '');
     if (configuredCount != null && configuredCount >= 2) {
-      return configuredCount.clamp(2, 6).toInt();
+      return configuredCount.clamp(2, 7).toInt();
     }
     final label =
         '${frame['name'] ?? ''} ${frame['type'] ?? ''} '
@@ -3821,7 +3821,7 @@ class WindowModel extends ChangeNotifier {
       if (zone.content == ZoneContent.slidingSash) {
         zone.slidingTrackCount = trackCount;
         if (isCompleteFrame || zone.slidingSashesCount < trackCount) {
-          zone.slidingSashesCount = trackCount.clamp(2, 6).toInt();
+          zone.slidingSashesCount = trackCount.clamp(2, 7).toInt();
         }
         updated = true;
       }
@@ -3838,7 +3838,7 @@ class WindowModel extends ChangeNotifier {
         target.slidingTrackCount = trackCount;
         // A complete N-rail frame starts with an intuitive N-leaf drawing,
         // but the user can then change leaves and rails independently.
-        target.slidingSashesCount = trackCount.clamp(2, 6).toInt();
+        target.slidingSashesCount = trackCount.clamp(2, 7).toInt();
         target.innerH = 0;
         target.innerV = 0;
         target.rightInnerH = 0;
@@ -7732,9 +7732,11 @@ class WindowModel extends ChangeNotifier {
     return null;
   }
 
-  /// Number of one-track additions needed after a two-track base frame.
+  /// Number of C-profile pieces needed after the configured base frame.
+  /// One physical C profile may add one, two or three rails as selected in
+  /// the series rules.
   int slidingSingleTrackAdditionCount(int trackCount) {
-    final safeCount = trackCount.clamp(2, 6).toInt();
+    final safeCount = trackCount.clamp(2, 7).toInt();
     final frameMode =
         slidingFrameOverride?['design_track_mode']?.toString().toLowerCase() ??
         '';
@@ -7750,10 +7752,49 @@ class WindowModel extends ChangeNotifier {
         ? null
         : _seriesDesignRoleOptions[seriesId]?['frame_extension']?[extension
               .id]?['track_adds'];
-    final tracksPerExtension = addsRaw is num
+    final configuredTracksPerPiece = addsRaw is num
         ? addsRaw.toInt()
         : int.tryParse(addsRaw?.toString() ?? '') ?? 1;
-    return (missingTracks / math.max(1, tracksPerExtension)).ceil();
+    final tracksPerPiece = configuredTracksPerPiece.clamp(1, 3);
+    return (missingTracks / tracksPerPiece).ceil();
+  }
+
+  dynamic _selectedSlidingRoleOption(String roleKey, String optionKey) {
+    final seriesId = activeSlidingSeries?.id ?? activeSeries?.id;
+    if (seriesId == null) return null;
+    final selectedRail = componentOverrides['الري (Rail)'];
+    final selectedId = roleKey == 'rail' && selectedRail is Map
+        ? selectedRail['id']
+        : null;
+    final parsedSelectedId = selectedId is num
+        ? selectedId.toInt()
+        : int.tryParse('${selectedId ?? ''}');
+    final roleOptions = _seriesDesignRoleOptions[seriesId]?[roleKey];
+    if (roleOptions == null || roleOptions.isEmpty) return null;
+    if (parsedSelectedId != null && roleOptions.containsKey(parsedSelectedId)) {
+      return roleOptions[parsedSelectedId]?[optionKey];
+    }
+    return roleOptions.values.first[optionKey];
+  }
+
+  /// Number of physical lower-rail pieces required for the drawing. The
+  /// catalogue rule defines whether one piece represents 1, 2 or 3 rails.
+  int slidingRailPieceCount(int trackCount) {
+    final raw = _selectedSlidingRoleOption('rail', 'track_adds');
+    final configured = raw is num
+        ? raw.toInt()
+        : int.tryParse('${raw ?? ''}') ?? 1;
+    final railsPerPiece = configured.clamp(1, 3);
+    return (trackCount.clamp(0, 7) / railsPerPiece).ceil();
+  }
+
+  /// Final catalogue-rule correction applied after calculating the clear
+  /// internal rail width. A saved rule has priority over inferred defaults.
+  double get slidingRailWidthAdjustmentMm {
+    final raw = _selectedSlidingRoleOption('rail', 'width_adjust_mm');
+    return raw is num
+        ? raw.toDouble()
+        : double.tryParse('${raw ?? ''}'.replaceAll(',', '.')) ?? 0.0;
   }
 
   bool get selectedSlidingFrameIsComplete =>
@@ -7782,7 +7823,7 @@ class WindowModel extends ChangeNotifier {
       final parsedCount = count is num
           ? count.toInt()
           : int.tryParse(count?.toString() ?? '');
-      if (parsedCount != null && parsedCount >= 2 && parsedCount <= 6) {
+      if (parsedCount != null && parsedCount >= 2 && parsedCount <= 7) {
         result.add(parsedCount);
       }
       for (final token
@@ -7792,7 +7833,7 @@ class WindowModel extends ChangeNotifier {
               .toString()
               .split(',')) {
         final value = int.tryParse(token.trim());
-        if (value != null && value >= 2 && value <= 6) result.add(value);
+        if (value != null && value >= 2 && value <= 7) result.add(value);
       }
     }
 
@@ -7819,14 +7860,14 @@ class WindowModel extends ChangeNotifier {
           final parsed = count is num
               ? count.toInt()
               : int.tryParse(count?.toString() ?? '');
-          if (parsed != null && parsed >= 2 && parsed <= 6) result.add(parsed);
+          if (parsed != null && parsed >= 2 && parsed <= 7) result.add(parsed);
         } else {
           hasEligibleBaseFrame = true;
           final count = options['track_count'];
           final parsed = count is num
               ? count.toInt()
               : int.tryParse(count?.toString() ?? '');
-          result.add(parsed != null && parsed >= 2 && parsed <= 6 ? parsed : 2);
+          result.add(parsed != null && parsed >= 2 && parsed <= 7 ? parsed : 2);
         }
       }
     }
@@ -7848,7 +7889,7 @@ class WindowModel extends ChangeNotifier {
     final tracks = supportedSlidingTrackCounts;
     final maxCount = tracks.reduce(math.max);
     final minimum = selectedZone?.content == ZoneContent.slidingSash
-        ? selectedZone!.slidingTrackCount.clamp(2, 6).toInt()
+        ? selectedZone!.slidingTrackCount.clamp(2, 7).toInt()
         : 2;
     return {for (var count = minimum; count <= maxCount; count++) count};
   }
@@ -15696,7 +15737,7 @@ class WindowModel extends ChangeNotifier {
   void setSlidingSashesCount(int count) {
     if (selectedZone == null) return;
     _saveSnapshot();
-    selectedZone!.slidingSashesCount = count.clamp(2, 6).toInt();
+    selectedZone!.slidingSashesCount = count.clamp(2, 7).toInt();
     notifyListeners();
   }
 
@@ -15705,7 +15746,7 @@ class WindowModel extends ChangeNotifier {
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
     _saveSnapshot();
     if (!supportedSlidingTrackCounts.contains(count)) return;
-    zone.slidingTrackCount = count.clamp(2, 6).toInt();
+    zone.slidingTrackCount = count.clamp(2, 7).toInt();
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
       zone.slidingSashesCount = zone.slidingTrackCount;
     }
@@ -15722,7 +15763,7 @@ class WindowModel extends ChangeNotifier {
         count < zone.slidingTrackCount) {
       return;
     }
-    zone.slidingSashesCount = count.clamp(2, 6).toInt();
+    zone.slidingSashesCount = count.clamp(2, 7).toInt();
     zone.cutSlidingGlassRebate =
         cutSlidingGlassRebate ?? zone.cutSlidingGlassRebate;
     zone.sashThickness = _calculateSashThickness(zone.isSash105);

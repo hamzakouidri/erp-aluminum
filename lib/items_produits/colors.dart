@@ -24,6 +24,8 @@ class _ColorsScreenState extends State<ColorsScreen> {
   Map<int, List<int>> _profileColorsMap = {};
   StreamSubscription<String>? _dbSubscription;
   Timer? _reloadDebounce;
+  bool _loadingItems = false;
+  bool _itemsReloadQueued = false;
 
   @override
   void initState() {
@@ -45,32 +47,44 @@ class _ColorsScreenState extends State<ColorsScreen> {
   }
 
   Future<void> _loadItems() async {
-    await widget.db.ensureProfileColorDefaults();
-    final items = await widget.db.readColors();
-    final profiles = await widget.db.readProfile();
-    final dbInstance = await widget.db.db;
-
-    Map<int, List<int>> pcMap = {};
-    if (dbInstance != null) {
-      try {
-        final pcData = await dbInstance.query('ProfileColors');
-        for (var row in pcData) {
-          int pId = row['profile_id'] as int;
-          int cId = row['color_id'] as int;
-          if (!pcMap.containsKey(pId)) pcMap[pId] = [];
-          pcMap[pId]!.add(cId);
-        }
-      } catch (e) {
-        debugPrint('Error reading ProfileColors: $e');
-      }
+    if (_loadingItems) {
+      _itemsReloadQueued = true;
+      return;
     }
+    _loadingItems = true;
+    try {
+      do {
+        _itemsReloadQueued = false;
+        await widget.db.ensureProfileColorDefaults();
+        final items = await widget.db.readColors();
+        final profiles = await widget.db.readProfile();
+        final dbInstance = await widget.db.db;
 
-    if (mounted) {
-      setState(() {
-        _items = items.map((e) => Map<String, dynamic>.from(e)).toList();
-        _profiles = profiles;
-        _profileColorsMap = pcMap;
-      });
+        Map<int, List<int>> pcMap = {};
+        if (dbInstance != null) {
+          try {
+            final pcData = await dbInstance.query('ProfileColors');
+            for (var row in pcData) {
+              int pId = row['profile_id'] as int;
+              int cId = row['color_id'] as int;
+              if (!pcMap.containsKey(pId)) pcMap[pId] = [];
+              pcMap[pId]!.add(cId);
+            }
+          } catch (e) {
+            debugPrint('Error reading ProfileColors: $e');
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _items = items.map((e) => Map<String, dynamic>.from(e)).toList();
+            _profiles = profiles;
+            _profileColorsMap = pcMap;
+          });
+        }
+      } while (_itemsReloadQueued && mounted);
+    } finally {
+      _loadingItems = false;
     }
   }
 
@@ -98,62 +112,74 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
   void _showAddDialog() {
     TextEditingController nameCtrl = TextEditingController();
+    var saving = false;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          Localization.translate(
-            'إضافة لون جديد',
-            Provider.of<AppSettingsProvider>(context).language,
-          ),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: InputDecoration(
-            labelText: Localization.translate(
-              'اسم اللون',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(
+            Localization.translate(
+              'إضافة لون جديد',
               Provider.of<AppSettingsProvider>(context).language,
             ),
-            border: const OutlineInputBorder(),
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(
+              labelText: Localization.translate(
+                'اسم اللون',
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                Localization.translate(
+                  'إلغاء',
+                  Provider.of<AppSettingsProvider>(context).language,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      String newName = nameCtrl.text.trim();
+                      if (newName.isNotEmpty) {
+                        setDialogState(() => saving = true);
+                        String type = 'مخصص';
+                        String cName = newName.toLowerCase();
+                        if (cName.contains('أبيض') ||
+                            cName.contains('ابيض') ||
+                            cName.contains('blanc') ||
+                            cName.contains('white')) {
+                          type = 'Global';
+                        }
+                        await widget.db.insertColor(
+                          newName,
+                          "#FFFFFF",
+                          type,
+                          notifySync: false,
+                        );
+                        await _loadItems();
+                        unawaited(CloudSyncService().notifyCatalogChange());
+                        if (context.mounted) Navigator.pop(dialogContext);
+                      }
+                    },
+              child: Text(
+                Localization.translate(
+                  'حفظ',
+                  Provider.of<AppSettingsProvider>(context).language,
+                ),
+              ),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-              Localization.translate(
-                'إلغاء',
-                Provider.of<AppSettingsProvider>(context).language,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              String newName = nameCtrl.text.trim();
-              if (newName.isNotEmpty) {
-                String type = 'مخصص';
-                String cName = newName.toLowerCase();
-                if (cName.contains('أبيض') ||
-                    cName.contains('ابيض') ||
-                    cName.contains('blanc') ||
-                    cName.contains('white')) {
-                  type = 'Global';
-                }
-                await widget.db.insertColor(newName, "#FFFFFF", type);
-                _loadItems();
-                if (context.mounted) Navigator.pop(dialogContext);
-              }
-            },
-            child: Text(
-              Localization.translate(
-                'حفظ',
-                Provider.of<AppSettingsProvider>(context).language,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -235,6 +261,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
         entry.key: entry.value.toSet(),
     };
     final changedProfileIds = <int>{};
+    var saving = false;
 
     showDialog(
       context: context,
@@ -352,59 +379,68 @@ class _ColorsScreenState extends State<ColorsScreen> {
             ElevatedButton.icon(
               icon: const Icon(Icons.save_rounded, size: 18),
               label: Text(Localization.translate('حفظ وإغلاق', lang)),
-              onPressed: () async {
-                final navigator = Navigator.of(dialogContext);
-                final messenger = ScaffoldMessenger.of(context);
-                try {
-                  final profilesToSave = <int>{...changedProfileIds};
-                  final currentProfileId = selectedProfileId;
-                  if (currentProfileId != null) {
-                    profilesToSave.add(currentProfileId);
-                  }
-                  for (final profileId in profilesToSave) {
-                    await widget.db.setColorsForProfile(
-                      profileId,
-                      workingProfileColors[profileId] ?? const <int>{},
-                    );
-                  }
-                  for (final profileId in profilesToSave) {
-                    final expected =
-                        workingProfileColors[profileId] ?? const <int>{};
-                    final saved = await widget.db.getColorIdsForProfile(
-                      profileId,
-                    );
-                    if (saved.length != expected.length ||
-                        !saved.containsAll(expected)) {
-                      throw StateError(
-                        'لم تتطابق ألوان البروفيل المحفوظة مع الاختيار.',
-                      );
-                    }
-                  }
-                  await _loadItems();
-                  if (!mounted) return;
-                  navigator.pop();
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        Localization.translate(
-                          'تم حفظ تخصيص ألوان البروفيلات بنجاح.',
-                          lang,
-                        ),
-                      ),
-                    ),
-                  );
-                } catch (error) {
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${Localization.translate('تعذر حفظ تخصيص الألوان', lang)}: $error',
-                      ),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final navigator = Navigator.of(dialogContext);
+                      final messenger = ScaffoldMessenger.of(context);
+                      setStateDialog(() => saving = true);
+                      try {
+                        final profilesToSave = <int>{...changedProfileIds};
+                        final currentProfileId = selectedProfileId;
+                        if (currentProfileId != null) {
+                          profilesToSave.add(currentProfileId);
+                        }
+                        for (final profileId in profilesToSave) {
+                          await widget.db.setColorsForProfile(
+                            profileId,
+                            workingProfileColors[profileId] ?? const <int>{},
+                            notifySync: false,
+                          );
+                        }
+                        for (final profileId in profilesToSave) {
+                          final expected =
+                              workingProfileColors[profileId] ?? const <int>{};
+                          final saved = await widget.db.getColorIdsForProfile(
+                            profileId,
+                          );
+                          if (saved.length != expected.length ||
+                              !saved.containsAll(expected)) {
+                            throw StateError(
+                              'لم تتطابق ألوان البروفيل المحفوظة مع الاختيار.',
+                            );
+                          }
+                        }
+                        // Saving several profiles is one catalogue operation. A
+                        // sync per profile starts overlapping uploads and reloads,
+                        // which can freeze the Windows UI on larger catalogues.
+                        unawaited(CloudSyncService().notifyCatalogChange());
+                        await _loadItems();
+                        if (!mounted) return;
+                        navigator.pop();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              Localization.translate(
+                                'تم حفظ تخصيص ألوان البروفيلات بنجاح.',
+                                lang,
+                              ),
+                            ),
+                          ),
+                        );
+                      } catch (error) {
+                        if (!mounted) return;
+                        setStateDialog(() => saving = false);
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${Localization.translate('تعذر حفظ تخصيص الألوان', lang)}: $error',
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
             ),
           ],
         ),

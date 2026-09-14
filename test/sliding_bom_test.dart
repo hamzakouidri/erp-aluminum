@@ -262,14 +262,14 @@ void main() {
       'id': 50,
       'design_track_mode': 'base',
       'design_track_count': 2,
-      'design_supported_track_counts': '2,3,4,5,6',
+      'design_supported_track_counts': '2,3,4,5,6,7',
     };
 
-    model.setSelectedZoneSlidingTracks(5);
+    model.setSelectedZoneSlidingTracks(7);
 
-    expect(model.zones.single.slidingSashesCount, 4);
-    expect(model.zones.single.slidingTrackCount, 5);
-    expect(model.slidingSingleTrackAdditionCount(5), 3);
+    expect(model.zones.single.slidingSashesCount, 7);
+    expect(model.zones.single.slidingTrackCount, 7);
+    expect(model.slidingSingleTrackAdditionCount(7), 5);
   });
 
   test('a three-track frame cannot leave only two sliding leaves', () {

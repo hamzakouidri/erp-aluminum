@@ -148,6 +148,14 @@ class BomEngineV2 {
     // to the user, otherwise a hidden duplicate is counted twice.
     visibleItems.removeWhere(_isAccessoryScrewRow);
     visibleItems.addAll(await _accessoryScrewItems(window, visibleItems));
+    // Resolution must run before this check. At this final stage, suppress
+    // only placeholders that are still genuinely unlinked; doing it at the
+    // start prevents valid rule candidates from ever being selected.
+    visibleItems.removeWhere(
+      (item) =>
+          item.isMissing &&
+          (item.catalogItemId == null || item.catalogItemId! <= 0),
+    );
     return visibleItems;
   }
 

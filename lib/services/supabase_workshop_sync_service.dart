@@ -64,6 +64,7 @@ class SupabaseWorkshopSyncService {
   Future<void>? _startTask;
   Future<void>? _activeUpload;
   Future<void>? _activeDownload;
+  bool _activeDownloadIsFull = false;
   bool _uploadQueued = false;
   bool _isApplyingRemoteData = false;
   String? _workshopUuid;
@@ -540,7 +541,10 @@ class SupabaseWorkshopSyncService {
       // pulls to refresh while that task is still running, returning it here
       // silently drops the requested full restore. Queue the full pass after
       // the current download so the workshop data is actually refreshed.
-      if (full) {
+      // A fresh Android install already starts with a full bootstrap. A
+      // second full-recovery request must join that same task; queuing full
+      // behind full can recursively start complete downloads forever.
+      if (full && !_activeDownloadIsFull) {
         return activeDownload.then<void>(
           (_) => downloadWorkshopData(full: true),
         );
@@ -549,10 +553,12 @@ class SupabaseWorkshopSyncService {
     }
 
     final task = _downloadChanges(full: full);
+    _activeDownloadIsFull = full;
     late Future<void> trackedTask;
     trackedTask = task.whenComplete(() {
       if (identical(_activeDownload, trackedTask)) {
         _activeDownload = null;
+        _activeDownloadIsFull = false;
       }
     });
     _activeDownload = trackedTask;

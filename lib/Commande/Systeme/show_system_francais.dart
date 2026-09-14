@@ -14000,11 +14000,7 @@ class _WindowViewState extends State<WindowView> {
             if (openingProfiles.isNotEmpty) {
               children.add(const SizedBox(width: 8));
             }
-            addFrameProfileButtons(
-              slidingProfiles,
-              sliding: true,
-              prefix: widget.systemMode == 'sliding' ? '' : 'منزلق',
-            );
+            addFrameProfileButtons(slidingProfiles, sliding: true, prefix: '');
           }
         }
 
@@ -14091,7 +14087,7 @@ class _WindowViewState extends State<WindowView> {
           children.add(const SizedBox(width: 8));
           children.add(
             _ContentButton(
-              label: cIsEnabled ? 'إلغاء بروفيل C' : 'تفعيل بروفيل C',
+              label: 'Seuil',
               icon: Icons.horizontal_rule_rounded,
               selected: cIsEnabled,
               onPressed: () {
@@ -14196,6 +14192,75 @@ class _WindowViewState extends State<WindowView> {
                   name.contains('ترافيرس');
             }),
           );
+          final baseSashProfiles = uniqueProfiles(
+            sashProfiles.where((profile) {
+              final role = '${profile['design_role_key'] ?? ''}'
+                  .trim()
+                  .toLowerCase();
+              final isMontant =
+                  _isSlidingMontantCandidate(profile, central: false) ||
+                  _isSlidingMontantCandidate(profile, central: true);
+              final isTraverse = traverseProfiles.any(
+                (candidate) =>
+                    _catalogRowId(candidate) == _catalogRowId(profile),
+              );
+              return !isMontant &&
+                  !isTraverse &&
+                  (role.isEmpty ||
+                      role == 'sash' ||
+                      role == 'sash_extension' ||
+                      role == 'sliding_sash');
+            }),
+          );
+
+          if (baseSashProfiles.isNotEmpty) {
+            children.add(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Text(
+                  Localization.translate('الضلفة (Ouvrant):', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+            );
+            for (final item in baseSashProfiles) {
+              final selected =
+                  widget.model.slidingSashOverride?['id']?.toString() ==
+                  item['id']?.toString();
+              final code = '${item['code'] ?? ''}'.trim();
+              final name = '${item['name'] ?? 'بدون اسم'}'.trim();
+              children.add(
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _ProfileButton(
+                    label: code.isEmpty ? name : '$code - $name',
+                    code: item['code']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    selected: selected,
+                    onPressed: () async {
+                      final chosen = Map<String, dynamic>.from(item);
+                      chosen['calculated_price'] =
+                          await _sectionPriceForSelectedColor(chosen);
+                      if (!mounted) return;
+                      setState(() {
+                        widget.model.applySashOverride(
+                          chosen,
+                          sliding: true,
+                          manualSelection: true,
+                        );
+                        widget.model.refreshUI();
+                      });
+                    },
+                  ),
+                ),
+              );
+            }
+            children.add(const SizedBox(width: 12));
+          }
 
           bool isLateralSelected(Map<String, dynamic> item) {
             final current =

@@ -9677,6 +9677,7 @@ class SqlDatabase {
     String hexCode,
     String type, {
     double price = 0.0,
+    bool notifySync = true,
   }) async {
     Database? myDb = await db;
     final repairedName = _canonicalLegacyColorName(name);
@@ -9687,7 +9688,7 @@ class SqlDatabase {
       'type': type,
       'price': price,
     });
-    CloudSyncService().notifyCatalogChange();
+    if (notifySync) CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -9806,8 +9807,9 @@ class SqlDatabase {
 
   Future<void> setColorsForProfile(
     int profileId,
-    Iterable<int> colorIds,
-  ) async {
+    Iterable<int> colorIds, {
+    bool notifySync = true,
+  }) async {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureProfileColorsSyncIds(myDb);
@@ -9843,7 +9845,7 @@ class SqlDatabase {
         'configured_at': DateTime.now().toUtc().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
-    CloudSyncService().notifyCatalogChange();
+    if (notifySync) CloudSyncService().notifyCatalogChange();
   }
 
   Future<void> setColorForProfile({

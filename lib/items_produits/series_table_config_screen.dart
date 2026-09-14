@@ -54,9 +54,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       ar: 'مكمل الإطار',
       fr: 'Complément dormant',
       descriptionAr:
-          'قطاع السكة الواحدة الذي يضاف تلقائياً بعد إطار السكتين في المنزلق',
+          'قطعة C مضافة للإطار المنزلق؛ تحدد من القواعد هل القطعة تكفي لسكة أو سكتين أو ثلاث',
       descriptionFr:
-          'Profil monorail ajouté automatiquement après le dormant à deux rails',
+          'Profil C ajouté au dormant coulissant; chaque pièce peut couvrir un, deux ou trois rails',
     ),
     _SeriesRole(
       key: 'profile_angle',
@@ -256,8 +256,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       key: 'rail',
       ar: 'السكة',
       fr: 'Rail',
-      descriptionAr: 'خاص بالسلاسل التي تستعمل السكك',
-      descriptionFr: 'Pour les séries utilisant des rails',
+      descriptionAr:
+          'السكة السفلية للمنزلق؛ حدد هل القطعة تمثل سكة أو سكتين أو ثلاثاً، ويمكن إيقافها من خيار جدول الكمية',
+      descriptionFr:
+          'Rail inférieur du coulissant; une pièce peut représenter un, deux ou trois rails',
     ),
     _SeriesRole(
       key: 'chicane',
@@ -609,8 +611,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           : isFrameRole
           ? 2
           : 0,
-      'track_adds': role == 'frame_extension' ? 1 : 0,
-      'supported_track_counts': role == 'frame_extension' ? '3,4,5,6' : '2',
+      'track_adds': role == 'frame_extension' || role == 'rail' ? 1 : 0,
+      'supported_track_counts': role == 'frame_extension' ? '3,4,5,6,7' : '2',
     };
   }
 
@@ -1480,7 +1482,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       )).round().toString(),
     );
     final trackAddsCtrl = TextEditingController(
-      text: (_number(original['track_adds'])).round().toString(),
+      text: (_number(
+        original['track_adds'],
+        fallback: role.key == 'frame_extension' || role.key == 'rail' ? 1 : 0,
+      )).round().toString(),
     );
     final supportedTracksCtrl = TextEditingController(
       text: original['supported_track_counts']?.toString() ?? '',
@@ -1761,19 +1766,46 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: trackAddsCtrl,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: _t(
-                                    'السكك المضافة',
-                                    'Rails ajoutés',
+                            if (role.key == 'frame_extension')
+                              const SizedBox(width: 10),
+                            if (role.key == 'frame_extension')
+                              Expanded(
+                                child: DropdownButtonFormField<int>(
+                                  initialValue:
+                                      (int.tryParse(
+                                                trackAddsCtrl.text.trim(),
+                                              ) ??
+                                              1)
+                                          .clamp(1, 3)
+                                          .toInt(),
+                                  decoration: InputDecoration(
+                                    labelText: _t(
+                                      'عدد السكك التي تكفيها قطعة C واحدة',
+                                      'Rails couverts par une pièce C',
+                                    ),
+                                    helperText: _t(
+                                      'اختر 1 أو 2 أو 3 حسب شكل القطاع الحقيقي',
+                                      'Choisissez 1, 2 ou 3 selon le profil réel',
+                                    ),
                                   ),
+                                  items: [1, 2, 3]
+                                      .map(
+                                        (value) => DropdownMenuItem<int>(
+                                          value: value,
+                                          child: Text(
+                                            _t(
+                                              '$value سكة',
+                                              '$value rail${value > 1 ? 's' : ''}',
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    trackAddsCtrl.text = '${value ?? 1}';
+                                  },
                                 ),
                               ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -1781,8 +1813,46 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           controller: supportedTracksCtrl,
                           decoration: InputDecoration(
                             labelText: _t('السكك المقبولة', 'Totaux acceptés'),
-                            hintText: _t('مثال: 3,4,5,6', 'Exemple : 3,4,5,6'),
+                            hintText: _t(
+                              'مثال: 3,4,5,6,7',
+                              'Exemple : 3,4,5,6,7',
+                            ),
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if (role.key == 'rail') ...[
+                        DropdownButtonFormField<int>(
+                          initialValue:
+                              (int.tryParse(trackAddsCtrl.text.trim()) ?? 1)
+                                  .clamp(1, 3)
+                                  .toInt(),
+                          decoration: InputDecoration(
+                            labelText: _t(
+                              'عدد السكك التي تمثلها قطعة واحدة',
+                              'Rails représentés par une pièce',
+                            ),
+                            helperText: _t(
+                              'مثال: القيمة 1 مع إطار 6 سكك تعطي 6 قطع',
+                              'Exemple : valeur 1 avec 6 rails donne 6 pièces',
+                            ),
+                          ),
+                          items: [1, 2, 3]
+                              .map(
+                                (value) => DropdownMenuItem<int>(
+                                  value: value,
+                                  child: Text(
+                                    _t(
+                                      '$value سكة',
+                                      '$value rail${value > 1 ? 's' : ''}',
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            trackAddsCtrl.text = '${value ?? 1}';
+                          },
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -1854,7 +1924,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         'track_count':
                             int.tryParse(trackCountCtrl.text.trim()) ?? 0,
                         'track_adds':
-                            int.tryParse(trackAddsCtrl.text.trim()) ?? 0,
+                            role.key == 'frame_extension' || role.key == 'rail'
+                            ? (int.tryParse(trackAddsCtrl.text.trim()) ?? 1)
+                                  .clamp(1, 3)
+                            : 0,
                         'supported_track_counts': supportedTracksCtrl.text
                             .trim(),
                       },

@@ -2473,6 +2473,7 @@ class ComponentCalculator {
     List<double> slidingChicanePieces = [];
     List<double> slidingRailPieces = [];
     List<double> slidingMonorailPieces = [];
+    int slidingFrameExtensionCopies = 0;
     List<double> internalSlidingSideCoverPieces = [];
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
@@ -3451,22 +3452,6 @@ class ComponentCalculator {
       );
     }
 
-    if (slidingMonorailPieces.isNotEmpty) {
-      final monorailSection = window.getSlidingFrameExtensionSection();
-      if (monorailSection != null) {
-        items.add(
-          createProfile(
-            'سكة واحدة (Monorail)',
-            colorName,
-            pieces: slidingMonorailPieces,
-            unit: 'قطاع',
-            overrideMap: monorailSection.toMap(),
-            preferOverrideMap: true,
-          ),
-        );
-      }
-    }
-
     if (window.isPVC) {
       items.add(
         createProfile(
@@ -4035,22 +4020,30 @@ class ComponentCalculator {
                             ),
                       ))
               : window.width.toDouble();
-          double railLen = (railFrameWidth - (frameT * 2.0)) / 1000.0;
-          if (railLen < 0) railLen = 0;
-          slidingRailPieces.add(railLen);
-          slidingRailPieces.add(railLen);
+          // Rail length is the clear internal frame width. Apply the explicit
+          // catalogue-rule correction last, so it has priority over inferred
+          // geometry. The rule also controls whether one physical piece
+          // represents one, two or three rails.
+          double railLenMm =
+              railFrameWidth -
+              (frameT * 2.0) +
+              window.slidingRailWidthAdjustmentMm;
+          if (railLenMm < 0) railLenMm = 0;
+          final railLen = railLenMm / 1000.0;
+          final railPieceCount = window.slidingRailPieceCount(
+            zone.slidingTrackCount,
+          );
+          slidingRailPieces.addAll(List.filled(railPieceCount, railLen));
 
-          // The selected sliding frame is always the two-track base. For a
-          // 3/4/5-leaf drawing, add one cut of the configured one-track
-          // extension for every track beyond those first two.
+          // Add the configured number of C-profile pieces after the base
+          // frame. The series rule defines whether one C piece covers one,
+          // two or three additional rails.
           final monorailSection = window.getSlidingFrameExtensionSection();
           final additionalTracks = window.slidingSingleTrackAdditionCount(
             zone.slidingTrackCount,
           );
           if (monorailSection != null && additionalTracks > 0) {
-            for (var track = 0; track < additionalTracks; track++) {
-              slidingMonorailPieces.add(railLen);
-            }
+            slidingFrameExtensionCopies += additionalTracks;
           }
         }
       }
@@ -4269,6 +4262,34 @@ class ComponentCalculator {
               unit: 'قطاع',
               overrideMap: railOverride,
               preferOverrideMap: true,
+            ),
+          );
+        }
+      }
+
+      // A frame extension is another physical frame profile added to the
+      // selected base frame. It therefore repeats the exact base-frame cuts
+      // (four sides, or three when the lower frame side is disabled), rather
+      // than adding one unrelated horizontal rail cut.
+      if (slidingFrameExtensionCopies > 0 &&
+          slidingOuterFramePieces.isNotEmpty) {
+        for (var copy = 0; copy < slidingFrameExtensionCopies; copy++) {
+          slidingMonorailPieces.addAll(slidingOuterFramePieces);
+        }
+      }
+      if (slidingMonorailPieces.isNotEmpty) {
+        final extensionSection = window.getSlidingFrameExtensionSection();
+        if (extensionSection != null) {
+          items.add(
+            createProfile(
+              'مكمل الإطار المنزلق (Sliding Frame Extension)',
+              colorName,
+              pieces: slidingMonorailPieces,
+              unit: 'قطاع',
+              overrideMap: extensionSection.toMap(),
+              preferOverrideMap: true,
+              selectorType: 'frame_extension',
+              roleKey: 'frame_extension',
             ),
           );
         }
