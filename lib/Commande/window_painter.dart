@@ -1420,8 +1420,25 @@ class WindowPainter extends CustomPainter {
       bool isFixed =
           matchingZone.content == ZoneContent.fixedGlass ||
           matchingZone.content == ZoneContent.empty;
-      if (isFixed || matchingZone.content == ZoneContent.slidingSash) {
+      if (isFixed) {
         return original; // الثابت يستقر على الإطار السفلي عند (h - t)
+      }
+      final frameRect = Rect.fromLTRB(0, _topOffset, model.width, h);
+      final sliding = model.frameUsesSlidingSeries(frameRect);
+      if (model.usesFrameRole('seuil', sliding: sliding)) {
+        final seuilSection = model.getConfiguredSectionForRole(
+          'seuil',
+          useSlidingSeries: sliding,
+        );
+        final seuilT = (seuilSection != null && seuilSection.visibleWidth > 0)
+            ? seuilSection.visibleWidth
+            : 0.0;
+        return Rect.fromLTRB(
+          original.left,
+          original.top,
+          original.right,
+          h - seuilT,
+        );
       }
       return Rect.fromLTRB(original.left, original.top, original.right, h);
     }
@@ -1622,12 +1639,7 @@ class WindowPainter extends CustomPainter {
           ..color = _fb
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
-        // In elevation the seuil replaces the lower frame. Its upper edge is
-        // not another frame perimeter, so only the exposed lower edge and the
-        // two square ends are drawn.
-        canvas.drawLine(rect.bottomLeft, rect.bottomRight, border);
-        canvas.drawLine(rect.topLeft, rect.bottomLeft, border);
-        canvas.drawLine(rect.topRight, rect.bottomRight, border);
+        canvas.drawRect(rect, border);
       }
 
       for (final role in ['cache_dormant', 'cache_rail', 'seuil']) {

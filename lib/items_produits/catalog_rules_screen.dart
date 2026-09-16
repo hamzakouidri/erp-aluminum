@@ -2288,50 +2288,50 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 ),
               ],
             ),
-            for (var index = 0; index < links.length; index++)
-                    final currentRoleKey =
-                        links[index]['target_role_key']?.toString();
-                    final availableRoles = [
-                      ...linkableRoles,
-                      if (currentRoleKey != null &&
-                          currentRoleKey.isNotEmpty &&
-                          !linkableRoles.any((r) => r.key == currentRoleKey))
-                        _RuleRole(
-                          currentRoleKey,
-                          currentRoleKey == 'other' ? _t('أخرى', 'Autre') : currentRoleKey,
-                          currentRoleKey == 'other' ? 'Autre' : currentRoleKey,
+            ...List.generate(links.length, (index) {
+              final currentRoleKey =
+                  links[index]['target_role_key']?.toString();
+              final availableRoles = [
+                ...linkableRoles,
+                if (currentRoleKey != null &&
+                    currentRoleKey.isNotEmpty &&
+                    !linkableRoles.any((r) => r.key == currentRoleKey))
+                  _RuleRole(
+                    currentRoleKey,
+                    currentRoleKey == 'other' ? _t('أخرى', 'Autre') : currentRoleKey,
+                    currentRoleKey == 'other' ? 'Autre' : currentRoleKey,
+                  ),
+              ];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey('accessory-link:$itemId:$index'),
+                        initialValue: currentRoleKey,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: _t('دور الأكسسوار المرتبط', 'Rôle lié'),
                         ),
-                    ];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: DropdownButtonFormField<String>(
-                              key: ValueKey('accessory-link:$itemId:$index'),
-                              initialValue: currentRoleKey,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                labelText: _t('دور الأكسسوار المرتبط', 'Rôle lié'),
-                              ),
-                              items: [
-                                for (final role in availableRoles)
-                                  DropdownMenuItem(
-                                    value: role.key,
-                                    child: Text(_t(role.ar, role.fr)),
-                                  ),
-                              ],
-                              onChanged: (value) {
-                                setState(() {
-                                  links[index]['target_role_key'] = value;
-                                  _dirtyAccessoryLinkIds.add(itemId);
-                                });
-                                _saveAccessoryLinksFor(itemId);
-                              },
+                        items: [
+                          for (final role in availableRoles)
+                            DropdownMenuItem(
+                              value: role.key,
+                              child: Text(_t(role.ar, role.fr)),
                             ),
-                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            links[index]['target_role_key'] = value;
+                            _dirtyAccessoryLinkIds.add(itemId);
+                          });
+                          _saveAccessoryLinksFor(itemId);
+                        },
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextFormField(
@@ -2375,7 +2375,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     ),
                   ],
                 ),
-              ),
+              );
+            }),
           ],
         ],
       ),

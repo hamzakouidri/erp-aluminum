@@ -3300,10 +3300,15 @@ class WindowModel extends ChangeNotifier {
   }
 
   AluminumSeries? _seriesForConfiguredRole({bool? useSlidingSeries}) {
-    if (useSlidingSeries == true) return activeSlidingSeries;
+    if (useSlidingSeries == true) {
+      return activeSlidingSeries ??
+          (systemMode == 'sliding' || usesSlidingPrimaryProfiles
+              ? activeSeries
+              : null);
+    }
     if (useSlidingSeries == false) return activeSeries;
     final useSliding = systemMode == 'sliding' || usesSlidingPrimaryProfiles;
-    return useSliding ? activeSlidingSeries : activeSeries;
+    return useSliding ? (activeSlidingSeries ?? activeSeries) : activeSeries;
   }
 
   /// Resolves a single profile selected for a catalogue design role.
@@ -5702,6 +5707,11 @@ class WindowModel extends ChangeNotifier {
   List<AluminumProfileSystem> availableSystems = [];
   AluminumSeries? activeSeries;
   AluminumSeries? activeSlidingSeries;
+  AluminumSeries? get effectiveSlidingSeries =>
+      activeSlidingSeries ??
+      (systemMode == 'sliding' || usesSlidingPrimaryProfiles
+          ? activeSeries
+          : null);
   Map<String, dynamic>? slidingFrameOverride;
   Map<String, dynamic>? slidingSashOverride;
   String? systemMode;
@@ -7569,7 +7579,7 @@ class WindowModel extends ChangeNotifier {
   /// use [getSectionByType] for a sliding zone in a mixed drawing: that method
   /// intentionally returns the primary (opening) series when both coexist.
   AluminumSection? getSlidingSectionByType(String type) {
-    final series = activeSlidingSeries;
+    final series = effectiveSlidingSeries;
     if (series == null) return null;
     final normalizedType = type.toLowerCase();
 
@@ -7629,7 +7639,7 @@ class WindowModel extends ChangeNotifier {
   /// to a sliding series. This is used by the selector to keep the mandatory
   /// two-track base frame separate from its automatic additions.
   bool isSlidingFrameExtension(Map<String, dynamic> section) {
-    final series = activeSlidingSeries;
+    final series = effectiveSlidingSeries;
     final rawId = section['id'];
     final id = rawId is num
         ? rawId.toInt()
@@ -7644,7 +7654,7 @@ class WindowModel extends ChangeNotifier {
   /// Resolves the physical two-track base frame even when an old drawing or
   /// an overly broad catalogue role contains a one-track profile.
   AluminumSection? getSlidingBaseFrameSection() {
-    final series = activeSlidingSeries;
+    final series = effectiveSlidingSeries;
     if (series == null) return null;
 
     bool isCurrentSlidingFrame(Map<String, dynamic> value) {
@@ -7711,7 +7721,7 @@ class WindowModel extends ChangeNotifier {
   /// the series rules, rather than by selecting a fictitious three/four-track
   /// frame from the catalogue.
   AluminumSection? getSlidingFrameExtensionSection() {
-    final series = activeSlidingSeries;
+    final series = effectiveSlidingSeries;
     if (series == null) return null;
 
     final configuredIds =
@@ -7749,7 +7759,7 @@ class WindowModel extends ChangeNotifier {
         : int.tryParse(baseRaw?.toString() ?? '') ?? 2;
     final missingTracks = math.max(0, safeCount - baseCount);
     final extension = getSlidingFrameExtensionSection();
-    final seriesId = activeSlidingSeries?.id;
+    final seriesId = effectiveSlidingSeries?.id;
     final addsRaw = seriesId == null || extension == null
         ? null
         : _seriesDesignRoleOptions[seriesId]?['frame_extension']?[extension
