@@ -363,7 +363,11 @@ class FrameCacheRainureContact {
   final double coordinate;
   final double start;
   final double end;
-  final bool useSlidingSeries;
+
+  /// The two faces may be supplied by different series when two compatible
+  /// frames from different systems meet.
+  final bool insideUsesSlidingSeries;
+  final bool outsideUsesSlidingSeries;
 
   const FrameCacheRainureContact({
     required this.firstFrame,
@@ -372,7 +376,8 @@ class FrameCacheRainureContact {
     required this.coordinate,
     required this.start,
     required this.end,
-    required this.useSlidingSeries,
+    required this.insideUsesSlidingSeries,
+    required this.outsideUsesSlidingSeries,
   });
 
   double get length => math.max(0.0, end - start);
@@ -782,7 +787,7 @@ class GlassSpecification {
     this.laminatedColorOuter = 'transparent',
     this.laminatedColorInner = 'transparent',
     this.rosetteShape = 1,
-    this.jointTwoSides = false,
+    this.jointTwoSides = true,
   });
 
   GlassSpecification clone() => GlassSpecification(
@@ -2835,17 +2840,58 @@ class WindowModel extends ChangeNotifier {
     return fallback;
   }
 
-  double vitrageJointAllowanceForGlass(GlassSpecification specification) {
+  Map<String, dynamic>? selectedBourrageJointOverride({
+    bool doubleGlass = true,
+  }) {
+    final preferredKeys = doubleGlass
+        ? const [
+            'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
+            'جوان البوراج (Joint Bourrage)',
+          ]
+        : const [
+            'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
+            'جوان البوراج (Joint Bourrage)',
+          ];
+    for (final key in preferredKeys) {
+      final value = componentOverrides[key];
+      if (value is Map) return Map<String, dynamic>.from(value);
+    }
+    return null;
+  }
+
+  double selectedBourrageJointThickness({
+    bool doubleGlass = true,
+    double fallback = 0.0,
+  }) {
+    final thickness = _readPositiveDouble(
+      selectedBourrageJointOverride(doubleGlass: doubleGlass)?['thickness'],
+    );
+    return thickness > 0 ? thickness : fallback;
+  }
+
+  double vitrageJointAllowanceForGlass(
+    GlassSpecification specification, {
+    bool? sliding,
+  }) {
     final jointThickness = selectedVitrageJointThickness();
     if (jointThickness <= 0) return 0.0;
-    return jointThickness * (specification.jointTwoSides ? 2.0 : 1.0);
+    final usesSliding = sliding ?? systemMode == 'sliding';
+    if (usesSliding) {
+      return jointThickness * (specification.jointTwoSides ? 2.0 : 1.0);
+    }
+    return jointThickness +
+        selectedBourrageJointThickness(
+          doubleGlass: specification.structure == GlassStructure.double,
+          fallback: 2.0,
+        );
   }
 
   double glassPackThicknessIncludingVitrageJoint(
-    GlassSpecification specification,
-  ) {
+    GlassSpecification specification, {
+    bool? sliding,
+  }) {
     return specification.totalThickness(allGlassCache) +
-        vitrageJointAllowanceForGlass(specification);
+        vitrageJointAllowanceForGlass(specification, sliding: sliding);
   }
 
   List<int> _availableIntercallThicknesses() {
@@ -4440,6 +4486,9 @@ class WindowModel extends ChangeNotifier {
   int optionalBavetteMode = 0;
   int cacheRailLeftCount = 0;
   int cacheRailRightCount = 0;
+  // Cache-rail is a cosmetic sliding profile.  A series role makes it
+  // available, never mandatory; new drawings start with it enabled.
+  bool useOptionalCacheRail = true;
   bool hasFramePlintheBottom = false;
   bool isInternalView = true;
   bool showInternalHardware = false;
@@ -5275,16 +5324,6 @@ class WindowModel extends ChangeNotifier {
 
   final Map<int, double> sectionPricesForSelectedColor = <int, double>{};
 
-  bool _isParcloseSection(AluminumSection section) {
-    final type = section.type.toLowerCase();
-    final name = section.name.toLowerCase();
-    return section.code.trim() == '514' ||
-        type.contains('parclose') ||
-        name.contains('parclose') ||
-        type.contains('باكيت') ||
-        name.contains('باكيت');
-  }
-
   /// Adds the current colour price to an in-memory catalogue section before
   /// it enters the synchronous BOM calculation.
   Map<String, dynamic> sectionMapWithSelectedColorPrice(
@@ -5312,16 +5351,23 @@ class WindowModel extends ChangeNotifier {
   Future<void> refreshSectionPricesForSelectedColor({
     bool notify = true,
   }) async {
+    // The BOM is built synchronously from this cache.  Limiting it to
+    // parcloses made ordinary linear-metre profiles start at 0 until the
+    // user pressed the manual refresh button, which happens to reload their
+    // prices later in the workflow.
     final sections = <int, AluminumSection>{};
     for (final series in <AluminumSeries?>[activeSeries, activeSlidingSeries]) {
       if (series == null) continue;
       for (final section in series.sections) {
-        if (_isParcloseSection(section)) sections[section.id] = section;
+        sections[section.id] = section;
       }
     }
     if (sections.isEmpty) return;
 
-    final colorId = selectedDbColor?['id'] as int?;
+    final rawColorId = selectedDbColor?['id'];
+    final colorId = rawColorId is num
+        ? rawColorId.toInt()
+        : int.tryParse(rawColorId?.toString() ?? '');
     try {
       for (final section in sections.values) {
         sectionPricesForSelectedColor[section.id] = await db.getSectionPrice(
@@ -7829,7 +7875,7 @@ class WindowModel extends ChangeNotifier {
       'complete';
 
   Set<int> get supportedSlidingTrackCounts {
-    final seriesId = activeSlidingSeries?.id;
+    final seriesId = effectiveSlidingSeries?.id;
     final result = <int>{};
 
     bool allowedForCurrentDrawing(
@@ -7928,7 +7974,7 @@ class WindowModel extends ChangeNotifier {
     final candidate = componentOverrides[key];
     if (candidate is! Map) return null;
     final result = Map<String, dynamic>.from(candidate);
-    final activeSeriesId = activeSlidingSeries?.id;
+    final activeSeriesId = effectiveSlidingSeries?.id;
     final sourceSeriesId = result['series_id'];
     if (activeSeriesId != null &&
         sourceSeriesId != null &&
@@ -8001,12 +8047,19 @@ class WindowModel extends ChangeNotifier {
     seriesTableConfig = await db.getSeriesTableConfig(series.id);
     final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
     _rememberSeriesRoleKeys(series, configuredRoleRows);
+    final bool isSliding =
+        systemMode == 'sliding' ||
+        usesSlidingPrimaryProfiles ||
+        isSlidingSeriesForDrawing(series);
     final strictProfileRoles = configuredRoleRows.isNotEmpty;
     bool configuredRoleRowAllowed(Map<String, dynamic> row) {
       if (row['is_visible'] == 0 || row['show_in_quantity'] == 0) {
         return false;
       }
-      if (!_roleScopeMatches(row['usage_scope']?.toString(), sliding: false)) {
+      if (!_roleScopeMatches(
+        row['usage_scope']?.toString(),
+        sliding: isSliding,
+      )) {
         return false;
       }
       final glassRule = row['show_when_glass']?.toString().trim() ?? 'any';
@@ -8045,14 +8098,21 @@ class WindowModel extends ChangeNotifier {
           .toList();
     }
 
-    if (systemMode == 'sliding') {
+    if (systemMode == 'sliding' || isSliding) {
       activeSlidingSeries ??= series;
       slidingSeriesTableConfig = seriesTableConfig;
     }
 
     if (seriesChanged) {
-      if (systemMode == 'sliding') {
+      if (systemMode == 'sliding' || isSliding) {
         activeSlidingSeries = series;
+        // Availability in a newly selected sliding series starts enabled.
+        // Loading a saved drawing can still restore an explicit false value
+        // afterwards through model serialization.
+        if (getConfiguredSectionForRole('cache_rail', useSlidingSeries: true) !=
+            null) {
+          useOptionalCacheRail = true;
+        }
         slidingFrameOverride = null;
         slidingSashOverride = null;
       }
@@ -8195,6 +8255,35 @@ class WindowModel extends ChangeNotifier {
     }
 
     // Set default frame and sash if they are null
+    if (isSliding) {
+      if (slidingFrameOverride == null) {
+        final frames = configuredSectionsFor(const ['frame']);
+        if (frames.isNotEmpty) {
+          final candidates = hasShutter
+              ? _compatibleFrameCandidatesForSeries(series, frames)
+              : (!_isPvcSeries(series)
+                    ? frames
+                          .where(
+                            (frame) => !_sectionHasIntegratedSideCover(frame),
+                          )
+                          .toList()
+                    : frames);
+          if (candidates.isNotEmpty) {
+            slidingFrameOverride = _preferredFrameForSeries(
+              candidates,
+              series,
+            ).toMap();
+          }
+        }
+      }
+      if (slidingSashOverride == null) {
+        final sashes = configuredSectionsFor(const ['sash', 'sash_extension']);
+        if (sashes.isNotEmpty) {
+          slidingSashOverride = sashes.first.toMap();
+        }
+      }
+    }
+
     if (frameOverride == null) {
       final frames = configuredSectionsFor(const ['frame']);
 
@@ -10149,14 +10238,21 @@ class WindowModel extends ChangeNotifier {
     }
 
     final series = activeFrameSeries;
-    final double requiredDoubleThickness = zones
-        .expand((zone) => [zone.glass, ...zone.cellGlassSpec.values])
-        .where((glass) => glass.structure == GlassStructure.double)
-        .fold<double>(
-          0.0,
-          (maximum, glass) =>
-              math.max(maximum, glassPackThicknessIncludingVitrageJoint(glass)),
+    var requiredDoubleThickness = 0.0;
+    for (final zone in zones) {
+      final isSlidingZone =
+          systemMode == 'sliding' || zone.content == ZoneContent.slidingSash;
+      for (final glass in [zone.glass, ...zone.cellGlassSpec.values]) {
+        if (glass.structure != GlassStructure.double) continue;
+        requiredDoubleThickness = math.max(
+          requiredDoubleThickness,
+          glassPackThicknessIncludingVitrageJoint(
+            glass,
+            sliding: isSlidingZone,
+          ),
         );
+      }
+    }
     final bool needsDoubleParclose = requiredDoubleThickness > 0;
     final double minimumDoubleCapacity = math.max(
       10.0,
@@ -10242,13 +10338,23 @@ class WindowModel extends ChangeNotifier {
     required double thicknessInner,
     bool jointTwoSides = true,
     double? jointThickness,
+    bool? sliding,
   }) {
     final maximum = selectedParcloseMaxGlassThickness;
     if (maximum == null) return null;
 
+    final selectedUsesSliding =
+        sliding ??
+        (systemMode == 'sliding' ||
+            (selectedZone != null
+                ? selectedZone!.content == ZoneContent.slidingSash
+                : usesSlidingPrimaryProfiles));
     final effectiveJointThickness =
-        jointThickness ?? selectedVitrageJointThickness();
-    final jointAllowance = effectiveJointThickness * (jointTwoSides ? 2 : 1);
+        jointThickness ?? selectedVitrageJointThickness(fallback: 2.0);
+    final jointAllowance = selectedUsesSliding
+        ? effectiveJointThickness * (jointTwoSides ? 2 : 1)
+        : effectiveJointThickness +
+              selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0);
     final remaining =
         maximum - thicknessOuter - thicknessInner - jointAllowance;
     if (remaining <= 0) return null;
@@ -10262,7 +10368,10 @@ class WindowModel extends ChangeNotifier {
     if (selectedParcloseMaxGlassThickness == null) return;
     var changed = false;
 
-    GlassSpecification fit(GlassSpecification specification) {
+    GlassSpecification fit(
+      GlassSpecification specification, {
+      required bool sliding,
+    }) {
       if (specification.structure != GlassStructure.double) {
         return specification;
       }
@@ -10272,6 +10381,7 @@ class WindowModel extends ChangeNotifier {
         thicknessInner:
             specification.thicknessInner ?? kDefaultGlassPaneThickness,
         jointTwoSides: specification.jointTwoSides,
+        sliding: sliding,
       );
       if (suggested == null || suggested == specification.intercallThickness) {
         return specification;
@@ -10281,10 +10391,12 @@ class WindowModel extends ChangeNotifier {
     }
 
     for (final zone in zones) {
-      zone.glass = fit(zone.glass);
+      final zoneUsesSliding =
+          systemMode == 'sliding' || zone.content == ZoneContent.slidingSash;
+      zone.glass = fit(zone.glass, sliding: zoneUsesSliding);
       if (zone.cellGlassSpec.isNotEmpty) {
         zone.cellGlassSpec = zone.cellGlassSpec.map(
-          (key, value) => MapEntry(key, fit(value)),
+          (key, value) => MapEntry(key, fit(value, sliding: zoneUsesSliding)),
         );
       }
     }
@@ -10413,9 +10525,19 @@ class WindowModel extends ChangeNotifier {
         await _resolveVitrageJointThicknessForRules(
           jointTwoSides: jointTwoSides,
         );
-    final glassPackWithJoint =
-        glassThickness +
-        (effectiveJointThickness * (jointTwoSides ? 2.0 : 1.0));
+    final selectedUsesSliding =
+        systemMode == 'sliding' ||
+        (selectedZone != null
+            ? selectedZone!.content == ZoneContent.slidingSash
+            : usesSlidingPrimaryProfiles);
+    final jointAllowance = selectedUsesSliding
+        ? effectiveJointThickness * (jointTwoSides ? 2.0 : 1.0)
+        : effectiveJointThickness +
+              selectedBourrageJointThickness(
+                doubleGlass: needsDoubleParclose,
+                fallback: 2.0,
+              );
+    final glassPackWithJoint = glassThickness + jointAllowance;
     final requiredCapacity = needsDoubleParclose
         ? math.max(10.0, glassPackWithJoint)
         : glassPackWithJoint;
@@ -14493,6 +14615,7 @@ class WindowModel extends ChangeNotifier {
   bool usesFrameRole(String role, {required bool sliding}) {
     if (getConfiguredSectionForRole(role, useSlidingSeries: sliding) == null)
       return false;
+    if (role == 'cache_rail') return sliding && useOptionalCacheRail;
     if (isConfiguredRoleRequired(role, useSlidingSeries: sliding)) return true;
     return role == 'seuil'
         ? useOptionalSeuil
@@ -14502,8 +14625,7 @@ class WindowModel extends ChangeNotifier {
         // means it is always installed at a compatible frame-to-frame joint.
         : role == 'cache_rainure'
         ? true
-        : role == 'cache_rail' &&
-              (cacheRailLeftCount > 0 || cacheRailRightCount > 0);
+        : false;
   }
 
   bool hasFrameRole(String role) =>
@@ -14554,15 +14676,8 @@ class WindowModel extends ChangeNotifier {
     final tracks = zones
         .where((zone) => frame.contains(zone.boundary.center))
         .fold<int>(1, (count, zone) => math.max(count, zone.slidingTrackCount));
-    // A one-track frame still has one cover on each side.
-    final maximum = math.max(1, tracks - 1);
-    if (isConfiguredRoleRequired('cache_rail', useSlidingSeries: true)) {
-      return (maximum, maximum);
-    }
-    return (
-      cacheRailLeftCount.clamp(0, maximum),
-      cacheRailRightCount.clamp(0, maximum),
-    );
+    final maximum = math.max(0, tracks - 1);
+    return (maximum, maximum);
   }
 
   bool frameUsesSlidingSeries(Rect frame) {
@@ -14630,9 +14745,9 @@ class WindowModel extends ChangeNotifier {
   }
 
   /// Finds seams shared by two independent frames. A seam is eligible only
-  /// when both frame profiles are plain (no integrated cover) and accept a
-  /// separate side cover. Exactly one configured Cache-rainure section is
-  /// selected for the seam, then installed on both faces.
+  /// when both frames accept a separate couvre-joint and either they belong
+  /// to one series with Cache-rainure, or each touching series defines it.
+  /// Each eligible seam receives one profile on the inside and one outside.
   List<FrameCacheRainureContact> getCacheRainureContacts() {
     const tolerance = 5.0;
     final frames = getFrameRects();
@@ -14653,16 +14768,33 @@ class WindowModel extends ChangeNotifier {
 
         final firstSliding = frameUsesSlidingSeries(first);
         final secondSliding = frameUsesSlidingSeries(second);
-        // Prefer the first frame's series; when it does not define the role,
-        // use the touching frame's series. This keeps one inside/outside pair
-        // per seam even when the two frames belong to different systems.
-        final bool? roleSeries =
-            usesFrameRole('cache_rainure', sliding: firstSliding)
-            ? firstSliding
-            : usesFrameRole('cache_rainure', sliding: secondSliding)
-            ? secondSliding
-            : null;
-        if (roleSeries == null) continue;
+        final firstSection = frameSectionForRect(first);
+        final secondSection = frameSectionForRect(second);
+        final sameSeries =
+            firstSection != null &&
+            secondSection != null &&
+            firstSection.seriesId == secondSection.seriesId;
+        final firstHasRole =
+            getConfiguredSectionForRole(
+              'cache_rainure',
+              useSlidingSeries: firstSliding,
+            ) !=
+            null;
+        final secondHasRole =
+            getConfiguredSectionForRole(
+              'cache_rainure',
+              useSlidingSeries: secondSliding,
+            ) !=
+            null;
+        // A role on only one of two different series is insufficient: it
+        // would leave one face without a compatible Cache-rainure profile.
+        if (!(sameSeries
+            ? (firstHasRole || secondHasRole)
+            : (firstHasRole && secondHasRole))) {
+          continue;
+        }
+        final insideRoleSeries = firstHasRole ? firstSliding : secondSliding;
+        final outsideRoleSeries = sameSeries ? insideRoleSeries : secondSliding;
 
         final vertical =
             (first.right - second.left).abs() <= tolerance ||
@@ -14682,7 +14814,8 @@ class WindowModel extends ChangeNotifier {
               coordinate: coordinate,
               start: start,
               end: end,
-              useSlidingSeries: roleSeries,
+              insideUsesSlidingSeries: insideRoleSeries,
+              outsideUsesSlidingSeries: outsideRoleSeries,
             ),
           );
           continue;
@@ -14706,7 +14839,8 @@ class WindowModel extends ChangeNotifier {
             coordinate: coordinate,
             start: start,
             end: end,
-            useSlidingSeries: roleSeries,
+            insideUsesSlidingSeries: insideRoleSeries,
+            outsideUsesSlidingSeries: outsideRoleSeries,
           ),
         );
       }
@@ -14719,9 +14853,8 @@ class WindowModel extends ChangeNotifier {
   bool get usesCacheDormant =>
       useOptionalCacheDormant || isConfiguredRoleRequired('cache_dormant');
   bool get usesCacheRail =>
-      cacheRailLeftCount > 0 ||
-      cacheRailRightCount > 0 ||
-      isConfiguredRoleRequired('cache_rail', useSlidingSeries: true);
+      useOptionalCacheRail &&
+      getConfiguredSectionForRole('cache_rail', useSlidingSeries: true) != null;
 
   void toggleSeuil(bool value) {
     if (value && !hasFrameRole('seuil')) return;
@@ -14753,6 +14886,18 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     cacheRailLeftCount = math.max(0, left);
     cacheRailRightCount = math.max(0, right);
+    useOptionalCacheRail = cacheRailLeftCount > 0 || cacheRailRightCount > 0;
+    notifyListeners();
+  }
+
+  void toggleCacheRail(bool value) {
+    if (value &&
+        getConfiguredSectionForRole('cache_rail', useSlidingSeries: true) ==
+            null) {
+      return;
+    }
+    _saveSnapshot();
+    useOptionalCacheRail = value;
     notifyListeners();
   }
 
@@ -16017,7 +16162,8 @@ class WindowModel extends ChangeNotifier {
       structure: targetStructure,
       glassThickness: targetStructure == GlassStructure.double
           ? effectiveThicknessOuter +
-                (intercallThickness ?? baseSpec.intercallThickness).toDouble() +
+                (intercallThickness ?? _availableIntercallThicknesses().first)
+                    .toDouble() +
                 effectiveThicknessInner
           : effectiveThicknessOuter,
       jointTwoSides: baseSpec.jointTwoSides,
@@ -16174,7 +16320,7 @@ class WindowModel extends ChangeNotifier {
     if (!hasSimpleGlassForReducer) {
       clearReducerOverride();
     }
-    await updateGlassGasket();
+    await updateGlassGasket(recalculateIntercall: intercallThickness == null);
     if (zones.any((candidate) => candidate.id == selectedZoneId)) {
       selection = SelectionInfo.zone(selectedZoneId);
       activeSubZone = targetCellKey;
@@ -16182,7 +16328,7 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateGlassGasket() async {
+  Future<void> updateGlassGasket({bool recalculateIntercall = true}) async {
     if (isPVC) {
       componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
       notifyListeners();
@@ -16270,9 +16416,23 @@ class WindowModel extends ChangeNotifier {
           text.contains('glass');
     }
 
+    bool isBourrageJoint(Map<String, dynamic> joint) {
+      final text =
+          '${joint['name'] ?? ''} ${joint['type'] ?? ''} ${joint['gasket_type'] ?? ''}'
+              .toLowerCase();
+      return text.contains('bourrage') ||
+          text.contains('بوراج') ||
+          text.contains('حشو');
+    }
+
     final vitrageJoints = joints.where(isVitrageJoint).toList();
+    final bourrageJoints = joints.where(isBourrageJoint).toList();
     final jointSides = activeGlass.jointTwoSides ? 2 : 1;
-    final useSliding = systemMode == 'sliding' || usesSlidingPrimaryProfiles;
+    final useSliding =
+        systemMode == 'sliding' ||
+        (selectedZone != null
+            ? selectedZone!.content == ZoneContent.slidingSash
+            : usesSlidingPrimaryProfiles);
     final activeSeriesForSash = useSliding ? activeSlidingSeries : activeSeries;
     final rawActiveSashId = activeSashMap?['id'];
     final activeSashId = rawActiveSashId is num
@@ -16299,6 +16459,7 @@ class WindowModel extends ChangeNotifier {
         ? linkedJoints
         : (vitrageJoints.isNotEmpty ? vitrageJoints : joints);
     Map<String, dynamic>? bestJoint;
+    Map<String, dynamic>? bestBourrageJoint;
     int? bestIntercall;
     var bestScore = double.infinity;
 
@@ -16313,17 +16474,80 @@ class WindowModel extends ChangeNotifier {
         return;
       }
 
-      for (final joint in candidateJoints) {
-        final jointThickness = _readPositiveDouble(joint['thickness']);
-        final intercallTarget = availableGap - (jointThickness * jointSides);
-        final intercall = _nearestIntercallThickness(intercallTarget);
-        if (intercall == null) continue;
-        final exactness = (intercall.toDouble() - intercallTarget).abs();
-        final score = exactness * 100 + jointThickness * 0.01;
-        if (score < bestScore) {
-          bestScore = score;
-          bestJoint = joint;
-          bestIntercall = intercall;
+      if (useSliding) {
+        // Sliding uses the same glazing gasket on one or two sides.  Start
+        // with the thinnest valid gasket, then fit the closest real spacer.
+        for (final joint in candidateJoints) {
+          final jointThickness = _readPositiveDouble(joint['thickness']);
+          final intercallTarget = availableGap - (jointThickness * jointSides);
+          final intercall = recalculateIntercall
+              ? _nearestIntercallThickness(intercallTarget)
+              : activeGlass.intercallThickness;
+          if (intercall == null) continue;
+          final exactness = (intercall.toDouble() - intercallTarget).abs();
+          final score = exactness * 100 + jointThickness * 0.01;
+          if (score < bestScore) {
+            bestScore = score;
+            bestJoint = joint;
+            bestIntercall = intercall;
+          }
+        }
+      } else {
+        // Opening aluminium always has the fixed Vitrage gasket before the
+        // glass and a Bourrage gasket after it.  Evaluate the spacer and the
+        // Bourrage together; a compressible +1 mm fit is preferred to a
+        // loose -1 mm fit.
+        final selectedVitrage = selectedVitrageJointOverride();
+        bestJoint = linkedJoints.isNotEmpty
+            ? linkedJoints.first
+            : (selectedVitrage ??
+                  (vitrageJoints.isNotEmpty
+                      ? (vitrageJoints.toList()..sort(
+                              (a, b) => _readPositiveDouble(
+                                a['thickness'],
+                              ).compareTo(_readPositiveDouble(b['thickness'])),
+                            ))
+                            .first
+                      : null));
+        if (bestJoint != null) {
+          final vitrageThickness = _readPositiveDouble(bestJoint['thickness']);
+          final scopedBourrage = bourrageJoints
+              .where(
+                (joint) =>
+                    _catalogRowMatchesSeriesScope(joint, activeSeriesForSash),
+              )
+              .toList();
+          final candidates = scopedBourrage.isNotEmpty
+              ? scopedBourrage
+              : bourrageJoints;
+          for (final bourrage in candidates) {
+            final bourrageThickness = _readPositiveDouble(
+              bourrage['thickness'],
+            );
+            if (bourrageThickness <= 0) continue;
+            final intercallChoices = recalculateIntercall
+                ? _availableIntercallThicknesses()
+                : <int>[activeGlass.intercallThickness];
+            for (final intercall in intercallChoices) {
+              final fitted =
+                  vitrageThickness + bourrageThickness + intercall.toDouble();
+              final delta = fitted - availableGap;
+              if (delta > 1.0) continue;
+              // For equal fits prefer the smaller spacer and let the thicker
+              // Bourrage absorb the compression (8 + 4 before 10 + 2).
+              final tieBreak = intercall * 0.001 - bourrageThickness * 0.000001;
+              final score = delta == 0
+                  ? tieBreak
+                  : delta > 0
+                  ? delta.abs() * 10 + tieBreak
+                  : delta.abs() * 10 + 5 + tieBreak;
+              if (score < bestScore) {
+                bestScore = score;
+                bestBourrageJoint = bourrage;
+                bestIntercall = intercall;
+              }
+            }
+          }
         }
       }
       if (bestJoint == null || bestIntercall == null) {
@@ -16332,19 +16556,19 @@ class WindowModel extends ChangeNotifier {
         return;
       }
 
-      GlassSpecification fitIntercall(GlassSpecification spec) {
-        if (spec.structure != GlassStructure.double ||
-            spec.intercallThickness == bestIntercall) {
-          return spec;
-        }
-        return spec.copyWith(intercallThickness: bestIntercall);
-      }
-
-      for (final currentZone in zones) {
-        currentZone.glass = fitIntercall(currentZone.glass);
-        if (currentZone.cellGlassSpec.isNotEmpty) {
-          currentZone.cellGlassSpec = currentZone.cellGlassSpec.map(
-            (key, value) => MapEntry(key, fitIntercall(value)),
+      final targetZone = selectedZone;
+      if (recalculateIntercall && targetZone != null) {
+        final targetCellKey = activeSubZone;
+        if (targetCellKey != null && targetCellKey.isNotEmpty) {
+          final current = targetZone.getGlassForCell(targetCellKey);
+          targetZone.cellGlassSpec =
+              Map<String, GlassSpecification>.from(targetZone.cellGlassSpec)
+                ..[targetCellKey] = current.copyWith(
+                  intercallThickness: bestIntercall,
+                );
+        } else {
+          targetZone.glass = targetZone.glass.copyWith(
+            intercallThickness: bestIntercall,
           );
         }
       }
@@ -16376,6 +16600,10 @@ class WindowModel extends ChangeNotifier {
 
     componentOverrides['جوان الزجاج (Joint Vitrage)'] =
         Map<String, dynamic>.from(bestJoint);
+    if (!useSliding && bestBourrageJoint != null) {
+      componentOverrides['جوان البوراج للزجاج المزدوج (Joint Bourrage Double)'] =
+          Map<String, dynamic>.from(bestBourrageJoint);
+    }
     _lastResolvedVitrageJointThickness = _readPositiveDouble(
       bestJoint['thickness'],
     );

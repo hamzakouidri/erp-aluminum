@@ -210,13 +210,22 @@ class SectionImageWidget extends StatelessWidget {
         try {
           final file = File(path);
           if (file.existsSync()) {
-            loadedWidget = Image.file(
-              file,
-              width: size,
-              height: size,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) => fallbackWidget,
-            );
+            final isSvg = file.path.toLowerCase().endsWith('.svg');
+            loadedWidget = isSvg
+                ? SvgPicture.file(
+                    file,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.contain,
+                    placeholderBuilder: (context) => fallbackWidget,
+                  )
+                : Image.file(
+                    file,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => fallbackWidget,
+                  );
           }
         } catch (_) {}
       }
@@ -306,15 +315,36 @@ class SectionImageWidget extends StatelessWidget {
           r'\.(svg|png|jpe?g|webp)$',
           caseSensitive: false,
         ).hasMatch(filename);
-        final filenames = hasExtension
-            ? <String>[filename]
-            : <String>[
-                '$filename.svg',
-                '$filename.png',
-                '$filename.jpg',
-                '$filename.jpeg',
-                '$filename.webp',
-              ];
+        final stemWithoutExt = filename.replaceFirst(
+          RegExp(r'\.(svg|png|jpe?g|webp)$', caseSensitive: false),
+          '',
+        );
+        final filenames = <String>[
+          if (hasExtension) filename,
+          '$stemWithoutExt.svg',
+          '$stemWithoutExt.png',
+          '$stemWithoutExt.jpg',
+          '$stemWithoutExt.jpeg',
+          '$stemWithoutExt.webp',
+        ];
+        final cleanStem = stemWithoutExt.replaceAll(' ', '');
+        filenames.add('$cleanStem.svg');
+        filenames.add('$cleanStem.png');
+        if (cleanStem.toUpperCase().startsWith('B90')) {
+          final bsStem = cleanStem.replaceFirst(RegExp(r'^B90', caseSensitive: false), 'BS90');
+          filenames.add('$bsStem.svg');
+          filenames.add('$bsStem.png');
+          final bsSpaceStem = stemWithoutExt.replaceFirst(RegExp(r'^B90', caseSensitive: false), 'BS90 ');
+          filenames.add('$bsSpaceStem.svg');
+          filenames.add('$bsSpaceStem.png');
+        } else if (cleanStem.toUpperCase().startsWith('BS90')) {
+          final bStem = cleanStem.replaceFirst(RegExp(r'^BS90', caseSensitive: false), 'B90');
+          filenames.add('$bStem.svg');
+          filenames.add('$bStem.png');
+          final bSpaceStem = stemWithoutExt.replaceFirst(RegExp(r'^BS90\s*', caseSensitive: false), 'B90 ');
+          filenames.add('$bSpaceStem.svg');
+          filenames.add('$bSpaceStem.png');
+        }
         // Keep the exact spelling first, then support assets whose stored
         // catalog name differs only by letter case (for example Cremone /
         // cremone.png).
@@ -376,20 +406,61 @@ class SectionImageWidget extends StatelessWidget {
       }
       if (exactAssetPaths.isEmpty) return fallbackWidget;
 
-      Widget buildExactChain(int index) {
+      Widget? buildExactChain(int index) {
         if (index >= exactAssetPaths.length) {
-          return fallbackWidget;
+          return null;
         }
 
         final assetPath = exactAssetPaths[index];
-        if (assetPath.endsWith('.svg')) {
+        final isSvg = assetPath.toLowerCase().endsWith('.svg');
+
+        // On desktop / local file system, first check if the file exists directly on disk
+        if (!kIsWeb) {
+          final filename = assetPath.split('/').last;
+          final candidateFiles = [
+            File(assetPath),
+            File('assets/sections/$filename'),
+            File('assets/images/$filename'),
+            File('C:/Users/hp/Desktop/erp-alum/erp-aluminum-main/assets/sections/$filename'),
+            File('C:/Users/hp/Desktop/LISTE DE PRIX BS90/$filename'),
+          ];
+          try {
+            final exeDir = File(Platform.resolvedExecutable).parent.path;
+            candidateFiles.add(File('$exeDir/data/flutter_assets/assets/sections/$filename'));
+          } catch (_) {}
+          for (final f in candidateFiles) {
+            try {
+              if (f.existsSync()) {
+                return isSvg
+                    ? SvgPicture.file(
+                        f,
+                        width: size,
+                        height: size,
+                        fit: BoxFit.contain,
+                        placeholderBuilder: (context) => fallbackWidget,
+                      )
+                    : Image.file(
+                        f,
+                        width: size,
+                        height: size,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            buildExactChain(index + 1) ?? fallbackWidget,
+                      );
+              }
+            } catch (_) {}
+          }
+        }
+
+        if (isSvg) {
           return SvgPicture.asset(
             assetPath,
             width: size,
             height: size,
             fit: BoxFit.contain,
+            placeholderBuilder: (context) => fallbackWidget,
             errorBuilder: (context, error, stackTrace) {
-              return buildExactChain(index + 1);
+              return buildExactChain(index + 1) ?? fallbackWidget;
             },
           );
         } else {
@@ -399,7 +470,7 @@ class SectionImageWidget extends StatelessWidget {
             height: size,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
-              return buildExactChain(index + 1);
+              return buildExactChain(index + 1) ?? fallbackWidget;
             },
           );
         }
@@ -419,7 +490,7 @@ class SectionImageWidget extends StatelessWidget {
             borderRadius: BorderRadius.circular(6.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.25),
+                color: Colors.black.withValues(alpha: 0.25),
                 blurRadius: 4,
                 offset: const Offset(0, 1),
               ),

@@ -1102,12 +1102,19 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (selectedImagePath != null)
                     Padding(
                       padding: const EdgeInsets.all(8.0),
-                      child: Image.file(
-                        File(selectedImagePath!),
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                      ),
+                      child: selectedImagePath!.toLowerCase().endsWith('.svg')
+                          ? SvgPicture.file(
+                              File(selectedImagePath!),
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.contain,
+                            )
+                          : Image.file(
+                              File(selectedImagePath!),
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
+                            ),
                     ),
                 ],
               ),
@@ -1810,12 +1817,19 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (selectedImagePath != null)
                     Padding(
                       padding: const EdgeInsets.all(8.0),
-                      child: Image.file(
-                        File(selectedImagePath!),
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                      ),
+                      child: selectedImagePath!.toLowerCase().endsWith('.svg')
+                          ? SvgPicture.file(
+                              File(selectedImagePath!),
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.contain,
+                            )
+                          : Image.file(
+                              File(selectedImagePath!),
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
+                            ),
                     ),
                 ],
               ),

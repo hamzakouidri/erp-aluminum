@@ -528,6 +528,7 @@ extension WindowModelSerialization on WindowModel {
       'optionalBavetteMode': optionalBavetteMode,
       'cacheRailLeftCount': cacheRailLeftCount,
       'cacheRailRightCount': cacheRailRightCount,
+      'useOptionalCacheRail': useOptionalCacheRail,
       'hasFramePlintheBottom': hasFramePlintheBottom,
       'isInternalView': isInternalView,
       'showInternalHardware': showInternalHardware,
@@ -650,6 +651,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.cacheRailLeftCount = (map['cacheRailLeftCount'] as num?)?.toInt() ?? 0;
   model.cacheRailRightCount =
       (map['cacheRailRightCount'] as num?)?.toInt() ?? 0;
+  model.useOptionalCacheRail = map['useOptionalCacheRail'] as bool? ?? true;
   model.hasFramePlintheBottom = map['hasFramePlintheBottom'] ?? false;
   model.isInternalView = map['isInternalView'] ?? false;
   model.showInternalHardware = map['showInternalHardware'] == true;

@@ -80,14 +80,24 @@ class RoleWindow extends WindowModel {
     ];
   }
   final mandatory = <String>{};
+  final cacheRainureScopes = <bool>{false, true};
   @override
   AluminumSection? getConfiguredSectionForRole(
     String roleKey, {
     bool? useSlidingSeries,
   }) {
-    if (!['seuil', 'cache_dormant', 'cache_rail'].contains(roleKey))
+    if (![
+      'seuil',
+      'cache_dormant',
+      'cache_rail',
+      'cache_rainure',
+    ].contains(roleKey))
       return null;
     if (roleKey == 'cache_rail' && useSlidingSeries != true) return null;
+    if (roleKey == 'cache_rainure' &&
+        !cacheRainureScopes.contains(useSlidingSeries == true)) {
+      return null;
+    }
     return AluminumSection(
       id: 100,
       seriesId: useSlidingSeries == true ? 2 : 1,
@@ -102,6 +112,18 @@ class RoleWindow extends WindowModel {
   @override
   bool isConfiguredRoleRequired(String roleKey, {bool? useSlidingSeries}) =>
       mandatory.contains('${useSlidingSeries == true}:$roleKey');
+
+  @override
+  AluminumSection? frameSectionForRect(Rect frame) => AluminumSection(
+    id: frameUsesSlidingSeries(frame) ? 202 : 201,
+    seriesId: frameUsesSlidingSeries(frame) ? 2 : 1,
+    name: 'frame',
+    code: 'frame',
+    type: 'frame',
+    barLength: 6,
+    visibleWidth: 50,
+    allowsSideCover: true,
+  );
 }
 
 void main() {
@@ -155,23 +177,56 @@ void main() {
     },
   );
 
-  test('cache rail uses rail count and independent side quantities', () {
+  test('cache rail defaults on and always uses tracks minus one per side', () {
     final model = RoleWindow();
     model.zones.last.slidingTrackCount = 5;
-    model.setCacheRailCounts(4, 2);
     var bom = ComponentCalculator.generateBom(model, {});
+    expect(
+      bom.singleWhere((i) => i.roleKey == 'cache_rail').pieces,
+      hasLength(8),
+    );
+    model.toggleCacheRail(false);
+    bom = ComponentCalculator.generateBom(model, {});
+    expect(bom.where((i) => i.roleKey == 'cache_rail'), isEmpty);
+    model.toggleCacheRail(true);
+    model.zones.last.slidingTrackCount = 4;
+    bom = ComponentCalculator.generateBom(model, {});
     expect(
       bom.singleWhere((i) => i.roleKey == 'cache_rail').pieces,
       hasLength(6),
     );
-    model.zones.last.slidingTrackCount = 1;
-    bom = ComponentCalculator.generateBom(model, {});
-    expect(
-      bom.singleWhere((i) => i.roleKey == 'cache_rail').pieces,
-      hasLength(2),
-    );
     model.dispose();
   });
+
+  test(
+    'cache rail remains optional even when its catalogue role is required',
+    () {
+      final model = RoleWindow()..mandatory.add('true:cache_rail');
+      expect(model.usesCacheRail, isTrue);
+      model.toggleCacheRail(false);
+      expect(model.usesFrameRole('cache_rail', sliding: true), isFalse);
+      model.dispose();
+    },
+  );
+
+  test(
+    'cache-rainure needs compatible frames and both different series roles',
+    () {
+      final model = RoleWindow();
+      model.zones[0].boundary = const Rect.fromLTRB(50, 50, 950, 1150);
+      model.zones[1].boundary = const Rect.fromLTRB(1050, 50, 1950, 1150);
+
+      final contacts = model.getCacheRainureContacts();
+      expect(contacts, hasLength(1));
+      expect(contacts.single.length, 1200);
+      expect(contacts.single.insideUsesSlidingSeries, isFalse);
+      expect(contacts.single.outsideUsesSlidingSeries, isTrue);
+
+      model.cacheRainureScopes.remove(true);
+      expect(model.getCacheRainureContacts(), isEmpty);
+      model.dispose();
+    },
+  );
 
   test(
     'all three roles generate one linked gasket per position at actual length',

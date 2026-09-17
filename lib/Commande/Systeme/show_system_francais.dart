@@ -8359,17 +8359,8 @@ class _WindowViewState extends State<WindowView> {
                                 : zone.slidingSashesCount,
                           ),
                         );
-                    final maximum = math.max(1, tracks - 1);
-                    final required = widget.model.isConfiguredRoleRequired(
-                      'cache_rail',
-                      useSlidingSeries: true,
-                    );
-                    final left = required
-                        ? maximum
-                        : widget.model.cacheRailLeftCount.clamp(0, maximum);
-                    final right = required
-                        ? maximum
-                        : widget.model.cacheRailRightCount.clamp(0, maximum);
+                    final maximum = math.max(0, tracks - 1);
+                    final enabled = widget.model.useOptionalCacheRail;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -8380,43 +8371,18 @@ class _WindowViewState extends State<WindowView> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Text(
-                          required
-                              ? 'مفعل حتميًا: يغطي $maximum سكة من كل جانب.'
-                              : 'اختر عدد السكك المغطاة في كل جانب.',
-                        ),
-                        if (!required)
-                          Row(
-                            children: [
-                              const Text('يمين: '),
-                              DropdownButton<int>(
-                                value: right,
-                                items: [
-                                  for (var i = 0; i <= maximum; i++)
-                                    DropdownMenuItem(
-                                      value: i,
-                                      child: Text('$i'),
-                                    ),
-                                ],
-                                onChanged: (value) => widget.model
-                                    .setCacheRailCounts(left, value ?? 0),
-                              ),
-                              const SizedBox(width: 18),
-                              const Text('يسار: '),
-                              DropdownButton<int>(
-                                value: left,
-                                items: [
-                                  for (var i = 0; i <= maximum; i++)
-                                    DropdownMenuItem(
-                                      value: i,
-                                      child: Text('$i'),
-                                    ),
-                                ],
-                                onChanged: (value) => widget.model
-                                    .setCacheRailCounts(value ?? 0, right),
-                              ),
-                            ],
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(enabled ? 'مفعّل' : 'غير مفعّل'),
+                          subtitle: Text(
+                            enabled
+                                ? '$tracks سكك: $maximum يمين + $maximum يسار'
+                                : '$tracks سكك: لا توجد قطع كاش راي',
                           ),
+                          value: enabled,
+                          activeThumbColor: Colors.blue,
+                          onChanged: widget.model.toggleCacheRail,
+                        ),
                       ],
                     );
                   },
@@ -13875,6 +13841,28 @@ class _WindowViewState extends State<WindowView> {
                 selected: zone.slidingTrackCount == count,
                 onPressed: () =>
                     widget.model.setSelectedZoneSlidingTracks(count),
+              ),
+            );
+          }
+          final supportsCacheRail =
+              widget.model.getConfiguredSectionForRole(
+                'cache_rail',
+                useSlidingSeries: true,
+              ) !=
+              null;
+          if (supportsCacheRail) {
+            final cacheRailPerSide = math.max(0, zone.slidingTrackCount - 1);
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: widget.model.useOptionalCacheRail
+                    ? 'كاش راي: $cacheRailPerSide يمين + $cacheRailPerSide يسار'
+                    : 'كاش راي: غير مفعّل',
+                icon: Icons.view_sidebar_rounded,
+                selected: widget.model.useOptionalCacheRail,
+                onPressed: () => widget.model.toggleCacheRail(
+                  !widget.model.useOptionalCacheRail,
+                ),
               ),
             );
           }

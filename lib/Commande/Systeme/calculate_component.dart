@@ -3316,7 +3316,10 @@ class ComponentCalculator {
     for (final contact in window.getCacheRainureContacts()) {
       final lengthM = contact.length / 1000.0;
       if (lengthM <= 0) continue;
-      cacheRainurePieces[contact.useSlidingSeries]!.addAll([lengthM, lengthM]);
+      // One cut per face.  The two faces can belong to different compatible
+      // series, so do not force both cuts onto the first frame's profile.
+      cacheRainurePieces[contact.insideUsesSlidingSeries]!.add(lengthM);
+      cacheRainurePieces[contact.outsideUsesSlidingSeries]!.add(lengthM);
     }
     for (final sliding in [false, true]) {
       final pieces = cacheRainurePieces[sliding]!;

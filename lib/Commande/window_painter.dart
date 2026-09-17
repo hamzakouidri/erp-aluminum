@@ -1702,45 +1702,37 @@ class WindowPainter extends CustomPainter {
     // two outer frames. It is intentionally independent from the perimeter
     // side-cover drawing: only shared frame seams receive it.
     for (final contact in model.getCacheRainureContacts()) {
-      final section = model.getConfiguredSectionForRole(
+      final insideSection = model.getConfiguredSectionForRole(
         'cache_rainure',
-        useSlidingSeries: contact.useSlidingSeries,
+        useSlidingSeries: contact.insideUsesSlidingSeries,
       );
-      if (section == null || section.visibleWidth <= 0) continue;
-      final double visible = section.visibleWidth.clamp(0.0, 80.0).toDouble();
-      final paint = _buildPaint(
-        Rect.fromLTWH(
-          contact.isVertical ? contact.coordinate : contact.start,
-          contact.isVertical ? contact.start : contact.coordinate,
-          contact.isVertical ? 1 : contact.length,
-          contact.isVertical ? contact.length : 1,
-        ),
+      final outsideSection = model.getConfiguredSectionForRole(
+        'cache_rainure',
+        useSlidingSeries: contact.outsideUsesSlidingSeries,
       );
-      final border = Paint()
-        ..color = _fb
+      if (insideSection == null || outsideSection == null) continue;
+      // Cache-rainure is deliberately shown as two slightly separated black
+      // seam lines, one per face, so it is visible exactly between the two
+      // compatible frames without obscuring their profile colours.
+      final seam = Paint()
+        ..color = Colors.black
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1;
+        ..strokeWidth = 3.0;
       if (contact.isVertical) {
-        for (final left in [contact.coordinate - visible, contact.coordinate]) {
-          final rect = Rect.fromLTRB(
-            left,
-            contact.start,
-            left + visible,
-            contact.end,
+        for (final x in [contact.coordinate - 1.5, contact.coordinate + 1.5]) {
+          canvas.drawLine(
+            Offset(x, contact.start),
+            Offset(x, contact.end),
+            seam,
           );
-          canvas.drawRect(rect, paint);
-          canvas.drawRect(rect, border);
         }
       } else {
-        for (final top in [contact.coordinate - visible, contact.coordinate]) {
-          final rect = Rect.fromLTRB(
-            contact.start,
-            top,
-            contact.end,
-            top + visible,
+        for (final y in [contact.coordinate - 1.5, contact.coordinate + 1.5]) {
+          canvas.drawLine(
+            Offset(contact.start, y),
+            Offset(contact.end, y),
+            seam,
           );
-          canvas.drawRect(rect, paint);
-          canvas.drawRect(rect, border);
         }
       }
     }

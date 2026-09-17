@@ -543,6 +543,7 @@ class SupabaseSubscriptionGate extends StatefulWidget {
 }
 
 class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
+  static const _accountCachePrefix = 'supabase_account_cache_v1_';
   Timer? _expiryTimer;
   Timer? _subscriptionCheckTimer;
   RealtimeChannel? _subscriptionChannel;
@@ -552,15 +553,84 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
   @override
   void initState() {
     super.initState();
-    _accountFuture = SupabaseAccountService().loadCurrentAccount();
-    unawaited(_bindSubscriptionRealtime());
+    _accountFuture = _loadCachedAccountFirst();
+    unawaited(_refreshAccountInBackground());
     _subscriptionCheckTimer = Timer.periodic(const Duration(hours: 24), (_) {
-      if (!mounted) return;
-      setState(() {
-        // Daily fallback only; immediate changes arrive through Realtime.
-        _accountFuture = SupabaseAccountService().loadCurrentAccount();
-      });
+      if (mounted) unawaited(_refreshAccountInBackground());
     });
+  }
+
+  String? get _currentUserId => AppAuthService().currentUser?.uid;
+
+  Future<SupabaseAccountSnapshot?> _loadCachedAccountFirst() async {
+    final userId = _currentUserId;
+    if (userId == null || userId.isEmpty) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_accountCachePrefix$userId');
+      if (raw != null && raw.isNotEmpty) {
+        final map = jsonDecode(raw);
+        if (map is Map && map['userId']?.toString() == userId) {
+          return _accountFromMap(Map<String, dynamic>.from(map));
+        }
+      }
+    } catch (error) {
+      debugPrint('Cached Supabase account could not be read: $error');
+    }
+    final account = await SupabaseAccountService().loadCurrentAccount();
+    if (account != null) await _cacheAccount(account);
+    return account;
+  }
+
+  SupabaseAccountSnapshot _accountFromMap(Map<String, dynamic> map) {
+    Map<String, dynamic> objectMap(dynamic value) =>
+        value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+    return SupabaseAccountSnapshot(
+      userId: map['userId']?.toString() ?? '',
+      email: map['email']?.toString() ?? '',
+      role: map['role']?.toString() ?? 'worker',
+      workshopId: map['workshopId']?.toString() ?? '',
+      workshopCode: map['workshopCode']?.toString() ?? '',
+      workshopName: map['workshopName']?.toString() ?? '',
+      permissions: objectMap(map['permissions']),
+      blocked: map['blocked'] == true,
+      subscription: objectMap(map['subscription']),
+    );
+  }
+
+  Future<void> _cacheAccount(SupabaseAccountSnapshot account) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      '$_accountCachePrefix${account.userId}',
+      jsonEncode({
+        'userId': account.userId,
+        'email': account.email,
+        'role': account.role,
+        'workshopId': account.workshopId,
+        'workshopCode': account.workshopCode,
+        'workshopName': account.workshopName,
+        'permissions': account.permissions,
+        'blocked': account.blocked,
+        'subscription': account.subscription,
+      }),
+    );
+  }
+
+  Future<void> _refreshAccountInBackground() async {
+    try {
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      if (!mounted) return;
+      if (account != null) await _cacheAccount(account);
+      if (!mounted) return;
+      setState(() => _accountFuture = Future.value(account));
+      if (account != null) _scheduleSubscriptionExpiry(account);
+      await _bindSubscriptionRealtime();
+    } catch (error) {
+      // The cached account keeps the local app usable while offline. A later
+      // periodic or realtime refresh will apply the server state.
+      debugPrint('Background Supabase account refresh skipped: $error');
+      unawaited(_bindSubscriptionRealtime());
+    }
   }
 
   @override
@@ -604,11 +674,7 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
             ),
             callback: (_) {
               if (!mounted) return;
-              setState(() {
-                _accountFuture =
-                    SupabaseAccountService().loadCurrentAccount();
-              });
-              unawaited(_bindSubscriptionRealtime());
+              unawaited(_refreshAccountInBackground());
             },
           )
           .subscribe();
@@ -632,9 +698,7 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
 
   void _reloadAccountSilently() {
     if (!mounted) return;
-    setState(() {
-      _accountFuture = SupabaseAccountService().loadCurrentAccount();
-    });
+    unawaited(_refreshAccountInBackground());
   }
 
   String _t(BuildContext context, String key) =>
@@ -737,21 +801,23 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
 
         if (_isActive(account)) {
           return SubscriptionDeadline(
-            endsAt: account.role == 'admin' ? null : DateTime.tryParse(
-              account.subscription['ends_at']?.toString() ?? '',
-            ),
+            endsAt: account.role == 'admin'
+                ? null
+                : DateTime.tryParse(
+                    account.subscription['ends_at']?.toString() ?? '',
+                  ),
             expired: const SubscriptionExpiredScreen(),
             child: SyncGateway(
-            // A global administrator can open several workshops with the same
-            // user account. Recreate the gateway when the selected workshop
-            // changes; keying it by the user alone would keep the previous
-            // workshop's local database and synchronization state alive.
-            key: ValueKey(
-              'supabase_sync_gateway:${account.userId}:${account.workshopId}',
-            ),
-            initialWorkshopId: account.workshopCode,
-            initialWorkshopName: account.workshopName,
-            initialUserRole: account.role,
+              // A global administrator can open several workshops with the same
+              // user account. Recreate the gateway when the selected workshop
+              // changes; keying it by the user alone would keep the previous
+              // workshop's local database and synchronization state alive.
+              key: ValueKey(
+                'supabase_sync_gateway:${account.userId}:${account.workshopId}',
+              ),
+              initialWorkshopId: account.workshopCode,
+              initialWorkshopName: account.workshopName,
+              initialUserRole: account.role,
             ),
           );
         }
@@ -941,8 +1007,10 @@ class _SyncGatewayState extends State<SyncGateway> {
       await SupabaseWorkshopSyncService().ensureStarted(
         timeout: const Duration(seconds: 20),
       );
-      await Provider.of<AppSettingsProvider>(context, listen: false)
-          .reloadPermissions();
+      await Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).reloadPermissions();
     } catch (error) {
       // Login must remain usable during a temporary cloud failure; the
       // background listener will retry without rebuilding the page tree.
@@ -1090,8 +1158,10 @@ class _SyncGatewayState extends State<SyncGateway> {
   Future<void> _refreshPermissionsInBackground() async {
     if (!mounted) return;
     try {
-      await Provider.of<AppSettingsProvider>(context, listen: false)
-          .reloadPermissions();
+      await Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).reloadPermissions();
     } catch (error) {
       debugPrint('Background permission refresh skipped: $error');
     }

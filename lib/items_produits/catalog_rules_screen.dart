@@ -66,6 +66,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   bool _loadingSeries = false;
   bool _loading = false;
   bool _saving = false;
+  bool _isInspectorOpen = false;
   String? _inspectedItemKey;
 
   String _t(String ar, String fr) {
@@ -641,10 +642,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       ),
       _CatalogGroup(
         key: 'cremones',
-        ar: 'الكريمون',
-        fr: 'Crémones',
+        ar: 'الكريمون والإسبانيوليت',
+        fr: 'Crémones et espagnolettes',
         icon: Icons.pan_tool_outlined,
-        roleKeys: {'cremone', 'tringle'},
+        roleKeys: {'cremone', 'tringle', 'espagnolette'},
       ),
       _CatalogGroup(
         key: 'entrematique',
@@ -696,6 +697,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         },
       ),
       _CatalogGroup(
+        key: 'batmo',
+        ar: 'بوشون باتمو',
+        fr: 'Bouchon battement',
+        icon: Icons.extension_outlined,
+        roleKeys: {'bouchon_batmo'},
+      ),
+      _CatalogGroup(
         key: 'other',
         ar: 'أكسسوارات أخرى',
         fr: 'Autres accessoires',
@@ -703,6 +711,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         roleKeys: {'other'},
       ),
     ];
+    if (table == 'Accessories') {
+      return iconGroups;
+    }
     return _rolesForTable(table)
         .map((role) {
           final iconGroup = iconGroups
@@ -1954,6 +1965,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ),
             const Divider(height: 24),
             DropdownButtonFormField<String>(
+              key: ValueKey('role-select:$itemId:$selectedRole'),
               initialValue: selectedRole,
               isExpanded: true,
               decoration: InputDecoration(
@@ -2089,34 +2101,43 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   void _openMobileInspector(String table, Map<String, dynamic> item) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.85,
-          maxChildSize: 0.95,
-          minChildSize: 0.5,
-          expand: false,
-          builder: (context, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.all(16),
-              child: _buildItemInspector(
-                table,
-                item,
-                onClose: () => Navigator.pop(ctx),
-              ),
-            );
-          },
-        );
-      },
-    ).then((_) {
-      if (mounted) setState(() {});
+    if (_isInspectorOpen) return;
+    _isInspectorOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _isInspectorOpen = false;
+        return;
+      }
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            maxChildSize: 0.95,
+            minChildSize: 0.5,
+            expand: false,
+            builder: (context, scrollController) {
+              return SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16),
+                child: _buildItemInspector(
+                  table,
+                  item,
+                  onClose: () => Navigator.of(ctx).pop(),
+                ),
+              );
+            },
+          );
+        },
+      ).whenComplete(() {
+        _isInspectorOpen = false;
+        if (mounted) setState(() {});
+      });
     });
   }
 
