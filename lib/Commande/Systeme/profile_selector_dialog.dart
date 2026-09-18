@@ -772,6 +772,8 @@ class CatalogCandidateQuery {
     this.hasDoubleGlassForRules,
     this.targetThicknessMm,
     this.effectiveHeightMm,
+    this.mainWarehouseStock = const {},
+    this.stockColorId,
   });
 
   final String category;
@@ -789,6 +791,11 @@ class CatalogCandidateQuery {
   final bool? hasSimpleGlassForReducer;
   final bool? hasDoubleGlassForRules;
   final double? targetThicknessMm;
+
+  /// Snapshot of the main warehouse, supplied by the quantity table. It is
+  /// intentionally optional so the dialog remains reusable elsewhere.
+  final Map<String, double> mainWarehouseStock;
+  final int? stockColorId;
   final double? effectiveHeightMm;
 }
 
@@ -843,12 +850,19 @@ class CatalogCandidateResolver {
         : roleKeys.contains('sash')
         ? roleKeys.where((role) => role == 'sash').toList()
         : roleKeys;
+    final forceFunctionalSlidingProfile = roleKeys.any(
+      (role) =>
+          role == 'montant_central_slim' ||
+          role == 'sash_central_slim' ||
+          role == 'complement_haut_base',
+    );
     var sections = query.drawingMode == null
         ? await _db.getDesignSectionsForRoles(
             query.seriesId!,
             scopedRoleKeys,
             requireDialog: query.requireDialog,
             requireQuantity: query.requireQuantity,
+            requireVisible: !forceFunctionalSlidingProfile,
           )
         : await _db.getDesignSectionsForScopedDialogRoles(
             query.seriesId!,
@@ -858,6 +872,7 @@ class CatalogCandidateResolver {
                 : 'opening',
             requireDialog: query.requireDialog,
             requireQuantity: query.requireQuantity,
+            requireVisible: !forceFunctionalSlidingProfile,
           );
     final normalizedMaterial = (query.materialType ?? '').toLowerCase().trim();
     final isAluminium =
@@ -1237,6 +1252,8 @@ class ProfileSelectorDialog extends StatefulWidget {
   final bool? hasSimpleGlassForReducer;
   final bool? hasDoubleGlassForRules;
   final double? targetThicknessMm;
+  final Map<String, double> mainWarehouseStock;
+  final int? stockColorId;
 
   const ProfileSelectorDialog({
     super.key,
@@ -1261,6 +1278,8 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.hasSimpleGlassForReducer,
     this.hasDoubleGlassForRules,
     this.targetThicknessMm,
+    this.mainWarehouseStock = const {},
+    this.stockColorId,
   });
 
   @override
@@ -1270,6 +1289,28 @@ class ProfileSelectorDialog extends StatefulWidget {
 class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
   List<Map<String, dynamic>> profiles = [];
   bool isLoading = true;
+
+  double? _mainStockForCandidate(Map<String, dynamic> candidate) {
+    final id = _catalogInt(candidate['id']);
+    if (id == null) return null;
+    String? itemType;
+    switch (widget.category) {
+      case 'profile':
+        itemType = 'Section';
+      case 'joint':
+        itemType = 'Joints';
+      case 'accessory':
+      case 'other':
+        itemType = 'Accessory';
+      case 'glass':
+        itemType = 'Glass';
+    }
+    if (itemType == null) return null;
+    String key(int? colorId) => '$itemType|$id|${colorId ?? 0}';
+    return widget.mainWarehouseStock[key(widget.stockColorId)] ??
+        widget.mainWarehouseStock[key(null)] ??
+        0.0;
+  }
 
   @override
   void initState() {
@@ -1306,6 +1347,12 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
     }
 
     if (widget.category != 'shutter') {
+      final forceVisibleInDialog = widget.roleKeys.any(
+        (role) =>
+            role == 'montant_central_slim' ||
+            role == 'sash_central_slim' ||
+            role == 'complement_haut_base',
+      );
       data = await CatalogCandidateResolver(database: db).resolve(
         CatalogCandidateQuery(
           category: widget.category,
@@ -1318,7 +1365,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           hasSideCovers: widget.hasSideCovers,
           multiFrameDrawing: widget.multiFrameDrawing,
           drawingMode: widget.accessoryDrawingMode,
-          requireDialog: true,
+          // Slim and its 10 cm top/bottom complement are functional drawing
+          // components. Their replacement must remain available whenever the
+          // role exists, even if a legacy row has show_in_dialog unchecked.
+          requireDialog: !forceVisibleInDialog,
           requireQuantity: widget.category != 'profile',
           hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
@@ -2370,6 +2420,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                               .toString()
                               .replaceAll(RegExp(r'\s*\(\s*جودة[^)]*\)'), '')
                               .trim();
+                          final stock = _mainStockForCandidate(item);
 
                           return ListTile(
                             leading: SectionImageWidget(
@@ -2382,6 +2433,17 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                               size: 72.0,
                             ),
                             title: Text('$codeStr$nameStr'),
+                            subtitle: stock == null
+                                ? null
+                                : Text(
+                                    '${Localization.translate('المستودع الرئيسي', lang)}: ${stock.toStringAsFixed(stock % 1 == 0 ? 0 : 2)}',
+                                    style: TextStyle(
+                                      color: stock <= 0
+                                          ? Colors.red.shade700
+                                          : Colors.teal.shade700,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                             onTap: () => Navigator.pop(context, item),
                           );
                         },

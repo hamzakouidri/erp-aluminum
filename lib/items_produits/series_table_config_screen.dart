@@ -128,8 +128,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       key: 'complement_haut_base',
       ar: 'مكمل علوي وسفلي',
       fr: 'Complément haut et bas',
-      descriptionAr: 'المكمل العلوي والسفلي الخاص بالسلسلة',
-      descriptionFr: 'Complément haut et bas propre à cette série',
+      descriptionAr:
+          'قاعدة مونتوسليم: عند تفعيل كل قائم Slim يضاف تلقائياً مكملان، علوي وسفلي، طول كل منهما 10 سم.',
+      descriptionFr:
+          'Règle Montant Slim : chaque montant Slim actif ajoute automatiquement deux compléments, haut et bas, de 10 cm chacun.',
     ),
     _SeriesRole(
       key: 'glazing_bead',

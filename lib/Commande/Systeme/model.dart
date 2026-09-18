@@ -1076,6 +1076,7 @@ class WindowZone {
   Map<String, Map<String, dynamic>> cellSashOverrides;
   LockType lockType;
   Map<String, bool> slidingMontantReinforced;
+  Map<String, bool> slidingMontantSlim;
   double middleHingeDragOffset;
   double doubleSashRatio;
 
@@ -1146,6 +1147,7 @@ class WindowZone {
     this.cellSashOverrides = const {},
     this.lockType = LockType.none,
     Map<String, bool>? slidingMontantReinforced,
+    Map<String, bool>? slidingMontantSlim,
     this.middleHingeDragOffset = 0.0,
     this.doubleSashRatio = 0.5,
     this.doubleSashHasTwoHandles = false,
@@ -1166,6 +1168,9 @@ class WindowZone {
                'central_left': false,
                'central_right': false,
              },
+       ),
+       slidingMontantSlim = Map<String, bool>.from(
+         slidingMontantSlim ?? const {},
        );
 
   WindowZone clone() => WindowZone(
@@ -1210,6 +1215,7 @@ class WindowZone {
     ),
     lockType: lockType,
     slidingMontantReinforced: Map.from(slidingMontantReinforced),
+    slidingMontantSlim: Map.from(slidingMontantSlim),
     middleHingeDragOffset: middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio,
     doubleSashHasTwoHandles: doubleSashHasTwoHandles,
@@ -1309,6 +1315,7 @@ class WindowZone {
     Map<String, Map<String, dynamic>>? cellSashOverrides,
     LockType? lockType,
     Map<String, bool>? slidingMontantReinforced,
+    Map<String, bool>? slidingMontantSlim,
     double? middleHingeDragOffset,
     double? doubleSashRatio,
     bool? doubleSashHasTwoHandles,
@@ -1359,6 +1366,7 @@ class WindowZone {
     lockType: lockType ?? this.lockType,
     slidingMontantReinforced:
         slidingMontantReinforced ?? Map.from(this.slidingMontantReinforced),
+    slidingMontantSlim: slidingMontantSlim ?? Map.from(this.slidingMontantSlim),
     middleHingeDragOffset: middleHingeDragOffset ?? this.middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio ?? this.doubleSashRatio,
     doubleSashHasTwoHandles:
@@ -4005,6 +4013,65 @@ class WindowModel extends ChangeNotifier {
               : 'قائم جانبي (Sash Lateral)'] =
           mutable;
     }
+    notifyListeners();
+  }
+
+  bool isSlidingMontantSlimCandidate(Map<String, dynamic> profile) {
+    final role =
+        (profile['design_role_key'] ??
+                profile['roleKey'] ??
+                profile['role_key'] ??
+                '')
+            .toString()
+            .toLowerCase();
+    if (role == 'montant_central_slim' ||
+        role == 'sash_central_slim' ||
+        role == 'montant_slim') {
+      return true;
+    }
+    final code = (profile['code'] ?? '').toString().trim().toLowerCase();
+    final name = (profile['name'] ?? '').toString().toLowerCase();
+    final type = (profile['type'] ?? '').toString().toLowerCase();
+    final description = '$name $type $code';
+    return description.contains('slim') || description.contains('سليم');
+  }
+
+  List<Map<String, dynamic>> getSlidingSlimCandidates() {
+    // The role assignment is authoritative. A Slim profile is often stored
+    // with the ordinary central-montant type/name, so name matching alone
+    // makes it disappear from the drawing and the BOM.
+    final configured = getConfiguredSectionsForRole(
+      'montant_central_slim',
+      useSlidingSeries: true,
+    );
+    if (configured.isNotEmpty) {
+      return configured.map((section) => section.toMap()).toList();
+    }
+    final sections = (activeSlidingSeries ?? activeSeries)?.sections ?? [];
+    return sections
+        .map((s) => s.toMap())
+        .where((m) => isSlidingMontantSlimCandidate(m))
+        .toList();
+  }
+
+  Map<String, dynamic>? get selectedSlimMontantProfile {
+    final override = componentOverrides['قائم وسطي سليم (Montant Slim)'];
+    if (override is Map<String, dynamic>) return override;
+    if (override is Map) return Map<String, dynamic>.from(override);
+    final candidates = getSlidingSlimCandidates();
+    return candidates.isNotEmpty ? candidates.first : null;
+  }
+
+  void applySlidingMontantSlimOverride(
+    Map<String, dynamic> profile, {
+    bool manualSelection = false,
+  }) {
+    final mutable = Map<String, dynamic>.from(profile);
+    if (manualSelection) {
+      mutable['manual_selection'] = true;
+      mutable['user_selected'] = true;
+    }
+    componentOverrides['قائم وسطي سليم (Montant Slim)'] = mutable;
     notifyListeners();
   }
 
@@ -6810,7 +6877,11 @@ class WindowModel extends ChangeNotifier {
           // First check availableSystems (already loaded)
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == loadedSeriesId && isPrimarySeriesCandidate(s, sys)) {
+              // A saved series id is an explicit user choice.  Do not reject
+              // it because a legacy or partially configured series cannot
+              // yet be classified as opening/sliding; rejecting it here made
+              // the product silently fall back to the first default series.
+              if (s.id == loadedSeriesId) {
                 resolvedActive = s;
                 break;
               }
@@ -6826,8 +6897,7 @@ class WindowModel extends ChangeNotifier {
               final seriesData = await db.readSeriesByProfile(pData['id']);
               for (var sData in seriesData) {
                 final s = AluminumSeries.fromMap(sData);
-                if (s.id == loadedSeriesId &&
-                    isPrimarySeriesCandidate(s, sourceSystem)) {
+                if (s.id == loadedSeriesId) {
                   final sectionsData = await db.readAvailableSectionsBySeries(
                     s.id,
                   );
@@ -6862,8 +6932,7 @@ class WindowModel extends ChangeNotifier {
         if (resolvedActive == null && activeSeries != null) {
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == activeSeries!.id &&
-                  isPrimarySeriesCandidate(s, sys)) {
+              if (s.id == activeSeries!.id) {
                 resolvedActive = s;
                 break;
               }
@@ -6879,8 +6948,7 @@ class WindowModel extends ChangeNotifier {
               final seriesData = await db.readSeriesByProfile(pData['id']);
               for (var sData in seriesData) {
                 final s = AluminumSeries.fromMap(sData);
-                if (s.id == activeSeries!.id &&
-                    isPrimarySeriesCandidate(s, sourceSystem)) {
+                if (s.id == activeSeries!.id) {
                   final sectionsData = await db.readAvailableSectionsBySeries(
                     s.id,
                   );
@@ -6964,12 +7032,27 @@ class WindowModel extends ChangeNotifier {
           slidingNameToResolve = activeSlidingSeries?.name;
         }
 
-        if (activeSlidingSeries != null) {
+        // A saved sliding-series id is an explicit product choice.  It may
+        // legitimately belong to a different catalogue system than the
+        // opening series (for example Bennia 40000 + BS 90).  Resolving it
+        // only inside the paired system made the restore fail and then
+        // silently replace it with that system's first sliding series.
+        if (loadedSlidingSeriesId != null) {
+          for (final sys in availableSystems) {
+            for (final series in sys.series) {
+              if (series.id == loadedSlidingSeriesId) {
+                resolvedSliding = series;
+                break;
+              }
+            }
+            if (resolvedSliding != null) break;
+          }
+        }
+
+        if (resolvedSliding == null && activeSlidingSeries != null) {
           for (var sys in availableSystems) {
-            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
-              if (s.id == activeSlidingSeries!.id &&
-                  isSlidingCandidate(s, sys)) {
+              if (s.id == activeSlidingSeries!.id) {
                 resolvedSliding = s;
                 break;
               }
@@ -6980,9 +7063,8 @@ class WindowModel extends ChangeNotifier {
 
         if (resolvedSliding == null && loadedSlidingSeriesId != null) {
           for (var sys in availableSystems) {
-            if (!belongsToPairedSystem(sys)) continue;
             for (var s in sys.series) {
-              if (s.id == loadedSlidingSeriesId && isSlidingCandidate(s, sys)) {
+              if (s.id == loadedSlidingSeriesId) {
                 resolvedSliding = s;
                 break;
               }
@@ -7361,7 +7443,9 @@ class WindowModel extends ChangeNotifier {
     final overrideOverlap = readOverlap(selectedOverride?['sash_overlap']);
     if (overrideOverlap > 0) return overrideOverlap;
 
-    final series = useSliding ? activeSlidingSeries : activeSeries;
+    final series = useSliding
+        ? (activeSlidingSeries ?? activeSeries)
+        : activeSeries;
     if (series != null) {
       final overrideId = selectedOverride?['id']?.toString();
       final overrideCode = selectedOverride?['code']?.toString().trim();
@@ -7429,7 +7513,9 @@ class WindowModel extends ChangeNotifier {
 
   double getSectionThickness(String type, {double fallback = 45.0}) {
     final useSliding = systemMode == 'sliding' || usesSlidingPrimaryProfiles;
-    final series = useSliding ? activeSlidingSeries : activeSeries;
+    final series = useSliding
+        ? (activeSlidingSeries ?? activeSeries)
+        : activeSeries;
     final sash = useSliding ? slidingSashOverride : sashOverride;
     if (series == null) return fallback;
     if (type.toLowerCase() == 'sash' && sash != null) {
@@ -10144,7 +10230,73 @@ class WindowModel extends ChangeNotifier {
     return null;
   }
 
-  double? parcloseCapacityForStructure(GlassStructure structure) {
+  bool _isParcloseSection(AluminumSection section) {
+    final type = section.type.toLowerCase();
+    final name = section.name.toLowerCase();
+    return section.code.trim() == '514' ||
+        type.contains('parclose') ||
+        name.contains('parclose') ||
+        type.contains('باكيت') ||
+        name.contains('باكيت');
+  }
+
+  /// Whether this catalogue actually retains glazing with a parclose.  A
+  /// configured (but empty) glazing-bead role means that the sash itself is
+  /// the glazing pocket; never fall back to an unrelated legacy parclose.
+  bool hasGlazingBeadForContext({bool? sliding}) {
+    final useSliding =
+        sliding ??
+        (systemMode == 'sliding' ||
+            (selectedZone?.content == ZoneContent.slidingSash));
+    final series = useSliding ? activeSlidingSeries : activeSeries;
+    if (series == null) return false;
+    final configured = getConfiguredSectionsForRole(
+      'glazing_bead',
+      useSlidingSeries: useSliding,
+    );
+    if (configured.isNotEmpty) return true;
+    if (seriesHasConfiguredRoles(series)) return false;
+    return series.sections.any(_isParcloseSection);
+  }
+
+  double? sashGlassCapacityForContext({bool? sliding}) {
+    final useSliding =
+        sliding ??
+        (systemMode == 'sliding' ||
+            (selectedZone?.content == ZoneContent.slidingSash));
+    final sash = useSliding
+        ? slidingSashOverride ??
+              getSlidingSectionByType('sash_sliding')?.toMap() ??
+              getSlidingSectionByType('sash')?.toMap()
+        : sashOverride ?? getSectionByType('sash')?.toMap();
+    final raw = sash?['max_glass_thickness'];
+    final capacity = raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '');
+    return capacity != null && capacity > 0 ? capacity : null;
+  }
+
+  /// The usable glazing pocket.  With a real parclose its capacity wins; in
+  /// series without parclose the selected sash's max-glass field is the sole
+  /// source of truth.
+  double? glazingCapacityForStructure(
+    GlassStructure structure, {
+    bool? sliding,
+  }) {
+    final useSliding =
+        sliding ??
+        (systemMode == 'sliding' ||
+            (selectedZone?.content == ZoneContent.slidingSash));
+    if (hasGlazingBeadForContext(sliding: useSliding)) {
+      return parcloseCapacityForStructure(structure, sliding: useSliding);
+    }
+    return sashGlassCapacityForContext(sliding: useSliding);
+  }
+
+  double? parcloseCapacityForStructure(
+    GlassStructure structure, {
+    bool? sliding,
+  }) {
     double? capacityOf(dynamic parclose) {
       if (parclose is! Map) return null;
       final rawValue = parclose['max_glass_thickness'];
@@ -10154,7 +10306,12 @@ class WindowModel extends ChangeNotifier {
       return maximum != null && maximum > 0 ? maximum : null;
     }
 
-    final series = activeFrameSeries;
+    final useSliding =
+        sliding ??
+        (systemMode == 'sliding' ||
+            (selectedZone?.content == ZoneContent.slidingSash));
+    final series = useSliding ? activeSlidingSeries : activeSeries;
+    if (!hasGlazingBeadForContext(sliding: useSliding)) return null;
 
     if (structure == GlassStructure.simple) {
       final specificSimple =
@@ -10168,12 +10325,7 @@ class WindowModel extends ChangeNotifier {
 
       if (series != null) {
         for (final s in series.sections) {
-          final isParclose =
-              s.code.trim() == '514' ||
-              s.type.toLowerCase().contains('parclose') ||
-              s.name.toLowerCase().contains('parclose') ||
-              s.type.contains('باكيت') ||
-              s.name.contains('باكيت');
+          final isParclose = _isParcloseSection(s);
           if (isParclose &&
               s.maxGlassThickness > 0 &&
               s.maxGlassThickness <= 14.0) {
@@ -10181,7 +10333,7 @@ class WindowModel extends ChangeNotifier {
           }
         }
       }
-      return 12.0;
+      return null;
     } else if (structure == GlassStructure.double) {
       final specificDouble =
           componentOverrides['باكيت زجاج مزدوج (Parclose Double)'];
@@ -10208,17 +10360,13 @@ class WindowModel extends ChangeNotifier {
         }
 
         for (final s in series.sections) {
-          final isParclose =
-              s.type.toLowerCase().contains('parclose') ||
-              s.name.toLowerCase().contains('parclose') ||
-              s.type.contains('باكيت') ||
-              s.name.contains('باكيت');
+          final isParclose = _isParcloseSection(s);
           if (isParclose && s.maxGlassThickness > 16.0) {
             return s.maxGlassThickness;
           }
         }
       }
-      return 24.0;
+      return null;
     }
     return selectedParcloseMaxGlassThickness;
   }
@@ -10340,15 +10488,17 @@ class WindowModel extends ChangeNotifier {
     double? jointThickness,
     bool? sliding,
   }) {
-    final maximum = selectedParcloseMaxGlassThickness;
-    if (maximum == null) return null;
-
     final selectedUsesSliding =
         sliding ??
         (systemMode == 'sliding' ||
             (selectedZone != null
                 ? selectedZone!.content == ZoneContent.slidingSash
                 : usesSlidingPrimaryProfiles));
+    final maximum = glazingCapacityForStructure(
+      GlassStructure.double,
+      sliding: selectedUsesSliding,
+    );
+    if (maximum == null) return null;
     final effectiveJointThickness =
         jointThickness ?? selectedVitrageJointThickness(fallback: 2.0);
     final jointAllowance = selectedUsesSliding
@@ -10365,7 +10515,6 @@ class WindowModel extends ChangeNotifier {
   /// parclose. The spacer is a consequence of the glazing panes and the
   /// parclose capacity, rather than a free manual choice.
   void fitDoubleGlassIntercallsToSelectedParclose() {
-    if (selectedParcloseMaxGlassThickness == null) return;
     var changed = false;
 
     GlassSpecification fit(
@@ -10530,6 +10679,12 @@ class WindowModel extends ChangeNotifier {
         (selectedZone != null
             ? selectedZone!.content == ZoneContent.slidingSash
             : usesSlidingPrimaryProfiles);
+    // A sash-only series has no parclose to select. Its own max-glass
+    // thickness is enforced by the drawer/calculation, without mutating the
+    // catalogue selection or inserting a phantom glazing bead.
+    if (!hasGlazingBeadForContext(sliding: selectedUsesSliding)) {
+      return false;
+    }
     final jointAllowance = selectedUsesSliding
         ? effectiveJointThickness * (jointTwoSides ? 2.0 : 1.0)
         : effectiveJointThickness +
@@ -15950,7 +16105,7 @@ class WindowModel extends ChangeNotifier {
     zone.innerVPositions = const [];
     zone.rightInnerHPositions = const [];
     zone.rightInnerVPositions = const [];
-    zone.cellIsPanel.clear();
+    zone.cellIsPanel = {};
     activeSubZone = null;
     showZoneMenu = false;
     // A frame is drawn before the user chooses its contents, so only the

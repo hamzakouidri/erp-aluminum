@@ -352,9 +352,23 @@ class PdfFicheCoupeApi {
     return rows;
   }
 
+  static String anglesFor(BomItem item) => _anglesFor(item);
+
   static String _anglesFor(BomItem item) {
     final text = '${item.originalName} ${item.name}'.toLowerCase();
-    if (text.contains('lame') ||
+    if (text.contains('45°/90°') ||
+        text.contains('45° / 90°') ||
+        text.contains('45/90')) {
+      return '45° / 90°';
+    }
+    if (text.contains('90°/90°') ||
+        text.contains('90° / 90°') ||
+        text.contains('90/90') ||
+        text.contains('slim') ||
+        text.contains('سليم') ||
+        text.contains('وصلة') ||
+        text.contains('taquet') ||
+        text.contains('lame') ||
         text.contains('axe') ||
         text.contains('caisson') ||
         text.contains('gliss') ||

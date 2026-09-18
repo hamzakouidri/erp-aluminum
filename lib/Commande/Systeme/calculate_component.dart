@@ -3,6 +3,7 @@ import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
+import 'package:collection/collection.dart';
 
 String _withoutAccessoryQualityLabel(String value) => value
     .replaceAll(
@@ -189,6 +190,94 @@ class BomItem {
       if (lang == 'en') return 'Assembly screws';
       return "براغي التجميع (vis d'assemblage)";
     }
+
+    final lowerOriginal = original.toLowerCase();
+
+    // Specific profile translations requested for clean display across languages:
+    if (lowerOriginal.contains('cache dormant') ||
+        lowerOriginal.contains('cache_dormant') ||
+        original.contains('كاش دورمو') ||
+        original.contains('كاش الإطار')) {
+      if (lang == 'fr') return 'Cache dormant';
+      if (lang == 'ar') return 'كاش دورمو';
+      return 'Frame Cover';
+    }
+    if (lowerOriginal.contains('seuil') ||
+        original.contains('سوي') ||
+        original.contains('عتبة')) {
+      if (lang == 'fr') return 'Seuil';
+      if (lang == 'ar') return 'سوي';
+      return 'Threshold';
+    }
+    if (lowerOriginal.contains('cache-rail') ||
+        lowerOriginal.contains('cache rail') ||
+        lowerOriginal.contains('cache_rail') ||
+        original.contains('كاش راي')) {
+      if (lang == 'fr') return 'Cache-rail';
+      if (lang == 'ar') return 'كاش راي';
+      return 'Rail Cover';
+    }
+    if (lowerOriginal.contains('chicane') ||
+        original.contains('شيكان') ||
+        original.contains('الشيكان')) {
+      if (lang == 'fr') return 'Chicane';
+      if (lang == 'ar') return 'شيكان';
+      return 'Chicane';
+    }
+    if (lowerOriginal.contains('sliding frame extension') ||
+        lowerOriginal.contains('frame extension') ||
+        lowerOriginal.contains('complément dormant') ||
+        lowerOriginal.contains('complement dormant') ||
+        lowerOriginal.contains('dormant ajouté') ||
+        lowerOriginal.contains('dormant ajoute') ||
+        original.contains('مكمل الإطار') ||
+        original.contains('كومبليمو دورمو') ||
+        original.contains('دورمو أجوت')) {
+      if (lang == 'fr') return 'Complément Dormant';
+      if (lang == 'ar') return 'كومبليمو دورمو';
+      return 'Frame Extension';
+    }
+    if (original.contains('الظلفة المنزلقة') ||
+        original.contains('الضلفة المنزلقة') ||
+        lowerOriginal.contains('sliding sash')) {
+      if (lang == 'fr') return 'Ouvrant';
+      if (lang == 'ar') return 'الضلفة';
+      return 'Sliding Sash';
+    }
+    if (original.contains('الظلفة') ||
+        original.contains('الضلفة') ||
+        lowerOriginal == 'sash' ||
+        lowerOriginal == 'ouvrant') {
+      if (lang == 'fr') return 'Ouvrant';
+      if (lang == 'ar') return 'الضلفة';
+      return 'Sash';
+    }
+    if (lowerOriginal.contains('cache-rainure') ||
+        lowerOriginal.contains('cache rainure') ||
+        lowerOriginal.contains('cache_rainure') ||
+        original.contains('كاش رينور')) {
+      if (lang == 'fr') return 'Cache-rainure';
+      if (lang == 'ar') return 'كاش رينور';
+      return 'Groove Cover';
+    }
+    if (lowerOriginal.contains('bavette') || original.contains('بافيت')) {
+      if (lang == 'fr') return 'Bavette';
+      if (lang == 'ar') return 'بافيت';
+      return 'Weatherboard';
+    }
+    if (lowerOriginal.contains('cache-caniveau') ||
+        lowerOriginal.contains('cache caniveau') ||
+        original.contains('كاش كانيفو')) {
+      if (lang == 'fr') return 'Cache-caniveau';
+      if (lang == 'ar') return 'كاش كانيفو';
+      return 'Gutter Cover';
+    }
+    if (lowerOriginal.contains('caniveau') || original.contains('كانيفو')) {
+      if (lang == 'fr') return 'Caniveau';
+      if (lang == 'ar') return 'كانيفو';
+      return 'Gutter';
+    }
+
     if (lang == 'fr') {
       if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') {
         return 'Sash Latéral Renforcé';
@@ -217,7 +306,9 @@ class BomItem {
           original.contains('Ouvrant')) {
         return original
             .replaceAll('الظلفة', 'Ouvrant')
-            .replaceAll('Sash', 'Ouvrant');
+            .replaceAll('Sash', 'Ouvrant')
+            .replaceAll('المنزلقة', '')
+            .trim();
       }
       if (original.contains('عرضي') || original.contains('Traverse')) {
         return original.replaceAll('عرضي', 'Traverse');
@@ -237,7 +328,7 @@ class BomItem {
             .replaceAll('Sash Central', 'Sash Central');
       }
       if (original.contains('الشيكان') || original.contains('Chicane')) {
-        return original.replaceAll('الشيكان', 'Chicane');
+        return 'Chicane';
       }
       if (original.contains('الري') || original.contains('Rail')) {
         return original.replaceAll('الري', 'Rail');
@@ -439,15 +530,97 @@ class BomItem {
     // Fallback labels are commonly stored as "Arabic (Français)". Keep one
     // language per UI locale instead of displaying both names or parentheses.
     if (lang == 'ar') {
-      return original.split('(').first.trim();
+      final arabicPart = original.split('(').first.trim();
+      if (arabicPart.isNotEmpty) return arabicPart;
     }
     final open = original.indexOf('(');
     final close = original.lastIndexOf(')');
     if ((lang == 'fr' || lang == 'en') && open >= 0 && close > open) {
       final foreign = original.substring(open + 1, close).trim();
-      if (foreign.isNotEmpty) return foreign;
+      final lowerForeign = foreign.toLowerCase();
+      if (foreign.isNotEmpty &&
+          lowerForeign != 'coulissant' &&
+          lowerForeign != 'ouvrant') {
+        return foreign;
+      }
     }
     return original;
+  }
+
+  static String localizeSubText(String text, String lang) {
+    if (text.contains('المطلوب الفعلي:')) {
+      final reg = RegExp(
+        r'المطلوب الفعلي:\s*([0-9\.]+)\s*([^\s\)\/]+)(?:\s*\/\s*([0-9\.]+)\s*([^\s\)]+))?',
+      );
+      final match = reg.firstMatch(text);
+      if (match != null) {
+        final num1 = match.group(1) ?? '';
+        final unit1 = match.group(2) ?? '';
+        final num2 = match.group(3);
+        final unit2 = match.group(4);
+
+        if (lang == 'fr') {
+          String frUnit = 'bar';
+          if (unit2 != null && unit2.isNotEmpty) {
+            frUnit = unit2;
+          } else if (unit1.contains('متر') || unit1 == 'm') {
+            frUnit = 'm';
+          } else if (unit1.contains('قطعة') || unit1 == 'pièce') {
+            frUnit = 'pièce';
+          }
+          final numberStr = num2 ?? num1;
+          return '(Besoin réel: $numberStr $frUnit)';
+        } else if (lang == 'en') {
+          String enUnit = 'bar';
+          if (unit2 != null && unit2.isNotEmpty) {
+            enUnit = unit2;
+          } else if (unit1.contains('متر') || unit1 == 'm') {
+            enUnit = 'm';
+          } else if (unit1.contains('قطعة') || unit1 == 'pcs') {
+            enUnit = 'pcs';
+          }
+          final numberStr = num2 ?? num1;
+          return '(Actual requirement: $numberStr $enUnit)';
+        } else {
+          String arUnit = unit1;
+          if (arUnit == 'bar' || arUnit == 'barre') arUnit = 'بارة';
+          return '(المطلوب الفعلي: $num1 $arUnit)';
+        }
+      }
+    }
+    return text;
+  }
+
+  String? getLocalizedCuttingList(String lang) {
+    if (cuttingList == null || cuttingList!.isEmpty) return cuttingList;
+    final text = cuttingList!;
+    if (lang == 'fr') {
+      return text
+          .replaceAll('قطع القص:', 'Liste de coupe:')
+          .replaceAll('مم', 'mm')
+          .replaceAll('جهة سفلية فقط', 'Côté bas uniquement')
+          .replaceAll('الجهات الأربع', 'Les 4 côtés')
+          .replaceAll(
+            'جهة خارجية أسفل الإطار',
+            'Côté extérieur sous le dormant',
+          )
+          .replaceAll(
+            'داخل + خارج لكل التقاء إطارين',
+            'Intérieur + extérieur par jonction',
+          );
+    } else if (lang == 'en') {
+      return text
+          .replaceAll('قطع القص:', 'Cutting list:')
+          .replaceAll('مم', 'mm')
+          .replaceAll('جهة سفلية فقط', 'Bottom side only')
+          .replaceAll('الجهات الأربع', 'All 4 sides')
+          .replaceAll('جهة خارجية أسفل الإطار', 'Outside under frame')
+          .replaceAll(
+            'داخل + خارج لكل التقاء إطارين',
+            'Inside + outside per frame junction',
+          );
+    }
+    return text;
   }
 
   BomItem copyWith({
@@ -580,6 +753,19 @@ class ComponentCalculator {
       'haut et bas',
     ])) {
       return 'complement_haut_base';
+    }
+    if (_textHasAny(originalName, const [
+      'مكمل الإطار',
+      'كومبليمو دورمو',
+      'دورمو أجوت',
+      'complement dormant',
+      'complément dormant',
+      'dormant ajoute',
+      'dormant ajouté',
+      'sliding frame extension',
+      'frame extension',
+    ])) {
+      return 'frame_extension';
     }
     if (_textHasAny(originalName, const ['bardage', 'بارداج', 'بارداش'])) {
       return 'bardage';
@@ -1028,6 +1214,8 @@ class ComponentCalculator {
         return 'bavette';
       case 'seuil':
         return 'seuil';
+      case 'frame_extension':
+        return 'frame_extension';
       case '67114':
         return 'reducer';
       case 'side_cover':
@@ -1182,6 +1370,19 @@ class ComponentCalculator {
         lower == 'réducteur' ||
         lower == 'réducteure' ||
         lower == 'reducteur') {
+      return true;
+    }
+
+    // Slim central montant and its 10 cm top/bottom complement only exist
+    // in the sliding construction. They must not inherit an opening series
+    // merely because the drawing itself is mixed.
+    if (lower == 'montant_central_slim' ||
+        lower == 'sash_central_slim' ||
+        lower == 'complement_haut_base' ||
+        lower.contains('montant slim') ||
+        lower.contains('مونتوسليم') ||
+        lower.contains('complément haut') ||
+        lower.contains('complement haut')) {
       return true;
     }
 
@@ -2004,17 +2205,28 @@ class ComponentCalculator {
           ? source['linked_accessory'] ?? source['gache_accessory']
           : null;
       if (related is Map) {
-        final relatedOverrides = Map<String, dynamic>.from(
-          window.componentOverrides,
-        )..[fallbackName] = Map<String, dynamic>.from(related);
+        // The parent accessory has already selected this exact catalogue
+        // product through an explicit relationship (for example an
+        // Espagnolette -> Gâche coulissant relation).  Keep that identity in
+        // the BOM so the final rule filter does not discard it merely because
+        // the child has a different dialog/section scope from its parent.
+        // BomEngine treats this prefix as an authoritative linked row.
+        final relatedId = catalogueId(related);
+        final linkedKey = relatedId == null
+            ? 'linked-accessory:$sourceKey:$fallbackName'
+            : 'linked-accessory:$sourceKey:$relatedId';
+        final relatedOverrides =
+            Map<String, dynamic>.from(window.componentOverrides)
+              ..[fallbackName] = Map<String, dynamic>.from(related)
+              ..[linkedKey] = Map<String, dynamic>.from(related);
         return _createAccessory(
           relatedOverrides,
           fallbackName,
           isActive: isActive,
           qty: qty * window.quantity,
-          catalogItemId: catalogueId(related),
+          catalogItemId: relatedId,
           colorId: catalogueColorId(null, accessory: true),
-          overrideKey: fallbackName,
+          overrideKey: linkedKey,
           selectorCategory: 'accessory',
           selectorType: _selectorTypeForAccessory(fallbackName),
           roleKey: _roleKeyForAccessorySelector(
@@ -2498,7 +2710,11 @@ class ComponentCalculator {
     List<double> slidingChicanePieces = [];
     List<double> slidingRailPieces = [];
     List<double> slidingMonorailPieces = [];
-    int slidingFrameExtensionCopies = 0;
+    // Keep the extension cuts with the sliding zone that requested them.
+    // In a mixed drawing the outer frame is held in `framePieces`, not in
+    // `slidingOuterFramePieces`; counting only a global copy number therefore
+    // made a valid extension vanish from the quantity table.
+    List<double> slidingFrameExtensionPieces = [];
     List<double> internalSlidingSideCoverPieces = [];
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
@@ -3713,6 +3929,10 @@ class ComponentCalculator {
       List<double> slidingSashLateralNormalPieces = [];
       List<double> slidingSashCentralPieces = [];
       List<double> slidingSashCentralReinforcedPieces = [];
+      List<double> slidingSashCentralSlimPieces = [];
+      List<double> slidingSlimCleatPieces = [];
+      List<double> slidingSashTraverse4590Pieces = [];
+      List<double> slidingSashTraverse9090Pieces = [];
       List<double> sashPlinthePieces = [];
 
       // The plinthe is cut inside the sash, not across the complete sash
@@ -3969,10 +4189,15 @@ class ComponentCalculator {
                   zone.slidingMontantReinforced['central_$s'] ??
                   zone.slidingMontantReinforced[legacyKey] ??
                   false;
-              (reinforced
-                      ? slidingSashCentralReinforcedPieces
-                      : slidingSashCentralPieces)
-                  .add(sashH / 1000.0);
+              final isSlim = zone.slidingMontantSlim['central_$s'] ?? false;
+              if (isSlim) {
+                slidingSashCentralSlimPieces.add(sashH / 1000.0);
+                slidingSlimCleatPieces.addAll([0.10, 0.10]);
+              } else if (reinforced) {
+                slidingSashCentralReinforcedPieces.add(sashH / 1000.0);
+              } else {
+                slidingSashCentralPieces.add(sashH / 1000.0);
+              }
             }
 
             // joint brosse: 3 ضلفات H×8+W×12 ، غيرها (H×6+W×8) × (عدد الأزواج)
@@ -3985,12 +4210,41 @@ class ComponentCalculator {
             }
           } else {
             for (int s = 0; s < sashes; s++) {
-              slidingSashPieces.addAll([
-                sashW / 1000.0,
-                sashW / 1000.0,
-                sashH / 1000.0,
-                sashH / 1000.0,
-              ]);
+              final bool leftIsSlim =
+                  s > 0 &&
+                  (zone.slidingMontantSlim['central_${(s - 1) * 2 + 1}'] ??
+                      false);
+              final bool rightIsSlim =
+                  s < (sashes - 1) &&
+                  (zone.slidingMontantSlim['central_${s * 2}'] ?? false);
+
+              if (leftIsSlim) {
+                slidingSashCentralSlimPieces.add(sashH / 1000.0);
+                slidingSlimCleatPieces.addAll([0.10, 0.10]);
+              } else {
+                slidingSashPieces.add(sashH / 1000.0);
+              }
+
+              if (rightIsSlim) {
+                slidingSashCentralSlimPieces.add(sashH / 1000.0);
+                slidingSlimCleatPieces.addAll([0.10, 0.10]);
+              } else {
+                slidingSashPieces.add(sashH / 1000.0);
+              }
+
+              if (leftIsSlim && rightIsSlim) {
+                slidingSashTraverse9090Pieces.addAll([
+                  sashW / 1000.0,
+                  sashW / 1000.0,
+                ]);
+              } else if (leftIsSlim || rightIsSlim) {
+                slidingSashTraverse4590Pieces.addAll([
+                  sashW / 1000.0,
+                  sashW / 1000.0,
+                ]);
+              } else {
+                slidingSashPieces.addAll([sashW / 1000.0, sashW / 1000.0]);
+              }
             }
             // joint brosse موحد PVC والألمنيوم: 3 ضلفات H×8+W×12 ، غيرها × عدد الأزواج
             if (sashes == 3) {
@@ -4022,15 +4276,25 @@ class ComponentCalculator {
               ((window.system?.name.toLowerCase().contains('tpr') ?? false) ||
                   (window.system?.name.toLowerCase().contains('hps') ?? false));
           if (!excludeChicane) {
-            final int chicaneCount = math.max(
-              2,
-              window.isSlidingPVC
-                  ? (sashes - 1) * pvcChicanePiecesPerJunction
-                  : 2,
-            );
-            final double chicaneLength = sashH;
-            for (int c = 0; c < chicaneCount; c++) {
-              slidingChicanePieces.add(chicaneLength / 1000.0);
+            int activeChicaneJunctions = 0;
+            for (int j = 0; j < sashes - 1; j++) {
+              final isSlim =
+                  (zone.slidingMontantSlim['central_${j * 2}'] ?? false) ||
+                  (zone.slidingMontantSlim['central_${j * 2 + 1}'] ?? false);
+              if (!isSlim) {
+                activeChicaneJunctions++;
+              }
+            }
+            if (activeChicaneJunctions > 0) {
+              final int piecesPerJunction = window.isSlidingPVC
+                  ? pvcChicanePiecesPerJunction
+                  : 2;
+              final int chicaneCount =
+                  activeChicaneJunctions * piecesPerJunction;
+              final double chicaneLength = sashH;
+              for (int c = 0; c < chicaneCount; c++) {
+                slidingChicanePieces.add(chicaneLength / 1000.0);
+              }
             }
           }
 
@@ -4076,7 +4340,18 @@ class ComponentCalculator {
             zone.slidingTrackCount,
           );
           if (monorailSection != null && additionalTracks > 0) {
-            slidingFrameExtensionCopies += additionalTracks;
+            List<double> extensionBaseCuts = slidingOuterFramePieces;
+            if (isNestedSliding) {
+              for (final entry in frameCutsByRect.entries) {
+                if (entry.key.contains(zone.boundary.center)) {
+                  extensionBaseCuts = entry.value;
+                  break;
+                }
+              }
+            }
+            for (var copy = 0; copy < additionalTracks; copy++) {
+              slidingFrameExtensionPieces.addAll(extensionBaseCuts);
+            }
           }
         }
       }
@@ -4148,6 +4423,54 @@ class ComponentCalculator {
                 window.slidingSashOverride ??
                 window.getSlidingSectionByType('sash')?.toMap(),
             preferOverrideMap: true,
+          ),
+        );
+      }
+
+      if (slidingSashTraverse4590Pieces.isNotEmpty) {
+        final traverseOverride =
+            window
+                .getConfiguredSectionForRole(
+                  'sash_traverse',
+                  useSlidingSeries: true,
+                )
+                ?.toMap() ??
+            window.getSlidingSectionByType('sash_traverse')?.toMap() ??
+            window.getSlidingSectionByType('traverse')?.toMap();
+        items.add(
+          createProfile(
+            'عارضة الضلفة المنزلقة 45°/90° (Traverse Sash 45°/90°)',
+            colorName,
+            pieces: slidingSashTraverse4590Pieces,
+            unit: 'قطاع',
+            overrideMap: traverseOverride,
+            preferOverrideMap: true,
+            selectorType: 'sash_traverse',
+            roleKey: 'sash_traverse',
+          ),
+        );
+      }
+
+      if (slidingSashTraverse9090Pieces.isNotEmpty) {
+        final traverseOverride =
+            window
+                .getConfiguredSectionForRole(
+                  'sash_traverse',
+                  useSlidingSeries: true,
+                )
+                ?.toMap() ??
+            window.getSlidingSectionByType('sash_traverse')?.toMap() ??
+            window.getSlidingSectionByType('traverse')?.toMap();
+        items.add(
+          createProfile(
+            'عارضة الضلفة المنزلقة 90°/90° (Traverse Sash 90°/90°)',
+            colorName,
+            pieces: slidingSashTraverse9090Pieces,
+            unit: 'قطاع',
+            overrideMap: traverseOverride,
+            preferOverrideMap: true,
+            selectorType: 'sash_traverse',
+            roleKey: 'sash_traverse',
           ),
         );
       }
@@ -4244,6 +4567,71 @@ class ComponentCalculator {
         );
       }
 
+      if (slidingSashCentralSlimPieces.isNotEmpty) {
+        final slimOverride =
+            window.selectedSlimMontantProfile ??
+            slidingOverrideFor([
+              'قائم وسطي سليم (Montant Slim)',
+              'قائم وسطي سليم (Sash Central Slim)',
+            ]) ??
+            window.getSlidingSlimCandidates().firstOrNull;
+        items.add(
+          createProfile(
+            'قائم وسطي سليم (Montant Slim)',
+            colorName,
+            pieces: slidingSashCentralSlimPieces,
+            unit: 'قطاع',
+            overrideMap: slimOverride,
+            preferOverrideMap: true,
+            selectorType: 'montant_central_slim',
+            roleKey: 'montant_central_slim',
+          ),
+        );
+      }
+
+      if (slidingSlimCleatPieces.isNotEmpty) {
+        final cleatOverride =
+            // The 10 cm top/bottom complement is a series role, not a
+            // name-based optional accessory. Resolving it by name made it
+            // disappear for catalogues whose section uses a normal code/name.
+            window
+                .getConfiguredSectionForRole(
+                  'complement_haut_base',
+                  useSlidingSeries: true,
+                )
+                ?.toMap() ??
+            slidingOverrideFor([
+              'مكمل علوي وسفلي للمونتوسليم 10 سم (Complément haut et bas)',
+              'قطاع وصلة المونتوسليم 10 سم (Taquet Slim 10cm)',
+              'قطاع وصلة المونتوسليم 10 سم (Taquet Slim)',
+            ]) ??
+            (window.activeSlidingSeries ?? window.activeSeries)?.sections
+                .firstWhereOrNull((s) {
+                  final n = s.name.toLowerCase();
+                  final t = s.type.toLowerCase();
+                  final c = s.code.toLowerCase();
+                  return n.contains('وصلة') ||
+                      n.contains('taquet') ||
+                      t.contains('taquet') ||
+                      c.contains('taquet') ||
+                      n.contains('cleat') ||
+                      t.contains('cleat');
+                })
+                ?.toMap();
+        items.add(
+          createProfile(
+            'مكمل علوي وسفلي للمونتوسليم 10 سم (Complément haut et bas)',
+            colorName,
+            pieces: slidingSlimCleatPieces,
+            unit: 'قطاع',
+            overrideMap: cleatOverride,
+            preferOverrideMap: true,
+            selectorType: 'complement_haut_base',
+            roleKey: 'complement_haut_base',
+          ),
+        );
+      }
+
       if (slidingTotalReinforcedLateralKits > 0) {
         items.add(
           createAccessory(
@@ -4304,18 +4692,13 @@ class ComponentCalculator {
       // selected base frame. It therefore repeats the exact base-frame cuts
       // (four sides, or three when the lower frame side is disabled), rather
       // than adding one unrelated horizontal rail cut.
-      if (slidingFrameExtensionCopies > 0 &&
-          slidingOuterFramePieces.isNotEmpty) {
-        for (var copy = 0; copy < slidingFrameExtensionCopies; copy++) {
-          slidingMonorailPieces.addAll(slidingOuterFramePieces);
-        }
-      }
+      slidingMonorailPieces.addAll(slidingFrameExtensionPieces);
       if (slidingMonorailPieces.isNotEmpty) {
         final extensionSection = window.getSlidingFrameExtensionSection();
         if (extensionSection != null) {
           items.add(
             createProfile(
-              'مكمل الإطار المنزلق (Sliding Frame Extension)',
+              'كومبليمو دورمو (Complément Dormant)',
               colorName,
               pieces: slidingMonorailPieces,
               unit: 'قطاع',
@@ -6430,8 +6813,11 @@ class ComponentCalculator {
           truthyOption(profile['skip_glazing_bead']);
     }
 
-    final bool openingSashSkipsGlazingBead = profileSkipsGlazingBead(
-      window.sashOverride,
+    final bool openingSashSkipsGlazingBead =
+        profileSkipsGlazingBead(window.sashOverride) ||
+        !window.hasGlazingBeadForContext(sliding: false);
+    final bool slidingHasGlazingBead = window.hasGlazingBeadForContext(
+      sliding: true,
     );
 
     // ===== متغيرات جوانات نظام الفتح (ألمنيوم فقط) =====
@@ -6932,7 +7318,7 @@ class ComponentCalculator {
           }
 
           if (isSlidingSystem) {
-            if (isPvcSlidingSystem) {
+            if (isPvcSlidingSystem && slidingHasGlazingBead) {
               // PVC sliding systems always retain glass with a parclose.
               // A reducteur is an aluminium-only profile and must never be
               // injected into their bill of materials.
@@ -6953,6 +7339,7 @@ class ComponentCalculator {
               }
             }
             if (isTprLikeSlidingSystem &&
+                slidingHasGlazingBead &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
               // TPR parclose is cut in the catalogue's order: two pieces are
@@ -6990,25 +7377,19 @@ class ComponentCalculator {
               if (reducteurThick > 0) {
                 addReducteurPieces(pieceMultiplier);
               }
-              double maxGlass = 24.0;
-              final sashMap =
-                  window.slidingSashOverride ??
-                  window.getSlidingSectionByType('sash_sliding')?.toMap() ??
-                  window.getSlidingSectionByType('sash')?.toMap();
-              if (sashMap != null) {
-                final double mG =
-                    (sashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
-                if (mG > 0) maxGlass = mG;
-              }
+              final double maxGlass =
+                  window.glazingCapacityForStructure(
+                    cellGlass.structure,
+                    sliding: true,
+                  ) ??
+                  0.0;
+              // The sash itself defines the pocket when this series has no
+              // parclose. Never invent a 24 mm parclose capacity here.
               // 🟢 الفراغ الصافي للزجاج: إذا استعملنا reducteur يصبح مجرى الزجاج 15 مم
               final double pocketWidth = (reducteurThick > 0)
                   ? 15.0
                   : (maxGlass - reducteurThick);
               double remaining = pocketWidth - cellThick;
-              if (remaining <= 0) {
-                remaining =
-                    2.0; // fallback to ensure glass gasket is calculated
-              }
               if (remaining > 0) addSlidingBourrageJoint();
             }
           } else {
@@ -8417,6 +8798,7 @@ class ComponentCalculator {
     }
 
     items = _mergeIdenticalJoints(items);
+    items = _mergeIdenticalSideCoverProfiles(items);
 
     if (window.isShutterOnly) {
       return items.where((item) => item.category == 'shutter').toList();
@@ -8590,6 +8972,120 @@ class ComponentCalculator {
     }
 
     return result;
+  }
+
+  /// A single couvre-joint profile can be used by the outer frame, an inner
+  /// sliding frame, and a custom side-cover layout.  Those calculation paths
+  /// deliberately stay separate for geometry, but they are one stock profile
+  /// in the quantity/cost table.  Merge them before the BOM reaches the
+  /// resolver and optimise the combined cuts once.
+  static List<BomItem> _mergeIdenticalSideCoverProfiles(List<BomItem> items) {
+    bool isSideCover(BomItem item) {
+      if (item.category != 'profile') return false;
+      final role = (item.roleKey ?? item.selectorType ?? '')
+          .trim()
+          .toLowerCase();
+      final name = '${item.originalName} ${item.name}'.toLowerCase();
+      return role == 'side_cover' ||
+          name.contains('couvre-joint') ||
+          name.contains('couvre joint') ||
+          name.contains('side cover') ||
+          name.contains('الغطاء الجانبي');
+    }
+
+    final groups = <String, List<BomItem>>{};
+    for (final item in items.where(isSideCover)) {
+      final id = item.catalogItemId;
+      if (id == null || id <= 0) continue;
+      final color = (item.colorName ?? '').trim().toLowerCase();
+      final unit = item.unit.trim().toLowerCase();
+      groups.putIfAbsent('$id:$color:$unit', () => []).add(item);
+    }
+    if (groups.values.every((group) => group.length < 2)) return items;
+
+    final mergedByFirst = <BomItem, BomItem>{};
+    final absorbed = <BomItem>{};
+    for (final group in groups.values.where((group) => group.length > 1)) {
+      final first = group.first;
+      final pieces = <double>[for (final item in group) ...?item.pieces];
+      final roles = <String>[];
+      for (final item in group) {
+        final label = item.originalName.trim();
+        if (label.isNotEmpty && !roles.contains(label)) roles.add(label);
+      }
+
+      final barLength = first.length ?? 0.0;
+      final optimization = barLength > 0 && pieces.isNotEmpty
+          ? optimizeCutting(pieces: pieces, barLength: barLength)
+          : null;
+      final exact =
+          optimization?['exactBars'] as double? ??
+          group.fold<double>(
+            0.0,
+            (total, item) => total + (item.exactQuantity ?? item.quantity),
+          );
+      final quantity = optimization?['optimizedBars'] as int?;
+      final cuttingList = pieces.isEmpty
+          ? first.cuttingList
+          : 'قطع القص: ${_cuttingPiecesLabel(pieces)}';
+      final catalogLines = first.name.split('\n');
+      final catalogLabel = catalogLines.length > 1 ? catalogLines[1] : '';
+      final displayName = [
+        roles.join(' + '),
+        if (catalogLabel.isNotEmpty) catalogLabel,
+        '(المطلوب الفعلي: ${exact.toStringAsFixed(2)} بارة)',
+      ].join('\n');
+
+      mergedByFirst[first] = BomItem(
+        category: 'profile',
+        originalName: roles.join(' + '),
+        profileCode: first.profileCode,
+        name: displayName,
+        imagePath: first.imagePath,
+        colorName: first.colorName,
+        length: first.length,
+        quantity:
+            quantity?.toDouble() ??
+            group.fold<double>(0.0, (total, item) => total + item.quantity),
+        unit: first.unit,
+        unitPrice: first.unitPrice,
+        isMissing: group.every((item) => item.isMissing),
+        isInteractive: first.isInteractive,
+        isActive: group.any((item) => item.isActive),
+        pieces: pieces.isEmpty ? null : pieces,
+        cuttingList: cuttingList,
+        exactQuantity: exact,
+        catalogItemId: first.catalogItemId,
+        inventoryItemType: first.inventoryItemType,
+        colorId: first.colorId,
+        overrideKey: first.overrideKey,
+        selectorCategory: first.selectorCategory,
+        selectorType: first.selectorType,
+        roleKey: first.roleKey,
+        sourceSeriesId: first.sourceSeriesId,
+        materialType: first.materialType,
+      );
+      absorbed.addAll(group.skip(1));
+    }
+
+    return [
+      for (final item in items)
+        if (!absorbed.contains(item)) mergedByFirst[item] ?? item,
+    ];
+  }
+
+  static String _cuttingPiecesLabel(List<double> pieces) {
+    final counts = <int, int>{};
+    for (final piece in pieces) {
+      final millimetres = (piece * 1000).round();
+      if (millimetres > 0) {
+        counts[millimetres] = (counts[millimetres] ?? 0) + 1;
+      }
+    }
+    final lengths = counts.keys.toList()..sort((a, b) => b.compareTo(a));
+    return lengths
+        .map((length) => '${counts[length]} × $length مم')
+        .join(' ، ');
   }
 
   /// دمج أسماء قطع الزجاج عند تشابه أبعادها:

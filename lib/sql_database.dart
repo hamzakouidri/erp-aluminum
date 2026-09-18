@@ -14696,13 +14696,35 @@ class SqlDatabase {
       whereArgs: [locationId],
     );
 
+    String canonicalStockType(Object? value) {
+      final type = value?.toString().trim() ?? '';
+      switch (type) {
+        case 'Profile':
+        case 'Sections':
+          return 'Section';
+        case 'Accessories':
+          return 'Accessory';
+        case 'Shutter Components':
+        case 'ShutterComponents':
+          return 'ShutterComponent';
+        case 'Joint':
+          return 'Joints';
+        default:
+          return type;
+      }
+    }
+
     Map<String, double> stockMap = {};
     Map<String, double> minQtyMap = {};
     Map<String, bool> alertMap = {};
     for (var row in stock) {
       String key =
-          '${row['item_type']}_${row['item_id']}_${row['color_id'] ?? 0}';
-      stockMap[key] = (row['quantity'] as num).toDouble();
+          '${canonicalStockType(row['item_type'])}_${row['item_id']}_${row['color_id'] ?? 0}';
+      // Legacy aliases (Profile/Sections, etc.) can collapse into the same
+      // logical stock identity. Sum them instead of keeping whichever row
+      // happened to be read last.
+      stockMap[key] =
+          (stockMap[key] ?? 0.0) + (row['quantity'] as num).toDouble();
       minQtyMap[key] = (row['min_qty'] as num?)?.toDouble() ?? 0.0;
       alertMap[key] =
           ((row['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
@@ -17018,12 +17040,14 @@ class SqlDatabase {
     Iterable<String> roleKeys, {
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
   }) async {
     return _getDesignSectionsForRoles(
       seriesId,
       roleKeys,
       requireDialog: requireDialog,
       requireQuantity: requireQuantity,
+      requireVisible: requireVisible,
     );
   }
 
@@ -17155,12 +17179,14 @@ class SqlDatabase {
     required String usageScope,
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
   }) async {
     return _getDesignSectionsForRoles(
       seriesId,
       roleKeys,
       requireDialog: requireDialog,
       requireQuantity: requireQuantity,
+      requireVisible: requireVisible,
       usageScope: usageScope,
     );
   }
@@ -17170,6 +17196,7 @@ class SqlDatabase {
     Iterable<String> roleKeys, {
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
     bool requireDrawing = false,
     String? usageScope,
   }) async {
@@ -17180,7 +17207,7 @@ class SqlDatabase {
     await _ensureSeriesDesignTables(myDb);
     final placeholders = List.filled(keys.length, '?').join(',');
     final surfaceFilters = <String>[
-      'r.is_visible = 1',
+      if (requireVisible) 'r.is_visible = 1',
       if (requireDialog) 'r.show_in_dialog = 1',
       if (requireQuantity) 'r.show_in_quantity = 1',
       if (requireDrawing) 'r.show_in_drawing = 1',

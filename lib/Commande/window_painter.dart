@@ -4409,6 +4409,11 @@ class WindowPainter extends CustomPainter {
       reinforced: true,
     );
 
+    final double slimProfileW = (model.selectedSlimMontantProfile != null &&
+            (model.selectedSlimMontantProfile!['visible_width'] ?? 0) > 0)
+        ? (model.selectedSlimMontantProfile!['visible_width'] as num).toDouble()
+        : 18.0;
+
     // sashWidth is calculated using chicaneT (overlap)
     double sashWidth = (r.width + (count - 1) * chicaneT) / count;
 
@@ -4443,12 +4448,17 @@ class WindowPainter extends CustomPainter {
             zone.slidingMontantReinforced['lateral_1'] ??
             zone.slidingMontantReinforced['lateral_right'] ??
             false;
+        final bool isLeftSlim = (i > 0) &&
+            (zone.slidingMontantSlim['central_${(i - 1) * 2 + 1}'] ?? false);
+        final bool isRightSlim = (i < count - 1) &&
+            (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
+
         final double leftProfileW = (i == 0)
             ? (leftLateralReinforced ? reinforcedLateralT : normalLateralT)
-            : chicaneT;
+            : (isLeftSlim ? slimProfileW : chicaneT);
         final double rightProfileW = (i == count - 1)
             ? (rightLateralReinforced ? reinforcedLateralT : normalLateralT)
-            : chicaneT;
+            : (isRightSlim ? slimProfileW : chicaneT);
         final double topProfileW = traverseT;
         final double bottomProfileW = zone.hasSashPlintheBottom
             ? model.plintheHeight

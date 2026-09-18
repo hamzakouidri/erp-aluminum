@@ -75,6 +75,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   bool _isRefreshingVisibleBom = false;
   Timer? _modelRefreshDebounce;
   final Map<String, double> _accessoryPriceCache = {};
+  Map<String, double> _mainWarehouseStock = const {};
   Map<int, Map<String, dynamic>> _profileCalculationRules = {};
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
   String get _lang {
@@ -94,9 +95,116 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
   }
 
+  String _canonicalStockType(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase().replaceAll(
+      RegExp(r'[ _-]+'),
+      '',
+    );
+    if (const {
+      'profile',
+      'profiles',
+      'section',
+      'sections',
+    }.contains(normalized)) {
+      return 'Section';
+    }
+    if (const {'accessory', 'accessories'}.contains(normalized)) {
+      return 'Accessory';
+    }
+    if (const {'shuttercomponent', 'shuttercomponents'}.contains(normalized)) {
+      return 'ShutterComponent';
+    }
+    if (const {'joint', 'joints'}.contains(normalized)) return 'Joints';
+    if (normalized == 'glass') return 'Glass';
+    return value?.trim() ?? '';
+  }
+
+  String _stockKey(String? itemType, int itemId, int? colorId) =>
+      '${_canonicalStockType(itemType)}|$itemId|${colorId ?? 0}';
+
+  int? _itemColorId(BomItem item) {
+    final value = item.colorId ?? widget.model.selectedDbColor?['id'];
+    return value is num ? value.toInt() : int.tryParse('${value ?? ''}');
+  }
+
+  double? _mainStockFor(BomItem item) {
+    final id = item.catalogItemId;
+    final type = item.inventoryItemType;
+    if (id == null || type == null || type.trim().isEmpty) return null;
+    final colorId = _itemColorId(item);
+    return _mainWarehouseStock[_stockKey(type, id, colorId)] ??
+        _mainWarehouseStock[_stockKey(type, id, null)];
+  }
+
+  Future<Map<String, double>> _loadMainWarehouseStock() async {
+    final database = SqlDatabase();
+    final locations = await database.readLocations();
+    if (locations.isEmpty) return const {};
+    final mainLocations = locations.where((row) {
+      final name = '${row['name'] ?? ''}'.trim();
+      final type = '${row['type'] ?? ''}'.trim();
+      return name == 'المستودع الرئيسي' || type == 'مستودع رئيسي';
+    }).toList();
+    // Old/cloud-restored databases may have several rows for the same main
+    // warehouse. They are one physical stock scope and must be summed here.
+    final sourceLocations = mainLocations.isNotEmpty
+        ? mainLocations
+        : <Map<String, dynamic>>[locations.first];
+    final locationIds = sourceLocations
+        .map((row) {
+          final rawId = row['id'];
+          return rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
+        })
+        .whereType<int>()
+        .toSet()
+        .toList();
+    if (locationIds.isEmpty) return const {};
+    // Read the actual ledger rows, not only catalogue/color combinations.
+    // Older inventory entries use aliases such as `Sections` or `Profile`,
+    // which made a valid quantity look like zero in the material table.
+    final sqlite = await database.db;
+    if (sqlite == null) return const {};
+    final rows = await sqlite.query(
+      'CurrentStock',
+      where:
+          'location_id IN (${List.filled(locationIds.length, '?').join(',')})',
+      whereArgs: locationIds,
+    );
+    final result = <String, double>{};
+    for (final row in rows) {
+      final rawItemId = row['item_id'];
+      final itemId = rawItemId is num
+          ? rawItemId.toInt()
+          : int.tryParse('${rawItemId ?? ''}');
+      if (itemId == null) continue;
+      final rawColorId = row['color_id'];
+      final colorId = rawColorId is num
+          ? rawColorId.toInt()
+          : int.tryParse('${rawColorId ?? ''}');
+      final rawQuantity = row['quantity'];
+      final quantity = rawQuantity is num
+          ? rawQuantity.toDouble()
+          : double.tryParse('${rawQuantity ?? ''}') ?? 0.0;
+      final key = _stockKey(row['item_type']?.toString(), itemId, colorId);
+      result[key] = (result[key] ?? 0.0) + quantity;
+    }
+    return result;
+  }
+
   String _localizedBomUnit(String unit, AppLanguage language) {
     final trimmed = unit.trim();
     if (trimmed.isEmpty) return trimmed;
+    if (language == AppLanguage.french) {
+      if (trimmed == 'بارة' || trimmed == 'قطاع') return 'bar';
+      if (trimmed == 'متر') return 'm';
+      if (trimmed == 'قطعة') return 'pièce';
+      if (trimmed == 'طقم') return 'kit';
+    } else if (language == AppLanguage.english) {
+      if (trimmed == 'بارة' || trimmed == 'قطاع') return 'bar';
+      if (trimmed == 'متر') return 'm';
+      if (trimmed == 'قطعة') return 'pcs';
+      if (trimmed == 'طقم') return 'kit';
+    }
     return Localization.translate(trimmed, language);
   }
 
@@ -2076,6 +2184,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _setFetchProgress(0.35);
       if (dbInstance != null) {
         await _loadStrictKitBundles(dbInstance, sqlDb);
+        final stock = await _loadMainWarehouseStock();
+        if (mounted) setState(() => _mainWarehouseStock = stock);
       }
       _setFetchProgress(0.55);
       var bomItems = _generateRawBomItems();
@@ -5556,6 +5666,29 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                 : null,
                           ),
                         ),
+                        if (!isKitElement &&
+                            item.catalogItemId != null &&
+                            (item.inventoryItemType ?? '').isNotEmpty)
+                          Builder(
+                            builder: (context) {
+                              // Keep stock visibility stable. A missing row
+                              // in CurrentStock means available quantity is
+                              // zero; it must not make the whole line vanish.
+                              final stock = _mainStockFor(item) ?? 0.0;
+                              return Text(
+                                '${Localization.translate('المستودع الرئيسي', lang)}: ${stock.toStringAsFixed(stock % 1 == 0 ? 0 : 2)} $localizedUnit',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: stock <= 0
+                                      ? Colors.red.shade700
+                                      : (isDark
+                                            ? Colors.teal.shade200
+                                            : Colors.teal.shade700),
+                                ),
+                              );
+                            },
+                          ),
                         if (isKitElement && item.name.contains('\n'))
                           Text(
                             item.name.split('\n').skip(1).join(' • '),
@@ -5628,7 +5761,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                   (subText) => Padding(
                                     padding: const EdgeInsets.only(top: 2.0),
                                     child: Text(
-                                      subText,
+                                      BomItem.localizeSubText(subText, _lang),
                                       style: TextStyle(
                                         fontSize: 9.0,
                                         fontWeight: FontWeight.normal,
@@ -5653,7 +5786,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           Padding(
                             padding: const EdgeInsets.only(top: 2.0),
                             child: Text(
-                              item.cuttingList!,
+                              item.getLocalizedCuttingList(_lang) ??
+                                  item.cuttingList!,
                               style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
@@ -5862,11 +5996,31 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         : rowRoleText.contains('sash_central') ||
               rowRoleText.contains('sash central') ||
               rowRoleText.contains('قائم وسطي');
+    final isSlidingSlimRow =
+        explicitRoleKey == 'montant_central_slim' ||
+        explicitRoleKey == 'sash_central_slim' ||
+        explicitSelectorType == 'montant_central_slim' ||
+        rowRoleText.contains('montant slim') ||
+        rowRoleText.contains('montant_central_slim') ||
+        rowRoleText.contains('مونتوسليم') ||
+        rowRoleText.contains('قائم وسطي سليم');
+    final isSlidingSlimComplementRow =
+        explicitRoleKey == 'complement_haut_base' ||
+        explicitSelectorType == 'complement_haut_base' ||
+        rowRoleText.contains('complement_haut_base') ||
+        rowRoleText.contains('complément haut') ||
+        rowRoleText.contains('complement haut') ||
+        rowRoleText.contains('مكمل علوي') ||
+        rowRoleText.contains('taquet slim');
     // A montant can be changed in both directions. Restricting a reinforced
     // row to the reinforced role made the regular profile disappear from the
     // selector, so the user could never switch it back to normal.
     final dialogRoleKeys = rowLooksPlinthe
         ? const <String>['plant']
+        : isSlidingSlimRow
+        ? const <String>['montant_central_slim']
+        : isSlidingSlimComplementRow
+        ? const <String>['complement_haut_base']
         : isSlidingLateralRow
         ? const <String>['sash_lateral', 'sash_lateral_reinforced']
         : isSlidingCentralRow
@@ -5953,6 +6107,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
           targetThicknessMm: item.targetThicknessMm,
+          mainWarehouseStock: _mainWarehouseStock,
+          stockColorId: _itemColorId(item),
         ),
       );
       if (selected != null && mounted) {
@@ -5999,6 +6155,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
           targetThicknessMm: item.targetThicknessMm,
+          mainWarehouseStock: _mainWarehouseStock,
+          stockColorId: _itemColorId(item),
         ),
       );
       if (selected != null && mounted) {
@@ -6088,6 +6246,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
           targetThicknessMm: item.targetThicknessMm,
+          mainWarehouseStock: _mainWarehouseStock,
+          stockColorId: _itemColorId(item),
         ),
       );
       if (selected != null && mounted) {
@@ -6311,18 +6471,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ? null
         : shutterComponentDiameter(selectedMotor);
     final accessoryDrawingMode = swapTarget.drawingMode;
+    final functionalSlidingProfile =
+        isSlidingSlimRow || isSlidingSlimComplementRow;
     // فتح نافذة الاختيار العامة بالمعطيات المحسوبة أعلاه
     final selected = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => ProfileSelectorDialog(
         profileType: pType,
         category: pCategory,
-        seriesId: _seriesIdForSwapTarget(item, swapTarget),
+        seriesId: functionalSlidingProfile
+            ? (widget.model.activeSlidingSeries?.id ??
+                  _seriesIdForSwapTarget(item, swapTarget))
+            : _seriesIdForSwapTarget(item, swapTarget),
         materialType: _materialTypeForSwapTarget(item, swapTarget),
         hasShutter: widget.model.hasShutter,
         isCaissonTunnel: widget.model.isCaissonTunnel,
         hasSideCovers: widget.model.hasSideCovers,
-        accessoryDrawingMode: accessoryDrawingMode,
+        // The explicit role already fixes this to the active sliding series.
+        // Do not additionally reject a legacy role row whose old scope field
+        // was saved as opening/auto.
+        accessoryDrawingMode: functionalSlidingProfile
+            ? null
+            : accessoryDrawingMode,
         roleKeys: dialogRoleKeys,
         windowHeight: widget.model.height,
         targetSize: widget.model.shutterBoxHeight,
@@ -6339,6 +6509,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
         targetThicknessMm: item.targetThicknessMm,
+        mainWarehouseStock: _mainWarehouseStock,
+        stockColorId: _itemColorId(item),
       ),
     );
     if (selected != null && mounted) {
@@ -6655,7 +6827,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               item.overrideKey ?? '',
               swapTarget.overrideKey ?? '',
             ].join(' ').toLowerCase();
-            if (isSlidingLateralRow ||
+            if (isSlidingSlimRow) {
+              // Slim is its own selected profile. Treating it as the normal
+              // central montant overwrote the regular override and made the
+              // Slim row vanish after the next BOM refresh.
+              widget.model.applySlidingMontantSlimOverride(
+                mutableSelected,
+                manualSelection: true,
+              );
+            } else if (isSlidingLateralRow ||
                 (!isSlidingCentralRow &&
                     (selectedType.contains('lateral') ||
                         selectionHint.contains('montant lateral') ||

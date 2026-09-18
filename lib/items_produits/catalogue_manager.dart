@@ -796,11 +796,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       DropdownMenuItem(
                         value: 'bardage',
-                        child: Text(_tr('بارداش (Bardage Profile)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 'panneau',
-                        child: Text(_tr('بانو / برداج (قديم)')),
+                        child: Text(_tr('بارداج (Bardage)')),
                       ),
                       if (seriesType != 'Coulissant' &&
                           seriesType != 'منزلق' &&
@@ -820,6 +816,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         DropdownMenuItem(
                           value: 'rail',
                           child: Text(_tr('ري / سكة (Rail)')),
+                        ),
+                        DropdownMenuItem(
+                          value: 'chicane',
+                          child: Text(_tr('شيكان (Chicane)')),
                         ),
                       ],
                       if (profileType == 'PVC')
@@ -1041,7 +1041,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     ),
                     SizedBox(height: 12),
                   ],
-                  if (selectedType == 'parclose') ...[
+                  // A sash without parclose retains the glazing directly.
+                  // Its maximum glazing capacity is therefore entered on the
+                  // sash itself; with a parclose the same field belongs to
+                  // the parclose as before.
+                  if (selectedType == 'parclose' ||
+                      selectedType.startsWith('sash')) ...[
                     TextField(
                       controller: maxGlassThicknessCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -1049,34 +1054,37 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       decoration: InputDecoration(
                         labelText: _tr(
-                          'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                          selectedType == 'parclose'
+                              ? 'السمك الأقصى للزجاج / Max Glass Thickness (mm)'
+                              : 'أقصى سماكة زجاج للضلفة بدون باركلوز (mm) / Sash Glass Capacity Without Parclose',
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      decoration: InputDecoration(
-                        labelText: _tr(
-                          'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                    if (selectedType == 'parclose')
+                      DropdownButtonFormField<int>(
+                        decoration: InputDecoration(
+                          labelText: _tr(
+                            'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                          ),
                         ),
+                        value: selectedParcloseDoubleId,
+                        items: _currentSections
+                            .where((s) => s['type'] == 'parclose')
+                            .map(
+                              (s) => DropdownMenuItem<int>(
+                                value: s['id'] as int,
+                                child: Text('${s['code']} - ${s['name']}'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedParcloseDoubleId = val;
+                          });
+                        },
                       ),
-                      value: selectedParcloseDoubleId,
-                      items: _currentSections
-                          .where((s) => s['type'] == 'parclose')
-                          .map(
-                            (s) => DropdownMenuItem<int>(
-                              value: s['id'] as int,
-                              child: Text('${s['code']} - ${s['name']}'),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (val) {
-                        setDialogState(() {
-                          selectedParcloseDoubleId = val;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
+                    if (selectedType == 'parclose') const SizedBox(height: 12),
                   ],
                   SizedBox(height: 10),
                   ElevatedButton.icon(
@@ -1253,6 +1261,11 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     // Migrate legacy catalogue labels when an old row is edited.
     if (selectedType == 'pattes' || selectedType == 'patte') {
       selectedType = 'triangle';
+    } else if (selectedType == 'panneau') {
+      // `panneau` was the former bardage profile type.  Keep old rows
+      // editable but normalize them to the one current Bardage type as soon
+      // as they are saved again.
+      selectedType = 'bardage';
     } else if (selectedType == 'c' ||
         selectedType == 'profil_c' ||
         selectedType == 'profile_c') {
@@ -1434,11 +1447,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       DropdownMenuItem(
                         value: 'bardage',
-                        child: Text(_tr('بارداش (Bardage Profile)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 'panneau',
-                        child: Text(_tr('بانو / برداج (قديم)')),
+                        child: Text(_tr('بارداج (Bardage)')),
                       ),
                       if (seriesType != 'Coulissant' &&
                           seriesType != 'منزلق' &&
@@ -1458,6 +1467,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         DropdownMenuItem(
                           value: 'rail',
                           child: Text(_tr('ري / سكة (Rail)')),
+                        ),
+                        DropdownMenuItem(
+                          value: 'chicane',
+                          child: Text(_tr('شيكان (Chicane)')),
                         ),
                       ],
                       if (profileType == 'PVC')
@@ -1711,7 +1724,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     ),
                     SizedBox(height: 12),
                   ],
-                  if (selectedType == 'parclose') ...[
+                  if (selectedType == 'parclose' ||
+                      selectedType.startsWith('sash')) ...[
                     TextField(
                       controller: maxGlassThicknessCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -1719,37 +1733,40 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       decoration: InputDecoration(
                         labelText: _tr(
-                          'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                          selectedType == 'parclose'
+                              ? 'السمك الأقصى للزجاج / Max Glass Thickness (mm)'
+                              : 'أقصى سماكة زجاج للضلفة بدون باركلوز (mm) / Sash Glass Capacity Without Parclose',
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      decoration: InputDecoration(
-                        labelText: _tr(
-                          'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                    if (selectedType == 'parclose')
+                      DropdownButtonFormField<int>(
+                        decoration: InputDecoration(
+                          labelText: _tr(
+                            'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                          ),
                         ),
+                        value: selectedParcloseDoubleId,
+                        items: _currentSections
+                            .where(
+                              (s) =>
+                                  s['type'] == 'parclose' &&
+                                  s['id'] != section['id'],
+                            )
+                            .map(
+                              (s) => DropdownMenuItem<int>(
+                                value: s['id'] as int,
+                                child: Text('${s['code']} - ${s['name']}'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedParcloseDoubleId = val;
+                          });
+                        },
                       ),
-                      value: selectedParcloseDoubleId,
-                      items: _currentSections
-                          .where(
-                            (s) =>
-                                s['type'] == 'parclose' &&
-                                s['id'] != section['id'],
-                          )
-                          .map(
-                            (s) => DropdownMenuItem<int>(
-                              value: s['id'] as int,
-                              child: Text('${s['code']} - ${s['name']}'),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (val) {
-                        setDialogState(() {
-                          selectedParcloseDoubleId = val;
-                        });
-                      },
-                    ),
                     const SizedBox(height: 12),
                   ],
                   // Every PVC profile may have its own reinforcement.  The
@@ -2287,213 +2304,53 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
       // 🟢 تغليف بـ LayoutBuilder و SingleChildScrollView لمنع الانضغاط أفقياً
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final targetWidth = constraints.maxWidth < 1100 ? 1100.0 : constraints.maxWidth;
+          final targetWidth = constraints.maxWidth < 1100
+              ? 1100.0
+              : constraints.maxWidth;
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               width: targetWidth,
               child: Row(
-              children: [
-                // 1. قائمة الأنظمة (Profiles)
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey.shade900
-                        : Colors.grey.shade100,
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8),
-                          color: Colors.blueGrey,
-                          width: double.infinity,
-                          child: Text(
-                            '1. ${Localization.translate("الأنظمة", Provider.of<AppSettingsProvider>(context).language)} (Profiles)',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: _profiles.length,
-                            itemBuilder: (context, index) {
-                              final p = _profiles[index];
-                              final isSelected = p['id'] == _selectedProfileId;
-                              return InkWell(
-                                onTap: () => _loadSeries(p['id']),
-                                child: Container(
-                                  color: isSelected
-                                      ? (Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.blue.shade900.withValues(
-                                                alpha: 0.5,
-                                              )
-                                            : Colors.blue.shade100)
-                                      : Colors.transparent,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                    horizontal: 14,
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              p['name'].toString(),
-                                              style: TextStyle(
-                                                fontWeight: isSelected
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                            if (p['type'] != null &&
-                                                p['type'].toString().isNotEmpty)
-                                              Text(
-                                                p['type'].toString(),
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (isUserAdmin)
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            IconButton(
-                                              padding: EdgeInsets.zero,
-                                              constraints:
-                                                  const BoxConstraints(),
-                                              icon: const Icon(
-                                                Icons.edit,
-                                                color: Colors.blue,
-                                                size: 16,
-                                              ),
-                                              onPressed: () =>
-                                                  _showEditProfileDialog(
-                                                    p['id'],
-                                                    p['name'],
-                                                    p['type'],
-                                                    (p['default_bar_length']
-                                                                as num?)
-                                                            ?.toDouble() ??
-                                                        5.8,
-                                                  ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            IconButton(
-                                              padding: EdgeInsets.zero,
-                                              constraints:
-                                                  const BoxConstraints(),
-                                              icon: const Icon(
-                                                Icons.delete,
-                                                color: Colors.red,
-                                                size: 16,
-                                              ),
-                                              onPressed: () => _confirmDelete(
-                                                'تأكيد الحذف',
-                                                'هل أنت متأكد أنك تريد حذف هذا النظام؟',
-                                                () async {
-                                                  await widget.db.deleteProfile(
-                                                    p['id'],
-                                                  );
-                                                  _loadProfiles();
-                                                },
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        if (isUserAdmin)
-                          Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: ElevatedButton.icon(
-                              onPressed: _showAddProfileDialog,
-                              icon: Icon(Icons.add),
-                              label: Text(
-                                Localization.translate(
-                                  'نظام جديد',
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
+                children: [
+                  // 1. قائمة الأنظمة (Profiles)
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey.shade900
+                          : Colors.grey.shade100,
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(8),
+                            color: Colors.blueGrey,
+                            width: double.infinity,
+                            child: Text(
+                              '1. ${Localization.translate("الأنظمة", Provider.of<AppSettingsProvider>(context).language)} (Profiles)',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-
-                // 2. قائمة السلاسل (Series)
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF1E1E2C)
-                        : Colors.grey.shade50,
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8),
-                          color: Colors.blueGrey.shade600,
-                          width: double.infinity,
-                          child: Text(
-                            '2. ${Localization.translate("السلاسل", Provider.of<AppSettingsProvider>(context).language)} (Series)',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        if (_selectedProfileId == null)
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                Localization.translate(
-                                  'اختر نظاماً أولاً',
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
-                              ),
-                            ),
-                          ),
-                        if (_selectedProfileId != null)
                           Expanded(
                             child: ListView.builder(
-                              itemCount: _currentSeries.length,
+                              itemCount: _profiles.length,
                               itemBuilder: (context, index) {
-                                final s = _currentSeries[index];
-                                final isSelected = s['id'] == _selectedSeriesId;
+                                final p = _profiles[index];
+                                final isSelected =
+                                    p['id'] == _selectedProfileId;
                                 return InkWell(
-                                  onTap: () => _loadSections(s['id']),
+                                  onTap: () => _loadSeries(p['id']),
                                   child: Container(
                                     color: isSelected
                                         ? (Theme.of(context).brightness ==
                                                   Brightness.dark
                                               ? Colors.blue.shade900.withValues(
-                                                  alpha: 0.3,
+                                                  alpha: 0.5,
                                                 )
-                                              : Colors.blue.shade50)
+                                              : Colors.blue.shade100)
                                         : Colors.transparent,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 8,
@@ -2507,9 +2364,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                           child: Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Text(
-                                                "${s['name']} (${_profiles.firstWhere((p) => p['id'] == _selectedProfileId, orElse: () => {'type': ''})['type']})",
+                                                p['name'].toString(),
                                                 style: TextStyle(
                                                   fontWeight: isSelected
                                                       ? FontWeight.bold
@@ -2517,12 +2375,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                   fontSize: 13,
                                                 ),
                                               ),
-                                              if (s['type'] != null &&
-                                                  s['type']
+                                              if (p['type'] != null &&
+                                                  p['type']
                                                       .toString()
                                                       .isNotEmpty)
                                                 Text(
-                                                  s['type'].toString(),
+                                                  p['type'].toString(),
                                                   style: const TextStyle(
                                                     fontSize: 10,
                                                     color: Colors.grey,
@@ -2545,7 +2403,15 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                   size: 16,
                                                 ),
                                                 onPressed: () =>
-                                                    _showEditSeriesDialog(s),
+                                                    _showEditProfileDialog(
+                                                      p['id'],
+                                                      p['name'],
+                                                      p['type'],
+                                                      (p['default_bar_length']
+                                                                  as num?)
+                                                              ?.toDouble() ??
+                                                          5.8,
+                                                    ),
                                               ),
                                               const SizedBox(width: 8),
                                               IconButton(
@@ -2559,13 +2425,11 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                 ),
                                                 onPressed: () => _confirmDelete(
                                                   'تأكيد الحذف',
-                                                  'هل أنت متأكد أنك تريد حذف هذه السلسلة؟',
+                                                  'هل أنت متأكد أنك تريد حذف هذا النظام؟',
                                                   () async {
                                                     await widget.db
-                                                        .deleteSeries(s['id']);
-                                                    _loadSeries(
-                                                      _selectedProfileId!,
-                                                    );
+                                                        .deleteProfile(p['id']);
+                                                    _loadProfiles();
                                                   },
                                                 ),
                                               ),
@@ -2578,223 +2442,386 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                               },
                             ),
                           ),
-                        if (_selectedProfileId != null && isUserAdmin)
-                          Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: ElevatedButton.icon(
-                              onPressed: _showAddSeriesDialog,
-                              icon: Icon(Icons.add),
-                              label: Text(
-                                Localization.translate(
-                                  'سلسلة جديدة',
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-
-                // 3. قائمة المقاطع (Sections)
-                Expanded(
-                  flex: 5,
-                  child: Container(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Theme.of(context).scaffoldBackgroundColor
-                        : Colors.white,
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8),
-                          color: Colors.blueGrey.shade700,
-                          width: double.infinity,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '3. ${Localization.translate("المقاطع", Provider.of<AppSettingsProvider>(context).language)} (Sections)',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (_selectedSeriesId != null && isUserAdmin)
-                                IconButton(
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  icon: const Icon(
-                                    Icons.copy,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                  tooltip: Localization.translate(
-                                    'نسخ مقاطع من سلسلة أخرى',
+                          if (isUserAdmin)
+                            Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: ElevatedButton.icon(
+                                onPressed: _showAddProfileDialog,
+                                icon: Icon(Icons.add),
+                                label: Text(
+                                  Localization.translate(
+                                    'نظام جديد',
                                     Provider.of<AppSettingsProvider>(
                                       context,
                                     ).language,
                                   ),
-                                  onPressed: _showCopyFromSeriesDialog,
-                                ),
-                            ],
-                          ),
-                        ),
-                        if (_selectedSeriesId == null)
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                Localization.translate(
-                                  'اختر سلسلة لعرض مقاطعها',
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
                                 ),
                               ),
                             ),
-                          ),
-                        if (_selectedSeriesId != null)
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: _currentSections.length,
-                              itemBuilder: (context, index) {
-                                final sec = _currentSections[index];
-                                IconData typeIcon;
-                                Color typeColor;
-                                switch (sec['type']) {
-                                  case 'plinthe':
-                                    typeIcon = Icons.border_bottom;
-                                    typeColor = Colors.brown;
-
-                                    break;
-                                  case 'frame':
-                                    typeIcon = Icons.crop_square;
-                                    typeColor = Colors.blue;
-                                    break;
-                                  case 'sash':
-                                  case 'sash_traverse':
-                                  case 'sash_lateral':
-                                  case 'sash_central':
-                                    typeIcon = Icons.door_front_door;
-                                    typeColor = Colors.green;
-                                    break;
-                                  case 'mullion':
-                                    typeIcon = Icons.add;
-                                    typeColor = Colors.orange;
-                                    break;
-                                  case 'parclose':
-                                    typeIcon = Icons.horizontal_rule;
-                                    typeColor = Colors.purple;
-                                    break;
-                                  case 'side_cover':
-                                    typeIcon = Icons.border_outer;
-                                    typeColor = Colors.indigo;
-                                    break;
-                                  case 'batmo':
-                                    typeIcon = Icons.vertical_align_center;
-                                    typeColor = Colors.teal;
-                                    break;
-                                  case 'bouchon_batmo':
-                                    typeIcon = Icons.compress;
-                                    typeColor = Colors.brown;
-                                    break;
-                                  default:
-                                    typeIcon = Icons.block;
-                                    typeColor = Colors.grey;
-                                }
-
-                                return Card(
-                                  margin: EdgeInsets.all(8),
-                                  child: ListTile(
-                                    leading: SectionImageWidget(
-                                      code: sec['code']?.toString(),
-                                      name: sec['name']?.toString(),
-                                      imagePath: sec['image_path']?.toString(),
-                                      size: 40.0,
-                                      fallbackIcon: typeIcon,
-                                      fallbackColor: typeColor,
-                                    ),
-                                    // 🟢 منع تكسر النص
-                                    title: Text(
-                                      '${sec['code']} - ${sec['name']}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(
-                                      'سماكة: ${sec['thickness']}mm | ركوب: ${sec['glass_deduction']}mm | وزن: ${sec['weight_per_meter']} Kg/m',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    trailing: isUserAdmin
-                                        ? Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              IconButton(
-                                                icon: Icon(
-                                                  Icons.edit,
-                                                  color: Colors.blue,
-                                                ),
-                                                onPressed: () =>
-                                                    _showEditSectionDialog(sec),
-                                              ),
-                                              IconButton(
-                                                icon: Icon(
-                                                  Icons.delete,
-                                                  color: Colors.red,
-                                                ),
-                                                onPressed: () async {
-                                                  await widget.db.deleteSection(
-                                                    sec['id'],
-                                                  );
-                                                  _loadSections(
-                                                    _selectedSeriesId!,
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          )
-                                        : null,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        if (_selectedSeriesId != null && isUserAdmin)
-                          Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: _showAddSectionDialog,
-                              icon: Icon(Icons.add),
-                              label: Text(
-                                Localization.translate(
-                                  'إضافة مقطع جديد',
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const VerticalDivider(width: 1),
+
+                  // 2. قائمة السلاسل (Series)
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF1E1E2C)
+                          : Colors.grey.shade50,
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(8),
+                            color: Colors.blueGrey.shade600,
+                            width: double.infinity,
+                            child: Text(
+                              '2. ${Localization.translate("السلاسل", Provider.of<AppSettingsProvider>(context).language)} (Series)',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (_selectedProfileId == null)
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  Localization.translate(
+                                    'اختر نظاماً أولاً',
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                    ).language,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_selectedProfileId != null)
+                            Expanded(
+                              child: ListView.builder(
+                                itemCount: _currentSeries.length,
+                                itemBuilder: (context, index) {
+                                  final s = _currentSeries[index];
+                                  final isSelected =
+                                      s['id'] == _selectedSeriesId;
+                                  return InkWell(
+                                    onTap: () => _loadSections(s['id']),
+                                    child: Container(
+                                      color: isSelected
+                                          ? (Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? Colors.blue.shade900
+                                                      .withValues(alpha: 0.3)
+                                                : Colors.blue.shade50)
+                                          : Colors.transparent,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                        horizontal: 14,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  "${s['name']} (${_profiles.firstWhere((p) => p['id'] == _selectedProfileId, orElse: () => {'type': ''})['type']})",
+                                                  style: TextStyle(
+                                                    fontWeight: isSelected
+                                                        ? FontWeight.bold
+                                                        : FontWeight.normal,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                                if (s['type'] != null &&
+                                                    s['type']
+                                                        .toString()
+                                                        .isNotEmpty)
+                                                  Text(
+                                                    s['type'].toString(),
+                                                    style: const TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.grey,
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (isUserAdmin)
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                IconButton(
+                                                  padding: EdgeInsets.zero,
+                                                  constraints:
+                                                      const BoxConstraints(),
+                                                  icon: const Icon(
+                                                    Icons.edit,
+                                                    color: Colors.blue,
+                                                    size: 16,
+                                                  ),
+                                                  onPressed: () =>
+                                                      _showEditSeriesDialog(s),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                IconButton(
+                                                  padding: EdgeInsets.zero,
+                                                  constraints:
+                                                      const BoxConstraints(),
+                                                  icon: const Icon(
+                                                    Icons.delete,
+                                                    color: Colors.red,
+                                                    size: 16,
+                                                  ),
+                                                  onPressed: () => _confirmDelete(
+                                                    'تأكيد الحذف',
+                                                    'هل أنت متأكد أنك تريد حذف هذه السلسلة؟',
+                                                    () async {
+                                                      await widget.db
+                                                          .deleteSeries(
+                                                            s['id'],
+                                                          );
+                                                      _loadSeries(
+                                                        _selectedProfileId!,
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (_selectedProfileId != null && isUserAdmin)
+                            Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: ElevatedButton.icon(
+                                onPressed: _showAddSeriesDialog,
+                                icon: Icon(Icons.add),
+                                label: Text(
+                                  Localization.translate(
+                                    'سلسلة جديدة',
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                    ).language,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const VerticalDivider(width: 1),
+
+                  // 3. قائمة المقاطع (Sections)
+                  Expanded(
+                    flex: 5,
+                    child: Container(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context).scaffoldBackgroundColor
+                          : Colors.white,
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(8),
+                            color: Colors.blueGrey.shade700,
+                            width: double.infinity,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '3. ${Localization.translate("المقاطع", Provider.of<AppSettingsProvider>(context).language)} (Sections)',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                if (_selectedSeriesId != null && isUserAdmin)
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    icon: const Icon(
+                                      Icons.copy,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    tooltip: Localization.translate(
+                                      'نسخ مقاطع من سلسلة أخرى',
+                                      Provider.of<AppSettingsProvider>(
+                                        context,
+                                      ).language,
+                                    ),
+                                    onPressed: _showCopyFromSeriesDialog,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (_selectedSeriesId == null)
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  Localization.translate(
+                                    'اختر سلسلة لعرض مقاطعها',
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                    ).language,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_selectedSeriesId != null)
+                            Expanded(
+                              child: ListView.builder(
+                                itemCount: _currentSections.length,
+                                itemBuilder: (context, index) {
+                                  final sec = _currentSections[index];
+                                  IconData typeIcon;
+                                  Color typeColor;
+                                  switch (sec['type']) {
+                                    case 'plinthe':
+                                      typeIcon = Icons.border_bottom;
+                                      typeColor = Colors.brown;
+
+                                      break;
+                                    case 'frame':
+                                      typeIcon = Icons.crop_square;
+                                      typeColor = Colors.blue;
+                                      break;
+                                    case 'sash':
+                                    case 'sash_traverse':
+                                    case 'sash_lateral':
+                                    case 'sash_central':
+                                      typeIcon = Icons.door_front_door;
+                                      typeColor = Colors.green;
+                                      break;
+                                    case 'mullion':
+                                      typeIcon = Icons.add;
+                                      typeColor = Colors.orange;
+                                      break;
+                                    case 'parclose':
+                                      typeIcon = Icons.horizontal_rule;
+                                      typeColor = Colors.purple;
+                                      break;
+                                    case 'side_cover':
+                                      typeIcon = Icons.border_outer;
+                                      typeColor = Colors.indigo;
+                                      break;
+                                    case 'batmo':
+                                      typeIcon = Icons.vertical_align_center;
+                                      typeColor = Colors.teal;
+                                      break;
+                                    case 'bouchon_batmo':
+                                      typeIcon = Icons.compress;
+                                      typeColor = Colors.brown;
+                                      break;
+                                    default:
+                                      typeIcon = Icons.block;
+                                      typeColor = Colors.grey;
+                                  }
+
+                                  return Card(
+                                    margin: EdgeInsets.all(8),
+                                    child: ListTile(
+                                      leading: SectionImageWidget(
+                                        code: sec['code']?.toString(),
+                                        name: sec['name']?.toString(),
+                                        imagePath: sec['image_path']
+                                            ?.toString(),
+                                        size: 40.0,
+                                        fallbackIcon: typeIcon,
+                                        fallbackColor: typeColor,
+                                      ),
+                                      // 🟢 منع تكسر النص
+                                      title: Text(
+                                        '${sec['code']} - ${sec['name']}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: Text(
+                                        'سماكة: ${sec['thickness']}mm | ركوب: ${sec['glass_deduction']}mm | وزن: ${sec['weight_per_meter']} Kg/m',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      trailing: isUserAdmin
+                                          ? Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                IconButton(
+                                                  icon: Icon(
+                                                    Icons.edit,
+                                                    color: Colors.blue,
+                                                  ),
+                                                  onPressed: () =>
+                                                      _showEditSectionDialog(
+                                                        sec,
+                                                      ),
+                                                ),
+                                                IconButton(
+                                                  icon: Icon(
+                                                    Icons.delete,
+                                                    color: Colors.red,
+                                                  ),
+                                                  onPressed: () async {
+                                                    await widget.db
+                                                        .deleteSection(
+                                                          sec['id'],
+                                                        );
+                                                    _loadSections(
+                                                      _selectedSeriesId!,
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            )
+                                          : null,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (_selectedSeriesId != null && isUserAdmin)
+                            Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: _showAddSectionDialog,
+                                icon: Icon(Icons.add),
+                                label: Text(
+                                  Localization.translate(
+                                    'إضافة مقطع جديد',
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                    ).language,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        );
-      },
-    ),
-  );
-}
+          );
+        },
+      ),
+    );
+  }
 }

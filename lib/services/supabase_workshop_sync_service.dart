@@ -43,10 +43,15 @@ class SupabaseWorkshopSyncService {
   // Realtime handles normal changes. This slow pass only repairs a missed
   // event after sleep/network loss and must not behave like a UI refresh loop.
   static const Duration _backgroundSyncInterval = Duration(minutes: 3);
-  static const int _batchSize = 200;
-  // Keep each decoded response small on Android. JSON payloads occupy several
-  // times their wire size while PostgREST and Dart maps coexist in memory.
-  static const int _downloadPageSize = 200;
+  // A workshop row contains a complete JSON payload.  A 200-row PostgREST
+  // upsert can exceed the server statement timeout even though the row count
+  // itself looks modest, particularly for order details and stock history.
+  static const int _uploadBatchSize = 25;
+  static const int _uploadBatchRetryCount = 3;
+  // Keep each decoded response and the matching PostgREST query small.
+  // Workshop rows embed JSON payloads, so a full restore after installation
+  // must not request hundreds of orders/stock rows in one response.
+  static const int _downloadPageSize = 50;
   static const String _workshopProfileTable = '__WorkshopProfile';
   static const String _workshopProfileRowId = 'current';
   static const String _workshopCatalogConfigurationTable =
@@ -1212,14 +1217,36 @@ class SupabaseWorkshopSyncService {
     }
 
     if (rowsToUpload.isEmpty) return;
-    for (var start = 0; start < rowsToUpload.length; start += _batchSize) {
-      final end = min(start + _batchSize, rowsToUpload.length);
-      await _client
-          .from('workshop_sync_rows')
-          .upsert(
-            rowsToUpload.sublist(start, end),
-            onConflict: 'workshop_id,table_name,row_id',
-          );
+    for (
+      var start = 0;
+      start < rowsToUpload.length;
+      start += _uploadBatchSize
+    ) {
+      final end = min(start + _uploadBatchSize, rowsToUpload.length);
+      final batch = rowsToUpload.sublist(start, end);
+      Object? lastError;
+      for (var attempt = 0; attempt < _uploadBatchRetryCount; attempt++) {
+        try {
+          await _client
+              .from('workshop_sync_rows')
+              .upsert(batch, onConflict: 'workshop_id,table_name,row_id');
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          // Upsert is idempotent for this unique key. A short backoff makes
+          // transient PostgREST/PostgreSQL statement timeouts recoverable
+          // without duplicating business rows.
+          if (attempt + 1 < _uploadBatchRetryCount) {
+            await Future<void>.delayed(
+              Duration(milliseconds: 400 * (attempt + 1)),
+            );
+          }
+        }
+      }
+      if (lastError != null) {
+        Error.throwWithStackTrace(lastError!, StackTrace.current);
+      }
     }
   }
 

@@ -1106,8 +1106,7 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'اختر هدفاً واحداً فقط: مركّب أو عائلة.',
     AppLanguage.french:
         'Choisissez une seule cible : un composant ou une famille.',
-    AppLanguage.english:
-        'Choose exactly one target: a component or a family.',
+    AppLanguage.english: 'Choose exactly one target: a component or a family.',
   },
   'اختر نوع الناموسية (ملفوفة، مطوية أكورديون، منزلقة، ثابتة) وأدخل الأبعاد لتلقائياً إضافتها إلى الطلبية.': {
     AppLanguage.arabic:
@@ -2619,15 +2618,10 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Couvre-joint',
     AppLanguage.english: 'Side cover',
   },
-  'بارداش (Bardage Profile)': {
-    AppLanguage.arabic: 'بارداش (Bardage Profile)',
-    AppLanguage.french: 'Profilé de bardage',
-    AppLanguage.english: 'Cladding profile',
-  },
-  'بانو / برداج (قديم)': {
-    AppLanguage.arabic: 'بانو / برداج (قديم)',
-    AppLanguage.french: 'Panneau / bardage (ancien)',
-    AppLanguage.english: 'Panel / cladding (legacy)',
+  'بارداج (Bardage)': {
+    AppLanguage.arabic: 'بارداج',
+    AppLanguage.french: 'Bardage',
+    AppLanguage.english: 'Cladding',
   },
   'باتمو (Batmo)': {
     AppLanguage.arabic: 'باتمو (Batmo)',
@@ -2643,6 +2637,11 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'ري / سكة (Rail)',
     AppLanguage.french: 'Rail',
     AppLanguage.english: 'Rail',
+  },
+  'شيكان (Chicane)': {
+    AppLanguage.arabic: 'شيكان',
+    AppLanguage.french: 'Chicane',
+    AppLanguage.english: 'Chicane',
   },
   'حديد دعم (Renfort)': {
     AppLanguage.arabic: 'حديد دعم (Renfort)',

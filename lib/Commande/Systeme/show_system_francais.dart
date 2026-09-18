@@ -4517,9 +4517,13 @@ class _WindowViewState extends State<WindowView> {
           }
 
           Widget? buildParcloseThicknessInfo() {
-            final maximum =
-                widget.model.parcloseCapacityForStructure(spec.structure) ??
-                widget.model.selectedParcloseMaxGlassThickness;
+            final usesParclose = widget.model.hasGlazingBeadForContext(
+              sliding: false,
+            );
+            final maximum = widget.model.glazingCapacityForStructure(
+              spec.structure,
+              sliding: false,
+            );
             if (maximum == null || spec.structure == GlassStructure.closed) {
               return null;
             }
@@ -4553,14 +4557,15 @@ class _WindowViewState extends State<WindowView> {
             final openingPrefix = hasOpeningSystem && hasSlidingSystem
                 ? 'نظام الفتح (${widget.model.activeSeries?.name ?? ''}): '
                 : '';
+            final capacityLabel = usesParclose ? 'سعة البيركلوز' : 'سعة الضلفة';
             if (widget.model.isPVC || jointVitrage <= 0) {
               message =
                   openingPrefix +
                   (isExact
-                      ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang)}: ${glassTotal.toStringAsFixed(0)} مم'
+                      ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang).replaceAll('البيركلوز', usesParclose ? 'البيركلوز' : 'الضلفة')}: ${glassTotal.toStringAsFixed(0)} مم'
                       : isAbove
-                      ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
-                      : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم');
+                      ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من $capacityLabel ${maximum.toStringAsFixed(0)} مم'
+                      : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من $capacityLabel ${maximum.toStringAsFixed(0)} مم');
             } else {
               final glassStr = glassTotal.toStringAsFixed(0);
               final jointStr = jointVitrage.toStringAsFixed(0);
@@ -4571,15 +4576,15 @@ class _WindowViewState extends State<WindowView> {
               if (isAbove) {
                 message =
                     openingPrefix +
-                    'تنبيه: سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم يتجاوز سعة البيركلوز ($maxStr مم) بـ $gapStr مم.';
+                    'تنبيه: سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
               } else if (remainingGap < 2.0) {
                 message =
                     openingPrefix +
-                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم (سعة البيركلوز: $maxStr مم). الفراغ المتبقي لـ Joint Bourrage ضيق جداً ($gapStr مم).';
+                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي لـ Joint Bourrage ضيق جداً ($gapStr مم).';
               } else {
                 message =
                     openingPrefix +
-                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | سعة البيركلوز: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
+                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | $capacityLabel: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
               }
             }
 
@@ -4630,45 +4635,14 @@ class _WindowViewState extends State<WindowView> {
               return null;
             }
 
-            double? capacityOf(dynamic value) {
-              if (value is! Map) return null;
-              final raw = value['max_glass_thickness'];
-              final parsed = raw is num
-                  ? raw.toDouble()
-                  : double.tryParse('${raw ?? ''}');
-              return parsed != null && parsed > 0 ? parsed : null;
-            }
-
-            final overrideKey = spec.structure == GlassStructure.double
-                ? 'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)'
-                : 'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)';
-            double? maximum = capacityOf(
-              widget.model.componentOverrides[overrideKey],
+            final usesParclose = widget.model.hasGlazingBeadForContext(
+              sliding: true,
             );
-            if (maximum == null) {
-              final candidates = widget.model.activeSlidingSeries?.sections
-                  .where((section) {
-                    final text = '${section.type} ${section.name}'
-                        .toLowerCase();
-                    final isParclose =
-                        text.contains('parclose') || text.contains('باكيت');
-                    if (!isParclose || section.maxGlassThickness <= 0) {
-                      return false;
-                    }
-                    return spec.structure == GlassStructure.double
-                        ? section.maxGlassThickness > 16
-                        : section.maxGlassThickness <= 16;
-                  })
-                  .map((section) => section.maxGlassThickness)
-                  .toList();
-              if (candidates != null && candidates.isNotEmpty) {
-                candidates.sort();
-                maximum = candidates.first;
-              }
-            }
-            // Sliding single-glass systems conventionally use a 12 mm
-            // parclose when the catalogue has no explicit capacity.
-            maximum ??= spec.structure == GlassStructure.double ? 24.0 : 12.0;
+            final maximum = widget.model.glazingCapacityForStructure(
+              spec.structure,
+              sliding: true,
+            );
+            if (maximum == null) return null;
 
             final glassTotal = spec.totalThickness(widget.model.allGlassCache);
             final sides = spec.jointTwoSides ? 2 : 1;
@@ -4683,9 +4657,10 @@ class _WindowViewState extends State<WindowView> {
             final jointStr = requiredPerSide.abs().toStringAsFixed(1);
             final sideText = sides == 2 ? 'من جهتين' : 'من جهة واحدة';
             final seriesName = widget.model.activeSlidingSeries?.name ?? '';
+            final capacityLabel = usesParclose ? 'سعة البيركلوز' : 'سعة الضلفة';
             final message = isAbove
-                ? 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم يتجاوز سعة البيركلوز $maxStr مم بـ $jointStr مم.'
-                : 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم، الجوان المطلوب $jointStr مم $sideText، وسعة البيركلوز $maxStr مم.';
+                ? 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم يتجاوز $capacityLabel $maxStr مم بـ $jointStr مم.'
+                : 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم، الجوان المطلوب $jointStr مم $sideText، و$capacityLabel $maxStr مم.';
 
             return Container(
               margin: const EdgeInsets.only(top: 8),
@@ -7396,6 +7371,40 @@ class _WindowViewState extends State<WindowView> {
             );
           }
 
+          Widget buildCompactSlimOption(
+            String label,
+            String key,
+            WindowZone zone,
+          ) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Checkbox(
+                  value: zone.slidingMontantSlim[key] ?? false,
+                  onChanged: (v) {
+                    setState(() {
+                      zone.slidingMontantSlim[key] = v ?? false;
+                      if (zone.slidingMontantSlim[key] == true &&
+                          widget.model.selectedSlimMontantProfile == null) {
+                        final candidates = widget.model
+                            .getSlidingSlimCandidates();
+                        if (candidates.isNotEmpty) {
+                          widget.model.applySlidingMontantSlimOverride(
+                            candidates.first,
+                          );
+                        }
+                      }
+                    });
+                    widget.model.refreshUI();
+                  },
+                  activeColor: Colors.blue,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                Text(label, style: const TextStyle(fontSize: 12)),
+              ],
+            );
+          }
+
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
             children: [
@@ -8540,6 +8549,130 @@ class _WindowViewState extends State<WindowView> {
                     }
                     // 4. إذا لم يكن هناك نظام منزلق أصلاً
                     else {
+                      return const SizedBox.shrink();
+                    }
+                  },
+                ),
+
+                const Divider(height: 30),
+                Text(
+                  Localization.translate('مونتوسليم (Montant Slim)', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                Builder(
+                  builder: (context) {
+                    final slimCandidates = widget.model
+                        .getSlidingSlimCandidates();
+                    if (slimCandidates.isNotEmpty && firstSlidingZone != null) {
+                      final allSlimSelected =
+                          List.generate(
+                            centralCount,
+                            (i) => 'central_$i',
+                          ).every(
+                            (k) =>
+                                firstSlidingZone.slidingMontantSlim[k] == true,
+                          );
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                Localization.translate(
+                                  'المركزي (Central):',
+                                  lang,
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: Icon(
+                                  allSlimSelected
+                                      ? Icons.check_box
+                                      : Icons.check_box_outline_blank,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  allSlimSelected
+                                      ? Localization.translate(
+                                          'إلغاء الكل',
+                                          lang,
+                                        )
+                                      : Localization.translate(
+                                          'تحديد الكل',
+                                          lang,
+                                        ),
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    final newVal = !allSlimSelected;
+                                    for (int i = 0; i < centralCount; i++) {
+                                      firstSlidingZone
+                                              .slidingMontantSlim['central_$i'] =
+                                          newVal;
+                                    }
+                                    if (newVal &&
+                                        widget
+                                                .model
+                                                .selectedSlimMontantProfile ==
+                                            null) {
+                                      widget.model
+                                          .applySlidingMontantSlimOverride(
+                                            slimCandidates.first,
+                                          );
+                                    }
+                                  });
+                                  widget.model.refreshUI();
+                                },
+                              ),
+                            ],
+                          ),
+                          Wrap(
+                            children: List.generate(centralCount, (index) {
+                              return SizedBox(
+                                width: 120,
+                                child: buildCompactSlimOption(
+                                  '${Localization.translate('مركز', lang)} ${index + 1}',
+                                  'central_$index',
+                                  firstSlidingZone,
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      );
+                    } else if (firstSlidingZone != null) {
+                      return Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          Localization.translate(
+                            'هذه السلسلة لا تدعم مونتوسليم',
+                            lang,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 11,
+                          ),
+                        ),
+                      );
+                    } else {
                       return const SizedBox.shrink();
                     }
                   },
@@ -10481,7 +10614,6 @@ class _WindowViewState extends State<WindowView> {
       if (widget.model.activeSlidingSeries != null &&
           primarySystem != null &&
           activeSlidingSystem != null &&
-          profileSystemsShareMaterial(primarySystem, activeSlidingSystem) &&
           _seriesMatchesScope(
             widget.model.activeSlidingSeries!,
             activeSlidingSystem,
@@ -12531,6 +12663,9 @@ class _WindowViewState extends State<WindowView> {
     Map<String, dynamic> item, {
     required bool central,
   }) {
+    if (widget.model.isSlidingMontantSlimCandidate(item)) {
+      return false;
+    }
     final role = (item['design_role_key'] ?? '').toString();
     if (role.isNotEmpty) {
       return central
@@ -14211,13 +14346,20 @@ class _WindowViewState extends State<WindowView> {
                 (candidate) =>
                     _catalogRowId(candidate) == _catalogRowId(profile),
               );
+              final isSlim = widget.model.isSlidingMontantSlimCandidate(
+                profile,
+              );
               return !isMontant &&
                   !isTraverse &&
+                  !isSlim &&
                   (role.isEmpty ||
                       role == 'sash' ||
                       role == 'sash_extension' ||
                       role == 'sliding_sash');
             }),
+          );
+          final slimProfiles = uniqueProfiles(
+            widget.model.getSlidingSlimCandidates(),
           );
 
           if (baseSashProfiles.isNotEmpty) {
@@ -14473,6 +14615,48 @@ class _WindowViewState extends State<WindowView> {
                                 .model
                                 .componentOverrides['سكة الظلفة (Sash Traverse)'] =
                             chosen;
+                        widget.model.refreshUI();
+                      });
+                    },
+                  ),
+                ),
+              );
+            }
+          }
+          if (slimProfiles.isNotEmpty) {
+            children.add(const SizedBox(width: 12));
+            children.add(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Text(
+                  Localization.translate('المونتوسليم (Montant Slim):', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+            );
+            final activeSlimProfile =
+                widget.model.selectedSlimMontantProfile ?? slimProfiles.first;
+            for (final item in slimProfiles) {
+              final selected =
+                  activeSlimProfile['id']?.toString() == item['id']?.toString();
+              children.add(
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _ProfileButton(
+                    label: '${item['code'] ?? ''} - ${item['name'] ?? ''}',
+                    code: item['code']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    selected: selected,
+                    onPressed: () async {
+                      final chosen = Map<String, dynamic>.from(item);
+                      chosen['calculated_price'] =
+                          await _sectionPriceForSelectedColor(chosen);
+                      setState(() {
+                        widget.model.applySlidingMontantSlimOverride(chosen);
                         widget.model.refreshUI();
                       });
                     },

@@ -101,6 +101,19 @@ class BomEngineV2 {
         if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
           return item;
         }
+        // A real catalogue product already selected for this BOM is not a
+        // placeholder.  It may be selected through a section/default rule
+        // whose child role is intentionally not offered in the replacement
+        // dialog.  Do not make that physical, enabled item disappear merely
+        // because a second resolver pass cannot rediscover the same rule.
+        // Invalid selections are cleared during stabilization, before this
+        // point, so this does not revive accessories from another series.
+        if (item.isActive &&
+            !item.isMissing &&
+            item.catalogItemId != null &&
+            item.catalogItemId! > 0) {
+          return item;
+        }
         // A configured Kit is authoritative: its active child rows are the
         // complete list saved on the Kits page. They must remain available for
         // the expandable Kit row even when a child has no standalone rule row.
@@ -435,6 +448,10 @@ class BomEngineV2 {
       'gache_simple',
       'gache_double',
       'gache_door',
+      // A sliding strike may arrive directly from the selected
+      // Espagnolette relation and also from the catalogue relation-expansion
+      // pass.  They represent the same physical part, not two strikes.
+      'sliding_lock',
     };
     final result = <BomItem>[];
     final indexes = <String, int>{};
@@ -1420,6 +1437,7 @@ class BomEngineV2 {
         )
         .toList();
     if (candidates.isEmpty) {
+      if (_hasCompatibleExplicitSelection(window, item)) return;
       _clearComponentSelection(window, item);
       return;
     }
@@ -1522,6 +1540,7 @@ class BomEngineV2 {
       ),
     );
     if (candidates.isEmpty) {
+      if (_hasCompatibleExplicitSelection(window, item)) return;
       _clearComponentSelection(window, item);
       return;
     }
@@ -1793,6 +1812,28 @@ class BomEngineV2 {
     final overrideKey = item.overrideKey ?? item.originalName;
     window.componentOverrides.remove(overrideKey);
     window.componentOverrides.remove(item.originalName);
+  }
+
+  /// A selection loaded from an enabled series/section rule is authoritative
+  /// for the material table.  Some child roles (brush joint, strike, bolt,
+  /// clamp…) are linked to a selected section and therefore need not have a
+  /// second standalone candidate for the same drawing surface.
+  bool _hasCompatibleExplicitSelection(WindowModel window, BomItem item) {
+    final current = _currentComponentSelection(window, item);
+    if (_catalogInt(current?['id']) == null) return false;
+    if (current?['is_active'] == 0 || current?['is_active'] == false) {
+      return false;
+    }
+    final expectedSeriesId = _seriesIdForItem(window, item);
+    if (expectedSeriesId == null) return true;
+    final directSeriesId = _catalogInt(current?['series_id']);
+    if (directSeriesId != null) return directSeriesId == expectedSeriesId;
+    final assigned = '${current?['series_ids'] ?? ''}'
+        .split(',')
+        .map((id) => int.tryParse(id.trim()))
+        .whereType<int>()
+        .toSet();
+    return assigned.isEmpty || assigned.contains(expectedSeriesId);
   }
 
   int? _catalogInt(Object? value) {

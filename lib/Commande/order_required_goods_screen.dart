@@ -37,6 +37,74 @@ List<Map<String, dynamic>> parseRequiredGoodsInstances(dynamic raw) {
   return decoded.whereType<Map>().map(Map<String, dynamic>.from).toList();
 }
 
+/// The order-line quantity is authoritative. Older measurement drafts often
+/// contain one default instance with qty=1, even when the order asks for many
+/// windows; treating that draft as the complete line underestimates every BOM
+/// component. Keep measured variants, then add the unmeasured remainder using
+/// the drawing's original dimensions.
+List<Map<String, dynamic>> normalizeRequiredGoodsInstances({
+  required List<Map<String, dynamic>> saved,
+  required int orderedQuantity,
+  required double defaultWidth,
+  required double defaultHeight,
+}) {
+  int positiveInt(Object? value, {int fallback = 0}) {
+    final parsed = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString().trim() ?? '');
+    return parsed != null && parsed > 0 ? parsed : fallback;
+  }
+
+  double positiveDouble(Object? value, double fallback) {
+    final parsed = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString().trim() ?? '');
+    return parsed != null && parsed > 0 ? parsed : fallback;
+  }
+
+  final normalized = saved
+      .map(
+        (raw) => <String, dynamic>{
+          ...raw,
+          'width': positiveDouble(raw['width'] ?? raw['largeur'], defaultWidth),
+          'height': positiveDouble(
+            raw['height'] ?? raw['hauteur'],
+            defaultHeight,
+          ),
+          'qty': positiveInt(raw['qty'] ?? raw['quantity'], fallback: 1),
+        },
+      )
+      .where((item) => (item['qty'] as int) > 0)
+      .toList();
+  final expected = orderedQuantity > 0 ? orderedQuantity : 1;
+  final represented = normalized.fold<int>(
+    0,
+    (sum, item) => sum + (item['qty'] as int),
+  );
+
+  if (normalized.isEmpty) {
+    return [
+      {'width': defaultWidth, 'height': defaultHeight, 'qty': expected},
+    ];
+  }
+  if (represented < expected) {
+    final missing = expected - represented;
+    // A single qty=1 row is the common old draft. Updating that same row
+    // keeps the breakdown compact; for genuine measured variants, keep their
+    // dimensions and add the still-unmeasured order remainder separately.
+    if (normalized.length == 1 && represented == 1) {
+      normalized.single['qty'] = expected;
+    } else {
+      normalized.add({
+        'width': defaultWidth,
+        'height': defaultHeight,
+        'qty': missing,
+      });
+    }
+  }
+  return normalized;
+}
+
 String requiredGoodsCategoryForBom(BomItem item) {
   final category = item.category.trim().toLowerCase();
   final inventoryType = (item.inventoryItemType ?? '').trim().toLowerCase();
@@ -534,29 +602,47 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final locations = await widget.db.readLocations();
     if (locations.isEmpty)
       return (const <String, double>{}, 'المستودع الرئيسي');
-    final location = locations.firstWhere((row) {
+    final mainLocations = locations.where((row) {
       final name = (row['name']?.toString() ?? '').trim();
       final type = (row['type']?.toString() ?? '').trim();
       return name == 'المستودع الرئيسي' || type == 'مستودع رئيسي';
-    }, orElse: () => locations.first);
-    final locationId = _safeInt(location['id']);
-    if (locationId == null) {
+    }).toList();
+    final sourceLocations = mainLocations.isNotEmpty
+        ? mainLocations
+        : <Map<String, dynamic>>[locations.first];
+    final locationIds = sourceLocations
+        .map((location) => _safeInt(location['id']))
+        .whereType<int>()
+        .toSet()
+        .toList();
+    if (locationIds.isEmpty) {
       return (const <String, double>{}, 'المستودع الرئيسي');
     }
-    final rows = await widget.db.readAllPossibleStock(locationId);
+    final database = await widget.db.db;
+    if (database == null) {
+      return (const <String, double>{}, 'المستودع الرئيسي');
+    }
+    final rows = await database.query(
+      'CurrentStock',
+      where:
+          'location_id IN (${List.filled(locationIds.length, '?').join(',')})',
+      whereArgs: locationIds,
+    );
     final quantities = <String, double>{};
     for (final row in rows) {
       final itemId = _safeInt(row['item_id']);
       if (itemId == null) continue;
-      quantities[requiredGoodsInventoryKey(
+      final key = requiredGoodsInventoryKey(
         itemType: row['item_type']?.toString(),
         itemId: itemId,
         colorId: _safeInt(row['color_id']),
-      )] = _safeDouble(
-        row['quantity'],
       );
+      quantities[key] = (quantities[key] ?? 0) + _safeDouble(row['quantity']);
     }
-    return (quantities, location['name']?.toString() ?? 'المستودع الرئيسي');
+    return (
+      quantities,
+      sourceLocations.first['name']?.toString() ?? 'المستودع الرئيسي',
+    );
   }
 
   double? _stockQuantityFor({
@@ -569,6 +655,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           itemType: itemType,
           itemId: itemId,
           colorId: colorId,
+        )] ??
+        _mainWarehouseStock[requiredGoodsInventoryKey(
+          itemType: itemType,
+          itemId: itemId,
+          colorId: null,
         )] ??
         0;
   }
@@ -1581,8 +1672,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             continue;
           }
 
-          // Read instances if they exist
-          final instances = parseRequiredGoodsInstances(item['instances_json']);
+          // The persisted order-line quantity takes precedence over a legacy
+          // single-instance draft (which commonly stores qty=1).
+          final orderedQuantity = _safePositiveInt(
+            item['quantity'],
+            fallback: model.quantity > 0 ? model.quantity : 1,
+          );
+          final instances = normalizeRequiredGoodsInstances(
+            saved: parseRequiredGoodsInstances(item['instances_json']),
+            orderedQuantity: orderedQuantity,
+            defaultWidth: model.width,
+            defaultHeight: model.height,
+          );
 
           final List<BomItem> bomItems = [];
           final productName = productLabel;
@@ -1651,10 +1752,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             model.quantity = origQty;
           } else {
             // Force the window model quantity to match the actual order details quantity
-            model.quantity = _safePositiveInt(
-              item['quantity'],
-              fallback: model.quantity > 0 ? model.quantity : 1,
-            );
+            model.quantity = orderedQuantity;
 
             final instBom = await _resolveBomForModel(
               model,

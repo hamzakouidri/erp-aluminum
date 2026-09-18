@@ -429,6 +429,12 @@ void main() {
     expect(strikeIndex, greaterThan(espIndex));
     expect(bom[strikeIndex].catalogItemId, 21);
     expect(bom[strikeIndex].quantity, 2);
+    expect(
+      bom[strikeIndex].overrideKey,
+      startsWith('linked-accessory:'),
+      reason:
+          'An explicit Espagnolette relation must survive the final BOM rule filter.',
+    );
   });
   test('sliding assembly screw follows its explicit series rule', () async {
     final db = SlidingAssemblyRuleDatabase();

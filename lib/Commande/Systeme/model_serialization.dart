@@ -347,6 +347,7 @@ extension WindowZoneSerialization on WindowZone {
       'usePvcHandleOnAlu': usePvcHandleOnAlu,
       'lockType': lockType.name,
       'slidingMontantReinforced': slidingMontantReinforced,
+      'slidingMontantSlim': slidingMontantSlim,
       'disabledVerticalDivisions': disabledVerticalDivisions,
       'disabledHorizontalDivisions': disabledHorizontalDivisions,
       'isSubdivided': isSubdivided,
@@ -461,6 +462,8 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
         (map['slidingMontantReinforced'] as Map<String, dynamic>?)?.map(
           (k, v) => MapEntry(k, v as bool),
         ),
+    slidingMontantSlim: (map['slidingMontantSlim'] as Map<String, dynamic>?)
+        ?.map((k, v) => MapEntry(k, v as bool)),
     disabledVerticalDivisions:
         (map['disabledVerticalDivisions'] as Map<String, dynamic>?)?.map(
           (k, v) => MapEntry(k, v as bool),
@@ -788,9 +791,12 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.selectedAccessoryColor = savedAccessoryColor;
   model.loadedSeriesName =
       map['seriesName']?.toString() ?? map['profileName']?.toString();
-  model.loadedSeriesId = (map['seriesId'] as num?)?.toInt();
+  int? savedSeriesId(Object? value) => value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString().trim() ?? '');
+  model.loadedSeriesId = savedSeriesId(map['seriesId']);
   model.loadedSlidingSeriesName = map['slidingSeriesName']?.toString();
-  model.loadedSlidingSeriesId = (map['slidingSeriesId'] as num?)?.toInt();
+  model.loadedSlidingSeriesId = savedSeriesId(map['slidingSeriesId']);
 
   model.frameOverride = map['frameOverride'] != null
       ? Map<String, dynamic>.from(map['frameOverride'])
