@@ -2313,7 +2313,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _pricePerLinearMeterController = TextEditingController();
     _shutterSqmPriceController = TextEditingController();
     _torqueFactorController = TextEditingController();
-    _loadCostSettings(); // تحميل إعدادات التسعير المحفوظة محليًا
+    // Cost settings and database prices must not load concurrently. The
+    // settings loader initializes the linear-price field to zero, so if it
+    // finishes after the database query it can overwrite the valid price.
     // تحديد الحالة الابتدائية للآلية (محرك/مانيفيل/حزام) والتونيل
     // The BOM is calculated synchronously, so refresh the glass catalogue as
     // this page opens. This prevents a recently saved tempering price from
@@ -2353,8 +2355,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ? initialColorId.toInt()
         : int.tryParse('${initialColorId ?? ''}');
     unawaited(_loadTableColumnLayout());
-    // استدعاء الجلب الذكي فور فتح الشاشة (لملء كل المكونات والفحص الصارم)
-    _fetchDefaults();
+    // Load local settings first, then resolve the BOM and database prices.
+    // This makes the saved linear-metre price visible on the first opening,
+    // without requiring the refresh button.
+    unawaited(
+      _loadCostSettings().then((_) {
+        if (mounted) return _fetchDefaults();
+      }),
+    );
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
     widget.model.addListener(_onModelChanged);
   }
@@ -6017,10 +6025,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // selector, so the user could never switch it back to normal.
     final dialogRoleKeys = rowLooksPlinthe
         ? const <String>['plant']
-        : isSlidingSlimRow
-        ? const <String>['montant_central_slim']
+        // A complement name can include "Slim", but it is a different
+        // profile role. It must win over the Slim montant test so its change
+        // dialog never lists central-montant candidates.
         : isSlidingSlimComplementRow
         ? const <String>['complement_haut_base']
+        : isSlidingSlimRow
+        // Some existing series were saved under the original alias
+        // `sash_central_slim`; both names represent the same selectable Slim
+        // montant and must therefore resolve in the replacement dialog.
+        ? const <String>['montant_central_slim', 'sash_central_slim']
         : isSlidingLateralRow
         ? const <String>['sash_lateral', 'sash_lateral_reinforced']
         : isSlidingCentralRow
@@ -6827,7 +6841,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               item.overrideKey ?? '',
               swapTarget.overrideKey ?? '',
             ].join(' ').toLowerCase();
-            if (isSlidingSlimRow) {
+            if (isSlidingSlimComplementRow) {
+              // This is the dedicated 10 cm top/bottom Slim complement, not
+              // the Slim central montant. Store its choice under the stable
+              // calculation key used when the BOM is rebuilt.
+              widget
+                      .model
+                      .componentOverrides['مكمل علوي وسفلي للمونتوسليم 10 سم (Complément haut et bas)'] =
+                  mutableSelected;
+              widget
+                      .model
+                      .componentOverrides['قطاع وصلة المونتوسليم 10 سم (Taquet Slim 10cm)'] =
+                  mutableSelected;
+              widget.model.componentOverrides[overrideKey] = mutableSelected;
+            } else if (isSlidingSlimRow) {
               // Slim is its own selected profile. Treating it as the normal
               // central montant overwrote the regular override and made the
               // Slim row vanish after the next BOM refresh.

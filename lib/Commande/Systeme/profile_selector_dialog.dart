@@ -1289,6 +1289,7 @@ class ProfileSelectorDialog extends StatefulWidget {
 class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
   List<Map<String, dynamic>> profiles = [];
   bool isLoading = true;
+  String? _loadError;
 
   double? _mainStockForCandidate(Map<String, dynamic> candidate) {
     final id = _catalogInt(candidate['id']);
@@ -1322,6 +1323,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
     final db = SqlDatabase();
     List<Map<String, dynamic>> data = [];
 
+    try {
     // Fetch active series name first so it is available globally in _loadProfiles
     String activeSeriesName = '';
     String activeSeriesType = '';
@@ -1353,31 +1355,36 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             role == 'sash_central_slim' ||
             role == 'complement_haut_base',
       );
-      data = await CatalogCandidateResolver(database: db).resolve(
-        CatalogCandidateQuery(
-          category: widget.category,
-          selectorType: widget.profileType,
-          roleKeys: widget.roleKeys,
-          seriesId: widget.seriesId,
-          materialType: widget.materialType,
-          hasShutter: widget.hasShutter,
-          isCaissonTunnel: widget.isCaissonTunnel,
-          hasSideCovers: widget.hasSideCovers,
-          multiFrameDrawing: widget.multiFrameDrawing,
-          drawingMode: widget.accessoryDrawingMode,
-          // Slim and its 10 cm top/bottom complement are functional drawing
-          // components. Their replacement must remain available whenever the
-          // role exists, even if a legacy row has show_in_dialog unchecked.
-          requireDialog: !forceVisibleInDialog,
-          requireQuantity: widget.category != 'profile',
-          hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
-          hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
-          targetThicknessMm: widget.targetThicknessMm,
-        ),
-      );
+      data = await CatalogCandidateResolver(database: db)
+          .resolve(
+            CatalogCandidateQuery(
+              category: widget.category,
+              selectorType: widget.profileType,
+              roleKeys: widget.roleKeys,
+              seriesId: widget.seriesId,
+              materialType: widget.materialType,
+              hasShutter: widget.hasShutter,
+              isCaissonTunnel: widget.isCaissonTunnel,
+              hasSideCovers: widget.hasSideCovers,
+              multiFrameDrawing: widget.multiFrameDrawing,
+              drawingMode: widget.accessoryDrawingMode,
+              // Slim and its 10 cm top/bottom complement are functional drawing
+              // components. Their replacement must remain available whenever the
+              // role exists, even if a legacy row has show_in_dialog unchecked.
+              requireDialog: !forceVisibleInDialog,
+              requireQuantity: widget.category != 'profile',
+              hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
+              hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
+              targetThicknessMm: widget.targetThicknessMm,
+            ),
+          )
+          // A catalog failure must never leave the selector permanently busy.
+          .timeout(const Duration(seconds: 15));
+      if (!mounted) return;
       setState(() {
         profiles = data;
         isLoading = false;
+        _loadError = null;
       });
       return;
     }
@@ -2294,10 +2301,22 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
       }
     }
 
+    if (!mounted) return;
     setState(() {
       profiles = data;
       isLoading = false;
+      _loadError = null;
     });
+    } catch (error, stackTrace) {
+      debugPrint('Profile selector failed to load ${widget.profileType}: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      setState(() {
+        profiles = [];
+        isLoading = false;
+        _loadError = error.toString();
+      });
+    }
   }
 
   String searchQuery = '';
@@ -2391,6 +2410,23 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                     ? const SizedBox(
                         height: 100,
                         child: Center(child: CircularProgressIndicator()),
+                      )
+                    : _loadError != null
+                    ? SizedBox(
+                        height: 130,
+                        child: Center(
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: Text(Localization.translate('إعادة المحاولة', lang)),
+                            onPressed: () {
+                              setState(() {
+                                isLoading = true;
+                                _loadError = null;
+                              });
+                              _loadProfiles();
+                            },
+                          ),
+                        ),
                       )
                     : filtered.isEmpty
                     ? SizedBox(

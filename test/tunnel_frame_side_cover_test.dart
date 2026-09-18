@@ -35,6 +35,7 @@ class _FrameDatabase extends SqlDatabase {
     Iterable<String> roleKeys, {
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
   }) async => pendingFrames != null
       ? await pendingFrames!.future
       : roleKeys.contains('frame')
@@ -51,11 +52,13 @@ class _FrameDatabase extends SqlDatabase {
     required String usageScope,
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
   }) => getDesignSectionsForRoles(
     seriesId,
     roleKeys,
     requireDialog: requireDialog,
     requireQuantity: requireQuantity,
+    requireVisible: requireVisible,
   );
 }
 

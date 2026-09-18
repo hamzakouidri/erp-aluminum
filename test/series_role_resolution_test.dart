@@ -19,6 +19,7 @@ class _RoleDatabase extends SqlDatabase {
     Iterable<String> roleKeys, {
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
   }) async {
     final accepted = roleKeys.toSet();
     return roles

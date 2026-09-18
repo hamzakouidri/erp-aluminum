@@ -10646,12 +10646,23 @@ class _WindowViewState extends State<WindowView> {
     // no sliding selection even though the selected opening system already
     // exposes valid sliding series. Show the actual first series immediately
     // and persist it, instead of showing the generic "Gamme المنزلق" hint.
+    // A saved drawing can briefly have no resolved in-memory series while its
+    // catalogue is still loading. Do not persist the first dropdown item in
+    // that interval: doing so overwrote the saved BS90 id/name and reopened
+    // every edited window with the default sliding series.
+    final hasPendingSavedSlidingSeries =
+        widget.model.loadedSlidingSeriesId != null ||
+        (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty ?? false);
     final autoSlidingValue =
         selectedSlidingValue ??
-        (widget.systemMode == 'mixed' && slidingItemsList.isNotEmpty
+        (!hasPendingSavedSlidingSeries &&
+                widget.systemMode == 'mixed' &&
+                slidingItemsList.isNotEmpty
             ? slidingItemsList.first
             : null);
-    if (selectedSlidingValue == null && autoSlidingValue != null) {
+    if (selectedSlidingValue == null &&
+        !hasPendingSavedSlidingSeries &&
+        autoSlidingValue != null) {
       _queueMixedSlidingSeriesSelection(
         autoSlidingValue,
         widget.model.activeSeries?.id,
@@ -14441,6 +14452,22 @@ class _WindowViewState extends State<WindowView> {
           }
 
           bool isCentralSelected(Map<String, dynamic> item) {
+            // A slim central member visually replaces the chicane at that
+            // junction. Keep the catalogue selection intact for geometry,
+            // but do not leave a Chicane button highlighted beside Slim.
+            final role = '${item['design_role_key'] ?? ''}'
+                .trim()
+                .toLowerCase();
+            final itemText = '${item['name'] ?? ''} ${item['type'] ?? ''}'
+                .toLowerCase();
+            final isChicane =
+                role == 'chicane' ||
+                itemText.contains('chicane') ||
+                itemText.contains('شيكان');
+            final hasSlimCentral = widget.model.zones.any(
+              (zone) => zone.slidingMontantSlim.values.any((value) => value),
+            );
+            if (isChicane && hasSlimCentral) return false;
             final current =
                 widget
                     .model
@@ -14488,8 +14515,29 @@ class _WindowViewState extends State<WindowView> {
             final mutableSelected = Map<String, dynamic>.from(item);
             mutableSelected['calculated_price'] =
                 await _sectionPriceForSelectedColor(mutableSelected);
+            final role = '${item['design_role_key'] ?? ''}'
+                .trim()
+                .toLowerCase();
+            final itemText = '${item['name'] ?? ''} ${item['type'] ?? ''}'
+                .toLowerCase();
+            final isChicane =
+                role == 'chicane' ||
+                itemText.contains('chicane') ||
+                itemText.contains('شيكان');
 
             setState(() {
+              // Chicane and montant central slim are mutually exclusive.
+              // Clearing only the per-zone choice restores the normal/chicane
+              // sash drawing while keeping the catalog selection available for
+              // a later explicit Slim selection.
+              if (isChicane) {
+                for (final zone in widget.model.zones) {
+                  if (zone.content != ZoneContent.slidingSash) continue;
+                  for (final key in zone.slidingMontantSlim.keys.toList()) {
+                    zone.slidingMontantSlim[key] = false;
+                  }
+                }
+              }
               widget.model.applySlidingMontantOverride(
                 mutableSelected,
                 central: true,

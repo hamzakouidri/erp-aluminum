@@ -136,7 +136,13 @@ class BomEngineV2 {
         if (await _itemHasRuleCandidate(window, item)) {
           return item;
         }
-        return null;
+        // This is a second validation pass, not the source of the BOM.  The
+        // drawing has already created this active component with a real
+        // quantity. A legacy/mismatched exact-series rule (common after a
+        // catalog sync or duplicated series) must not make a gasket or an
+        // accessory disappear silently from the quantity table. Keep it
+        // visible as an unlinked row so it can be diagnosed or replaced.
+        return item.isActive && item.requiredQuantity > 0 ? item : null;
       }),
     );
     final kept = resolved.whereType<BomItem>().toList();
@@ -161,14 +167,10 @@ class BomEngineV2 {
     // to the user, otherwise a hidden duplicate is counted twice.
     visibleItems.removeWhere(_isAccessoryScrewRow);
     visibleItems.addAll(await _accessoryScrewItems(window, visibleItems));
-    // Resolution must run before this check. At this final stage, suppress
-    // only placeholders that are still genuinely unlinked; doing it at the
-    // start prevents valid rule candidates from ever being selected.
-    visibleItems.removeWhere(
-      (item) =>
-          item.isMissing &&
-          (item.catalogItemId == null || item.catalogItemId! <= 0),
-    );
+    // Do not suppress active unlinked placeholders here. They are real
+    // quantities produced by the drawing and are deliberately kept visible
+    // (with their warning state) instead of disappearing from a specific
+    // series merely because a second rule lookup found no exact match.
     return visibleItems;
   }
 

@@ -2118,6 +2118,21 @@ class ComponentCalculator {
           : savedProfileOverride != null
           ? savedProfileOverride
           : overrideMap ?? configuredOverride;
+      // A standalone couvre-joint may be shared by the opening and sliding
+      // series of one drawing.  Its own `series_id` is therefore the only
+      // reliable source for catalogue validation and stock accounting. Using
+      // the currently active frame series made a valid cover disappear when
+      // that cover belonged to the companion series (most visibly in sliding
+      // and mixed drawings).
+      int? selectedSectionSeriesId;
+      final rawSelectedSeriesId = selectedOverride?['series_id'];
+      if (rawSelectedSeriesId is num) {
+        selectedSectionSeriesId = rawSelectedSeriesId.toInt();
+      } else {
+        selectedSectionSeriesId = int.tryParse(
+          rawSelectedSeriesId?.toString() ?? '',
+        );
+      }
       List<double>? multipliedPieces;
       if (pieces != null && pieces.isNotEmpty) {
         multipliedPieces = [];
@@ -2148,9 +2163,15 @@ class ComponentCalculator {
         selectorCategory: 'profile',
         selectorType: resolvedSelectorType,
         roleKey: resolvedRoleKey,
-        sourceSeriesId: usesSlidingSeries
-            ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
-            : window.activeSeries?.id,
+        sourceSeriesId: resolvedRoleKey == 'side_cover'
+            ? (selectedSectionSeriesId ??
+                  (usesSlidingSeries
+                      ? (window.activeSlidingSeries?.id ??
+                            window.activeSeries?.id)
+                      : window.activeSeries?.id))
+            : (usesSlidingSeries
+                  ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+                  : window.activeSeries?.id),
         materialType: _materialTypeForProfile(window, resolvedSelectorType),
       );
     }
@@ -3851,6 +3872,11 @@ class ComponentCalculator {
             unit: 'قطاع',
             overrideMap: selectedSeparateCoverMap,
             preferOverrideMap: true,
+            // This row is a separate stock profile. Make its catalogue role
+            // explicit instead of relying on its translated display name, so
+            // it survives strict BOM filtering and remains selectable.
+            selectorType: 'side_cover',
+            roleKey: 'side_cover',
           ),
         );
       }
@@ -4340,14 +4366,33 @@ class ComponentCalculator {
             zone.slidingTrackCount,
           );
           if (monorailSection != null && additionalTracks > 0) {
-            List<double> extensionBaseCuts = slidingOuterFramePieces;
-            if (isNestedSliding) {
-              for (final entry in frameCutsByRect.entries) {
-                if (entry.key.contains(zone.boundary.center)) {
-                  extensionBaseCuts = entry.value;
-                  break;
-                }
+            // The extension repeats the physical cuts of its own frame. Do
+            // not rely solely on `slidingOuterFramePieces`: in mixed or
+            // nested drawings that shared list can be empty while the frame
+            // cuts are correctly held by the per-rectangle map.
+            List<double> extensionBaseCuts = const <double>[];
+            for (final entry in frameCutsByRect.entries) {
+              if (entry.key.contains(zone.boundary.center)) {
+                extensionBaseCuts = entry.value;
+                break;
               }
+            }
+            if (extensionBaseCuts.isEmpty &&
+                slidingOuterFramePieces.isNotEmpty) {
+              extensionBaseCuts = slidingOuterFramePieces;
+            }
+            if (extensionBaseCuts.isEmpty && framePieces.isNotEmpty) {
+              extensionBaseCuts = framePieces;
+            }
+            if (extensionBaseCuts.isEmpty) {
+              // Last-resort geometry fallback: an enabled two-track base and
+              // a 3+ track drawing always need an extension, even during a
+              // first asynchronous series load before cached frame cuts exist.
+              final width = zone.boundary.width / 1000.0;
+              final height = zone.boundary.height / 1000.0;
+              extensionBaseCuts = window.hasBottomFrameForRect(zone.boundary)
+                  ? <double>[width, width, height, height]
+                  : <double>[width, height, height];
             }
             for (var copy = 0; copy < additionalTracks; copy++) {
               slidingFrameExtensionPieces.addAll(extensionBaseCuts);
@@ -4512,6 +4557,7 @@ class ComponentCalculator {
             unit: 'قطاع',
             overrideMap: baseLateral,
             preferOverrideMap: true,
+            selectorType: 'sash_lateral',
             roleKey: 'sash_lateral',
           ),
         );
@@ -4527,6 +4573,7 @@ class ComponentCalculator {
               'قائم جانبي معزز (Sash Lateral Renforcé)',
             ]),
             preferOverrideMap: true,
+            selectorType: 'sash_lateral_reinforced',
             roleKey: 'sash_lateral_reinforced',
           ),
         );
@@ -4547,6 +4594,7 @@ class ComponentCalculator {
             unit: 'قطاع',
             overrideMap: baseCentral,
             preferOverrideMap: true,
+            selectorType: 'sash_central',
             roleKey: 'sash_central',
           ),
         );
@@ -4562,6 +4610,7 @@ class ComponentCalculator {
               'قائم وسطي معزز (Sash Central Renforcé)',
             ]),
             preferOverrideMap: true,
+            selectorType: 'sash_central_reinforced',
             roleKey: 'sash_central_reinforced',
           ),
         );

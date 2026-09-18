@@ -17212,7 +17212,14 @@ class SqlDatabase {
       if (requireQuantity) 'r.show_in_quantity = 1',
       if (requireDrawing) 'r.show_in_drawing = 1',
       if (usageScope != null) "r.usage_scope IN ('auto', 'both', ?)",
-    ].join('\n        AND ');
+    ];
+    // Functional drawing roles such as Montant Slim and its top/bottom
+    // complement deliberately bypass visibility and dialog flags. In that
+    // case there may be no surface filter at all; never emit an empty
+    // `AND ... AND` SQL fragment, as it makes their selector return nothing.
+    final surfaceClause = surfaceFilters.isEmpty
+        ? ''
+        : 'AND ${surfaceFilters.join('\n        AND ')}';
     return myDb.rawQuery(
       '''
       SELECT s.*,
@@ -17236,7 +17243,7 @@ class SqlDatabase {
       FROM Sections s
       INNER JOIN SeriesDesignRoles r ON r.section_id = s.id
       WHERE r.series_id = ?
-        AND $surfaceFilters
+        $surfaceClause
         AND r.role_key IN ($placeholders)
         AND (s.is_active = 1 OR s.is_active IS NULL)
       ORDER BY r.is_default DESC, r.sort_order ASC, s.name ASC

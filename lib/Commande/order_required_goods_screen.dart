@@ -77,16 +77,33 @@ List<Map<String, dynamic>> normalizeRequiredGoodsInstances({
       .where((item) => (item['qty'] as int) > 0)
       .toList();
   final expected = orderedQuantity > 0 ? orderedQuantity : 1;
-  final represented = normalized.fold<int>(
-    0,
-    (sum, item) => sum + (item['qty'] as int),
-  );
 
   if (normalized.isEmpty) {
     return [
       {'width': defaultWidth, 'height': defaultHeight, 'qty': expected},
     ];
   }
+
+  // Measurements are a breakdown of the order line, never an independent
+  // source of quantity. A stale draft can contain more measured instances
+  // than the order currently requests; consuming all of them makes every
+  // required-good and shortage row too large. Preserve their order and sizes,
+  // but cap the final measured row so the sum is exactly the order quantity.
+  var remaining = expected;
+  final capped = <Map<String, dynamic>>[];
+  for (final instance in normalized) {
+    if (remaining <= 0) break;
+    final quantity = instance['qty'] as int;
+    final accepted = quantity > remaining ? remaining : quantity;
+    if (accepted <= 0) continue;
+    capped.add(<String, dynamic>{...instance, 'qty': accepted});
+    remaining -= accepted;
+  }
+  normalized
+    ..clear()
+    ..addAll(capped);
+  final represented = expected - remaining;
+
   if (represented < expected) {
     final missing = expected - represented;
     // A single qty=1 row is the common old draft. Updating that same row
@@ -1779,7 +1796,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               .where(
                 (bom) =>
                     bom.isActive &&
-                    (bom.purchaseQuantity > 0 ||
+                    // A component can have an exact consumption before its
+                    // purchase quantity is rounded or transformed into cuts.
+                    // Do not silently drop it from the required-goods source
+                    // merely because one of those derived values is zero.
+                    (bom.requiredQuantity > 0 ||
+                        bom.purchaseQuantity > 0 ||
                         (bom.pieces?.any((piece) => piece > 0) ?? false)),
               )
               .toList();

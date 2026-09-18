@@ -3561,6 +3561,70 @@ class WindowModel extends ChangeNotifier {
     );
   }
 
+  /// Keeps the rail metadata entered in the series-role editor on the actual
+  /// selected frame map. [AluminumSection] intentionally contains only the
+  /// physical section fields, so converting it with `toMap()` used to discard
+  /// `track_count` / `track_mode`; every frame then looked like the default
+  /// two-rail base to the calculator.
+  Map<String, dynamic> _slidingFrameMapWithRoleOptions(
+    AluminumSection section,
+    AluminumSeries series,
+  ) {
+    final result = section.toMap();
+    final options = _seriesDesignRoleOptions[series.id]?['frame']?[section.id];
+    if (options == null) return result;
+    const optionKeys = <String>[
+      'track_count',
+      'track_mode',
+      'supported_track_counts',
+      'design_track_count',
+      'design_track_mode',
+      'design_supported_track_counts',
+    ];
+    for (final key in optionKeys) {
+      final value = options[key];
+      if (value == null) continue;
+      final designKey = key.startsWith('design_') ? key : 'design_$key';
+      result[designKey] = value;
+    }
+    return result;
+  }
+
+  int _requestedSlidingTrackCount() {
+    var result = 2;
+    for (final zone in zones) {
+      if (zone.content != ZoneContent.slidingSash) continue;
+      result = math.max(result, zone.slidingTrackCount.clamp(2, 7).toInt());
+    }
+    return result;
+  }
+
+  /// Prefer a complete frame explicitly configured for the requested rails.
+  /// If the series has no such frame, retain the normal base-frame choice so
+  /// the configured Complément dormant can add the missing rails.
+  AluminumSection _preferredSlidingFrameForTrackCount(
+    List<AluminumSection> frames,
+    AluminumSeries series,
+    int trackCount,
+  ) {
+    if (frames.length <= 1) return frames.first;
+    final target = trackCount.clamp(2, 7).toInt();
+    final exactComplete = frames.where((section) {
+      final options =
+          _seriesDesignRoleOptions[series.id]?['frame']?[section.id];
+      final mode = options?['track_mode']?.toString().toLowerCase() ?? '';
+      final rawCount = options?['track_count'];
+      final count = rawCount is num
+          ? rawCount.toInt()
+          : int.tryParse(rawCount?.toString() ?? '');
+      return mode == 'complete' && count == target;
+    }).toList();
+    if (exactComplete.isNotEmpty) {
+      return _preferredFrameForSeries(exactComplete, series);
+    }
+    return _preferredFrameForSeries(frames, series);
+  }
+
   bool _isFrameSection(AluminumSection section) {
     final type = section.type.toLowerCase();
     return section.isFrame ||
@@ -8355,10 +8419,15 @@ class WindowModel extends ChangeNotifier {
                           .toList()
                     : frames);
           if (candidates.isNotEmpty) {
-            slidingFrameOverride = _preferredFrameForSeries(
+            final selected = _preferredSlidingFrameForTrackCount(
               candidates,
               series,
-            ).toMap();
+              _requestedSlidingTrackCount(),
+            );
+            slidingFrameOverride = _slidingFrameMapWithRoleOptions(
+              selected,
+              series,
+            );
           }
         }
       }
@@ -9402,10 +9471,15 @@ class WindowModel extends ChangeNotifier {
                         .toList()
                   : frames);
         if (candidates.isNotEmpty) {
-          slidingFrameOverride = _preferredFrameForSeries(
+          final selected = _preferredSlidingFrameForTrackCount(
             candidates,
             series,
-          ).toMap();
+            _requestedSlidingTrackCount(),
+          );
+          slidingFrameOverride = _slidingFrameMapWithRoleOptions(
+            selected,
+            series,
+          );
         }
       }
     }
@@ -15666,7 +15740,33 @@ class WindowModel extends ChangeNotifier {
         : standalone;
     if (candidates.isEmpty) return;
 
-    final target = Map<String, dynamic>.from(candidates.first);
+    // Switching couvre-joint may require a compatible frame, but it must not
+    // silently collapse a 4/5/6-rail sliding drawing back to the first
+    // (usually two-rail) catalogue frame. Prefer an exact complete frame for
+    // the rails already present; when none exists, keep the candidate base
+    // and let Complément dormant supply the additional rails.
+    final requestedTracks = sliding ? _requestedSlidingTrackCount() : 2;
+    Map<String, dynamic>? completeMatchingTracks;
+    for (final candidate in candidates) {
+      final mode = (candidate['design_track_mode'] ??
+              candidate['track_mode'] ??
+              '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final rawCount =
+          candidate['design_track_count'] ?? candidate['track_count'];
+      final count = rawCount is num
+          ? rawCount.toInt()
+          : int.tryParse(rawCount?.toString() ?? '');
+      if (mode == 'complete' && count == requestedTracks) {
+        completeMatchingTracks = candidate;
+        break;
+      }
+    }
+    final target = Map<String, dynamic>.from(
+      completeMatchingTracks ?? candidates.first,
+    );
     target['manual_selection'] = true;
     // Preserve the requested switch state: applyFrameOverride's manual mode
     // is for clicking a profile, which intentionally disables plain covers.
@@ -16077,6 +16177,35 @@ class WindowModel extends ChangeNotifier {
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
       zone.slidingSashesCount = zone.slidingTrackCount;
     }
+    // A series may provide a ready-made 4/5/6-rail frame in addition to the
+    // composable two-rail base. Select that exact complete frame as soon as
+    // the user chooses its rail count. If it does not exist, keep the base
+    // frame so the C-profile/Complément dormant calculation remains active.
+    final series = effectiveSlidingSeries;
+    if (series != null) {
+      final frames = getConfiguredSectionsForRole(
+        'frame',
+        useSlidingSeries: true,
+      );
+      if (frames.isNotEmpty) {
+        final selected = _preferredSlidingFrameForTrackCount(
+          frames,
+          series,
+          zone.slidingTrackCount,
+        );
+        final selectedMap = _slidingFrameMapWithRoleOptions(selected, series);
+        if (_catalogueId(slidingFrameOverride) != selected.id) {
+          slidingFrameOverride = selectedMap;
+        } else {
+          // Keep role metadata fresh even when the physical section did not
+          // change (old saved drawings lack these design fields).
+          slidingFrameOverride = {
+            ...slidingFrameOverride ?? const <String, dynamic>{},
+            ...selectedMap,
+          };
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -16136,12 +16265,22 @@ class WindowModel extends ChangeNotifier {
     if (series == null) return;
     activeSlidingSeries ??= series;
 
-    final frame = getSlidingBaseFrameSection();
+    final frames = getConfiguredSectionsForRole(
+      'frame',
+      useSlidingSeries: true,
+    );
+    final frame = frames.isNotEmpty
+        ? _preferredSlidingFrameForTrackCount(
+            frames,
+            series,
+            _requestedSlidingTrackCount(),
+          )
+        : getSlidingBaseFrameSection();
     if (frame != null &&
         (slidingFrameOverride == null ||
             getSlidingBaseFrameSection()?.id !=
                 _catalogueId(slidingFrameOverride))) {
-      slidingFrameOverride = frame.toMap();
+      slidingFrameOverride = _slidingFrameMapWithRoleOptions(frame, series);
     }
 
     if (slidingSashOverride == null) {

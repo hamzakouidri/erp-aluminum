@@ -13,6 +13,7 @@ class RoleDb extends fixtures.RuleDatabase {
     required String usageScope,
     bool requireDialog = true,
     bool requireQuantity = false,
+    bool requireVisible = true,
   }) async => [
     for (final role in roleKeys)
       {'id': 100, 'name': role, 'design_role_key': role},

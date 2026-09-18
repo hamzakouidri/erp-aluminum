@@ -40,6 +40,33 @@ void main() {
       expect(parseRequiredGoodsInstances('not-json'), isEmpty);
     });
 
+    test('instances are capped and completed to the ordered quantity', () {
+      final capped = normalizeRequiredGoodsInstances(
+        saved: [
+          {'width': 1000, 'height': 1200, 'qty': 3},
+          {'width': 1100, 'height': 1200, 'qty': 4},
+        ],
+        orderedQuantity: 5,
+        defaultWidth: 900,
+        defaultHeight: 1100,
+      );
+      expect(capped.map((row) => row['qty']), [3, 2]);
+
+      final completed = normalizeRequiredGoodsInstances(
+        saved: [
+          {'width': 1000, 'height': 1200, 'qty': 2},
+        ],
+        orderedQuantity: 5,
+        defaultWidth: 900,
+        defaultHeight: 1100,
+      );
+      expect(completed.map((row) => row['qty']), [2, 3]);
+      expect(
+        completed.fold<int>(0, (sum, row) => sum + (row['qty'] as int)),
+        5,
+      );
+    });
+
     test('catalogue identity drives the four inventory classifications', () {
       BomItem item(String category, String inventoryType) => BomItem(
         category: category,
