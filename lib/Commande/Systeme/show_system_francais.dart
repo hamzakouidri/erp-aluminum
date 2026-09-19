@@ -10547,8 +10547,12 @@ class _WindowViewState extends State<WindowView> {
     );
     final isSlidingOnlyDrawing = hasSlidingDrawing && !hasOpeningDrawing;
     final isMixedDrawing = hasSlidingDrawing && hasOpeningDrawing;
-    final selectorShowsSliding =
-        isSlidingOnlyDrawing || widget.systemMode == 'sliding';
+    // Once the canvas contains both constructions, the first selector must
+    // always be the opening-series selector and the second the sliding one.
+    // The route's historical `systemMode` may still say sliding after adding
+    // an opening frame; using it here swapped the two selectors into generic
+    // "opening/sliding series" labels rather than their real series names.
+    final selectorShowsSliding = isSlidingOnlyDrawing;
 
     // The first selector is the real frame-owning series. A second selector
     // exists only when the canvas truly contains both opening and sliding
@@ -10692,6 +10696,7 @@ class _WindowViewState extends State<WindowView> {
       titleSpacing: 8,
       title: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
+        physics: const AlwaysScrollableScrollPhysics(),
         child: Row(
           children: [
             if (isShutterContext && shutterColorItems.isNotEmpty) ...[
@@ -10809,7 +10814,7 @@ class _WindowViewState extends State<WindowView> {
                   dropdownColor: isDark
                       ? const Color(0xFF1E1E2C)
                       : Colors.white,
-                hint: Text(
+                  hint: Text(
                     Localization.translate('اختر السلسلة', lang),
                     style: TextStyle(
                       color: isDark ? Colors.blue.shade300 : Colors.blue,
@@ -10974,78 +10979,88 @@ class _WindowViewState extends State<WindowView> {
         ),
       ),
       actions: [
-        Padding(
-          padding: const EdgeInsetsDirectional.only(end: 14, start: 6),
-          child: Center(
-            child: Tooltip(
-              message: Localization.translate('فتح جدول الكمية والتكلفة', lang),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isDark
-                        ? const [Color(0xFF047857), Color(0xFF065F46)]
-                        : const [Color(0xFF10B981), Color(0xFF047857)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.3),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF065F46).withValues(alpha: 0.28),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
+        // The mobile bottom panel already owns the quantity/cost action.
+        // Keeping this large AppBar action on a narrow screen squeezed the
+        // drawing controls and produced horizontal overflow.
+        if (_isWindowsDesktop)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 14, start: 6),
+            child: Center(
+              child: Tooltip(
+                message: Localization.translate(
+                  'فتح جدول الكمية والتكلفة',
+                  lang,
                 ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDark
+                          ? const [Color(0xFF047857), Color(0xFF065F46)]
+                          : const [Color(0xFF10B981), Color(0xFF047857)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () => _openMaterialConsumptionScreen(context),
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                        11,
-                        7,
-                        13,
-                        7,
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: isDark ? 0.16 : 0.3,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 25,
-                            height: 25,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(7),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF065F46).withValues(alpha: 0.28),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _openMaterialConsumptionScreen(context),
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          11,
+                          7,
+                          13,
+                          7,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 25,
+                              height: 25,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: const Icon(
+                                Icons.receipt_long_rounded,
+                                size: 16,
+                                color: Colors.white,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.receipt_long_rounded,
-                              size: 16,
-                              color: Colors.white,
+                            const SizedBox(width: 8),
+                            Text(
+                              Localization.translate('الكمية والتكلفة', lang),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                height: 1.05,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.1,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            Localization.translate('الكمية والتكلفة', lang),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.05,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.1,
-                              color: Colors.white,
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 11,
+                              color: Colors.white70,
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 11,
-                            color: Colors.white70,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -11053,7 +11068,6 @@ class _WindowViewState extends State<WindowView> {
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -12953,18 +12967,27 @@ class _WindowViewState extends State<WindowView> {
                 // Tier 1: Horizontal Scrollable Tabs (شائع | إطار | ورقة | عامود | زجاج / حشوات)
                 _buildTier1TabBar(isMullionSelected),
                 const Divider(height: 1, thickness: 0.5),
-                // Tier 2: two visible action rows; no horizontal scrollbar.
+                // Keep the two-row layout, but it must remain horizontally
+                // draggable on phones when the available actions exceed the
+                // narrow viewport instead of overflowing and freezing.
                 Container(
                   height: 110,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  child: Align(
-                    alignment: AlignmentDirectional.topStart,
-                    child: Row(
-                      children: _arrangeInTwoRows(
-                        _buildTier2Options(context, isMullionSelected),
+                  child: _HorizontalWheelScrollArea(
+                    builder: (context, controller) => SingleChildScrollView(
+                      controller: controller,
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Align(
+                        alignment: AlignmentDirectional.topStart,
+                        child: Row(
+                          children: _arrangeInTwoRows(
+                            _buildTier2Options(context, isMullionSelected),
+                          ),
+                        ),
                       ),
                     ),
                   ),

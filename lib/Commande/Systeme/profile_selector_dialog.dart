@@ -1003,13 +1003,11 @@ class CatalogCandidateResolver {
     final rules = await _db.getCatalogItemRules(
       itemTable: table,
       seriesId: query.seriesId,
-      // Fetch the exact and global rows together. `_ruleVisibleOnSurface`
-      // below is the single authority that decides whether a global role can
-      // be reused (via `catalogRuleAllowsGlobalFallback`). Querying exact
-      // rows only here made that decision unreachable: Bouchon Batmo and
-      // other shared roles vanished from every series except the one that
-      // first received a manually saved rule.
-      exactSeriesOnly: false,
+      // Quantity/drawing rules are scoped to the active series. A global
+      // catalogue entry is not an authorization to inject that product into
+      // every family: BS90 must have its own enabled role row, as must every
+      // future series configured by the administrator.
+      exactSeriesOnly: query.seriesId != null,
     );
     // Older catalogues commonly saved an assembly/installation screw rule
     // for the first series only, while the accessory itself was explicitly

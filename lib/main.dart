@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -247,6 +248,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// Desktop dialogs already expose focusable Material buttons, but a root
+  /// keyboard listener can otherwise leave Enter unhandled after Tab/arrow
+  /// navigation. Invoke the focused dialog button directly so Yes/No always
+  /// performs the action currently highlighted by the keyboard.
+  bool _activateFocusedDialogButton(KeyDownEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.enter &&
+        event.logicalKey != LogicalKeyboardKey.numpadEnter) {
+      return false;
+    }
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null) return false;
+    final inDialog =
+        focusedContext.findAncestorWidgetOfExactType<AlertDialog>() != null ||
+        focusedContext.findAncestorWidgetOfExactType<SimpleDialog>() != null;
+    if (!inDialog ||
+        focusedContext.findAncestorWidgetOfExactType<ButtonStyleButton>() ==
+            null) {
+      return false;
+    }
+    return Actions.maybeInvoke(focusedContext, const ActivateIntent()) != null;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -306,6 +329,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return Focus(
           canRequestFocus: false,
           onKeyEvent: (_, event) {
+            if (event is KeyDownEvent && _activateFocusedDialogButton(event)) {
+              return KeyEventResult.handled;
+            }
             final handled = DesktopScrollCoordinator.handleKeyEvent(event);
             return handled ? KeyEventResult.handled : KeyEventResult.ignored;
           },
@@ -313,6 +339,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             behavior: HitTestBehavior.translucent,
             onPointerHover: DesktopScrollCoordinator.rememberPointerPosition,
             onPointerMove: DesktopScrollCoordinator.rememberPointerPosition,
+            // Every page, dialog and nested list now participates in the
+            // desktop fallback. Flutter still handles the nearest scrollable
+            // first; this only continues to a parent when that child reached
+            // its beginning/end.
+            onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
             child: MediaQuery(
               data: MediaQuery.of(
                 context,

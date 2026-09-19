@@ -478,11 +478,19 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
       );
     }
 
-    // Keep vertical scrolling on Flutter's native route. Wrapping every
-    // vertical ScrollView in an always-interactive Scrollbar caused stale
-    // controller registrations after page/tab rebuilds; subsequent wheel
-    // signals could then be resolved against the detached viewport and all
-    // vertical scrolling appeared to stop until the page was reopened.
+    // Register vertical views too. The coordinator uses these registrations
+    // only as a fallback when the innermost widget is already at an edge, so
+    // the wheel can continue into the page instead of appearing to stop after
+    // the first scrollable region. `_RegisteredDesktopScrollable` unregisters
+    // on disposal, including during workspace tab rebuilds.
+    if (isWindowsDesktop && controller != null && axis == Axis.vertical) {
+      return _RegisteredDesktopScrollable(
+        controller: controller,
+        axis: axis,
+        child: super.buildScrollbar(context, child, details),
+      );
+    }
+
     return super.buildScrollbar(context, child, details);
   }
 }

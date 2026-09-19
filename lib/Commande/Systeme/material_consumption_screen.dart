@@ -74,6 +74,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   int _bomRefreshGeneration = 0;
   bool _isRefreshingVisibleBom = false;
   Timer? _modelRefreshDebounce;
+  final List<Timer> _initialPriceRetryTimers = <Timer>[];
+  String _lastPriceContextSignature = '';
   final Map<String, double> _accessoryPriceCache = {};
   Map<String, double> _mainWarehouseStock = const {};
   Map<int, Map<String, dynamic>> _profileCalculationRules = {};
@@ -2163,7 +2165,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // Catalogue restoration runs asynchronously when an order is reopened.
     // Remember its current series so a fetch that started before restoration
     // can transparently repeat once the real drawing series is available.
-    final seriesIdAtFetchStart = widget.model.activeFrameSeries?.id ??
+    final seriesIdAtFetchStart =
+        widget.model.activeFrameSeries?.id ??
         widget.model.effectiveSlidingSeries?.id ??
         widget.model.activeSeries?.id;
     if (mounted) {
@@ -2230,7 +2233,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         await engine.stabilizeSelections(window: widget.model, items: bomItems);
         final pricedStrictItems = await _generateStrictVisibleBomItems(engine);
         final pricedResolvedItems = _resolvedFallbackBomItems(bomItems);
-        visibleBomItems = pricedStrictItems.isEmpty && pricedResolvedItems.isNotEmpty
+        visibleBomItems =
+            pricedStrictItems.isEmpty && pricedResolvedItems.isNotEmpty
             ? pricedResolvedItems
             : pricedStrictItems;
         if (mounted) setState(() => _visibleBomItems = visibleBomItems);
@@ -2251,7 +2255,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           _hasFetchedDefaults = true;
         });
       }
-      final seriesIdAfterFetch = widget.model.activeFrameSeries?.id ??
+      final seriesIdAfterFetch =
+          widget.model.activeFrameSeries?.id ??
           widget.model.effectiveSlidingSeries?.id ??
           widget.model.activeSeries?.id;
       if (seriesIdAfterFetch != null &&
@@ -2261,6 +2266,43 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // asking the user to press the blue refresh icon.
         unawaited(_fetchDefaults());
       }
+      // The SQLite connection and the restored drawing do not always become
+      // ready in the same frame.  A delayed price-only retry prevents the
+      // first visit to this page from being stuck at 0; it never changes the
+      // BOM or a price entered manually by the user.
+      if (_pricePerLinearMeterFromDb == 0 ||
+          (widget.model.hasShutter && _shutterSqmPriceFromDb == 0)) {
+        _scheduleInitialPriceRetries();
+      }
+    }
+  }
+
+  String _priceContextSignature() {
+    final model = widget.model;
+    final color = model.selectedDbColor?['id']?.toString() ?? '';
+    final series =
+        model.activeFrameSeries?.id ??
+        model.effectiveSlidingSeries?.id ??
+        model.activeSeries?.id;
+    final bladeOverride = model.componentOverrides['الشرائح (Lames)'];
+    final bladeName = bladeOverride?['name']?.toString() ?? model.shutterLame;
+    final bladeSubtype = bladeOverride?['shutter_subtype']?.toString() ?? '';
+    return '$series|$color|${model.hasShutter}|$bladeName|$bladeSubtype';
+  }
+
+  void _scheduleInitialPriceRetries() {
+    if (_initialPriceRetryTimers.isNotEmpty) return;
+    for (final delay in const [
+      Duration(milliseconds: 350),
+      Duration(seconds: 1),
+      Duration(seconds: 3),
+    ]) {
+      _initialPriceRetryTimers.add(
+        Timer(delay, () {
+          if (!mounted) return;
+          unawaited(_loadPricesFromDb());
+        }),
+      );
     }
   }
 
@@ -2393,6 +2435,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         if (mounted) return _fetchDefaults();
       }),
     );
+    _scheduleInitialPriceRetries();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
     widget.model.addListener(_onModelChanged);
   }
@@ -2404,6 +2447,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   void _onModelChanged() {
+    final priceContext = _priceContextSignature();
+    if (priceContext != _lastPriceContextSignature) {
+      _lastPriceContextSignature = priceContext;
+      // Model restoration may assign the actual BS90/shutter data after this
+      // screen has already started its first query. Reload just the dynamic
+      // prices for that new context immediately.
+      unawaited(_loadPricesFromDb());
+    }
     final rawColorId = widget.model.selectedDbColor?['id'];
     final colorId = rawColorId is num
         ? rawColorId.toInt()
@@ -2435,6 +2486,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   void dispose() {
     widget.model.removeListener(_onModelChanged);
     _modelRefreshDebounce?.cancel();
+    for (final timer in _initialPriceRetryTimers) {
+      timer.cancel();
+    }
+    _initialPriceRetryTimers.clear();
     _tableColumnSaveDebounce?.cancel();
     if (_tableColumnWidths.isNotEmpty) {
       _persistTableColumnLayout();
@@ -2509,7 +2564,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final colorId = rawColorId is num
         ? rawColorId.toInt()
         : int.tryParse('${rawColorId ?? ''}');
-    final seriesId = widget.model.activeFrameSeries?.id ??
+    final seriesId =
+        widget.model.activeFrameSeries?.id ??
         widget.model.effectiveSlidingSeries?.id ??
         widget.model.activeSeries?.id;
     // 1. سعر المتر الخطي: أولًا من جدول أسعار السلسلة حسب اللون، وإلا من السعر العام في جدول Series

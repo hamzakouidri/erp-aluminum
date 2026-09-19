@@ -2261,7 +2261,15 @@ class ComponentCalculator {
               : (window.isPVC ? 'pvc' : 'aluminium'),
         );
       }
-      return createAccessory(fallbackName, isActive: isActive, qty: qty);
+      // The fallback still belongs to the same physical system as its parent.
+      // Losing this flag made Gâche coulissant resolve against the opening
+      // series in mixed drawings and disappear even with an enabled BS90 rule.
+      return createAccessory(
+        fallbackName,
+        isActive: isActive,
+        qty: qty,
+        sliding: sliding,
+      );
     }
 
     BomItem createInteractiveAccessory(
@@ -5394,24 +5402,28 @@ class ComponentCalculator {
       // The thresholds intentionally mirror the workshop rule: 2/3/4 screws
       // per vertical side (up to 1 m / 2 m / above 2 m), and 0/1/2 across a
       // horizontal side (up to 1 m / below 2 m / from 2 m).
-      int verticalScrewsPerSide(double heightMm) {
+      int installationVerticalScrewsPerSide(double heightMm) {
         if (heightMm <= 1000) return 2;
         if (heightMm <= 2000) return 3;
         return 4;
       }
 
-      int horizontalScrews(double widthMm) {
+      int installationHorizontalScrews(double widthMm) {
         if (widthMm <= 1000) return 0;
         if (widthMm < 2000) return 1;
         return 2;
       }
 
-      final verticalScrews = verticalScrewsPerSide(window.height.toDouble());
-      final horizontalScrews = horizontalScrews(window.width.toDouble());
+      final verticalScrewCountPerSide = installationVerticalScrewsPerSide(
+        window.height.toDouble(),
+      );
+      final horizontalScrewCount = installationHorizontalScrews(
+        window.width.toDouble(),
+      );
       final installationScrewQty =
-          (verticalScrews * 2) +
-          horizontalScrews +
-          (hasShutter ? 0 : horizontalScrews);
+          (verticalScrewCountPerSide * 2) +
+          horizontalScrewCount +
+          (hasShutter ? 0 : horizontalScrewCount);
       if (installationScrewQty > 0) {
         items.add(
           createAccessory(
@@ -6809,7 +6821,10 @@ class ComponentCalculator {
       // Assembly screws are exclusive to physical Montant Slim columns:
       // two screws per generated column. Divisions and plinths are not
       // assembly-screw targets, even though they also have two ends.
-      final int assemblyScrewQty = slidingSashCentralSlimPieces.length * 2;
+      final slimColumnCount = items
+          .where((item) => item.roleKey == 'montant_central_slim')
+          .fold<int>(0, (sum, item) => sum + (item.pieces?.length ?? 0));
+      final int assemblyScrewQty = slimColumnCount * 2;
       if (assemblyScrewQty > 0) {
         items.add(createAccessory('براغي التجميع', qty: assemblyScrewQty));
       }
@@ -7354,6 +7369,9 @@ class ComponentCalculator {
             final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
             final double sides = cellGlass.jointTwoSides ? 2.0 : 1.0;
             final double qty = perimeter * sides * totalPieces;
+            // A sliding system uses Bourrage only. The catalogue rule for
+            // `joint_bourrage` decides whether this physical demand appears;
+            // do not introduce opening-only gasket roles here.
             const jointName = 'جوان البوراج (Joint Bourrage)';
             slidingGlassJoints[jointName] =
                 (slidingGlassJoints[jointName] ?? 0.0) + qty;
@@ -7440,20 +7458,15 @@ class ComponentCalculator {
               if (reducteurThick > 0) {
                 addReducteurPieces(pieceMultiplier);
               }
-              final double maxGlass =
-                  window.glazingCapacityForStructure(
-                    cellGlass.structure,
-                    sliding: true,
-                  ) ??
-                  0.0;
               // The sash itself defines the pocket when this series has no
               // parclose. Never invent a 24 mm parclose capacity here.
               // 🟢 الفراغ الصافي للزجاج: إذا استعملنا reducteur يصبح مجرى الزجاج 15 مم
-              final double pocketWidth = (reducteurThick > 0)
-                  ? 15.0
-                  : (maxGlass - reducteurThick);
-              double remaining = pocketWidth - cellThick;
-              if (remaining > 0) addSlidingBourrageJoint();
+              // Even when legacy BS90 data has no usable capacity value, the
+              // physical glazing gasket still exists. Emit the demand and let
+              // the enabled catalogue role choose its default thickness; when
+              // capacity is available, addSlidingBourrageJoint records the
+              // exact remaining thickness for the resolver.
+              addSlidingBourrageJoint();
             }
           } else {
             // Opening glazing with parclose is counted below in the
@@ -7970,18 +7983,23 @@ class ComponentCalculator {
     // Sliding glass gaskets are discovered while glass cells are calculated,
     // so they must be appended after the glass loop.  The earlier accessory
     // section runs before this data exists.
-    final pendingSlidingVitrageJoints = slidingGlassJoints.entries
+    final pendingSlidingBourrageJoints = slidingGlassJoints.entries
         .where((entry) => _selectorTypeForJoint(entry.key) == 'joint bourrage')
         .toList();
     final modelQuantity = window.quantity <= 0 ? 1 : window.quantity;
-    for (final entry in pendingSlidingVitrageJoints) {
+    for (final entry in pendingSlidingBourrageJoints) {
       if (entry.value > 0) {
         items.add(
           createJoint(
             entry.key,
             qty: entry.value / modelQuantity,
             unit: 'متر',
-            targetThicknessMm: slidingBourrageTargetThickness,
+            // Bourrage fills the remaining groove after the actual glass
+            // pack. If legacy data has no capacity, the enabled role's
+            // default remains a valid fallback.
+            targetThicknessMm: slidingBourrageTargetThickness > 0
+                ? slidingBourrageTargetThickness
+                : null,
           ),
         );
       }

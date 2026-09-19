@@ -108,6 +108,24 @@ class BomEngineV2 {
         if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
           return item;
         }
+        // Every generated accessory is rule-driven. A saved product or a
+        // legacy name must not publish an accessory in a series where no
+        // active quantity rule authorizes its role.
+        if (const {
+              'accessory',
+              'other',
+            }.contains(item.selectorCategory ?? item.category) &&
+            !await _itemHasRuleCandidate(window, item)) {
+          return null;
+        }
+        // Gaskets are never inferred from a label or from a stale manual
+        // selection. The active catalogue role is the sole authority: for a
+        // sliding system this means an enabled `joint_bourrage` can publish
+        // Bourrage, while opening-only joints cannot leak into its BOM.
+        if ((item.selectorCategory ?? item.category) == 'joint' &&
+            !await _itemHasRuleCandidate(window, item)) {
+          return null;
+        }
         // A real catalogue product already selected for this BOM is not a
         // placeholder.  It may be selected through a section/default rule
         // whose child role is intentionally not offered in the replacement
@@ -815,6 +833,17 @@ class BomEngineV2 {
           ),
         );
       }
+      // A Kit is a series assembly, never a global fallback. In particular a
+      // kit configured for 67000/40000 must not appear in BS90 unless BS90
+      // itself has an active rule for that catalogue item and role.
+      candidates = candidates
+          .where((candidate) {
+            final rawRule = candidate['catalog_rule'];
+            if (rawRule is! Map) return false;
+            final rule = Map<String, dynamic>.from(rawRule);
+            return _catalogInt(rule['series_id']) == context.id;
+          })
+          .toList(growable: false);
       for (final candidate in candidates) {
         final rule = Map<String, dynamic>.from(
           candidate['catalog_rule'] as Map,

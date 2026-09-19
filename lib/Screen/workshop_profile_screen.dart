@@ -54,6 +54,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     }
     return value;
   }
+
   final _aiController = TextEditingController();
   final _ribController = TextEditingController();
 
@@ -142,12 +143,13 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 50,
-    );
-    if (pickedFile != null) {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 50,
+      );
+      if (pickedFile == null) return;
       final bytes = await pickedFile.readAsBytes();
       // Only allow images < 500KB to fit well within Firestore 1MB doc limit
       if (bytes.lengthInBytes > 500 * 1024) {
@@ -163,9 +165,16 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         return;
       }
       final base64String = base64Encode(bytes);
-      setState(() {
-        _logoBase64 = base64String;
-      });
+      if (mounted) {
+        setState(() => _logoBase64 = base64String);
+      }
+    } catch (error) {
+      debugPrint('Workshop logo selection failed: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_t('تعذر اختيار الصورة:')} $error')),
+        );
+      }
     }
   }
 
@@ -537,9 +546,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save),
-              label: Text(
-                _isSaving ? _t('حفظ') : _t('حفظ التعديلات الرئيسية'),
-              ),
+              label: Text(_isSaving ? _t('حفظ') : _t('حفظ التعديلات الرئيسية')),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 45),
               ),
@@ -570,7 +577,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
                 itemCount: _workers.length,
                 itemBuilder: (context, index) {
                   final wData = _workers[index];
-                  final wName = wData['name'] ?? 'بدون اسم';
+                  final wName = (wData['name'] ?? 'بدون اسم').toString();
                   final wJobTitle = _localizedJobRole(
                     (wData['job_role'] ?? 'عامل (غير مصنف)').toString(),
                   );
