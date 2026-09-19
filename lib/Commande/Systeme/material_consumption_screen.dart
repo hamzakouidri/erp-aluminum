@@ -2160,6 +2160,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
   Future<void> _fetchDefaults() async {
     if (_isFetchingDefaults) return;
+    // Catalogue restoration runs asynchronously when an order is reopened.
+    // Remember its current series so a fetch that started before restoration
+    // can transparently repeat once the real drawing series is available.
+    final seriesIdAtFetchStart = widget.model.activeFrameSeries?.id ??
+        widget.model.effectiveSlidingSeries?.id ??
+        widget.model.activeSeries?.id;
     if (mounted) {
       setState(() {
         _isFetchingDefaults = true;
@@ -2214,7 +2220,21 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (mounted) {
         setState(() => _visibleBomItems = visibleBomItems);
       }
-      if (dbInstance != null) await _loadPricesFromDb();
+      if (dbInstance != null) {
+        await _loadPricesFromDb();
+        // The first BOM was intentionally published before secondary price
+        // queries completed. Rebuild it once those values arrive so shutter
+        // and linear-metre selling prices appear immediately, without the
+        // user pressing the circular refresh button.
+        bomItems = _generateRawBomItems();
+        await engine.stabilizeSelections(window: widget.model, items: bomItems);
+        final pricedStrictItems = await _generateStrictVisibleBomItems(engine);
+        final pricedResolvedItems = _resolvedFallbackBomItems(bomItems);
+        visibleBomItems = pricedStrictItems.isEmpty && pricedResolvedItems.isNotEmpty
+            ? pricedResolvedItems
+            : pricedStrictItems;
+        if (mounted) setState(() => _visibleBomItems = visibleBomItems);
+      }
       _setFetchProgress(0.96);
     } catch (error, stackTrace) {
       visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
@@ -2230,6 +2250,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           _isFetchingDefaults = false;
           _hasFetchedDefaults = true;
         });
+      }
+      final seriesIdAfterFetch = widget.model.activeFrameSeries?.id ??
+          widget.model.effectiveSlidingSeries?.id ??
+          widget.model.activeSeries?.id;
+      if (seriesIdAfterFetch != null &&
+          seriesIdAfterFetch != seriesIdAtFetchStart) {
+        // The initial query legitimately had no/another series while the
+        // drawing was reconnecting to its catalogue. Run once more without
+        // asking the user to press the blue refresh icon.
+        unawaited(_fetchDefaults());
       }
     }
   }
@@ -2479,11 +2509,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final colorId = rawColorId is num
         ? rawColorId.toInt()
         : int.tryParse('${rawColorId ?? ''}');
-    final seriesId =
-        widget.model.activeFrameSeries?.id ??
-        (widget.model.systemMode == 'sliding'
-            ? widget.model.activeSlidingSeries?.id
-            : widget.model.activeSeries?.id);
+    final seriesId = widget.model.activeFrameSeries?.id ??
+        widget.model.effectiveSlidingSeries?.id ??
+        widget.model.activeSeries?.id;
     // 1. سعر المتر الخطي: أولًا من جدول أسعار السلسلة حسب اللون، وإلا من السعر العام في جدول Series
     if (seriesId != null) {
       if (colorId != null) {
@@ -3669,7 +3697,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 ),
                 decoration: InputDecoration(
                   labelText: Localization.translate(
-                    'سعر المتر الخطي (دج) — تعديل يدوي',
+                    _pricePerLinearMeterOverride == null
+                        ? 'سعر المتر الخطي (دج) — من السلسلة'
+                        : 'سعر المتر الخطي (دج) — تعديل يدوي',
                     lang,
                   ),
                   border: const OutlineInputBorder(),
@@ -3717,7 +3747,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 ),
                 decoration: InputDecoration(
                   labelText: Localization.translate(
-                    'سعر المتر المربع للستار (دج) — تعديل يدوي',
+                    _shutterSqmPriceOverride == null
+                        ? 'سعر المتر المربع للستار (دج) — من الكتالوج'
+                        : 'سعر المتر المربع للستار (دج) — تعديل يدوي',
                     lang,
                   ),
                   border: const OutlineInputBorder(),

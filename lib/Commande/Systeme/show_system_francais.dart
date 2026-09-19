@@ -10533,17 +10533,33 @@ class _WindowViewState extends State<WindowView> {
             (color) => color['id']?.toString() == selectedShutterColorId,
           )
         : null;
-    // The first selector is always the opening series in a mixed drawing.
-    // The second selector is independently limited to sliding series below.
-    final primarySeries = widget.systemMode == 'sliding'
+    // The selectors describe the drawing itself, not the route that happened
+    // to open it. An edited sliding-only drawing can arrive through the
+    // mixed editor route, so using `widget.systemMode` here showed the false
+    // hints "سلسلة الفتح / Gamme coulissant" instead of its saved BS90.
+    final hasSlidingDrawing = widget.model.zones.any(
+      (zone) => zone.content == ZoneContent.slidingSash,
+    );
+    final hasOpeningDrawing = widget.model.zones.any(
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash,
+    );
+    final isSlidingOnlyDrawing = hasSlidingDrawing && !hasOpeningDrawing;
+    final isMixedDrawing = hasSlidingDrawing && hasOpeningDrawing;
+    final selectorShowsSliding =
+        isSlidingOnlyDrawing || widget.systemMode == 'sliding';
+
+    // The first selector is the real frame-owning series. A second selector
+    // exists only when the canvas truly contains both opening and sliding
+    // constructions.
+    final primarySeries = selectorShowsSliding
         ? widget.model.activeSlidingSeries
         : widget.model.activeSeries;
     final primarySystem = profileSystemForSeries(
       widget.model.availableSystems,
       primarySeries,
     );
-    final selectorShowsSliding = widget.systemMode == 'sliding';
-
     final primaryItemsList = () {
       final List<AluminumSeries> list = [];
       for (var system in widget.model.availableSystems) {
@@ -10612,7 +10628,6 @@ class _WindowViewState extends State<WindowView> {
         widget.model.activeSlidingSeries,
       );
       if (widget.model.activeSlidingSeries != null &&
-          primarySystem != null &&
           activeSlidingSystem != null &&
           _seriesMatchesScope(
             widget.model.activeSlidingSeries!,
@@ -10656,7 +10671,7 @@ class _WindowViewState extends State<WindowView> {
     final autoSlidingValue =
         selectedSlidingValue ??
         (!hasPendingSavedSlidingSeries &&
-                widget.systemMode == 'mixed' &&
+                isMixedDrawing &&
                 slidingItemsList.isNotEmpty
             ? slidingItemsList.first
             : null);
@@ -10794,12 +10809,8 @@ class _WindowViewState extends State<WindowView> {
                   dropdownColor: isDark
                       ? const Color(0xFF1E1E2C)
                       : Colors.white,
-                  hint: Text(
-                    widget.systemMode == 'mixed'
-                        ? 'سلسلة الفتح'
-                        : widget.systemMode == 'sliding'
-                        ? Localization.translate('سلسلة المنزلق', lang)
-                        : 'اختر السلسلة',
+                hint: Text(
+                    Localization.translate('اختر السلسلة', lang),
                     style: TextStyle(
                       color: isDark ? Colors.blue.shade300 : Colors.blue,
                       fontSize: 12,
@@ -10827,7 +10838,7 @@ class _WindowViewState extends State<WindowView> {
                   }).toList(),
                   onChanged: (AluminumSeries? newSeries) {
                     if (newSeries != null) {
-                      if (widget.systemMode == 'sliding') {
+                      if (selectorShowsSliding) {
                         unawaited(
                           widget.model.setActiveSlidingSeries(newSeries),
                         );
@@ -10842,8 +10853,7 @@ class _WindowViewState extends State<WindowView> {
               // drawing is restoring its catalogue. Previously it vanished
               // until a value was resolved, which made BS90 look unavailable
               // on edit and encouraged the default series to be selected.
-              if (widget.systemMode == 'mixed' &&
-                  slidingItemsList.isNotEmpty) ...[
+              if (isMixedDrawing && slidingItemsList.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Container(
                   constraints: const BoxConstraints(maxWidth: 160),
@@ -10866,7 +10876,7 @@ class _WindowViewState extends State<WindowView> {
                     isExpanded: true,
                     value: safeSlidingValue,
                     hint: Text(
-                      Localization.translate('سلسلة المنزلق', lang),
+                      Localization.translate('اختر السلسلة', lang),
                       style: TextStyle(
                         color: isDark ? Colors.green.shade300 : Colors.green,
                         fontSize: 12,
@@ -12806,16 +12816,47 @@ class _WindowViewState extends State<WindowView> {
   }
 
   List<Widget> _arrangeInTwoRows(List<Widget> rawItems) {
-    // On narrow screens alternating between two rows makes a button jump to a
-    // different position every time an optional drawing setting appears or
-    // disappears. Keep the catalogue order stable; tabs already separate the
-    // settings groups and the horizontal scroller exposes the rest.
+    // Keep the action palette compact. A long single line hides options behind
+    // a horizontal scrollbar, whereas two deterministic rows keep both the
+    // opening and sliding controls immediately visible.
     final items = rawItems.where((w) => w is! SizedBox).toList();
     if (items.isEmpty) return [];
-    final stableItems = items
-        .map((item) => item is _Tier2RowItem ? item.child : item)
-        .toList(growable: false);
-    return [Row(mainAxisSize: MainAxisSize.min, children: stableItems)];
+    if (items.length <= 5) {
+      return [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: items
+              .map((item) => item is _Tier2RowItem ? item.child : item)
+              .toList(growable: false),
+        ),
+      ];
+    }
+
+    final firstRow = <Widget>[];
+    final secondRow = <Widget>[];
+    final firstRowCapacity = (items.length + 1) ~/ 2;
+    for (final item in items) {
+      if (item is _Tier2RowItem) {
+        // Explicit groups (opening / sliding frame choices) retain their
+        // own stable row even when optional controls appear or disappear.
+        (item.rowIndex == 0 ? firstRow : secondRow).add(item.child);
+      } else if (firstRow.length < firstRowCapacity) {
+        firstRow.add(item);
+      } else {
+        secondRow.add(item);
+      }
+    }
+    return [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(mainAxisSize: MainAxisSize.min, children: firstRow),
+          const SizedBox(height: 8),
+          Row(mainAxisSize: MainAxisSize.min, children: secondRow),
+        ],
+      ),
+    ];
   }
 
   Widget _buildInteractiveBottomPanel(BuildContext context) {
@@ -12912,21 +12953,18 @@ class _WindowViewState extends State<WindowView> {
                 // Tier 1: Horizontal Scrollable Tabs (شائع | إطار | ورقة | عامود | زجاج / حشوات)
                 _buildTier1TabBar(isMullionSelected),
                 const Divider(height: 1, thickness: 0.5),
-                // Tier 2: Horizontal Scrollable Action Options (Two rows grid)
+                // Tier 2: two visible action rows; no horizontal scrollbar.
                 Container(
                   height: 110,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  child: _HorizontalWheelScrollArea(
-                    builder: (context, controller) => SingleChildScrollView(
-                      controller: controller,
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _arrangeInTwoRows(
-                          _buildTier2Options(context, isMullionSelected),
-                        ),
+                  child: Align(
+                    alignment: AlignmentDirectional.topStart,
+                    child: Row(
+                      children: _arrangeInTwoRows(
+                        _buildTier2Options(context, isMullionSelected),
                       ),
                     ),
                   ),

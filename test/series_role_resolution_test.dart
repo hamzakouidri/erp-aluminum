@@ -149,6 +149,31 @@ void main() {
     expect(
       catalogRuleMatchesExactScope({
         'series_id': null,
+        'role_key': 'sliding_kit',
+      }, 90),
+      isTrue,
+    );
+    expect(
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'roulette',
+      }, 90),
+      isTrue,
+    );
+    expect(
+      catalogRuleMatchesExactScope({'series_id': null, 'role_key': 'clam'}, 90),
+      isTrue,
+    );
+    expect(
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'frame_clamp',
+      }, 90),
+      isTrue,
+    );
+    expect(
+      catalogRuleMatchesExactScope({
+        'series_id': null,
         'role_key': 'unrelated_role',
       }, 67000),
       isFalse,

@@ -590,12 +590,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
       // Supabase owns the active account and workshop profile. Constructing a
       // Firestore stream here used to initialize Firebase again on every app
       // open, even though workshop synchronization had already moved away.
-      if (AppAuthService().usesSupabase) return;
-      _userSub = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots()
-          .listen((doc) {
+      if (!AppAuthService().usesSupabase) {
+        _userSub = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots()
+            .listen((doc) {
             if (doc.exists && mounted) {
               final data = doc.data() as Map<String, dynamic>;
               SharedPreferences.getInstance().then((prefs) {
@@ -650,7 +650,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 }
               });
             }
-          });
+            });
+      }
     }
 
     // SubscriptionChecker owns the global Firestore listeners. This page

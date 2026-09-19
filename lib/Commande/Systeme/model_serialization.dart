@@ -490,6 +490,10 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
 // Extension for WindowModel
 extension WindowModelSerialization on WindowModel {
   Map<String, dynamic> toMap() {
+    // The identity stored as the primary series follows the frame actually
+    // drawn. This covers pure sliding, pure opening and a mixed drawing with
+    // only sliding leaves; `activeSeries` alone can be an old UI default.
+    final savedPrimarySeries = activeFrameSeries ?? activeSeries;
     return {
       'width': width,
       'height': height,
@@ -601,14 +605,14 @@ extension WindowModelSerialization on WindowModel {
       'slidingFrameOverride': slidingFrameOverride,
       'slidingSashOverride': slidingSashOverride,
       // إذا كانت activeSeries محملة نستخدمها، وإلا نحتفظ بالقيم المحفوظة مسبقاً
-      'seriesName': activeSeries?.name ?? loadedSeriesName,
-      'seriesId': activeSeries?.id ?? loadedSeriesId,
+      'seriesName': savedPrimarySeries?.name ?? loadedSeriesName,
+      'seriesId': savedPrimarySeries?.id ?? loadedSeriesId,
       'slidingSeriesName': activeSlidingSeries?.name ?? loadedSlidingSeriesName,
       'slidingSeriesId': activeSlidingSeries?.id ?? loadedSlidingSeriesId,
       'profileName': () {
-        if (activeSeries == null || availableSystems.isEmpty) return null;
+        if (savedPrimarySeries == null || availableSystems.isEmpty) return null;
         for (var s in availableSystems) {
-          if (s.id == activeSeries!.profileId) return s.name;
+          if (s.id == savedPrimarySeries.profileId) return s.name;
         }
         return null;
       }(),

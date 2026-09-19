@@ -74,7 +74,7 @@ class _CommandePageState extends State<CommandePage> {
     ).language;
     final modelMap = Map<String, dynamic>.from(product.toMap());
     final seriesName =
-        product.activeSeries?.name ??
+        product.activeFrameSeries?.name ??
         product.loadedSeriesName ??
         product.activeSlidingSeries?.name ??
         product.loadedSlidingSeriesName ??
@@ -440,11 +440,12 @@ class _CommandePageState extends State<CommandePage> {
     _lastUsedSettings = {
       'activeSeries': m.activeSeries,
       'activeSlidingSeries': m.activeSlidingSeries,
-      'loadedSeriesId': m.activeSeries?.id ?? m.loadedSeriesId,
+      'loadedSeriesId': m.activeFrameSeries?.id ?? m.loadedSeriesId,
       'loadedSlidingSeriesId':
           m.activeSlidingSeries?.id ?? m.loadedSlidingSeriesId,
-      'loadedSeriesName':
-          m.activeSeries?.name ?? m.loadedSeriesName ?? m.manualNameOverride,
+      'loadedSeriesName': m.activeFrameSeries?.name ??
+          m.loadedSeriesName ??
+          m.manualNameOverride,
       'loadedSlidingSeriesName':
           m.activeSlidingSeries?.name ?? m.loadedSlidingSeriesName,
       'selectedDbColor': m.selectedDbColor != null

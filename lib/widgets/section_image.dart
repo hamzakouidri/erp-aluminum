@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class SectionImageWidget extends StatelessWidget {
+  // Failed asset candidates used to be retried from scratch at every parent
+  // rebuild. In catalogue lists that briefly replaced the image by its
+  // placeholder many times per second. Keep the negative result for the app
+  // session and continue directly to the next known candidate.
+  static final Set<String> _unavailableAssetPaths = <String>{};
   final String? code;
   final String? name;
   final String? imagePath;
@@ -431,6 +436,9 @@ class SectionImageWidget extends StatelessWidget {
         }
 
         final assetPath = exactAssetPaths[index];
+        if (_unavailableAssetPaths.contains(assetPath)) {
+          return buildExactChain(index + 1);
+        }
         final isSvg = assetPath.toLowerCase().endsWith('.svg');
 
         // On desktop / local file system, first check if the file exists directly on disk
@@ -468,8 +476,10 @@ class SectionImageWidget extends StatelessWidget {
                         height: size,
                         fit: BoxFit.contain,
                         gaplessPlayback: true,
-                        errorBuilder: (context, error, stackTrace) =>
-                            buildExactChain(index + 1) ?? fallbackWidget,
+                        errorBuilder: (context, error, stackTrace) {
+                          _unavailableAssetPaths.add(assetPath);
+                          return buildExactChain(index + 1) ?? fallbackWidget;
+                        },
                       );
               }
             } catch (_) {}
@@ -484,6 +494,7 @@ class SectionImageWidget extends StatelessWidget {
             fit: BoxFit.contain,
             placeholderBuilder: (context) => fallbackWidget,
             errorBuilder: (context, error, stackTrace) {
+              _unavailableAssetPaths.add(assetPath);
               return buildExactChain(index + 1) ?? fallbackWidget;
             },
           );
@@ -495,6 +506,7 @@ class SectionImageWidget extends StatelessWidget {
             fit: BoxFit.contain,
             gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) {
+              _unavailableAssetPaths.add(assetPath);
               return buildExactChain(index + 1) ?? fallbackWidget;
             },
           );

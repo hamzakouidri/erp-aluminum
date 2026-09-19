@@ -5388,27 +5388,38 @@ class ComponentCalculator {
         );
       }
 
-      // Vis de pose fix the completed window to the wall.  For opening
-      // sashes their count deliberately follows the physical hinge count.
-      // A sliding frame has no hinges, so it uses the agreed frame rule:
-      // three screws through 2000 mm wide, four above it.  A mixed drawing
-      // receives both physically independent requirements.
-      if (totalHinges > 0) {
-        items.add(
-          createAccessory(
-            'براغي التركيب (Vis de pose)',
-            qty: totalHinges,
-          ),
-        );
+      // Vis de pose belongs to the completed outer frame, not to hinges or
+      // sliding leaves.  Count both vertical sides, then the bottom width;
+      // the top width receives the same count only when there is no shutter.
+      // The thresholds intentionally mirror the workshop rule: 2/3/4 screws
+      // per vertical side (up to 1 m / 2 m / above 2 m), and 0/1/2 across a
+      // horizontal side (up to 1 m / below 2 m / from 2 m).
+      int verticalScrewsPerSide(double heightMm) {
+        if (heightMm <= 1000) return 2;
+        if (heightMm <= 2000) return 3;
+        return 4;
       }
-      if (hasSlidingSash) {
+
+      int horizontalScrews(double widthMm) {
+        if (widthMm <= 1000) return 0;
+        if (widthMm < 2000) return 1;
+        return 2;
+      }
+
+      final verticalScrews = verticalScrewsPerSide(window.height.toDouble());
+      final horizontalScrews = horizontalScrews(window.width.toDouble());
+      final installationScrewQty =
+          (verticalScrews * 2) +
+          horizontalScrews +
+          (hasShutter ? 0 : horizontalScrews);
+      if (installationScrewQty > 0) {
         items.add(
           createAccessory(
             'براغي التركيب (Vis de pose)',
-            qty: window.width <= 2000 ? 3 : 4,
-            // In a mixed drawing the sliding screw must resolve from the
-            // sliding series, not from the opening series.
-            sliding: true,
+            qty: installationScrewQty,
+            // A pure sliding outer frame must use the selected sliding
+            // series. Mixed/opening drawings keep the opening frame source.
+            sliding: window.usesSlidingPrimaryProfiles,
           ),
         );
       }
@@ -6167,24 +6178,6 @@ class ComponentCalculator {
       }
     }
 
-    if (hasSlidingSash) {
-      if (!window.isSlidingPVC) {
-        final int assemblyScrewsQty = (slidingTotalRoulettes ~/ 2) * 4;
-        if (assemblyScrewsQty > 0) {
-          items.add(
-            _createAccessory(
-              window.componentOverrides,
-              'براغي التجميع',
-              qty: assemblyScrewsQty,
-            ),
-          );
-        }
-        // Clam/Clamp rows are resolved below by BomEngineV2 from the exact
-        // catalogue rules of each active system. Do not inject a hard-coded
-        // "Clam 67000" row here; it caused duplicates and wrong series names.
-      }
-    }
-
     {
       int totalAccessoryScrews = 0;
       final linkedScrewTotals = <int, int>{};
@@ -6813,14 +6806,10 @@ class ComponentCalculator {
           );
 
     if (isTprSeries) {
-      final plinthePieceCount = items
-          .where(
-            (item) =>
-                item.originalName.contains('بلانت') ||
-                item.originalName.toLowerCase().contains('plinthe'),
-          )
-          .fold<int>(0, (sum, item) => sum + (item.pieces?.length ?? 0));
-      final int assemblyScrewQty = 4 * (divisionPieceCount + plinthePieceCount);
+      // Assembly screws are exclusive to physical Montant Slim columns:
+      // two screws per generated column. Divisions and plinths are not
+      // assembly-screw targets, even though they also have two ends.
+      final int assemblyScrewQty = slidingSashCentralSlimPieces.length * 2;
       if (assemblyScrewQty > 0) {
         items.add(createAccessory('براغي التجميع', qty: assemblyScrewQty));
       }

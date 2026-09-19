@@ -373,8 +373,28 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
     'handle',
     'hinge',
     'tasso',
+    'ekar',
+    'alignment_square',
     'roulette',
     'entrematique',
+    // Sliding hardware is no less reusable than opening hardware. Omitting
+    // these roles made a rule activated from the catalogue-wide accessory
+    // page disappear specifically on BS90 and other sliding series, even
+    // though its material and drawing scope were compatible.
+    'sliding_kit',
+    'sliding_kit_40000',
+    'sliding_kit_67000',
+    // Assembly hardware is governed by its role and by the material/drawing
+    // checks below.  It must not be tied to the first series where the
+    // administrator happened to create the rule: a Clam configured in the
+    // catalogue is valid for every compatible frame/sash that it targets.
+    'clam',
+    'clamp',
+    'frame_clamp',
+    'sash_clamp',
+    'frame_clamp_support',
+    'sash_clamp_support',
+    'sliding_clamp',
     'other',
     // Gaskets are catalogue items shared by compatible aluminium series.
     // Their BOM formulas decide whether a material/system may use them;
@@ -1056,16 +1076,19 @@ class CatalogCandidateResolver {
       final explicitSeriesRule =
           query.seriesId != null &&
           rule['series_id']?.toString() == query.seriesId.toString();
+      final globalRoleRule =
+          rule['series_id'] == null &&
+          catalogRuleAllowsGlobalFallback(ruleRole);
       if (roleMatches &&
           _catalogRuleRowMatchesMaterial(
             row,
             query,
             // A rule explicitly enabled for this series is the catalogue
             // authority. It may intentionally reuse an item whose old
-            // `series_id` field still points at another family. A global
-            // rule, however, must continue to respect that item-level
-            // series assignment and may only serve compatible series.
-            explicitSeriesRule: explicitSeriesRule,
+            // `series_id` field still points at another family. A deliberately
+            // global role rule likewise controls compatible materials across
+            // series, so a Clam/Kit/Gâche role does not need code per series.
+            explicitSeriesRule: explicitSeriesRule || globalRoleRule,
           )) {
         seen.add(itemId);
         result.add({...row, 'catalog_rule': Map<String, dynamic>.from(rule)});
@@ -1180,7 +1203,9 @@ class CatalogCandidateResolver {
     // The rule editor is the source of truth. An explicit active rule for
     // this series deliberately overrides stale legacy ownership stored on
     // the product row; otherwise an administrator could enable a role and
-    // still never see it in the BOM. Global rules retain the ownership guard.
+    // still never see it in the BOM. This same override is used only by the
+    // explicit global-role allow-list, while the material check below remains
+    // the guard against cross-material leakage.
     if (!explicitSeriesRule &&
         assignedSeries.isNotEmpty &&
         !assignedSeries.contains(query.seriesId)) {

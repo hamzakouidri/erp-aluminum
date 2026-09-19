@@ -73,4 +73,27 @@ void main() {
     expect(model.loadedSlidingSeriesId, 90);
     expect(model.loadedSlidingSeriesName, 'BS90');
   });
+
+  test('a sliding-only drawing saves the selected sliding series as primary', () {
+    final model = WindowModel(width: 2500, height: 2400, db: SqlDatabase());
+    model.systemMode = 'sliding';
+    model.activeSeries = AluminumSeries(
+      id: 40000,
+      profileId: 1,
+      name: 'Bennia 40000',
+      type: 'Aluminium',
+    );
+    model.activeSlidingSeries = AluminumSeries(
+      id: 90,
+      profileId: 2,
+      name: 'BS90',
+      type: 'Aluminium',
+    );
+
+    final saved = model.toMap();
+
+    expect(saved['seriesId'], 90);
+    expect(saved['seriesName'], 'BS90');
+    expect(saved['slidingSeriesId'], 90);
+  });
 }
