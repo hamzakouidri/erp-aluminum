@@ -10797,6 +10797,8 @@ class _WindowViewState extends State<WindowView> {
                   hint: Text(
                     widget.systemMode == 'mixed'
                         ? 'سلسلة الفتح'
+                        : widget.systemMode == 'sliding'
+                        ? Localization.translate('سلسلة المنزلق', lang)
                         : 'اختر السلسلة',
                     style: TextStyle(
                       color: isDark ? Colors.blue.shade300 : Colors.blue,
@@ -10836,7 +10838,12 @@ class _WindowViewState extends State<WindowView> {
                   },
                 ),
               ),
-              if (widget.systemMode == 'mixed' && safeSlidingValue != null) ...[
+              // Keep the sliding-series selector visible while a saved
+              // drawing is restoring its catalogue. Previously it vanished
+              // until a value was resolved, which made BS90 look unavailable
+              // on edit and encouraged the default series to be selected.
+              if (widget.systemMode == 'mixed' &&
+                  slidingItemsList.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Container(
                   constraints: const BoxConstraints(maxWidth: 160),
@@ -12799,50 +12806,16 @@ class _WindowViewState extends State<WindowView> {
   }
 
   List<Widget> _arrangeInTwoRows(List<Widget> rawItems) {
-    // Filter out SizedBox widgets that were used as spacers in the single-row layout
+    // On narrow screens alternating between two rows makes a button jump to a
+    // different position every time an optional drawing setting appears or
+    // disappears. Keep the catalogue order stable; tabs already separate the
+    // settings groups and the horizontal scroller exposes the rest.
     final items = rawItems.where((w) => w is! SizedBox).toList();
     if (items.isEmpty) return [];
-
-    List<Widget> row1 = [];
-    List<Widget> row2 = [];
-
-    for (final item in items) {
-      // Some controls have a semantic row (for example, opening and sliding
-      // frame profiles in a mixed system). Keep those groups together instead
-      // of alternating their buttons between the two visual rows.
-      if (item is _Tier2RowItem) {
-        final targetRow = item.rowIndex == 0 ? row1 : row2;
-        if (targetRow.isNotEmpty) {
-          targetRow.add(const SizedBox(width: 8));
-        }
-        targetRow.add(item.child);
-        continue;
-      }
-
-      if (row1.length <= row2.length) {
-        if (row1.isNotEmpty) {
-          row1.add(const SizedBox(width: 8));
-        }
-        row1.add(item);
-      } else {
-        if (row2.isNotEmpty) {
-          row2.add(const SizedBox(width: 8));
-        }
-        row2.add(item);
-      }
-    }
-
-    return [
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(mainAxisSize: MainAxisSize.min, children: row1),
-          const SizedBox(height: 8),
-          Row(mainAxisSize: MainAxisSize.min, children: row2),
-        ],
-      ),
-    ];
+    final stableItems = items
+        .map((item) => item is _Tier2RowItem ? item.child : item)
+        .toList(growable: false);
+    return [Row(mainAxisSize: MainAxisSize.min, children: stableItems)];
   }
 
   Widget _buildInteractiveBottomPanel(BuildContext context) {

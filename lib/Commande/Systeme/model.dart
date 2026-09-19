@@ -3274,19 +3274,6 @@ class WindowModel extends ChangeNotifier {
     return series != null && _seriesDesignRoleSectionIds.containsKey(series.id);
   }
 
-  Iterable<AluminumSeries> _selectedDrawingSystemSeries() sync* {
-    final systems = <AluminumProfileSystem>[];
-    for (final selected in [activeSeries, activeSlidingSeries]) {
-      final system = profileSystemForSeries(availableSystems, selected);
-      if (system != null && !systems.any((item) => item.id == system.id)) {
-        systems.add(system);
-      }
-    }
-    for (final system in systems) {
-      yield* system.series;
-    }
-  }
-
   List<AluminumSection> _sideCoversForSeries(AluminumSeries series) {
     final configuredIds = _seriesDesignRoleSectionIds[series.id]?['side_cover'];
     if (!_hasLoadedRoleMetadata(series) ||
@@ -3300,16 +3287,13 @@ class WindowModel extends ChangeNotifier {
   }
 
   void _synchronizeSharedSideCover() {
-    final covers = <AluminumSection>[];
-    final seen = <String>{};
-    for (final series in _selectedDrawingSystemSeries()) {
-      for (final cover in _sideCoversForSeries(series)) {
-        final key = cover.code.trim().isNotEmpty
-            ? 'code:${cover.code.trim().toLowerCase()}'
-            : 'id:${cover.id}';
-        if (seen.add(key)) covers.add(cover);
-      }
-    }
+    // The outer frame owns its couvre-joint.  Never scan sibling series in a
+    // profile system: a similarly named PVC/aluminium cover from another
+    // family must not be injected into the current drawing.
+    final owner = activeFrameSeries;
+    final covers = owner == null
+        ? const <AluminumSection>[]
+        : _sideCoversForSeries(owner);
 
     AluminumSection? selected;
     final selectedId =
@@ -4896,20 +4880,10 @@ class WindowModel extends ChangeNotifier {
   AluminumSection? selectedSideCover;
 
   List<AluminumSection> get availableSideCovers {
-    // Couvre-joint is a shared catalog component. It may be assigned to any
-    // of the opening/sliding series in the selected drawing system, while
-    // frames remain strictly owned by their own series.
-    final result = <AluminumSection>[];
-    final seen = <String>{};
-    for (final series in _selectedDrawingSystemSeries()) {
-      for (final cover in _sideCoversForSeries(series)) {
-        final key = cover.code.trim().isNotEmpty
-            ? 'code:${cover.code.trim().toLowerCase()}'
-            : 'id:${cover.id}';
-        if (seen.add(key)) result.add(cover);
-      }
-    }
-    return result;
+    final owner = activeFrameSeries;
+    return owner == null
+        ? const <AluminumSection>[]
+        : _sideCoversForSeries(owner);
   }
 
   /// Whether the selected plain frame accepts a separate side-cover profile.
@@ -7281,6 +7255,10 @@ class WindowModel extends ChangeNotifier {
           zone.selectedDbColor = null;
         }
       }
+      // Restore the cover selected by the frame-owning series as soon as all
+      // series roles are known. A saved enabled cover must be drawable on the
+      // first frame; it must never wait for the user to toggle its button.
+      _synchronizeSharedSideCover();
       colorsLoading = false;
       notifyListeners();
     } catch (e) {
@@ -15748,12 +15726,11 @@ class WindowModel extends ChangeNotifier {
     final requestedTracks = sliding ? _requestedSlidingTrackCount() : 2;
     Map<String, dynamic>? completeMatchingTracks;
     for (final candidate in candidates) {
-      final mode = (candidate['design_track_mode'] ??
-              candidate['track_mode'] ??
-              '')
-          .toString()
-          .trim()
-          .toLowerCase();
+      final mode =
+          (candidate['design_track_mode'] ?? candidate['track_mode'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
       final rawCount =
           candidate['design_track_count'] ?? candidate['track_count'];
       final count = rawCount is num

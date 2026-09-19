@@ -119,38 +119,45 @@ void main() {
 
   test('global catalogue rules apply to all enabled accessory roles', () {
     expect(
-      catalogRuleMatchesExactScope(
-        {'series_id': null, 'role_key': 'gache_simple'},
-        67000,
-      ),
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'gache_simple',
+      }, 67000),
       isTrue,
     );
     expect(
-      catalogRuleMatchesExactScope(
-        {'series_id': null, 'role_key': 'kit_screw'},
-        67000,
-      ),
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'kit_screw',
+      }, 67000),
       isTrue,
     );
     expect(
-      catalogRuleMatchesExactScope(
-        {'series_id': null, 'role_key': 'cremone'},
-        67000,
-      ),
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'cremone',
+      }, 67000),
       isTrue,
     );
     expect(
-      catalogRuleMatchesExactScope(
-        {'series_id': null, 'role_key': 'unrelated_role'},
-        67000,
-      ),
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'bouchon_batmo',
+      }, 67000),
+      isTrue,
+    );
+    expect(
+      catalogRuleMatchesExactScope({
+        'series_id': null,
+        'role_key': 'unrelated_role',
+      }, 67000),
       isFalse,
     );
     expect(
-      catalogRuleMatchesExactScope(
-        {'series_id': 67000, 'role_key': 'gache_simple'},
-        67000,
-      ),
+      catalogRuleMatchesExactScope({
+        'series_id': 67000,
+        'role_key': 'gache_simple',
+      }, 67000),
       isTrue,
     );
   });

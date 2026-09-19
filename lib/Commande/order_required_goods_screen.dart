@@ -4110,12 +4110,25 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     final origLower = item.originalName.toLowerCase();
 
-    // Fetch all active sections for the active series
-    final rawSections = await dbInstance.query(
-      'Sections',
-      where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [activeSeries.id],
-    );
+    final isAccessory = category.toLowerCase() == 'accessory';
+    // Accessories are catalogue products, not aluminium Sections.  Looking
+    // them up in Sections made the change sheet offer an unrelated profile;
+    // the next BOM refresh then correctly discarded that invalid selection.
+    final rawSections = isAccessory
+        ? await dbInstance.query(
+            'Accessories',
+            where:
+                '(is_active = 1 OR is_active IS NULL) AND '
+                '(series_id = ? OR series_id IS NULL OR series_id = 0 OR '
+                "(',' || REPLACE(COALESCE(series_ids, ''), ' ', '') || ',') LIKE ?)",
+            whereArgs: [activeSeries.id, '%,${activeSeries.id},%'],
+            orderBy: 'is_default DESC, id ASC',
+          )
+        : await dbInstance.query(
+            'Sections',
+            where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+            whereArgs: [activeSeries.id],
+          );
 
     if (rawSections.isEmpty) {
       if (!mounted) return;
@@ -4127,7 +4140,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     List<Map<String, dynamic>> filteredSections = [];
 
-    if (origLower.contains('rail') || origLower.contains('سكة')) {
+    if (isAccessory) {
+      // The rule engine validates the saved choice. This list deliberately
+      // contains only active products compatible with the selected series.
+      filteredSections = List<Map<String, dynamic>>.from(rawSections);
+    } else if (origLower.contains('rail') || origLower.contains('سكة')) {
       // 1. السكة Rail: جلب نوع rail فقط واستبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail
       filteredSections = rawSections.where((s) {
         final t = (s['type'] ?? '').toString().toLowerCase();
@@ -4317,6 +4334,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
                         final mutableSec = Map<String, dynamic>.from(sec);
                         mutableSec['calculated_price'] = price;
+                        if (isAccessory) {
+                          // A replacement selected from this sheet is an
+                          // explicit user decision. BomEngineV2 keeps it if
+                          // it is active and compatible with this series.
+                          mutableSec['manual_selection'] = true;
+                        }
 
                         for (var pb in _productBreakdowns) {
                           pb.model.componentOverrides[item.originalName] =

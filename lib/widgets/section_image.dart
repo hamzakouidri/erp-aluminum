@@ -39,12 +39,14 @@ class SectionImageWidget extends StatelessWidget {
     final String path = (imagePath ?? '').trim();
     final String lowerPath = path.toLowerCase();
     final bool isN245Code = cleanCode == 'N245';
-    final bool isN245Path = lowerPath
-        .replaceAll('\\', '/')
-        .split('/')
-        .last
-        .replaceFirst(RegExp(r'\.(png|jpe?g|jpeg|svg|webp)$'), '')
-        .replaceAll(RegExp(r'[\s_-]+'), '') == 'n245';
+    final bool isN245Path =
+        lowerPath
+            .replaceAll('\\', '/')
+            .split('/')
+            .last
+            .replaceFirst(RegExp(r'\.(png|jpe?g|jpeg|svg|webp)$'), '')
+            .replaceAll(RegExp(r'[\s_-]+'), '') ==
+        'n245';
     final bool isAssetReference =
         lowerPath.startsWith('assets/') || lowerPath.startsWith('asset/');
     final String semanticLabel = '$rawCode ${name ?? ''} $path'.toLowerCase();
@@ -112,6 +114,7 @@ class SectionImageWidget extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
+        gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => fallbackWidget,
       );
     }
@@ -188,6 +191,7 @@ class SectionImageWidget extends StatelessWidget {
                 width: size,
                 height: size,
                 fit: BoxFit.contain,
+                gaplessPlayback: true,
                 errorBuilder: (context, error, stackTrace) => fallbackWidget,
               );
             }
@@ -203,6 +207,7 @@ class SectionImageWidget extends StatelessWidget {
             width: size,
             height: size,
             fit: BoxFit.contain,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => fallbackWidget,
           );
         }
@@ -224,7 +229,9 @@ class SectionImageWidget extends StatelessWidget {
                     width: size,
                     height: size,
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => fallbackWidget,
+                    gaplessPlayback: true,
+                    errorBuilder: (context, error, stackTrace) =>
+                        fallbackWidget,
                   );
           }
         } catch (_) {}
@@ -331,17 +338,29 @@ class SectionImageWidget extends StatelessWidget {
         filenames.add('$cleanStem.svg');
         filenames.add('$cleanStem.png');
         if (cleanStem.toUpperCase().startsWith('B90')) {
-          final bsStem = cleanStem.replaceFirst(RegExp(r'^B90', caseSensitive: false), 'BS90');
+          final bsStem = cleanStem.replaceFirst(
+            RegExp(r'^B90', caseSensitive: false),
+            'BS90',
+          );
           filenames.add('$bsStem.svg');
           filenames.add('$bsStem.png');
-          final bsSpaceStem = stemWithoutExt.replaceFirst(RegExp(r'^B90', caseSensitive: false), 'BS90 ');
+          final bsSpaceStem = stemWithoutExt.replaceFirst(
+            RegExp(r'^B90', caseSensitive: false),
+            'BS90 ',
+          );
           filenames.add('$bsSpaceStem.svg');
           filenames.add('$bsSpaceStem.png');
         } else if (cleanStem.toUpperCase().startsWith('BS90')) {
-          final bStem = cleanStem.replaceFirst(RegExp(r'^BS90', caseSensitive: false), 'B90');
+          final bStem = cleanStem.replaceFirst(
+            RegExp(r'^BS90', caseSensitive: false),
+            'B90',
+          );
           filenames.add('$bStem.svg');
           filenames.add('$bStem.png');
-          final bSpaceStem = stemWithoutExt.replaceFirst(RegExp(r'^BS90\s*', caseSensitive: false), 'B90 ');
+          final bSpaceStem = stemWithoutExt.replaceFirst(
+            RegExp(r'^BS90\s*', caseSensitive: false),
+            'B90 ',
+          );
           filenames.add('$bSpaceStem.svg');
           filenames.add('$bSpaceStem.png');
         }
@@ -421,12 +440,16 @@ class SectionImageWidget extends StatelessWidget {
             File(assetPath),
             File('assets/sections/$filename'),
             File('assets/images/$filename'),
-            File('C:/Users/hp/Desktop/erp-alum/erp-aluminum-main/assets/sections/$filename'),
+            File(
+              'C:/Users/hp/Desktop/erp-alum/erp-aluminum-main/assets/sections/$filename',
+            ),
             File('C:/Users/hp/Desktop/LISTE DE PRIX BS90/$filename'),
           ];
           try {
             final exeDir = File(Platform.resolvedExecutable).parent.path;
-            candidateFiles.add(File('$exeDir/data/flutter_assets/assets/sections/$filename'));
+            candidateFiles.add(
+              File('$exeDir/data/flutter_assets/assets/sections/$filename'),
+            );
           } catch (_) {}
           for (final f in candidateFiles) {
             try {
@@ -444,6 +467,7 @@ class SectionImageWidget extends StatelessWidget {
                         width: size,
                         height: size,
                         fit: BoxFit.contain,
+                        gaplessPlayback: true,
                         errorBuilder: (context, error, stackTrace) =>
                             buildExactChain(index + 1) ?? fallbackWidget,
                       );
@@ -469,6 +493,7 @@ class SectionImageWidget extends StatelessWidget {
             width: size,
             height: size,
             fit: BoxFit.contain,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) {
               return buildExactChain(index + 1) ?? fallbackWidget;
             },

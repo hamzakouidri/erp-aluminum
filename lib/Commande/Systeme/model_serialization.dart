@@ -795,8 +795,32 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       ? value.toInt()
       : int.tryParse(value?.toString().trim() ?? '');
   model.loadedSeriesId = savedSeriesId(map['seriesId']);
-  model.loadedSlidingSeriesName = map['slidingSeriesName']?.toString();
-  model.loadedSlidingSeriesId = savedSeriesId(map['slidingSeriesId']);
+
+  // `slidingSeriesId` is the canonical value.  Several older saved orders
+  // only kept the series ownership on the selected sliding frame/sash, so
+  // reopening them previously lost BS90 and selected the first default
+  // sliding series instead.  Read those stable legacy aliases before the
+  // catalogue is loaded; a new drawing still has no value and uses its
+  // configured default normally.
+  Map? savedSlidingProfile() {
+    for (final key in const ['slidingFrameOverride', 'slidingSashOverride']) {
+      final value = map[key];
+      if (value is Map) return value;
+    }
+    return null;
+  }
+
+  final legacySlidingProfile = savedSlidingProfile();
+  model.loadedSlidingSeriesName =
+      map['slidingSeriesName']?.toString() ??
+      map['loadedSlidingSeriesName']?.toString() ??
+      legacySlidingProfile?['series_name']?.toString();
+  model.loadedSlidingSeriesId =
+      savedSeriesId(map['slidingSeriesId']) ??
+      savedSeriesId(map['loadedSlidingSeriesId']) ??
+      savedSeriesId(map['activeSlidingSeriesId']) ??
+      savedSeriesId(legacySlidingProfile?['series_id']) ??
+      savedSeriesId(legacySlidingProfile?['source_series_id']);
 
   model.frameOverride = map['frameOverride'] != null
       ? Map<String, dynamic>.from(map['frameOverride'])

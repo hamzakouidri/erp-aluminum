@@ -79,7 +79,14 @@ class BomEngineV2 {
     required List<BomItem> items,
   }) async {
     final calculatedRoles = <String>{};
-    for (final role in const ['installation_screw', 'bouchon_batmo_screw']) {
+    // These rows are calculated from the drawing (rather than created by a
+    // selectable accessory button).  Their catalogue rule is therefore the
+    // on/off authority for publishing them in the quantity table.
+    for (final role in const [
+      'installation_screw',
+      'batmo_screw',
+      'bouchon_batmo_screw',
+    ]) {
       if (await _calculatedMaterialRoleEnabled(window, role)) {
         calculatedRoles.add(role);
       }
@@ -132,7 +139,17 @@ class BomEngineV2 {
         }.contains(role)) {
           return null;
         }
-        if (calculatedRoles.contains(role)) return item;
+        // Do not leave a calculated screw as an orange placeholder when its
+        // role is disabled.  Conversely, an enabled role must retain the
+        // physical quantity produced by the drawing even if the catalogue
+        // product is supplied through a legacy usage flag.
+        if (const {
+          'installation_screw',
+          'batmo_screw',
+          'bouchon_batmo_screw',
+        }.contains(role)) {
+          return calculatedRoles.contains(role) ? item : null;
+        }
         if (await _itemHasRuleCandidate(window, item)) {
           return item;
         }
@@ -195,6 +212,7 @@ class BomEngineV2 {
       final flagColumn = switch (role) {
         'accessory_screw' => 'is_accessory_screw',
         'installation_screw' => 'is_installation_screw',
+        'batmo_screw' => 'is_batmo_screw',
         'bouchon_batmo_screw' => 'is_bouchon_batmo_screw',
         _ => null,
       };
@@ -1321,6 +1339,12 @@ class BomEngineV2 {
 
     final seriesId = _seriesIdForItem(window, item);
     if (seriesId == null) return;
+    final currentProfile = _currentProfileSelection(
+      window,
+      item,
+      roleKeys,
+      selectorType,
+    );
     final sections = await _resolveCandidates(
       CatalogCandidateQuery(
         category: 'profile',
@@ -1340,15 +1364,19 @@ class BomEngineV2 {
       ),
     );
     if (sections.isEmpty) {
+      // A couvre-joint selected from the drawing's own series is already a
+      // real, enabled catalogue section.  Some older databases do not have a
+      // duplicate quantity rule for it, so candidate resolution is empty even
+      // though the selected profile is valid.  Never clear that selection:
+      // doing so was the source of the apparent on/off oscillation in the
+      // drawing and of the missing BOM row.
+      if (roleKeys.contains('side_cover') &&
+          _isAvailableSideCoverSelection(window, currentProfile)) {
+        return;
+      }
       _clearInvalidProfileSelection(window, item, roleKeys);
       return;
     }
-    final currentProfile = _currentProfileSelection(
-      window,
-      item,
-      roleKeys,
-      selectorType,
-    );
     final matchingCurrent = _matchingCandidate(sections, currentProfile);
     if (matchingCurrent != null && _hasDesignMetadata(currentProfile)) {
       return;
@@ -1407,6 +1435,14 @@ class BomEngineV2 {
 
     final seriesId = _seriesIdForItem(window, item);
     final materialType = _materialTypeForItem(window, item);
+    final currentSelection = _currentComponentSelection(window, item);
+    if (_isValidManualAccessorySelection(
+      currentSelection,
+      seriesId: seriesId,
+      materialType: materialType,
+    )) {
+      return;
+    }
     var resolvedCandidates = await _resolveCandidates(
       CatalogCandidateQuery(
         category: 'accessory',
@@ -1429,12 +1465,27 @@ class BomEngineV2 {
         ruleKeys,
       );
     }
+    if (resolvedCandidates.isEmpty) {
+      // The accessory page has long exposed these screw usages as boolean
+      // fields on Accessories.  Requiring a second CatalogItemRules row made
+      // a correctly configured "Vis renfort / meneau" survive only as an
+      // orange unlinked calculation row.  Treat the explicit flag as the
+      // legacy rule source, while still applying the selected series and
+      // material so a screw from another family cannot leak into this BOM.
+      resolvedCandidates = await _legacyFlaggedAccessoryCandidates(
+        database,
+        ruleKeys,
+        seriesId: seriesId,
+        materialType: materialType,
+      );
+    }
     final candidates = resolvedCandidates
         .where(
           (candidate) => _accessoryMatchesLinkedSections(
             candidate,
             window,
             allowLegacyShutter: _isShutterScrewRole(ruleKeys),
+            allowLegacyFlaggedScrew: _hasLegacyFlaggedScrewRole(ruleKeys),
           ),
         )
         .toList();
@@ -1468,11 +1519,14 @@ class BomEngineV2 {
     Map<String, dynamic> candidate,
     WindowModel window, {
     bool allowLegacyShutter = false,
+    bool allowLegacyFlaggedScrew = false,
   }) {
     final rawRule = candidate['catalog_rule'];
-    // Every non-shutter accessory must come from a persisted active rule.
-    // The only permitted legacy source is the explicit shutter-screw path.
-    if (rawRule is! Map) return allowLegacyShutter;
+    // A persisted active rule is the normal source. Explicit legacy screw
+    // usage flags are also accepted for catalogues that predate rule rows.
+    if (rawRule is! Map) {
+      return allowLegacyShutter || allowLegacyFlaggedScrew;
+    }
     final rule = Map<String, dynamic>.from(rawRule);
     final linkedSections = assemblySectionIds(rule);
     if (linkedSections.isEmpty) return true;
@@ -1507,6 +1561,61 @@ class BomEngineV2 {
       orderBy: 'id ASC',
     );
     return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  bool _hasLegacyFlaggedScrewRole(Iterable<String> roles) => roles.any(
+    const {'renfort_screw', 'batmo_screw', 'bouchon_batmo_screw'}.contains,
+  );
+
+  Future<List<Map<String, dynamic>>> _legacyFlaggedAccessoryCandidates(
+    Database database,
+    Iterable<String> roles, {
+    required int? seriesId,
+    required String? materialType,
+  }) async {
+    const flagForRole = <String, String>{
+      'renfort_screw': 'is_renfort_screw',
+      'batmo_screw': 'is_batmo_screw',
+      'bouchon_batmo_screw': 'is_bouchon_batmo_screw',
+    };
+    final flags = roles
+        .map((role) => flagForRole[role.trim().toLowerCase()])
+        .whereType<String>()
+        .toSet();
+    if (flags.isEmpty) return const <Map<String, dynamic>>[];
+
+    final rows = await database.query(
+      'Accessories',
+      where:
+          '(${flags.map((flag) => '$flag = 1').join(' OR ')}) '
+          'AND (is_active = 1 OR is_active IS NULL)',
+      orderBy: 'is_default DESC, id ASC',
+    );
+    final expectedMaterial = (materialType ?? '').trim().toLowerCase();
+    return rows
+        .map((row) => Map<String, dynamic>.from(row))
+        .where((row) {
+          final rowMaterial = '${row['material_type'] ?? ''}'
+              .trim()
+              .toLowerCase();
+          final materialMatches =
+              expectedMaterial.isEmpty ||
+              rowMaterial.isEmpty ||
+              rowMaterial == 'both' ||
+              rowMaterial == expectedMaterial ||
+              (expectedMaterial == 'aluminium' && rowMaterial == 'aluminum');
+          if (!materialMatches) return false;
+          if (seriesId == null) return true;
+          final directSeriesId = _catalogInt(row['series_id']);
+          if (directSeriesId != null) return directSeriesId == seriesId;
+          final assigned = '${row['series_ids'] ?? ''}'
+              .split(',')
+              .map((id) => int.tryParse(id.trim()))
+              .whereType<int>()
+              .toSet();
+          return assigned.isEmpty || assigned.contains(seriesId);
+        })
+        .toList(growable: false);
   }
 
   Future<void> _resolveJoint(
@@ -1765,6 +1874,21 @@ class BomEngineV2 {
         _asMap(window.componentOverrides[item.originalName]);
   }
 
+  bool _isAvailableSideCoverSelection(
+    WindowModel window,
+    Map<String, dynamic>? selection,
+  ) {
+    final selectedId = _catalogInt(selection?['id']);
+    final selectedCode = '${selection?['code'] ?? ''}'.trim().toLowerCase();
+    if (selectedId == null && selectedCode.isEmpty) return false;
+    return window.availableSideCovers.any(
+      (section) =>
+          (selectedId != null && section.id == selectedId) ||
+          (selectedCode.isNotEmpty &&
+              section.code.trim().toLowerCase() == selectedCode),
+    );
+  }
+
   Map<String, dynamic>? _asMap(Object? value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
@@ -1836,6 +1960,44 @@ class BomEngineV2 {
         .whereType<int>()
         .toSet();
     return assigned.isEmpty || assigned.contains(expectedSeriesId);
+  }
+
+  bool _isValidManualAccessorySelection(
+    Map<String, dynamic>? selection, {
+    required int? seriesId,
+    required String? materialType,
+  }) {
+    if (selection?['manual_selection'] != true ||
+        _catalogInt(selection?['id']) == null ||
+        selection?['is_active'] == 0 ||
+        selection?['is_active'] == false) {
+      return false;
+    }
+    final directSeriesId = _catalogInt(selection?['series_id']);
+    if (seriesId != null &&
+        directSeriesId != null &&
+        directSeriesId != seriesId) {
+      return false;
+    }
+    final assigned = '${selection?['series_ids'] ?? ''}'
+        .split(',')
+        .map((id) => int.tryParse(id.trim()))
+        .whereType<int>()
+        .toSet();
+    if (seriesId != null &&
+        assigned.isNotEmpty &&
+        !assigned.contains(seriesId)) {
+      return false;
+    }
+    final expectedMaterial = (materialType ?? '').trim().toLowerCase();
+    final selectedMaterial = '${selection?['material_type'] ?? ''}'
+        .trim()
+        .toLowerCase();
+    return expectedMaterial.isEmpty ||
+        selectedMaterial.isEmpty ||
+        selectedMaterial == 'both' ||
+        selectedMaterial == expectedMaterial ||
+        (expectedMaterial == 'aluminium' && selectedMaterial == 'aluminum');
   }
 
   int? _catalogInt(Object? value) {

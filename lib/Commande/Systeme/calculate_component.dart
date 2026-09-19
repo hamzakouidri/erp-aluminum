@@ -5388,6 +5388,31 @@ class ComponentCalculator {
         );
       }
 
+      // Vis de pose fix the completed window to the wall.  For opening
+      // sashes their count deliberately follows the physical hinge count.
+      // A sliding frame has no hinges, so it uses the agreed frame rule:
+      // three screws through 2000 mm wide, four above it.  A mixed drawing
+      // receives both physically independent requirements.
+      if (totalHinges > 0) {
+        items.add(
+          createAccessory(
+            'براغي التركيب (Vis de pose)',
+            qty: totalHinges,
+          ),
+        );
+      }
+      if (hasSlidingSash) {
+        items.add(
+          createAccessory(
+            'براغي التركيب (Vis de pose)',
+            qty: window.width <= 2000 ? 3 : 4,
+            // In a mixed drawing the sliding screw must resolve from the
+            // sliding series, not from the opening series.
+            sliding: true,
+          ),
+        );
+      }
+
       if (slidingTotalRoulettes > 0) {
         items.add(
           createAccessory(

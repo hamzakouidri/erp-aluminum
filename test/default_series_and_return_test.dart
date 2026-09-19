@@ -56,4 +56,21 @@ void main() {
     expect(model.loadedSeriesId, 42);
     expect(model.loadedSlidingSeriesId, 99);
   });
+
+  test('restores the sliding series from a legacy BS90 frame selection', () {
+    final model = WindowModel(width: 1000, height: 1200, db: SqlDatabase());
+
+    applyWindowModelFromMap(model, const {
+      'systemMode': 'mixed',
+      'seriesId': 40000,
+      'slidingFrameOverride': {
+        'id': 901,
+        'series_id': 90,
+        'series_name': 'BS90',
+      },
+    });
+
+    expect(model.loadedSlidingSeriesId, 90);
+    expect(model.loadedSlidingSeriesName, 'BS90');
+  });
 }

@@ -983,10 +983,13 @@ class CatalogCandidateResolver {
     final rules = await _db.getCatalogItemRules(
       itemTable: table,
       seriesId: query.seriesId,
-      // Accessories and joints are strictly owned by the selected series.
-      // A global rule must not leak catalogue items into a newly-created
-      // series which has no rules of its own.
-      exactSeriesOnly: query.seriesId != null,
+      // Fetch the exact and global rows together. `_ruleVisibleOnSurface`
+      // below is the single authority that decides whether a global role can
+      // be reused (via `catalogRuleAllowsGlobalFallback`). Querying exact
+      // rows only here made that decision unreachable: Bouchon Batmo and
+      // other shared roles vanished from every series except the one that
+      // first received a manually saved rule.
+      exactSeriesOnly: false,
     );
     // Older catalogues commonly saved an assembly/installation screw rule
     // for the first series only, while the accessory itself was explicitly
@@ -1053,17 +1056,16 @@ class CatalogCandidateResolver {
       final explicitSeriesRule =
           query.seriesId != null &&
           rule['series_id']?.toString() == query.seriesId.toString();
-      // A configured global rule for a deliberately shareable role is also
-      // authoritative when the accessory itself is global. Series selections
-      // made on the Accessory page remain a hard compatibility boundary.
-      final authoritativeSharedRule =
-          rule['series_id'] == null &&
-          catalogRuleAllowsGlobalFallback(ruleRole);
       if (roleMatches &&
           _catalogRuleRowMatchesMaterial(
             row,
             query,
-            explicitSeriesRule: explicitSeriesRule || authoritativeSharedRule,
+            // A rule explicitly enabled for this series is the catalogue
+            // authority. It may intentionally reuse an item whose old
+            // `series_id` field still points at another family. A global
+            // rule, however, must continue to respect that item-level
+            // series assignment and may only serve compatible series.
+            explicitSeriesRule: explicitSeriesRule,
           )) {
         seen.add(itemId);
         result.add({...row, 'catalog_rule': Map<String, dynamic>.from(rule)});
@@ -1175,7 +1177,13 @@ class CatalogCandidateResolver {
     final singleSeries = _catalogInt(row['series_id']);
     if (singleSeries != null && singleSeries > 0)
       assignedSeries.add(singleSeries);
-    if (assignedSeries.isNotEmpty && !assignedSeries.contains(query.seriesId)) {
+    // The rule editor is the source of truth. An explicit active rule for
+    // this series deliberately overrides stale legacy ownership stored on
+    // the product row; otherwise an administrator could enable a role and
+    // still never see it in the BOM. Global rules retain the ownership guard.
+    if (!explicitSeriesRule &&
+        assignedSeries.isNotEmpty &&
+        !assignedSeries.contains(query.seriesId)) {
       return false;
     }
     final requested = (query.materialType ?? '').toLowerCase().trim();
@@ -1324,157 +1332,82 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
     List<Map<String, dynamic>> data = [];
 
     try {
-    // Fetch active series name first so it is available globally in _loadProfiles
-    String activeSeriesName = '';
-    String activeSeriesType = '';
-    final myDbInstance = await db.db;
-    if (myDbInstance != null && widget.seriesId != null) {
-      try {
-        final sRes = await myDbInstance.query(
-          'Series',
-          columns: ['name', 'type'],
-          where: 'id = ?',
-          whereArgs: [widget.seriesId],
-          limit: 1,
-        );
-        if (sRes.isNotEmpty) {
-          activeSeriesName = (sRes.first['name'] ?? '')
-              .toString()
-              .toLowerCase();
-          activeSeriesType = (sRes.first['type'] ?? '')
-              .toString()
-              .toLowerCase();
-        }
-      } catch (_) {}
-    }
-
-    if (widget.category != 'shutter') {
-      final forceVisibleInDialog = widget.roleKeys.any(
-        (role) =>
-            role == 'montant_central_slim' ||
-            role == 'sash_central_slim' ||
-            role == 'complement_haut_base',
-      );
-      data = await CatalogCandidateResolver(database: db)
-          .resolve(
-            CatalogCandidateQuery(
-              category: widget.category,
-              selectorType: widget.profileType,
-              roleKeys: widget.roleKeys,
-              seriesId: widget.seriesId,
-              materialType: widget.materialType,
-              hasShutter: widget.hasShutter,
-              isCaissonTunnel: widget.isCaissonTunnel,
-              hasSideCovers: widget.hasSideCovers,
-              multiFrameDrawing: widget.multiFrameDrawing,
-              drawingMode: widget.accessoryDrawingMode,
-              // Slim and its 10 cm top/bottom complement are functional drawing
-              // components. Their replacement must remain available whenever the
-              // role exists, even if a legacy row has show_in_dialog unchecked.
-              requireDialog: !forceVisibleInDialog,
-              requireQuantity: widget.category != 'profile',
-              hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
-              hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
-              targetThicknessMm: widget.targetThicknessMm,
-            ),
-          )
-          // A catalog failure must never leave the selector permanently busy.
-          .timeout(const Duration(seconds: 15));
-      if (!mounted) return;
-      setState(() {
-        profiles = data;
-        isLoading = false;
-        _loadError = null;
-      });
-      return;
-    }
-
-    if (widget.category == 'accessory' || widget.category == 'other') {
-      final myDb = myDbInstance;
-      if (myDb != null) {
-        final ruleKeys = catalogRuleKeysForAccessorySelectorType(
-          widget.profileType,
-        );
-        if (ruleKeys.isNotEmpty) {
-          final rules = await db.getCatalogItemRules(
-            itemTable: 'Accessories',
-            seriesId: widget.seriesId,
-            roleKeys: ruleKeys,
+      // Fetch active series name first so it is available globally in _loadProfiles
+      String activeSeriesName = '';
+      String activeSeriesType = '';
+      final myDbInstance = await db.db;
+      if (myDbInstance != null && widget.seriesId != null) {
+        try {
+          final sRes = await myDbInstance.query(
+            'Series',
+            columns: ['name', 'type'],
+            where: 'id = ?',
+            whereArgs: [widget.seriesId],
+            limit: 1,
           );
-          final ruleIds = rules
-              .where(
-                (rule) =>
-                    rule['show_in_dialog'] != 0 &&
-                    catalogRuleMatchesExactScope(rule, widget.seriesId),
-              )
-              .map((rule) => _catalogInt(rule['item_id']))
-              .whereType<int>()
-              .toList();
-          if (ruleIds.isNotEmpty) {
-            final rows = await myDb.query(
-              'Accessories',
-              where:
-                  'id IN (${List.filled(ruleIds.length, '?').join(',')}) AND (is_active = 1 OR is_active IS NULL)',
-              whereArgs: ruleIds,
-            );
-            final isShutterScrew = _isShutterScrewSelectorType(
-              widget.profileType,
-            );
-            bool materialMatches(Map<String, dynamic> row) {
-              if (isShutterScrew || widget.materialType == null) return true;
-              final material = (row['material_type'] ?? '')
-                  .toString()
-                  .toLowerCase()
-                  .trim();
-              final requested = widget.materialType!.toLowerCase().trim();
-              if (requested == 'pvc') {
-                return material == 'pvc' || material == 'both';
-              }
-              return material == 'aluminium' ||
-                  material == 'aluminum' ||
-                  material == 'both' ||
-                  material.isEmpty;
-            }
-
-            final byId = {
-              for (final row in rows.where(materialMatches))
-                if (_catalogInt(row['id']) != null)
-                  _catalogInt(row['id'])!: row,
-            };
-            data = [
-              for (final itemId in ruleIds)
-                if (byId[itemId] != null)
-                  Map<String, dynamic>.from(byId[itemId]!),
-            ];
+          if (sRes.isNotEmpty) {
+            activeSeriesName = (sRes.first['name'] ?? '')
+                .toString()
+                .toLowerCase();
+            activeSeriesType = (sRes.first['type'] ?? '')
+                .toString()
+                .toLowerCase();
           }
-        }
+        } catch (_) {}
       }
-    } else if (widget.category == 'joint') {
-      final myDb = await db.db;
-      if (myDb != null) {
-        // Apply the exact same scope rule used for accessories: a joint that
-        // has one or more series is exclusive to them; a joint without a
-        // series is global only for its material.
-        final t = widget.profileType.toLowerCase();
-        final roleKeys = catalogRuleKeysForJointSelectorType(t);
-        if (widget.seriesId != null) {
-          final isPvc = widget.materialType?.trim().toLowerCase() == 'pvc';
-          const seriesConstraint =
-              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))";
-          final materialConstraint = isPvc
-              ? "TRIM(LOWER(type)) = 'pvc' OR TRIM(LOWER(type)) = 'both'"
-              : "TRIM(LOWER(type)) = 'aluminium' OR TRIM(LOWER(type)) = 'aluminum' OR TRIM(LOWER(type)) = 'both' OR type IS NULL OR TRIM(type) = '' OR TRIM(LOWER(type)) = 'global'";
-          final allJoints = await myDb.query(
-            'Joints',
-            where: '($seriesConstraint) AND ($materialConstraint)',
-            whereArgs: [widget.seriesId, '%,${widget.seriesId},%'],
+
+      if (widget.category != 'shutter') {
+        final forceVisibleInDialog = widget.roleKeys.any(
+          (role) =>
+              role == 'montant_central_slim' ||
+              role == 'sash_central_slim' ||
+              role == 'complement_haut_base',
+        );
+        data = await CatalogCandidateResolver(database: db)
+            .resolve(
+              CatalogCandidateQuery(
+                category: widget.category,
+                selectorType: widget.profileType,
+                roleKeys: widget.roleKeys,
+                seriesId: widget.seriesId,
+                materialType: widget.materialType,
+                hasShutter: widget.hasShutter,
+                isCaissonTunnel: widget.isCaissonTunnel,
+                hasSideCovers: widget.hasSideCovers,
+                multiFrameDrawing: widget.multiFrameDrawing,
+                drawingMode: widget.accessoryDrawingMode,
+                // Slim and its 10 cm top/bottom complement are functional drawing
+                // components. Their replacement must remain available whenever the
+                // role exists, even if a legacy row has show_in_dialog unchecked.
+                requireDialog: !forceVisibleInDialog,
+                requireQuantity: widget.category != 'profile',
+                hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
+                hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
+                targetThicknessMm: widget.targetThicknessMm,
+              ),
+            )
+            // A catalog failure must never leave the selector permanently busy.
+            .timeout(const Duration(seconds: 15));
+        if (!mounted) return;
+        setState(() {
+          profiles = data;
+          isLoading = false;
+          _loadError = null;
+        });
+        return;
+      }
+
+      if (widget.category == 'accessory' || widget.category == 'other') {
+        final myDb = myDbInstance;
+        if (myDb != null) {
+          final ruleKeys = catalogRuleKeysForAccessorySelectorType(
+            widget.profileType,
           );
-          var matchingTypeRows = <Map<String, dynamic>>[];
-          if (roleKeys.isNotEmpty) {
+          if (ruleKeys.isNotEmpty) {
             final rules = await db.getCatalogItemRules(
-              itemTable: 'Joints',
+              itemTable: 'Accessories',
               seriesId: widget.seriesId,
-              roleKeys: roleKeys,
+              roleKeys: ruleKeys,
             );
             final ruleIds = rules
                 .where(
@@ -1484,831 +1417,912 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 )
                 .map((rule) => _catalogInt(rule['item_id']))
                 .whereType<int>()
-                .toSet();
+                .toList();
             if (ruleIds.isNotEmpty) {
-              matchingTypeRows = allJoints
+              final rows = await myDb.query(
+                'Accessories',
+                where:
+                    'id IN (${List.filled(ruleIds.length, '?').join(',')}) AND (is_active = 1 OR is_active IS NULL)',
+                whereArgs: ruleIds,
+              );
+              final isShutterScrew = _isShutterScrewSelectorType(
+                widget.profileType,
+              );
+              bool materialMatches(Map<String, dynamic> row) {
+                if (isShutterScrew || widget.materialType == null) return true;
+                final material = (row['material_type'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .trim();
+                final requested = widget.materialType!.toLowerCase().trim();
+                if (requested == 'pvc') {
+                  return material == 'pvc' || material == 'both';
+                }
+                return material == 'aluminium' ||
+                    material == 'aluminum' ||
+                    material == 'both' ||
+                    material.isEmpty;
+              }
+
+              final byId = {
+                for (final row in rows.where(materialMatches))
+                  if (_catalogInt(row['id']) != null)
+                    _catalogInt(row['id'])!: row,
+              };
+              data = [
+                for (final itemId in ruleIds)
+                  if (byId[itemId] != null)
+                    Map<String, dynamic>.from(byId[itemId]!),
+              ];
+            }
+          }
+        }
+      } else if (widget.category == 'joint') {
+        final myDb = await db.db;
+        if (myDb != null) {
+          // Apply the exact same scope rule used for accessories: a joint that
+          // has one or more series is exclusive to them; a joint without a
+          // series is global only for its material.
+          final t = widget.profileType.toLowerCase();
+          final roleKeys = catalogRuleKeysForJointSelectorType(t);
+          if (widget.seriesId != null) {
+            final isPvc = widget.materialType?.trim().toLowerCase() == 'pvc';
+            const seriesConstraint =
+                "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))";
+            final materialConstraint = isPvc
+                ? "TRIM(LOWER(type)) = 'pvc' OR TRIM(LOWER(type)) = 'both'"
+                : "TRIM(LOWER(type)) = 'aluminium' OR TRIM(LOWER(type)) = 'aluminum' OR TRIM(LOWER(type)) = 'both' OR type IS NULL OR TRIM(type) = '' OR TRIM(LOWER(type)) = 'global'";
+            final allJoints = await myDb.query(
+              'Joints',
+              where: '($seriesConstraint) AND ($materialConstraint)',
+              whereArgs: [widget.seriesId, '%,${widget.seriesId},%'],
+            );
+            var matchingTypeRows = <Map<String, dynamic>>[];
+            if (roleKeys.isNotEmpty) {
+              final rules = await db.getCatalogItemRules(
+                itemTable: 'Joints',
+                seriesId: widget.seriesId,
+                roleKeys: roleKeys,
+              );
+              final ruleIds = rules
                   .where(
-                    (joint) => ruleIds.contains((joint['id'] as num?)?.toInt()),
+                    (rule) =>
+                        rule['show_in_dialog'] != 0 &&
+                        catalogRuleMatchesExactScope(rule, widget.seriesId),
                   )
-                  .map((joint) => Map<String, dynamic>.from(joint))
-                  .toList();
+                  .map((rule) => _catalogInt(rule['item_id']))
+                  .whereType<int>()
+                  .toSet();
+              if (ruleIds.isNotEmpty) {
+                matchingTypeRows = allJoints
+                    .where(
+                      (joint) =>
+                          ruleIds.contains((joint['id'] as num?)?.toInt()),
+                    )
+                    .map((joint) => Map<String, dynamic>.from(joint))
+                    .toList();
+              }
             }
-          }
-          final exactSeriesRows = matchingTypeRows
-              .where((row) => catalogItemMatchesSeries(row, widget.seriesId!))
-              .toList();
-          data = exactSeriesRows.isNotEmpty
-              ? exactSeriesRows
-              : matchingTypeRows;
-        } else if (roleKeys.isNotEmpty) {
-          final allJoints = await myDb.query(
-            'Joints',
-            where:
-                "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
-          );
-          final rules = await db.getCatalogItemRules(
-            itemTable: 'Joints',
-            roleKeys: roleKeys,
-          );
-          final ruleIds = rules
-              .where(
-                (rule) =>
-                    rule['show_in_dialog'] != 0 &&
-                    catalogRuleMatchesExactScope(rule, null),
-              )
-              .map((rule) => _catalogInt(rule['item_id']))
-              .whereType<int>()
-              .toSet();
-          data = allJoints
-              .where(
-                (joint) => ruleIds.contains((joint['id'] as num?)?.toInt()),
-              )
-              .map((joint) => Map<String, dynamic>.from(joint))
-              .toList();
-        }
-      }
-    } else if (widget.category == 'shutter') {
-      final myDb = await db.db;
-      if (myDb != null) {
-        final t = widget.profileType.toLowerCase();
-
-        // 1. Get the allowed box sizes from ShutterBoxLimits if available
-        List<double> allowedBoxSizes = [];
-        if (widget.windowHeight != null &&
-            widget.bladeId != null &&
-            (t == 'صندوق' ||
-                t == 'كيت' ||
-                t.contains('caisson') ||
-                t.contains('kit'))) {
-          try {
-            final List<Map<String, dynamic>> limits = await myDb.query(
-              'ShutterBoxLimits',
-              where: 'blade_id = ?',
-              whereArgs: [widget.bladeId],
+            final exactSeriesRows = matchingTypeRows
+                .where((row) => catalogItemMatchesSeries(row, widget.seriesId!))
+                .toList();
+            data = exactSeriesRows.isNotEmpty
+                ? exactSeriesRows
+                : matchingTypeRows;
+          } else if (roleKeys.isNotEmpty) {
+            final allJoints = await myDb.query(
+              'Joints',
+              where:
+                  "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
             );
-            if (limits.isNotEmpty) {
-              for (var limit in limits) {
-                final boxSize = (limit['box_size'] as num).toDouble();
-                final maxHeight = (limit['max_height'] as num).toDouble();
-                if (widget.windowHeight! <= maxHeight) {
-                  allowedBoxSizes.add(boxSize);
-                }
-              }
-              // If no box size is large enough, the largest box is the only one allowed
-              if (allowedBoxSizes.isEmpty) {
-                final sortedLimits = List<Map<String, dynamic>>.from(limits)
-                  ..sort(
-                    (a, b) =>
-                        (a['box_size'] as num).compareTo(b['box_size'] as num),
-                  );
-                allowedBoxSizes.add(
-                  (sortedLimits.last['box_size'] as num).toDouble(),
-                );
-              }
-            }
-          } catch (e) {
-            print('Error loading shutter box limits in profile selector: $e');
+            final rules = await db.getCatalogItemRules(
+              itemTable: 'Joints',
+              roleKeys: roleKeys,
+            );
+            final ruleIds = rules
+                .where(
+                  (rule) =>
+                      rule['show_in_dialog'] != 0 &&
+                      catalogRuleMatchesExactScope(rule, null),
+                )
+                .map((rule) => _catalogInt(rule['item_id']))
+                .whereType<int>()
+                .toSet();
+            data = allJoints
+                .where(
+                  (joint) => ruleIds.contains((joint['id'] as num?)?.toInt()),
+                )
+                .map((joint) => Map<String, dynamic>.from(joint))
+                .toList();
           }
         }
+      } else if (widget.category == 'shutter') {
+        final myDb = await db.db;
+        if (myDb != null) {
+          final t = widget.profileType.toLowerCase();
 
-        if (t.contains('كيت') || t.contains('kit')) {
-          final allKits = await myDb.query(
-            'KitBundles',
-            where: 'is_active = 1 OR is_active IS NULL',
-          );
-          data = allKits
-              .map(
-                (e) => {
-                  'id': e['id'],
-                  'name': e['name'],
-                  'description': e['description'],
-                  'price': 0.0,
-                  'price_dzd': 0.0,
-                  'component_type': 'كيت',
-                  'measurement': extractSizeDigits(e['name'].toString()),
-                  'catalog_source': 'KitBundles',
-                },
-              )
-              .toList();
-
-          if (widget.kitDescriptionCode != null &&
-              widget.kitDescriptionCode!.trim().isNotEmpty) {
-            data = compatibleKitBundles(
-              kits: data,
-              descriptionCode: widget.kitDescriptionCode!,
-              minimumSizeMm: widget.targetSize,
-            );
-          }
-
-          // Filter kits list by material type and series name
-          final activeSeriesNameLower = activeSeriesName.toLowerCase();
-          final mat = (widget.materialType ?? '').toLowerCase().trim();
-
-          data = data.where((e) {
-            final n = e['name'].toString().toLowerCase();
-
-            // 1. Material Exclusions
-            if (mat == 'pvc') {
-              if (n.contains('aluminium') ||
-                  n.contains('aluminum') ||
-                  n.contains('alu') ||
-                  n.contains('ألمنيوم') ||
-                  n.contains('tpr')) {
-                return false;
-              }
-            } else {
-              // Aluminium
-              if (n.contains('pvc')) {
-                return false;
-              }
-            }
-
-            // 2. Series Name Exclusions
-            if (activeSeriesNameLower.isNotEmpty) {
-              if (activeSeriesNameLower.contains('67000') ||
-                  activeSeriesNameLower.contains('67')) {
-                if (n.contains('76000') ||
-                    n.contains('76') ||
-                    n.contains('60000') ||
-                    n.contains('60') ||
-                    n.contains('52000') ||
-                    n.contains('52') ||
-                    n.contains('45000') ||
-                    n.contains('45')) {
-                  return false;
-                }
-              } else if (activeSeriesNameLower.contains('76000') ||
-                  activeSeriesNameLower.contains('76')) {
-                if (n.contains('67000') ||
-                    n.contains('67') ||
-                    n.contains('60000') ||
-                    n.contains('60') ||
-                    n.contains('52000') ||
-                    n.contains('52') ||
-                    n.contains('45000') ||
-                    n.contains('45')) {
-                  return false;
-                }
-              } else if (activeSeriesNameLower.contains('60000') ||
-                  activeSeriesNameLower.contains('60')) {
-                if (n.contains('67000') ||
-                    n.contains('67') ||
-                    n.contains('76000') ||
-                    n.contains('76') ||
-                    n.contains('52000') ||
-                    n.contains('52') ||
-                    n.contains('45000') ||
-                    n.contains('45')) {
-                  return false;
-                }
-              }
-            }
-            return true;
-          }).toList();
-
+          // 1. Get the allowed box sizes from ShutterBoxLimits if available
+          List<double> allowedBoxSizes = [];
           if (widget.windowHeight != null &&
-              (widget.kitDescriptionCode == null ||
-                  widget.kitDescriptionCode!.trim().isEmpty)) {
-            data = data.where((a) {
-              final sizeDigits = getComponentSize(a);
-              if (sizeDigits != null) {
-                double compSize = double.tryParse(sizeDigits) ?? 0.0;
-                if (compSize == 15.5) compSize = 155.0;
-                if (compSize == 18.5) compSize = 185.0;
-                if (compSize == 20.5) compSize = 205.0;
-                if (compSize == 15.0) compSize = 150.0;
-                if (compSize == 18.0) compSize = 180.0;
-                if (compSize == 20.0) compSize = 200.0;
-                if (compSize < 100.0) {
-                  compSize = compSize * 10.0;
+              widget.bladeId != null &&
+              (t == 'صندوق' ||
+                  t == 'كيت' ||
+                  t.contains('caisson') ||
+                  t.contains('kit'))) {
+            try {
+              final List<Map<String, dynamic>> limits = await myDb.query(
+                'ShutterBoxLimits',
+                where: 'blade_id = ?',
+                whereArgs: [widget.bladeId],
+              );
+              if (limits.isNotEmpty) {
+                for (var limit in limits) {
+                  final boxSize = (limit['box_size'] as num).toDouble();
+                  final maxHeight = (limit['max_height'] as num).toDouble();
+                  if (widget.windowHeight! <= maxHeight) {
+                    allowedBoxSizes.add(boxSize);
+                  }
                 }
+                // If no box size is large enough, the largest box is the only one allowed
+                if (allowedBoxSizes.isEmpty) {
+                  final sortedLimits = List<Map<String, dynamic>>.from(limits)
+                    ..sort(
+                      (a, b) => (a['box_size'] as num).compareTo(
+                        b['box_size'] as num,
+                      ),
+                    );
+                  allowedBoxSizes.add(
+                    (sortedLimits.last['box_size'] as num).toDouble(),
+                  );
+                }
+              }
+            } catch (e) {
+              print('Error loading shutter box limits in profile selector: $e');
+            }
+          }
 
-                if (allowedBoxSizes.isNotEmpty) {
-                  bool isAllowed = false;
-                  for (var allowed in allowedBoxSizes) {
-                    if ((compSize - allowed).abs() < 5.0) {
-                      isAllowed = true;
-                      break;
-                    }
+          if (t.contains('كيت') || t.contains('kit')) {
+            final allKits = await myDb.query(
+              'KitBundles',
+              where: 'is_active = 1 OR is_active IS NULL',
+            );
+            data = allKits
+                .map(
+                  (e) => {
+                    'id': e['id'],
+                    'name': e['name'],
+                    'description': e['description'],
+                    'price': 0.0,
+                    'price_dzd': 0.0,
+                    'component_type': 'كيت',
+                    'measurement': extractSizeDigits(e['name'].toString()),
+                    'catalog_source': 'KitBundles',
+                  },
+                )
+                .toList();
+
+            if (widget.kitDescriptionCode != null &&
+                widget.kitDescriptionCode!.trim().isNotEmpty) {
+              data = compatibleKitBundles(
+                kits: data,
+                descriptionCode: widget.kitDescriptionCode!,
+                minimumSizeMm: widget.targetSize,
+              );
+            }
+
+            // Filter kits list by material type and series name
+            final activeSeriesNameLower = activeSeriesName.toLowerCase();
+            final mat = (widget.materialType ?? '').toLowerCase().trim();
+
+            data = data.where((e) {
+              final n = e['name'].toString().toLowerCase();
+
+              // 1. Material Exclusions
+              if (mat == 'pvc') {
+                if (n.contains('aluminium') ||
+                    n.contains('aluminum') ||
+                    n.contains('alu') ||
+                    n.contains('ألمنيوم') ||
+                    n.contains('tpr')) {
+                  return false;
+                }
+              } else {
+                // Aluminium
+                if (n.contains('pvc')) {
+                  return false;
+                }
+              }
+
+              // 2. Series Name Exclusions
+              if (activeSeriesNameLower.isNotEmpty) {
+                if (activeSeriesNameLower.contains('67000') ||
+                    activeSeriesNameLower.contains('67')) {
+                  if (n.contains('76000') ||
+                      n.contains('76') ||
+                      n.contains('60000') ||
+                      n.contains('60') ||
+                      n.contains('52000') ||
+                      n.contains('52') ||
+                      n.contains('45000') ||
+                      n.contains('45')) {
+                    return false;
                   }
-                  if (!isAllowed) return false;
-                } else {
-                  double minAllowedSize = 155.0;
-                  if (widget.windowHeight! > 1600 &&
-                      widget.windowHeight! <= 2400) {
-                    minAllowedSize = 185.0;
-                  } else if (widget.windowHeight! > 2400) {
-                    minAllowedSize = 205.0;
+                } else if (activeSeriesNameLower.contains('76000') ||
+                    activeSeriesNameLower.contains('76')) {
+                  if (n.contains('67000') ||
+                      n.contains('67') ||
+                      n.contains('60000') ||
+                      n.contains('60') ||
+                      n.contains('52000') ||
+                      n.contains('52') ||
+                      n.contains('45000') ||
+                      n.contains('45')) {
+                    return false;
                   }
-                  if (compSize < minAllowedSize) {
+                } else if (activeSeriesNameLower.contains('60000') ||
+                    activeSeriesNameLower.contains('60')) {
+                  if (n.contains('67000') ||
+                      n.contains('67') ||
+                      n.contains('76000') ||
+                      n.contains('76') ||
+                      n.contains('52000') ||
+                      n.contains('52') ||
+                      n.contains('45000') ||
+                      n.contains('45')) {
                     return false;
                   }
                 }
               }
               return true;
             }).toList();
-          }
-        } else {
-          String shutWhere = 'is_active = 1 OR is_active IS NULL';
-          List<dynamic> shutArgs = [];
-          if (widget.seriesId != null) {
-            shutWhere +=
-                ' AND ('
-                'series_id = ? '
-                'OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) '
-                'OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\'))'
-                ')';
-            shutArgs.add(widget.seriesId);
-            shutArgs.add('%,' + widget.seriesId.toString() + ',%');
-          }
-          final allShut = await myDb.query(
-            'ShutterComponents',
-            where: shutWhere,
-            whereArgs: shutArgs,
-          );
 
-          final isBladeSelector = t == 'شريحة' || t == 'lame' || t == 'blade';
-          final isTrackSelector =
-              t.contains('سكك') ||
-              t.contains('سكة') ||
-              t.contains('coulisse') ||
-              t.contains('track');
-          final isBladeEndCapSelector =
-              t.contains('أغطية الشفرات') ||
-              t.contains('bouchon lame') ||
-              t.contains('bouchons lames');
+            if (widget.windowHeight != null &&
+                (widget.kitDescriptionCode == null ||
+                    widget.kitDescriptionCode!.trim().isEmpty)) {
+              data = data.where((a) {
+                final sizeDigits = getComponentSize(a);
+                if (sizeDigits != null) {
+                  double compSize = double.tryParse(sizeDigits) ?? 0.0;
+                  if (compSize == 15.5) compSize = 155.0;
+                  if (compSize == 18.5) compSize = 185.0;
+                  if (compSize == 20.5) compSize = 205.0;
+                  if (compSize == 15.0) compSize = 150.0;
+                  if (compSize == 18.0) compSize = 180.0;
+                  if (compSize == 20.0) compSize = 200.0;
+                  if (compSize < 100.0) {
+                    compSize = compSize * 10.0;
+                  }
 
-          List<String> keywords = [t];
-          if (t.contains('صندوق') || t.contains('caisson'))
-            keywords.addAll(['box', 'صندوق', 'caisson']);
-          else if (t.contains('شريحة نهائية') || t.contains('lame finale'))
-            keywords.addAll(['final_blade', 'lame final', 'نهائي']);
-          else if (t.contains('شريحة') || t.contains('lame'))
-            keywords.addAll(['blade', 'شريح', 'lame']);
-          else if (t.contains('سكك') || t.contains('coulisse'))
-            keywords.addAll(['track', 'سك', 'coulisse']);
-          else if (t.contains('محور') || t.contains('axe'))
-            keywords.addAll(['laxe', 'axe', 'محور']);
-          else if (t.contains('أطاش') || t.contains('attache'))
-            keywords.addAll(['attache', 'أطاش']);
-          else if (t.contains('سيبور موتور') ||
-              t.contains('support_moteur') ||
-              t.contains('support moteur'))
-            keywords.addAll(['support_moteur', 'سيبور موتور']);
-          else if (t.contains('الامبو') || t.contains('embout'))
-            keywords.addAll(['embout', 'امبو']);
-          else if (t.contains('سيبور رولمو') ||
-              t.contains('support_roulement') ||
-              t.contains('support roulement'))
-            keywords.addAll(['support_roulement', 'سيبور رولمو']);
-          else if (t.contains('طانديم') || t.contains('tandem'))
-            keywords.addAll(['tandem', 'طانديم']);
-          else if (t.contains('أغطية الشفرات') ||
-              t.contains('bouchon lame') ||
-              t.contains('bouchons lames'))
-            keywords.addAll(['bouchon_lame', 'أغطية الشفرات', 'غطاء']);
-
-          var initialFiltered = allShut.where((a) {
-            final n = a['name'].toString().toLowerCase();
-            final ty = (a['component_type'] ?? '').toString().toLowerCase();
-
-            if (isBladeSelector && ty != 'blade' && ty != 'lame') {
-              return false;
+                  if (allowedBoxSizes.isNotEmpty) {
+                    bool isAllowed = false;
+                    for (var allowed in allowedBoxSizes) {
+                      if ((compSize - allowed).abs() < 5.0) {
+                        isAllowed = true;
+                        break;
+                      }
+                    }
+                    if (!isAllowed) return false;
+                  } else {
+                    double minAllowedSize = 155.0;
+                    if (widget.windowHeight! > 1600 &&
+                        widget.windowHeight! <= 2400) {
+                      minAllowedSize = 185.0;
+                    } else if (widget.windowHeight! > 2400) {
+                      minAllowedSize = 205.0;
+                    }
+                    if (compSize < minAllowedSize) {
+                      return false;
+                    }
+                  }
+                }
+                return true;
+              }).toList();
             }
-            if (isTrackSelector &&
-                !const {
-                  'track',
-                  'coulisse',
-                  'coulisses',
-                  'glissiere',
-                }.contains(ty.trim())) {
-              return false;
+          } else {
+            String shutWhere = 'is_active = 1 OR is_active IS NULL';
+            List<dynamic> shutArgs = [];
+            if (widget.seriesId != null) {
+              shutWhere +=
+                  ' AND ('
+                  'series_id = ? '
+                  'OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) '
+                  'OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\'))'
+                  ')';
+              shutArgs.add(widget.seriesId);
+              shutArgs.add('%,' + widget.seriesId.toString() + ',%');
             }
-            if (isBladeEndCapSelector) {
-              final linkedBlade = (a['shutter_subtype'] ?? '')
-                  .toString()
-                  .trim()
+            final allShut = await myDb.query(
+              'ShutterComponents',
+              where: shutWhere,
+              whereArgs: shutArgs,
+            );
+
+            final isBladeSelector = t == 'شريحة' || t == 'lame' || t == 'blade';
+            final isTrackSelector =
+                t.contains('سكك') ||
+                t.contains('سكة') ||
+                t.contains('coulisse') ||
+                t.contains('track');
+            final isBladeEndCapSelector =
+                t.contains('أغطية الشفرات') ||
+                t.contains('bouchon lame') ||
+                t.contains('bouchons lames');
+
+            List<String> keywords = [t];
+            if (t.contains('صندوق') || t.contains('caisson'))
+              keywords.addAll(['box', 'صندوق', 'caisson']);
+            else if (t.contains('شريحة نهائية') || t.contains('lame finale'))
+              keywords.addAll(['final_blade', 'lame final', 'نهائي']);
+            else if (t.contains('شريحة') || t.contains('lame'))
+              keywords.addAll(['blade', 'شريح', 'lame']);
+            else if (t.contains('سكك') || t.contains('coulisse'))
+              keywords.addAll(['track', 'سك', 'coulisse']);
+            else if (t.contains('محور') || t.contains('axe'))
+              keywords.addAll(['laxe', 'axe', 'محور']);
+            else if (t.contains('أطاش') || t.contains('attache'))
+              keywords.addAll(['attache', 'أطاش']);
+            else if (t.contains('سيبور موتور') ||
+                t.contains('support_moteur') ||
+                t.contains('support moteur'))
+              keywords.addAll(['support_moteur', 'سيبور موتور']);
+            else if (t.contains('الامبو') || t.contains('embout'))
+              keywords.addAll(['embout', 'امبو']);
+            else if (t.contains('سيبور رولمو') ||
+                t.contains('support_roulement') ||
+                t.contains('support roulement'))
+              keywords.addAll(['support_roulement', 'سيبور رولمو']);
+            else if (t.contains('طانديم') || t.contains('tandem'))
+              keywords.addAll(['tandem', 'طانديم']);
+            else if (t.contains('أغطية الشفرات') ||
+                t.contains('bouchon lame') ||
+                t.contains('bouchons lames'))
+              keywords.addAll(['bouchon_lame', 'أغطية الشفرات', 'غطاء']);
+
+            var initialFiltered = allShut.where((a) {
+              final n = a['name'].toString().toLowerCase();
+              final ty = (a['component_type'] ?? '').toString().toLowerCase();
+
+              if (isBladeSelector && ty != 'blade' && ty != 'lame') {
+                return false;
+              }
+              if (isTrackSelector &&
+                  !const {
+                    'track',
+                    'coulisse',
+                    'coulisses',
+                    'glissiere',
+                  }.contains(ty.trim())) {
+                return false;
+              }
+              if (isBladeEndCapSelector) {
+                final linkedBlade = (a['shutter_subtype'] ?? '')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
+                final selectedBlade = (widget.selectedBladeName ?? '')
+                    .trim()
+                    .toLowerCase();
+                if (ty.trim() != 'bouchon_lame' ||
+                    selectedBlade.isEmpty ||
+                    linkedBlade != selectedBlade) {
+                  return false;
+                }
+              }
+
+              if (t.contains('نهائية') || t.contains('finale')) {
+                if (!n.contains('final') &&
+                    !n.contains('finale') &&
+                    !n.contains('نهائي') &&
+                    !ty.contains('final') &&
+                    !ty.contains('finale') &&
+                    !ty.contains('نهائي')) {
+                  return false;
+                }
+              }
+              if (t == 'شريحة' || t == 'lame') {
+                if (n.contains('final') ||
+                    n.contains('finale') ||
+                    n.contains('نهائي') ||
+                    ty.contains('final') ||
+                    ty.contains('finale') ||
+                    ty.contains('نهائي')) {
+                  return false;
+                }
+              }
+
+              // فلترة الأحجام بناءً على ارتفاع النافذة لمنع الاختيارات الخاطئة
+              if ((t == 'صندوق' ||
+                      t == 'كيت' ||
+                      t.contains('caisson') ||
+                      t.contains('kit')) &&
+                  widget.windowHeight != null) {
+                final sizeDigits = getComponentSize(a);
+                if (sizeDigits != null) {
+                  double compSize = double.tryParse(sizeDigits) ?? 0.0;
+                  if (compSize == 15.5) compSize = 155.0;
+                  if (compSize == 18.5) compSize = 185.0;
+                  if (compSize == 20.5) compSize = 205.0;
+                  if (compSize == 15.0) compSize = 150.0;
+                  if (compSize == 18.0) compSize = 180.0;
+                  if (compSize == 20.0) compSize = 200.0;
+                  if (compSize < 100.0) {
+                    compSize = compSize * 10.0;
+                  }
+
+                  if (allowedBoxSizes.isNotEmpty) {
+                    bool isAllowed = false;
+                    for (var allowed in allowedBoxSizes) {
+                      if ((compSize - allowed).abs() < 5.0) {
+                        isAllowed = true;
+                        break;
+                      }
+                    }
+                    if (!isAllowed) return false;
+                  } else {
+                    double minAllowedSize = 155.0;
+                    if (widget.windowHeight! > 1600 &&
+                        widget.windowHeight! <= 2400) {
+                      minAllowedSize = 185.0;
+                    } else if (widget.windowHeight! > 2400) {
+                      minAllowedSize = 205.0;
+                    }
+                    if (compSize < minAllowedSize) {
+                      return false; // استبعاد الحجم غير المناسب
+                    }
+                  }
+                }
+              }
+
+              for (var kw in keywords) {
+                if (n.contains(kw) || ty.contains(kw)) return true;
+              }
+              return false;
+            }).toList();
+
+            if (isTrackSelector && widget.bladeId != null) {
+              final bladeRows = await myDb.query(
+                'ShutterComponents',
+                columns: const ['track_measurement', 'measurement', 'name'],
+                where: 'id = ?',
+                whereArgs: [widget.bladeId],
+                limit: 1,
+              );
+              if (bladeRows.isNotEmpty) {
+                final requiredTrackMeasurement = componentMeasurementKey(
+                  bladeRows.first,
+                  preferTrackMeasurement: true,
+                );
+                if (requiredTrackMeasurement != null) {
+                  initialFiltered = initialFiltered
+                      .where(
+                        (track) =>
+                            componentMeasurementKey(track) ==
+                            requiredTrackMeasurement,
+                      )
+                      .toList();
+                }
+              }
+            }
+
+            // If the manager configured shutter components for this series, use
+            // that definition before falling back to global/name-based matching.
+            if (widget.seriesId != null) {
+              String? role;
+              if (t.contains('caisson') ||
+                  t.contains('box') ||
+                  t.contains('صندوق')) {
+                role = 'box';
+              } else if (t.contains('lame') ||
+                  t.contains('blade') ||
+                  t.contains('شريحة')) {
+                role = 'blade';
+              } else if (t.contains('coulisse') ||
+                  t.contains('track') ||
+                  t.contains('سكة')) {
+                role = 'rail';
+              } else if (t.contains('moteur') ||
+                  t.contains('motor') ||
+                  t.contains('محرك')) {
+                role = 'motor';
+              } else if (t.contains('manivelle') ||
+                  t.contains('crank') ||
+                  t.contains('مانيفيل')) {
+                role = 'crank';
+              } else if (t.contains('axe') ||
+                  t.contains('axis') ||
+                  t.contains('محور')) {
+                role = 'axis';
+              }
+              if (role != null) {
+                final configuredRules = await db.getSeriesShutterRules(
+                  widget.seriesId!,
+                );
+                final allowedIds = configuredRules
+                    .where((rule) => rule['component_role'] == role)
+                    .map((rule) => (rule['component_id'] as num?)?.toInt())
+                    .whereType<int>()
+                    .toSet();
+                if (allowedIds.isNotEmpty) {
+                  initialFiltered = initialFiltered
+                      .where(
+                        (component) => allowedIds.contains(
+                          (component['id'] as num?)?.toInt(),
+                        ),
+                      )
+                      .toList();
+                }
+              }
+            }
+
+            // The axis is not a generic shutter component.  Its blade relation
+            // has priority: an X3D blade may only use X3D axes, while a normal
+            // blade must never receive an X3D axis.  Only after that relation is
+            // respected do we apply the motor-diameter constraint.
+            final isAxisSelector =
+                t.contains('axe') ||
+                t.contains('axis') ||
+                t.contains('laxe') ||
+                t.contains('محور');
+            if (isAxisSelector) {
+              final selectedBlade = (widget.selectedBladeName ?? '')
                   .toLowerCase();
+              final selectedBladeIsX3d =
+                  widget.selectedBladeIsX3d ?? selectedBlade.contains('x3d');
+
+              initialFiltered = initialFiltered.where((component) {
+                final axisIsX3d = _isX3dShutterComponent(component);
+                return selectedBladeIsX3d ? axisIsX3d : !axisIsX3d;
+              }).toList();
+
+              // New catalogue entries store the exact blade name in
+              // shutter_subtype.  Prefer that explicit relationship whenever it
+              // exists, while retaining the X3D/normal fallback for older data
+              // that only stored a generic subtype.
+              if (selectedBlade.isNotEmpty) {
+                final explicitlyLinked = initialFiltered.where((component) {
+                  return (component['shutter_subtype'] ?? '')
+                          .toString()
+                          .trim()
+                          .toLowerCase() ==
+                      selectedBlade;
+                }).toList();
+                if (explicitlyLinked.isNotEmpty) {
+                  initialFiltered = explicitlyLinked;
+                }
+              }
+
+              final requiredMotorDiameter = widget.motorDiameter;
+              if (requiredMotorDiameter != null && requiredMotorDiameter > 0) {
+                initialFiltered = initialFiltered.where((component) {
+                  final axisDiameter = shutterComponentDiameter(component);
+                  // With a motor selected, an axis with no known diameter is not
+                  // safe to propose: it cannot be proven compatible.
+                  return axisDiameter != null &&
+                      axisDiameter >= requiredMotorDiameter;
+                }).toList();
+              }
+
+              // When several axes fit, offer the smallest compatible diameter
+              // first.  This keeps the default choice deterministic as well.
+              initialFiltered.sort((a, b) {
+                final aDiameter =
+                    shutterComponentDiameter(a) ?? double.infinity;
+                final bDiameter =
+                    shutterComponentDiameter(b) ?? double.infinity;
+                return aDiameter.compareTo(bDiameter);
+              });
+            }
+
+            // Attaches, motors and their supports are shutter components tied to
+            // the selected blade family.  A normal blade must never offer X3D
+            // parts, and an X3D blade must never fall back to the normal family.
+            final isBladeBoundSelector =
+                t.contains('attache') ||
+                t.contains('أطاش') ||
+                t.contains('moteur') ||
+                t.contains('motor') ||
+                t.contains('محرك') ||
+                t.contains('support moteur') ||
+                t.contains('support_moteur') ||
+                t.contains('سيبور موتور') ||
+                t.contains('support roulement') ||
+                t.contains('support_roulement') ||
+                t.contains('سيبور رولمو') ||
+                t.contains('embout') ||
+                t.contains('الامبو');
+            if (isBladeBoundSelector) {
               final selectedBlade = (widget.selectedBladeName ?? '')
                   .trim()
                   .toLowerCase();
-              if (ty.trim() != 'bouchon_lame' ||
-                  selectedBlade.isEmpty ||
-                  linkedBlade != selectedBlade) {
-                return false;
-              }
-            }
+              final selectedBladeIsX3d =
+                  widget.selectedBladeIsX3d ?? selectedBlade.contains('x3d');
+              initialFiltered = initialFiltered.where((component) {
+                return _isX3dShutterComponent(component) == selectedBladeIsX3d;
+              }).toList();
 
-            if (t.contains('نهائية') || t.contains('finale')) {
-              if (!n.contains('final') &&
-                  !n.contains('finale') &&
-                  !n.contains('نهائي') &&
-                  !ty.contains('final') &&
-                  !ty.contains('finale') &&
-                  !ty.contains('نهائي')) {
-                return false;
-              }
-            }
-            if (t == 'شريحة' || t == 'lame') {
-              if (n.contains('final') ||
-                  n.contains('finale') ||
-                  n.contains('نهائي') ||
-                  ty.contains('final') ||
-                  ty.contains('finale') ||
-                  ty.contains('نهائي')) {
-                return false;
-              }
-            }
-
-            // فلترة الأحجام بناءً على ارتفاع النافذة لمنع الاختيارات الخاطئة
-            if ((t == 'صندوق' ||
-                    t == 'كيت' ||
-                    t.contains('caisson') ||
-                    t.contains('kit')) &&
-                widget.windowHeight != null) {
-              final sizeDigits = getComponentSize(a);
-              if (sizeDigits != null) {
-                double compSize = double.tryParse(sizeDigits) ?? 0.0;
-                if (compSize == 15.5) compSize = 155.0;
-                if (compSize == 18.5) compSize = 185.0;
-                if (compSize == 20.5) compSize = 205.0;
-                if (compSize == 15.0) compSize = 150.0;
-                if (compSize == 18.0) compSize = 180.0;
-                if (compSize == 20.0) compSize = 200.0;
-                if (compSize < 100.0) {
-                  compSize = compSize * 10.0;
-                }
-
-                if (allowedBoxSizes.isNotEmpty) {
-                  bool isAllowed = false;
-                  for (var allowed in allowedBoxSizes) {
-                    if ((compSize - allowed).abs() < 5.0) {
-                      isAllowed = true;
-                      break;
-                    }
-                  }
-                  if (!isAllowed) return false;
-                } else {
-                  double minAllowedSize = 155.0;
-                  if (widget.windowHeight! > 1600 &&
-                      widget.windowHeight! <= 2400) {
-                    minAllowedSize = 185.0;
-                  } else if (widget.windowHeight! > 2400) {
-                    minAllowedSize = 205.0;
-                  }
-                  if (compSize < minAllowedSize) {
-                    return false; // استبعاد الحجم غير المناسب
-                  }
-                }
-              }
-            }
-
-            for (var kw in keywords) {
-              if (n.contains(kw) || ty.contains(kw)) return true;
-            }
-            return false;
-          }).toList();
-
-          if (isTrackSelector && widget.bladeId != null) {
-            final bladeRows = await myDb.query(
-              'ShutterComponents',
-              columns: const ['track_measurement', 'measurement', 'name'],
-              where: 'id = ?',
-              whereArgs: [widget.bladeId],
-              limit: 1,
-            );
-            if (bladeRows.isNotEmpty) {
-              final requiredTrackMeasurement = componentMeasurementKey(
-                bladeRows.first,
-                preferTrackMeasurement: true,
-              );
-              if (requiredTrackMeasurement != null) {
-                initialFiltered = initialFiltered
-                    .where(
-                      (track) =>
-                          componentMeasurementKey(track) ==
-                          requiredTrackMeasurement,
-                    )
-                    .toList();
-              }
-            }
-          }
-
-          // If the manager configured shutter components for this series, use
-          // that definition before falling back to global/name-based matching.
-          if (widget.seriesId != null) {
-            String? role;
-            if (t.contains('caisson') ||
-                t.contains('box') ||
-                t.contains('صندوق')) {
-              role = 'box';
-            } else if (t.contains('lame') ||
-                t.contains('blade') ||
-                t.contains('شريحة')) {
-              role = 'blade';
-            } else if (t.contains('coulisse') ||
-                t.contains('track') ||
-                t.contains('سكة')) {
-              role = 'rail';
-            } else if (t.contains('moteur') ||
-                t.contains('motor') ||
-                t.contains('محرك')) {
-              role = 'motor';
-            } else if (t.contains('manivelle') ||
-                t.contains('crank') ||
-                t.contains('مانيفيل')) {
-              role = 'crank';
-            } else if (t.contains('axe') ||
-                t.contains('axis') ||
-                t.contains('محور')) {
-              role = 'axis';
-            }
-            if (role != null) {
-              final configuredRules = await db.getSeriesShutterRules(
-                widget.seriesId!,
-              );
-              final allowedIds = configuredRules
-                  .where((rule) => rule['component_role'] == role)
-                  .map((rule) => (rule['component_id'] as num?)?.toInt())
-                  .whereType<int>()
-                  .toSet();
-              if (allowedIds.isNotEmpty) {
-                initialFiltered = initialFiltered
-                    .where(
-                      (component) => allowedIds.contains(
-                        (component['id'] as num?)?.toInt(),
-                      ),
-                    )
-                    .toList();
-              }
-            }
-          }
-
-          // The axis is not a generic shutter component.  Its blade relation
-          // has priority: an X3D blade may only use X3D axes, while a normal
-          // blade must never receive an X3D axis.  Only after that relation is
-          // respected do we apply the motor-diameter constraint.
-          final isAxisSelector =
-              t.contains('axe') ||
-              t.contains('axis') ||
-              t.contains('laxe') ||
-              t.contains('محور');
-          if (isAxisSelector) {
-            final selectedBlade = (widget.selectedBladeName ?? '')
-                .toLowerCase();
-            final selectedBladeIsX3d =
-                widget.selectedBladeIsX3d ?? selectedBlade.contains('x3d');
-
-            initialFiltered = initialFiltered.where((component) {
-              final axisIsX3d = _isX3dShutterComponent(component);
-              return selectedBladeIsX3d ? axisIsX3d : !axisIsX3d;
-            }).toList();
-
-            // New catalogue entries store the exact blade name in
-            // shutter_subtype.  Prefer that explicit relationship whenever it
-            // exists, while retaining the X3D/normal fallback for older data
-            // that only stored a generic subtype.
-            if (selectedBlade.isNotEmpty) {
+              // An explicit blade relation is stronger than a generic normal/X3D
+              // label whenever the catalogue contains one.
               final explicitlyLinked = initialFiltered.where((component) {
-                return (component['shutter_subtype'] ?? '')
-                        .toString()
-                        .trim()
-                        .toLowerCase() ==
-                    selectedBlade;
+                return selectedBlade.isNotEmpty &&
+                    (component['shutter_subtype'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase() ==
+                        selectedBlade;
               }).toList();
               if (explicitlyLinked.isNotEmpty) {
                 initialFiltered = explicitlyLinked;
               }
             }
 
-            final requiredMotorDiameter = widget.motorDiameter;
-            if (requiredMotorDiameter != null && requiredMotorDiameter > 0) {
-              initialFiltered = initialFiltered.where((component) {
-                final axisDiameter = shutterComponentDiameter(component);
-                // With a motor selected, an axis with no known diameter is not
-                // safe to propose: it cannot be proven compatible.
-                return axisDiameter != null &&
-                    axisDiameter >= requiredMotorDiameter;
+            if (widget.targetSize != null) {
+              final targetDigits = widget.targetSize!.toStringAsFixed(0);
+              final matchedSizeData = initialFiltered.where((a) {
+                final sizeDigits = extractSizeDigits(a['name'].toString());
+                return sizeDigits == targetDigits;
               }).toList();
-            }
-
-            // When several axes fit, offer the smallest compatible diameter
-            // first.  This keeps the default choice deterministic as well.
-            initialFiltered.sort((a, b) {
-              final aDiameter = shutterComponentDiameter(a) ?? double.infinity;
-              final bDiameter = shutterComponentDiameter(b) ?? double.infinity;
-              return aDiameter.compareTo(bDiameter);
-            });
-          }
-
-          // Attaches, motors and their supports are shutter components tied to
-          // the selected blade family.  A normal blade must never offer X3D
-          // parts, and an X3D blade must never fall back to the normal family.
-          final isBladeBoundSelector =
-              t.contains('attache') ||
-              t.contains('أطاش') ||
-              t.contains('moteur') ||
-              t.contains('motor') ||
-              t.contains('محرك') ||
-              t.contains('support moteur') ||
-              t.contains('support_moteur') ||
-              t.contains('سيبور موتور') ||
-              t.contains('support roulement') ||
-              t.contains('support_roulement') ||
-              t.contains('سيبور رولمو') ||
-              t.contains('embout') ||
-              t.contains('الامبو');
-          if (isBladeBoundSelector) {
-            final selectedBlade = (widget.selectedBladeName ?? '')
-                .trim()
-                .toLowerCase();
-            final selectedBladeIsX3d =
-                widget.selectedBladeIsX3d ?? selectedBlade.contains('x3d');
-            initialFiltered = initialFiltered.where((component) {
-              return _isX3dShutterComponent(component) == selectedBladeIsX3d;
-            }).toList();
-
-            // An explicit blade relation is stronger than a generic normal/X3D
-            // label whenever the catalogue contains one.
-            final explicitlyLinked = initialFiltered.where((component) {
-              return selectedBlade.isNotEmpty &&
-                  (component['shutter_subtype'] ?? '')
-                          .toString()
-                          .trim()
-                          .toLowerCase() ==
-                      selectedBlade;
-            }).toList();
-            if (explicitlyLinked.isNotEmpty) {
-              initialFiltered = explicitlyLinked;
-            }
-          }
-
-          if (widget.targetSize != null) {
-            final targetDigits = widget.targetSize!.toStringAsFixed(0);
-            final matchedSizeData = initialFiltered.where((a) {
-              final sizeDigits = extractSizeDigits(a['name'].toString());
-              return sizeDigits == targetDigits;
-            }).toList();
-            if (matchedSizeData.isNotEmpty) {
-              data = matchedSizeData;
+              if (matchedSizeData.isNotEmpty) {
+                data = matchedSizeData;
+              } else {
+                data = initialFiltered;
+              }
             } else {
               data = initialFiltered;
             }
-          } else {
-            data = initialFiltered;
-          }
 
-          if (t.contains('صندوق') || t.contains('caisson')) {
-            data = List<Map<String, dynamic>>.from(data);
-            data.insert(0, {
-              'id': -999,
-              'name': 'صندوق نفق (Caisson Tunnel)',
-              'price': 0.0,
-              'price_dzd': 0.0,
-              'component_type': 'صندوق',
-              'measurement': 'tunnel',
-            });
-          }
-        } // end else for ShutterComponents
-      } // end if (myDb != null)
-    } else {
-      final myDb = await db.db;
-      if (myDb != null && widget.seriesId != null) {
-        String whereClause = '(is_active = 1 OR is_active IS NULL)';
-        List<dynamic> whereArgs = [];
-        if (widget.seriesId != null) {
-          whereClause = 'series_id = ? AND ' + whereClause;
-          whereArgs = [widget.seriesId];
-        }
-        final allSections = await myDb.query(
-          'Sections',
-          where: whereClause,
-          whereArgs: whereArgs,
-        );
-
-        final t = widget.profileType.toLowerCase().trim();
-        data = allSections.where((s) {
-          if (!profileSectionMatchesDrawingMode(
-            section: s,
-            profileType: widget.profileType,
-            activeSeriesType: activeSeriesType,
-            drawingMode: widget.accessoryDrawingMode,
-          )) {
-            return false;
-          }
-          final ty = s['type'].toString().toLowerCase().trim();
-          final name = s['name'].toString().toLowerCase().trim();
-
-          if (t == 'frame' || t == 'cadre' || t == 'إطار') {
-            return ty.contains('frame') ||
-                ty.contains('cadre') ||
-                ty.contains('إطار') ||
-                ty.contains('فريم');
-          } else if (t == 'sash' || t == 'ouvrant' || t == 'ضلفة') {
-            return ty.contains('sash') ||
-                ty.contains('ouvrant') ||
-                ty.contains('ضلفة') ||
-                ty.contains('ساش');
-          } else if (t.contains('lateral') || t.contains('جانبي')) {
-            final lowerName = name.toLowerCase();
-            final lowerType = ty.toLowerCase();
-            final code = (s['code'] ?? '').toString().toLowerCase();
-            return (code.contains('67108') ||
-                    code.contains('67104') ||
-                    code.endsWith('108') ||
-                    code.endsWith('104') ||
-                    lowerType.contains('lateral') ||
-                    lowerName.contains('latéral') ||
-                    lowerName.contains('lateral') ||
-                    lowerName.contains('جانبي')) &&
-                !lowerName.contains('central') &&
-                !lowerName.contains('وسطي') &&
-                !lowerName.contains('chicane') &&
-                !code.contains('105') &&
-                !code.contains('107');
-          } else if (t.contains('central') ||
-              t.contains('وسطي') ||
-              t.contains('chicane')) {
-            final lowerName = name.toLowerCase();
-            final lowerType = ty.toLowerCase();
-            final code = (s['code'] ?? '').toString().toLowerCase();
-            return (code.contains('67107') ||
-                    code.contains('67105') ||
-                    code.endsWith('107') ||
-                    code.endsWith('105') ||
-                    lowerType.contains('central') ||
-                    lowerName.contains('central') ||
-                    lowerName.contains('وسطي') ||
-                    lowerName.contains('chicane')) &&
-                !lowerName.contains('latéral') &&
-                !lowerName.contains('lateral') &&
-                !lowerName.contains('جانبي') &&
-                !code.contains('104') &&
-                !code.contains('108');
-          } else if (t.contains('sash_traverse') ||
-              t.contains('sash traverse')) {
-            return ty.contains('traverse') ||
-                name.contains('traverse') ||
-                ty.contains('عرضي') ||
-                name.contains('عرضي');
-          } else if (t.contains('couvre') ||
-              t.contains('side cover') ||
-              t.contains('غطاء جانبي') ||
-              t.contains('كافر')) {
-            final lowerName = name.toLowerCase();
-            final lowerType = ty.toLowerCase();
-            final code = (s['code'] ?? '').toString().toLowerCase();
-            return lowerType.contains('couvre') ||
-                lowerName.contains('couvre') ||
-                lowerName.contains('غطاء') ||
-                lowerType.contains('side_cover') ||
-                code.contains('couvre');
-          } else if (t == 'renfort') {
-            return ty.contains('renfort') ||
-                ty.contains('رنفور') ||
-                ty.contains('حديد');
-          } else if (t == 'batmo') {
-            return (ty.contains('batmo') || ty.contains('باتمو')) &&
-                !ty.contains('bouchon') &&
-                !ty.contains('بوشون');
-          } else if (t == 'parclose') {
-            final isReducer =
-                ty.contains('reduct') ||
-                name.contains('reduct') ||
-                ty.contains('réduct') ||
-                name.contains('réduct') ||
-                ty.contains('ريديكتور') ||
-                name.contains('ريديكتور') ||
-                ty.contains('مخفض') ||
-                name.contains('مخفض');
-            return !isReducer &&
-                (ty.contains('parclose') ||
-                    name.contains('parclose') ||
-                    ty.contains('باركلوز') ||
-                    name.contains('باكيت') ||
-                    name.contains('بيركلوز'));
-          } else if (t == 'mullion' || t == 'traverse') {
-            return ty.contains('mullion') ||
-                ty.contains('traverse') ||
-                ty.contains('موليان') ||
-                ty.contains('ترافيرس');
-          } else if (t == 'bouchon batmo' ||
-              t == 'bouchon batment' ||
-              t == 'bouchon') {
-            return ty.contains('bouchon') ||
-                ty.contains('بوشون') ||
-                ty.contains('bochon');
-          }
-          // البحث بالكود مباشرة (مثلاً 67114 للريديكتور)
-          final code = (s['code'] ?? '').toString().toLowerCase().trim();
-          if (RegExp(r'^\d+$').hasMatch(t)) {
-            return code.contains(t) &&
-                !ty.contains('rail') &&
-                !name.contains('rail') &&
-                !name.contains('سكة');
-          }
-          if (t.contains('reduct') ||
-              t.contains('67114') ||
-              t.contains('ريديك') ||
-              t.contains('مخفض')) {
-            return (ty.contains('reduct') ||
-                    name.contains('reduct') ||
-                    name.contains('مخفض') ||
-                    name.contains('ريديكتور') ||
-                    code.contains('67114')) &&
-                !ty.contains('rail') &&
-                !ty.contains('cadre') &&
-                !ty.contains('frame') &&
-                !name.contains('rail') &&
-                !name.contains('سكة') &&
-                !name.contains('cadre') &&
-                !name.contains('إطار');
-          }
-          if (t == 'rail' ||
-              t.contains('rail') ||
-              t.contains('الري') ||
-              t.contains('سكة')) {
-            return (ty == 'rail' ||
-                    ty.contains('rail') ||
-                    name.contains('rail') ||
-                    name.contains('سكة')) &&
-                !ty.contains('frame') &&
-                !ty.contains('cadre') &&
-                !name.contains('cadre') &&
-                !name.contains('إطار');
-          }
-          return ty.contains(t) ||
-              t.contains(ty) ||
-              name.contains(t) ||
-              t.contains(name);
-        }).toList();
-
-        // The explicit role mapping created by the administrator in
-        // "Définition intelligente de la série" is authoritative. An empty
-        // mapping means that this profile does not exist for the series.
-        final roleKeys = seriesRoleKeysForProfileSelectorType(t);
-        if (widget.seriesId != null && roleKeys.isNotEmpty) {
-          final roleRows = await db.getSeriesDesignRoles(widget.seriesId!);
-          if (roleRows.isEmpty) {
-            data = <Map<String, dynamic>>[];
-          } else if (widget.accessoryDrawingMode != null) {
-            // A frame extension is a sliding track addition, never an
-            // opening-frame choice. The role scope is authoritative for all
-            // other profile replacements as well.
-            final isBaseFrameSelector =
-                t == 'frame' || t == 'cadre' || t == 'إطار';
-            final isBaseSashSelector =
-                t == 'sash' || t == 'ouvrant' || t == 'ضلفة';
-            final scopedRoleKeys = isBaseFrameSelector
-                ? const ['frame']
-                : isBaseSashSelector
-                ? const ['sash']
-                : roleKeys;
-            data = await db.getDesignSectionsForScopedDialogRoles(
-              widget.seriesId!,
-              scopedRoleKeys,
-              usageScope:
-                  widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
-                  ? 'sliding'
-                  : 'opening',
-              requireDialog: true,
-              requireQuantity: true,
-            );
-          } else {
-            data = await db.getDesignSectionsForRoles(
-              widget.seriesId!,
-              roleKeys,
-            );
-          }
-        }
-        final isFrameSelector = t == 'frame' || t == 'cadre' || t == 'إطار';
-        final material = (widget.materialType ?? '').toLowerCase().trim();
-        final isAluminium =
-            material.isEmpty ||
-            material == 'aluminium' ||
-            material == 'aluminum' ||
-            material == 'alu';
-        if (widget.hasShutter &&
-            !widget.isCaissonTunnel &&
-            isAluminium &&
-            isFrameSelector) {
-          data = data
-              .where((item) => !profileHasIntegratedSideCover(item))
-              .toList();
-        }
+            if (t.contains('صندوق') || t.contains('caisson')) {
+              data = List<Map<String, dynamic>>.from(data);
+              data.insert(0, {
+                'id': -999,
+                'name': 'صندوق نفق (Caisson Tunnel)',
+                'price': 0.0,
+                'price_dzd': 0.0,
+                'component_type': 'صندوق',
+                'measurement': 'tunnel',
+              });
+            }
+          } // end else for ShutterComponents
+        } // end if (myDb != null)
       } else {
-        data = [];
-      }
-    }
+        final myDb = await db.db;
+        if (myDb != null && widget.seriesId != null) {
+          String whereClause = '(is_active = 1 OR is_active IS NULL)';
+          List<dynamic> whereArgs = [];
+          if (widget.seriesId != null) {
+            whereClause = 'series_id = ? AND ' + whereClause;
+            whereArgs = [widget.seriesId];
+          }
+          final allSections = await myDb.query(
+            'Sections',
+            where: whereClause,
+            whereArgs: whereArgs,
+          );
 
-    if (!mounted) return;
-    setState(() {
-      profiles = data;
-      isLoading = false;
-      _loadError = null;
-    });
+          final t = widget.profileType.toLowerCase().trim();
+          data = allSections.where((s) {
+            if (!profileSectionMatchesDrawingMode(
+              section: s,
+              profileType: widget.profileType,
+              activeSeriesType: activeSeriesType,
+              drawingMode: widget.accessoryDrawingMode,
+            )) {
+              return false;
+            }
+            final ty = s['type'].toString().toLowerCase().trim();
+            final name = s['name'].toString().toLowerCase().trim();
+
+            if (t == 'frame' || t == 'cadre' || t == 'إطار') {
+              return ty.contains('frame') ||
+                  ty.contains('cadre') ||
+                  ty.contains('إطار') ||
+                  ty.contains('فريم');
+            } else if (t == 'sash' || t == 'ouvrant' || t == 'ضلفة') {
+              return ty.contains('sash') ||
+                  ty.contains('ouvrant') ||
+                  ty.contains('ضلفة') ||
+                  ty.contains('ساش');
+            } else if (t.contains('lateral') || t.contains('جانبي')) {
+              final lowerName = name.toLowerCase();
+              final lowerType = ty.toLowerCase();
+              final code = (s['code'] ?? '').toString().toLowerCase();
+              return (code.contains('67108') ||
+                      code.contains('67104') ||
+                      code.endsWith('108') ||
+                      code.endsWith('104') ||
+                      lowerType.contains('lateral') ||
+                      lowerName.contains('latéral') ||
+                      lowerName.contains('lateral') ||
+                      lowerName.contains('جانبي')) &&
+                  !lowerName.contains('central') &&
+                  !lowerName.contains('وسطي') &&
+                  !lowerName.contains('chicane') &&
+                  !code.contains('105') &&
+                  !code.contains('107');
+            } else if (t.contains('central') ||
+                t.contains('وسطي') ||
+                t.contains('chicane')) {
+              final lowerName = name.toLowerCase();
+              final lowerType = ty.toLowerCase();
+              final code = (s['code'] ?? '').toString().toLowerCase();
+              return (code.contains('67107') ||
+                      code.contains('67105') ||
+                      code.endsWith('107') ||
+                      code.endsWith('105') ||
+                      lowerType.contains('central') ||
+                      lowerName.contains('central') ||
+                      lowerName.contains('وسطي') ||
+                      lowerName.contains('chicane')) &&
+                  !lowerName.contains('latéral') &&
+                  !lowerName.contains('lateral') &&
+                  !lowerName.contains('جانبي') &&
+                  !code.contains('104') &&
+                  !code.contains('108');
+            } else if (t.contains('sash_traverse') ||
+                t.contains('sash traverse')) {
+              return ty.contains('traverse') ||
+                  name.contains('traverse') ||
+                  ty.contains('عرضي') ||
+                  name.contains('عرضي');
+            } else if (t.contains('couvre') ||
+                t.contains('side cover') ||
+                t.contains('غطاء جانبي') ||
+                t.contains('كافر')) {
+              final lowerName = name.toLowerCase();
+              final lowerType = ty.toLowerCase();
+              final code = (s['code'] ?? '').toString().toLowerCase();
+              return lowerType.contains('couvre') ||
+                  lowerName.contains('couvre') ||
+                  lowerName.contains('غطاء') ||
+                  lowerType.contains('side_cover') ||
+                  code.contains('couvre');
+            } else if (t == 'renfort') {
+              return ty.contains('renfort') ||
+                  ty.contains('رنفور') ||
+                  ty.contains('حديد');
+            } else if (t == 'batmo') {
+              return (ty.contains('batmo') || ty.contains('باتمو')) &&
+                  !ty.contains('bouchon') &&
+                  !ty.contains('بوشون');
+            } else if (t == 'parclose') {
+              final isReducer =
+                  ty.contains('reduct') ||
+                  name.contains('reduct') ||
+                  ty.contains('réduct') ||
+                  name.contains('réduct') ||
+                  ty.contains('ريديكتور') ||
+                  name.contains('ريديكتور') ||
+                  ty.contains('مخفض') ||
+                  name.contains('مخفض');
+              return !isReducer &&
+                  (ty.contains('parclose') ||
+                      name.contains('parclose') ||
+                      ty.contains('باركلوز') ||
+                      name.contains('باكيت') ||
+                      name.contains('بيركلوز'));
+            } else if (t == 'mullion' || t == 'traverse') {
+              return ty.contains('mullion') ||
+                  ty.contains('traverse') ||
+                  ty.contains('موليان') ||
+                  ty.contains('ترافيرس');
+            } else if (t == 'bouchon batmo' ||
+                t == 'bouchon batment' ||
+                t == 'bouchon') {
+              return ty.contains('bouchon') ||
+                  ty.contains('بوشون') ||
+                  ty.contains('bochon');
+            }
+            // البحث بالكود مباشرة (مثلاً 67114 للريديكتور)
+            final code = (s['code'] ?? '').toString().toLowerCase().trim();
+            if (RegExp(r'^\d+$').hasMatch(t)) {
+              return code.contains(t) &&
+                  !ty.contains('rail') &&
+                  !name.contains('rail') &&
+                  !name.contains('سكة');
+            }
+            if (t.contains('reduct') ||
+                t.contains('67114') ||
+                t.contains('ريديك') ||
+                t.contains('مخفض')) {
+              return (ty.contains('reduct') ||
+                      name.contains('reduct') ||
+                      name.contains('مخفض') ||
+                      name.contains('ريديكتور') ||
+                      code.contains('67114')) &&
+                  !ty.contains('rail') &&
+                  !ty.contains('cadre') &&
+                  !ty.contains('frame') &&
+                  !name.contains('rail') &&
+                  !name.contains('سكة') &&
+                  !name.contains('cadre') &&
+                  !name.contains('إطار');
+            }
+            if (t == 'rail' ||
+                t.contains('rail') ||
+                t.contains('الري') ||
+                t.contains('سكة')) {
+              return (ty == 'rail' ||
+                      ty.contains('rail') ||
+                      name.contains('rail') ||
+                      name.contains('سكة')) &&
+                  !ty.contains('frame') &&
+                  !ty.contains('cadre') &&
+                  !name.contains('cadre') &&
+                  !name.contains('إطار');
+            }
+            return ty.contains(t) ||
+                t.contains(ty) ||
+                name.contains(t) ||
+                t.contains(name);
+          }).toList();
+
+          // The explicit role mapping created by the administrator in
+          // "Définition intelligente de la série" is authoritative. An empty
+          // mapping means that this profile does not exist for the series.
+          final roleKeys = seriesRoleKeysForProfileSelectorType(t);
+          if (widget.seriesId != null && roleKeys.isNotEmpty) {
+            final roleRows = await db.getSeriesDesignRoles(widget.seriesId!);
+            if (roleRows.isEmpty) {
+              data = <Map<String, dynamic>>[];
+            } else if (widget.accessoryDrawingMode != null) {
+              // A frame extension is a sliding track addition, never an
+              // opening-frame choice. The role scope is authoritative for all
+              // other profile replacements as well.
+              final isBaseFrameSelector =
+                  t == 'frame' || t == 'cadre' || t == 'إطار';
+              final isBaseSashSelector =
+                  t == 'sash' || t == 'ouvrant' || t == 'ضلفة';
+              final scopedRoleKeys = isBaseFrameSelector
+                  ? const ['frame']
+                  : isBaseSashSelector
+                  ? const ['sash']
+                  : roleKeys;
+              data = await db.getDesignSectionsForScopedDialogRoles(
+                widget.seriesId!,
+                scopedRoleKeys,
+                usageScope:
+                    widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
+                    ? 'sliding'
+                    : 'opening',
+                requireDialog: true,
+                requireQuantity: true,
+              );
+            } else {
+              data = await db.getDesignSectionsForRoles(
+                widget.seriesId!,
+                roleKeys,
+              );
+            }
+          }
+          final isFrameSelector = t == 'frame' || t == 'cadre' || t == 'إطار';
+          final material = (widget.materialType ?? '').toLowerCase().trim();
+          final isAluminium =
+              material.isEmpty ||
+              material == 'aluminium' ||
+              material == 'aluminum' ||
+              material == 'alu';
+          if (widget.hasShutter &&
+              !widget.isCaissonTunnel &&
+              isAluminium &&
+              isFrameSelector) {
+            data = data
+                .where((item) => !profileHasIntegratedSideCover(item))
+                .toList();
+          }
+        } else {
+          data = [];
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        profiles = data;
+        isLoading = false;
+        _loadError = null;
+      });
     } catch (error, stackTrace) {
-      debugPrint('Profile selector failed to load ${widget.profileType}: $error');
+      debugPrint(
+        'Profile selector failed to load ${widget.profileType}: $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       setState(() {
@@ -2417,7 +2431,9 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                         child: Center(
                           child: TextButton.icon(
                             icon: const Icon(Icons.refresh_rounded),
-                            label: Text(Localization.translate('إعادة المحاولة', lang)),
+                            label: Text(
+                              Localization.translate('إعادة المحاولة', lang),
+                            ),
                             onPressed: () {
                               setState(() {
                                 isLoading = true;
