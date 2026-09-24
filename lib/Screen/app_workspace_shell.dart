@@ -1534,7 +1534,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
 
                                 return KeyedSubtree(
                                   key: _tabKeyFor(entry.id),
-                                  child: GestureDetector(
+                                  child: InkWell(
                                     onTap: () {
                                       workspace.activate(index);
                                     },

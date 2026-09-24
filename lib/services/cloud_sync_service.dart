@@ -2300,6 +2300,9 @@ class CloudSyncService {
       final supabaseWorkshopSync = SupabaseWorkshopSyncService();
       if (supabaseWorkshopSync.isSignedIn) {
         await supabaseWorkshopSync.downloadWorkshopData();
+        if (!await _hasUnpublishedCatalogChanges()) {
+          await SupabaseCatalogSyncService().refreshIfChanged();
+        }
         await _refreshPermissionsFromCloudIfChanged();
         return;
       }

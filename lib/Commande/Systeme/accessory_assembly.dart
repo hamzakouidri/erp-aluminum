@@ -38,6 +38,8 @@ Set<int> assemblySectionIds(Map<String, dynamic> rule) {
   }
   final legacyId = assemblyInt(rule['assembly_section_id']);
   if (legacyId != null && legacyId > 0) ids.add(legacyId);
+  // Per-section quantities are themselves explicit section bindings.
+  ids.addAll(assemblySectionSideQuantities(rule).keys);
   return ids;
 }
 
@@ -186,15 +188,6 @@ int assemblyQuantity(
   Iterable<AssemblyDemand> demands,
 ) {
   final role = '${rule['role_key'] ?? ''}';
-  final isClamp = const {
-    'clam',
-    'clamp',
-    'sliding_clamp',
-    'frame_clamp',
-    'sash_clamp',
-    'frame_clamp_support',
-    'sash_clamp_support',
-  }.contains(role.trim().toLowerCase());
   final configuredTarget = '${rule['assembly_target'] ?? ''}';
   final target = const {'frame', 'sash', 'both'}.contains(configuredTarget)
       ? configuredTarget
@@ -217,18 +210,9 @@ int assemblyQuantity(
         ? null
         : sectionSideQuantities[demand.sectionId];
     if (sectionQuantities != null) {
-      if (isClamp) {
-        // A clamp value is "per corner", not "per profile end". Older rows
-        // may contain different first/second-side values after the generic
-        // screw editor was introduced; using one value for all four corners
-        // restores the physical rule configured by the administrator.
-        quantity +=
-            (demand.topCorners + demand.bottomCorners) * sectionQuantities.$1;
-      } else {
-        quantity +=
-            demand.topCorners * sectionQuantities.$1 +
-            demand.bottomCorners * sectionQuantities.$2;
-      }
+      quantity +=
+          demand.topCorners * sectionQuantities.$1 +
+          demand.bottomCorners * sectionQuantities.$2;
     } else {
       quantity += demand.topCorners * top + demand.bottomCorners * bottom;
     }

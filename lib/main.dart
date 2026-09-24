@@ -2,7 +2,8 @@ import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -259,15 +260,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     final focusedContext = FocusManager.instance.primaryFocus?.context;
     if (focusedContext == null) return false;
-    final inDialog =
-        focusedContext.findAncestorWidgetOfExactType<AlertDialog>() != null ||
-        focusedContext.findAncestorWidgetOfExactType<SimpleDialog>() != null;
-    if (!inDialog ||
-        focusedContext.findAncestorWidgetOfExactType<ButtonStyleButton>() ==
-            null) {
+    if (focusedContext.widget is EditableText ||
+        focusedContext.findAncestorWidgetOfExactType<EditableText>() != null)
       return false;
-    }
-    return Actions.maybeInvoke(focusedContext, const ActivateIntent()) != null;
+    const intent = ActivateIntent();
+    final action = Actions.maybeFind<ActivateIntent>(focusedContext);
+    if (action == null || !action.isEnabled(intent)) return false;
+    Actions.of(focusedContext).invokeAction(action, intent, focusedContext);
+    return true;
   }
 
   @override
@@ -329,8 +329,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return Focus(
           canRequestFocus: false,
           onKeyEvent: (_, event) {
+            if (kIsWeb || !Platform.isWindows) return KeyEventResult.ignored;
+            final keyboard = HardwareKeyboard.instance;
+            final focus = FocusManager.instance.primaryFocus;
+            final focusContext = focus?.context;
+            if (event is KeyDownEvent &&
+                keyboard.isControlPressed &&
+                !keyboard.isAltPressed &&
+                event.logicalKey == LogicalKeyboardKey.tab &&
+                (focusContext == null ||
+                    ModalRoute.of(focusContext) is! PopupRoute)) {
+              final workspace = context.read<WorkspaceController>();
+              final count = workspace.entries.length;
+              if (count > 1)
+                workspace.activate(
+                  (workspace.activeIndex +
+                          (keyboard.isShiftPressed ? -1 : 1) +
+                          count) %
+                      count,
+                );
+              return KeyEventResult.handled;
+            }
             if (event is KeyDownEvent && _activateFocusedDialogButton(event)) {
               return KeyEventResult.handled;
+            }
+            if (event is KeyDownEvent &&
+                focusContext != null &&
+                !keyboard.isControlPressed &&
+                !keyboard.isAltPressed &&
+                !keyboard.isMetaPressed &&
+                !keyboard.isShiftPressed &&
+                focusContext.widget is! EditableText &&
+                focusContext.findAncestorWidgetOfExactType<EditableText>() ==
+                    null) {
+              final direction = <LogicalKeyboardKey, TraversalDirection>{
+                LogicalKeyboardKey.arrowDown: TraversalDirection.down,
+                LogicalKeyboardKey.arrowUp: TraversalDirection.up,
+                LogicalKeyboardKey.arrowLeft: TraversalDirection.left,
+                LogicalKeyboardKey.arrowRight: TraversalDirection.right,
+              }[event.logicalKey];
+              if (direction != null && focus!.focusInDirection(direction)) {
+                return KeyEventResult.handled;
+              }
             }
             final handled = DesktopScrollCoordinator.handleKeyEvent(event);
             return handled ? KeyEventResult.handled : KeyEventResult.ignored;

@@ -4409,7 +4409,8 @@ class WindowPainter extends CustomPainter {
       reinforced: true,
     );
 
-    final double slimProfileW = (model.selectedSlimMontantProfile != null &&
+    final double slimProfileW =
+        (model.selectedSlimMontantProfile != null &&
             (model.selectedSlimMontantProfile!['visible_width'] ?? 0) > 0)
         ? (model.selectedSlimMontantProfile!['visible_width'] as num).toDouble()
         : 18.0;
@@ -4448,9 +4449,11 @@ class WindowPainter extends CustomPainter {
             zone.slidingMontantReinforced['lateral_1'] ??
             zone.slidingMontantReinforced['lateral_right'] ??
             false;
-        final bool isLeftSlim = (i > 0) &&
+        final bool isLeftSlim =
+            (i > 0) &&
             (zone.slidingMontantSlim['central_${(i - 1) * 2 + 1}'] ?? false);
-        final bool isRightSlim = (i < count - 1) &&
+        final bool isRightSlim =
+            (i < count - 1) &&
             (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
 
         final double leftProfileW = (i == 0)
@@ -4518,6 +4521,8 @@ class WindowPainter extends CustomPainter {
             zone.selectedDbColor,
             dimmed: (tg == 0),
             isSlidingSash: true,
+            squareLeft: isLeftSlim,
+            squareRight: isRightSlim,
             t: t,
             topOffset: topOffset,
             isTopBound: isTopBound,
@@ -5749,6 +5754,8 @@ class WindowPainter extends CustomPainter {
     Map<String, dynamic>? dbColor, {
     required bool dimmed,
     bool isSlidingSash = false,
+    bool squareLeft = false,
+    bool squareRight = false,
     required double t,
     required double topOffset,
     required bool isTopBound,
@@ -5889,12 +5896,12 @@ class WindowPainter extends CustomPainter {
       );
     } else {
       canvas.drawLine(
-        Offset(sashR.left, ySashL),
+        Offset(squareLeft ? glassR.left : sashR.left, ySashL),
         Offset(glassR.left, yGlassL),
         mp,
       );
       canvas.drawLine(
-        Offset(sashR.right, ySashR),
+        Offset(squareRight ? glassR.right : sashR.right, ySashR),
         Offset(glassR.right, yGlassR),
         mp,
       );
@@ -5910,8 +5917,16 @@ class WindowPainter extends CustomPainter {
           mp,
         );
       } else {
-        canvas.drawLine(sashR.bottomLeft, glassR.bottomLeft, mp);
-        canvas.drawLine(sashR.bottomRight, glassR.bottomRight, mp);
+        canvas.drawLine(
+          Offset(squareLeft ? glassR.left : sashR.left, sashR.bottom),
+          glassR.bottomLeft,
+          mp,
+        );
+        canvas.drawLine(
+          Offset(squareRight ? glassR.right : sashR.right, sashR.bottom),
+          glassR.bottomRight,
+          mp,
+        );
       }
     }
   }

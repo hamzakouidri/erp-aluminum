@@ -1009,33 +1009,6 @@ class CatalogCandidateResolver {
       // future series configured by the administrator.
       exactSeriesOnly: query.seriesId != null,
     );
-    // Older catalogues commonly saved an assembly/installation screw rule
-    // for the first series only, while the accessory itself was explicitly
-    // assigned to several series. Reuse that rule for another assigned
-    // series so the screw does not disappear from sliding-series BOMs.
-    if (table == 'Accessories' && query.seriesId != null) {
-      final requestedRoles = query.roleKeys.map((role) => role.trim()).toSet();
-      if (requestedRoles.contains('assembly_screw') ||
-          requestedRoles.contains('installation_screw')) {
-        final existingItemIds = rules
-            .map((rule) => _catalogInt(rule['item_id']))
-            .whereType<int>()
-            .toSet();
-        final fallbacks = await _db.getAssignedAccessoryScrewRuleFallbacks(
-          query.seriesId!,
-        );
-        for (final fallback in fallbacks) {
-          final role = '${fallback['role_key'] ?? ''}'.trim();
-          final itemId = _catalogInt(fallback['item_id']);
-          if (!requestedRoles.contains(role) ||
-              itemId == null ||
-              !existingItemIds.add(itemId)) {
-            continue;
-          }
-          rules.add({...fallback, 'series_id': query.seriesId});
-        }
-      }
-    }
     final surfaceRules = rules
         .where((rule) => _ruleVisibleOnSurface(rule, query))
         .toList();
@@ -1162,14 +1135,6 @@ class CatalogCandidateResolver {
     AccessoryDrawingMode? drawingMode,
   ) {
     if (drawingMode == null) return true;
-    // Assembly screws are physical corner hardware, not sash-opening
-    // hardware. Older rules were often saved with `sliding` because the first
-    // series configured was a sliding ATP series; that scope must not make the
-    // same enabled screw disappear from an opening-series BOM.
-    if ((rule['role_key'] ?? '').toString().trim().toLowerCase() ==
-        'assembly_screw') {
-      return true;
-    }
     final scope = (rule['usage_scope'] ?? 'global')
         .toString()
         .trim()

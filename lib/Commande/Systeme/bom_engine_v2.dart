@@ -37,11 +37,28 @@ class BomEngineV2 {
   }
 
   final Map<String, Future<List<Map<String, dynamic>>>> _candidatesCache = {};
+  final Set<int> _physicalSectionIds = {};
+
+  void _capturePhysicalSections(Iterable<BomItem> items) {
+    _physicalSectionIds
+      ..clear()
+      ..addAll(
+        items
+            .where(
+              (item) =>
+                  (item.selectorCategory ?? item.category) == 'profile' &&
+                  (item.pieces?.isNotEmpty ?? false),
+            )
+            .map((item) => item.catalogItemId)
+            .whereType<int>(),
+      );
+  }
 
   Future<void> stabilizeSelections({
     required WindowModel window,
     required List<BomItem> items,
   }) async {
+    _capturePhysicalSections(items);
     final database = await _db.db;
     if (database == null) return;
     await Future.wait(
@@ -78,6 +95,7 @@ class BomEngineV2 {
     required WindowModel window,
     required List<BomItem> items,
   }) async {
+    _capturePhysicalSections(items);
     final calculatedRoles = <String>{};
     // These rows are calculated from the drawing (rather than created by a
     // selectable accessory button).  Their catalogue rule is therefore the
@@ -1559,7 +1577,8 @@ class BomEngineV2 {
     final rule = Map<String, dynamic>.from(rawRule);
     final linkedSections = assemblySectionIds(rule);
     if (linkedSections.isEmpty) return true;
-    return linkedSections.any(drawingSectionIds(window).contains);
+    final selected = {...drawingSectionIds(window), ..._physicalSectionIds};
+    return linkedSections.any(selected.contains);
   }
 
   bool _isShutterScrewRole(Iterable<String> roles) {

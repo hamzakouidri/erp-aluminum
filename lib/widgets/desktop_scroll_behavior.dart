@@ -78,12 +78,7 @@ class DesktopScrollCoordinator {
     // pointer as a reliable fallback instead of waiting for a thumb drag.
     final markedTargets =
         _hits.remove(event) ?? <_DesktopScrollableRegistration>{};
-    final hitTargets = <_DesktopScrollableRegistration>{
-      ...markedTargets,
-      ..._registrations.where(
-        (registration) => registration.bounds?.contains(event.position) == true,
-      ),
-    };
+    final hitTargets = <_DesktopScrollableRegistration>{...markedTargets};
     if (hitTargets.isEmpty) return;
 
     final verticalDelta = event.scrollDelta.dy;
@@ -98,7 +93,7 @@ class DesktopScrollCoordinator {
               registration.axis ==
                   (useVertical ? Axis.vertical : Axis.horizontal) &&
               registration.bounds?.contains(event.position) == true &&
-              registration.controller.hasClients,
+              registration.controller.positions.length == 1,
         )
         .toList();
     if (candidates.isEmpty) return;
@@ -111,8 +106,8 @@ class DesktopScrollCoordinator {
       return aArea.compareTo(bArea);
     });
     final offsets = <_DesktopScrollableRegistration, double>{
-      for (final candidate in candidates.where(
-        (candidate) => candidate.controller.hasClients,
+      for (final candidate in hitTargets.where(
+        (candidate) => candidate.controller.positions.length == 1,
       ))
         candidate: candidate.controller.position.pixels,
     };
@@ -122,14 +117,15 @@ class DesktopScrollCoordinator {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final anyMoved = offsets.entries.any((entry) {
         final controller = entry.key.controller;
-        return controller.hasClients &&
+        return controller.positions.length == 1 &&
             (controller.position.pixels - entry.value).abs() >= 0.5;
       });
       if (anyMoved) return;
 
       for (final candidate in candidates) {
         final controller = candidate.controller;
-        if (!controller.hasClients || !candidate.canMove(delta)) continue;
+        if (!_registrations.contains(candidate) || !candidate.canMove(delta))
+          continue;
         controller.position.pointerScroll(delta);
         break;
       }
@@ -207,6 +203,10 @@ class DesktopScrollCoordinator {
     if (focusedContext != null && _isInsideEditableText(focusedContext)) {
       return false;
     }
+    if (HardwareKeyboard.instance.isAltPressed ||
+        HardwareKeyboard.instance.isMetaPressed ||
+        isCtrlPressed)
+      return false;
 
     final focusedScrollable = focusedContext == null
         ? null
@@ -215,7 +215,11 @@ class DesktopScrollCoordinator {
         .where(
           (registration) =>
               registration.axis == resolvedAxis &&
-              registration.controller.hasClients,
+              registration.bounds != null &&
+              registration.controller.positions.length == 1 &&
+              (focusedContext == null ||
+                  ModalRoute.of(registration.context) ==
+                      ModalRoute.of(focusedContext)),
         )
         .toList();
     registrations.sort((a, b) {
@@ -258,7 +262,7 @@ class DesktopScrollCoordinator {
                     registration.bounds?.contains(pointer) == true,
               )
               .toList();
-    final candidates = [...underPointer, ...registrations]
+    final candidates = [...underPointer]
         .fold<List<_DesktopScrollableRegistration>>(
           <_DesktopScrollableRegistration>[],
           (result, registration) {
@@ -281,6 +285,9 @@ class DesktopScrollCoordinator {
   }
 
   static bool _canMovePosition(ScrollPosition position, int direction) {
+    if (!position.hasContentDimensions ||
+        !position.physics.shouldAcceptUserOffset(position))
+      return false;
     if (direction == -2 || direction == -1) {
       return position.pixels > position.minScrollExtent;
     }
@@ -327,6 +334,16 @@ class _DesktopScrollableRegistration {
 
   Rect? get bounds {
     if (!context.mounted) return null;
+    if (ModalRoute.of(context)?.isCurrent == false) return null;
+    var hidden = false;
+    context.visitAncestorElements((element) {
+      if (element.widget is Offstage && (element.widget as Offstage).offstage) {
+        hidden = true;
+        return false;
+      }
+      return true;
+    });
+    if (hidden) return null;
     final renderObject = context.findRenderObject();
     if (renderObject is! RenderBox ||
         !renderObject.hasSize ||
@@ -339,11 +356,12 @@ class _DesktopScrollableRegistration {
   }
 
   bool canMove(double delta) {
-    if (!context.mounted || !controller.hasClients) return false;
+    if (bounds == null || controller.positions.length != 1) return false;
     final offstage = context.findAncestorWidgetOfExactType<Offstage>();
     if (offstage?.offstage == true) return false;
     final position = controller.position;
     if (!position.hasContentDimensions) return false;
+    if (!position.physics.shouldAcceptUserOffset(position)) return false;
     return delta < 0
         ? position.pixels > position.minScrollExtent
         : position.pixels < position.maxScrollExtent;
@@ -529,7 +547,7 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!_pointerOverScrollbar ||
         event is! PointerScrollEvent ||
-        !widget.controller.hasClients) {
+        widget.controller.positions.length != 1) {
       return;
     }
 
@@ -541,13 +559,16 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
     if (delta == 0) return;
 
     final position = widget.controller.position;
+    if (!position.hasContentDimensions ||
+        !position.physics.shouldAcceptUserOffset(position))
+      return;
     final target = (position.pixels + delta)
         .clamp(position.minScrollExtent, position.maxScrollExtent)
         .toDouble();
     if ((target - position.pixels).abs() < 0.5) return;
 
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-      if (!widget.controller.hasClients) return;
+      if (!mounted || widget.controller.positions.length != 1) return;
       final current = widget.controller.position;
       final currentTarget = (current.pixels + delta)
           .clamp(current.minScrollExtent, current.maxScrollExtent)

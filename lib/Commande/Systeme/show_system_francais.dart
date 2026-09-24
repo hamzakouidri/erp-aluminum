@@ -51,6 +51,76 @@ class _DecorPlacementResult {
 }
 
 class _WindowViewState extends State<WindowView> {
+  Future<List<Map<String, dynamic>>>? _handleCandidates;
+  int? _handleSeriesId;
+
+  Widget _buildRuleHandles(WindowZone zone) {
+    final seriesId = widget.model.effectiveSlidingSeries?.id;
+    if (_handleCandidates == null || _handleSeriesId != seriesId) {
+      _handleSeriesId = seriesId;
+      _handleCandidates = seriesId == null
+          ? Future.value(<Map<String, dynamic>>[])
+          : CatalogCandidateResolver(database: SqlDatabase()).resolve(
+              CatalogCandidateQuery(
+                category: 'accessory',
+                selectorType: '',
+                roleKeys: const ['handle', 'entrematique'],
+                seriesId: seriesId,
+                materialType: widget.model.isSlidingPVC ? 'pvc' : 'aluminium',
+                drawingMode: AccessoryDrawingMode.sliding,
+                requireDialog: true,
+                requireQuantity: true,
+              ),
+            );
+    }
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _handleCandidates,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return const Text('تعذر تحميل قواعد المقابض');
+        if (!snapshot.hasData)
+          return const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(),
+          );
+        final candidates = snapshot.data!.where((candidate) {
+          final rule = candidate['catalog_rule'];
+          return rule is Map &&
+              rule['show_in_drawing'] != 0 &&
+              rule['show_in_drawing'] != false;
+        }).toList();
+        if (candidates.isEmpty)
+          return const Text('لا توجد مقابض مفعّلة لهذه السلسلة');
+        return Wrap(
+          spacing: 8,
+          children: candidates.map((candidate) {
+            final rule = candidate['catalog_rule'] as Map;
+            final classic = rule['role_key'] != 'entrematique';
+            final key = classic
+                ? (widget.model.isSlidingPVC
+                      ? 'مقبض نافذة (Poignée Fenêtre)'
+                      : 'مقبض منزلق (Poignée Coulissante)')
+                : 'أونتروماتيك (Entrematique)';
+            return _ContentButton(
+              label: '${candidate['name'] ?? candidate['code'] ?? ''}',
+              icon: Icons.sync_alt_rounded,
+              selected:
+                  zone.useClassicHandle == classic &&
+                  widget.model.componentOverrides[key]?['id'] ==
+                      candidate['id'],
+              onPressed: () {
+                widget.model.componentOverrides[key] =
+                    Map<String, dynamic>.from(candidate);
+                widget.model.setSelectedZoneHandle(useClassicHandle: classic);
+                setState(() {});
+              },
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
   static const double _minUserScale = 0.5;
   static const double _maxUserScale = 5.0;
   static const double _zoomStep = 1.15;
@@ -3010,6 +3080,7 @@ class _WindowViewState extends State<WindowView> {
                                   isDoubleTap &&
                                   tappedZone) {
                                 setState(() {
+                                  widget.model.clearSelection();
                                   _isLeftDrawerOpen = true;
                                 });
                               }
@@ -4255,9 +4326,10 @@ class _WindowViewState extends State<WindowView> {
                       child: _buildLeftDrawerContent(context),
                     ),
                     GestureDetector(
-                      onTap: () => setState(
-                        () => _isLeftDrawerOpen = !_isLeftDrawerOpen,
-                      ),
+                      onTap: () {
+                        if (!_isLeftDrawerOpen) widget.model.clearSelection();
+                        setState(() => _isLeftDrawerOpen = !_isLeftDrawerOpen);
+                      },
                       onVerticalDragUpdate: (details) {
                         setState(() {
                           _leftDrawerHandleTop += details.delta.dy;
@@ -5428,121 +5500,6 @@ class _WindowViewState extends State<WindowView> {
                   ),
                 ),
                 const Divider(),
-              ],
-
-              // ===== خيار اتجاه الجوان للزجاج في الألمنيوم =====
-              if (!widget.model.isPVC &&
-                  (zone?.content == ZoneContent.slidingSash ||
-                      widget.model.zones.any(
-                        (candidate) =>
-                            candidate.content == ZoneContent.slidingSash,
-                      ))) ...[
-                const Divider(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.compare_arrows_rounded,
-                        color: Colors.teal,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _tr('وضع جوان الزجاج:'),
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Text(
-                              _tr(
-                                'جهتان = جوانان ساقيان   |   جهة واحدة = جوان واحد',
-                              ),
-                              style: TextStyle(fontSize: 9, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ToggleButtons(
-                        isSelected: [
-                          slidingJointSpecs.isEmpty
-                              ? spec.jointTwoSides
-                              : slidingJointSpecs.every((s) => s.jointTwoSides),
-                          slidingJointSpecs.isEmpty
-                              ? !spec.jointTwoSides
-                              : slidingJointSpecs.every(
-                                  (s) => !s.jointTwoSides,
-                                ),
-                        ],
-                        borderRadius: BorderRadius.circular(8),
-                        selectedColor: Colors.white,
-                        fillColor: Colors.teal,
-                        textStyle: const TextStyle(fontSize: 11),
-                        constraints: const BoxConstraints(
-                          minHeight: 30,
-                          minWidth: 60,
-                        ),
-                        onPressed: (idx) {
-                          final twoSides = idx == 0;
-                          final bool isValid = slidingJointSpecs.every((spec) {
-                            final double tOuter =
-                                spec.thicknessOuter ??
-                                kDefaultGlassPaneThickness;
-                            final double tInner =
-                                spec.thicknessInner ??
-                                kDefaultGlassPaneThickness;
-                            final int intercall = spec.intercallThickness;
-                            return spec.structure == GlassStructure.double
-                                ? isDoubleGlassValid(
-                                    tOuter,
-                                    intercall,
-                                    tInner,
-                                    twoSides,
-                                    widget.model,
-                                    widget.systemMode,
-                                  )
-                                : isGlassThicknessValid(
-                                    tOuter,
-                                    spec.copyWith(jointTwoSides: twoSides),
-                                    widget.model,
-                                    widget.systemMode,
-                                  );
-                          });
-
-                          if (!isValid) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _tr(
-                                    'لا يمكن التغيير إلى جهتين لأن سمك الزجاج الحالي يتجاوز 20 مم. يرجى تقليل سمك الزجاج أو الفاصل أولاً.',
-                                  ),
-                                ),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            return;
-                          }
-                          final newSpec = spec.copyWith(
-                            jointTwoSides: twoSides,
-                          );
-                          _cancelPaintbrushMode();
-                          setState(() => _tempGlassSpec = newSpec);
-                          widget.model.updateAllSlidingJointSides(twoSides);
-                        },
-                        children: [
-                          Text(Localization.translate('جهتان', lang)),
-                          Text(Localization.translate('جهة واحدة', lang)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
               ],
 
               Padding(
@@ -13628,6 +13585,7 @@ class _WindowViewState extends State<WindowView> {
                   } else {
                     _isShutterSelected = false;
                     _activeBottomTab = id;
+                    _handleCandidates = null;
                     if (widget.model.selectedZone == null &&
                         widget.model.zones.isNotEmpty) {
                       widget.model.selection = SelectionInfo.zone(
@@ -15338,54 +15296,7 @@ class _WindowViewState extends State<WindowView> {
           // handle buttons and left only the optional two-handle button.
           final isDoorSash = widget.model.selectedZoneUsesSash105;
           if (zone.content == ZoneContent.slidingSash) {
-            if (!widget.model.isPVC) {
-              // 1. Entrematique handle
-              children.add(
-                _ContentButton(
-                  label: Localization.translate(
-                    'مقبض منزلق (اندراماتيك)',
-                    lang,
-                  ),
-                  icon: Icons.sync_alt_rounded,
-                  selected: zone.useClassicHandle != true,
-                  onPressed: () {
-                    setState(() {
-                      widget.model.setSelectedZoneHandle();
-                    });
-                  },
-                ),
-              );
-              children.add(const SizedBox(width: 8));
-
-              // 2. Classic handle
-              children.add(
-                _ContentButton(
-                  label: Localization.translate(
-                    'مقبض كلاسيكي (بواني كودي)',
-                    lang,
-                  ),
-                  icon: Icons.sync_alt_rounded,
-                  selected: zone.useClassicHandle == true,
-                  onPressed: () {
-                    setState(() {
-                      widget.model.setSelectedZoneHandle(
-                        useClassicHandle: true,
-                      );
-                    });
-                  },
-                ),
-              );
-            } else {
-              children.add(
-                Text(
-                  Localization.translate(
-                    'لا توجد خيارات مقابض إضافية للمنزلق PVC',
-                    lang,
-                  ),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-              );
-            }
+            children.add(_buildRuleHandles(zone));
           } else if (widget.model.isPVC) {
             if (isDoorSash) {
               // PVC Door sashes

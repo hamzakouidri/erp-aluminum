@@ -1497,22 +1497,26 @@ class SupabaseWorkshopSyncService {
 
     // Replace the complete selection, so a system removed by the manager is
     // also disabled on every worker device.
-    await dbInstance.update('Profile', {'is_active': 0});
-    await dbInstance.update('Series', {'is_active': 0});
-    for (final id in activeIds) {
-      await dbInstance.update(
-        'Profile',
-        {'is_active': 1},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      await dbInstance.update(
-        'Series',
-        {'is_active': 1},
-        where: 'profile_id = ? OR id = ?',
-        whereArgs: [id, id],
-      );
-    }
+    // Readers must see the old or the complete new selection, never the
+    // intermediate all-disabled state (also survives process termination).
+    await dbInstance.transaction((txn) async {
+      await txn.update('Profile', {'is_active': 0});
+      await txn.update('Series', {'is_active': 0});
+      for (final id in activeIds) {
+        await txn.update(
+          'Profile',
+          {'is_active': 1},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        await txn.update(
+          'Series',
+          {'is_active': 1},
+          where: 'profile_id = ? OR id = ?',
+          whereArgs: [id, id],
+        );
+      }
+    });
   }
 
   Future<bool> _needsFullBootstrapDownload() async {

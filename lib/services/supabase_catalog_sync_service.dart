@@ -275,9 +275,11 @@ class SupabaseCatalogSyncService {
 
     final task = _performDownload(allowMissing: allowMissing);
     _activeDownload = task;
-    unawaited(task.whenComplete(() {
-      if (identical(_activeDownload, task)) _activeDownload = null;
-    }));
+    unawaited(
+      task.whenComplete(() {
+        if (identical(_activeDownload, task)) _activeDownload = null;
+      }),
+    );
     return task;
   }
 
@@ -312,9 +314,9 @@ class SupabaseCatalogSyncService {
     // tables (including AccessoryColorPrices). They must be ignored during a
     // global catalog download, otherwise every phone either rejects the
     // manifest or overwrites its own workshop prices.
-    final tables = _readStringList(manifest['tables'])
-        .where(SqlDatabase.catalogTables.contains)
-        .toList(growable: false);
+    final tables = _readStringList(
+      manifest['tables'],
+    ).where(SqlDatabase.catalogTables.contains).toList(growable: false);
     final expectedRows = _readIntMap(manifest['table_row_counts']);
     final expectedChunks = _readIntMap(manifest['chunk_counts']);
     if (tables.isEmpty || expectedRows.isEmpty) {
@@ -344,7 +346,8 @@ class SupabaseCatalogSyncService {
       if (pageRows.length < pageSize) break;
       offset += pageRows.length;
     }
-    if (chunks.isEmpty) throw StateError('الكتالوج المركزي لا يحتوي على أجزاء.');
+    if (chunks.isEmpty)
+      throw StateError('الكتالوج المركزي لا يحتوي على أجزاء.');
 
     final catalogData = <String, dynamic>{
       for (final table in tables) table: <dynamic>[],
@@ -377,9 +380,41 @@ class SupabaseCatalogSyncService {
     }
 
     await _db.importGlobalCatalog(catalogData);
+    final local = await _db.db;
+    if (local != null) {
+      await local.execute(
+        'CREATE TABLE IF NOT EXISTS CatalogDownloadState (id INTEGER PRIMARY KEY, version TEXT NOT NULL)',
+      );
+      await local.rawInsert(
+        'INSERT OR REPLACE INTO CatalogDownloadState (id, version) VALUES (1, ?)',
+        [versionId],
+      );
+    }
     lastCatalogDownloadSummary =
         'تم تنزيل الكتالوج المركزي: ${expectedRows['Colors'] ?? 0} لونًا، '
         '${expectedRows['Sections'] ?? 0} بروفايل.';
+  }
+
+  /// On restart only fetch catalogue chunks when the published version changed.
+  Future<void> refreshIfChanged() async {
+    final manifest = await _client
+        .from('catalog_manifest')
+        .select('version_id,status')
+        .eq('id', 'latest')
+        .maybeSingle();
+    if (manifest == null || manifest['status'] != 'completed') return;
+    final local = await _db.db;
+    if (local == null) return;
+    await local.execute(
+      'CREATE TABLE IF NOT EXISTS CatalogDownloadState (id INTEGER PRIMARY KEY, version TEXT NOT NULL)',
+    );
+    final saved = await local.query('CatalogDownloadState', where: 'id = 1');
+    final sections = await local.query('Sections', columns: ['id'], limit: 1);
+    if (saved.isNotEmpty &&
+        saved.first['version'] == manifest['version_id'] &&
+        sections.isNotEmpty)
+      return;
+    await downloadGlobalCatalog(allowMissing: true);
   }
 
   List<String> _readStringList(dynamic value) {

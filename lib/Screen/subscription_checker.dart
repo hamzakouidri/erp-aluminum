@@ -1061,7 +1061,11 @@ class _SyncGatewayState extends State<SyncGateway> {
     try {
       final clients = await myDb.query('Client', limit: 1);
       final orders = await myDb.query('Commandes', limit: 1);
-      return clients.isNotEmpty || orders.isNotEmpty;
+      if (clients.isNotEmpty || orders.isNotEmpty) return true;
+      // A workshop can have its catalogue ready before its first customer.
+      // Profile/Series defaults alone are not evidence of a restored cache.
+      final sections = await myDb.query('Sections', limit: 1);
+      return sections.isNotEmpty;
     } catch (_) {
       return false;
     }
@@ -1128,8 +1132,10 @@ class _SyncGatewayState extends State<SyncGateway> {
         // Running both futures at once allowed the dashboard to read the old
         // active-profile flags while the workshop snapshot was still being
         // imported.
+        // A normal restart uses the saved database and incremental updates.
+        // Full recovery is reserved for first setup and explicit recovery.
         await CloudSyncService()
-            .fullRecoverySync()
+            .refreshFromCloudIfChanged()
             .timeout(const Duration(seconds: 90), onTimeout: () {})
             .catchError((_) {});
         await CloudSyncService()
