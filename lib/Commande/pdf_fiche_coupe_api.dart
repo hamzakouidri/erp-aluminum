@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'capture_image.dart';
+import 'Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
@@ -50,9 +53,8 @@ class PdfFicheCoupeApi {
           }
         }
         final isReplaced =
-            (map['isReplaced'] == true ||
-                map['isReplaced']?.toString().toLowerCase() == 'true') ||
-            ((item['price'] as num?)?.toDouble() == 0.0);
+            map['isReplaced'] == true ||
+                map['isReplaced']?.toString().toLowerCase() == 'true';
         if (isReplaced) {
           return false;
         }
@@ -62,7 +64,8 @@ class PdfFicheCoupeApi {
 
     final itemCutWidgets = <pw.Widget>[];
     for (final item in activeItems) {
-      itemCutWidgets.add(await _buildItemCutList(db, item));
+      if (itemCutWidgets.isNotEmpty) itemCutWidgets.add(pw.NewPage());
+      itemCutWidgets.addAll(await _buildItemCutList(db, item));
     }
 
     pdf.addPage(
@@ -156,7 +159,7 @@ class PdfFicheCoupeApi {
     );
   }
 
-  static Future<pw.Widget> _buildItemCutList(
+  static Future<List<pw.Widget>> _buildItemCutList(
     SqlDatabase db,
     Map<String, dynamic> item,
   ) async {
@@ -164,7 +167,7 @@ class PdfFicheCoupeApi {
     final double width = _number(item['largeur']);
     final double height = _number(item['hauteur']);
     final int qty = (_number(item['quantity'], fallback: 1)).round();
-    final bomItems = await _bomFromSavedDrawing(db, item);
+    final (bomItems, drawing) = await _bomFromSavedDrawing(db, item);
     final cutRows = _buildCutRowsFromBom(bomItems);
     final accessoryRows = bomItems
         .where(
@@ -196,21 +199,20 @@ class PdfFicheCoupeApi {
               )
               .toList();
 
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 20),
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey400),
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
+    return [
           pw.Text(
             'المنتج: $type | الأبعاد الأصلية: $width x $height | العدد: $qty',
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14),
           ),
           pw.SizedBox(height: 10),
+          if (drawing != null)
+            pw.Center(child: pw.Image(pw.MemoryImage(drawing),
+                height: 180, width: 450, fit: pw.BoxFit.contain))
+          else
+            pw.Text('تعذر استرجاع رسم هذه النافذة؛ راجع الرسم المحفوظ.'),
+          pw.SizedBox(height: 10),
+          pw.Text('الكميات أدناه لجميع النسخ ($qty). عدد القطع: '
+              '${cutRows.fold<int>(0, (sum, row) => sum + row.quantity)}'),
           pw.TableHelper.fromTextArray(
             headers: headers,
             data: data,
@@ -232,11 +234,7 @@ class PdfFicheCoupeApi {
           ),
           if (cutRows.isNotEmpty) ...[
             pw.SizedBox(height: 10),
-            pw.Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: cutRows.take(12).map(_buildCutSketch).toList(),
-            ),
+            ...cutRows.map(_buildCutSketch),
           ],
           pw.SizedBox(height: 10),
           pw.Text(
@@ -258,17 +256,16 @@ class PdfFicheCoupeApi {
                 style: const pw.TextStyle(color: PdfColors.grey700),
               ),
             ),
-        ],
-      ),
-    );
+          pw.SizedBox(height: 20),
+        ];
   }
 
-  static Future<List<BomItem>> _bomFromSavedDrawing(
+  static Future<(List<BomItem>, Uint8List?)> _bomFromSavedDrawing(
     SqlDatabase db,
     Map<String, dynamic> item,
   ) async {
     final raw = item['partitions_json'];
-    if (raw == null || raw.toString().trim().isEmpty) return const [];
+    if (raw == null || raw.toString().trim().isEmpty) return (<BomItem>[], null);
     try {
       final decoded = raw is Map
           ? Map<String, dynamic>.from(raw)
@@ -281,12 +278,20 @@ class PdfFicheCoupeApi {
         fallback: model.quantity.toDouble(),
       )).round().clamp(1, 999999).toInt();
       await model.updateShutterDefaultsIfNeeded();
-      return ComponentCalculator.generateBom(
+      var bom = ComponentCalculator.generateBom(
         model,
         _activeVariants(model),
-      ).where((bom) => bom.isActive && bom.purchaseQuantity > 0).toList();
+      );
+      final engine = BomEngineV2(database: db);
+      await engine.stabilizeSelections(window: model, items: bom);
+      bom = await engine.filterItemsByAvailableCandidates(window: model, items: bom);
+      Uint8List? drawing;
+      try {
+        drawing = await captureWindowImage(model, showDrawingDimensions: true);
+      } catch (_) {}
+      return (bom.where((row) => row.isActive && row.purchaseQuantity > 0).toList(), drawing);
     } catch (_) {
-      return const [];
+      return (<BomItem>[], null);
     }
   }
 
@@ -327,7 +332,7 @@ class PdfFicheCoupeApi {
         if (lengthM <= 0) continue;
         final lengthMm = lengthM * 1000;
         final angles = _anglesFor(bom);
-        final key = '${bom.name}|$angles|${lengthMm.round()}';
+        final key = '${bom.sourceSeriesId}|${bom.catalogItemId}|${bom.profileCode}|${bom.name}|$angles|$lengthMm';
         final existing = grouped[key];
         if (existing == null) {
           grouped[key] = _FicheCutRow(
@@ -381,8 +386,11 @@ class PdfFicheCoupeApi {
   }
 
   static pw.Widget _buildCutSketch(_FicheCutRow row) {
+    final ends = row.angles.split('/').map((part) => part.trim()).toList();
+    final leftInset = ends.first.startsWith('45') ? 18 : 0;
+    final rightInset = ends.last.startsWith('45') ? 18 : 0;
     return pw.Container(
-      width: 145,
+      margin: const pw.EdgeInsets.only(bottom: 6),
       padding: const pw.EdgeInsets.all(6),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey500),
@@ -391,15 +399,14 @@ class PdfFicheCoupeApi {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          pw.Container(
-            height: 18,
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.black, width: 0.8),
-              color: PdfColors.grey100,
-            ),
-            alignment: pw.Alignment.center,
-            child: pw.Text(row.angles, style: const pw.TextStyle(fontSize: 8)),
-          ),
+          pw.Text(row.name, style: const pw.TextStyle(fontSize: 9)),
+          pw.SizedBox(height: 4),
+          pw.SvgImage(svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 22">'
+              '<path d="M1 2 L219 2 L${219 - rightInset} 20 L${1 + leftInset} 20 Z" '
+              'fill="#eeeeee" stroke="#000000" stroke-width="1"/></svg>',
+              width: 220, height: 22),
+          pw.Text(row.angles, textAlign: pw.TextAlign.center,
+              style: const pw.TextStyle(fontSize: 8)),
           pw.SizedBox(height: 3),
           pw.Text(
             '${row.quantity} x ${row.lengthMm.round()} مم',

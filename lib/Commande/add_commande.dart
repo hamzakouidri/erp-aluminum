@@ -2031,13 +2031,14 @@ class _CommandePageState extends State<CommandePage> {
                             final previousManualPrice =
                                 product.manualPriceOverride;
                             if (product.isShutterOnly) {
-                              product.selectedAccessoryColor = dbColor;
-                              product.selectedDbColor = dbColor;
+                              product.selectedShutterColor = Map<String, dynamic>.from(dbColor);
+                              await product.updateShutterDefaultsIfNeeded();
                             } else {
-                              product.selectedDbColor = dbColor;
-                              if (product.hasShutter) {
-                                product.selectedAccessoryColor = dbColor;
+                              final previousShutterColor = product.effectiveShutterColor;
+                              if (product.hasShutter && previousShutterColor != null) {
+                                product.selectedShutterColor = Map<String, dynamic>.from(previousShutterColor);
                               }
+                              product.selectedDbColor = dbColor;
                               await product
                                   .refreshSectionPricesForSelectedColor(
                                     notify: false,

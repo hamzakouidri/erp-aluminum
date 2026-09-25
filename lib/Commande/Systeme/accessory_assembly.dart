@@ -107,7 +107,8 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
   int? sectionId(bool sliding, bool frame) {
     final section = frame
         ? (sliding
-              ? window.getSlidingBaseFrameSection()?.toMap()
+              ? window.getSlidingBaseFrameSection()?.toMap() ??
+                    window.slidingFrameOverride
               : window.frameOverride ??
                     window.getSectionByType('frame')?.toMap())
         : (sliding
@@ -132,7 +133,7 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
         sliding: sliding,
         topCorners: 2,
         bottomCorners:
-            !window.hasBottomFrame && rect.bottom >= window.height - 0.01
+            !window.hasBottomFrameForRect(rect)
             ? 0
             : 2,
         sectionId: sectionId(sliding, true),

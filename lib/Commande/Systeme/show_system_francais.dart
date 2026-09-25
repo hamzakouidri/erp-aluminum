@@ -8,13 +8,15 @@ import 'package:flutter/gestures.dart'
     show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show FilteringTextInputFormatter, LengthLimitingTextInputFormatter;
+    show FilteringTextInputFormatter, LengthLimitingTextInputFormatter,
+        HardwareKeyboard, KeyEvent, KeyDownEvent;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/material_consumption_screen.dart';
 import 'profile_selector_dialog.dart' hide getComponentSize;
+import 'glass_joint_fit.dart';
 import '../../widgets/section_image.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
@@ -51,6 +53,81 @@ class _DecorPlacementResult {
 }
 
 class _WindowViewState extends State<WindowView> {
+  bool _drawingShortcut(KeyEvent event) {
+    if (!mounted || !_isWindowsDesktop || event is! KeyDownEvent ||
+        ModalRoute.of(context)?.isCurrent != true) return false;
+    final focus = FocusManager.instance.primaryFocus?.context;
+    if (focus == null ||
+        (focus.widget is EditableText) ||
+        focus.findAncestorWidgetOfExactType<EditableText>() != null) return false;
+    var belongsToDrawing = false;
+    focus.visitAncestorElements((element) {
+      if (element == context) belongsToDrawing = true;
+      return !belongsToDrawing;
+    });
+    if (!belongsToDrawing || HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isAltPressed ||
+        HardwareKeyboard.instance.isMetaPressed) return false;
+    final key = event.logicalKey.keyLabel.toUpperCase();
+    unawaited(SharedPreferences.getInstance().then((prefs) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true &&
+          prefs.getString('shortcut_drawing_mode') == key) {
+        _toggleDrawingInteractionMode();
+      }
+    }));
+    return false;
+  }
+  Widget _slidingGlassFitInfo(GlassSpecification spec) {
+    final series = widget.model.effectiveSlidingSeries;
+    final capacity = widget.model.glazingCapacityForStructure(
+      spec.structure,
+      sliding: true,
+    );
+    if (series == null ||
+        capacity == null ||
+        spec.structure == GlassStructure.closed)
+      return const SizedBox.shrink();
+    final glass = spec.totalThickness(widget.model.allGlassCache);
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: CatalogCandidateResolver(database: SqlDatabase()).resolve(
+        CatalogCandidateQuery(
+          category: 'joint',
+          selectorType: 'joint_bourrage',
+          roleKeys: const ['joint_bourrage'],
+          seriesId: series.id,
+          materialType: widget.model.isSlidingPVC ? 'pvc' : 'aluminium',
+          drawingMode: AccessoryDrawingMode.sliding,
+          requireDialog: false,
+          requireQuantity: true,
+          hasSimpleGlassForReducer: spec.structure == GlassStructure.simple,
+          hasDoubleGlassForRules: spec.structure == GlassStructure.double,
+        ),
+      ),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        final fit = findGlassJointFit(
+          candidates: snapshot.data!,
+          glassThickness: glass,
+          capacity: capacity,
+          sides: spec.jointTwoSides ? 2 : 1,
+        );
+        final message = fit == null
+            ? 'تنبيه: لا توجد تركيبة جوانات مفعّلة تطابق الزجاج ($glass مم) والسعة ($capacity مم). النقص ممنوع والزيادة القصوى 1 مم.'
+            : 'تركيبة جوانات متوافقة مقترحة: ${fit.map((row) => '${row['name']} (${row['thickness']} مم)').join(' + ')}. الزجاج: $glass مم، السعة: $capacity مم، الزيادة القصوى 1 مم دون نقص.';
+        return Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(
+            message,
+            style: TextStyle(
+              fontSize: 11,
+              color: fit == null ? Colors.red : Colors.green,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<List<Map<String, dynamic>>>? _handleCandidates;
   int? _handleSeriesId;
 
@@ -407,6 +484,7 @@ class _WindowViewState extends State<WindowView> {
   bool _loadingAvailableProfiles = false;
   int _profileLoadGeneration = 0;
   bool _slidingSeriesAutoSelectionQueued = false;
+  bool _openingSeriesAutoSelectionQueued = false;
 
   // Drawing actions can generate far more pointer events than the display can
   // render.  Keep the full controls page at one refresh per frame; the canvas
@@ -1266,11 +1344,12 @@ class _WindowViewState extends State<WindowView> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         if (!mounted ||
-            widget.systemMode != 'mixed' ||
             widget.model.activeSeries?.id != openingSeriesId ||
+            widget.model.activeSlidingSeries != null ||
             widget.model.activeSlidingSeries?.id == candidate.id) {
           return;
         }
+        widget.model.systemMode = 'mixed';
         await widget.model.setActiveSlidingSeries(candidate);
       } finally {
         _slidingSeriesAutoSelectionQueued = false;
@@ -1419,6 +1498,7 @@ class _WindowViewState extends State<WindowView> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_drawingShortcut);
     _drawingTimer?.cancel();
     _paintbrushTimer?.cancel();
     _catalogReloadDebounce?.cancel();
@@ -1832,6 +1912,7 @@ class _WindowViewState extends State<WindowView> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_drawingShortcut);
     // Any model opened through the full design workspace must return here
     // when it is edited, including designs that use a tunnel box or wall.
     widget.model.isDesignDrawing = true;
@@ -2162,7 +2243,12 @@ class _WindowViewState extends State<WindowView> {
         ),
       ),
       TextButton.icon(
-        style: buttonStyle,
+        style: widget.model.isDrawingMode
+            ? buttonStyle.copyWith(
+                backgroundColor: WidgetStatePropertyAll(Colors.green.shade600),
+                foregroundColor: const WidgetStatePropertyAll(Colors.white),
+              )
+            : buttonStyle,
         onPressed: _toggleDrawingInteractionMode,
         icon: Icon(
           widget.model.isDrawingMode
@@ -3121,7 +3207,7 @@ class _WindowViewState extends State<WindowView> {
                                 // merely because the drawer is open.
                                 final specToApply = _activePaintGlassSpec;
                                 if (specToApply != null && tappedZ != null) {
-                                  widget.model.paintAllZonesSpec(specToApply);
+                                  unawaited(widget.model.applyGlassSpecificationToAllZones(specToApply));
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
@@ -4507,7 +4593,9 @@ class _WindowViewState extends State<WindowView> {
         ),
       );
       if (shouldExit == true && mounted) {
-        Navigator.of(context).pop(widget.model);
+        Navigator.of(context).pop(
+          widget.model.hasDrawnGeometry ? widget.model : null,
+        );
       }
     } finally {
       _isExitDialogOpen = false;
@@ -4572,23 +4660,19 @@ class _WindowViewState extends State<WindowView> {
           GlassSpecification fitDoubleGlassToParclose(
             GlassSpecification candidate,
           ) {
-            if (candidate.structure != GlassStructure.double) {
-              return candidate;
-            }
-            final suggested = widget.model
-                .suggestedIntercallThicknessForDoubleGlass(
-                  thicknessOuter:
-                      candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
-                  thicknessInner:
-                      candidate.thicknessInner ?? kDefaultGlassPaneThickness,
-                  jointTwoSides: candidate.jointTwoSides,
-                );
-            return suggested == null
-                ? candidate
-                : candidate.copyWith(intercallThickness: suggested);
+            return candidate; // Model resolves joints before touching the spacer.
           }
 
           Widget? buildParcloseThicknessInfo() {
+            if (widget.model.glazingFitMessage != null) {
+              return Padding(padding: const EdgeInsets.all(8),
+                child: Text(widget.model.glazingFitMessage!,
+                    style: const TextStyle(fontSize: 11)));
+            }
+            if (zone?.content == ZoneContent.slidingSash ||
+                (zone == null && widget.model.usesSlidingPrimaryProfiles)) {
+              return _slidingGlassFitInfo(spec);
+            }
             final usesParclose = widget.model.hasGlazingBeadForContext(
               sliding: false,
             );
@@ -7514,7 +7598,7 @@ class _WindowViewState extends State<WindowView> {
                         final woodImage = _getWoodTextureImage(dbColor);
                         return GestureDetector(
                           onTap: () {
-                            widget.model.selectedDbColor = dbColor;
+                            widget.model.selectProfileColorWithDefaults(dbColor);
                             widget.model.refreshUI();
                           },
                           child: Container(
@@ -7598,9 +7682,9 @@ class _WindowViewState extends State<WindowView> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  value: widget.model.effectiveHasBottomFrame,
+                  value: widget.model.selectedFrameHasBottom,
                   activeThumbColor: Colors.blue,
-                  onChanged: widget.model.canDisableBottomFrame
+                  onChanged: widget.model.canEditSelectedBottomFrame
                       ? (value) => widget.model.toggleBottomFrame(value)
                       : null,
                 ),
@@ -10456,6 +10540,81 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  Future<void> _showDrawingDefaultSeriesDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    String t(String value) => Localization.translate(value, lang);
+    final opening = <int, AluminumSeries>{};
+    final sliding = <int, AluminumSeries>{};
+    for (final system in widget.model.availableSystems) {
+      for (final series in _seriesForScope(system, 'opening')) {
+        opening[series.id] = series;
+      }
+      for (final series in _seriesForScope(system, 'sliding')) {
+        sliding[series.id] = series;
+      }
+    }
+    int? openingId = prefs.getInt('default_opening_series_id');
+    int? slidingId = prefs.getInt('default_sliding_series_id');
+    var saving = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) {
+          Widget selector(String label, Map<int, AluminumSeries> items,
+              int? selected, ValueChanged<int?> changed) {
+            return DropdownButtonFormField<int>(
+              value: items.containsKey(selected) ? selected : null,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: t(label)),
+              hint: Text(t('تلقائي (افتراضي النظام)')),
+              items: items.values.map((series) => DropdownMenuItem<int>(
+                value: series.id,
+                child: Text(series.name, overflow: TextOverflow.ellipsis),
+              )).toList(),
+              onChanged: saving ? null : changed,
+            );
+          }
+          return AlertDialog(
+            title: Text(t('السلاسل الافتراضية للورشة')),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(t('اختر السلاسل للنوافذ الجديدة. لن يتغير الرسم الحالي.')),
+                  const SizedBox(height: 16),
+                  selector('سلسلة الفتح الافتراضية (Battant):', opening,
+                      openingId, (value) => update(() => openingId = value)),
+                  const SizedBox(height: 16),
+                  selector('سلسلة المنزلق الافتراضية (Coulissant):', sliding,
+                      slidingId, (value) => update(() => slidingId = value)),
+                ]),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                  child: Text(t('إلغاء'))),
+              FilledButton(
+                onPressed: saving ? null : () async {
+                  update(() => saving = true);
+                  if (openingId != null) {
+                    await prefs.setInt('default_opening_series_id', openingId!);
+                  }
+                  if (slidingId != null) {
+                    await prefs.setInt('default_sliding_series_id', slidingId!);
+                  }
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                },
+                child: Text(t('حفظ')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   AppBar _buildAppBar(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -10478,8 +10637,7 @@ class _WindowViewState extends State<WindowView> {
       }
     }
     final selectedShutterColorId =
-        (widget.model.selectedAccessoryColor?['id'] ??
-                widget.model.selectedDbColor?['id'])
+        widget.model.effectiveShutterColor?['id']
             ?.toString();
     final selectedShutterColor =
         (selectedShutterColorId != null &&
@@ -10509,14 +10667,46 @@ class _WindowViewState extends State<WindowView> {
     // The route's historical `systemMode` may still say sliding after adding
     // an opening frame; using it here swapped the two selectors into generic
     // "opening/sliding series" labels rather than their real series names.
-    final selectorShowsSliding = isSlidingOnlyDrawing;
+    final selectorShowsSliding = isSlidingOnlyDrawing ||
+        (!hasOpeningDrawing && !hasSlidingDrawing &&
+            widget.model.usesSlidingPrimaryProfiles);
 
     // The first selector is the real frame-owning series. A second selector
     // exists only when the canvas truly contains both opening and sliding
     // constructions.
-    final primarySeries = selectorShowsSliding
+    var primarySeries = selectorShowsSliding
         ? widget.model.activeSlidingSeries
         : widget.model.activeSeries;
+    // Adding an opening frame to a saved sliding drawing must initialize its
+    // counterpart without replacing the series already used by that drawing.
+    if (!selectorShowsSliding && primarySeries == null && isMixedDrawing) {
+      final owner = profileSystemForSeries(
+        widget.model.availableSystems,
+        widget.model.activeSlidingSeries,
+      );
+      final candidates = owner == null
+          ? <AluminumSeries>[]
+          : _seriesForScope(owner, 'opening').toList();
+      if (candidates.isNotEmpty) {
+        primarySeries = candidates.first;
+        if (!_openingSeriesAutoSelectionQueued) {
+          _openingSeriesAutoSelectionQueued = true;
+          final candidate = candidates.first;
+          final slidingId = widget.model.activeSlidingSeries?.id;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            try {
+              if (mounted && widget.model.activeSeries == null &&
+                  widget.model.activeSlidingSeries?.id == slidingId) {
+                widget.model.systemMode = 'mixed';
+                await widget.model.setActiveSeries(candidate);
+              }
+            } finally {
+              _openingSeriesAutoSelectionQueued = false;
+            }
+          });
+        }
+      }
+    }
     final primarySystem = profileSystemForSeries(
       widget.model.availableSystems,
       primarySeries,
@@ -10561,10 +10751,11 @@ class _WindowViewState extends State<WindowView> {
       return uniqueList;
     }();
 
+    final primarySeriesId = primarySeries?.id;
     final safePrimaryValue =
-        (primarySeries != null &&
-            primaryItemsList.any((s) => s.id == primarySeries.id))
-        ? primaryItemsList.firstWhere((s) => s.id == primarySeries.id)
+        (primarySeriesId != null &&
+            primaryItemsList.any((s) => s.id == primarySeriesId))
+        ? primaryItemsList.firstWhere((s) => s.id == primarySeriesId)
         : null;
 
     final slidingItemsList = () {
@@ -10626,18 +10817,23 @@ class _WindowViewState extends State<WindowView> {
     // catalogue is still loading. Do not persist the first dropdown item in
     // that interval: doing so overwrote the saved BS90 id/name and reopened
     // every edited window with the default sliding series.
+    final savedSlidingMatches = slidingItemsList.where((series) =>
+        series.id == widget.model.loadedSlidingSeriesId ||
+        (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty == true &&
+         series.name.trim() == widget.model.loadedSlidingSeriesName!.trim()));
     final hasPendingSavedSlidingSeries =
         widget.model.loadedSlidingSeriesId != null ||
         (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty ?? false);
     final autoSlidingValue =
         selectedSlidingValue ??
+        (savedSlidingMatches.isNotEmpty ? savedSlidingMatches.first : null) ??
         (!hasPendingSavedSlidingSeries &&
                 isMixedDrawing &&
                 slidingItemsList.isNotEmpty
             ? slidingItemsList.first
             : null);
     if (selectedSlidingValue == null &&
-        !hasPendingSavedSlidingSeries &&
+        isMixedDrawing &&
         autoSlidingValue != null) {
       _queueMixedSlidingSeriesSelection(
         autoSlidingValue,
@@ -10741,8 +10937,8 @@ class _WindowViewState extends State<WindowView> {
                   }).toList(),
                   onChanged: (newColor) {
                     if (newColor == null) return;
-                    widget.model.selectedAccessoryColor = newColor;
-                    widget.model.selectedDbColor = newColor;
+                    widget.model.selectedShutterColor = Map<String, dynamic>.from(newColor);
+                    unawaited(widget.model.updateShutterDefaultsIfNeeded());
                     widget.model.refreshUI();
                   },
                 ),
@@ -10800,6 +10996,7 @@ class _WindowViewState extends State<WindowView> {
                   }).toList(),
                   onChanged: (AluminumSeries? newSeries) {
                     if (newSeries != null) {
+                      if (isMixedDrawing) widget.model.systemMode = 'mixed';
                       if (selectorShowsSliding) {
                         unawaited(
                           widget.model.setActiveSlidingSeries(newSeries),
@@ -10936,6 +11133,11 @@ class _WindowViewState extends State<WindowView> {
         ),
       ),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.star_rounded, color: Colors.amber),
+          tooltip: Localization.translate('السلاسل الافتراضية', lang),
+          onPressed: _showDrawingDefaultSeriesDialog,
+        ),
         // The mobile bottom panel already owns the quantity/cost action.
         // Keeping this large AppBar action on a narrow screen squeezed the
         // drawing controls and produced horizontal overflow.
@@ -15806,6 +16008,13 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Future<void> _openMaterialConsumptionScreen(BuildContext context) async {
+    if (widget.model.zones.any((zone) =>
+        zone.glass.glazingFitValid == false ||
+        zone.cellGlassSpec.values.any((spec) => spec.glazingFitValid == false))) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('تركيب الزجاج غير متوافق. راجع السماكات والجوانات في القائمة اليسرى قبل اعتماد الكمية والتكلفة.')));
+      return;
+    }
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
@@ -16599,7 +16808,7 @@ class AppWorkspacePainter extends CustomPainter {
         model.isSideCoverAllowed &&
         integratedCoverWidth > 0;
     final hasSeparateCover =
-        !hasIntegratedCover &&
+        !model.isIntegratedFrame &&
         model.hasSideCovers &&
         model.canUseStandaloneSideCover;
     final separateCover = model.selectedSideCover;

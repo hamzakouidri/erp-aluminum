@@ -9,7 +9,7 @@ for row in series:
     if 'bs90' not in row['name'].lower().replace(' ', ''):
         continue
     print(dict(row))
-    print([dict(s) for s in connection.execute('SELECT id,code,name,type FROM Sections WHERE series_id = ?', (row['id'],))])
+    print([dict(s) for s in connection.execute('SELECT id,code,name,type,max_glass_thickness FROM Sections WHERE series_id = ?', (row['id'],))])
     rules = connection.execute('SELECT * FROM CatalogItemRules WHERE series_id = ?', (row['id'],)).fetchall()
     for rule in rules:
         if rule['role_key'] in ('clam','clamp','frame_clamp','sash_clamp','sliding_clamp','sliding_lock','assembly_screw','installation_screw','accessory_screw','handle','entrematique','joint_vitrage'):

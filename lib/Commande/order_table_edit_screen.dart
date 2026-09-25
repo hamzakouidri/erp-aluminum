@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/show_system_francais.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -22,6 +23,25 @@ class OrderTableEditScreen extends StatefulWidget {
 }
 
 class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
+  Future<void> _editActualDrawing(int index) async {
+    final original = widget.products[index];
+    final draft = WindowModel(db: original.db);
+    applyWindowModelFromMap(draft, original.toMap());
+    draft.copyCatalogRuntimeFrom(original, preserveCurrentSelections: true);
+    final result = await Navigator.push<WindowModel>(context, MaterialPageRoute(
+      builder: (_) => WindowView(model: draft, systemMode: original.systemMode ?? 'mixed'),
+    ));
+    if (!mounted || result == null) return;
+    widget.products[index] = result;
+    _widthControllers[index]?.text = result.width.toStringAsFixed(0);
+    _heightControllers[index]?.text = result.height.toStringAsFixed(0);
+    _quantityControllers[index]?.text = result.quantity.toString();
+    _priceControllers[index]?.text = (result.manualPriceOverride ?? result.totalCost).toStringAsFixed(2);
+    _descControllers[index]?.text = _buildInvoiceLineForProduct(result,
+        description: '', forceGeneratedDetails: true).details.join('\n');
+    await _loadProductPreviewImage(index, result);
+    if (mounted) setState(() {});
+  }
   String t(String key) {
     try {
       final lang = Provider.of<AppSettingsProvider>(
@@ -1497,7 +1517,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
               onPressed: _applyAllGlobalChanges,
               icon: const Icon(Icons.flash_on_rounded, color: Colors.white),
               label: Text(
-                t('تطبيق جميع الخصائص معاً'),
+                t('تطبيق تعديلات الوصف فقط — لا يغيّر السعر'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -1801,6 +1821,11 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                                     ),
                                   ),
                                 ),
+                              TextButton.icon(
+                                icon: const Icon(Icons.design_services),
+                                label: const Text('تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة'),
+                                onPressed: () => _editActualDrawing(itemIndex),
+                              ),
                               if (_images[itemIndex] != null)
                                 Center(
                                   child: Container(

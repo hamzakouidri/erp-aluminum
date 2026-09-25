@@ -51,6 +51,17 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(controller.offset, greaterThan(0));
+    final beforeBurst = controller.offset;
+    for (var i = 0; i < 5; i++) {
+      await tester.sendEventToBinding(
+        const PointerScrollEvent(
+          position: Offset(200, 300),
+          scrollDelta: Offset(0, 40),
+        ),
+      );
+    }
+    await tester.pumpAndSettle();
+    expect(controller.offset, closeTo(beforeBurst + 200, 0.01));
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     final before = controller.offset;

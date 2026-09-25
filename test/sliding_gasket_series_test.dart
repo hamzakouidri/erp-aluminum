@@ -11,6 +11,31 @@ class _Database extends SqlDatabase {
 }
 
 void main() {
+  for (final mode in ['mixed', 'sliding']) {
+    test('opening sash keeps 40000 source alongside BS90 ($mode)', () {
+      SharedPreferences.setMockInitialValues({});
+      final model = WindowModel(db: _Database(), width: 2500, height: 1200)
+        ..systemMode = mode
+        ..activeSeries = AluminumSeries(
+          id: 40, profileId: 1, name: '40000', type: 'opening')
+        ..activeSlidingSeries = AluminumSeries(
+          id: 90, profileId: 1, name: 'BS90', type: 'sliding')
+        ..zones = [
+          WindowZone(id: 'opening', content: ZoneContent.singleSash,
+              boundary: const Rect.fromLTWH(0, 0, 1000, 1200)),
+          WindowZone(id: 'sliding', content: ZoneContent.slidingSash,
+              boundary: const Rect.fromLTWH(1000, 0, 1500, 1200),
+              slidingSashesCount: 2),
+        ];
+      final items = ComponentCalculator.generateBom(model, const {});
+      final opening = items.singleWhere(
+          (item) => item.originalName == 'الظلفة (Sash)');
+      final sliding = items.singleWhere(
+          (item) => item.originalName == 'الظلفة المنزلقة (Sliding Sash)');
+      expect(opening.sourceSeriesId, 40);
+      expect(sliding.sourceSeriesId, 90);
+    });
+  }
   test('mixed drawing assigns sliding glazing and brush demand to BS90', () {
     SharedPreferences.setMockInitialValues({});
     final model = WindowModel(db: _Database(), width: 1500, height: 1200);

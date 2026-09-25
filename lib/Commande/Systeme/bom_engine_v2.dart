@@ -397,7 +397,8 @@ class BomEngineV2 {
             'Accessories',
             where:
                 'is_accessory_screw = 1 AND (is_active = 1 OR is_active IS NULL)',
-            orderBy: 'is_default DESC, id ASC',
+            // Defaults belong to CatalogItemRules, not Accessories.
+            orderBy: 'id ASC',
           );
           final expectedMaterial = (materialByAccessoryId[sourceId] ?? '')
               .trim()
@@ -1006,6 +1007,7 @@ class BomEngineV2 {
   List<AssemblyDemand> _selectedProfileAssemblyDemands(
     WindowModel window,
     Iterable<BomItem> items,
+    List<AssemblyDemand> geometricDemands,
   ) {
     final demands = <AssemblyDemand>[];
     final orderQuantity = window.quantity <= 0 ? 1 : window.quantity;
@@ -1021,23 +1023,30 @@ class BomEngineV2 {
       // Outer frames and ordinary sash rectangles already have exact corner
       // demands from drawing geometry. The remaining profile rows represent
       // plinthes, mullions and the individual members of sliding sashes.
-      if (role == 'frame' || role == 'sash') continue;
-
       final pieceCount = (pieces.length / orderQuantity).round();
       if (pieceCount <= 0) continue;
-      final sliding =
-          item.sourceSeriesId != null &&
-          item.sourceSeriesId == window.activeSlidingSeries?.id &&
-          (window.systemMode == 'sliding' ||
-              item.sourceSeriesId != window.activeSeries?.id);
+      final sliding = _drawingModeForItem(window, item) ==
+          AccessoryDrawingMode.sliding;
+      final rectangular = role == 'frame' || role == 'sash' ||
+          role == 'frame_extension' || role == 'sash_extension';
+      if ((role == 'frame' || role == 'sash') &&
+          geometricDemands.any((d) => d.sliding == sliding &&
+              d.target == role && d.sectionId == sectionId)) continue;
+      // A complete rectangular profile has four corner joints, not eight
+      // independent ends. Extensions are physical frames too. If geometric
+      // metadata is missing, the actual resolved cuts still carry demand.
+      final openBottom = (role == 'frame' || role == 'frame_extension') &&
+          !window.hasBottomFrame;
+      final rectangles = rectangular ? pieceCount ~/ (openBottom ? 3 : 4) : 0;
       demands.add(
         AssemblyDemand(
-          target: 'profile',
+          target: role == 'frame_extension' ? 'frame' :
+              role == 'sash_extension' ? 'sash' : rectangular ? role : 'profile',
           sliding: sliding,
           // A plinthe, traverse or sliding-sash member has two ends. The
           // catalogue rule independently defines the screw count at each end.
-          topCorners: pieceCount,
-          bottomCorners: pieceCount,
+          topCorners: rectangular ? rectangles * 2 : pieceCount,
+          bottomCorners: rectangular ? (openBottom ? 0 : rectangles * 2) : pieceCount,
           sectionId: sectionId,
         ),
       );
@@ -1058,7 +1067,7 @@ class BomEngineV2 {
     );
     final demands = [
       ...geometricDemands,
-      ..._selectedProfileAssemblyDemands(window, selectedProfileList),
+      ..._selectedProfileAssemblyDemands(window, selectedProfileList, geometricDemands),
     ];
     if (demands.isEmpty) return [];
     final database = await _db.db;
@@ -1192,15 +1201,16 @@ class BomEngineV2 {
           .trim()
           .toLowerCase();
       if (sectionId == null || (role != 'frame' && role != 'sash')) continue;
-      final sliding =
-          profile.sourceSeriesId != null &&
-          profile.sourceSeriesId == window.activeSlidingSeries?.id &&
-          (window.systemMode == 'sliding' ||
-              profile.sourceSeriesId != window.activeSeries?.id);
+      final sliding = _drawingModeForItem(window, profile) ==
+          AccessoryDrawingMode.sliding;
       final target = role == 'frame' ? 'frame' : 'sash';
       for (var index = 0; index < demands.length; index++) {
         final demand = demands[index];
         if (demand.sliding != sliding || demand.target != target) continue;
+        // Several rows may have the same generic role (base and extension,
+        // or distinct frames). Never replace an already identified physical
+        // section with whichever row happens to be visited last.
+        if (demand.sectionId != null) continue;
         // The strictly resolved BOM row is the actual profile selected for
         // this series. In mixed drawings the model-level shortcut may still
         // be null or point at the opening profile, causing a linked sliding
@@ -1637,7 +1647,9 @@ class BomEngineV2 {
       where:
           '(${flags.map((flag) => '$flag = 1').join(' OR ')}) '
           'AND (is_active = 1 OR is_active IS NULL)',
-      orderBy: 'is_default DESC, id ASC',
+      // Accessories has no is_default column. Rule candidates have already
+      // been ranked by their own defaults before this legacy lookup.
+      orderBy: 'id ASC',
     );
     final expectedMaterial = (materialType ?? '').trim().toLowerCase();
     return rows
@@ -1707,6 +1719,8 @@ class BomEngineV2 {
       candidates,
       _currentComponentSelection(window, item),
     );
+    if ((item.overrideKey ?? '').startsWith('fitted-glass:') &&
+        matchingCurrent != null) return;
     final sortedFirstId = _catalogInt(candidates.first['id']);
     final matchingCurrentId = _catalogInt(matchingCurrent?['id']);
     if (matchingCurrent != null &&

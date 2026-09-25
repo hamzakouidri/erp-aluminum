@@ -4,6 +4,15 @@ import 'package:database_data/Commande/order_required_goods_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('identical catalogue items and kits remain separated by series', () {
+    BomItem item(int series) => BomItem(category: 'profile',
+      originalName: 'Frame', name: 'Frame', quantity: 1, unit: 'bar',
+      unitPrice: 10, catalogItemId: 12, sourceSeriesId: series);
+    expect(requiredGoodsAggregationKey(item(19), 'profile'),
+      isNot(requiredGoodsAggregationKey(item(41), 'profile')));
+    expect(requiredGoodsKitAggregationKey('accessory', 'Kit', seriesId: 19),
+      isNot(requiredGoodsKitAggregationKey('accessory', 'Kit', seriesId: 41)));
+  });
   group('required goods order data', () {
     test('database rows are materialized with stable dynamic map types', () {
       final sqliteRows = <Map<String, Object?>>[

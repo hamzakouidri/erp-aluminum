@@ -8,6 +8,7 @@ import '../services/supabase_catalog_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import 'workshop_profile_screen.dart';
 import 'cutting_settings_screen.dart';
+import 'keyboard_shortcuts_screen.dart';
 import 'selected_systems_screen.dart';
 import 'package:flutter/services.dart';
 import '../sql_database.dart';
@@ -472,6 +473,13 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // Display Settings
+          Card(child: ListTile(
+            leading: const Icon(Icons.keyboard),
+            title: const Text('اختصارات لوحة المفاتيح'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => const KeyboardShortcutsScreen())),
+          )),
           Card(
             elevation: 2,
             child: ListTile(

@@ -140,7 +140,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.blue.shade300 : Colors.blue.shade800,
+                        color: isDark
+                            ? Colors.blue.shade300
+                            : Colors.blue.shade800,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -148,7 +150,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                          color: isDark
+                              ? Colors.grey.shade700
+                              : Colors.grey.shade300,
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -158,19 +162,29 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                             : null,
                         isExpanded: true,
                         underline: const SizedBox(),
-                        dropdownColor: isDark ? const Color(0xFF2A2A3E) : Colors.white,
+                        dropdownColor: isDark
+                            ? const Color(0xFF2A2A3E)
+                            : Colors.white,
                         hint: Text(
-                          Localization.translate('تلقائي (افتراضي النظام)', lang),
+                          Localization.translate(
+                            'تلقائي (افتراضي النظام)',
+                            lang,
+                          ),
                           style: TextStyle(
                             fontSize: 13,
-                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                            color: isDark
+                                ? Colors.grey.shade400
+                                : Colors.grey.shade600,
                           ),
                         ),
                         items: [
                           DropdownMenuItem<int?>(
                             value: null,
                             child: Text(
-                              Localization.translate('تلقائي (افتراضي النظام)', lang),
+                              Localization.translate(
+                                'تلقائي (افتراضي النظام)',
+                                lang,
+                              ),
                               style: const TextStyle(fontSize: 13),
                             ),
                           ),
@@ -202,7 +216,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.green.shade300 : Colors.green.shade800,
+                        color: isDark
+                            ? Colors.green.shade300
+                            : Colors.green.shade800,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -210,7 +226,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                          color: isDark
+                              ? Colors.grey.shade700
+                              : Colors.grey.shade300,
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -220,19 +238,29 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                             : null,
                         isExpanded: true,
                         underline: const SizedBox(),
-                        dropdownColor: isDark ? const Color(0xFF2A2A3E) : Colors.white,
+                        dropdownColor: isDark
+                            ? const Color(0xFF2A2A3E)
+                            : Colors.white,
                         hint: Text(
-                          Localization.translate('تلقائي (افتراضي النظام)', lang),
+                          Localization.translate(
+                            'تلقائي (افتراضي النظام)',
+                            lang,
+                          ),
                           style: TextStyle(
                             fontSize: 13,
-                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                            color: isDark
+                                ? Colors.grey.shade400
+                                : Colors.grey.shade600,
                           ),
                         ),
                         items: [
                           DropdownMenuItem<int?>(
                             value: null,
                             child: Text(
-                              Localization.translate('تلقائي (افتراضي النظام)', lang),
+                              Localization.translate(
+                                'تلقائي (افتراضي النظام)',
+                                lang,
+                              ),
                               style: const TextStyle(fontSize: 13),
                             ),
                           ),
@@ -265,7 +293,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark ? Colors.blue.shade700 : Colors.blue,
+                    backgroundColor: isDark
+                        ? Colors.blue.shade700
+                        : Colors.blue,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -274,12 +304,18 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                   onPressed: () async {
                     final prefs = await SharedPreferences.getInstance();
                     if (tempOpeningId != null) {
-                      await prefs.setInt('default_opening_series_id', tempOpeningId!);
+                      await prefs.setInt(
+                        'default_opening_series_id',
+                        tempOpeningId!,
+                      );
                     } else {
                       await prefs.remove('default_opening_series_id');
                     }
                     if (tempSlidingId != null) {
-                      await prefs.setInt('default_sliding_series_id', tempSlidingId!);
+                      await prefs.setInt(
+                        'default_sliding_series_id',
+                        tempSlidingId!,
+                      );
                     } else {
                       await prefs.remove('default_sliding_series_id');
                     }
@@ -292,7 +328,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            Localization.translate('تم حفظ السلاسل الافتراضية بنجاح', lang),
+                            Localization.translate(
+                              'تم حفظ السلاسل الافتراضية بنجاح',
+                              lang,
+                            ),
                           ),
                           backgroundColor: Colors.green,
                           duration: const Duration(seconds: 2),
@@ -759,6 +798,14 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                     size: 30,
                   ),
                   const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => _showDefaultSeriesDialog(context, lang),
+                    icon: const Icon(Icons.tune_rounded),
+                    label: Text(
+                      Localization.translate('السلاسل الافتراضية', lang),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Text(
                     Localization.translate('اختر نظام العمل', lang),
                     style: TextStyle(
@@ -971,6 +1018,13 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 
     Widget targetPage;
 
+    // Read at creation time too: the first asynchronous page load may still
+    // be pending when the user chooses a system.
+    final defaults = await SharedPreferences.getInstance();
+    if (!context.mounted) return;
+    _defaultOpeningSeriesId = defaults.getInt('default_opening_series_id');
+    _defaultSlidingSeriesId = defaults.getInt('default_sliding_series_id');
+
     switch (systemType) {
       case 'sliding':
         final model = _makeModel(thickness: 45);
@@ -978,33 +1032,28 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           model.loadedSeriesId = _defaultSlidingSeriesId;
           model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
         }
-        targetPage = WindowView(
-          systemMode: 'sliding',
-          model: model,
-        );
+        targetPage = WindowView(systemMode: 'sliding', model: model);
+        await model.loadCatalogData('sliding');
         break;
       case 'french':
         final model = _makeModel(thickness: 60);
         if (_defaultOpeningSeriesId != null && model.loadedSeriesId == null) {
           model.loadedSeriesId = _defaultOpeningSeriesId;
         }
-        targetPage = WindowView(
-          systemMode: 'french',
-          model: model,
-        );
+        targetPage = WindowView(systemMode: 'french', model: model);
+        await model.loadCatalogData('french');
         break;
       case 'mixed':
         final model = _makeModel(thickness: 60);
         if (_defaultOpeningSeriesId != null && model.loadedSeriesId == null) {
           model.loadedSeriesId = _defaultOpeningSeriesId;
         }
-        if (_defaultSlidingSeriesId != null && model.loadedSlidingSeriesId == null) {
+        if (_defaultSlidingSeriesId != null &&
+            model.loadedSlidingSeriesId == null) {
           model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
         }
-        targetPage = WindowView(
-          systemMode: 'mixed',
-          model: model,
-        );
+        targetPage = WindowView(systemMode: 'mixed', model: model);
+        await model.loadCatalogData('mixed');
         break;
       case 'rolling':
         targetPage = WindowView(
@@ -1017,6 +1066,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         break;
     }
 
+    if (!context.mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => targetPage),

@@ -2241,7 +2241,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       _setFetchProgress(0.96);
     } catch (error, stackTrace) {
-      visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
+      // A later pricing failure must not erase additive rule rows (Clam,
+      // assembly screws, kits) already calculated successfully above.
+      if (visibleBomItems.isEmpty) {
+        visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
+      }
       debugPrint(
         'Material defaults load failed; showing resolved rows: $error',
       );

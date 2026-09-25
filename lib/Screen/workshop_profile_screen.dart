@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:database_data/services/auth_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
@@ -18,7 +18,7 @@ class WorkshopProfileScreen extends StatefulWidget {
 }
 
 class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
-  final _auth = FirebaseAuth.instance;
+  final _auth = AppAuthService();
   final _db = SqlDatabase();
 
   bool _isLoading = true;

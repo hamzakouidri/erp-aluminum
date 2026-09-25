@@ -90,8 +90,6 @@ class DesktopScrollCoordinator {
     final candidates = hitTargets
         .where(
           (registration) =>
-              registration.axis ==
-                  (useVertical ? Axis.vertical : Axis.horizontal) &&
               registration.bounds?.contains(event.position) == true &&
               registration.controller.positions.length == 1,
         )
@@ -105,36 +103,20 @@ class DesktopScrollCoordinator {
       final bArea = b.bounds!.width * b.bounds!.height;
       return aArea.compareTo(bArea);
     });
-    final offsets = <_DesktopScrollableRegistration, double>{
-      for (final candidate in hitTargets.where(
-        (candidate) => candidate.controller.positions.length == 1,
-      ))
-        candidate: candidate.controller.position.pixels,
-    };
-
-    // Let Flutter's built-in Scrollable handler win first. If it moved any
-    // candidate, no fallback is needed and there is no double scrolling.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final anyMoved = offsets.entries.any((entry) {
-        final controller = entry.key.controller;
-        return controller.positions.length == 1 &&
-            (controller.position.pixels - entry.value).abs() >= 0.5;
+    // Resolve each wheel tick synchronously. Waiting for a later frame could
+    // mistake a previous tick's movement for this tick and discard input.
+    // Stay in the innermost pane under the pointer, including at its edge.
+    // Do not send the remaining wheel input to a different page section.
+    final candidate = candidates.first;
+    final requestedAxis = useVertical ? Axis.vertical : Axis.horizontal;
+    if (candidate.axis != requestedAxis && !useVertical) return;
+    if (candidate.canMove(delta)) {
+      GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+        if (_registrations.contains(candidate) && candidate.canMove(delta)) {
+          candidate.controller.position.pointerScroll(delta);
+        }
       });
-      if (anyMoved) return;
-
-      for (final candidate in candidates) {
-        final controller = candidate.controller;
-        if (!_registrations.contains(candidate) || !candidate.canMove(delta))
-          continue;
-        controller.position.pointerScroll(delta);
-        break;
-      }
-    });
-    // Same reasoning as in _markHit: without an explicit scheduleFrame,
-    // this callback can be left dangling when no scrollable actually moves
-    // (pointer over empty chrome, or every candidate already at its edge),
-    // silently dropping the fallback scroll for that wheel tick.
-    WidgetsBinding.instance.scheduleFrame();
+    }
   }
 
   /// Handles keyboard navigation (arrow keys, Page Up/Down, Home/End) without
@@ -545,11 +527,19 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
-    if (!_pointerOverScrollbar ||
-        event is! PointerScrollEvent ||
+    if (event is! PointerScrollEvent ||
         widget.controller.positions.length != 1) {
       return;
     }
+    // Recompute against the current layout on every tick. A hover flag can
+    // remain true after scrolling/rebuilding moves the scrollbar away, and
+    // then hijack vertical wheel input until the pointer moves again.
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final local = box.globalToLocal(event.position);
+    if (local.dx < 0 || local.dx > box.size.width ||
+        local.dy < box.size.height - _hitBandHeight ||
+        local.dy > box.size.height) return;
 
     // A standard mouse wheel reports dy. A trackpad or horizontal wheel may
     // report dx, so preserve that axis when it is the only available delta.

@@ -1,4 +1,8 @@
 import 'dart:convert';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import '../services/pdf_font_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -203,15 +207,15 @@ String requiredGoodsAggregationKey(BomItem item, String category) {
   final accessoryName = category == 'accessory'
       ? requiredGoodsDisplayName(item).toLowerCase()
       : '';
-  return '${category}___${itemIdentifier}___'
+  return '${category}___SERIES:${item.sourceSeriesId ?? ''}___${itemIdentifier}___'
       '${item.colorId ?? item.colorName ?? ''}___${item.unit}___'
       '${item.length ?? ''}___${item.glassHeight ?? ''}___$accessoryName';
 }
 
 /// A Kit is one configured bundle. Its contents can carry different colours,
 /// but must still remain beneath that single Kit row in required goods.
-String requiredGoodsKitAggregationKey(String category, String kitName) =>
-    'KIT___${category}___${kitName.trim().toLowerCase()}';
+String requiredGoodsKitAggregationKey(String category, String kitName, {int? seriesId}) =>
+    'KIT___${category}___SERIES:${seriesId ?? ''}___${kitName.trim().toLowerCase()}';
 
 /// Child rows are generated from the Kit page with this stable prefix. The
 /// Kit header itself has a logical UI key instead and must never be rendered
@@ -593,6 +597,39 @@ class OrderRequiredGoodsScreen extends StatefulWidget {
 }
 
 class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
+  Future<void> _printRequiredGoods() async {
+    final detailed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('طباعة الكمية المطلوبة'),
+      content: const Text('كيف تريد عرض الكيت في التقرير؟'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('باسم الكيت')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('بالعناصر المفصلة')),
+      ],
+    ));
+    if (detailed == null || !mounted) return;
+    final fonts = await PdfFontCache.load();
+    final rows = <List<String>>[];
+    for (final item in _aggregatedItems) {
+      rows.add([item.category, item.name, item.totalQuantity.toStringAsFixed(2), item.unit]);
+      if (detailed && item.kitGroupName != null) {
+        for (final child in item.kitSubItems) {
+          rows.add(['', '${item.name} / ${child.name}', child.purchaseQuantity.toStringAsFixed(2), child.unit]);
+        }
+      }
+    }
+    final pdf = pw.Document();
+    pdf.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      textDirection: pw.TextDirection.rtl,
+      theme: pw.ThemeData.withFont(base: fonts.regular, bold: fonts.bold),
+      build: (_) => [
+        pw.Text('الكمية المطلوبة - الطلبية ${widget.orderData['id']}'),
+        pw.SizedBox(height: 12),
+        pw.TableHelper.fromTextArray(headers: ['الفئة', 'العنصر', 'الكمية', 'الوحدة'], data: rows),
+      ],
+    ));
+    await Printing.layoutPdf(onLayout: (_) => pdf.save(), name: 'Required_goods_${widget.orderData['id']}.pdf');
+  }
   bool _isLoading = true;
   String? _errorMessage;
   List<AggregatedGoodItem> _aggregatedItems = [];
@@ -918,680 +955,25 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       return _standaloneProductBom(model);
     }
 
-    // Use the same automatic shutter links as the quantity/cost table before
-    // generating any row (blade -> track -> exact linked blade cap).
+    // Use the same two-pass rule resolution as the quantity/cost table.
+    // Do not infer extra products from names or legacy catalogue flags here.
     await model.updateShutterDefaultsIfNeeded();
     final activeVariants = _buildActiveVariants(model);
-    final dbInstance = (await widget.db.db)!;
-    final sqlDb = widget.db;
-    // The grey colour is the shutter component base price.  This also moves
-    // legacy standalone prices into the colour-price table before this BOM is
-    // priced.
-    final shutterGreyColorId = await _shutterGreyColorId();
-
-    // Resolve the rule-driven BOM first. The legacy name search below is only
-    // a fallback for genuinely unresolved old orders; running it before the
-    // resolver caused one or more database queries for nearly every row.
     final engine = BomEngineV2(database: widget.db);
-    var bomItems = ComponentCalculator.generateBom(
+    List<BomItem> generate() => ComponentCalculator.generateBom(
       model,
       activeVariants,
       kitBundleData: kitBundleData,
       kitPerLeafMap: kitPerLeafMap,
       kitBundleMetadata: kitBundleMetadata,
     );
-    await engine.stabilizeSelections(window: model, items: bomItems);
-    bomItems = ComponentCalculator.generateBom(
-      model,
-      activeVariants,
-      kitBundleData: kitBundleData,
-      kitPerLeafMap: kitPerLeafMap,
-      kitBundleMetadata: kitBundleMetadata,
+    await engine.stabilizeSelections(window: model, items: generate());
+    await engine.stabilizeSelections(window: model, items: generate());
+    // A failure must be reported for this product, never replaced with an
+    // unvalidated raw BOM that invents requirements absent from the table.
+    return engine.filterItemsByAvailableCandidates(
+      window: model, items: generate(),
     );
-
-    final colorId = _safeInt(model.selectedDbColor?['id']);
-    final accessoryColorId =
-        _safeInt(model.selectedAccessoryColor?['id']) ?? colorId;
-
-    for (var item in bomItems) {
-      final selector = (item.selectorType ?? '').trim().toLowerCase();
-      final original = item.originalName.trim().toLowerCase();
-      final looksLikeSlidingProfile =
-          selector.contains('sliding') ||
-          selector.contains('couliss') ||
-          selector == 'sash_lateral' ||
-          selector == 'sash_central' ||
-          selector == 'sash_traverse' ||
-          original.contains('قائم جانبي') ||
-          original.contains('قائم وسطي') ||
-          original.contains('sash lateral') ||
-          original.contains('sash central') ||
-          original.contains('chicane') ||
-          original.contains('couliss');
-      final usesSlidingSeries =
-          model.systemMode == 'sliding' ||
-          (item.sourceSeriesId != null &&
-              item.sourceSeriesId == model.activeSlidingSeries?.id) ||
-          (model.zones.any((zone) => zone.content == ZoneContent.slidingSash) &&
-              looksLikeSlidingProfile);
-      final int? itemSeriesId = usesSlidingSeries
-          ? model.activeSlidingSeries?.id
-          : model.activeSeries?.id;
-      if (item.isMissing &&
-          !model.componentOverrides.containsKey(item.originalName)) {
-        try {
-          if (item.category == 'shutter' &&
-              item.originalName == 'أغطية الشفرات (Bouchons Lames)') {
-            final blade = model.componentOverrides['الشرائح (Lames)'];
-            if (blade is Map) {
-              final bladeName = (blade['name'] ?? '').toString().trim();
-              if (bladeName.isNotEmpty) {
-                final linkedCaps = await dbInstance.query(
-                  'ShutterComponents',
-                  where:
-                      "LOWER(TRIM(component_type)) = 'bouchon_lame' AND LOWER(TRIM(shutter_subtype)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)",
-                  whereArgs: [bladeName],
-                  orderBy: 'id ASC',
-                  limit: 1,
-                );
-                if (linkedCaps.isNotEmpty) {
-                  model.componentOverrides[item.originalName] =
-                      Map<String, dynamic>.from(linkedCaps.first);
-                }
-              }
-            }
-            continue;
-          }
-          // Espagnolette special case
-          if (item.originalName.contains('إسبانيوليت') ||
-              item.originalName.contains('Espagnolette')) {
-            final match = RegExp(r'\d+').firstMatch(item.originalName);
-            String targetSize = match != null ? match.group(0)! : '';
-            final matType = model.isPVC ? 'PVC' : 'Aluminium';
-            var allEsp = await dbInstance.query(
-              'Accessories',
-              where:
-                  "(type LIKE '%إسبانيوليت%' OR LOWER(name) LIKE '%esp%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
-              whereArgs: [matType],
-            );
-            if (allEsp.isNotEmpty) {
-              Map<String, dynamic>? selectedEsp;
-              if (targetSize.isNotEmpty) {
-                for (var e in allEsp) {
-                  String n = e['name'].toString();
-                  String ty = e['type'].toString();
-                  if (n.contains(targetSize) || ty.contains(targetSize)) {
-                    selectedEsp = e;
-                    break;
-                  }
-                }
-              }
-              selectedEsp ??= allEsp.first;
-              final selectedEspItem = selectedEsp!;
-              final mutableItem = Map<String, dynamic>.from(selectedEspItem);
-              double price = 0.0;
-              if (accessoryColorId != null) {
-                final colorPriceRes = await dbInstance.query(
-                  'AccessoryColorPrices',
-                  where: 'accessory_id = ? AND color_id = ?',
-                  whereArgs: [selectedEspItem['id'], accessoryColorId],
-                );
-                if (colorPriceRes.isNotEmpty &&
-                    _safeDouble(colorPriceRes.first['price']) > 0) {
-                  price = _safeDouble(colorPriceRes.first['price']);
-                } else {
-                  price = _safeDouble(
-                    selectedEspItem['price_dzd'] ?? selectedEspItem['price'],
-                  );
-                }
-              } else {
-                price = _safeDouble(
-                  selectedEspItem['price_dzd'] ?? selectedEspItem['price'],
-                );
-              }
-              mutableItem['calculated_price'] = price;
-              model.componentOverrides[item.originalName] = mutableItem;
-            }
-            continue;
-          }
-
-          // General cases
-          String? table;
-          String keywordAr = '';
-          String keywordFr = '';
-
-          if (item.category == 'shutter') {
-            table = 'ShutterComponents';
-            if (item.originalName.contains('Lames') ||
-                item.originalName.contains('الشرائح')) {
-              keywordFr = 'lame';
-              keywordAr = 'شريح';
-            } else if (item.originalName.contains('Coulisses') ||
-                item.originalName.contains('السكك')) {
-              keywordFr = 'coulisse';
-              keywordAr = 'سك';
-            } else if (item.originalName.contains('Axe') ||
-                item.originalName.contains('المحور')) {
-              keywordFr = 'axe';
-              keywordAr = 'محور';
-            } else if (item.originalName.contains('Caisson') ||
-                item.originalName.contains('الصندوق')) {
-              keywordFr = 'caisson';
-              keywordAr = 'صندوق';
-            } else if (item.originalName.contains('Moteur') ||
-                item.originalName.contains('المحرك')) {
-              keywordFr = 'moteur';
-              keywordAr = 'محرك';
-            } else if (item.originalName.contains('Manivelle') ||
-                item.originalName.contains('المانيفال')) {
-              keywordFr = 'manivelle';
-              keywordAr = 'مانيفال';
-            } else if (item.originalName.contains('Tandem') ||
-                item.originalName.contains('طانديم')) {
-              keywordFr = 'tandem';
-              keywordAr = 'طانديم';
-            } else if (item.originalName.contains('Lame Finale') ||
-                item.originalName.contains('الشريحة النهائية')) {
-              keywordFr = 'finale';
-              keywordAr = 'نهائي';
-            } else if (item.originalName.contains('Joint Brosse') ||
-                item.originalName.contains('جوان بروس')) {
-              keywordFr = 'bross';
-              keywordAr = 'بروس';
-            } else if (item.originalName.contains('Kit') ||
-                item.originalName.contains('كيت')) {
-              keywordFr = 'kit';
-              keywordAr = 'كيت';
-            } else if (item.originalName.contains('Attache') ||
-                item.originalName.contains('أطاش')) {
-              keywordFr = 'attache';
-              keywordAr = 'أطاش';
-            } else if (item.originalName.contains('Support Moteur') ||
-                item.originalName.contains('سيبور موتور')) {
-              keywordFr = 'support_moteur';
-              keywordAr = 'سيبور موتور';
-            } else if (item.originalName.contains('Embout') ||
-                item.originalName.contains('الامبو')) {
-              keywordFr = 'embout';
-              keywordAr = 'امبو';
-            } else if (item.originalName.contains('Support Roulement') ||
-                item.originalName.contains('سيبور رولمو')) {
-              keywordFr = 'support_roulement';
-              keywordAr = 'سيبور رولمو';
-            } else if (item.originalName.contains('Bouchons Lames') ||
-                item.originalName.contains('أغطية الشفرات')) {
-              keywordFr = 'bouchon_lame';
-              keywordAr = 'أغطية الشفرات';
-            }
-          } else if (item.category == 'accessory' ||
-              (item.category == 'other' &&
-                  (item.inventoryItemType ?? '').toLowerCase() ==
-                      'accessory')) {
-            table = 'Accessories';
-            if (item.originalName.contains('بوشون باتمو') ||
-                item.originalName.toLowerCase().contains('bouchon batmo')) {
-              keywordFr = 'bouchon batmo';
-              keywordAr = 'بوشون باتمو';
-            } else if (item.originalName.toLowerCase().contains('clam') ||
-                item.originalName.contains('كلام') ||
-                item.originalName.toLowerCase().contains('clamp')) {
-              keywordFr = 'clam';
-              keywordAr = 'كلام';
-            } else if (item.originalName.contains('Triangle') ||
-                item.originalName.contains('Tringle') ||
-                item.originalName.contains('تراينغل') ||
-                item.originalName.contains('تريانغل')) {
-              keywordFr = 'tringle';
-              keywordAr = 'triangle';
-            } else if (item.originalName.contains('Kit 400') ||
-                item.originalName.contains('كيت 400')) {
-              keywordFr = 'kit 400';
-              keywordAr = 'كيت 400';
-            } else if (item.originalName.contains('المقبض') ||
-                item.originalName.contains('Handle')) {
-              keywordFr = 'poign';
-              keywordAr = 'مقبض';
-            } else if (item.originalName.contains('المفاصل') ||
-                item.originalName.contains('Hinges')) {
-              keywordFr = 'paumel';
-              keywordAr = 'مفصل';
-            } else if (item.originalName.contains('System OB')) {
-              keywordFr = 'ob';
-              keywordAr = 'ob';
-            } else if ((item.originalName.contains('الفيرو') ||
-                    item.originalName.contains('Verrou')) &&
-                !item.originalName.contains('Central')) {
-              keywordFr = 'verrou';
-              keywordAr = 'فيرو';
-            } else if (item.originalName.contains('براغي') ||
-                item.originalName.toLowerCase().contains('screw')) {
-              keywordFr = 'visse';
-              keywordAr = 'براغي';
-            } else if (item.originalName.contains('عجلات') ||
-                item.originalName.contains('Roulette')) {
-              keywordFr = 'roulette';
-              keywordAr = 'عجل';
-            } else if (item.originalName.contains('أونتروماتيك') ||
-                item.originalName.contains('Entrematique')) {
-              keywordFr = 'intra';
-              keywordAr = 'انترام';
-            } else if (item.originalName.contains('اسبانيولات') ||
-                item.originalName.contains('Espagnolette')) {
-              keywordFr = 'espagnol';
-              keywordAr = 'اسبانيول';
-            } else if (item.originalName.contains('كاش كوليسون') ||
-                item.originalName.contains('Gache coulissant')) {
-              keywordFr = 'gache';
-              keywordAr = 'كاش';
-            } else if (item.originalName.contains('صداد') ||
-                item.originalName.contains('Arrêt')) {
-              keywordFr = 'arret';
-              keywordAr = 'صداد';
-            }
-          } else if (item.category == 'joint') {
-            table = 'Joints';
-            if (item.originalName.contains('Joint Brosse') ||
-                item.originalName.contains('جوان بروس')) {
-              keywordFr = 'bross';
-              keywordAr = 'بروس';
-            } else if (item.originalName.contains('2mm') ||
-                item.originalName.contains('2 ملم')) {
-              keywordFr = '2';
-              keywordAr = '2';
-            } else if (item.originalName.contains('3-4mm') ||
-                item.originalName.contains('3-4 ملم')) {
-              keywordFr = '3';
-              keywordAr = '3';
-            } else if (item.originalName.contains('5-6mm') ||
-                item.originalName.contains('5-6 ملم')) {
-              keywordFr = '5';
-              keywordAr = '5';
-            } else if (item.originalName.contains('7-8mm') ||
-                item.originalName.contains('7-8 ملم')) {
-              keywordFr = '7';
-              keywordAr = '7';
-            } else {
-              keywordFr = 'joint';
-              keywordAr = 'جوان';
-            }
-          } else if (item.category == 'profile') {
-            table = 'Sections';
-            if ((item.originalName.toLowerCase().contains('bouchon batmo') ||
-                    item.originalName.contains('بوشون باتمو')) &&
-                !item.originalName.toLowerCase().contains('vis')) {
-              keywordFr = 'bouchon batmo';
-              keywordAr = 'بوشون باتمو';
-            } else if (item.originalName.contains('Batmo') ||
-                item.originalName.contains('الباتمو')) {
-              keywordFr = 'batmo';
-              keywordAr = 'باتمو';
-            } else if (item.originalName.contains('Mullion') ||
-                item.originalName.contains('تقسيم الزجاج')) {
-              final mullRes = await dbInstance.query(
-                'Sections',
-                where:
-                    'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ? OR type LIKE ?)',
-                whereArgs: [
-                  itemSeriesId,
-                  '%mullion%',
-                  '%mullion%',
-                  '%traverse%',
-                  '%traverse%',
-                  '%تقسيم%',
-                  '%تقسيم%',
-                ],
-                limit: 1,
-              );
-              if (mullRes.isNotEmpty) {
-                final mutableItem = Map<String, dynamic>.from(mullRes.first);
-                double price = await sqlDb.getSectionPrice(
-                  mullRes.first['id'],
-                  colorId,
-                );
-                if (price <= 0) {
-                  price = _safeDouble(mullRes.first['price']);
-                }
-                mutableItem['calculated_price'] = price;
-                model.componentOverrides[item.originalName] = mutableItem;
-              }
-              continue;
-            } else if (item.originalName.contains('Plinthe') ||
-                item.originalName.contains('بلانت')) {
-              keywordFr = 'plinthe';
-              keywordAr = 'بلانت';
-            } else if (item.originalName.contains('Traverse') ||
-                item.originalName.contains('عرضي')) {
-              keywordFr = 'traverse';
-              keywordAr = 'عرضي';
-            } else if (item.originalName.contains('Sash Lateral') ||
-                item.originalName.contains('قائم جانبي')) {
-              keywordFr = 'sash';
-              keywordAr = 'جانبي';
-            } else if (item.originalName.contains('Sash Central') ||
-                item.originalName.contains('قائم وسطي') ||
-                item.originalName.contains('Chicane')) {
-              keywordFr = 'sash';
-              keywordAr = 'وسطي';
-            } else if (item.originalName.contains('Renfort') ||
-                item.originalName.contains('حديد التسليح')) {
-              keywordFr = 'renfort';
-              keywordAr = 'تسليح';
-            } else if (item.originalName.contains('Rail') ||
-                item.originalName.contains('سكة')) {
-              keywordFr = 'rail';
-              keywordAr = 'سكة';
-            } else if (item.originalName.contains('Réducteur') ||
-                item.originalName.contains('ريديكتور') ||
-                item.originalName.contains('reducteur') ||
-                item.originalName.contains('مخفض')) {
-              keywordFr = '67114';
-              keywordAr = '67114';
-            } else if (item.originalName.contains('Parclose') ||
-                item.originalName.contains('باكيت')) {
-              keywordFr = 'parclose';
-              keywordAr = 'باكيت';
-            } else if (item.originalName.contains('الغطاء الجانبي') ||
-                item.originalName.contains('Side Cover') ||
-                item.originalName.contains('Couvre') ||
-                item.originalName.contains('couvre')) {
-              final sId = itemSeriesId;
-              final cjRes = await dbInstance.query(
-                'Sections',
-                where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-                whereArgs: [sId],
-              );
-              final cjMatches = cjRes.where((s) {
-                final t = (s['type'] ?? '').toString().toLowerCase();
-                final n = (s['name'] ?? '').toString().toLowerCase();
-                return t.contains('couvre') ||
-                    n.contains('couvre') ||
-                    n.contains('غطاء') ||
-                    t.contains('side_cover');
-              }).toList();
-              if (cjMatches.isNotEmpty) {
-                final mutableItem = Map<String, dynamic>.from(cjMatches.first);
-                double price = 0.0;
-                if (colorId != null) {
-                  price = await sqlDb.getSectionPrice(
-                    cjMatches.first['id'] as int,
-                    colorId,
-                  );
-                } else {
-                  price = _safeDouble(
-                    cjMatches.first['price_dzd'] ?? cjMatches.first['price'],
-                  );
-                }
-                mutableItem['calculated_price'] = price;
-                model.componentOverrides[item.originalName] = mutableItem;
-                model.sideCoverOverride = mutableItem;
-              }
-              continue;
-            }
-          }
-
-          if (table != null) {
-            final matType = model.isPVC ? 'PVC' : 'Aluminium';
-            var queryRes = await dbInstance.query(
-              table,
-              where:
-                  "(LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR name LIKE ? OR type LIKE ? OR code LIKE ?) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
-              whereArgs: [
-                '%$keywordFr%',
-                '%$keywordFr%',
-                '%$keywordAr%',
-                '%$keywordAr%',
-                '%$keywordFr%',
-                matType,
-              ],
-            );
-
-            // 🟢 تصفية الجوانات حسب السلسلة الحالية (series_id / series_ids)
-            // مهم جداً لضمان أن جوان البروس يخص السلسلة المختارة لا أي سلسلة أخرى
-            if (table == 'Joints' &&
-                queryRes.isNotEmpty &&
-                itemSeriesId != null) {
-              final sid = itemSeriesId;
-              final sidStr = sid.toString();
-              // أولاً: تصفية بـ series_id المباشر
-              final exactMatch = queryRes
-                  .where((j) => j['series_id'] == sid)
-                  .toList();
-              if (exactMatch.isNotEmpty) {
-                queryRes = exactMatch;
-              } else {
-                // ثانياً: تصفية بـ series_ids (قائمة مفصولة بفاصلة)
-                final idsMatch = queryRes.where((j) {
-                  final ids = (j['series_ids'] ?? '').toString();
-                  return ids.split(',').map((e) => e.trim()).contains(sidStr);
-                }).toList();
-                if (idsMatch.isNotEmpty) {
-                  queryRes = idsMatch;
-                }
-                // إذا لم يوجد تطابق بالسلسلة → نأخذ الجوانات العامة (series_id = null)
-                else {
-                  final globalJoints = queryRes.where((j) {
-                    final s = j['series_id'];
-                    final ids = (j['series_ids'] ?? '').toString().trim();
-                    return s == null && ids.isEmpty;
-                  }).toList();
-                  if (globalJoints.isNotEmpty) queryRes = globalJoints;
-                }
-              }
-            }
-
-            if (table == 'Sections' && queryRes.isNotEmpty) {
-              if (itemSeriesId != null) {
-                final seriesSections = queryRes
-                    .where((s) => s['series_id'] == itemSeriesId)
-                    .toList();
-                // Never fall back to a similarly named section from another
-                // series. A missing exact-series row must stay missing and
-                // be shown as such, not become a wrong frame/image.
-                queryRes = seriesSections;
-              }
-
-              final origLower = item.originalName.toLowerCase();
-              if (origLower.contains('rail') || origLower.contains('سكة')) {
-                // استبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail من نتائج السكة Rail
-                final railMatches = queryRes.where((s) {
-                  final t = (s['type'] ?? '').toString().toLowerCase();
-                  final n = (s['name'] ?? '').toString().toLowerCase();
-                  return (t == 'rail' ||
-                          t.contains('rail') ||
-                          n == 'rail' ||
-                          n.startsWith('rail') ||
-                          n.contains('سكة')) &&
-                      !t.contains('frame') &&
-                      !t.contains('cadre') &&
-                      !n.contains('cadre') &&
-                      !n.contains('إطار') &&
-                      !n.contains('cadre 2 rail') &&
-                      !n.contains('cadre 3 rail');
-                }).toList();
-                if (railMatches.isNotEmpty) {
-                  queryRes = railMatches;
-                }
-              } else if (origLower.contains('réducteur') ||
-                  origLower.contains('ريديكتور') ||
-                  origLower.contains('reducteur') ||
-                  origLower.contains('مخفض')) {
-                // للريديكتور: البحث بكود 67114 أو reducteur أو مخفض واستبعاد الإطارات والسكك
-                final redMatches = queryRes.where((s) {
-                  final t = (s['type'] ?? '').toString().toLowerCase();
-                  final n = (s['name'] ?? '').toString().toLowerCase();
-                  final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('67114') ||
-                          t.contains('reduct') ||
-                          n.contains('reduct') ||
-                          n.contains('مخفض') ||
-                          n.contains('ريديكتور')) &&
-                      !t.contains('frame') &&
-                      !t.contains('cadre') &&
-                      !t.contains('rail') &&
-                      !n.contains('cadre') &&
-                      !n.contains('إطار') &&
-                      !n.contains('rail') &&
-                      !n.contains('سكة');
-                }).toList();
-                if (redMatches.isNotEmpty) {
-                  queryRes = redMatches;
-                }
-              } else if (origLower.contains('latéral') ||
-                  origLower.contains('lateral') ||
-                  origLower.contains('قائم جانبي') ||
-                  origLower.contains('sash lateral')) {
-                // للقائم الجانبي: تصفية القوائم الجانبية فقط بكود 104 أو 108 أو lateral واستبعاد القائم الوسطي / الشيكان / 105
-                final latMatches = queryRes.where((s) {
-                  final n = (s['name'] ?? '').toString().toLowerCase();
-                  final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('104') ||
-                          c.contains('108') ||
-                          n.contains('latéral') ||
-                          n.contains('lateral') ||
-                          n.contains('جانبي')) &&
-                      !n.contains('central') &&
-                      !n.contains('وسطي') &&
-                      !n.contains('chicane') &&
-                      !c.contains('105');
-                }).toList();
-                if (latMatches.isNotEmpty) {
-                  queryRes = latMatches;
-                }
-              } else if (origLower.contains('sash central') ||
-                  origLower.contains('central') ||
-                  origLower.contains('chicane') ||
-                  origLower.contains('قائم وسطي')) {
-                // للقائم الوسطي: تصفية القوائم الوسطية بكود 105 أو 107 أو central واستبعاد الجانبي 104
-                final cenMatches = queryRes.where((s) {
-                  final n = (s['name'] ?? '').toString().toLowerCase();
-                  final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('105') ||
-                          c.contains('107') ||
-                          n.contains('central') ||
-                          n.contains('وسطي') ||
-                          n.contains('chicane')) &&
-                      !n.contains('latéral') &&
-                      !n.contains('جانبي') &&
-                      !c.contains('104');
-                }).toList();
-                if (cenMatches.isNotEmpty) {
-                  queryRes = cenMatches;
-                }
-              }
-            }
-
-            if (queryRes.isNotEmpty) {
-              final matched = queryRes.first;
-              final mutableItem = Map<String, dynamic>.from(matched);
-              double price = 0.0;
-
-              if (table == 'Sections') {
-                price = await sqlDb.getSectionPrice(matched['id'], colorId);
-                if (price <= 0) {
-                  price = _safeDouble(matched['price']);
-                }
-              } else if (table == 'Accessories') {
-                if (accessoryColorId != null) {
-                  final colorPriceRes = await dbInstance.query(
-                    'AccessoryColorPrices',
-                    where: 'accessory_id = ? AND color_id = ?',
-                    whereArgs: [matched['id'], accessoryColorId],
-                  );
-                  if (colorPriceRes.isNotEmpty &&
-                      _safeDouble(colorPriceRes.first['price']) > 0) {
-                    price = _safeDouble(colorPriceRes.first['price']);
-                  } else {
-                    price = _safeDouble(
-                      matched['price_dzd'] ?? matched['price'],
-                    );
-                  }
-                } else {
-                  price = _safeDouble(matched['price_dzd'] ?? matched['price']);
-                }
-              } else if (table == 'ShutterComponents') {
-                final colorPrices = await dbInstance.query(
-                  'ShutterColorPrices',
-                  where: 'shutter_component_id = ?',
-                  whereArgs: [matched['id']],
-                );
-                price = resolveShutterComponentUnitPrice(
-                  component: Map<String, dynamic>.from(matched),
-                  colorPrices: colorPrices,
-                  selectedColorId: colorId,
-                  fallbackColorId: shutterGreyColorId,
-                );
-              } else {
-                price = _safeDouble(matched['price']);
-              }
-
-              mutableItem['calculated_price'] = price;
-              model.componentOverrides[item.originalName] = mutableItem;
-            }
-          }
-        } catch (_) {}
-      }
-    }
-
-    final generatedBom = ComponentCalculator.generateBom(
-      model,
-      activeVariants,
-      kitBundleData: kitBundleData,
-      kitPerLeafMap: kitPerLeafMap,
-      kitBundleMetadata: kitBundleMetadata,
-    );
-
-    // Kit rows are configured by name. Resolve their exact catalogue identity
-    // without changing their quantity or cost, so a later stock comparison can
-    // address the correct physical record instead of relying on display text.
-    final resolvedBom = <BomItem>[];
-    for (final item in generatedBom) {
-      if (item.catalogItemId == null && item.kitGroupName != null) {
-        final isShutterItem = item.category == 'shutter';
-        final table = isShutterItem ? 'ShutterComponents' : 'Accessories';
-        final matches = await dbInstance.query(
-          table,
-          columns: const ['id'],
-          where:
-              'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)',
-          whereArgs: [item.name],
-          orderBy: 'id ASC',
-          limit: 1,
-        );
-        if (matches.isNotEmpty) {
-          final rawId = matches.first['id'];
-          final id = rawId is num ? rawId.toInt() : int.tryParse('$rawId');
-          resolvedBom.add(
-            item.copyWith(
-              catalogItemId: id,
-              inventoryItemType: isShutterItem
-                  ? 'ShutterComponent'
-                  : 'Accessory',
-              colorId: isShutterItem ? colorId : accessoryColorId,
-            ),
-          );
-          continue;
-        }
-      }
-      resolvedBom.add(item);
-    }
-
-    // Required goods must consume exactly the same resolved BOM as the
-    // quantity/cost table. Resolving it a second time by product names was
-    // the source of ghost rows and missing real components.
-    try {
-      await engine.stabilizeSelections(window: model, items: resolvedBom);
-      return await engine.filterItemsByAvailableCandidates(
-        window: model,
-        items: resolvedBom,
-      );
-    } catch (error, stackTrace) {
-      // Never turn an order into an empty requirement list because a legacy
-      // catalogue rule is malformed. The direct BOM still represents every
-      // actual drawing component and remains the safe fallback.
-      debugPrint('Required-goods BOM resolution failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return resolvedBom;
-    }
   }
 
   Future<void> _loadAndAggregate() async {
@@ -1836,6 +1218,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               final String kitKey = requiredGoodsKitAggregationKey(
                 category,
                 kitName,
+                seriesId: bom.sourceSeriesId,
               );
               final isKitHeader = isRequiredGoodsKitHeader(bom, kitName);
               final double kitQtyToAdd = isKitHeader ? purchaseQty : 0.0;
@@ -2715,6 +2098,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         actionsIconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         actions: [
+          if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
+            IconButton(icon: const Icon(Icons.print), tooltip: 'طباعة الكمية المطلوبة',
+                onPressed: _printRequiredGoods),
           if (!_isLoading &&
               _errorMessage == null &&
               _aggregatedItems.isNotEmpty)
@@ -2936,9 +2322,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           Icon(Icons.info_outline, color: Colors.amber.shade900, size: 20),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              _processingWarnings.join('\n'),
-              style: TextStyle(color: Colors.amber.shade900, fontSize: 11),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.2,
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  _processingWarnings.join('\n'),
+                  style: TextStyle(color: Colors.amber.shade900, fontSize: 11),
+                ),
+              ),
             ),
           ),
         ],
@@ -4079,7 +3472,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     }
     if (!mounted) return;
-    Navigator.push(
+    final inventoryIssued = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (context) => _OrderShortageReportPage(
@@ -4093,6 +3486,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ),
       ),
     );
+    // Propagate the completed issue through this intermediate page so the
+    // order action can actually advance to the requested manufacturing stage.
+    if (inventoryIssued == true &&
+        widget.issueAtManufacturingStart &&
+        mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   Future<void> _showSectionSelectionDialog(
@@ -5543,7 +4943,7 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
         backgroundColor: alreadyApplied ? Colors.orange : Colors.green,
       ),
     );
-    if (automatic && context.mounted) {
+    if ((automatic || widget.autoApply) && context.mounted) {
       Navigator.pop(context, true);
     }
   }

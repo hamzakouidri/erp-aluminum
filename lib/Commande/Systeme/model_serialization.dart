@@ -225,6 +225,8 @@ extension GlassSpecificationSerialization on GlassSpecification {
       'laminatedColorInner': laminatedColorInner,
       'rosetteShape': rosetteShape,
       'jointTwoSides': jointTwoSides,
+      'fittedJoints': fittedJoints,
+      'glazingFitValid': glazingFitValid,
       'temperedOuter': temperedOuter,
       'temperedInner': temperedInner,
     };
@@ -297,6 +299,9 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
         map['laminatedColorInner']?.toString() ?? 'transparent',
     rosetteShape: (map['rosetteShape'] as num?)?.toInt() ?? 1,
     jointTwoSides: map['jointTwoSides'] as bool? ?? true,
+    glazingFitValid: map['glazingFitValid'] as bool?,
+    fittedJoints: (map['fittedJoints'] as List? ?? const [])
+        .whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(),
     temperedOuter: map['temperedOuter'] as bool? ?? false,
     temperedInner: map['temperedInner'] as bool? ?? false,
   );
@@ -586,6 +591,7 @@ extension WindowModelSerialization on WindowModel {
       'selectedColorName': _savedColorName(selectedDbColor),
       'selectedColorHex': _savedColorHex(selectedDbColor),
       'selectedAccessoryColor': _colorSelectionFromRaw(selectedAccessoryColor),
+      'selectedShutterColor': _colorSelectionFromRaw(selectedShutterColor),
       'primaryMullionAxis': primaryMullionAxis,
       'zones': zones.map((z) => z.toMap()).toList(),
       // The selected zone is part of the drawing workspace state.  Persist it
@@ -793,6 +799,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   );
   model.selectedDbColor = savedDbColor;
   model.selectedAccessoryColor = savedAccessoryColor;
+  model.selectedShutterColor = _colorSelectionFromRaw(map['selectedShutterColor']);
   model.loadedSeriesName =
       map['seriesName']?.toString() ?? map['profileName']?.toString();
   int? savedSeriesId(Object? value) => value is num

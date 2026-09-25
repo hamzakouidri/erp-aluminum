@@ -1387,10 +1387,12 @@ class ComponentCalculator {
     }
 
     // 1. هل يحتوي الرسم على أي منطقة/خلية سحاب (سواء النافذة كاملة سحاب أو جزء منها)؟
-    final bool hasSlidingZones = window.zones.any(
-      (z) => z.content == ZoneContent.slidingSash,
+    final bool hasOpeningZones = window.zones.any(
+      (z) => z.content == ZoneContent.singleSash ||
+          z.content == ZoneContent.doubleSash,
     );
-    final bool isEntireWindowSliding = window.systemMode == 'sliding';
+    final bool isEntireWindowSliding =
+        window.usesSlidingPrimaryProfiles && !hasOpeningZones;
 
     // 2. إذا كانت النافذة بالكامل من نوع سحاب، فجميع قطاعاتها الأساسية تتبع سلسلة السحاب
     if (isEntireWindowSliding) {
@@ -1421,11 +1423,9 @@ class ComponentCalculator {
       return true;
     }
 
-    // 4. معالجة النوافذ المختلطة (نافذة عادية بها ضلفة سحاب PVC موحدة sash):
-    // إذا كان الرسم يحتوي على منطقة سحاب، والقطاع المطلوب هو ضلفة (sash) أو سكة أو شيكان
-    if (hasSlidingZones && (lower == 'sash' || lower.contains('sash'))) {
-      return true;
-    }
+    // Generic sash demand belongs to the opening construction. Sliding
+    // sashes already use explicit sliding selectors above; their presence
+    // must never redirect an opening sash to the sliding catalogue.
 
     // في باقي الحالات (إطار النافذة الأساسي المفصلي، القواطع المفصلية، إلخ)
     return false;
@@ -2343,7 +2343,7 @@ class ComponentCalculator {
         windowHeight: window.height.toDouble(),
         windowQuantity: window.quantity,
         catalogItemId: catalogueId(window.componentOverrides[originalName]),
-        colorId: catalogueColorId(color),
+        colorId: int.tryParse('${window.effectiveShutterColor?['id'] ?? ''}') ?? catalogueColorId(color),
         overrideKey: originalName,
         selectorCategory: _textHasAny(originalName, const ['براغي'])
             ? 'accessory'
@@ -2513,11 +2513,8 @@ class ComponentCalculator {
     }
 
     final integratedFrameCoverWidth = selectedFrameIntegratedCoverWidth();
-    // The selected frame owns an integrated cover. Use the frame metadata
-    // itself as the source of truth here instead of isIntegratedFrame: that
-    // getter intentionally returns false for multi-frame drawing geometry,
-    // but an integrated frame must never create a separate side-cover row in
-    // the quantity/cost table.
+    // Read the integrated projection from the selected frame, never from a
+    // separately selected cover profile.
     final bool hasIntegratedSideCover =
         window.hasSideCovers && integratedFrameCoverWidth > 0;
     bool hasNonIntegratedSideCover =
@@ -2697,8 +2694,8 @@ class ComponentCalculator {
     final String accessoryColorName = window.selectedAccessoryColor != null
         ? (window.selectedAccessoryColor!['name'] ?? colorName).toString()
         : colorName;
-    final String shutterColorName = window.selectedAccessoryColor != null
-        ? (window.selectedAccessoryColor!['name'] ?? colorName).toString()
+    final String shutterColorName = window.effectiveShutterColor != null
+        ? (window.effectiveShutterColor!['name'] ?? colorName).toString()
         : colorName;
 
     int totalHandles = 0;
@@ -2757,6 +2754,8 @@ class ComponentCalculator {
     double pvcJointBrosseSum = 0.0;
     Map<String, double> slidingGlassJoints = {};
     final openingGlassJoints = <String, double>{};
+    double fittedSimplePerimeter = 0;
+    double fittedDoublePerimeter = 0;
     double slidingBourrageTargetThickness = 0.0;
 
     // PVC sliding systems have their own cutting rules.  They deliberately
@@ -7313,6 +7312,29 @@ class ComponentCalculator {
               cellGlass.structure == GlassStructure.double;
           final bool isPvcSlidingSystem =
               isSlidingSystem && window.isSlidingPVC;
+          if (cellGlass.fittedJoints.isNotEmpty && !isPanneau) {
+            final perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
+            for (var side = 0; side < cellGlass.fittedJoints.length; side++) {
+              final joint = cellGlass.fittedJoints[side];
+              final rule = joint['catalog_rule'] as Map?;
+              final role = rule?['role_key']?.toString();
+              if (role == null) continue;
+              final key = 'fitted-glass:${rule?['series_id']}:${joint['id']}:$side';
+              window.componentOverrides[key] = Map<String, dynamic>.from(joint);
+              items.add(createJoint('${joint['name']} — ${side == 0 ? 'خارجي' : 'داخلي'}',
+                qty: perimeter * totalPieces / window.quantity,
+                unit: 'متر', sliding: isSlidingSystem, overrideKey: key,
+                roleKeyOverride: role, selectorTypeOverride: role,
+                targetThicknessMm: double.tryParse('${joint['thickness']}')));
+            }
+            if (!isSlidingSystem && !openingSashSkipsGlazingBead) {
+              if (needsDoubleParclose) {
+                fittedDoublePerimeter += perimeter * pieceMultiplier;
+              } else {
+                fittedSimplePerimeter += perimeter * pieceMultiplier;
+              }
+            }
+          }
           final String slidingSeriesLabel =
               '${window.activeSlidingSeries?.name ?? ''} '
                       '${window.activeSlidingSeries?.type ?? ''} '
@@ -7350,6 +7372,7 @@ class ComponentCalculator {
           }
 
           void addSlidingBourrageJoint() {
+            if (cellGlass.fittedJoints.isNotEmpty) return;
             // PVC sliding glazing uses its dedicated gasket rules; the
             // aluminium Bourrage profile must never be added to its BOM.
             if (isPvcSlidingSystem) return;
@@ -7461,6 +7484,7 @@ class ComponentCalculator {
             // this direct gasket demand; adding both doubles its consumption.
             if (usesOpeningSashProfile &&
                 openingSashSkipsGlazingBead &&
+                cellGlass.fittedJoints.isEmpty &&
                 !window.isPVC &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
@@ -8317,11 +8341,11 @@ class ComponentCalculator {
       final double simplePerim = parcloseSimplePieces.fold(
         0.0,
         (s, p) => s + p,
-      ); // محيط زجاج مفرد (×1)
+      ) - fittedSimplePerimeter; // Fitted cells already carry exact gasket rows.
       final double doublePerim = parcloseDoublePieces.fold(
         0.0,
         (s, p) => s + p,
-      ); // طول باكلوز الزجاج المزدوج
+      ) - fittedDoublePerimeter;
       final double vitrageQty = simplePerim + doublePerim;
 
       if (vitrageQty > 0) {

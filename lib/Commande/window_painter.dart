@@ -131,6 +131,7 @@ class WindowPainter extends CustomPainter {
 
   bool get _hasDrawableStandaloneSideCover =>
       model.hasSideCovers &&
+      !model.isIntegratedFrame &&
       !model.selectedOuterFrameHasIntegratedSideCover &&
       model.canUseStandaloneSideCover &&
       _drawableStandaloneSideCoverWidth > 0;
@@ -150,7 +151,7 @@ class WindowPainter extends CustomPainter {
       _localBottomFrame ?? model.effectiveHasBottomFrame;
 
   double get _drawableStandaloneSideCoverWidth {
-    final width = model.sideCoverWidth;
+    final width = model.standaloneSideCoverWidth;
     if (width > 0) return width;
     if (model.hasSideCovers &&
         (model.selectedSideCover != null || model.sideCoverOverride != null)) {
@@ -2277,8 +2278,8 @@ class WindowPainter extends CustomPainter {
     double topY,
   ) {
     if (!_shouldDrawSideCovers) return;
-    final coverWidth = model.isIntegratedFrame && model.sideCoverWidth > 0
-        ? model.sideCoverWidth
+    final coverWidth = model.isIntegratedFrame
+        ? model.integratedFrameSideCoverWidth
         : _drawableStandaloneSideCoverWidth;
     if (coverWidth <= 0) return;
 
@@ -2291,7 +2292,7 @@ class WindowPainter extends CustomPainter {
       return;
     }
 
-    if (model.useCustomSideCoverLayout) {
+    if (!model.isIntegratedFrame && model.useCustomSideCoverLayout) {
       final segments = model.effectiveSideCoverSegments;
       if (segments.isNotEmpty) {
         _drawCustomSideCovers(canvas, w, h, topY);
@@ -3590,10 +3591,28 @@ class WindowPainter extends CustomPainter {
     final double topOffset = _topOffset;
     final bool isTopBound = _isTopZone(zone);
     final path = _buildGlassLayerPath(r, t, topOffset, isTopBound);
-    canvas.drawPath(path, Paint()..color = const Color(0xFFF5F8FA));
+    // Exposed rebates belong to the profile, not a white backing sheet.
+    // Glass/panel content is painted over this layer afterwards.
+    final backingPaint = _buildPaint(r);
+    canvas.drawPath(path, backingPaint);
   }
 
   void _drawZoneContent(Canvas canvas, WindowZone zone, double h, double t) {
+    final previousBottom = _localBottomFrame;
+    for (final frame in model.getFrameRects()) {
+      if (frame.contains(zone.boundary.center)) {
+        _localBottomFrame = model.hasBottomFrameForRect(frame);
+        break;
+      }
+    }
+    try {
+      _drawZoneContentForFrame(canvas, zone, h, t);
+    } finally {
+      _localBottomFrame = previousBottom;
+    }
+  }
+
+  void _drawZoneContentForFrame(Canvas canvas, WindowZone zone, double h, double t) {
     final r = _getEffectiveZoneRect(zone.boundary, h, t);
     final double topOffset = _topOffset;
     final bool isTopBound = _isTopZone(zone);
@@ -6919,6 +6938,10 @@ class WindowPainter extends CustomPainter {
     double position,
     double boxSize,
   ) {
+    final _fc = getEffectiveGradientColors(model.frameColor, model.effectiveShutterColor);
+    bool _isWoodColor() => this._isWoodColor() &&
+        (model.selectedShutterColor == null ||
+         model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
     const coulisseWidth = 25.0;
     final double coulisseTop = boxSize;
     final double coulisseHeight = h - boxSize;
@@ -7148,6 +7171,10 @@ class WindowPainter extends CustomPainter {
     double h, {
     bool drawOnlyManualControls = false,
   }) {
+    final _fc = getEffectiveGradientColors(model.frameColor, model.effectiveShutterColor);
+    bool _isWoodColor() => this._isWoodColor() &&
+        (model.selectedShutterColor == null ||
+         model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
     double startX = 0.0;
     double endX = w;
     double boxWidth = endX - startX;
