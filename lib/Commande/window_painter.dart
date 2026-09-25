@@ -2169,14 +2169,13 @@ class WindowPainter extends CustomPainter {
     // A 45° joint exists only where both covers really meet at the outside
     // corner. For example, a right cover ending halfway down is 45° at the
     // top (if the top cover is enabled), but its lower end stays a 90° cut.
+    // At the bottom, however, the real lower frame is itself the closing
+    // member. Therefore a vertical cover must still be mitred when the user
+    // hides only the standalone bottom cover.
     final joinTopLeft = reachesStart('top') && reachesStart('left');
     final joinTopRight = reachesEnd('top') && reachesStart('right');
-    final joinBottomLeft =
-        _hasEffectiveBottomFrame &&
-        reachesStart('bottom') &&
-        reachesEnd('left');
-    final joinBottomRight =
-        _hasEffectiveBottomFrame && reachesEnd('bottom') && reachesEnd('right');
+    final joinBottomLeft = _hasEffectiveBottomFrame && reachesEnd('left');
+    final joinBottomRight = _hasEffectiveBottomFrame && reachesEnd('right');
 
     // Where two covers meet with different visible widths, only the common
     // part is welded at 45°.  The excess of the wider profile is cut square
@@ -2190,10 +2189,21 @@ class WindowPainter extends CustomPainter {
       );
     }
 
+    double bottomFrameJointSpan(String side, bool joins) {
+      if (!joins) return 0.0;
+      final verticalWidth = geometry[side]!['visible']!;
+      final bottom = geometry['bottom'];
+      final bottomTouchesCorner =
+          bottom != null &&
+          (side == 'left' ? reachesStart('bottom') : reachesEnd('bottom'));
+      final bottomWidth = bottomTouchesCorner ? bottom!['visible'] : null;
+      return math.min(verticalWidth, bottomWidth ?? verticalWidth);
+    }
+
     final topLeftSpan = jointSpan('top', 'left', joinTopLeft);
     final topRightSpan = jointSpan('top', 'right', joinTopRight);
-    final bottomLeftSpan = jointSpan('bottom', 'left', joinBottomLeft);
-    final bottomRightSpan = jointSpan('bottom', 'right', joinBottomRight);
+    final bottomLeftSpan = bottomFrameJointSpan('left', joinBottomLeft);
+    final bottomRightSpan = bottomFrameJointSpan('right', joinBottomRight);
 
     for (final entry in geometry.entries) {
       final side = entry.key;
@@ -2473,6 +2483,26 @@ class WindowPainter extends CustomPainter {
     bool frameContains(Offset point) =>
         model.getFrameRects().any((rect) => rect.contains(point));
 
+    bool isBottomFrameEndpoint(
+      ({FrameEdgeSegment edge, double visible}) piece,
+      bool atStart,
+    ) {
+      if (isHorizontal(piece.edge.side)) {
+        return false;
+      }
+      // A vertical exposed edge that reaches the physical frame's bottom is
+      // closed by that frame even when the optional bottom cover was hidden.
+      final point = endpointOf(piece, atStart);
+      if (atStart) return false;
+      return model.getFrameRects().any(
+        (rect) =>
+            model.hasBottomFrameForRect(rect) &&
+            (point.dy - rect.bottom).abs() <= tolerance &&
+            ((point.dx - rect.left).abs() <= tolerance ||
+                (point.dx - rect.right).abs() <= tolerance),
+      );
+    }
+
     // Return the common width and the corner direction.  The old code
     // treated every perpendicular meeting as an outside corner and extended
     // both covers past it.  At a recessed/inside corner that creates the
@@ -2507,6 +2537,9 @@ class WindowPainter extends CustomPainter {
           width: math.min(result, piece.visible),
           isConvex: frameContains(cornerSample),
         );
+      }
+      if (isBottomFrameEndpoint(piece, atStart)) {
+        return (width: piece.visible, isConvex: true);
       }
       return null;
     }
@@ -2702,9 +2735,13 @@ class WindowPainter extends CustomPainter {
         ? !model.removedShutterSides.contains('right')
         : !model.removedShutterSides.contains('left');
     final hasT = !model.removedShutterSides.contains('top');
+    // The lower cover and the lower frame are different states.  A user may
+    // hide only the bottom cover while the real lower frame remains present;
+    // the vertical cover must still finish against that frame instead of
+    // ending with an open cut.
+    final hasBottomFrameForJoin = _hasEffectiveBottomFrame;
     final hasB =
-        !model.removedShutterSides.contains('bottom') &&
-        _hasEffectiveBottomFrame;
+        !model.removedShutterSides.contains('bottom') && hasBottomFrameForJoin;
 
     double yTopL =
         topY + (isInternal ? model.topSlantLeftY : model.topSlantRightY);
@@ -2726,12 +2763,7 @@ class WindowPainter extends CustomPainter {
     double cosAlphaB = math.cos(alphaB);
     double cW_vOffsetB = cW / cosAlphaB;
 
-    // الكود الجديد البديل:
     final bool isIntegrated = model.isIntegratedFrame;
-    // DEBUG — احذفه بعد التأكيد
-    debugPrint(
-      'isIntegrated=$isIntegrated | frame=${model.frameOverride?['name']} | design_integrated=${model.frameOverride?['design_integrated_side_cover']} | cjw=${model.frameOverride?['couvre_joint_width']}',
-    );
 
     // رسم مسارات التعبئة (Fill) أولاً لكل جهة
     void drawCoverSegment({
@@ -2776,7 +2808,7 @@ class WindowPainter extends CustomPainter {
       );
       final pOuterEnd = Offset(
         -cW,
-        yBottomL + (hasB ? cW_vOffsetB : 0.0) - slopeB * cW,
+        yBottomL + (hasBottomFrameForJoin ? cW_vOffsetB : 0.0) - slopeB * cW,
       );
       final pInnerEnd = Offset(0, yBottomL);
 
@@ -2794,7 +2826,7 @@ class WindowPainter extends CustomPainter {
         innerStart: pInnerStart,
         innerEnd: pInnerEnd,
         hasStartJoin: hasT,
-        hasEndJoin: hasB,
+        hasEndJoin: hasBottomFrameForJoin,
       );
     }
 
@@ -2806,7 +2838,7 @@ class WindowPainter extends CustomPainter {
       );
       final pOuterEnd = Offset(
         w + cW,
-        yBottomR + (hasB ? cW_vOffsetB : 0.0) + slopeB * cW,
+        yBottomR + (hasBottomFrameForJoin ? cW_vOffsetB : 0.0) + slopeB * cW,
       );
       final pInnerEnd = Offset(w, yBottomR);
 
@@ -2824,7 +2856,7 @@ class WindowPainter extends CustomPainter {
         innerStart: pInnerStart,
         innerEnd: pInnerEnd,
         hasStartJoin: hasT,
-        hasEndJoin: hasB,
+        hasEndJoin: hasBottomFrameForJoin,
       );
     }
 
@@ -4588,7 +4620,16 @@ class WindowPainter extends CustomPainter {
       tracks = List.generate(count, (i) => i % 2);
     }
 
-    for (int tg = 0; tg <= 1; tg++) {
+    // The ordinary two-track arrangement paints the outer leaves on top of
+    // the middle leaves.  Face-to-Face deliberately reverses that order so
+    // the two middle leaves are the visible meeting pair.  Keep the
+    // historical alternating order for two leaves, where there is no
+    // middle/outer distinction.
+    final drawTrackOrder =
+        (count >= 3 && zone.slidingTrackCount == 2 && zone.slidingFaceToFace)
+        ? const <int>[0, 1]
+        : (count >= 3 ? const <int>[1, 0] : const <int>[0, 1]);
+    for (final tg in drawTrackOrder) {
       for (int i = 0; i < count; i++) {
         if (tracks[i] != tg) continue;
 
@@ -4728,6 +4769,109 @@ class WindowPainter extends CustomPainter {
           );
         }
       }
+    }
+
+    // Face-to-Face is a catalogue role, not a name-based fallback.  It is
+    // drawn only when the active sliding series has assigned that role and
+    // the user enabled it on this zone.  For four leaves the central meeting
+    // is made from two face-to-face profiles; for three leaves it is one
+    // central profile.
+    final faceSection = count >= 3
+        ? model.getConfiguredSectionForRole(
+            'face_to_face',
+            useSlidingSeries: true,
+          )
+        : null;
+    final faceEnabled =
+        (count == 4 && zone.slidingTrackCount == 2 && zone.slidingFaceToFace) ||
+        (count == 3 && faceSection != null);
+    if (faceEnabled && count >= 3) {
+      final configuredFaceSection = faceSection;
+      if (configuredFaceSection != null) {
+        final rawWidth = configuredFaceSection.visibleWidth > 0
+            ? configuredFaceSection.visibleWidth
+            : configuredFaceSection.thickness;
+        final faceWidth = rawWidth > 0 ? rawWidth : 0.0;
+        if (faceWidth > 0) {
+          final junction = count == 4 ? 1 : (count - 1) ~/ 2;
+          final rightEdge =
+              r.left + junction * (sashWidth - chicaneT) + sashWidth;
+          final centerX = rightEdge - (chicaneT / 2.0);
+          final faceCount = count == 4 ? 2 : 1;
+          for (var faceIndex = 0; faceIndex < faceCount; faceIndex++) {
+            final offset = faceCount == 2
+                ? (faceIndex == 0 ? -faceWidth / 2.0 : faceWidth / 2.0)
+                : 0.0;
+            final faceRect = Rect.fromLTRB(
+              centerX + offset - faceWidth / 2.0,
+              r.top,
+              centerX + offset + faceWidth / 2.0,
+              r.bottom,
+            );
+            canvas.drawRect(
+              faceRect,
+              _buildPaint(faceRect, gradientColors: _fc),
+            );
+            canvas.drawRect(
+              faceRect,
+              Paint()
+                ..color = _fb
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.0,
+            );
+          }
+        }
+      }
+    }
+
+    // A central handle is optional and belongs to the meeting of the middle
+    // pair only.  Draw it after all leaves and the Face-to-Face profile so it
+    // cannot disappear under the other middle sash.
+    if (zone.slidingCentralHandle &&
+        zone.slidingTrackCount == 2 &&
+        count == 4 &&
+        _shouldDrawWindowHardware) {
+      final centralLeft = r.left + (sashWidth - chicaneT);
+      final centralSash = Rect.fromLTRB(
+        centralLeft,
+        r.top,
+        centralLeft + sashWidth,
+        r.bottom,
+      );
+      _drawWindowDrawHandle(
+        canvas,
+        centralSash,
+        OpenDirection.right,
+        zone.handlePositionRatio ?? 0.5,
+        t: t,
+        topOffset: topOffset,
+        isTopBound: isTopBound,
+        zone: zone,
+      );
+    }
+    if (zone.slidingSecondCentralHandle &&
+        zone.slidingTrackCount == 2 &&
+        count == 4 &&
+        _shouldDrawWindowHardware) {
+      // The mirrored middle handle is intentionally only a visual handle.
+      // Its BOM row is added separately without any lock hardware.
+      final centralRightLeft = r.left + 2 * (sashWidth - chicaneT);
+      final centralRightSash = Rect.fromLTRB(
+        centralRightLeft,
+        r.top,
+        centralRightLeft + sashWidth,
+        r.bottom,
+      );
+      _drawWindowDrawHandle(
+        canvas,
+        centralRightSash,
+        OpenDirection.left,
+        zone.handlePositionRatio ?? 0.5,
+        t: t,
+        topOffset: topOffset,
+        isTopBound: isTopBound,
+        zone: zone,
+      );
     }
   }
 
@@ -6279,12 +6423,9 @@ class WindowPainter extends CustomPainter {
     }
 
     if (zone?.content == ZoneContent.slidingSash) {
-      if (model.isPVC) {
-        isDoorHandle = true;
-      } else {
-        isDoorHandle = false;
-      }
+      isDoorHandle = false; // سواء PVC أو ألمنيوم، المنزلق لا يأخذ مقبض باب
     }
+
     if (zone?.lockType == LockType.none ||
         zone?.useOctoHandle == true ||
         zone?.usePvcHandleOnAlu == true) {
@@ -6343,6 +6484,10 @@ class WindowPainter extends CustomPainter {
     final bool isSlidingSash =
         (zone?.content == ZoneContent.slidingSash) ||
         _isHandleSashProfile(zone);
+
+    // في BBC المنزلق (isSlidingPVC) نستخدم نفس المقبض العادي لا المنزلق
+    final bool isAluminumSliding =
+        isSlidingSash && !model.isPVC && !model.isSlidingPVC;
 
     bool isSlidingHandle =
         isSlidingSash && !model.isPVC && zone?.useClassicHandle != true;

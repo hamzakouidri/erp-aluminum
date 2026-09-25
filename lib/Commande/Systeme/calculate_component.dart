@@ -1388,7 +1388,8 @@ class ComponentCalculator {
 
     // 1. هل يحتوي الرسم على أي منطقة/خلية سحاب (سواء النافذة كاملة سحاب أو جزء منها)؟
     final bool hasOpeningZones = window.zones.any(
-      (z) => z.content == ZoneContent.singleSash ||
+      (z) =>
+          z.content == ZoneContent.singleSash ||
           z.content == ZoneContent.doubleSash,
     );
     final bool isEntireWindowSliding =
@@ -2343,7 +2344,9 @@ class ComponentCalculator {
         windowHeight: window.height.toDouble(),
         windowQuantity: window.quantity,
         catalogItemId: catalogueId(window.componentOverrides[originalName]),
-        colorId: int.tryParse('${window.effectiveShutterColor?['id'] ?? ''}') ?? catalogueColorId(color),
+        colorId:
+            int.tryParse('${window.effectiveShutterColor?['id'] ?? ''}') ??
+            catalogueColorId(color),
         overrideKey: originalName,
         selectorCategory: _textHasAny(originalName, const ['براغي'])
             ? 'accessory'
@@ -3965,6 +3968,7 @@ class ComponentCalculator {
       List<double> slidingSashCentralPieces = [];
       List<double> slidingSashCentralReinforcedPieces = [];
       List<double> slidingSashCentralSlimPieces = [];
+      List<double> slidingFaceToFacePieces = [];
       List<double> slidingSlimCleatPieces = [];
       List<double> slidingSashTraverse4590Pieces = [];
       List<double> slidingSashTraverse9090Pieces = [];
@@ -4190,6 +4194,26 @@ class ComponentCalculator {
             sashH = hForCalc + slidingOverlap;
           }
 
+          // Face-to-Face is a declared sliding-series role.  It is used only
+          // at the central meeting: one profile for a three-leaf layout and
+          // the two opposing profiles for four leaves on two tracks.  Do not
+          // manufacture a fallback row when the series has no such rule.
+          final faceSection = sashes >= 3
+              ? window.getConfiguredSectionForRole(
+                  'face_to_face',
+                  useSlidingSeries: true,
+                )
+              : null;
+          final faceEnabled =
+              zone.slidingFaceToFace || (sashes == 3 && faceSection != null);
+          if (faceEnabled && sashes >= 3) {
+            if (faceSection != null) {
+              final faceCount = sashes == 4 ? 2 : 1;
+              slidingFaceToFacePieces.addAll(
+                List<double>.filled(faceCount, sashH / 1000.0),
+              );
+            }
+          }
           if (hasThreePiece) {
             // New formula for 3-piece sash traverses in sliding systems (e.g. TPR / HPS)
             double tLen = 0.0;
@@ -4292,8 +4316,25 @@ class ComponentCalculator {
           }
 
           slidingTotalRoulettes += (sashes * 2);
-          slidingTotalEspagnolettes += 2;
-          slidingTotalHandles += 2;
+          // Outer handles always carry their lock hardware.  The first
+          // central handle is functional and carries one more set; the
+          // optional mirrored central handle is visual-only.
+          final functionalCentralHandle =
+              zone.slidingCentralHandle &&
+              sashes == 4 &&
+              zone.slidingTrackCount == 2;
+          slidingTotalEspagnolettes += 2 + (functionalCentralHandle ? 1 : 0);
+          // Two outer leaves always have handles.  The optional third handle
+          // belongs to the meeting of the middle pair in a four-leaf,
+          // two-track drawing and is selected per zone.
+          slidingTotalHandles +=
+              2 +
+              (functionalCentralHandle ? 1 : 0) +
+              (zone.slidingSecondCentralHandle &&
+                      sashes == 4 &&
+                      zone.slidingTrackCount == 2
+                  ? 1
+                  : 0);
           // One sliding-series kit serves one independent pair of leaves.
           // Count every sliding zone/frame separately and keep an additional
           // kit for an unpaired leaf in odd 3/5-leaf configurations.
@@ -4304,7 +4345,8 @@ class ComponentCalculator {
             'اسبانيولات المنزلق (Espagnolette)',
             'إسبانيوليت (Espagnolette)',
           ]);
-          slidingTotalGacheCoulissant += gachesPerEspagnolette * 2;
+          slidingTotalGacheCoulissant +=
+              gachesPerEspagnolette * (2 + (functionalCentralHandle ? 1 : 0));
 
           bool excludeChicane =
               !window.isSlidingPVC &&
@@ -4645,6 +4687,26 @@ class ComponentCalculator {
             roleKey: 'montant_central_slim',
           ),
         );
+      }
+
+      if (slidingFaceToFacePieces.isNotEmpty) {
+        final faceOverride = window
+            .getConfiguredSectionForRole('face_to_face', useSlidingSeries: true)
+            ?.toMap();
+        if (faceOverride != null) {
+          items.add(
+            createProfile(
+              'قائم Face to Face (Face-to-Face)',
+              colorName,
+              pieces: slidingFaceToFacePieces,
+              unit: 'قطاع',
+              overrideMap: faceOverride,
+              preferOverrideMap: true,
+              selectorType: 'face_to_face',
+              roleKey: 'face_to_face',
+            ),
+          );
+        }
       }
 
       if (slidingSlimCleatPieces.isNotEmpty) {
@@ -7319,13 +7381,21 @@ class ComponentCalculator {
               final rule = joint['catalog_rule'] as Map?;
               final role = rule?['role_key']?.toString();
               if (role == null) continue;
-              final key = 'fitted-glass:${rule?['series_id']}:${joint['id']}:$side';
+              final key =
+                  'fitted-glass:${rule?['series_id']}:${joint['id']}:$side';
               window.componentOverrides[key] = Map<String, dynamic>.from(joint);
-              items.add(createJoint('${joint['name']} — ${side == 0 ? 'خارجي' : 'داخلي'}',
-                qty: perimeter * totalPieces / window.quantity,
-                unit: 'متر', sliding: isSlidingSystem, overrideKey: key,
-                roleKeyOverride: role, selectorTypeOverride: role,
-                targetThicknessMm: double.tryParse('${joint['thickness']}')));
+              items.add(
+                createJoint(
+                  '${joint['name']} — ${side == 0 ? 'خارجي' : 'داخلي'}',
+                  qty: perimeter * totalPieces / window.quantity,
+                  unit: 'متر',
+                  sliding: isSlidingSystem,
+                  overrideKey: key,
+                  roleKeyOverride: role,
+                  selectorTypeOverride: role,
+                  targetThicknessMm: double.tryParse('${joint['thickness']}'),
+                ),
+              );
             }
             if (!isSlidingSystem && !openingSashSkipsGlazingBead) {
               if (needsDoubleParclose) {
@@ -8338,14 +8408,12 @@ class ComponentCalculator {
     // ===== جوانات نظام الفتح (ألمنيوم فقط) =====
     if (!window.isPVC) {
       // حساب الكميات المشتركة بين Vitrage و Bourrage
-      final double simplePerim = parcloseSimplePieces.fold(
-        0.0,
-        (s, p) => s + p,
-      ) - fittedSimplePerimeter; // Fitted cells already carry exact gasket rows.
-      final double doublePerim = parcloseDoublePieces.fold(
-        0.0,
-        (s, p) => s + p,
-      ) - fittedDoublePerimeter;
+      final double simplePerim =
+          parcloseSimplePieces.fold(0.0, (s, p) => s + p) -
+          fittedSimplePerimeter; // Fitted cells already carry exact gasket rows.
+      final double doublePerim =
+          parcloseDoublePieces.fold(0.0, (s, p) => s + p) -
+          fittedDoublePerimeter;
       final double vitrageQty = simplePerim + doublePerim;
 
       if (vitrageQty > 0) {

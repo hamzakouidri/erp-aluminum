@@ -7451,21 +7451,26 @@ class SqlDatabase {
   }
 
   Future<void> updateWorkerAllocationPrice(
-    int allocationId,
-    double price,
-  ) async {
+      dynamic allocationId,
+      double price,
+      ) async {
     Database? myDb = await db;
     if (myDb == null) return;
+    final idInt = allocationId is int
+        ? allocationId
+        : int.tryParse(allocationId?.toString() ?? '') ?? 0;
+    if (idInt <= 0) return;
+
     await myDb.update(
       'WorkerAllocations',
       {
         'worker_price': price,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [allocationId],
+      where: 'id = ? OR CAST(id AS TEXT) = ?',
+      whereArgs: [idInt, idInt.toString()],
     );
-    await _uploadAllocationStatusToCloud(allocationId);
+    await _uploadAllocationStatusToCloud(idInt);
     CloudSyncService().notifyChange();
   }
 

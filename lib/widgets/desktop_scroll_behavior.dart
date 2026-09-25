@@ -107,15 +107,20 @@ class DesktopScrollCoordinator {
     // mistake a previous tick's movement for this tick and discard input.
     // Stay in the innermost pane under the pointer, including at its edge.
     // Do not send the remaining wheel input to a different page section.
-    final candidate = candidates.first;
+    // Try candidates from innermost to outermost.
+    // If the innermost is at its edge, try the next one outward.
     final requestedAxis = useVertical ? Axis.vertical : Axis.horizontal;
-    if (candidate.axis != requestedAxis && !useVertical) return;
-    if (candidate.canMove(delta)) {
-      GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-        if (_registrations.contains(candidate) && candidate.canMove(delta)) {
-          candidate.controller.position.pointerScroll(delta);
-        }
-      });
+    for (final candidate in candidates) {
+      if (candidate.axis != requestedAxis && !useVertical) continue;
+      if (candidate.canMove(delta)) {
+        GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+          if (_registrations.contains(candidate) && candidate.canMove(delta)) {
+            candidate.controller.position.pointerScroll(delta);
+          }
+        });
+        return; // تم التسجيل، خروج
+      }
+      // هذا الـ candidate عند الحافة → جرّب التالي (الأكبر/الأعلى)
     }
   }
 
@@ -537,9 +542,11 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.hasSize) return;
     final local = box.globalToLocal(event.position);
-    if (local.dx < 0 || local.dx > box.size.width ||
+    if (local.dx < 0 ||
+        local.dx > box.size.width ||
         local.dy < box.size.height - _hitBandHeight ||
-        local.dy > box.size.height) return;
+        local.dy > box.size.height)
+      return;
 
     // A standard mouse wheel reports dy. A trackpad or horizontal wheel may
     // report dx, so preserve that axis when it is the only available delta.

@@ -8,8 +8,12 @@ import 'package:flutter/gestures.dart'
     show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show FilteringTextInputFormatter, LengthLimitingTextInputFormatter,
-        HardwareKeyboard, KeyEvent, KeyDownEvent;
+    show
+        FilteringTextInputFormatter,
+        LengthLimitingTextInputFormatter,
+        HardwareKeyboard,
+        KeyEvent,
+        KeyDownEvent;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
@@ -54,29 +58,39 @@ class _DecorPlacementResult {
 
 class _WindowViewState extends State<WindowView> {
   bool _drawingShortcut(KeyEvent event) {
-    if (!mounted || !_isWindowsDesktop || event is! KeyDownEvent ||
-        ModalRoute.of(context)?.isCurrent != true) return false;
+    if (!mounted ||
+        !_isWindowsDesktop ||
+        event is! KeyDownEvent ||
+        ModalRoute.of(context)?.isCurrent != true)
+      return false;
     final focus = FocusManager.instance.primaryFocus?.context;
     if (focus == null ||
         (focus.widget is EditableText) ||
-        focus.findAncestorWidgetOfExactType<EditableText>() != null) return false;
+        focus.findAncestorWidgetOfExactType<EditableText>() != null)
+      return false;
     var belongsToDrawing = false;
     focus.visitAncestorElements((element) {
       if (element == context) belongsToDrawing = true;
       return !belongsToDrawing;
     });
-    if (!belongsToDrawing || HardwareKeyboard.instance.isControlPressed ||
+    if (!belongsToDrawing ||
+        HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isAltPressed ||
-        HardwareKeyboard.instance.isMetaPressed) return false;
+        HardwareKeyboard.instance.isMetaPressed)
+      return false;
     final key = event.logicalKey.keyLabel.toUpperCase();
-    unawaited(SharedPreferences.getInstance().then((prefs) {
-      if (mounted && ModalRoute.of(context)?.isCurrent == true &&
-          prefs.getString('shortcut_drawing_mode') == key) {
-        _toggleDrawingInteractionMode();
-      }
-    }));
+    unawaited(
+      SharedPreferences.getInstance().then((prefs) {
+        if (mounted &&
+            ModalRoute.of(context)?.isCurrent == true &&
+            prefs.getString('shortcut_drawing_mode') == key) {
+          _toggleDrawingInteractionMode();
+        }
+      }),
+    );
     return false;
   }
+
   Widget _slidingGlassFitInfo(GlassSpecification spec) {
     final series = widget.model.effectiveSlidingSeries;
     final capacity = widget.model.glazingCapacityForStructure(
@@ -168,7 +182,7 @@ class _WindowViewState extends State<WindowView> {
         }).toList();
         if (candidates.isEmpty)
           return const Text('لا توجد مقابض مفعّلة لهذه السلسلة');
-        return Wrap(
+        final handleButtons = Wrap(
           spacing: 8,
           children: candidates.map((candidate) {
             final rule = candidate['catalog_rule'] as Map;
@@ -193,6 +207,51 @@ class _WindowViewState extends State<WindowView> {
               },
             );
           }).toList(),
+        );
+        if (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2) {
+          return handleButtons;
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            handleButtons,
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                _ContentButton(
+                  label: 'مقبض وسط الضلفتين',
+                  icon: Icons.more_horiz_rounded,
+                  selected: zone.slidingCentralHandle,
+                  onPressed: () {
+                    widget.model.toggleSelectedZoneSlidingCentralHandle();
+                    setState(() {});
+                  },
+                ),
+                _ContentButton(
+                  label: 'مقبض الوسط الثاني (شكلي)',
+                  icon: Icons.more_horiz_outlined,
+                  selected: zone.slidingSecondCentralHandle,
+                  onPressed: () {
+                    if (!zone.slidingCentralHandle) return;
+                    widget.model
+                        .toggleSelectedZoneSlidingSecondCentralHandle();
+                    setState(() {});
+                  },
+                ),
+                if (widget.model.supportsSlidingFaceToFace)
+                  _ContentButton(
+                    label: 'Face-to-Face',
+                    icon: Icons.layers_rounded,
+                    selected: zone.slidingFaceToFace,
+                    onPressed: () {
+                      widget.model.toggleSelectedZoneSlidingFaceToFace();
+                      setState(() {});
+                    },
+                  ),
+              ],
+            ),
+          ],
         );
       },
     );
@@ -3207,7 +3266,12 @@ class _WindowViewState extends State<WindowView> {
                                 // merely because the drawer is open.
                                 final specToApply = _activePaintGlassSpec;
                                 if (specToApply != null && tappedZ != null) {
-                                  unawaited(widget.model.applyGlassSpecificationToAllZones(specToApply));
+                                  unawaited(
+                                    widget.model
+                                        .applyGlassSpecificationToAllZones(
+                                          specToApply,
+                                        ),
+                                  );
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
@@ -4593,9 +4657,9 @@ class _WindowViewState extends State<WindowView> {
         ),
       );
       if (shouldExit == true && mounted) {
-        Navigator.of(context).pop(
-          widget.model.hasDrawnGeometry ? widget.model : null,
-        );
+        Navigator.of(
+          context,
+        ).pop(widget.model.hasDrawnGeometry ? widget.model : null);
       }
     } finally {
       _isExitDialogOpen = false;
@@ -4665,9 +4729,13 @@ class _WindowViewState extends State<WindowView> {
 
           Widget? buildParcloseThicknessInfo() {
             if (widget.model.glazingFitMessage != null) {
-              return Padding(padding: const EdgeInsets.all(8),
-                child: Text(widget.model.glazingFitMessage!,
-                    style: const TextStyle(fontSize: 11)));
+              return Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(
+                  widget.model.glazingFitMessage!,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              );
             }
             if (zone?.content == ZoneContent.slidingSash ||
                 (zone == null && widget.model.usesSlidingPrimaryProfiles)) {
@@ -7598,7 +7666,9 @@ class _WindowViewState extends State<WindowView> {
                         final woodImage = _getWoodTextureImage(dbColor);
                         return GestureDetector(
                           onTap: () {
-                            widget.model.selectProfileColorWithDefaults(dbColor);
+                            widget.model.selectProfileColorWithDefaults(
+                              dbColor,
+                            );
                             widget.model.refreshUI();
                           },
                           child: Container(
@@ -10543,7 +10613,10 @@ class _WindowViewState extends State<WindowView> {
   Future<void> _showDrawingDefaultSeriesDialog() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     String t(String value) => Localization.translate(value, lang);
     final opening = <int, AluminumSeries>{};
     final sliding = <int, AluminumSeries>{};
@@ -10562,50 +10635,82 @@ class _WindowViewState extends State<WindowView> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) {
-          Widget selector(String label, Map<int, AluminumSeries> items,
-              int? selected, ValueChanged<int?> changed) {
+          Widget selector(
+            String label,
+            Map<int, AluminumSeries> items,
+            int? selected,
+            ValueChanged<int?> changed,
+          ) {
             return DropdownButtonFormField<int>(
               value: items.containsKey(selected) ? selected : null,
               isExpanded: true,
               decoration: InputDecoration(labelText: t(label)),
               hint: Text(t('تلقائي (افتراضي النظام)')),
-              items: items.values.map((series) => DropdownMenuItem<int>(
-                value: series.id,
-                child: Text(series.name, overflow: TextOverflow.ellipsis),
-              )).toList(),
+              items: items.values
+                  .map(
+                    (series) => DropdownMenuItem<int>(
+                      value: series.id,
+                      child: Text(series.name, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
               onChanged: saving ? null : changed,
             );
           }
+
           return AlertDialog(
             title: Text(t('السلاسل الافتراضية للورشة')),
             content: SizedBox(
               width: 420,
               child: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(t('اختر السلاسل للنوافذ الجديدة. لن يتغير الرسم الحالي.')),
-                  const SizedBox(height: 16),
-                  selector('سلسلة الفتح الافتراضية (Battant):', opening,
-                      openingId, (value) => update(() => openingId = value)),
-                  const SizedBox(height: 16),
-                  selector('سلسلة المنزلق الافتراضية (Coulissant):', sliding,
-                      slidingId, (value) => update(() => slidingId = value)),
-                ]),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t('اختر السلاسل للنوافذ الجديدة. لن يتغير الرسم الحالي.'),
+                    ),
+                    const SizedBox(height: 16),
+                    selector(
+                      'سلسلة الفتح الافتراضية (Battant):',
+                      opening,
+                      openingId,
+                      (value) => update(() => openingId = value),
+                    ),
+                    const SizedBox(height: 16),
+                    selector(
+                      'سلسلة المنزلق الافتراضية (Coulissant):',
+                      sliding,
+                      slidingId,
+                      (value) => update(() => slidingId = value),
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [
-              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext),
-                  child: Text(t('إلغاء'))),
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: Text(t('إلغاء')),
+              ),
               FilledButton(
-                onPressed: saving ? null : () async {
-                  update(() => saving = true);
-                  if (openingId != null) {
-                    await prefs.setInt('default_opening_series_id', openingId!);
-                  }
-                  if (slidingId != null) {
-                    await prefs.setInt('default_sliding_series_id', slidingId!);
-                  }
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                },
+                onPressed: saving
+                    ? null
+                    : () async {
+                        update(() => saving = true);
+                        if (openingId != null) {
+                          await prefs.setInt(
+                            'default_opening_series_id',
+                            openingId!,
+                          );
+                        }
+                        if (slidingId != null) {
+                          await prefs.setInt(
+                            'default_sliding_series_id',
+                            slidingId!,
+                          );
+                        }
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      },
                 child: Text(t('حفظ')),
               ),
             ],
@@ -10636,9 +10741,8 @@ class _WindowViewState extends State<WindowView> {
         shutterColorItems.add(c);
       }
     }
-    final selectedShutterColorId =
-        widget.model.effectiveShutterColor?['id']
-            ?.toString();
+    final selectedShutterColorId = widget.model.effectiveShutterColor?['id']
+        ?.toString();
     final selectedShutterColor =
         (selectedShutterColorId != null &&
             shutterColorItems.any(
@@ -10667,8 +10771,10 @@ class _WindowViewState extends State<WindowView> {
     // The route's historical `systemMode` may still say sliding after adding
     // an opening frame; using it here swapped the two selectors into generic
     // "opening/sliding series" labels rather than their real series names.
-    final selectorShowsSliding = isSlidingOnlyDrawing ||
-        (!hasOpeningDrawing && !hasSlidingDrawing &&
+    final selectorShowsSliding =
+        isSlidingOnlyDrawing ||
+        (!hasOpeningDrawing &&
+            !hasSlidingDrawing &&
             widget.model.usesSlidingPrimaryProfiles);
 
     // The first selector is the real frame-owning series. A second selector
@@ -10695,7 +10801,8 @@ class _WindowViewState extends State<WindowView> {
           final slidingId = widget.model.activeSlidingSeries?.id;
           WidgetsBinding.instance.addPostFrameCallback((_) async {
             try {
-              if (mounted && widget.model.activeSeries == null &&
+              if (mounted &&
+                  widget.model.activeSeries == null &&
                   widget.model.activeSlidingSeries?.id == slidingId) {
                 widget.model.systemMode = 'mixed';
                 await widget.model.setActiveSeries(candidate);
@@ -10817,10 +10924,13 @@ class _WindowViewState extends State<WindowView> {
     // catalogue is still loading. Do not persist the first dropdown item in
     // that interval: doing so overwrote the saved BS90 id/name and reopened
     // every edited window with the default sliding series.
-    final savedSlidingMatches = slidingItemsList.where((series) =>
-        series.id == widget.model.loadedSlidingSeriesId ||
-        (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty == true &&
-         series.name.trim() == widget.model.loadedSlidingSeriesName!.trim()));
+    final savedSlidingMatches = slidingItemsList.where(
+      (series) =>
+          series.id == widget.model.loadedSlidingSeriesId ||
+          (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty == true &&
+              series.name.trim() ==
+                  widget.model.loadedSlidingSeriesName!.trim()),
+    );
     final hasPendingSavedSlidingSeries =
         widget.model.loadedSlidingSeriesId != null ||
         (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty ?? false);
@@ -10937,7 +11047,8 @@ class _WindowViewState extends State<WindowView> {
                   }).toList(),
                   onChanged: (newColor) {
                     if (newColor == null) return;
-                    widget.model.selectedShutterColor = Map<String, dynamic>.from(newColor);
+                    widget.model.selectedShutterColor =
+                        Map<String, dynamic>.from(newColor);
                     unawaited(widget.model.updateShutterDefaultsIfNeeded());
                     widget.model.refreshUI();
                   },
@@ -12162,6 +12273,48 @@ class _WindowViewState extends State<WindowView> {
                           });
                         },
                       ),
+                      if (zone.slidingSashesCount == 4 &&
+                          zone.slidingTrackCount == 2) ...[
+                        const SizedBox(width: 8),
+                        _ContentButton(
+                          label: 'مقبض وسط الضلفتين',
+                          icon: Icons.more_horiz_rounded,
+                          selected: zone.slidingCentralHandle,
+                          onPressed: () {
+                            setState(() {
+                              widget.model
+                                  .toggleSelectedZoneSlidingCentralHandle();
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        _ContentButton(
+                          label: 'مقبض الوسط الثاني (شكلي)',
+                          icon: Icons.more_horiz_outlined,
+                          selected: zone.slidingSecondCentralHandle,
+                          onPressed: () {
+                            if (!zone.slidingCentralHandle) return;
+                            setState(() {
+                              widget.model
+                                  .toggleSelectedZoneSlidingSecondCentralHandle();
+                            });
+                          },
+                        ),
+                        if (widget.model.supportsSlidingFaceToFace) ...[
+                          const SizedBox(width: 8),
+                          _ContentButton(
+                            label: 'Face-to-Face',
+                            icon: Icons.layers_rounded,
+                            selected: zone.slidingFaceToFace,
+                            onPressed: () {
+                              setState(() {
+                                widget.model
+                                    .toggleSelectedZoneSlidingFaceToFace();
+                              });
+                            },
+                          ),
+                        ],
+                      ],
                     ],
                     const SizedBox(width: 8),
                     ...(zone.content == ZoneContent.doubleSash ||
@@ -15066,6 +15219,50 @@ class _WindowViewState extends State<WindowView> {
               },
             ),
           );
+          if (zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) {
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: 'مقبض وسط الضلفتين',
+                icon: Icons.more_horiz_rounded,
+                selected: zone.slidingCentralHandle,
+                onPressed: () {
+                  setState(() {
+                    widget.model.toggleSelectedZoneSlidingCentralHandle();
+                  });
+                },
+              ),
+            );
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: 'مقبض الوسط الثاني (شكلي)',
+                icon: Icons.more_horiz_outlined,
+                selected: zone.slidingSecondCentralHandle,
+                onPressed: () {
+                  if (!zone.slidingCentralHandle) return;
+                  setState(() {
+                    widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
+                  });
+                },
+              ),
+            );
+            if (widget.model.supportsSlidingFaceToFace) {
+              children.add(const SizedBox(width: 8));
+              children.add(
+                _ContentButton(
+                  label: 'Face-to-Face',
+                  icon: Icons.layers_rounded,
+                  selected: zone.slidingFaceToFace,
+                  onPressed: () {
+                    setState(() {
+                      widget.model.toggleSelectedZoneSlidingFaceToFace();
+                    });
+                  },
+                ),
+              );
+            }
+          }
         }
 
         // Sub-zone cell options
@@ -16008,11 +16205,20 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Future<void> _openMaterialConsumptionScreen(BuildContext context) async {
-    if (widget.model.zones.any((zone) =>
-        zone.glass.glazingFitValid == false ||
-        zone.cellGlassSpec.values.any((spec) => spec.glazingFitValid == false))) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('تركيب الزجاج غير متوافق. راجع السماكات والجوانات في القائمة اليسرى قبل اعتماد الكمية والتكلفة.')));
+    if (widget.model.zones.any(
+      (zone) =>
+          zone.glass.glazingFitValid == false ||
+          zone.cellGlassSpec.values.any(
+            (spec) => spec.glazingFitValid == false,
+          ),
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تركيب الزجاج غير متوافق. راجع السماكات والجوانات في القائمة اليسرى قبل اعتماد الكمية والتكلفة.',
+          ),
+        ),
+      );
       return;
     }
     final lang = Provider.of<AppSettingsProvider>(

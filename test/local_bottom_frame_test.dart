@@ -5,6 +5,59 @@ import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'montant_slim_test.dart' show FakeSqlDatabase;
 
 void main() {
+  test('switching a sash back to fixed restores the lower frame state', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
+      ..systemMode = 'opening'
+      ..hasBottomFrame = false
+      ..showBottomWall = false
+      ..hasFramePlintheBottom = true
+      ..zones = [
+        WindowZone(
+          id: 'fixed-again',
+          boundary: const Rect.fromLTRB(40, 40, 860, 400),
+          content: ZoneContent.singleSash,
+          hasSashPlintheBottom: true,
+        ),
+      ]
+      ..selection = SelectionInfo.zone('fixed-again');
+    model.removedShutterSides.add('bottom');
+    model.hiddenSideCoverSegments.add('bottom');
+
+    model.setSelectedZoneContent(ZoneContent.fixedGlass);
+
+    expect(model.hasBottomFrame, isTrue);
+    expect(model.hasFramePlintheBottom, isFalse);
+    expect(model.showBottomWall, isTrue);
+    expect(model.removedShutterSides, isNot(contains('bottom')));
+    expect(model.hiddenSideCoverSegments, isNot(contains('bottom')));
+    expect(model.zones.single.boundary.bottom, closeTo(360, 0.01));
+  });
+
+  test('empty and sliding content also restore the lower frame', () {
+    for (final content in [ZoneContent.empty, ZoneContent.slidingSash]) {
+      final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
+        ..systemMode = 'opening'
+        ..hasBottomFrame = false
+        ..showBottomWall = false
+        ..hasFramePlintheBottom = true
+        ..zones = [
+          WindowZone(
+            id: 'restore-${content.name}',
+            boundary: const Rect.fromLTRB(40, 40, 860, 400),
+            content: ZoneContent.singleSash,
+            hasSashPlintheBottom: true,
+          ),
+        ]
+        ..selection = SelectionInfo.zone('restore-${content.name}');
+
+      model.setSelectedZoneContent(content);
+
+      expect(model.hasBottomFrame, isTrue, reason: content.name);
+      expect(model.showBottomWall, isTrue, reason: content.name);
+      expect(model.zones.single.boundary.bottom, closeTo(360, 0.01));
+    }
+  });
+
   test('bottom removal is local and persists; sliding remains closed', () {
     final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
       ..systemMode = 'mixed'

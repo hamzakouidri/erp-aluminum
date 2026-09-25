@@ -622,6 +622,23 @@ bool isSlidingSeriesForDrawing(AluminumSeries series) {
 
 String normalizeSeriesDesignRoleKey(dynamic raw) {
   final value = raw?.toString().trim().toLowerCase() ?? '';
+  // Face-to-face is entered in the catalogue by users with several
+  // spellings.  Keep one canonical role so the drawing, BOM and selectors
+  // all resolve the same rule without looking at a series name.
+  final compact = value
+      .replaceAll('-', '_')
+      .replaceAll(' ', '_')
+      .replaceAll(RegExp(r'_+'), '_');
+  if (const {
+    'face_to_face',
+    'face2face',
+    'face_2_face',
+    'montant_face_to_face',
+    'قائم_face_to_face',
+    'فيس_تو_فيس',
+  }.contains(compact)) {
+    return 'face_to_face';
+  }
   if (const {
     'reducer',
     'reducteur',
@@ -1096,6 +1113,17 @@ class WindowZone {
   /// Whether the exceptional two-handle configuration is enabled.
   /// A double sash normally has a handle only on its active leaf.
   bool doubleSashHasTwoHandles;
+
+  /// Sliding-only options are stored on the zone, not globally on the
+  /// drawing.  This is important when a drawing contains more than one
+  /// sliding frame: enabling Face-to-Face or the optional central handle on
+  /// one frame must never alter its neighbour.
+  bool slidingFaceToFace;
+  bool slidingCentralHandle;
+
+  /// The second middle handle is visual-only: it is listed as a handle in
+  /// the BOM but must not create a second espagnolette, gache or kit.
+  bool slidingSecondCentralHandle;
   Map<String, bool> disabledVerticalDivisions;
   Map<String, bool> disabledHorizontalDivisions;
   String? primaryDivisionAxis;
@@ -1164,6 +1192,9 @@ class WindowZone {
     this.middleHingeDragOffset = 0.0,
     this.doubleSashRatio = 0.5,
     this.doubleSashHasTwoHandles = false,
+    this.slidingFaceToFace = false,
+    this.slidingCentralHandle = false,
+    this.slidingSecondCentralHandle = false,
     this.disabledVerticalDivisions = const {},
     this.disabledHorizontalDivisions = const {},
     this.primaryDivisionAxis,
@@ -1232,6 +1263,9 @@ class WindowZone {
     middleHingeDragOffset: middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio,
     doubleSashHasTwoHandles: doubleSashHasTwoHandles,
+    slidingFaceToFace: slidingFaceToFace,
+    slidingCentralHandle: slidingCentralHandle,
+    slidingSecondCentralHandle: slidingSecondCentralHandle,
     disabledVerticalDivisions: Map.from(disabledVerticalDivisions),
     disabledHorizontalDivisions: Map.from(disabledHorizontalDivisions),
     primaryDivisionAxis: primaryDivisionAxis,
@@ -1285,6 +1319,9 @@ class WindowZone {
     middleHingeDragOffset: middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio,
     doubleSashHasTwoHandles: doubleSashHasTwoHandles,
+    slidingFaceToFace: slidingFaceToFace,
+    slidingCentralHandle: slidingCentralHandle,
+    slidingSecondCentralHandle: slidingSecondCentralHandle,
     disabledVerticalDivisions: Map.from(disabledVerticalDivisions),
     disabledHorizontalDivisions: Map.from(disabledHorizontalDivisions),
     primaryDivisionAxis: primaryDivisionAxis,
@@ -1332,6 +1369,9 @@ class WindowZone {
     double? middleHingeDragOffset,
     double? doubleSashRatio,
     bool? doubleSashHasTwoHandles,
+    bool? slidingFaceToFace,
+    bool? slidingCentralHandle,
+    bool? slidingSecondCentralHandle,
     Map<String, bool>? disabledVerticalDivisions,
     Map<String, bool>? disabledHorizontalDivisions,
     String? primaryDivisionAxis,
@@ -1384,6 +1424,10 @@ class WindowZone {
     doubleSashRatio: doubleSashRatio ?? this.doubleSashRatio,
     doubleSashHasTwoHandles:
         doubleSashHasTwoHandles ?? this.doubleSashHasTwoHandles,
+    slidingFaceToFace: slidingFaceToFace ?? this.slidingFaceToFace,
+    slidingCentralHandle: slidingCentralHandle ?? this.slidingCentralHandle,
+    slidingSecondCentralHandle:
+        slidingSecondCentralHandle ?? this.slidingSecondCentralHandle,
     disabledVerticalDivisions:
         disabledVerticalDivisions ?? Map.from(this.disabledVerticalDivisions),
     disabledHorizontalDivisions:
@@ -11076,6 +11120,9 @@ class WindowModel extends ChangeNotifier {
         zone.useOctoHandle = false;
         zone.usePvcHandleOnAlu = false;
         zone.useClassicHandle = false;
+        zone.slidingFaceToFace = false;
+        zone.slidingCentralHandle = false;
+        zone.slidingSecondCentralHandle = false;
         continue;
       }
 
@@ -11083,6 +11130,13 @@ class WindowModel extends ChangeNotifier {
         zone.lockType = LockType.none;
         zone.useOctoHandle = false;
         zone.usePvcHandleOnAlu = false;
+        if (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2) {
+          zone.slidingFaceToFace = false;
+          zone.slidingCentralHandle = false;
+          zone.slidingSecondCentralHandle = false;
+        } else if (!zone.slidingCentralHandle) {
+          zone.slidingSecondCentralHandle = false;
+        }
         if (isPVC) {
           zone.useClassicHandle = false;
         }
@@ -12612,7 +12666,11 @@ class WindowModel extends ChangeNotifier {
 
         if (spec.structure == GlassStructure.closed) {
           // تحويل الزون إلى زجاج ثابت (fixedGlass) حتى يظهر البانو
+          final previousContent = zone.content;
           zone.content = ZoneContent.fixedGlass;
+          if (previousContent != ZoneContent.fixedGlass) {
+            _restoreBottomFrameForContent(zone);
+          }
           // وضع علامة على جميع الخلايا الداخلية كبانو
           final updatedPanels = Map<String, bool>.from(zone.cellIsPanel);
           final updatedSashes = Map<String, bool>.from(zone.cellIsSash);
@@ -12637,7 +12695,11 @@ class WindowModel extends ChangeNotifier {
       z.glass = spec.clone();
       z.cellGlassSpec = {}; // clear all per-cell overrides
       if (spec.structure == GlassStructure.closed) {
+        final previousContent = z.content;
         z.content = ZoneContent.fixedGlass;
+        if (previousContent != ZoneContent.fixedGlass) {
+          _restoreBottomFrameForContent(z);
+        }
         final updatedPanels = Map<String, bool>.from(z.cellIsPanel);
         final updatedSashes = Map<String, bool>.from(z.cellIsSash);
         for (int r = 0; r <= z.innerH; r++) {
@@ -12727,7 +12789,11 @@ class WindowModel extends ChangeNotifier {
         }
       } else {
         if (structure == GlassStructure.closed) {
+          final previousContent = zone.content;
           zone.content = ZoneContent.fixedGlass;
+          if (previousContent != ZoneContent.fixedGlass) {
+            _restoreBottomFrameForContent(zone);
+          }
         }
       }
       notifyListeners();
@@ -12753,6 +12819,51 @@ class WindowModel extends ChangeNotifier {
     return currentColor;
   }
 
+  /// Fixed, empty and sliding content all require a real lower frame. Older
+  /// drawings can arrive here after the lower frame was removed for a
+  /// sash/plinthe, so changing only the zone content leaves the new content
+  /// at the old open-bottom height. Restore the structural state as one
+  /// atomic transition.
+  ///
+  /// In a multi-frame drawing this is kept local to the physical frame that
+  /// owns [zone].  In a single-frame drawing the lower-frame/plinthe state is
+  /// global by design and all opening plinth flags are cleared together.
+  void _restoreBottomFrameForContent(WindowZone zone) {
+    final frames = getFrameRects();
+    Rect? owner;
+    for (final frame in frames) {
+      if (frame.contains(zone.boundary.center)) {
+        owner = frame;
+        break;
+      }
+    }
+
+    if (frames.length > 1 && owner != null) {
+      // The local override is attached to every zone in this physical frame
+      // so a later resize or serialisation cannot partially restore it.
+      for (final candidate in zones) {
+        if (owner.contains(candidate.boundary.center)) {
+          componentOverrides['frame-bottom:${candidate.id}'] = true;
+          candidate.hasSashPlintheBottom = false;
+        }
+      }
+    } else {
+      hasBottomFrame = true;
+      hasFramePlintheBottom = false;
+      for (final candidate in zones) {
+        candidate.hasSashPlintheBottom = false;
+        componentOverrides.remove('frame-bottom:${candidate.id}');
+      }
+    }
+
+    showBottomWall = true;
+    // These two sets may contain stale entries created when the lower frame
+    // was absent.  Returning to a fixed pane must behave like restoring the
+    // original drawing, including its bottom cover and 45-degree corners.
+    _restoreBottomSideCoverWhenFrameReturns();
+    updateBottomZoneBoundaries();
+  }
+
   void paintZoneContent(
     String zoneId,
     ZoneContent content, {
@@ -12762,6 +12873,7 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     try {
       final zone = zones.firstWhere((z) => z.id == zoneId);
+      final previousContent = zone.content;
       zone.content = content;
       zone.innerH = 0;
       zone.innerV = 0;
@@ -12776,6 +12888,16 @@ class WindowModel extends ChangeNotifier {
       zone.cellIsPanel.clear();
       zone.cellIsSash.clear();
       zone.cellIsDoubleSash.clear();
+
+      // Fixed, empty and sliding content all sit on a real lower frame.
+      // Discard the old local hide flag so the frame corners and bottom cover
+      // return together when the drawing leaves an open-bottom state.
+      if ((content == ZoneContent.fixedGlass ||
+              content == ZoneContent.empty ||
+              content == ZoneContent.slidingSash) &&
+          previousContent != content) {
+        _restoreBottomFrameForContent(zone);
+      }
 
       if (slidingSashesCount != null) {
         zone.slidingSashesCount = slidingSashesCount;
@@ -12795,6 +12917,7 @@ class WindowModel extends ChangeNotifier {
         zone.openDirection = OpenDirection.right;
       } else {
         zone.openDirection = null;
+        zone.doubleSashHasTwoHandles = false;
       }
       notifyListeners();
     } catch (_) {}
@@ -15211,7 +15334,17 @@ class WindowModel extends ChangeNotifier {
     final frames = getFrameRects();
     final selected = selectedPhysicalFrameRect;
     if (frames.length > 1 && selected == null) return false;
-    return selected == null || !frameUsesSlidingSeries(selected);
+    if (selected == null || frameUsesSlidingSeries(selected)) return false;
+    final frameZones = zones.where((z) => selected.contains(z.boundary.center));
+    if (frameZones.isNotEmpty &&
+        frameZones.every(
+          (z) =>
+              z.content == ZoneContent.fixedGlass ||
+              z.content == ZoneContent.empty,
+        )) {
+      return false;
+    }
+    return true;
   }
 
   bool usesCaniveauForRect(Rect frameRect) {
@@ -15319,6 +15452,7 @@ class WindowModel extends ChangeNotifier {
     componentOverrides.removeWhere(
       (key, value) => key.startsWith('frame-bottom:'),
     );
+    if (!value && !canEditSelectedBottomFrame) return;
     if (systemMode == 'sliding' || (!value && !canDisableBottomFrame)) {
       final wasBottomFrame = hasBottomFrame;
       hasBottomFrame = true;
@@ -16260,6 +16394,11 @@ class WindowModel extends ChangeNotifier {
     if (selectedZone == null) return;
     _saveSnapshot();
     selectedZone!.slidingSashesCount = count.clamp(2, 7).toInt();
+    if (selectedZone!.slidingSashesCount != 4) {
+      selectedZone!.slidingFaceToFace = false;
+      selectedZone!.slidingCentralHandle = false;
+      selectedZone!.slidingSecondCentralHandle = false;
+    }
     notifyListeners();
   }
 
@@ -16315,6 +16454,11 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     zone.slidingSashesCount = count.clamp(2, 7).toInt();
+    if (zone.slidingSashesCount != 4) {
+      zone.slidingFaceToFace = false;
+      zone.slidingCentralHandle = false;
+      zone.slidingSecondCentralHandle = false;
+    }
     zone.cutSlidingGlassRebate =
         cutSlidingGlassRebate ?? zone.cutSlidingGlassRebate;
     zone.sashThickness = _calculateSashThickness(zone.isSash105);
@@ -16421,6 +16565,79 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the active sliding series has explicitly assigned the
+  /// Face-to-Face profile role.  A missing rule means the option does not
+  /// exist; the painter and BOM must not guess a profile by its name.
+  bool get supportsSlidingFaceToFace =>
+      getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) !=
+      null;
+
+  void setSelectedZoneSlidingFaceToFace(bool value) {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.slidingSash) return;
+    if (value &&
+        (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2)) {
+      return;
+    }
+    if (value && !supportsSlidingFaceToFace) return;
+    if (zone.slidingFaceToFace == value) return;
+    _saveSnapshot();
+    zone.slidingFaceToFace = value;
+    notifyListeners();
+  }
+
+  void toggleSelectedZoneSlidingFaceToFace() {
+    final zone = selectedZone;
+    if (zone == null) return;
+    setSelectedZoneSlidingFaceToFace(!zone.slidingFaceToFace);
+  }
+
+  void setSelectedZoneSlidingCentralHandle(bool value) {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.slidingSash) return;
+    // The central handle described for the two-track layout is the meeting
+    // handle of the middle pair.  It is not a valid option for two or three
+    // leaves and is intentionally kept per zone.
+    if (value &&
+        (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2)) {
+      return;
+    }
+    if (zone.slidingCentralHandle == value) return;
+    _saveSnapshot();
+    zone.slidingCentralHandle = value;
+    notifyListeners();
+  }
+
+  void toggleSelectedZoneSlidingCentralHandle() {
+    final zone = selectedZone;
+    if (zone == null) return;
+    setSelectedZoneSlidingCentralHandle(!zone.slidingCentralHandle);
+  }
+
+  /// Enables the second middle handle as a drawing/BOM handle only.  It is
+  /// intentionally dependent on the first central handle: without the
+  /// functional middle handle there is no valid pair to mirror.
+  void setSelectedZoneSlidingSecondCentralHandle(bool value) {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.slidingSash) return;
+    if (value &&
+        (zone.slidingSashesCount != 4 ||
+            zone.slidingTrackCount != 2 ||
+            !zone.slidingCentralHandle)) {
+      return;
+    }
+    if (zone.slidingSecondCentralHandle == value) return;
+    _saveSnapshot();
+    zone.slidingSecondCentralHandle = value;
+    notifyListeners();
+  }
+
+  void toggleSelectedZoneSlidingSecondCentralHandle() {
+    final zone = selectedZone;
+    if (zone == null) return;
+    setSelectedZoneSlidingSecondCentralHandle(!zone.slidingSecondCentralHandle);
+  }
+
   void toggleSelectedZoneOctoHandle() {
     if (selectedZone == null) return;
     _saveSnapshot();
@@ -16430,35 +16647,16 @@ class WindowModel extends ChangeNotifier {
 
   void setSelectedZoneContent(ZoneContent content) {
     if (selectedZone == null) return;
-    _saveSnapshot();
-    selectedZone!.content = content;
-    if (content == ZoneContent.slidingSash) {
-      _activateSlidingProfilesForDrawing();
-    }
-    if (content != ZoneContent.doubleSash) {
-      selectedZone!.doubleSashHasTwoHandles = false;
-    }
-    selectedZone!.innerH = 0;
-    selectedZone!.innerV = 0;
-    selectedZone!.rightInnerH = 0;
-    selectedZone!.rightInnerV = 0;
-    selectedZone!.primaryDivisionAxis = null;
-    selectedZone!.rightPrimaryDivisionAxis = null;
-    selectedZone!.innerHPositions = const [];
-    selectedZone!.innerVPositions = const [];
-    selectedZone!.rightInnerHPositions = const [];
-    selectedZone!.rightInnerVPositions = const [];
-    selectedZone!.cellIsPanel.clear();
-    bool is105 = _determineIsSash105FromSashOverride();
-    selectedZone!.isSash105 = is105;
-    selectedZone!.sashThickness = _calculateSashThickness(is105);
+    final zone = selectedZone!;
+    // Keep one canonical transition path.  The drawing-screen menu used to
+    // mutate this field directly, which skipped lower-frame restoration.
+    paintZoneContent(zone.id, content);
     if (content == ZoneContent.doubleSash ||
         content == ZoneContent.singleSash ||
         content == ZoneContent.slidingSash) {
-      selectedZone!.openDirection = OpenDirection.right;
-      selectedZone!.useClassicHandle = isPVC;
+      zone.useClassicHandle = isPVC;
     } else {
-      selectedZone!.openDirection = null;
+      zone.doubleSashHasTwoHandles = false;
     }
     _clearOpeningOnlyOptionsIfUnavailable();
     updateProfileThickness();

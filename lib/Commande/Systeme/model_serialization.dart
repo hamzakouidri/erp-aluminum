@@ -301,7 +301,9 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     jointTwoSides: map['jointTwoSides'] as bool? ?? true,
     glazingFitValid: map['glazingFitValid'] as bool?,
     fittedJoints: (map['fittedJoints'] as List? ?? const [])
-        .whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(),
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(),
     temperedOuter: map['temperedOuter'] as bool? ?? false,
     temperedInner: map['temperedInner'] as bool? ?? false,
   );
@@ -344,6 +346,9 @@ extension WindowZoneSerialization on WindowZone {
       'cellSashOverrides': cellSashOverrides,
       'doubleSashRatio': doubleSashRatio,
       'doubleSashHasTwoHandles': doubleSashHasTwoHandles,
+      'slidingFaceToFace': slidingFaceToFace,
+      'slidingCentralHandle': slidingCentralHandle,
+      'slidingSecondCentralHandle': slidingSecondCentralHandle,
       'middleHingeDragOffset': middleHingeDragOffset,
       'primaryDivisionAxis': primaryDivisionAxis,
       'rightPrimaryDivisionAxis': rightPrimaryDivisionAxis,
@@ -404,6 +409,13 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     doubleSashHasTwoHandles:
         map['doubleSashHasTwoHandles'] == true ||
         map['doubleSashHasTwoHandles'] == 1,
+    slidingFaceToFace:
+        map['slidingFaceToFace'] == true || map['slidingFaceToFace'] == 1,
+    slidingCentralHandle:
+        map['slidingCentralHandle'] == true || map['slidingCentralHandle'] == 1,
+    slidingSecondCentralHandle:
+        map['slidingSecondCentralHandle'] == true ||
+        map['slidingSecondCentralHandle'] == 1,
     innerH: map['innerH'] ?? 0,
     innerV: map['innerV'] ?? 0,
     slidingSashesCount: map['slidingSashesCount'] ?? 2,
@@ -799,7 +811,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   );
   model.selectedDbColor = savedDbColor;
   model.selectedAccessoryColor = savedAccessoryColor;
-  model.selectedShutterColor = _colorSelectionFromRaw(map['selectedShutterColor']);
+  model.selectedShutterColor = _colorSelectionFromRaw(
+    map['selectedShutterColor'],
+  );
   model.loadedSeriesName =
       map['seriesName']?.toString() ?? map['profileName']?.toString();
   int? savedSeriesId(Object? value) => value is num

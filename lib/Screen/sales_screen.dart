@@ -26,6 +26,8 @@ class _SalesScreenState extends State<SalesScreen> {
   // 'all' | 'confirmed' | 'partial_manufacturing' | 'full_manufacturing'
   // | 'partial_distribution' | 'full_distribution' | 'installed' | 'reserve' | 'finished' | 'partial'
   String _selectedTab = 'all';
+  double _dividerRatio = 0.35; // نسبة عرض اليسار (المخططات) من الإجمالي
+  String _chartType = 'bar'; // 'bar' | 'line'
 
   @override
   void initState() {
@@ -379,16 +381,13 @@ class _SalesScreenState extends State<SalesScreen> {
     final points = grouped.values.toList()
       ..sort((a, b) => a.month.compareTo(b.month));
     // Keep the graph readable when the database contains a long history.
-    return points.length > 12
-        ? points.sublist(points.length - 12)
-        : points;
+    return points.length > 12 ? points.sublist(points.length - 12) : points;
   }
 
   Widget _buildSalesChart(AppLanguage lang) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final points = _salesChartPoints;
     return Container(
-      height: 285,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -400,21 +399,31 @@ class _SalesScreenState extends State<SalesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _tr(
-              'حركة المبيعات خلال الفترة',
-              'Évolution des ventes sur la période',
-              'Sales activity over time',
-              lang,
-            ),
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: isDark ? Colors.white : Colors.blueGrey.shade900,
-            ),
+          // ── العنوان + أزرار نوع الرسم ──
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _tr(
+                    'حركة المبيعات خلال الفترة',
+                    'Évolution des ventes sur la période',
+                    'Sales activity over time',
+                    lang,
+                  ),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                  ),
+                ),
+              ),
+              // أزرار اختيار نوع الرسم
+              _chartTypeToggle(isDark),
+            ],
           ),
           const SizedBox(height: 6),
+          // ── وسيلة إيضاح ──
           Wrap(
             spacing: 14,
             runSpacing: 4,
@@ -428,12 +437,18 @@ class _SalesScreenState extends State<SalesScreen> {
                 const Color(0xFFF59E0B),
               ),
               _chartLegend(
-                _tr('مؤكدة ومدفوعة', 'Confirmées et payées', 'Confirmed & paid', lang),
+                _tr(
+                  'مؤكدة ومدفوعة',
+                  'Confirmées et payées',
+                  'Confirmed & paid',
+                  lang,
+                ),
                 const Color(0xFF16A34A),
               ),
             ],
           ),
           const SizedBox(height: 4),
+          // ── الرسم البياني ──
           Expanded(
             child: points.isEmpty
                 ? Center(
@@ -455,11 +470,55 @@ class _SalesScreenState extends State<SalesScreen> {
                     painter: _SalesChartPainter(
                       points: points,
                       isDark: isDark,
+                      chartType: _chartType,
                     ),
                     child: const SizedBox.expand(),
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _chartTypeToggle(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : Colors.blueGrey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.blueGrey.shade200,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _chartTypeBtn('bar', Icons.bar_chart_rounded, isDark),
+          _chartTypeBtn('line', Icons.show_chart_rounded, isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _chartTypeBtn(String type, IconData icon, bool isDark) {
+    final isActive = _chartType == type;
+    return GestureDetector(
+      onTap: () => setState(() => _chartType = type),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? (isDark ? Colors.blue.shade700 : Colors.blue.shade600)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Icon(
+          icon,
+          size: 18,
+          color: isActive
+              ? Colors.white
+              : (isDark ? Colors.white38 : Colors.blueGrey.shade400),
+        ),
       ),
     );
   }
@@ -767,14 +826,76 @@ class _SalesScreenState extends State<SalesScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    _buildSalesChart(lang),
-                    const SizedBox(height: 14),
-
-                    // Orders / Partial Deliveries list
+                    // لوحة مقسومة: مخططات يسار + طلبات يمين
                     Expanded(
-                      child: _selectedTab == 'partial'
-                          ? _buildPartialDeliveriesList(lang)
-                          : _buildOrdersList(lang),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final totalW = constraints.maxWidth;
+                          final minW = 180.0;
+                          final leftW = (_dividerRatio * totalW).clamp(
+                            minW,
+                            totalW - minW,
+                          );
+                          final rightW = totalW - leftW - 6.0;
+
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ── اليسار: المخططات ──
+                              SizedBox(
+                                width: leftW,
+                                child: _buildSalesChart(lang),
+                              ),
+
+                              // ── الفاصل القابل للسحب ──
+                              GestureDetector(
+                                onHorizontalDragUpdate: (details) {
+                                  setState(() {
+                                    final newLeft = leftW + details.delta.dx;
+                                    _dividerRatio = (newLeft / totalW).clamp(
+                                      minW / totalW,
+                                      (totalW - minW) / totalW,
+                                    );
+                                  });
+                                },
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.resizeColumn,
+                                  child: Container(
+                                    width: 6,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 0,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueGrey.shade100,
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Center(
+                                      child: Container(
+                                        width: 2,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: Colors.blueGrey.shade400,
+                                          borderRadius: BorderRadius.circular(
+                                            2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              // ── اليمين: الطلبات ──
+                              SizedBox(
+                                width: rightW,
+                                child: _selectedTab == 'partial'
+                                    ? _buildPartialDeliveriesList(lang)
+                                    : _buildOrdersList(lang),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -1058,7 +1179,7 @@ class _SalesScreenState extends State<SalesScreen> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       Text(
                                         '${_tr('تاريخ التسليم', 'Date livraison', 'Delivery date', lang)}: $delDate',
@@ -1122,8 +1243,13 @@ class _SalesChartPoint {
 class _SalesChartPainter extends CustomPainter {
   final List<_SalesChartPoint> points;
   final bool isDark;
+  final String chartType; // 'bar' | 'line'
 
-  const _SalesChartPainter({required this.points, required this.isDark});
+  const _SalesChartPainter({
+    required this.points,
+    required this.isDark,
+    required this.chartType,
+  });
 
   static const _totalColor = Color(0xFF2563EB);
   static const _confirmedColor = Color(0xFFF59E0B);
@@ -1135,12 +1261,7 @@ class _SalesChartPainter extends CustomPainter {
     return value.toStringAsFixed(0);
   }
 
-  void _drawText(
-    Canvas canvas,
-    String text,
-    Offset offset,
-    TextStyle style,
-  ) {
+  void _drawText(Canvas canvas, String text, Offset offset, TextStyle style) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
@@ -1149,28 +1270,21 @@ class _SalesChartPainter extends CustomPainter {
     painter.paint(canvas, offset);
   }
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
-
-    const left = 45.0;
-    const right = 12.0;
-    const top = 10.0;
-    const bottom = 28.0;
+  /// رسم شبكة المحاور والتسميات المشتركة
+  void _drawGrid(
+    Canvas canvas,
+    Size size,
+    double maxValue,
+    double left,
+    double right,
+    double top,
+    double bottom,
+    Color labelColor,
+  ) {
     final chartWidth = size.width - left - right;
     final chartHeight = size.height - top - bottom;
-    if (chartWidth <= 0 || chartHeight <= 0) return;
-
-    final maxValue = points.fold<double>(
-      0,
-      (max, point) => point.total > max ? point.total : max,
-    );
-    if (maxValue <= 0) return;
-
-    final gridColor = isDark ? Colors.white12 : Colors.blueGrey.shade100;
-    final labelColor = isDark ? Colors.white54 : Colors.blueGrey.shade500;
     final gridPaint = Paint()
-      ..color = gridColor
+      ..color = isDark ? Colors.white12 : Colors.blueGrey.shade100
       ..strokeWidth = 1;
     final axisPaint = Paint()
       ..color = isDark ? Colors.white24 : Colors.blueGrey.shade300
@@ -1179,7 +1293,11 @@ class _SalesChartPainter extends CustomPainter {
     for (var i = 0; i <= 4; i++) {
       final ratio = i / 4;
       final y = top + chartHeight - (chartHeight * ratio);
-      canvas.drawLine(Offset(left, y), Offset(size.width - right, y), gridPaint);
+      canvas.drawLine(
+        Offset(left, y),
+        Offset(size.width - right, y),
+        gridPaint,
+      );
       _drawText(
         canvas,
         _compactValue(maxValue * ratio),
@@ -1198,84 +1316,139 @@ class _SalesChartPainter extends CustomPainter {
       axisPaint,
     );
 
+    // تسميات الشهور
     final slotWidth = chartWidth / points.length;
-    final barWidth = (slotWidth * 0.58).clamp(12.0, 58.0).toDouble();
-    final paidCenters = <Offset>[];
-    final totalPaint = Paint()..color = _totalColor;
-    final confirmedPaint = Paint()..color = _confirmedColor;
-    final paidPaint = Paint()..color = _paidColor;
-
     for (var i = 0; i < points.length; i++) {
-      final point = points[i];
       final centerX = left + slotWidth * (i + 0.5);
-      final totalHeight = chartHeight * point.total / maxValue;
-      final confirmedHeight = chartHeight * point.confirmed / maxValue;
-      final paidHeight = chartHeight * point.paid / maxValue;
-      final baseline = top + chartHeight;
-
-      // Nested bars: blue total, orange confirmed, green fully paid.
-      canvas.drawRect(
-        Rect.fromLTWH(
-          centerX - barWidth / 2,
-          baseline - totalHeight,
-          barWidth,
-          totalHeight,
-        ),
-        totalPaint,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          centerX - barWidth * 0.36,
-          baseline - confirmedHeight,
-          barWidth * 0.72,
-          confirmedHeight,
-        ),
-        confirmedPaint,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          centerX - barWidth * 0.20,
-          baseline - paidHeight,
-          barWidth * 0.40,
-          paidHeight,
-        ),
-        paidPaint,
-      );
-
-      paidCenters.add(Offset(centerX, baseline - paidHeight));
-      final monthLabel = DateFormat('MM/yy').format(point.month);
-      final labelPainter = TextPainter(
+      final label = DateFormat('MM/yy').format(points[i].month);
+      final lp = TextPainter(
         text: TextSpan(
-          text: monthLabel,
+          text: label,
           style: TextStyle(fontSize: 9, color: labelColor),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      labelPainter.paint(
-        canvas,
-        Offset(centerX - labelPainter.width / 2, baseline + 7),
-      );
+      lp.paint(canvas, Offset(centerX - lp.width / 2, top + chartHeight + 7));
     }
+  }
 
-    if (paidCenters.length > 1) {
-      final linePaint = Paint()
-        ..color = _paidColor
-        ..strokeWidth = 2.5
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      final path = Path()..moveTo(paidCenters.first.dx, paidCenters.first.dy);
-      for (final center in paidCenters.skip(1)) {
-        path.lineTo(center.dx, center.dy);
-      }
-      canvas.drawPath(path, linePaint);
-      for (final center in paidCenters) {
-        canvas.drawCircle(center, 3.5, Paint()..color = _paidColor);
-      }
+  void _drawLine(Canvas canvas, List<Offset> pts, Color color) {
+    if (pts.length < 2) return;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (final p in pts.skip(1)) path.lineTo(p.dx, p.dy);
+    canvas.drawPath(path, paint);
+    for (final p in pts) {
+      canvas.drawCircle(p, 3.5, Paint()..color = color);
+      canvas.drawCircle(p, 2.0, Paint()..color = Colors.white);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _SalesChartPainter oldDelegate) =>
-      oldDelegate.isDark != isDark || oldDelegate.points != points;
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    const left = 45.0;
+    const right = 12.0;
+    const top = 10.0;
+    const bottom = 28.0;
+    final chartWidth = size.width - left - right;
+    final chartHeight = size.height - top - bottom;
+    if (chartWidth <= 0 || chartHeight <= 0) return;
+
+    final maxValue = points.fold<double>(
+      0,
+      (m, p) => p.total > m ? p.total : m,
+    );
+    if (maxValue <= 0) return;
+
+    final labelColor = isDark ? Colors.white54 : Colors.blueGrey.shade500;
+    _drawGrid(canvas, size, maxValue, left, right, top, bottom, labelColor);
+
+    final slotWidth = chartWidth / points.length;
+
+    if (chartType == 'bar') {
+      // ── أعمدة بيانية ──
+      final barWidth = (slotWidth * 0.58).clamp(12.0, 58.0).toDouble();
+      final paidCenters = <Offset>[];
+
+      for (var i = 0; i < points.length; i++) {
+        final pt = points[i];
+        final cx = left + slotWidth * (i + 0.5);
+        final baseline = top + chartHeight;
+        final tH = chartHeight * pt.total / maxValue;
+        final cH = chartHeight * pt.confirmed / maxValue;
+        final pH = chartHeight * pt.paid / maxValue;
+
+        canvas.drawRect(
+          Rect.fromLTWH(cx - barWidth / 2, baseline - tH, barWidth, tH),
+          Paint()..color = _totalColor,
+        );
+        canvas.drawRect(
+          Rect.fromLTWH(
+            cx - barWidth * 0.36,
+            baseline - cH,
+            barWidth * 0.72,
+            cH,
+          ),
+          Paint()..color = _confirmedColor,
+        );
+        canvas.drawRect(
+          Rect.fromLTWH(
+            cx - barWidth * 0.20,
+            baseline - pH,
+            barWidth * 0.40,
+            pH,
+          ),
+          Paint()..color = _paidColor,
+        );
+        paidCenters.add(Offset(cx, baseline - pH));
+      }
+      // خط فوق عمود المدفوعات
+      _drawLine(canvas, paidCenters, _paidColor);
+    } else {
+      // ── منحنى بياني ──
+      final totalPts = <Offset>[];
+      final confirmedPts = <Offset>[];
+      final paidPts = <Offset>[];
+      final baseline = top + chartHeight;
+
+      for (var i = 0; i < points.length; i++) {
+        final pt = points[i];
+        final cx = left + slotWidth * (i + 0.5);
+        totalPts.add(Offset(cx, baseline - chartHeight * pt.total / maxValue));
+        confirmedPts.add(
+          Offset(cx, baseline - chartHeight * pt.confirmed / maxValue),
+        );
+        paidPts.add(Offset(cx, baseline - chartHeight * pt.paid / maxValue));
+      }
+
+      // رسم ظل خفيف تحت خط الإجمالي
+      if (totalPts.length > 1) {
+        final fillPath = Path()..moveTo(totalPts.first.dx, baseline);
+        for (final p in totalPts) fillPath.lineTo(p.dx, p.dy);
+        fillPath.lineTo(totalPts.last.dx, baseline);
+        fillPath.close();
+        canvas.drawPath(
+          fillPath,
+          Paint()..color = _totalColor.withOpacity(0.07),
+        );
+      }
+
+      _drawLine(canvas, totalPts, _totalColor);
+      _drawLine(canvas, confirmedPts, _confirmedColor);
+      _drawLine(canvas, paidPts, _paidColor);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SalesChartPainter old) =>
+      old.isDark != isDark ||
+      old.points != points ||
+      old.chartType != chartType;
 }
