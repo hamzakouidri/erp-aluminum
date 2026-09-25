@@ -2559,7 +2559,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 horizontal: 8,
                 vertical: 6,
               ),
-              reorderableRows: true,
+              // Kit children are attached to their header. Reordering flat
+              // rows (including restored user order) splits that hierarchy.
+              reorderableRows: false,
               columns: [
                 ResizableTableColumn(
                   id: 'image',

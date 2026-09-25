@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'settings/shortcut_bindings.dart';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -309,6 +310,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         fontFamily: uiFontFamily,
       ),
       builder: (context, child) {
+        final commandShortcuts = ShortcutBindings.instance;
         Widget content = child!;
         if (kIsWeb) {
           content = Center(
@@ -330,6 +332,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           canRequestFocus: false,
           onKeyEvent: (_, event) {
             if (kIsWeb || !Platform.isWindows) return KeyEventResult.ignored;
+            if (commandShortcuts.handle(context, event)) return KeyEventResult.handled;
             final keyboard = HardwareKeyboard.instance;
             final focus = FocusManager.instance.primaryFocus;
             final focusContext = focus?.context;

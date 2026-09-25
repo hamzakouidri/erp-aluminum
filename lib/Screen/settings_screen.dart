@@ -475,7 +475,7 @@ class SettingsScreen extends StatelessWidget {
           // Display Settings
           Card(child: ListTile(
             leading: const Icon(Icons.keyboard),
-            title: const Text('اختصارات لوحة المفاتيح'),
+            title: Text(Localization.translate('اختصارات لوحة المفاتيح', lang)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(
               builder: (_) => const KeyboardShortcutsScreen())),
