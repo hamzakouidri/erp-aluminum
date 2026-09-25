@@ -87,8 +87,8 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         final res = await dbInstance.rawQuery('''
           SELECT cd.*, c.firstname, c.lastname, c.phone1, c.address, c.latitude, c.longitude, com.total as order_total
           FROM Commandes_deliveries cd
-          LEFT JOIN Client c ON cd.client_id = c.id
-          LEFT JOIN Commandes com ON cd.id_commandes = com.id
+          LEFT JOIN Client c ON (cd.client_id = c.id OR CAST(cd.client_id AS TEXT) = CAST(c.id AS TEXT))
+          LEFT JOIN Commandes com ON (cd.id_commandes = com.id OR CAST(cd.id_commandes AS TEXT) = CAST(com.id AS TEXT))
           ORDER BY cd.delivery_date DESC
         ''');
         setState(() {
@@ -178,13 +178,19 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     _fetchRoadRoute(_launchPosition, _clientPosition);
 
     // Animate map camera to fit both launch position and client
+    // Animate map camera to fit both launch position and client safely
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mapController.fitCamera(
-        CameraFit.coordinates(
-          coordinates: [_launchPosition, _clientPosition],
-          padding: const EdgeInsets.all(50.0),
-        ),
-      );
+      if (!mounted) return;
+      try {
+        _mapController.fitCamera(
+          CameraFit.coordinates(
+            coordinates: [_launchPosition, _clientPosition],
+            padding: const EdgeInsets.all(50.0),
+          ),
+        );
+      } catch (e) {
+        debugPrint("Error fitting map camera: $e");
+      }
     });
   }
 
@@ -246,7 +252,9 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
               await prefs.setDouble('workshop_longitude', lng);
             }
           } catch (error) {
-            debugPrint('Could not load workshop location from Firebase: $error');
+            debugPrint(
+              'Could not load workshop location from Firebase: $error',
+            );
           }
         }
       }
@@ -1649,15 +1657,19 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
     );
     if (point == null || !mounted) return;
 
+    // اعتماد الموقع فوراً في واجهة النافذة
+    setState(() => _deliveryLocation = point);
+
     final clientId = int.tryParse(
       _selectedOrder!['client_id']?.toString() ?? '',
     );
-    if (clientId == null || clientId <= 0) return;
-    await widget.db.updateClientCoordinates(
-      clientId,
-      point.latitude,
-      point.longitude,
-    );
+    if (clientId != null && clientId > 0) {
+      await widget.db.updateClientCoordinates(
+        clientId,
+        point.latitude,
+        point.longitude,
+      );
+    }
     if (!mounted) return;
     setState(() => _deliveryLocation = point);
   }
@@ -1795,6 +1807,14 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
       widget.onSuccess();
     } catch (e) {
       debugPrint("Error saving delivery plan: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ أثناء حفظ الخطة: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

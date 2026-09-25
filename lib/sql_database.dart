@@ -513,8 +513,13 @@ class SqlDatabase {
     try {
       await db.execute("ALTER TABLE Employees ADD COLUMN job_role TEXT;");
     } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE Client ADD COLUMN latitude REAL;');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE Client ADD COLUMN longitude REAL;');
+    } catch (_) {}
 
-    // â”€â”€ Ø¬Ø¯ÙˆÙ„ Ø§Ù„Ø­Ø¶ÙˆØ± Ø§Ù„ÙŠÙˆÙ…ÙŠ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try {
       await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerAttendance (
@@ -4953,15 +4958,17 @@ class SqlDatabase {
     if (myDb == null) return [];
     await _backfillOrderCodes(myDb);
     return await myDb.rawQuery('''
-      SELECT c.*,
+          SELECT c.*,
         c.order_code AS display_number,
         COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), '')) as created_at,
         cl.firstname, cl.lastname, cl.phone1 as phone,
         cl.address as client_address,
+        cl.latitude as client_latitude,
+        cl.longitude as client_longitude,
         p.name as project_name,
         p.description as project_description
       FROM Commandes c
-      LEFT JOIN Client cl ON c.client_id = cl.id
+      LEFT JOIN Client cl ON (c.client_id = cl.id OR CAST(c.client_id AS TEXT) = CAST(cl.id AS TEXT))
       LEFT JOIN Projects p ON c.project_id = p.id
       ORDER BY COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), ''), c.id) DESC
     ''');
