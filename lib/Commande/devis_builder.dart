@@ -157,6 +157,7 @@ class DevisData {
 
 class DevisBuilder {
   static AppLanguage _currentLang = AppLanguage.arabic;
+
   static String t(String key) => Localization.translate(key, _currentLang);
 
   static double _toDouble(dynamic value) => (value as num?)?.toDouble() ?? 0.0;
@@ -215,8 +216,7 @@ class DevisBuilder {
     // French is the application default. Do not fall back to Arabic merely
     // because the language preference has not been written yet (for example
     // when a document is opened immediately after changing language).
-    final langIndex =
-        prefs.getInt('app_language') ?? AppLanguage.french.index;
+    final langIndex = prefs.getInt('app_language') ?? AppLanguage.french.index;
     _currentLang = overrideLang ?? AppLanguage.values[langIndex];
     final candidate = workshop ?? await loadWorkshopInfo();
     final workshopCode = (prefs.getString('workshop_code') ?? '').trim();
@@ -834,7 +834,9 @@ class DevisBuilder {
     final isDesignedWindow =
         map['isDesignDrawing'] == true ||
         (rawZones is List && rawZones.isNotEmpty) ||
-        (map['showWall'] == true && map['width'] != null && map['height'] != null);
+        (map['showWall'] == true &&
+            map['width'] != null &&
+            map['height'] != null);
     final isStandaloneCaisson = isCaissonTunnel && !isDesignedWindow;
 
     final bool isMoustiquaire =
@@ -1741,7 +1743,9 @@ class DevisBuilder {
 
       {
         final lameFullName = resolveShutterBladeName(
-          map['componentOverrides'], fallback: map['shutterLame']);
+          map['componentOverrides'],
+          fallback: map['shutterLame'],
+        );
         if (lameFullName.isNotEmpty) {
           if (_currentLang == AppLanguage.french) {
             details.add('Lame: $lameFullName');
@@ -2222,8 +2226,13 @@ class DevisBuilder {
           }
         }
       }
+
       if (content.contains('slidingSash')) {
-        for (var i = 0; i < ((z['slidingSashesCount'] as num?)?.toInt() ?? 2); i++) {
+        for (
+          var i = 0;
+          i < ((z['slidingSashesCount'] as num?)?.toInt() ?? 2);
+          i++
+        ) {
           keys.add('main_cell_0_$i');
         }
       } else if (content.contains('doubleSash')) {
@@ -2457,21 +2466,31 @@ class DevisBuilder {
             .toSet() ??
         <String>{};
     final customSegments = map['sideCoverSegments'];
-    final customSides = customSegments is List &&
-            map['useCustomSideCoverLayout'] == true && customSegments.isNotEmpty
-        ? customSegments.whereType<Map>().where((segment) =>
-            ((segment['endOffset'] as num?) ?? 0) > ((segment['startOffset'] as num?) ?? 0) &&
-            ((segment['visibleWidth'] as num?) ?? 0) > 0)
-            .map((segment) => segment['side']?.toString()).toSet()
+    final customSides =
+        customSegments is List &&
+            map['useCustomSideCoverLayout'] == true &&
+            customSegments.isNotEmpty
+        ? customSegments
+              .whereType<Map>()
+              .where(
+                (segment) =>
+                    ((segment['endOffset'] as num?) ?? 0) >
+                        ((segment['startOffset'] as num?) ?? 0) &&
+                    ((segment['visibleWidth'] as num?) ?? 0) > 0,
+              )
+              .map((segment) => segment['side']?.toString())
+              .toSet()
         : null;
     final hidden = (map['hiddenSideCoverSegments'] as List? ?? const [])
-        .map((side) => side.toString()).toSet();
-    bool hasSide(String side) => map['hasSideCovers'] != false &&
-        !hidden.contains(side) && !removedSides.contains(side) &&
+        .map((side) => side.toString())
+        .toSet();
+    bool hasSide(String side) =>
+        map['hasSideCovers'] != false &&
+        !hidden.contains(side) &&
+        !removedSides.contains(side) &&
         (customSides == null || customSides.contains(side));
     final hasTop = hasSide('top');
-    final hasBottom =
-        hasSide('bottom') && map['hasBottomFrame'] != false && map['showBottomWall'] != false;
+    final hasBottom = hasSide('bottom') && map['hasBottomFrame'] != false;
     final hasRight = hasSide('right');
     final hasLeft = hasSide('left');
     final activeSides = <String>[];
@@ -2600,8 +2619,10 @@ class DevisBuilder {
       bool reinforced(String kind, int index) {
         if (flags is! Map) return false;
         return (flags['${kind}_$index'] ??
-            flags['${kind}_${index.isEven ? 'left' : 'right'}']) == true;
+                flags['${kind}_${index.isEven ? 'left' : 'right'}']) ==
+            true;
       }
+
       for (var i = 0; i < count; i++) {
         if (reinforced('central', i)) centralReinforced++;
       }
@@ -2609,19 +2630,37 @@ class DevisBuilder {
         if (reinforced('lateral', i)) lateralReinforced++;
       }
     }
-    String describe(String fr, String en, String ar, int total, int reinforced) {
+    String describe(
+      String fr,
+      String en,
+      String ar,
+      int total,
+      int reinforced,
+    ) {
       final regular = total - reinforced;
       return switch (_currentLang) {
-        AppLanguage.french => '$fr: $reinforced renforcé(s), $regular non renforcé(s)',
+        AppLanguage.french =>
+          '$fr: $reinforced renforcé(s), $regular non renforcé(s)',
         AppLanguage.english => '$en: $reinforced reinforced, $regular standard',
         AppLanguage.arabic => '$ar: $reinforced معزز، $regular عادي',
       };
     }
+
     final lines = <String>[
-      describe('Montant central', 'Central montant', 'القائم الوسطي',
-          centralCount, centralReinforced),
-      describe('Montant latéral', 'Lateral montant', 'القائم الجانبي',
-          lateralCount, lateralReinforced),
+      describe(
+        'Montant central',
+        'Central montant',
+        'القائم الوسطي',
+        centralCount,
+        centralReinforced,
+      ),
+      describe(
+        'Montant latéral',
+        'Lateral montant',
+        'القائم الجانبي',
+        lateralCount,
+        lateralReinforced,
+      ),
     ];
     return lines;
   }
@@ -2648,7 +2687,9 @@ class DevisBuilder {
     }
 
     final lame = resolveShutterBladeName(
-      map['componentOverrides'], fallback: map['shutterLame']);
+      map['componentOverrides'],
+      fallback: map['shutterLame'],
+    );
     if (lame.isNotEmpty) {
       lines.add(switch (_currentLang) {
         AppLanguage.french => 'Lame volet: $lame',

@@ -1,5 +1,8 @@
 import '../app_settings.dart';
 const shortcutKeys = <String, Map<AppLanguage, String>>{
+  'تعديل الطلبية المحددة': {AppLanguage.arabic: 'تعديل الطلبية المحددة', AppLanguage.french: 'Modifier la commande ciblée', AppLanguage.english: 'Edit focused order'},
+  'حذف الطلبية المحددة': {AppLanguage.arabic: 'حذف الطلبية المحددة', AppLanguage.french: 'Supprimer la commande ciblée', AppLanguage.english: 'Delete focused order'},
+  'لتعديل أو حذف طلبية، حدد زر خياراتها بلوحة المفاتيح أولًا.': {AppLanguage.arabic: 'لتعديل أو حذف طلبية، حدد زر خياراتها بلوحة المفاتيح أولًا.', AppLanguage.french: 'Pour modifier ou supprimer, placez le focus sur le bouton des options de la commande.', AppLanguage.english: 'To edit or delete, first focus the order’s options button.'},
   "إضافة طلبية جديدة": {AppLanguage.arabic: "إضافة طلبية جديدة", AppLanguage.french: "Nouvelle commande", AppLanguage.english: "New order"},
   "من أين يبدأ القياس؟": {AppLanguage.arabic: "من أين يبدأ القياس؟", AppLanguage.french: "Origine de la mesure ?", AppLanguage.english: "Where does the measurement start?"},
   "من الأعلى": {AppLanguage.arabic: "من الأعلى", AppLanguage.french: "Depuis le haut", AppLanguage.english: "From top"},

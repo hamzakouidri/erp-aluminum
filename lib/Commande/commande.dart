@@ -6,6 +6,8 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/order_workspace_screen.dart';
+import '../settings/shortcut_bindings.dart';
+import 'package:flutter/services.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
@@ -4219,13 +4221,32 @@ class _CommandeState extends State<Commande> {
             overflow: TextOverflow.ellipsis,
           ),
           // Actions
-          Center(
+          Focus(
+            canRequestFocus: false,
+            onKeyEvent: (_, event) {
+              if (ModalRoute.of(context) is PopupRoute) return KeyEventResult.ignored;
+              final shortcuts = ShortcutBindings.instance;
+              final settings = context.read<AppSettingsProvider>();
+              final id = (order['id'] as num?)?.toInt();
+              if (id == null) return KeyEventResult.ignored;
+              if (shortcuts.matches('edit_order', event) && settings.canEditOrders()) {
+                openOrderInWorkspaceTab(context, db: db, editCommandeId: id, onSaved: _fetchCommandes);
+                return KeyEventResult.handled;
+              }
+              if (shortcuts.matches('delete_order', event) && settings.canDeleteOrders()) {
+                _showDeleteConfirmDialog(id);
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: Center(
             child: IconButton(
               icon: const Icon(Icons.more_horiz_rounded, size: 18),
               onPressed: () => _showOrderOptions(context, order),
               tooltip: Localization.translate('خيارات الطلبية', lang),
               visualDensity: VisualDensity.compact,
             ),
+          ),
           ),
         ],
       );
@@ -4303,6 +4324,18 @@ class _CommandeState extends State<Commande> {
                       borderRadius: BorderRadius.circular(10),
                       child: ResizableColumnsTable(
                         persistenceKey: 'orders',
+                        footerCells: {
+                          'total': Text(data.fold<double>(0, (sum, row) => sum +
+                            ((row['net_payable'] as num?)?.toDouble() ?? (row['total'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                          'advance': Text(data.fold<double>(0, (sum, row) => sum +
+                            ((row['advance_payment'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                          'remaining': Text(data.fold<double>(0, (sum, row) => sum +
+                            ((row['net_payable'] as num?)?.toDouble() ?? (row['total'] as num?)?.toDouble() ?? 0) -
+                            ((row['advance_payment'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        },
                         columns: columns,
                         rows: rows,
                         headerColor: const Color(

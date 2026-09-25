@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:database_data/Commande/texture_cache.dart';
 import 'package:database_data/Commande/decor_panel_designs.dart';
+
 // Force compile sync trigger
 import 'package:flutter/material.dart';
 
@@ -147,6 +148,7 @@ class WindowPainter extends CustomPainter {
   }
 
   bool? _localBottomFrame;
+
   bool get _hasEffectiveBottomFrame =>
       _localBottomFrame ?? model.effectiveHasBottomFrame;
 
@@ -300,6 +302,20 @@ class WindowPainter extends CustomPainter {
 
     canvas.save();
     canvas.clipPath(innerPath);
+    // Saved zone bounds may retain the previous profile's rebate deduction.
+    // Paint the pocket of each real frame before its glazing, so any exposed
+    // rebate uses the profile finish instead of the white page background.
+    // Do not fill the overall bounding box: gaps between frames stay empty.
+    final physicalFrames = model.getFrameRects();
+    final pocketFrames = physicalFrames.length == 1
+        ? [Rect.fromLTRB(0, topOffset, w, h)]
+        : physicalFrames;
+    for (final frame in pocketFrames) {
+      final pocket = frame.deflate(t);
+      if (pocket.width > 0 && pocket.height > 0) {
+        canvas.drawRect(pocket, _buildPaint(pocket));
+      }
+    }
     for (final zone in model.zones) {
       _drawZoneBackground(canvas, zone, h, t);
     }
@@ -1983,8 +1999,12 @@ class WindowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = isWholeDrawingFrameSelected ? 3.0 : 1.5;
 
+    // الكود الجديد:
     if (_hasEffectiveBottomFrame) {
-      canvas.drawPath(outerPath, bp);
+      // إذا كان الإطار مدمجاً ومفعلاً الغطاء، لا نرسم outerPath هنا لأنه يُرسم موحداً في دالة الغطاء
+      if (!model.isIntegratedFrame || !_shouldDrawSideCovers) {
+        canvas.drawPath(outerPath, bp);
+      }
       canvas.drawPath(
         innerPath,
         bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
@@ -2086,10 +2106,11 @@ class WindowPainter extends CustomPainter {
       ..strokeWidth = 1.55
       ..style = PaintingStyle.stroke;
 
-    // Every closed frame corner is a visible 45-degree welding cut. The same
-    // diagonal is used at the outside and inside edge of the profile.
-    canvas.drawLine(outer.topLeft, inner.topLeft, p);
-    canvas.drawLine(outer.topRight, inner.topRight, p);
+    // عند الإطار المدمج مع ستار: الزوايا العلوية عمودية 90° لا مائلة 45°
+    if (!(model.hasShutter && model.isIntegratedFrame)) {
+      canvas.drawLine(outer.topLeft, inner.topLeft, p);
+      canvas.drawLine(outer.topRight, inner.topRight, p);
+    }
     if (_hasEffectiveBottomFrame) {
       canvas.drawLine(outer.bottomLeft, inner.bottomLeft, p);
       canvas.drawLine(outer.bottomRight, inner.bottomRight, p);
@@ -2705,33 +2726,124 @@ class WindowPainter extends CustomPainter {
     double cosAlphaB = math.cos(alphaB);
     double cW_vOffsetB = cW / cosAlphaB;
 
+    // الكود الجديد البديل:
+    final bool isIntegrated = model.isIntegratedFrame;
+    // DEBUG — احذفه بعد التأكيد
+    debugPrint(
+      'isIntegrated=$isIntegrated | frame=${model.frameOverride?['name']} | design_integrated=${model.frameOverride?['design_integrated_side_cover']} | cjw=${model.frameOverride?['couvre_joint_width']}',
+    );
+
+    // رسم مسارات التعبئة (Fill) أولاً لكل جهة
+    void drawCoverSegment({
+      required Path path,
+      required Offset outerStart,
+      required Offset outerEnd,
+      required Offset innerStart,
+      required Offset innerEnd,
+      required bool hasStartJoin,
+      required bool hasEndJoin,
+    }) {
+      // 1. تعبئة اللون (سواء خشب أو لون عادي)
+      canvas.drawPath(path, paint);
+
+      if (!isIntegrated) {
+        // إذا كان غطاء منفصلاً، نرسم حدوده كاملة مع الخط الفاصل
+        canvas.drawPath(path, borderPaint);
+      } else {
+        // إذا كان إطاراً مدمجاً: نرسم فقط الحد الخارجي وخطوط زوايا 45° الخارجية
+        // ولا نرسم الخط الداخلي المشترك مع الحلق
+        final outerEdge = Path()
+          ..moveTo(outerStart.dx, outerStart.dy)
+          ..lineTo(outerEnd.dx, outerEnd.dy);
+        canvas.drawPath(outerEdge, borderPaint);
+
+        // خط زاوية البداية المائل 45°
+        if (hasStartJoin) {
+          canvas.drawLine(outerStart, innerStart, borderPaint);
+        }
+        // خط زاوية النهاية المائل 45°
+        if (hasEndJoin) {
+          canvas.drawLine(outerEnd, innerEnd, borderPaint);
+        }
+      }
+    }
+
     if (hasL) {
-      Path path = Path()
-        ..moveTo(0, yTopL)
-        ..lineTo(-cW, yTopL - (hasT ? cW_vOffset : 0.0) - slopeT * cW)
-        ..lineTo(-cW, yBottomL + (hasB ? cW_vOffsetB : 0.0) - slopeB * cW)
-        ..lineTo(0, yBottomL)
+      final pInnerStart = Offset(0, yTopL);
+      final pOuterStart = Offset(
+        -cW,
+        yTopL - (hasT ? cW_vOffset : 0.0) - slopeT * cW,
+      );
+      final pOuterEnd = Offset(
+        -cW,
+        yBottomL + (hasB ? cW_vOffsetB : 0.0) - slopeB * cW,
+      );
+      final pInnerEnd = Offset(0, yBottomL);
+
+      final path = Path()
+        ..moveTo(pInnerStart.dx, pInnerStart.dy)
+        ..lineTo(pOuterStart.dx, pOuterStart.dy)
+        ..lineTo(pOuterEnd.dx, pOuterEnd.dy)
+        ..lineTo(pInnerEnd.dx, pInnerEnd.dy)
         ..close();
-      canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+
+      drawCoverSegment(
+        path: path,
+        outerStart: pOuterStart,
+        outerEnd: pOuterEnd,
+        innerStart: pInnerStart,
+        innerEnd: pInnerEnd,
+        hasStartJoin: hasT,
+        hasEndJoin: hasB,
+      );
     }
+
     if (hasR) {
-      Path path = Path()
-        ..moveTo(w, yTopR)
-        ..lineTo(w + cW, yTopR - (hasT ? cW_vOffset : 0.0) + slopeT * cW)
-        ..lineTo(w + cW, yBottomR + (hasB ? cW_vOffsetB : 0.0) + slopeB * cW)
-        ..lineTo(w, yBottomR)
+      final pInnerStart = Offset(w, yTopR);
+      final pOuterStart = Offset(
+        w + cW,
+        yTopR - (hasT ? cW_vOffset : 0.0) + slopeT * cW,
+      );
+      final pOuterEnd = Offset(
+        w + cW,
+        yBottomR + (hasB ? cW_vOffsetB : 0.0) + slopeB * cW,
+      );
+      final pInnerEnd = Offset(w, yBottomR);
+
+      final path = Path()
+        ..moveTo(pInnerStart.dx, pInnerStart.dy)
+        ..lineTo(pOuterStart.dx, pOuterStart.dy)
+        ..lineTo(pOuterEnd.dx, pOuterEnd.dy)
+        ..lineTo(pInnerEnd.dx, pInnerEnd.dy)
         ..close();
-      canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+
+      drawCoverSegment(
+        path: path,
+        outerStart: pOuterStart,
+        outerEnd: pOuterEnd,
+        innerStart: pInnerStart,
+        innerEnd: pInnerEnd,
+        hasStartJoin: hasT,
+        hasEndJoin: hasB,
+      );
     }
+
     if (hasT) {
-      Path path = Path();
-      path.moveTo(0, yTopL);
-      path.lineTo(
+      final pInnerStart = Offset(0, yTopL);
+      final pOuterStart = Offset(
         hasL ? -cW : 0.0,
         yTopL - cW_vOffset - (hasL ? slopeT * cW : 0.0),
       );
+      final pOuterEnd = Offset(
+        hasR ? w + cW : w,
+        yTopR - cW_vOffset + (hasR ? slopeT * cW : 0.0),
+      );
+      final pInnerEnd = Offset(w, yTopR);
+
+      final path = Path()
+        ..moveTo(pInnerStart.dx, pInnerStart.dy)
+        ..lineTo(pOuterStart.dx, pOuterStart.dy);
+
       if (model.archHeight > 0) {
         path.quadraticBezierTo(
           w / 2,
@@ -2739,45 +2851,64 @@ class WindowPainter extends CustomPainter {
               math.min(model.topSlantLeftY, model.topSlantRightY) -
               (model.archHeight * 2) -
               cW_vOffset,
-          hasR ? w + cW : w,
-          yTopR - cW_vOffset + (hasR ? slopeT * cW : 0.0),
+          pOuterEnd.dx,
+          pOuterEnd.dy,
         );
-        path.lineTo(w, yTopR);
+        path.lineTo(pInnerEnd.dx, pInnerEnd.dy);
         path.quadraticBezierTo(
           w / 2,
           topY +
               math.min(model.topSlantLeftY, model.topSlantRightY) -
               (model.archHeight * 2),
-          0,
-          yTopL,
+          pInnerStart.dx,
+          pInnerStart.dy,
         );
       } else {
-        path.lineTo(
-          hasR ? w + cW : w,
-          yTopR - cW_vOffset + (hasR ? slopeT * cW : 0.0),
-        );
-        path.lineTo(w, yTopR);
-        path.lineTo(0, yTopL);
+        path.lineTo(pOuterEnd.dx, pOuterEnd.dy);
+        path.lineTo(pInnerEnd.dx, pInnerEnd.dy);
+        path.lineTo(pInnerStart.dx, pInnerStart.dy);
       }
       path.close();
-      canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+
+      drawCoverSegment(
+        path: path,
+        outerStart: pOuterStart,
+        outerEnd: pOuterEnd,
+        innerStart: pInnerStart,
+        innerEnd: pInnerEnd,
+        hasStartJoin: hasL,
+        hasEndJoin: hasR,
+      );
     }
+
     if (hasB) {
-      Path path = Path()
-        ..moveTo(0, yBottomL)
-        ..lineTo(
-          hasL ? -cW : 0.0,
-          yBottomL + cW_vOffsetB - (hasL ? slopeB * cW : 0.0),
-        )
-        ..lineTo(
-          hasR ? w + cW : w,
-          yBottomR + cW_vOffsetB + (hasR ? slopeB * cW : 0.0),
-        )
-        ..lineTo(w, yBottomR)
+      final pInnerStart = Offset(0, yBottomL);
+      final pOuterStart = Offset(
+        hasL ? -cW : 0.0,
+        yBottomL + cW_vOffsetB - (hasL ? slopeB * cW : 0.0),
+      );
+      final pOuterEnd = Offset(
+        hasR ? w + cW : w,
+        yBottomR + cW_vOffsetB + (hasR ? slopeB * cW : 0.0),
+      );
+      final pInnerEnd = Offset(w, yBottomR);
+
+      final path = Path()
+        ..moveTo(pInnerStart.dx, pInnerStart.dy)
+        ..lineTo(pOuterStart.dx, pOuterStart.dy)
+        ..lineTo(pOuterEnd.dx, pOuterEnd.dy)
+        ..lineTo(pInnerEnd.dx, pInnerEnd.dy)
         ..close();
-      canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+
+      drawCoverSegment(
+        path: path,
+        outerStart: pOuterStart,
+        outerEnd: pOuterEnd,
+        innerStart: pInnerStart,
+        innerEnd: pInnerEnd,
+        hasStartJoin: hasL,
+        hasEndJoin: hasR,
+      );
     }
   }
 
@@ -3612,7 +3743,12 @@ class WindowPainter extends CustomPainter {
     }
   }
 
-  void _drawZoneContentForFrame(Canvas canvas, WindowZone zone, double h, double t) {
+  void _drawZoneContentForFrame(
+    Canvas canvas,
+    WindowZone zone,
+    double h,
+    double t,
+  ) {
     final r = _getEffectiveZoneRect(zone.boundary, h, t);
     final double topOffset = _topOffset;
     final bool isTopBound = _isTopZone(zone);
@@ -6938,10 +7074,14 @@ class WindowPainter extends CustomPainter {
     double position,
     double boxSize,
   ) {
-    final _fc = getEffectiveGradientColors(model.frameColor, model.effectiveShutterColor);
-    bool _isWoodColor() => this._isWoodColor() &&
+    final _fc = getEffectiveGradientColors(
+      model.frameColor,
+      model.effectiveShutterColor,
+    );
+    bool _isWoodColor() =>
+        this._isWoodColor() &&
         (model.selectedShutterColor == null ||
-         model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
+            model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
     const coulisseWidth = 25.0;
     final double coulisseTop = boxSize;
     final double coulisseHeight = h - boxSize;
@@ -7171,10 +7311,14 @@ class WindowPainter extends CustomPainter {
     double h, {
     bool drawOnlyManualControls = false,
   }) {
-    final _fc = getEffectiveGradientColors(model.frameColor, model.effectiveShutterColor);
-    bool _isWoodColor() => this._isWoodColor() &&
+    final _fc = getEffectiveGradientColors(
+      model.frameColor,
+      model.effectiveShutterColor,
+    );
+    bool _isWoodColor() =>
+        this._isWoodColor() &&
         (model.selectedShutterColor == null ||
-         model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
+            model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
     double startX = 0.0;
     double endX = w;
     double boxWidth = endX - startX;
@@ -7460,12 +7604,7 @@ class WindowPainter extends CustomPainter {
       ..addPath(innerPath, Offset.zero)
       ..fillType = PathFillType.evenOdd;
 
-    canvas.drawPath(
-      framePath,
-      Paint()
-        ..color = _fc[1]
-        ..style = PaintingStyle.fill,
-    );
+    canvas.drawPath(framePath, _buildPaint(rect));
 
     final Paint linePaint = Paint()
       ..color = _fb.withValues(alpha: 0.5)

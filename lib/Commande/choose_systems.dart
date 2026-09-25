@@ -195,7 +195,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                               value: s['id'] as int,
                               child: Text(
                                 profileName.toString().isNotEmpty
-                                    ? '[] '
+                                    ? '$seriesName [$profileName]'
                                     : seriesName.toString(),
                                 style: const TextStyle(fontSize: 13),
                               ),
@@ -271,7 +271,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                               value: s['id'] as int,
                               child: Text(
                                 profileName.toString().isNotEmpty
-                                    ? '[] '
+                                    ? '$seriesName [$profileName]'
                                     : seriesName.toString(),
                                 style: const TextStyle(fontSize: 13),
                               ),

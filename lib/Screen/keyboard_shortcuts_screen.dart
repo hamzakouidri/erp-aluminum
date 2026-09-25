@@ -54,6 +54,7 @@ class _KeyboardShortcutsScreenState extends State<KeyboardShortcutsScreen> {
       }, child: Text(tr('إلغاء الاختصار'))),
       const Divider(),
       Text(tr('اختصارات التنقل: Ctrl + Alt + الحرف')),
+      Text(tr('لتعديل أو حذف طلبية، حدد زر خياراتها بلوحة المفاتيح أولًا.')),
       for (final command in ShortcutBindings.commands.entries)
         ListTile(
           title: Text(tr(command.value)),

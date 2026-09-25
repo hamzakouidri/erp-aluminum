@@ -721,6 +721,14 @@ class TreasuryScreen extends StatefulWidget {
               ),
               child: ResizableColumnsTable(
                 persistenceKey: 'treasury',
+                footerCells: {
+                  'income': Text(transactions.where(_isIncomeTransaction).fold<double>(0,
+                    (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                  'expense': Text(transactions.where((row) => !_isIncomeTransaction(row)).fold<double>(0,
+                    (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                },
                 columns: columns,
                 rows: rows,
                 headerColor: headerColor,

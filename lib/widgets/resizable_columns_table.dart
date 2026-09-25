@@ -63,6 +63,8 @@ class ResizableColumnsTable extends StatefulWidget {
   /// Enables long-press/mouse-drag reordering of rows for desktop tables.
   /// Reordering changes display order only; calculations remain unchanged.
   final bool reorderableRows;
+  /// Fixed summary cells keyed by column ID; never part of row scrolling.
+  final Map<String, Widget>? footerCells;
   final ValueChanged<List<String>>? onRowOrderChanged;
 
   /// Enables long-press dragging of a header to move a column.
@@ -98,6 +100,7 @@ class ResizableColumnsTable extends StatefulWidget {
     this.verticalController,
     this.maxBodyHeight,
     this.reorderableRows = false,
+    this.footerCells,
     this.onRowOrderChanged,
     this.reorderableColumns = true,
     this.persistenceKey,
@@ -635,6 +638,16 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
 
               // 3. Table Rows
               tableBody,
+              if (widget.footerCells != null)
+                Container(
+                  color: filterRowColor,
+                  child: IntrinsicHeight(child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [for (final column in _orderedColumns())
+                      _buildCell(widget.footerCells![column.id] ?? const SizedBox.shrink(),
+                        column, borderColor)],
+                  )),
+                ),
             ],
           ),
         );

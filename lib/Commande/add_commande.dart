@@ -1224,18 +1224,7 @@ class _CommandePageState extends State<CommandePage> {
     }
 
     if (!mounted) return;
-    if (selectedClient == null || selectedClient!['id'] == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            Localization.translate(
-              "Please select a client",
-              Provider.of<AppSettingsProvider>(context, listen: false).language,
-            ),
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
+    if (!await _ensureOrderClient()) {
       if (mounted) setState(() => _isSaving = false);
       return;
     }
@@ -3548,20 +3537,33 @@ class _CommandePageState extends State<CommandePage> {
     );
   }
 
-  Future<void> _showAddNormalProduct() async {
-    if (selectedClient == null || selectedClient!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            Localization.translate(
-              "Please select a client",
-              Provider.of<AppSettingsProvider>(context, listen: false).language,
-            ),
-          ),
-        ),
+  bool _clientDialogOpen = false;
+
+  Future<bool> _ensureOrderClient() async {
+    if (selectedClient?['id'] != null) return true;
+    if (!mounted || _clientDialogOpen) return false;
+    _clientDialogOpen = true;
+    try {
+      final result = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (_) => ClientDropdownDialog(db: widget.db),
       );
-      return;
+      if (!mounted || result?['id'] == null) return false;
+      setState(() {
+        selectedClient = result;
+        clientController.text =
+            "${result!['firstname'] ?? ''} ${result['lastname'] ?? ''}".trim();
+        selectedProject = null;
+        projectController.clear();
+      });
+      return true;
+    } finally {
+      _clientDialogOpen = false;
     }
+  }
+
+  Future<void> _showAddNormalProduct() async {
+    if (!await _ensureOrderClient() || !mounted) return;
 
     final result = await Navigator.push(
       context,

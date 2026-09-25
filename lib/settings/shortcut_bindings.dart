@@ -18,8 +18,17 @@ class ShortcutBindings {
     'orders': 'الطلبات', 'treasury': 'الصندوق والخزينة',
     'inventory': 'المخزون',
     'new_order': 'إضافة طلبية جديدة',
+    'edit_order': 'تعديل الطلبية المحددة',
+    'delete_order': 'حذف الطلبية المحددة',
   };
   final Map<String, String> bindings = {};
+  bool matches(String command, KeyEvent event) {
+    final keyboard = HardwareKeyboard.instance;
+    return event is KeyDownEvent && keyboard.isControlPressed &&
+        keyboard.isAltPressed && !keyboard.isShiftPressed &&
+        !keyboard.isMetaPressed &&
+        bindings[command] == event.logicalKey.keyLabel.toUpperCase();
+  }
   Future<void> reload() async {
     final prefs = await SharedPreferences.getInstance();
     bindings.clear();

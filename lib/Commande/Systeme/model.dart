@@ -2,7 +2,8 @@
 import 'dart:math' as math;
 import 'dart:async';
 import 'glass_joint_fit.dart';
-import 'profile_selector_dialog.dart' show CatalogCandidateResolver, CatalogCandidateQuery, AccessoryDrawingMode;
+import 'profile_selector_dialog.dart'
+    show CatalogCandidateResolver, CatalogCandidateQuery, AccessoryDrawingMode;
 import 'package:flutter/material.dart';
 import '../../sql_database.dart';
 import 'package:database_data/utils/real_color_resolver.dart';
@@ -3644,29 +3645,33 @@ class WindowModel extends ChangeNotifier {
     // cover switch or individually hidden sides. Never reset these on notify.
 
     for (final sliding in [false, true]) {
-    final series = sliding ? effectiveSlidingSeries : activeSeries;
-    if (series == null) continue;
-    final currentFrame = sliding
-        ? slidingFrameOverride ?? getSlidingSectionByType('frame')?.toMap()
-        : frameOverride ?? getSectionByType('frame')?.toMap();
-    if (!_overrideHasIntegratedSideCover(currentFrame)) continue;
-    final configured = getConfiguredSectionsForRole('frame', useSlidingSeries: sliding);
-    final plainFrames = (seriesHasConfiguredRoles(series) ? configured : series.sections)
-        .where(
-          (section) =>
-              _isFrameSection(section) &&
-              !_sectionHasIntegratedSideCover(section),
-        )
-        .toList();
-    if (plainFrames.isEmpty) continue;
+      final series = sliding ? effectiveSlidingSeries : activeSeries;
+      if (series == null) continue;
+      final currentFrame = sliding
+          ? slidingFrameOverride ?? getSlidingSectionByType('frame')?.toMap()
+          : frameOverride ?? getSectionByType('frame')?.toMap();
+      if (!_overrideHasIntegratedSideCover(currentFrame)) continue;
+      final configured = getConfiguredSectionsForRole(
+        'frame',
+        useSlidingSeries: sliding,
+      );
+      final plainFrames =
+          (seriesHasConfiguredRoles(series) ? configured : series.sections)
+              .where(
+                (section) =>
+                    _isFrameSection(section) &&
+                    !_sectionHasIntegratedSideCover(section),
+              )
+              .toList();
+      if (plainFrames.isEmpty) continue;
 
-    final plainFrame = _preferredFrameForSeries(plainFrames, series).toMap();
-    if (sliding) {
-      slidingFrameOverride = plainFrame;
-    } else {
-      frameOverride = plainFrame;
-      selectedFrameCode = plainFrame['code']?.toString();
-    }
+      final plainFrame = _preferredFrameForSeries(plainFrames, series).toMap();
+      if (sliding) {
+        slidingFrameOverride = plainFrame;
+      } else {
+        frameOverride = plainFrame;
+        selectedFrameCode = plainFrame['code']?.toString();
+      }
     }
 
     final separateCovers = availableSideCovers
@@ -3721,6 +3726,13 @@ class WindowModel extends ChangeNotifier {
 
   bool _overrideHasIntegratedSideCover(Map<String, dynamic>? override) {
     if (override == null) return false;
+    // إذا كان عرض الغطاء المدمج > 0 فهو مدمج بالتأكيد بغض النظر عن design_integrated
+    final rawWidth = override['couvre_joint_width'];
+    final width = rawWidth is num
+        ? rawWidth.toDouble()
+        : double.tryParse('${rawWidth ?? ''}') ?? 0.0;
+    if (width > 0) return true;
+
     final name = (override['name'] ?? '').toString().toLowerCase();
     final type = (override['type'] ?? '').toString().toLowerCase();
     final rawIntegrated = override['design_integrated_side_cover'];
@@ -3735,22 +3747,10 @@ class WindowModel extends ChangeNotifier {
         return false;
       }
     }
-    final rawWidth = override['couvre_joint_width'];
-    final width = rawWidth is num
-        ? rawWidth.toDouble()
-        : double.tryParse('${rawWidth ?? ''}') ?? 0.0;
-    return width > 0 ||
-        name.contains('مدمج') ||
+    return name.contains('مدمج') ||
         name.contains('intégré') ||
         name.contains('integre') ||
-        name.contains('monobloc') ||
-        name.contains('sunset') ||
-        name.contains('sontara') ||
-        name.contains('suntara') ||
-        type.contains('monobloc') ||
-        type.contains('sunset') ||
-        type.contains('sontara') ||
-        type.contains('suntara');
+        name.contains('monobloc');
   }
 
   bool get isPVC => _isPvcSeries(
@@ -4608,6 +4608,7 @@ class WindowModel extends ChangeNotifier {
   int optionalBavetteMode = 0;
   int cacheRailLeftCount = 0;
   int cacheRailRightCount = 0;
+
   // Cache-rail is a cosmetic sliding profile.  A series role makes it
   // available, never mandatory; new drawings start with it enabled.
   bool useOptionalCacheRail = true;
@@ -4624,6 +4625,7 @@ class WindowModel extends ChangeNotifier {
 
   bool hasShutter = false;
   bool isCaissonTunnel = false;
+
   // True when this model belongs to the full window-design workspace. This
   // distinguishes a designed window with a tunnel box/wall from a standalone
   // Caisson Tunnel quantity created by the dedicated calculator.
@@ -4647,6 +4649,7 @@ class WindowModel extends ChangeNotifier {
   bool motorHasTelecommande = false;
 
   String shutterMechanism = 'حزام';
+
   // Belt shutters are left-driven by default. An explicit saved/user choice
   // still replaces this value during deserialization or from the UI.
   String shutterDriveSide = 'left';
@@ -5798,6 +5801,7 @@ class WindowModel extends ChangeNotifier {
 
   Map<String, dynamic>? _selectedAccessoryColor;
   Map<String, dynamic>? selectedShutterColor;
+
   Map<String, dynamic>? get effectiveShutterColor =>
       selectedShutterColor ?? selectedDbColor;
 
@@ -5882,6 +5886,7 @@ class WindowModel extends ChangeNotifier {
   List<AluminumProfileSystem> availableSystems = [];
   AluminumSeries? activeSeries;
   AluminumSeries? activeSlidingSeries;
+
   AluminumSeries? get effectiveSlidingSeries =>
       activeSlidingSeries ??
       (systemMode == 'sliding' || usesSlidingPrimaryProfiles
@@ -7450,7 +7455,8 @@ class WindowModel extends ChangeNotifier {
     }
     if (!preserveCurrentSelections || selectedShutterColor == null) {
       selectedShutterColor = source.selectedShutterColor == null
-          ? null : Map<String, dynamic>.from(source.selectedShutterColor!);
+          ? null
+          : Map<String, dynamic>.from(source.selectedShutterColor!);
     }
     for (final zone in zones) {
       zone.selectedDbColor = _selectedDbColor == null
@@ -9386,11 +9392,16 @@ class WindowModel extends ChangeNotifier {
         if (canAutoMatchOpening) {
           final openingMissingOrForeign =
               activeSeries == null ||
-              (!zones.any((zone) =>
-                      zone.content == ZoneContent.singleSash ||
-                      zone.content == ZoneContent.doubleSash) &&
+              (!zones.any(
+                    (zone) =>
+                        zone.content == ZoneContent.singleSash ||
+                        zone.content == ZoneContent.doubleSash,
+                  ) &&
                   (openingSystem == null ||
-                      !profileSystemsShareMaterial(currentSystem, openingSystem)));
+                      !profileSystemsShareMaterial(
+                        currentSystem,
+                        openingSystem,
+                      )));
           if (openingMissingOrForeign) {
             AluminumSeries? newOpening;
             for (var s in currentSystem.series) {
@@ -10108,8 +10119,7 @@ class WindowModel extends ChangeNotifier {
       ) async {
         final accessoryId = accessory['id'];
         if (accessoryId == null) return 0.0;
-        final selectedColorId =
-            effectiveShutterColor?['id'];
+        final selectedColorId = effectiveShutterColor?['id'];
         try {
           if (selectedColorId != null) {
             final colorRows = await myDb.query(
@@ -10366,7 +10376,8 @@ class WindowModel extends ChangeNotifier {
         }
       }
     }
-    final raw = currentSection?.maxGlassThickness ?? sash?['max_glass_thickness'];
+    final raw =
+        currentSection?.maxGlassThickness ?? sash?['max_glass_thickness'];
     final capacity = raw is num
         ? raw.toDouble()
         : double.tryParse(raw?.toString() ?? '');
@@ -12659,11 +12670,15 @@ class WindowModel extends ChangeNotifier {
   ) async {
     paintAllZonesSpec(spec);
     for (final zone in List<WindowZone>.from(zones)) {
-      zone.glass = await fitGlazingByRules(zone.glass,
-          sliding: zone.content == ZoneContent.slidingSash);
+      zone.glass = await fitGlazingByRules(
+        zone.glass,
+        sliding: zone.content == ZoneContent.slidingSash,
+      );
       for (final key in zone.cellGlassSpec.keys.toList()) {
-        zone.cellGlassSpec[key] = await fitGlazingByRules(zone.cellGlassSpec[key]!,
-            sliding: zone.content == ZoneContent.slidingSash);
+        zone.cellGlassSpec[key] = await fitGlazingByRules(
+          zone.cellGlassSpec[key]!,
+          sliding: zone.content == ZoneContent.slidingSash,
+        );
       }
     }
     notifyListeners();
@@ -15102,8 +15117,10 @@ class WindowModel extends ChangeNotifier {
 
   bool get usesSeuil =>
       usesFrameRole('seuil', sliding: usesSlidingPrimaryProfiles);
+
   bool get usesCacheDormant =>
       useOptionalCacheDormant || isConfiguredRoleRequired('cache_dormant');
+
   bool get usesCacheRail =>
       useOptionalCacheRail &&
       getConfiguredSectionForRole('cache_rail', useSlidingSeries: true) != null;
@@ -15186,7 +15203,7 @@ class WindowModel extends ChangeNotifier {
   bool get canUseBottomSideCover {
     final frames = getFrameRects();
     if (frames.length > 1) return frames.any(hasBottomFrameForRect);
-    return hasBottomFrame && showBottomWall;
+    return hasBottomFrame;
   }
 
   bool get canEditSelectedBottomFrame {
@@ -15283,8 +15300,10 @@ class WindowModel extends ChangeNotifier {
     final frames = getFrameRects();
     if (frames.length > 1) {
       final selected = selectedPhysicalFrameRect;
-      if (selected == null || frameUsesSlidingSeries(selected) ||
-          !canDisableBottomFrame) return;
+      if (selected == null ||
+          frameUsesSlidingSeries(selected) ||
+          !canDisableBottomFrame)
+        return;
       _saveSnapshot();
       // Zone IDs survive resizing, serialization and undo. Keep this setting
       // on all members of the physical frame, without moving its boundaries
@@ -15297,7 +15316,9 @@ class WindowModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    componentOverrides.removeWhere((key, value) => key.startsWith('frame-bottom:'));
+    componentOverrides.removeWhere(
+      (key, value) => key.startsWith('frame-bottom:'),
+    );
     if (systemMode == 'sliding' || (!value && !canDisableBottomFrame)) {
       final wasBottomFrame = hasBottomFrame;
       hasBottomFrame = true;
@@ -16194,7 +16215,7 @@ class WindowModel extends ChangeNotifier {
 
   void toggleShutterSide(String side) {
     _saveSnapshot();
-    if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
+    if (side == 'bottom' && !hasBottomFrame) {
       removedShutterSides.add('bottom');
       notifyListeners();
       return;
@@ -16663,17 +16684,22 @@ class WindowModel extends ChangeNotifier {
       clearReducerOverride();
     }
     final requested = targetCellKey != null && targetCellKey.isNotEmpty
-        ? zone.getGlassForCell(targetCellKey) : zone.glass;
-    final fitted = await fitGlazingByRules(requested,
-        sliding: zone.content == ZoneContent.slidingSash);
+        ? zone.getGlassForCell(targetCellKey)
+        : zone.glass;
+    final fitted = await fitGlazingByRules(
+      requested,
+      sliding: zone.content == ZoneContent.slidingSash,
+    );
     if (!zones.contains(zone)) return;
     if (targetCellKey != null && targetCellKey.isNotEmpty) {
       zone.cellGlassSpec = {...zone.cellGlassSpec, targetCellKey: fitted};
     } else {
       zone.glass = fitted;
       for (final key in zone.cellGlassSpec.keys.toList()) {
-        zone.cellGlassSpec[key] = await fitGlazingByRules(zone.cellGlassSpec[key]!,
-            sliding: zone.content == ZoneContent.slidingSash);
+        zone.cellGlassSpec[key] = await fitGlazingByRules(
+          zone.cellGlassSpec[key]!,
+          sliding: zone.content == ZoneContent.slidingSash,
+        );
       }
     }
     if (zones.any((candidate) => candidate.id == selectedZoneId)) {
@@ -16684,26 +16710,47 @@ class WindowModel extends ChangeNotifier {
   }
 
   String? glazingFitMessage;
-  Future<GlassSpecification> fitGlazingByRules(GlassSpecification spec,
-      {required bool sliding}) async {
+
+  Future<GlassSpecification> fitGlazingByRules(
+    GlassSpecification spec, {
+    required bool sliding,
+  }) async {
     if (spec.structure == GlassStructure.closed) return spec;
-    final capacity = glazingCapacityForStructure(spec.structure, sliding: sliding);
+    final capacity = glazingCapacityForStructure(
+      spec.structure,
+      sliding: sliding,
+    );
     if (capacity == null) {
-      glazingFitMessage = 'تعذر الحساب: سعة الزجاج غير محددة للباركلوز أو الضلفة.';
+      glazingFitMessage =
+          'تعذر الحساب: سعة الزجاج غير محددة للباركلوز أو الضلفة.';
       return spec;
     }
     final pvc = sliding ? isSlidingPVC : isPVC;
     final series = sliding ? effectiveSlidingSeries : activeSeries;
     final resolver = CatalogCandidateResolver(database: db);
-    Future<List<Map<String, dynamic>>> candidates(String role) => resolver.resolve(
-      CatalogCandidateQuery(category: 'joint', selectorType: role, roleKeys: [role],
-        seriesId: series?.id, materialType: pvc ? 'pvc' : 'aluminium',
-        drawingMode: sliding ? AccessoryDrawingMode.sliding : AccessoryDrawingMode.opening,
-        requireDialog: false, requireQuantity: true,
-        hasSimpleGlassForReducer: spec.structure == GlassStructure.simple,
-        hasDoubleGlassForRules: spec.structure == GlassStructure.double));
-    final vitrage = pvc ? <Map<String, dynamic>>[] : await candidates('joint_vitrage');
-    final bourrage = pvc ? <Map<String, dynamic>>[] : await candidates('joint_bourrage');
+    Future<List<Map<String, dynamic>>> candidates(String role) =>
+        resolver.resolve(
+          CatalogCandidateQuery(
+            category: 'joint',
+            selectorType: role,
+            roleKeys: [role],
+            seriesId: series?.id,
+            materialType: pvc ? 'pvc' : 'aluminium',
+            drawingMode: sliding
+                ? AccessoryDrawingMode.sliding
+                : AccessoryDrawingMode.opening,
+            requireDialog: false,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: spec.structure == GlassStructure.simple,
+            hasDoubleGlassForRules: spec.structure == GlassStructure.double,
+          ),
+        );
+    final vitrage = pvc
+        ? <Map<String, dynamic>>[]
+        : await candidates('joint_vitrage');
+    final bourrage = pvc
+        ? <Map<String, dynamic>>[]
+        : await candidates('joint_bourrage');
     final choices = <List<Map<String, dynamic>>>[];
     if (pvc) {
       choices.add([]);
@@ -16713,28 +16760,42 @@ class WindowModel extends ChangeNotifier {
       final firstSide = vitrage.isNotEmpty ? [vitrage.first] : bourrage;
       final secondSide = bourrage.isNotEmpty ? bourrage : vitrage;
       for (final first in firstSide) {
-        for (final second in secondSide) { choices.add([first, second]); }
+        for (final second in secondSide) {
+          choices.add([first, second]);
+        }
       }
     }
-    final result = fitGlassPack(capacity: capacity,
+    final result = fitGlassPack(
+      capacity: capacity,
       outer: spec.thicknessOuter ?? kDefaultGlassPaneThickness,
       inner: spec.thicknessInner ?? kDefaultGlassPaneThickness,
-      spacer: spec.intercallThickness.toDouble(), doubleGlass: spec.structure == GlassStructure.double,
+      spacer: spec.intercallThickness.toDouble(),
+      doubleGlass: spec.structure == GlassStructure.double,
       jointChoices: choices,
-      spacers: availableIntercalls.map((r) => _readPositiveDouble(r['thickness'])).where((v) => v > 0).toList(),
+      spacers: availableIntercalls
+          .map((r) => _readPositiveDouble(r['thickness']))
+          .where((v) => v > 0)
+          .toList(),
       outerPanes: getAvailableThicknesses(spec.finishOuter, spec.colorOuter),
-      innerPanes: getAvailableThicknesses(spec.finishInner, spec.colorInner));
+      innerPanes: getAvailableThicknesses(spec.finishInner, spec.colorInner),
+    );
     if (result == null) {
-      glazingFitMessage = 'تركيب غير متوافق مع السعة $capacity مم. لا توجد تركيبة مسموحة من القواعد؛ النقص ممنوع والزيادة القصوى 1 مم.';
+      glazingFitMessage =
+          'تركيب غير متوافق مع السعة $capacity مم. لا توجد تركيبة مسموحة من القواعد؛ النقص ممنوع والزيادة القصوى 1 مم.';
       return spec.copyWith(fittedJoints: const [], glazingFitValid: false);
     }
-    glazingFitMessage = 'الاختيار: ${spec.thicknessOuter ?? 5} / ${spec.intercallThickness} / ${spec.thicknessInner ?? 5} مم. '
+    glazingFitMessage =
+        'الاختيار: ${spec.thicknessOuter ?? 5} / ${spec.intercallThickness} / ${spec.thicknessInner ?? 5} مم. '
         'التركيب المعتمد: ${result.outer}${spec.structure == GlassStructure.double ? ' + ${result.spacer} + ${result.inner}' : ''} مم؛ '
         '${result.joints.map((r) => '${r['name']} (${r['thickness']} مم)').join(' + ')}. '
         'المجموع ${result.total} مم / السعة $capacity مم. أولوية التعديل: الجوانات ثم الأنتركال ثم الزجاج.';
-    return spec.copyWith(thicknessOuter: result.outer, thicknessInner: result.inner,
-        intercallThickness: result.spacer.round(), fittedJoints: result.joints,
-        glazingFitValid: true);
+    return spec.copyWith(
+      thicknessOuter: result.outer,
+      thicknessInner: result.inner,
+      intercallThickness: result.spacer.round(),
+      fittedJoints: result.joints,
+      glazingFitValid: true,
+    );
   }
 
   Future<void> updateGlassGasket({bool recalculateIntercall = true}) async {
