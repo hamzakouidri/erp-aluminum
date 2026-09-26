@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import 'glass_order_reception_screen.dart';
@@ -24,11 +23,12 @@ class ExternalOperationsHubScreen extends StatefulWidget {
 class _ExternalOperationsHubScreenState
     extends State<ExternalOperationsHubScreen> {
   int _selectedTabIndex =
-      0; // 0: الزجاج, 1: الشراء والنواقص, 2: التركيبات, 3: التحفظات
+      2; // 0: الزجاج, 1: الشراء والنواقص, 2: التركيبات, 3: التحفظات
   bool _isLoading = true;
 
   List<Map<String, dynamic>> _allOrders = [];
   Map<int, List<Map<String, dynamic>>> _orderDetailsMap = {};
+  Map<int, List<Map<String, dynamic>>> _orderAllocsMap = {};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -97,6 +97,7 @@ class _ExternalOperationsHubScreenState
 
   List<Map<String, dynamic>> _fieldInstallationAllocations = [];
   List<Map<String, dynamic>> _reserveAllocations = [];
+  List<Map<String, dynamic>> _employees = [];
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
@@ -104,6 +105,7 @@ class _ExternalOperationsHubScreenState
       final orders = await widget.db.readCommandesWithClients();
       final fieldAllocs = await widget.db.readFieldInstallationAllocations();
       final reserveAllocs = await widget.db.readReserveAllocations();
+      final employees = await widget.db.readEmployees();
       final Map<int, List<Map<String, dynamic>>> detailsMap = {};
       final Map<int, List<Map<String, dynamic>>> allocsMap = {};
 
@@ -127,7 +129,11 @@ class _ExternalOperationsHubScreenState
           _fieldInstallationAllocations = fieldAllocs;
           _reserveAllocations = reserveAllocs;
           _orderDetailsMap = detailsMap;
+          _orderAllocsMap = allocsMap;
           _isLoading = false;
+          _fieldInstallationAllocations = fieldAllocs;
+          _reserveAllocations = reserveAllocs;
+          _employees = employees;
         });
       }
     } catch (e) {
@@ -186,11 +192,19 @@ class _ExternalOperationsHubScreenState
     return (worker['email'] ?? '').toString().trim();
   }
 
-  bool _isInstallationAssignedToCurrentUser(Map<String, dynamic> allocation) {
+  bool _isInstallationAssignedToCurrentUser(
+    Map<String, dynamic> allocation,
+    AppSettingsProvider settings,
+  ) {
+    // المدير وصاحب الصلاحيات يمكنه دائماً التحكم والمتابعة
+    if (settings.isManager) return true;
+
     final user = AppAuthService().currentUser;
     if (user == null) return false;
+
     final uid = user.uid.trim().toLowerCase();
     final email = (user.email ?? '').trim().toLowerCase();
+
     final installUid =
         (allocation['installation_worker_uid'] ??
                 allocation['worker_uid'] ??
@@ -198,9 +212,49 @@ class _ExternalOperationsHubScreenState
             .toString()
             .trim()
             .toLowerCase();
-    if (installUid.isEmpty) return false;
-    return (uid.isNotEmpty && installUid == uid) ||
-        (email.isNotEmpty && installUid == email);
+
+    final installName =
+        (allocation['installation_worker_name'] ??
+                allocation['worker_name'] ??
+                '')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+    // 1. مطابقة مباشرة عبر الـ UID أو البريد الإلكتروني
+    if (uid.isNotEmpty && installUid == uid) return true;
+    if (email.isNotEmpty && installUid == email) return true;
+
+    // 2. مطابقة عبر سجلات موظفي الورشة (معرّف الموظف، الاسم، أو الهاتف)
+    for (final emp in _employees) {
+      final empUid = (emp['uid'] ?? '').toString().trim().toLowerCase();
+      final empEmail = (emp['email'] ?? '').toString().trim().toLowerCase();
+      final empId = (emp['id'] ?? '').toString().trim().toLowerCase();
+      final empName = (emp['name'] ?? '').toString().trim().toLowerCase();
+      final empPhone = (emp['phone'] ?? '').toString().trim().toLowerCase();
+
+      final isCurrentEmployee =
+          (uid.isNotEmpty && empUid == uid) ||
+          (email.isNotEmpty && empEmail == email) ||
+          (email.isNotEmpty && empUid == email);
+
+      if (isCurrentEmployee) {
+        if (installUid.isNotEmpty) {
+          if (empId.isNotEmpty && installUid == empId) return true;
+          if (empUid.isNotEmpty && installUid == empUid) return true;
+          if (empEmail.isNotEmpty && installUid == empEmail) return true;
+          if (empName.isNotEmpty && installUid == empName) return true;
+          if (empPhone.isNotEmpty && installUid == empPhone) return true;
+        }
+        if (empName.isNotEmpty &&
+            installName.isNotEmpty &&
+            installName == empName) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   void _showInstallationWorkerOnlyNotice(AppLanguage lang) {
@@ -735,6 +789,7 @@ class _ExternalOperationsHubScreenState
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildGlassTab(AppLanguage lang, bool isDark) {
     final filteredOrders = _allOrders.where((o) {
+      final oId = o['id'] as int;
       final status = o['status']?.toString() ?? '';
       final isRelevant =
           status != 'Draft' &&
@@ -742,9 +797,34 @@ class _ExternalOperationsHubScreenState
           status != 'في الانتظار' &&
           status != 'ملغاة';
       if (!isRelevant) return false;
+
+      // 1. إذا تم تحديد الحالة كـ Reçu تختفي فوراً
+      if (_glassStatusMap[oId] == 'received') return false;
+
+      final details = _orderDetailsMap[oId] ?? [];
+      // 2. إذا كانت تفاصيل الطلبية لا تحتوي على زجاج
+      final hasGlass = details.any(
+        (d) => (d['glass']?.toString().trim().isNotEmpty ?? false),
+      );
+      if (!hasGlass) return false;
+
+      // 3. إذا تم استلام كل زجاج الطلبية
+      final allReceived =
+          details.isNotEmpty &&
+          details.every((d) => (d['is_glass_received'] ?? 0) == 1);
+      if (allReceived) return false;
+
+      // 4. إذا قام العامل بتركيب كل الزجاج في الورشة
+      final orderAllocs = _orderAllocsMap[oId] ?? [];
+      if (orderAllocs.isNotEmpty &&
+          orderAllocs.every((a) => (a['is_glass_installed'] ?? 0) == 1)) {
+        return false;
+      }
+
       if (_searchQuery.isNotEmpty) {
+        final orderNum = (o['order_code']?.toString() ?? '$oId');
         final clientName =
-            '${o['firstname'] ?? ''} ${o['lastname'] ?? ''} ${o['id']}'
+            '${o['firstname'] ?? ''} ${o['lastname'] ?? ''} $orderNum'
                 .toLowerCase();
         return clientName.contains(_searchQuery);
       }
@@ -772,19 +852,11 @@ class _ExternalOperationsHubScreenState
         final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'
             .trim();
 
-        // تجميع أنواع ومساحات الزجاج
-        final Map<String, double> glassSurfaceMap = {};
-        for (var d in details) {
-          final glassType = d['glass']?.toString().trim() ?? '';
-          if (glassType.isNotEmpty) {
-            final w = (d['largeur'] as num?)?.toDouble() ?? 0.0;
-            final h = (d['hauteur'] as num?)?.toDouble() ?? 0.0;
-            final qty = (d['quantity'] as num?)?.toInt() ?? 1;
-            final surfaceM2 = (w / 1000.0) * (h / 1000.0) * qty;
-            glassSurfaceMap[glassType] =
-                (glassSurfaceMap[glassType] ?? 0.0) + surfaceM2;
-          }
-        }
+        // الرقم الصغير التسلسلي للطلبية بدون أرقام كبيرة
+        final orderCode =
+            (o['order_code'] != null && (o['order_code'] as num) > 0)
+            ? o['order_code'].toString()
+            : (o['display_number']?.toString() ?? '$oId');
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
@@ -797,37 +869,51 @@ class _ExternalOperationsHubScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── 1. العنوان محمي 100% من الـ Overflow ويظهر الرقم التسلسلي فقط ──
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '${_tr("طلب زجاج للطلبية", "Comm. Vitrage N°", "Glass Req. #", lang)} #$oId',
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: Colors.teal,
+                    Expanded(
+                      flex: 6,
+                      child: Text(
+                        '${_tr("طلب زجاج للطلبية", "Comm. Vitrage N°", "Glass Req. #", lang)} #$orderCode',
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: Colors.teal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Text(
-                      clientName.isNotEmpty
-                          ? clientName
-                          : _tr(
-                              'عميل غير مسمى',
-                              'Client non spécifié',
-                              'Unnamed Client',
-                              lang,
-                            ),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.grey[300] : Colors.grey[800],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 5,
+                      child: Text(
+                        clientName.isNotEmpty
+                            ? clientName
+                            : _tr(
+                                'عميل غير مسمى',
+                                'Client non spécifié',
+                                'Unnamed Client',
+                                lang,
+                              ),
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.grey[300] : Colors.grey[800],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
                 const Divider(height: 16),
-                if (glassSurfaceMap.isEmpty)
+
+                // ── 2. إظهار طول وعرض كل قطعة زجاج وكميتها ونوعها ──
+                if (details.isEmpty)
                   Text(
                     _tr(
                       'لا توجد تفاصيل زجاج محددة في النوافظ',
@@ -842,60 +928,121 @@ class _ExternalOperationsHubScreenState
                     ),
                   )
                 else
-                  ...glassSurfaceMap.entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
+                  ...details.map((d) {
+                    final glassType = d['glass']?.toString().trim() ?? '';
+                    final w = (d['largeur'] as num?)?.toDouble() ?? 0.0;
+                    final h = (d['hauteur'] as num?)?.toDouble() ?? 0.0;
+                    final qty = (d['quantity'] as num?)?.toInt() ?? 1;
+                    final winType = d['window_type']?.toString().trim() ?? '';
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF0F172A)
+                            : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade200,
+                        ),
+                      ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.square_outlined,
-                            size: 14,
-                            color: Colors.teal,
+                          Icon(
+                            Icons.crop_square_rounded,
+                            size: 16,
+                            color: Colors.teal.shade400,
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              entry.key,
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.teal.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '${entry.value.toStringAsFixed(2)} م²',
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                color: Colors.teal,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        glassType.isNotEmpty
+                                            ? glassType
+                                            : winType,
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 1,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.teal.withValues(
+                                          alpha: 0.12,
+                                        ),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'العدد: $qty',
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '📏 ${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${w.toStringAsFixed(1)} × ${h.toStringAsFixed(1)} سم',
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark
+                                        ? Colors.grey.shade300
+                                        : Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    );
+                  }),
+
+                const SizedBox(height: 10),
+
+                // ── 3. أزرار الحالة بتصميم متجاوب ضد أي Overflow ──
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     Text(
                       _tr('حالة الطلب:', 'Statut :', 'Status :', lang),
-                      style: const TextStyle(fontSize: 12, fontFamily: 'Cairo'),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     Wrap(
                       spacing: 6,
+                      runSpacing: 4,
                       children: [
                         _statusChoiceButton(
                           oId,
@@ -920,6 +1067,8 @@ class _ExternalOperationsHubScreenState
                   ],
                 ),
                 const SizedBox(height: 10),
+
+                // ── 4. زر تدقيق واستلام القياسات ──
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -980,8 +1129,37 @@ class _ExternalOperationsHubScreenState
     final isSelected = current == value;
 
     return InkWell(
-      onTap: () {
+      onTap: () async {
         setState(() => _glassStatusMap[orderId] = value);
+        if (value == 'received') {
+          try {
+            final myDb = await widget.db.db;
+            if (myDb != null) {
+              await myDb.update(
+                'Commandes_details',
+                {'is_glass_received': 1},
+                where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+                whereArgs: [orderId, orderId.toString()],
+              );
+            }
+          } catch (_) {}
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'تم تأكيد استلام زجاج الطلبية بنجاح 💎✅',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+                backgroundColor: Colors.teal,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+          }
+        }
       },
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -1317,7 +1495,7 @@ class _ExternalOperationsHubScreenState
                   // buttons themselves belong exclusively to the assigned
                   // installer. Other users can still see the work item.
                   final canControlInstallation =
-                      _isInstallationAssignedToCurrentUser(t);
+                      _isInstallationAssignedToCurrentUser(t, settings);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),

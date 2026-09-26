@@ -443,7 +443,8 @@ class _CommandePageState extends State<CommandePage> {
       'loadedSeriesId': m.activeFrameSeries?.id ?? m.loadedSeriesId,
       'loadedSlidingSeriesId':
           m.activeSlidingSeries?.id ?? m.loadedSlidingSeriesId,
-      'loadedSeriesName': m.activeFrameSeries?.name ??
+      'loadedSeriesName':
+          m.activeFrameSeries?.name ??
           m.loadedSeriesName ??
           m.manualNameOverride,
       'loadedSlidingSeriesName':
@@ -1264,11 +1265,11 @@ class _CommandePageState extends State<CommandePage> {
       // opening the quantity-and-cost table.
       await _ensureAutomaticProductPrices(addedProducts, onlyMissing: true);
       await syncService.beginLocalWrite().timeout(
-            const Duration(seconds: 3),
-            onTimeout: () {
-              debugPrint('beginLocalWrite timeout reached; continuing save');
-            },
-          );
+        const Duration(seconds: 3),
+        onTimeout: () {
+          debugPrint('beginLocalWrite timeout reached; continuing save');
+        },
+      );
       if (!mounted) return;
       double rawTotal = addedProducts
           .where((p) => !p.isReplaced)
@@ -2026,12 +2027,18 @@ class _CommandePageState extends State<CommandePage> {
                             final previousManualPrice =
                                 product.manualPriceOverride;
                             if (product.isShutterOnly) {
-                              product.selectedShutterColor = Map<String, dynamic>.from(dbColor);
+                              product.selectedShutterColor =
+                                  Map<String, dynamic>.from(dbColor);
                               await product.updateShutterDefaultsIfNeeded();
                             } else {
-                              final previousShutterColor = product.effectiveShutterColor;
-                              if (product.hasShutter && previousShutterColor != null) {
-                                product.selectedShutterColor = Map<String, dynamic>.from(previousShutterColor);
+                              final previousShutterColor =
+                                  product.effectiveShutterColor;
+                              if (product.hasShutter &&
+                                  previousShutterColor != null) {
+                                product.selectedShutterColor =
+                                    Map<String, dynamic>.from(
+                                      previousShutterColor,
+                                    );
                               }
                               product.selectedDbColor = dbColor;
                               await product
@@ -2192,6 +2199,7 @@ class _CommandePageState extends State<CommandePage> {
 
   Future<GlassSpecification?> _showBulkGlassSpecDialog(
     GlassSpecification base,
+    List<WindowModel> products,
   ) async {
     final outerThickness = TextEditingController(
       text: (base.thicknessOuter ?? 4).toStringAsFixed(0),
@@ -2199,9 +2207,7 @@ class _CommandePageState extends State<CommandePage> {
     final innerThickness = TextEditingController(
       text: (base.thicknessInner ?? 4).toStringAsFixed(0),
     );
-    final intercall = TextEditingController(
-      text: base.intercallThickness.toString(),
-    );
+    int? intercall = base.intercallThickness;
     var structure = base.structure;
     var finishOuter = base.finishOuter;
     var finishInner = base.finishInner;
@@ -2210,30 +2216,87 @@ class _CommandePageState extends State<CommandePage> {
     var processingOuter = base.processingOuter;
     var processingInner = base.processingInner;
     var hasGas = base.hasGas;
+    DialogRoute<GlassSpecification>? route;
 
     try {
-      return await showDialog<GlassSpecification>(
+      route = DialogRoute<GlassSpecification>(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (context, setDialogState) {
+            final outerValue = double.tryParse(
+              outerThickness.text.replaceAll(',', '.'),
+            );
+            final innerValue = double.tryParse(
+              innerThickness.text.replaceAll(',', '.'),
+            );
+            final spacerChoices =
+                products.first.availableIntercalls
+                    .map((row) => num.tryParse('${row['thickness']}')?.toInt())
+                    .whereType<int>()
+                    .where(
+                      (value) =>
+                          value > 0 &&
+                          products.every((product) {
+                            if (outerValue == null || innerValue == null)
+                              return false;
+                            if (!product.availableIntercalls.any(
+                              (row) =>
+                                  num.tryParse('${row['thickness']}') == value,
+                            ))
+                              return false;
+                            return product.zones.every((zone) {
+                              final capacity = product
+                                  .glazingCapacityForStructure(
+                                    GlassStructure.double,
+                                    sliding:
+                                        zone.content == ZoneContent.slidingSash,
+                                  );
+                              final pack = base.copyWith(
+                                structure: GlassStructure.double,
+                                thicknessOuter: outerValue,
+                                thicknessInner: innerValue,
+                                intercallThickness: value,
+                              );
+                              return capacity == null ||
+                                  product.glassPackThicknessIncludingVitrageJoint(
+                                        pack,
+                                        sliding:
+                                            zone.content ==
+                                            ZoneContent.slidingSash,
+                                      ) <=
+                                      capacity + 1;
+                            });
+                          }),
+                    )
+                    .toSet()
+                    .toList()
+                  ..sort();
+            if (!spacerChoices.contains(intercall)) {
+              intercall = spacerChoices.isEmpty ? null : spacerChoices.first;
+            }
             Widget enumDropdown<T>({
               required String label,
               required T value,
               required List<T> values,
               required ValueChanged<T?> onChanged,
             }) {
-              return DropdownButtonFormField<T>(
-                value: value,
-                decoration: InputDecoration(labelText: label),
-                items: values
-                    .map(
-                      (item) => DropdownMenuItem<T>(
-                        value: item,
-                        child: Text(item.toString().split('.').last),
-                      ),
-                    )
-                    .toList(),
-                onChanged: onChanged,
+              return Padding(
+                key: ValueKey(label),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: DropdownButtonFormField<T>(
+                  isExpanded: true,
+                  value: value,
+                  decoration: InputDecoration(labelText: label),
+                  items: values
+                      .map(
+                        (item) => DropdownMenuItem<T>(
+                          value: item,
+                          child: Text(item.toString().split('.').last),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: onChanged,
+                ),
               );
             }
 
@@ -2257,6 +2320,7 @@ class _CommandePageState extends State<CommandePage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: outerThickness,
+                        onChanged: (_) => setDialogState(() {}),
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -2268,6 +2332,7 @@ class _CommandePageState extends State<CommandePage> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: innerThickness,
+                          onChanged: (_) => setDialogState(() {}),
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
@@ -2276,9 +2341,20 @@ class _CommandePageState extends State<CommandePage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        TextField(
-                          controller: intercall,
-                          keyboardType: TextInputType.number,
+                        DropdownButtonFormField<int>(
+                          key: ValueKey('spacer-$intercall'),
+                          value: intercall,
+                          isExpanded: true,
+                          items: spacerChoices
+                              .map(
+                                (value) => DropdownMenuItem<int>(
+                                  value: value,
+                                  child: Text('$value mm'),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) =>
+                              setDialogState(() => intercall = value),
                           decoration: InputDecoration(
                             labelText: t('سمك الأنتركال (مم)'),
                           ),
@@ -2311,16 +2387,17 @@ class _CommandePageState extends State<CommandePage> {
                           }
                         },
                       ),
-                      enumDropdown(
-                        label: t('لون الوجه الخارجي'),
-                        value: colorOuter,
-                        values: GlassColor.values,
-                        onChanged: (value) {
-                          if (value != null) {
-                            setDialogState(() => colorOuter = value);
-                          }
-                        },
-                      ),
+                      if (finishOuter != GlassFinish.clair)
+                        enumDropdown(
+                          label: t('لون الوجه الخارجي'),
+                          value: colorOuter,
+                          values: GlassColor.values,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setDialogState(() => colorOuter = value);
+                            }
+                          },
+                        ),
                       if (structure == GlassStructure.double) ...[
                         enumDropdown(
                           label: t('معالجة الوجه الداخلي'),
@@ -2342,16 +2419,17 @@ class _CommandePageState extends State<CommandePage> {
                             }
                           },
                         ),
-                        enumDropdown(
-                          label: t('لون الوجه الداخلي'),
-                          value: colorInner,
-                          values: GlassColor.values,
-                          onChanged: (value) {
-                            if (value != null) {
-                              setDialogState(() => colorInner = value);
-                            }
-                          },
-                        ),
+                        if (finishInner != GlassFinish.clair)
+                          enumDropdown(
+                            label: t('لون الوجه الداخلي'),
+                            value: colorInner,
+                            values: GlassColor.values,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() => colorInner = value);
+                              }
+                            },
+                          ),
                       ],
                     ],
                   ),
@@ -2363,51 +2441,66 @@ class _CommandePageState extends State<CommandePage> {
                   child: Text(t('إلغاء')),
                 ),
                 FilledButton(
-                  onPressed: () {
-                    final outer =
-                        double.tryParse(
-                          outerThickness.text.replaceAll(',', '.'),
-                        ) ??
-                        4.0;
-                    final inner =
-                        double.tryParse(
-                          innerThickness.text.replaceAll(',', '.'),
-                        ) ??
-                        4.0;
-                    Navigator.pop(
-                      ctx,
-                      GlassSpecification(
-                        structure: structure,
-                        finishOuter: finishOuter,
-                        finishInner: structure == GlassStructure.double
-                            ? finishInner
-                            : finishOuter,
-                        colorOuter: colorOuter,
-                        colorInner: structure == GlassStructure.double
-                            ? colorInner
-                            : colorOuter,
-                        processingOuter: processingOuter,
-                        processingInner: structure == GlassStructure.double
-                            ? processingInner
-                            : GlassProcessing.none,
-                        temperedOuter:
-                            processingOuter == GlassProcessing.tempered,
-                        temperedInner:
-                            processingInner == GlassProcessing.tempered,
-                        hasGas: structure == GlassStructure.double && hasGas,
-                        intercallThickness:
-                            int.tryParse(intercall.text) ??
-                            base.intercallThickness,
-                        thicknessOuter: outer,
-                        thicknessInner: structure == GlassStructure.double
-                            ? inner
-                            : null,
-                        panneauSubtype: base.panneauSubtype,
-                        panneauColor: base.panneauColor,
-                        panneauProductId: base.panneauProductId,
-                      ),
-                    );
-                  },
+                  onPressed:
+                      (outerValue == null ||
+                          outerValue <= 0 ||
+                          (structure == GlassStructure.double &&
+                              (innerValue == null ||
+                                  innerValue <= 0 ||
+                                  intercall == null)))
+                      ? null
+                      : () {
+                          final outer =
+                              double.tryParse(
+                                outerThickness.text.replaceAll(',', '.'),
+                              ) ??
+                              4.0;
+                          final inner =
+                              double.tryParse(
+                                innerThickness.text.replaceAll(',', '.'),
+                              ) ??
+                              4.0;
+                          Navigator.pop(
+                            ctx,
+                            GlassSpecification(
+                              structure: structure,
+                              finishOuter: finishOuter,
+                              finishInner: structure == GlassStructure.double
+                                  ? finishInner
+                                  : finishOuter,
+                              colorOuter: finishOuter == GlassFinish.clair
+                                  ? GlassColor.transparent
+                                  : colorOuter,
+                              colorInner: structure == GlassStructure.double
+                                  ? (finishInner == GlassFinish.clair
+                                        ? GlassColor.transparent
+                                        : colorInner)
+                                  : (finishOuter == GlassFinish.clair
+                                        ? GlassColor.transparent
+                                        : colorOuter),
+                              processingOuter: processingOuter,
+                              processingInner:
+                                  structure == GlassStructure.double
+                                  ? processingInner
+                                  : GlassProcessing.none,
+                              temperedOuter:
+                                  processingOuter == GlassProcessing.tempered,
+                              temperedInner:
+                                  processingInner == GlassProcessing.tempered,
+                              hasGas:
+                                  structure == GlassStructure.double && hasGas,
+                              intercallThickness:
+                                  intercall ?? base.intercallThickness,
+                              thicknessOuter: outer,
+                              thicknessInner: structure == GlassStructure.double
+                                  ? inner
+                                  : null,
+                              panneauSubtype: base.panneauSubtype,
+                              panneauColor: base.panneauColor,
+                              panneauProductId: base.panneauProductId,
+                            ),
+                          );
+                        },
                   child: Text(t('تطبيق')),
                 ),
               ],
@@ -2415,6 +2508,7 @@ class _CommandePageState extends State<CommandePage> {
           },
         ),
       );
+      return await Navigator.of(context, rootNavigator: true).push(route);
     } catch (error, stackTrace) {
       debugPrint('Bulk glass dialog failed: $error\n$stackTrace');
       if (mounted) {
@@ -2427,9 +2521,9 @@ class _CommandePageState extends State<CommandePage> {
       }
       return null;
     } finally {
+      if (route != null && !route.isActive) await route.completed;
       outerThickness.dispose();
       innerThickness.dispose();
-      intercall.dispose();
     }
   }
 
@@ -2459,15 +2553,24 @@ class _CommandePageState extends State<CommandePage> {
       }
       final base =
           source.getUniformGlassSpecification() ?? source.zones.first.glass;
-      final spec = await _showBulkGlassSpecDialog(base);
+      final spec = await _showBulkGlassSpecDialog(base, selected);
       if (spec == null || !mounted) return;
+      final recalculatePrices = await _askBulkPricePolicy();
+      if (recalculatePrices == null || !mounted) return;
 
       final changed = await _runBulkOperation<int>(() async {
         var count = 0;
         for (final product in selected) {
           if (product.zones.isEmpty) continue;
+          final previousTotalCost = product.totalCost;
+          final previousManualPrice = product.manualPriceOverride;
           await product.applyGlassSpecificationToAllZones(spec);
-          await _recalculateProductSellingPrice(product);
+          if (recalculatePrices) {
+            await _recalculateProductSellingPrice(product);
+          } else {
+            product.totalCost = previousTotalCost;
+            product.manualPriceOverride = previousManualPrice;
+          }
           count++;
         }
         if (mounted) setState(() {});

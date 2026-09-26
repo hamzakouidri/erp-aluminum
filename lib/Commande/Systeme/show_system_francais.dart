@@ -11506,8 +11506,8 @@ class _WindowViewState extends State<WindowView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'إلغاء',
+            child: Text(
+              _tr('إلغاء'),
               style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
             ),
           ),

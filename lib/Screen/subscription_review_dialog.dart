@@ -303,7 +303,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                 ),
                               ),
                               child: Text(
-                                statusText,
+                                Localization.translate(statusText, lang),
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -386,7 +386,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               ),
                               if (!details.isExpired && !details.isLifetime)
                                 Text(
-                                  '${details.daysRemaining} يوم',
+                                  '${details.daysRemaining} ${Localization.translate('يوم', lang)}',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -494,7 +494,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'حسابك كمدير للتطبيق يتمتع باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
+                              lang == AppLanguage.french
+                                  ? 'Votre atelier bénéficie d\'un abonnement illimité à vie sans nécessité de renouvellement.'
+                                  : 'تتمتع ورشتكم باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
                               style: TextStyle(
                                 fontSize: 13,
                                 height: 1.4,

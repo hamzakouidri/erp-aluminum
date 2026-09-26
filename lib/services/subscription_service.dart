@@ -103,7 +103,9 @@ class SubscriptionDetails {
     if (isExpired) {
       final daysAgo = daysRemaining.abs();
       if (lang == AppLanguage.french) {
-        return daysAgo == 0 ? 'Expiré aujourd\'hui' : 'Expiré depuis $daysAgo jour(s)';
+        return daysAgo == 0
+            ? 'Expiré aujourd\'hui'
+            : 'Expiré depuis $daysAgo jour(s)';
       } else if (lang == AppLanguage.english) {
         return daysAgo == 0 ? 'Expired today' : 'Expired $daysAgo day(s) ago';
       }
@@ -174,14 +176,19 @@ class SubscriptionDetails {
   }
 
   String get formattedStartDate => formatDate(startDate);
-  String get formattedEndDate => isLifetime ? 'مدى الحياة' : formatDate(endDate);
+
+  String get formattedEndDate =>
+      isLifetime ? 'مدى الحياة' : formatDate(endDate);
+
   String get formattedRenewalAvailableDate =>
       isLifetime ? 'غير محدود' : formatDate(renewalAvailableFromDate);
 }
 
 class SubscriptionService {
   static final SubscriptionService _instance = SubscriptionService._internal();
+
   factory SubscriptionService() => _instance;
+
   SubscriptionService._internal();
 
   DateTime? _parseDate(dynamic value) {
@@ -209,28 +216,46 @@ class SubscriptionService {
     return _parseSubscriptionData(account.subscriptionData, account.email);
   }
 
-  SubscriptionDetails _parseSubscriptionData(Map<String, dynamic> data, String fallbackEmail) {
+  SubscriptionDetails _parseSubscriptionData(
+    Map<String, dynamic> data,
+    String fallbackEmail,
+  ) {
     final now = DateTime.now();
     final userEmail = (data['email']?.toString() ?? fallbackEmail).trim();
     final role = data['role']?.toString() ?? 'worker';
-    final isAppAdmin = isApplicationAdminEmail(userEmail) ||
-        role == 'admin' ||
+    final isAppAdmin =
+        isApplicationAdminEmail(userEmail) ||
         isApplicationAdminEmail(AppAuthService().currentUser?.email);
 
-    // 1. Determine Start Date (Always accurately tracks from the beginning of subscription / account creation)
-    DateTime startDate = _parseDate(data['subscriptionStartDate']) ??
+    final workshopName =
+        (data['workshopName']?.toString() ?? '').trim().isNotEmpty
+        ? data['workshopName'].toString().trim()
+        : (isAppAdmin ? 'إدارة التطبيق' : 'الورشة');
+    final joinCode = data['joinCode']?.toString() ?? '';
+
+    // 1. Determine Start Date
+    DateTime startDate =
+        _parseDate(data['subscriptionStartDate']) ??
         _parseDate(data['subscriptionStart']) ??
         _parseDate(data['createdAt']) ??
         _parseDate(data['trialStartDate']) ??
         now.subtract(const Duration(days: 30));
 
-    // Special logic for Application Administrator: Lifetime subscription starting from account inception
-    if (isAppAdmin) {
-      final workshopName = (data['workshopName']?.toString() ?? '').trim().isNotEmpty
-          ? data['workshopName'].toString()
-          : 'إدارة التطبيق';
-      final joinCode = data['joinCode']?.toString() ?? '';
+    // فحص نوع باقة الورشة الفعلي من السحابة
+    final rawPlan =
+        (data['subscriptionType'] ?? data['planType'] ?? data['plan'])
+            ?.toString()
+            .toLowerCase()
+            .trim();
 
+    final isLifetime =
+        rawPlan == 'lifetime' ||
+        rawPlan == 'دائم' ||
+        rawPlan == 'مدى الحياة' ||
+        isAppAdmin;
+
+    // إذا كانت باقة الورشة دائمة (أو مدير التطبيق): تُعرض كاشتراك دائم للورشة ولجميع عمالها
+    if (isLifetime) {
       return SubscriptionDetails(
         planType: SubscriptionPlanType.lifetime,
         status: 'active',
@@ -244,22 +269,19 @@ class SubscriptionService {
         workshopName: workshopName,
         userEmail: userEmail,
         joinCode: joinCode,
-        role: 'admin',
+        role: role,
         isLifetime: true,
       );
     }
 
     // 2. Determine End Date for regular workshops
-    DateTime? endDate = _parseDate(data['trialEndDate']) ??
+    DateTime? endDate =
+        _parseDate(data['trialEndDate']) ??
         _parseDate(data['subscriptionEndDate']) ??
         _parseDate(data['subscriptionExpiresAt']) ??
         _parseDate(data['expiresAt']);
 
-    final rawStatus = (data['subscriptionStatus']?.toString() ?? 'trial').toLowerCase().trim();
-
-    // Determine plan type from data or duration
-    final rawPlan = (data['subscriptionType'] ?? data['planType'] ?? data['plan'])
-        ?.toString()
+    final rawStatus = (data['subscriptionStatus']?.toString() ?? 'trial')
         .toLowerCase()
         .trim();
 
@@ -268,7 +290,9 @@ class SubscriptionService {
       planType = SubscriptionPlanType.yearly;
     } else if (rawPlan == 'monthly' || rawPlan == 'شهري') {
       planType = SubscriptionPlanType.monthly;
-    } else if (rawPlan == 'trial' || rawStatus == 'trial' || rawStatus == 'trialing') {
+    } else if (rawPlan == 'trial' ||
+        rawStatus == 'trial' ||
+        rawStatus == 'trialing') {
       planType = SubscriptionPlanType.trial;
     } else {
       // Deduce from duration between startDate and endDate
@@ -309,19 +333,20 @@ class SubscriptionService {
     // - Yearly: renew allowed when remaining days <= 30 (1 month)
     // - Monthly / Trial: renew allowed when remaining days <= 7 (1 week)
     // - If already expired: renew is immediately allowed.
-    final renewalThresholdDays = (planType == SubscriptionPlanType.yearly) ? 30 : 7;
+    final renewalThresholdDays = (planType == SubscriptionPlanType.yearly)
+        ? 30
+        : 7;
     final canRenew = isExpired || (daysRemaining <= renewalThresholdDays);
 
-    final renewalAvailableFromDate = endDate.subtract(Duration(days: renewalThresholdDays));
-
-    final workshopName = (data['workshopName']?.toString() ?? '').trim().isNotEmpty
-        ? data['workshopName'].toString()
-        : 'الورشة';
-    final joinCode = data['joinCode']?.toString() ?? '';
+    final renewalAvailableFromDate = endDate.subtract(
+      Duration(days: renewalThresholdDays),
+    );
 
     return SubscriptionDetails(
       planType: planType,
-      status: isExpired ? 'expired' : (rawStatus.isEmpty ? 'active' : rawStatus),
+      status: isExpired
+          ? 'expired'
+          : (rawStatus.isEmpty ? 'active' : rawStatus),
       startDate: startDate,
       endDate: endDate,
       totalDays: totalDays,
@@ -392,7 +417,10 @@ class SubscriptionPaymentSettings {
         .collection(collectionName)
         .doc(documentName)
         .snapshots()
-        .map((snapshot) => snapshot.data()?['baridiMobRip']?.toString().trim() ?? '');
+        .map(
+          (snapshot) =>
+              snapshot.data()?['baridiMobRip']?.toString().trim() ?? '',
+        );
   }
 
   Future<void> saveBaridiMobRip(String rip) async {

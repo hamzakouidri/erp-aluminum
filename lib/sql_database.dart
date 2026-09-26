@@ -466,6 +466,7 @@ class SqlDatabase {
       'Sections',
       'Colors',
       'Accessories',
+      'Joints',
       'Glass',
       'ShutterComponents',
       'Locations',
@@ -490,6 +491,22 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await db.execute("ALTER TABLE Commandes ADD COLUMN updated_by TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS Projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          client_id INTEGER NOT NULL,
+          description TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (client_id) REFERENCES Client(id) ON DELETE CASCADE
+        )
+      ''');
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
     } catch (_) {}
     try {
       // A purchase invoice can contain several glass rows with the same
@@ -2498,6 +2515,7 @@ class SqlDatabase {
       await db.execute('''
         CREATE TABLE Joints (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
+          is_active INTEGER NOT NULL DEFAULT 1,
           name TEXT NOT NULL,
           thickness REAL NOT NULL,
           price_per_meter REAL NOT NULL,
@@ -3287,6 +3305,8 @@ class SqlDatabase {
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by TEXT
+    project_id INTEGER
+
   )
 ''');
     await _ensureOrderCodeInfrastructure(db);
@@ -3405,6 +3425,7 @@ class SqlDatabase {
     await db.execute('''
     CREATE TABLE Joints (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      is_active INTEGER NOT NULL DEFAULT 1,
       name TEXT NOT NULL,
       thickness REAL NOT NULL,
       price_per_meter REAL NOT NULL,
@@ -6809,6 +6830,20 @@ class SqlDatabase {
       Database? myDb = await db;
       if (myDb == null || orderId <= 0) return;
 
+      // 1. حساب إجمالي الكميات المطلوبة في الطلبية من تفاصيلها الفعلية
+      final orderDetails = await myDb.query(
+        'Commandes_details',
+        where: 'id_commandes = ?',
+        whereArgs: [orderId],
+      );
+      if (orderDetails.isEmpty) return;
+
+      int totalRequiredUnits = 0;
+      for (final d in orderDetails) {
+        totalRequiredUnits += (d['quantity'] as num?)?.toInt() ?? 0;
+      }
+
+      // 2. قراءة جميع مهام وإسنادات عمال هذه الطلبية
       final allOrderAllocs = await myDb.rawQuery(
         '''
         SELECT wa.* 
@@ -6819,18 +6854,23 @@ class SqlDatabase {
         [orderId],
       );
 
+      // إذا لم يكن هناك أي إسنادات مسجلة بعد، تبقى الطلبية في مرحلتها الإدارية الحالية
       if (allOrderAllocs.isEmpty) return;
 
-      int totalAllocs = allOrderAllocs.length;
+      // العدد المرجعي الإجمالي للعناصر (إما مجموع كميات الطلبية أو عدد المهام المسندة)
+      int effectiveTotal = totalRequiredUnits > 0
+          ? (totalRequiredUnits > allOrderAllocs.length ? totalRequiredUnits : allOrderAllocs.length)
+          : allOrderAllocs.length;
+
       int mfgAllocs = allOrderAllocs
           .where((wa) => (wa['is_manufactured'] as num?)?.toInt() == 1)
           .length;
       int distAllocs = allOrderAllocs
           .where(
             (wa) =>
-                (wa['is_distributed'] as num?)?.toInt() == 1 ||
-                (wa['is_transferred_to_dist'] as num?)?.toInt() == 1,
-          )
+        (wa['is_distributed'] as num?)?.toInt() == 1 ||
+            (wa['is_transferred_to_dist'] as num?)?.toInt() == 1,
+      )
           .length;
       int installAllocs = allOrderAllocs
           .where((wa) => (wa['is_installed'] as num?)?.toInt() == 1)
@@ -6842,43 +6882,58 @@ class SqlDatabase {
           .where((wa) => (wa['is_completed'] as num?)?.toInt() == 1)
           .length;
 
+      // 3. تحديد الحالة الآلية حسب أحدث وأعلى ما أنجزه العمال على العناصر
       String? targetStatus;
-      if (completedAllocs >= totalAllocs &&
-          totalAllocs > 0 &&
-          reserveAllocs == 0) {
-        targetStatus = 'Done';
-      } else if (reserveAllocs > 0) {
+
+      if (reserveAllocs > 0) {
+        // ⚠️ إذا كان هناك أي تحفظ مسجل من عامل التركيب، تكون الأولوية للتحفظ
         targetStatus = 'Reserve';
-      } else if (installAllocs >= totalAllocs && totalAllocs > 0) {
+      } else if ((completedAllocs >= effectiveTotal || installAllocs >= effectiveTotal) &&
+          effectiveTotal > 0 &&
+          reserveAllocs == 0) {
+        // ✅ إذا تم تركيب كل العناصر بالكامل أو اكتمالها دون أي تحفظ
+        targetStatus = 'Done';
+      } else if (installAllocs > 0) {
+        // 🛠️ إذا بدأ العامل بالتركيب أو تم تركيب بعض العناصر بالموقع
         targetStatus = 'Installation';
-      } else if (distAllocs >= totalAllocs && totalAllocs > 0) {
+      } else if (distAllocs >= effectiveTotal && effectiveTotal > 0) {
+        // 🚚 تم توزيع كل عناصر الطلبية بالكامل للميدان
         targetStatus = 'Full Distribution';
       } else if (distAllocs > 0) {
+        // 📦 تم توزيع عنصر واحد أو بعض العناصر وليس الكل
         targetStatus = 'Partial Distribution';
-      } else if (mfgAllocs >= totalAllocs && totalAllocs > 0) {
+      } else if (mfgAllocs >= effectiveTotal && effectiveTotal > 0) {
+        // 🏭 تم تصنيع جميع عناصر الطلبية بالكامل في الورشة
         targetStatus = 'Full Manufacturing';
       } else if (mfgAllocs > 0) {
+        // ⚙️ تم تصنيع عنصر واحد على الأقل وتجاوز مرحلة تأكيد القياسات
         targetStatus = 'Partial Manufacturing';
       }
 
-      if (targetStatus != null) {
-        final orderRow = await myDb.query(
-          'Commandes',
-          where: 'id = ?',
-          whereArgs: [orderId],
-        );
-        if (orderRow.isNotEmpty) {
-          final currentStatus = orderRow.first['status']?.toString() ?? '';
-          if (currentStatus != targetStatus) {
-            await updateCommandeStatus(
-              orderId,
-              targetStatus,
-              skipAllocationSync: true,
-            );
-            debugPrint(
-              'syncOrderAndAllocationsStatus: updated order #$orderId status from $currentStatus to $targetStatus',
-            );
-          }
+      // 4. تطبيق الحالة الجديدة إذا تغيرت وحفظها ومزامنتها سحابياً ولحظياً
+      final orderRow = await myDb.query(
+        'Commandes',
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+      if (orderRow.isNotEmpty) {
+        final currentStatus = orderRow.first['status']?.toString() ?? '';
+
+        // إذا ألغى العامل حالة الصنع وعادت العناصر المصنعة إلى صفر، تعود الطلبية لمرحلة ما قبل التصنيع
+        if (targetStatus == null &&
+            (currentStatus == 'Partial Manufacturing' || currentStatus == 'Full Manufacturing')) {
+          targetStatus = 'In Progress';
+        }
+
+        if (targetStatus != null && currentStatus != targetStatus) {
+          await updateCommandeStatus(
+            orderId,
+            targetStatus,
+            skipAllocationSync: true,
+          );
+          debugPrint(
+            'syncOrderAndAllocationsStatus: updated order #$orderId automatically from "$currentStatus" to "$targetStatus"',
+          );
         }
       }
     } catch (e) {

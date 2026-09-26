@@ -1,4 +1,5 @@
 import 'app_settings.dart';
+import 'locales/subscription_status_keys.dart';
 import 'locales/shortcut_keys.dart';
 import 'locales/main_menu_keys.dart';
 import 'locales/drawer_keys.dart';
@@ -42,6 +43,7 @@ class Localization {
     ...translationPhase9Keys,
     ...translationPhase10Keys,
     ...shortcutKeys,
+    ...subscriptionStatusKeys,
   };
 
   static String translate(String key, AppLanguage lang) {

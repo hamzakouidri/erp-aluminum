@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import '../services/supabase_workshop_sync_service.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,7 +37,7 @@ class SupabaseWorkshopSyncService {
   SupabaseWorkshopSyncService._internal();
 
   static final SupabaseWorkshopSyncService _instance =
-      SupabaseWorkshopSyncService._internal();
+  SupabaseWorkshopSyncService._internal();
 
   factory SupabaseWorkshopSyncService() => _instance;
 
@@ -65,7 +66,7 @@ class SupabaseWorkshopSyncService {
   final SqlDatabase _db = SqlDatabase();
   final Random _random = Random.secure();
   final StreamController<Map<String, dynamic>> _permissionsController =
-      StreamController<Map<String, dynamic>>.broadcast();
+  StreamController<Map<String, dynamic>>.broadcast();
 
   Timer? _uploadTimer;
   Timer? _backgroundSyncTimer;
@@ -284,7 +285,7 @@ class SupabaseWorkshopSyncService {
     await _saveLastSyncAt(DateTime.now().toUtc().toIso8601String());
 
     lastUploadSummary =
-        'تم دمج ${rows.length} سجل بأمان في Supabase: '
+    'تم دمج ${rows.length} سجل بأمان في Supabase: '
         '${_countRows(data, 'Client')} زبون، '
         '${_countRows(data, 'Commandes')} طلبية، '
         '${_countRows(data, 'Commandes_details')} تفاصيل.';
@@ -310,17 +311,17 @@ class SupabaseWorkshopSyncService {
     final remoteKeys = await _fetchRemoteLiveRowKeys(workshopUuid);
     final missingRows = rows
         .where((row) {
-          final table = row['table_name']?.toString() ?? '';
-          final rowId = row['row_id']?.toString() ?? '';
-          return table.isNotEmpty &&
-              rowId.isNotEmpty &&
-              !remoteKeys.contains(_rowKey(table, rowId));
-        })
+      final table = row['table_name']?.toString() ?? '';
+      final rowId = row['row_id']?.toString() ?? '';
+      return table.isNotEmpty &&
+          rowId.isNotEmpty &&
+          !remoteKeys.contains(_rowKey(table, rowId));
+    })
         .toList(growable: false);
 
     if (missingRows.isEmpty) {
       lastUploadSummary =
-          'لا توجد سجلات محلية ناقصة في Supabase؛ لم يتم رفع أي نسخة قديمة فوق السيرفر.';
+      'لا توجد سجلات محلية ناقصة في Supabase؛ لم يتم رفع أي نسخة قديمة فوق السيرفر.';
       return;
     }
 
@@ -328,7 +329,8 @@ class SupabaseWorkshopSyncService {
     await _acknowledgeSyncedChanges(pendingBeforeUpload);
 
     lastUploadSummary =
-        'تم رفع ${missingRows.length} سجل محلي ناقص إلى Supabase بدون تعديل السجلات الموجودة: '
+    'تم رفع ${missingRows
+        .length} سجل محلي ناقص إلى Supabase بدون تعديل السجلات الموجودة: '
         '${_countRows(data, 'Client')} زبون، '
         '${_countRows(data, 'Commandes')} طلبية، '
         '${_countRows(data, 'Commandes_details')} تفاصيل.';
@@ -375,7 +377,9 @@ class SupabaseWorkshopSyncService {
       'updated_at': now,
       'deleted_at': null,
       'device_id': _deviceId,
-      'revision': DateTime.now().microsecondsSinceEpoch,
+      'revision': DateTime
+          .now()
+          .microsecondsSinceEpoch,
     }, onConflict: 'workshop_id,table_name,row_id');
   }
 
@@ -383,8 +387,7 @@ class SupabaseWorkshopSyncService {
   /// workshop. Product definitions themselves remain in the global catalogue;
   /// this row carries only the workshop's configuration of those products.
   Future<void> saveWorkshopCatalogConfiguration(
-    Map<String, dynamic> configuration,
-  ) async {
+      Map<String, dynamic> configuration,) async {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -396,8 +399,40 @@ class SupabaseWorkshopSyncService {
       'updated_at': now,
       'deleted_at': null,
       'device_id': _deviceId,
-      'revision': DateTime.now().microsecondsSinceEpoch,
+      'revision': DateTime
+          .now()
+          .microsecondsSinceEpoch,
     }, onConflict: 'workshop_id,table_name,row_id');
+  }
+
+  /// تحميل وتطبيق قواعد إكسسوارات وكتالوج الورشة فورياً ومباشرة في قاعدة البيانات
+  Future<void> loadAndApplyWorkshopCatalogConfiguration() async {
+    try {
+      await _ensureReady();
+      final row = await _client
+          .from('workshop_sync_rows')
+          .select('payload')
+          .eq('workshop_id', _workshopUuid!)
+          .eq('table_name', _workshopCatalogConfigurationTable)
+          .eq('row_id', _workshopCatalogConfigurationRowId)
+          .maybeSingle();
+
+      final payload = row?['payload'];
+      if (payload is Map && payload['tables'] is Map) {
+        final config = Map<String, dynamic>.from(payload['tables'] as Map);
+        _isApplyingRemoteData = true;
+        try {
+          await _db.importWorkshopCatalogConfiguration(config);
+          debugPrint(
+            '✅ تم بنجاح تنزيل وتطبيق قواعد إكسسوارات الورشة من السحابة',
+          );
+        } finally {
+          _isApplyingRemoteData = false;
+        }
+      }
+    } catch (e) {
+      debugPrint('تنبيه: تعذر تحميل قواعد الكتالوج من السحابة: $e');
+    }
   }
 
   /// Claims an old Firebase workshop using the stable legacy code. The SQL
@@ -511,9 +546,9 @@ class SupabaseWorkshopSyncService {
 
     bool isUsable(String value) =>
         value.isNotEmpty &&
-        value != code &&
-        value != 'ورشة النجارة' &&
-        value != 'ورشة الألمنيوم';
+            value != code &&
+            value != 'ورشة النجارة' &&
+            value != 'ورشة الألمنيوم';
 
     final cachedName = (prefs.getString('workshop_name') ?? '').trim();
     if (isUsable(cachedName)) return cachedName;
@@ -555,7 +590,7 @@ class SupabaseWorkshopSyncService {
       // behind full can recursively start complete downloads forever.
       if (full && !_activeDownloadIsFull) {
         return activeDownload.then<void>(
-          (_) => downloadWorkshopData(full: true),
+              (_) => downloadWorkshopData(full: true),
         );
       }
       return activeDownload;
@@ -605,6 +640,8 @@ class SupabaseWorkshopSyncService {
       if (shouldDownloadFull) {
         await _markFullBootstrapComplete();
       }
+      // تحميل قواعد الإكسسوارات لضمان وجودها دائماً في هاتف العامل
+      await loadAndApplyWorkshopCatalogConfiguration();
       await uploadPendingChanges();
     } catch (error) {
       // Supabase sync is optional until the account/workshop is configured.
@@ -674,9 +711,9 @@ class SupabaseWorkshopSyncService {
     final appRole = adminRow != null || isApplicationAdminEmail(user.email)
         ? 'admin'
         : _mapSupabaseRoleToAppRole(
-            row['role']?.toString() ?? 'worker',
-            permissions,
-          );
+      row['role']?.toString() ?? 'worker',
+      permissions,
+    );
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_role', appRole);
     await prefs.setString('permissions_json', jsonEncode(permissions));
@@ -711,31 +748,31 @@ class SupabaseWorkshopSyncService {
     _permissionsChannel = _client
         .channel(channelName)
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'workshop_members',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: user.id,
-          ),
-          callback: (_) {
-            unawaited(
-              refreshCurrentPermissions().catchError((e) {
-                debugPrint(
-                  'Realtime permission refresh skipped (offline/error): $e',
-                );
-              }),
-            );
-          },
-        )
-        .subscribe((status, [error]) {
-          if (error != null) {
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'workshop_members',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'user_id',
+        value: user.id,
+      ),
+      callback: (_) {
+        unawaited(
+          refreshCurrentPermissions().catchError((e) {
             debugPrint(
-              'Realtime permission channel status: $status, error: $error',
+              'Realtime permission refresh skipped (offline/error): $e',
             );
-          }
-        });
+          }),
+        );
+      },
+    )
+        .subscribe((status, [error]) {
+      if (error != null) {
+        debugPrint(
+          'Realtime permission channel status: $status, error: $error',
+        );
+      }
+    });
   }
 
   void _subscribeToWorkshopDataChanges() {
@@ -757,57 +794,57 @@ class SupabaseWorkshopSyncService {
     _workshopDataChannel = _client
         .channel(channelName)
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'workshop_sync_rows',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'workshop_id',
-            value: workshopUuid,
-          ),
-          callback: (_) {
-            unawaited(
-              downloadWorkshopData().catchError((e) {
-                debugPrint(
-                  'Realtime downloadWorkshopData skipped (offline/error): $e',
-                );
-              }),
-            );
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'workshops',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: workshopUuid,
-          ),
-          callback: (_) {
-            unawaited(
-              refreshWorkshopIdentity().catchError((e) {
-                debugPrint(
-                  'Realtime refreshWorkshopIdentity skipped (offline/error): $e',
-                );
-              }),
-            );
-          },
-        )
-        .subscribe((status, [error]) {
-          if (error != null) {
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'workshop_sync_rows',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'workshop_id',
+        value: workshopUuid,
+      ),
+      callback: (_) {
+        unawaited(
+          downloadWorkshopData().catchError((e) {
             debugPrint(
-              'Realtime workshop channel status: $status, error: $error',
+              'Realtime downloadWorkshopData skipped (offline/error): $e',
             );
-          }
-          if (status == RealtimeSubscribeStatus.subscribed) {
-            unawaited(
-              downloadWorkshopData().catchError((e) {
-                debugPrint('Initial subscribed download error: $e');
-              }),
+          }),
+        );
+      },
+    )
+        .onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'workshops',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: workshopUuid,
+      ),
+      callback: (_) {
+        unawaited(
+          refreshWorkshopIdentity().catchError((e) {
+            debugPrint(
+              'Realtime refreshWorkshopIdentity skipped (offline/error): $e',
             );
-          }
-        });
+          }),
+        );
+      },
+    )
+        .subscribe((status, [error]) {
+      if (error != null) {
+        debugPrint(
+          'Realtime workshop channel status: $status, error: $error',
+        );
+      }
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        unawaited(
+          downloadWorkshopData().catchError((e) {
+            debugPrint('Initial subscribed download error: $e');
+          }),
+        );
+      }
+    });
   }
 
   Future<void> updateMemberPermissionsByEmail({
@@ -889,7 +926,7 @@ class SupabaseWorkshopSyncService {
     await _acknowledgeSyncedChanges(pending);
 
     lastUploadSummary =
-        'تم رفع ${rows.length} تغيير سريع إلى Supabase '
+    'تم رفع ${rows.length} تغيير سريع إلى Supabase '
         '(${pending.changedRows} تعديل، ${pending.deletedRows} حذف).';
   }
 
@@ -909,22 +946,22 @@ class SupabaseWorkshopSyncService {
     while (true) {
       final rows = since != null && since.isNotEmpty
           ? await _client
-                .from('workshop_sync_rows')
-                .select(
-                  'table_name,row_id,payload,updated_at,deleted_at,device_id',
-                )
-                .eq('workshop_id', workshopUuid)
-                .gt('updated_at', since)
-                .order('updated_at', ascending: true)
-                .range(start, start + _downloadPageSize - 1)
+          .from('workshop_sync_rows')
+          .select(
+        'table_name,row_id,payload,updated_at,deleted_at,device_id',
+      )
+          .eq('workshop_id', workshopUuid)
+          .gt('updated_at', since)
+          .order('updated_at', ascending: true)
+          .range(start, start + _downloadPageSize - 1)
           : await _client
-                .from('workshop_sync_rows')
-                .select(
-                  'table_name,row_id,payload,updated_at,deleted_at,device_id',
-                )
-                .eq('workshop_id', workshopUuid)
-                .order('updated_at', ascending: true)
-                .range(start, start + _downloadPageSize - 1);
+          .from('workshop_sync_rows')
+          .select(
+        'table_name,row_id,payload,updated_at,deleted_at,device_id',
+      )
+          .eq('workshop_id', workshopUuid)
+          .order('updated_at', ascending: true)
+          .range(start, start + _downloadPageSize - 1);
       if (rows.isEmpty) break;
 
       for (final rawRow in rows) {
@@ -976,8 +1013,8 @@ class SupabaseWorkshopSyncService {
         if (!_isWorkshopTable(table)) continue;
         if (payload is Map) {
           final list =
-              data.putIfAbsent(table, () => <Map<String, dynamic>>[])
-                  as List<Map<String, dynamic>>;
+          data.putIfAbsent(table, () => <Map<String, dynamic>>[])
+          as List<Map<String, dynamic>>;
           list.add(Map<String, dynamic>.from(payload));
           downloadedRows++;
         }
@@ -1055,7 +1092,9 @@ class SupabaseWorkshopSyncService {
     var deviceId = prefs.getString('device_id');
     if (deviceId == null || deviceId.isEmpty) {
       deviceId =
-          'device_${DateTime.now().millisecondsSinceEpoch}_${_random.nextInt(100000)}';
+      'device_${DateTime
+          .now()
+          .millisecondsSinceEpoch}_${_random.nextInt(100000)}';
       await prefs.setString('device_id', deviceId);
     }
     _deviceId = deviceId;
@@ -1130,7 +1169,9 @@ class SupabaseWorkshopSyncService {
           'ensure_my_workshop',
           params: {
             'target_code': code,
-            'target_name': workshopName.trim().isEmpty ? code : workshopName,
+            'target_name': workshopName
+                .trim()
+                .isEmpty ? code : workshopName,
           },
         );
         final resolvedId = result?.toString() ?? '';
@@ -1151,13 +1192,13 @@ class SupabaseWorkshopSyncService {
           if (membership == null) {
             throw Exception(
               'لم تُنشأ عضوية الورشة. طبّق ملف '
-              'supabase/workshop_join_code_migration.sql في Supabase.',
+                  'supabase/workshop_join_code_migration.sql في Supabase.',
             );
           }
         } catch (error) {
           throw Exception(
             'تعذر التحقق من عضوية الورشة. طبّق ملف '
-            'supabase/workshop_join_code_migration.sql في Supabase: $error',
+                'supabase/workshop_join_code_migration.sql في Supabase: $error',
           );
         }
       }
@@ -1170,14 +1211,12 @@ class SupabaseWorkshopSyncService {
     // outside the client application.
     throw Exception(
       'لم يتم العثور على الورشة في Supabase. تحقق من كود الورشة أو اطلب من '
-      'الإدارة ربط الحساب بالورشة الموجودة.',
+          'الإدارة ربط الحساب بالورشة الموجودة.',
     );
   }
 
-  Future<void> _cacheWorkshopIdentity(
-    String workshopUuid,
-    SharedPreferences prefs,
-  ) async {
+  Future<void> _cacheWorkshopIdentity(String workshopUuid,
+      SharedPreferences prefs,) async {
     try {
       Map<String, dynamic>? row;
       try {
@@ -1198,7 +1237,10 @@ class SupabaseWorkshopSyncService {
       if (row == null) return;
 
       final internalCode = row['code']?.toString().trim() ?? '';
-      final code = row['join_code']?.toString().trim().isNotEmpty == true
+      final code = row['join_code']
+          ?.toString()
+          .trim()
+          .isNotEmpty == true
           ? row['join_code'].toString().trim()
           : internalCode;
       final name = row['name']?.toString().trim() ?? '';
@@ -1213,8 +1255,8 @@ class SupabaseWorkshopSyncService {
         // workshop name used by document headers.
         final remoteNameIsCode =
             (code.isNotEmpty && name == code) ||
-            name == 'ورشة النجارة' ||
-            name == 'ورشة الألمنيوم';
+                name == 'ورشة النجارة' ||
+                name == 'ورشة الألمنيوم';
         final usableName = remoteNameIsCode
             ? (cachedName.isNotEmpty && cachedName != code ? cachedName : '')
             : name;
@@ -1230,8 +1272,7 @@ class SupabaseWorkshopSyncService {
     }
   }
 
-  Future<void> _upsertRows(
-    List<Map<String, dynamic>> rows, {
+  Future<void> _upsertRows(List<Map<String, dynamic>> rows, {
     bool preserveNewerRemote = false,
   }) async {
     var rowsToUpload = rows;
@@ -1239,26 +1280,26 @@ class SupabaseWorkshopSyncService {
       final remoteUpdatedAt = await _fetchRemoteUpdatedAt(targetRows: rows);
       rowsToUpload = rows
           .where((row) {
-            final table = row['table_name']?.toString() ?? '';
-            final rowId = row['row_id']?.toString() ?? '';
-            final incoming = DateTime.tryParse(
-              row['updated_at']?.toString() ?? '',
-            );
-            final remote = remoteUpdatedAt[_rowKey(table, rowId)];
-            // Rows without a valid timestamp are retained for compatibility with
-            // old databases.  A valid remote timestamp still protects against a
-            // clearly older incoming row.
-            if (incoming == null || remote == null) return true;
-            return !remote.isAfter(incoming);
-          })
+        final table = row['table_name']?.toString() ?? '';
+        final rowId = row['row_id']?.toString() ?? '';
+        final incoming = DateTime.tryParse(
+          row['updated_at']?.toString() ?? '',
+        );
+        final remote = remoteUpdatedAt[_rowKey(table, rowId)];
+        // Rows without a valid timestamp are retained for compatibility with
+        // old databases.  A valid remote timestamp still protects against a
+        // clearly older incoming row.
+        if (incoming == null || remote == null) return true;
+        return !remote.isAfter(incoming);
+      })
           .toList(growable: false);
     }
 
     if (rowsToUpload.isEmpty) return;
     for (
-      var start = 0;
-      start < rowsToUpload.length;
-      start += _uploadBatchSize
+    var start = 0;
+    start < rowsToUpload.length;
+    start += _uploadBatchSize
     ) {
       final end = min(start + _uploadBatchSize, rowsToUpload.length);
       final batch = rowsToUpload.sublist(start, end);
@@ -1391,8 +1432,7 @@ class SupabaseWorkshopSyncService {
 
   String _rowKey(String table, String rowId) => '$table\x1f$rowId';
 
-  List<Map<String, dynamic>> _flattenDataForUpload(
-    Map<String, dynamic> data, {
+  List<Map<String, dynamic>> _flattenDataForUpload(Map<String, dynamic> data, {
     required String workshopUuid,
     required String userId,
     required bool fullUpload,
@@ -1419,7 +1459,9 @@ class SupabaseWorkshopSyncService {
             'updated_at': tombstone['deleted_at']?.toString() ?? now,
             'deleted_at': tombstone['deleted_at']?.toString() ?? now,
             'device_id': _deviceId,
-            'revision': DateTime.now().microsecondsSinceEpoch,
+            'revision': DateTime
+                .now()
+                .microsecondsSinceEpoch,
           });
         }
         continue;
@@ -1443,7 +1485,9 @@ class SupabaseWorkshopSyncService {
           'updated_at': storedUpdatedAt.isNotEmpty ? storedUpdatedAt : now,
           'deleted_at': null,
           'device_id': _deviceId,
-          'revision': DateTime.now().microsecondsSinceEpoch,
+          'revision': DateTime
+              .now()
+              .microsecondsSinceEpoch,
         });
       }
     }
@@ -1566,8 +1610,8 @@ class SupabaseWorkshopSyncService {
     final activeIds = rawActiveProfiles
         .map(
           (value) =>
-              value is num ? value.toInt() : int.tryParse(value.toString()),
-        )
+      value is num ? value.toInt() : int.tryParse(value.toString()),
+    )
         .whereType<int>()
         .toSet();
     final dbInstance = await _db.db;
@@ -1632,10 +1676,8 @@ class SupabaseWorkshopSyncService {
     return rows is List ? rows.length : 0;
   }
 
-  String _mapSupabaseRoleToAppRole(
-    String role,
-    Map<String, dynamic> permissions,
-  ) {
+  String _mapSupabaseRoleToAppRole(String role,
+      Map<String, dynamic> permissions,) {
     final normalized = _normalizeSupabaseRole(role);
     if (normalized == 'owner' ||
         normalized == 'manager' ||

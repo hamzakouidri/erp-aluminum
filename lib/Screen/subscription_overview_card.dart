@@ -142,7 +142,7 @@ class SubscriptionOverviewCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            statusText,
+                            Localization.translate(statusText, lang),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
@@ -232,7 +232,7 @@ class SubscriptionOverviewCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                '${details.daysRemaining} يوم',
+                                '${details.daysRemaining} ${Localization.translate('يوم', lang)}',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -317,9 +317,12 @@ class SubscriptionOverviewCard extends StatelessWidget {
                           size: 18,
                         ),
                         label: Text(
-                          details.canRenew
-                              ? 'مراجعة وتجديد الاشتراك'
-                              : 'مراجعة تفاصيل الاشتراك',
+                          Localization.translate(
+                            details.canRenew
+                                ? 'مراجعة وتجديد الاشتراك'
+                                : 'مراجعة تفاصيل الاشتراك',
+                            lang,
+                          ),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,

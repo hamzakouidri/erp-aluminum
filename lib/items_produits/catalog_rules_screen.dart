@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
@@ -1064,8 +1065,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       for (final sourceId in _dirtyAccessoryLinkIds.toList()) {
         await _saveAccessoryLinksFor(sourceId, syncCatalog: false);
       }
-      // Upload once after both local tables are committed. Do not make the
-      // save button wait for Supabase or fail when the server is slow.
+      // رفع قواعد الورشة فوراً للسحابة لتصل لكل هواتف العمال
+      () async {
+        try {
+          final sync = SupabaseWorkshopSyncService();
+          if (sync.isReady || await sync.ensureStarted()) {
+            final config = await widget.db.exportWorkshopCatalogConfiguration();
+            if (config.isNotEmpty) {
+              await sync.saveWorkshopCatalogConfiguration(config);
+            }
+          }
+        } catch (e) {
+          debugPrint('Error uploading workshop catalog configuration: $e');
+        }
+      }();
       unawaited(CloudSyncService().notifyCatalogChange());
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
