@@ -41,14 +41,17 @@ class SupabaseWorkshopSyncService {
   factory SupabaseWorkshopSyncService() => _instance;
 
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
+
   // Realtime handles normal changes. This slow pass only repairs a missed
   // event after sleep/network loss and must not behave like a UI refresh loop.
   static const Duration _backgroundSyncInterval = Duration(seconds: 45);
+
   // A workshop row contains a complete JSON payload.  A 200-row PostgREST
   // upsert can exceed the server statement timeout even though the row count
   // itself looks modest, particularly for order details and stock history.
   static const int _uploadBatchSize = 25;
   static const int _uploadBatchRetryCount = 3;
+
   // Keep each decoded response and the matching PostgREST query small.
   // Workshop rows embed JSON payloads, so a full restore after installation
   // must not request hundreds of orders/stock rows in one response.
@@ -607,7 +610,7 @@ class SupabaseWorkshopSyncService {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
       print('Supabase workshop sync not started: $error');
-      if (error.toString().contains('WORKSHOP_USER_LIMIT_REACHED')) rethrow;
+      // تجنب rethrow هنا لأن الدالة تعمل كـ unawaited في الخلفية وأي استثناء غير ملتقط يغلق التطبيق
     }
   }
 
@@ -717,10 +720,22 @@ class SupabaseWorkshopSyncService {
             value: user.id,
           ),
           callback: (_) {
-            unawaited(refreshCurrentPermissions());
+            unawaited(
+              refreshCurrentPermissions().catchError((e) {
+                debugPrint(
+                  'Realtime permission refresh skipped (offline/error): $e',
+                );
+              }),
+            );
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+          if (error != null) {
+            debugPrint(
+              'Realtime permission channel status: $status, error: $error',
+            );
+          }
+        });
   }
 
   void _subscribeToWorkshopDataChanges() {
@@ -751,10 +766,13 @@ class SupabaseWorkshopSyncService {
             value: workshopUuid,
           ),
           callback: (_) {
-            // Realtime carries only the change notification. The normal
-            // incremental downloader remains the single place that applies
-            // rows, tombstones, and workshop profile values safely.
-            unawaited(downloadWorkshopData());
+            unawaited(
+              downloadWorkshopData().catchError((e) {
+                debugPrint(
+                  'Realtime downloadWorkshopData skipped (offline/error): $e',
+                );
+              }),
+            );
           },
         )
         .onPostgresChanges(
@@ -767,12 +785,27 @@ class SupabaseWorkshopSyncService {
             value: workshopUuid,
           ),
           callback: (_) {
-            unawaited(refreshWorkshopIdentity());
+            unawaited(
+              refreshWorkshopIdentity().catchError((e) {
+                debugPrint(
+                  'Realtime refreshWorkshopIdentity skipped (offline/error): $e',
+                );
+              }),
+            );
           },
         )
         .subscribe((status, [error]) {
+          if (error != null) {
+            debugPrint(
+              'Realtime workshop channel status: $status, error: $error',
+            );
+          }
           if (status == RealtimeSubscribeStatus.subscribed) {
-            unawaited(downloadWorkshopData());
+            unawaited(
+              downloadWorkshopData().catchError((e) {
+                debugPrint('Initial subscribed download error: $e');
+              }),
+            );
           }
         });
   }
@@ -1267,7 +1300,9 @@ class SupabaseWorkshopSyncService {
 
     // Fast path: if specific target rows are provided (incremental upload),
     // query only those row_ids instead of scanning the entire workshop database.
-    if (targetRows != null && targetRows.isNotEmpty && targetRows.length <= 200) {
+    if (targetRows != null &&
+        targetRows.isNotEmpty &&
+        targetRows.length <= 200) {
       final targetRowIds = targetRows
           .map((r) => r['row_id']?.toString() ?? '')
           .where((id) => id.isNotEmpty)
@@ -1293,7 +1328,9 @@ class SupabaseWorkshopSyncService {
           }
           return result;
         } catch (error) {
-          debugPrint('Fast remote updated_at lookup failed; falling back to full query: $error');
+          debugPrint(
+            'Fast remote updated_at lookup failed; falling back to full query: $error',
+          );
         }
       }
     }

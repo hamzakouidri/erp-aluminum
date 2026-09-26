@@ -664,20 +664,28 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
       _subscriptionChannel = Supabase.instance.client
           .channel('subscription_gate_$workshopId')
           .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'workshop_subscriptions',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'workshop_id',
-              value: workshopId,
-            ),
-            callback: (_) {
-              if (!mounted) return;
-              unawaited(_refreshAccountInBackground());
-            },
-          )
-          .subscribe();
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'workshop_subscriptions',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'workshop_id',
+          value: workshopId,
+        ),
+        callback: (_) {
+          if (!mounted) return;
+          unawaited(
+            _refreshAccountInBackground().catchError((e) {
+              debugPrint('Realtime subscription refresh skipped: $e');
+            }),
+          );
+        },
+      )
+          .subscribe((status, [error]) {
+        if (error != null) {
+          debugPrint('Subscription realtime status: $status, error: $error');
+        }
+      });
     } catch (error) {
       debugPrint('Subscription realtime setup skipped: $error');
     }
@@ -917,21 +925,12 @@ class _SyncGatewayState extends State<SyncGateway> {
       }
 
       final hasLocalBusinessData = await _hasLocalBusinessData(myDb);
-      if (hasLocalBusinessData &&
-          currentUid.isNotEmpty &&
-          activeUid == currentUid &&
-          activeWorkshop.isNotEmpty &&
-          requestedWorkshop.isNotEmpty &&
-          activeWorkshop == requestedWorkshop) {
-        await _preparePermissionsBeforeEnter();
-        _enterApp(startListening: false);
-        _syncSameAccountInBackground(db);
-        return;
-      }
-      if (hasLocalBusinessData &&
-          currentUid.isNotEmpty &&
-          (activeUid.isEmpty || activeUid == currentUid) &&
-          activeWorkshop.isEmpty) {
+      final sameUser = currentUid.isNotEmpty && (activeUid.isEmpty || activeUid == currentUid);
+      final sameWorkshop = activeWorkshop.isEmpty ||
+          requestedWorkshop.isEmpty ||
+          activeWorkshop.trim().toLowerCase() == requestedWorkshop.trim().toLowerCase();
+
+      if (hasLocalBusinessData && sameUser && sameWorkshop) {
         await _preparePermissionsBeforeEnter();
         _enterApp(startListening: false);
         _syncSameAccountInBackground(db);
@@ -982,12 +981,18 @@ class _SyncGatewayState extends State<SyncGateway> {
         await CloudSyncService().init();
         CloudSyncService().startListeningForUpdates(() {});
 
-        // Use the protected restore path even on a fresh device. If the worker
-        // creates or edits something while the first download is running, its
-        // pending local rows are merged before the cloud rows are applied.
-        await CloudSyncService()
-            .fullRecoverySync(initialRestore: false)
-            .timeout(const Duration(seconds: 90), onTimeout: () {});
+        if (!hasLocalData) {
+          // التنزيل الكامل من الصفر يُطلب فقط إذا كانت قاعدة البيانات فارغة تماماً
+          await CloudSyncService()
+              .fullRecoverySync(initialRestore: false)
+              .timeout(const Duration(seconds: 90), onTimeout: () {});
+        } else {
+          // إذا كانت البيانات موجودة، يتم تحديث التغييرات الجديدة فقط بخفة وسرعة
+          await CloudSyncService()
+              .refreshFromCloudIfChanged()
+              .timeout(const Duration(seconds: 30), onTimeout: () {})
+              .catchError((_) {});
+        }
         await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
           const Duration(seconds: 30),
           onTimeout: () {},

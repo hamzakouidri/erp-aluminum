@@ -102,62 +102,67 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   Future<void> _load() async {
     setState(() => _loadingProfiles = true);
-    final results = await Future.wait<dynamic>([
-      widget.db.readAccessories(includeInactive: true),
-      widget.db.readJoints(),
-      widget.db.readProfile(),
-      widget.db.readShutterComponents(),
-    ]);
-    final accessoryRows = results[0] as List<Map<String, dynamic>>;
-    final loadedLinks = await Future.wait(
-      accessoryRows.map((item) async {
-        final id = (item['id'] as num?)?.toInt();
-        return (
-          id: id,
-          links: id == null
-              ? <Map<String, dynamic>>[]
-              : (await widget.db.readAccessoryLinksWithDetails(id))
-                    .map(
-                      (link) => {
-                        ...link,
-                        'quantity':
-                            (link['linked_quantity'] as num?)?.toInt() ?? 1,
-                      },
-                    )
-                    .toList(),
-        );
-      }),
-    );
-    if (!mounted) return;
-    _accessoryLinks
-      ..clear()
-      ..addEntries(
-        loadedLinks
-            .where((entry) => entry.id != null)
-            .map((entry) => MapEntry(entry.id!, entry.links)),
+    try {
+      final results = await Future.wait<dynamic>([
+        widget.db.readAccessories(includeInactive: true),
+        widget.db.readJoints(),
+        widget.db.readProfile(),
+        widget.db.readShutterComponents(),
+      ]);
+      final accessoryRows = results[0] as List<Map<String, dynamic>>;
+      final loadedLinks = await Future.wait(
+        accessoryRows.map((item) async {
+          final id = (item['id'] as num?)?.toInt();
+          return (
+            id: id,
+            links: id == null
+                ? <Map<String, dynamic>>[]
+                : (await widget.db.readAccessoryLinksWithDetails(id))
+                      .map(
+                        (link) => {
+                          ...link,
+                          'quantity':
+                              (link['linked_quantity'] as num?)?.toInt() ?? 1,
+                        },
+                      )
+                      .toList(),
+          );
+        }),
       );
-    _itemsByTable
-      ..clear()
-      ..addAll({
-        // Database query rows are read-only; the inspector updates its local
-        // item after saving accessory links, counts and other fields.
-        'Accessories': accessoryRows
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(),
-        'Joints': (results[1] as List<Map<String, dynamic>>)
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(),
-      });
-    _profiles = results[2] as List<Map<String, dynamic>>;
-    _itemsByTable['ShutterComponents'] =
-        (results[3] as List<Map<String, dynamic>>)
-            .where(
-              (row) => _guessRole('ShutterComponents', row) == 'shutter_kit',
-            )
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList();
-    _rulesByItem.clear();
-    setState(() => _loadingProfiles = false);
+      if (!mounted) return;
+      _accessoryLinks
+        ..clear()
+        ..addEntries(
+          loadedLinks
+              .where((entry) => entry.id != null)
+              .map((entry) => MapEntry(entry.id!, entry.links)),
+        );
+      _itemsByTable
+        ..clear()
+        ..addAll({
+          'Accessories': accessoryRows
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(),
+          'Joints': (results[1] as List<Map<String, dynamic>>)
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(),
+        });
+      _profiles = results[2] as List<Map<String, dynamic>>;
+      _itemsByTable['ShutterComponents'] =
+          (results[3] as List<Map<String, dynamic>>)
+              .where(
+                (row) => _guessRole('ShutterComponents', row) == 'shutter_kit',
+              )
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList();
+      _rulesByItem.clear();
+    } catch (e) {
+      debugPrint('Error loading catalog items: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _loadingProfiles = false);
+      }
+    }
   }
 
   Future<void> _selectProfile(Map<String, dynamic> profile) async {
@@ -190,68 +195,73 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       _loading = true;
       _inspectedItemKey = null;
     });
-    final results = await Future.wait([
-      widget.db.getCatalogItemRules(
-        itemTable: 'Accessories',
-        seriesId: seriesId,
-        exactSeriesOnly: true,
-        includeInactive: true,
-      ),
-      widget.db.getCatalogItemRules(
-        itemTable: 'Joints',
-        seriesId: seriesId,
-        exactSeriesOnly: true,
-        includeInactive: true,
-      ),
-      widget.db.getCatalogItemRules(
-        itemTable: 'ShutterComponents',
-        seriesId: seriesId,
-        exactSeriesOnly: true,
-        includeInactive: true,
-      ),
-    ]);
-    final database = await widget.db.db;
-    final sections =
-        await database?.query(
-          'Sections',
-          where: 'series_id = ?',
-          whereArgs: [seriesId],
-          orderBy: 'code',
-        ) ??
-        [];
-    if (!mounted || _selectedSeriesId != seriesId) return;
-    _rulesByItem.clear();
-    for (final raw in results.expand((rows) => rows)) {
-      final table = raw['item_table']?.toString() ?? '';
-      final itemId = (raw['item_id'] as num?)?.toInt();
-      if (table.isEmpty || itemId == null) continue;
-      final rule = Map<String, dynamic>.from(raw)..['series_id'] = seriesId;
-      final storedRole = rule['role_key']?.toString();
-      if (storedRole == 'sliding_clamp' || storedRole == 'clamp') {
-        rule['role_key'] = 'clam';
-        if (storedRole == 'sliding_clamp') rule['usage_scope'] = 'sliding';
+    try {
+      final results = await Future.wait([
+        widget.db.getCatalogItemRules(
+          itemTable: 'Accessories',
+          seriesId: seriesId,
+          exactSeriesOnly: true,
+          includeInactive: true,
+        ),
+        widget.db.getCatalogItemRules(
+          itemTable: 'Joints',
+          seriesId: seriesId,
+          exactSeriesOnly: true,
+          includeInactive: true,
+        ),
+        widget.db.getCatalogItemRules(
+          itemTable: 'ShutterComponents',
+          seriesId: seriesId,
+          exactSeriesOnly: true,
+          includeInactive: true,
+        ),
+      ]);
+      final database = await widget.db.db;
+      final sections =
+          await database?.query(
+            'Sections',
+            where: 'series_id = ?',
+            whereArgs: [seriesId],
+            orderBy: 'code',
+          ) ??
+          [];
+      if (!mounted || _selectedSeriesId != seriesId) return;
+      _rulesByItem.clear();
+      for (final raw in results.expand((rows) => rows)) {
+        final table = raw['item_table']?.toString() ?? '';
+        final itemId = (raw['item_id'] as num?)?.toInt();
+        if (table.isEmpty || itemId == null) continue;
+        final rule = Map<String, dynamic>.from(raw)..['series_id'] = seriesId;
+        final storedRole = rule['role_key']?.toString();
+        if (storedRole == 'sliding_clamp' || storedRole == 'clamp') {
+          rule['role_key'] = 'clam';
+          if (storedRole == 'sliding_clamp') rule['usage_scope'] = 'sliding';
+        }
+        if (table == 'Accessories' && storedRole == 'kit') {
+          final item = (_itemsByTable[table] ?? const <Map<String, dynamic>>[])
+              .where((candidate) => _itemId(candidate) == itemId)
+              .firstOrNull;
+          if (item != null && _guessRole(table, item) == 'alignment_square') {
+            rule['role_key'] = 'alignment_square';
+          }
+        }
+        _rulesByItem[_itemKey(table, itemId)] = rule;
       }
-      if (table == 'Accessories' && storedRole == 'kit') {
-        final item = (_itemsByTable[table] ?? const <Map<String, dynamic>>[])
-            .where((candidate) => _itemId(candidate) == itemId)
-            .firstOrNull;
-        if (item != null && _guessRole(table, item) == 'alignment_square') {
-          // Present legacy EKD/Ekar d'alignement rows under their real role.
-          // The corrected role is persisted when the administrator saves.
-          rule['role_key'] = 'alignment_square';
+      _assemblySections = sections;
+      for (final table in _tables) {
+        for (final item
+            in _itemsByTable[table] ?? const <Map<String, dynamic>>[]) {
+          final itemId = _itemId(item);
+          if (itemId != null) _ruleFor(table, itemId)['series_id'] = seriesId;
         }
       }
-      _rulesByItem[_itemKey(table, itemId)] = rule;
-    }
-    _assemblySections = sections;
-    for (final table in _tables) {
-      for (final item
-          in _itemsByTable[table] ?? const <Map<String, dynamic>>[]) {
-        final itemId = _itemId(item);
-        if (itemId != null) _ruleFor(table, itemId)['series_id'] = seriesId;
+    } catch (e) {
+      debugPrint('Error loading series rules: $e');
+    } finally {
+      if (mounted && _selectedSeriesId == seriesId) {
+        setState(() => _loading = false);
       }
     }
-    setState(() => _loading = false);
   }
 
   List<_RuleRole> _rolesForTable(String table) {
@@ -2310,8 +2320,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               ],
             ),
             ...List.generate(links.length, (index) {
-              final currentRoleKey =
-                  links[index]['target_role_key']?.toString();
+              final currentRoleKey = links[index]['target_role_key']
+                  ?.toString();
               final availableRoles = [
                 ...linkableRoles,
                 if (currentRoleKey != null &&
@@ -2319,7 +2329,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     !linkableRoles.any((r) => r.key == currentRoleKey))
                   _RuleRole(
                     currentRoleKey,
-                    currentRoleKey == 'other' ? _t('أخرى', 'Autre') : currentRoleKey,
+                    currentRoleKey == 'other'
+                        ? _t('أخرى', 'Autre')
+                        : currentRoleKey,
                     currentRoleKey == 'other' ? 'Autre' : currentRoleKey,
                   ),
               ];
