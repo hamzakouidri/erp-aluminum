@@ -5699,8 +5699,7 @@ class WindowModel extends ChangeNotifier {
     return name.contains('white') ||
         name.contains('blanc') ||
         name.contains('ابيض') ||
-        hex == 'ffffff' ||
-        hex == 'fff';
+        (name.isEmpty && (hex == 'ffffff' || hex == 'fff'));
   }
 
   /// Resolves the colour actually used by a bardage cell. In automatic mode

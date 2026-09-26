@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:latlong2/latlong.dart';
+import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
@@ -20,11 +22,23 @@ class SuppliersScreen extends StatefulWidget {
 class _SuppliersScreenState extends State<SuppliersScreen> {
   List<Map<String, dynamic>> _suppliers = [];
   bool _isLoading = true;
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _fetchSuppliers();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _fetchSuppliers();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchSuppliers() async {
@@ -235,6 +249,16 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
       appBar: AppBar(
         title: Text(Localization.translate('الموردين', lang)),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: Localization.translate('تحديث', lang),
+            onPressed: () async {
+              await CloudSyncService().syncPendingNow();
+              _fetchSuppliers();
+            },
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showSupplierDialog(),

@@ -93,12 +93,15 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
         } catch (_) {}
 
         final orderId = order['id'] as int;
+        final displayCode = (order['order_code'] as num?)?.toInt() ??
+            (order['display_number'] as num?)?.toInt() ??
+            (orderId < 100000 ? orderId : '?');
 
         tempItems.add({
           'id': orderId,
           'date': date,
           'type': 'Order',
-          'label': 'طلب شراء / Commande #$orderId',
+          'label': 'طلب شراء / Commande #$displayCode',
           'debit': amount,
           'credit': 0.0,
           'details': orderDetailsMap[orderId] ?? [],

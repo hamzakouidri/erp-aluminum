@@ -432,7 +432,7 @@ class SqlDatabase {
           onConfigure: (db) async {
             // This PRAGMA returns a row, including when setting its value.
             // Android SQLCipher rejects it through execute/executeSql.
-            await db.rawQuery('PRAGMA busy_timeout = 5000');
+            await db.rawQuery('PRAGMA busy_timeout = 30000');
           },
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
@@ -448,7 +448,7 @@ class SqlDatabase {
       password: password,
       onConfigure: (db) async {
         // Android SQLCipher requires the query API for row-returning PRAGMAs.
-        await db.rawQuery('PRAGMA busy_timeout = 5000');
+        await db.rawQuery('PRAGMA busy_timeout = 30000');
       },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -535,14 +535,14 @@ class SqlDatabase {
           ''');
     } catch (_) {}
 
-    // â”€â”€ Ø¬Ø¯ÙˆÙ„ Ø§Ù„Ø£Ø¹Ù…Ø§Ù„ Ø§Ù„ÙŠÙˆÙ…ÙŠØ© (Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── جدول الأعمال اليومية (عمل يومي) ──────────────────────────────────
     try {
       await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerDailyJobs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               worker_uid TEXT NOT NULL,
               work_date TEXT NOT NULL,
-              title TEXT NOT NULL DEFAULT 'Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ',
+              title TEXT NOT NULL DEFAULT 'عمل يومي',
               note TEXT,
               price REAL NOT NULL DEFAULT 0.0,
               is_settled INTEGER NOT NULL DEFAULT 0,
@@ -660,7 +660,7 @@ class SqlDatabase {
       );
     } catch (_) {}
 
-    // Treasury: Ø£Ø¹Ù…Ø¯Ø© Ø§Ù„Ø¬Ù‡Ø© ÙˆØ§Ù„Ø±ØµÙŠØ¯
+    // Treasury: أعمدة الجهة والرصيد
     try {
       await db.execute("ALTER TABLE Treasury ADD COLUMN entity_type TEXT;");
     } catch (_) {}
@@ -970,44 +970,44 @@ class SqlDatabase {
     } catch (_) {}
 
     try {
-      // Migrate any existing 'Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…' to 'Ø®Ø§Ù…'
+      // Migrate any existing 'بدون لون / اللون الخام' to 'خام'
       await db.update(
         'Colors',
-        {'name': 'Ø®Ø§Ù…'},
+        {'name': 'خام'},
         where: "name = ?",
-        whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
+        whereArgs: ['بدون لون / اللون الخام'],
       );
       await db.update(
         'GlassColorPrices',
-        {'color_name': 'Ø®Ø§Ù…'},
+        {'color_name': 'خام'},
         where: "color_name = ?",
-        whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
+        whereArgs: ['بدون لون / اللون الخام'],
       );
       try {
         await db.update(
           'Commandes_details',
-          {'color': 'Ø®Ø§Ù…'},
+          {'color': 'خام'},
           where: "color = ?",
-          whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
+          whereArgs: ['بدون لون / اللون الخام'],
         );
       } catch (_) {}
       try {
         await db.update(
           'Glass',
-          {'color': 'Ø®Ø§Ù…'},
+          {'color': 'خام'},
           where: "color = ?",
-          whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
+          whereArgs: ['بدون لون / اللون الخام'],
         );
       } catch (_) {}
 
       final check = await db.query(
         'Colors',
         where: "name = ?",
-        whereArgs: ['Ø®Ø§Ù…'],
+        whereArgs: ['خام'],
       );
       if (check.isEmpty) {
         await db.insert('Colors', {
-          'name': 'Ø®Ø§Ù…',
+          'name': 'خام',
           'hex_code': '#E0E0E0',
           'type': 'Global',
           'is_active': 1,
@@ -1172,16 +1172,16 @@ class SqlDatabase {
         double defaultWeight = 0.0;
         if (subtype == 'extruded' ||
             nameLower.contains('extruded') ||
-            nameLower.contains('Ø¥ÙƒØ³ØªØ±ÙˆØ¯ÙŠ')) {
+            nameLower.contains('إكسترودي')) {
           defaultWeight = 12.0;
         } else if (nameLower.contains('55') ||
             currentMeas == '55' ||
             currentMeas == '550' ||
-            nameLower.contains('Ù¥Ù¥')) {
+            nameLower.contains('٥٥')) {
           defaultWeight = 4.0;
         } else if (nameLower.contains('lame') ||
-            nameLower.contains('Ø´Ø±ÙŠØ­') ||
-            nameLower.contains('Ø´Ø±ÙŠØ­Ø©') ||
+            nameLower.contains('شريح') ||
+            nameLower.contains('شريحة') ||
             nameLower.contains('final')) {
           defaultWeight = 3.0;
         }
@@ -1315,7 +1315,7 @@ class SqlDatabase {
             supplier_id INTEGER,
             location_id INTEGER,
             total_amount REAL NOT NULL,
-            status TEXT NOT NULL DEFAULT 'Ù†Ø´Ø·Ø©',
+            status TEXT NOT NULL DEFAULT 'نشطة',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (supplier_id) REFERENCES Suppliers(id) ON DELETE SET NULL,
@@ -1359,7 +1359,7 @@ class SqlDatabase {
               qty_mode TEXT NOT NULL DEFAULT 'fixed',
               dimension TEXT,
               base_qty REAL NOT NULL DEFAULT 1,
-              unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
+              unit TEXT NOT NULL DEFAULT 'قطعة',
               mechanism_scope TEXT NOT NULL DEFAULT 'all',
               sort_order INTEGER NOT NULL DEFAULT 0,
               FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
@@ -1436,21 +1436,21 @@ class SqlDatabase {
     // Translate Arabic accessory types to French in the Accessories table
     try {
       final translationMap = {
-        'Ù…ÙØ§ØµÙ„': 'Paumelles',
-        'Ù…Ù‚Ø¨Ø¶': 'PoignÃ©e FenÃªtre',
-        'Ù‚ÙÙ„': 'Serrure',
-        'Ù‚Ø§Ø´': 'GÃ¢che',
-        'ÙÙŠØ±Ùˆ': 'Verrou',
-        'Ø¥Ø³Ø¨Ø§Ù†ÙŠÙˆÙ„ÙŠØª': 'Espagnolette',
-        'ÙƒØ§Ù†Ùˆ': 'Canon',
-        'Ø³ÙŠØ³ØªÙ… Ø£Ùˆ Ø¨ÙŠ': 'System OB',
-        'Ø¯ÙŠÙ…ÙŠ Ø³ÙŠØ³ØªÙ… Ø£Ùˆ Ø¨ÙŠ': 'Demi System OB',
-        'ÙÙŠØ±Ùˆ Ø³Ù†ØªØ±Ø§Ù„': 'Verrou Central',
-        'ÙƒØ§Ø´ Ø¨ÙˆØ±Øª': 'GÃ¢che Porte',
-        'ÙƒØ§Ø´ ÙƒÙˆÙ„ÙŠØ³ÙˆÙ†': 'GÃ¢che Coulissante',
-        'ÙƒØ±ÙŠÙ…ÙˆÙ†': 'CrÃ©mone',
-        'Ø¨ÙˆØ´ÙˆÙ† Ø¨Ø§Ø±Ùƒ Ù„ÙˆØ²': 'Bouchon Parclose',
-        'Ø§Ù„Ø¨Ø±Ø§ØºÙŠ': 'Visse',
+        'مفاصل': 'Paumelles',
+        'مقبض': 'Poignée Fenêtre',
+        'قفل': 'Serrure',
+        'قاش': 'Gâche',
+        'فيرو': 'Verrou',
+        'إسبانيوليت': 'Espagnolette',
+        'كانو': 'Canon',
+        'سيستم أو بي': 'System OB',
+        'ديمي سيستم أو بي': 'Demi System OB',
+        'فيرو سنترال': 'Verrou Central',
+        'كاش بورت': 'Gâche Porte',
+        'كاش كوليسون': 'Gâche Coulissante',
+        'كريمون': 'Crémone',
+        'بوشون بارك لوز': 'Bouchon Parclose',
+        'البراغي': 'Visse',
       };
       for (var entry in translationMap.entries) {
         await db.rawUpdate(
@@ -1575,44 +1575,44 @@ class SqlDatabase {
         // Replace corrupted Arabic names
         .replaceAll(
           'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢',
-          'Ø³ØªØ§Ø± Ø£Ø¨ÙŠØ¶',
+          'ستار أبيض',
         )
         .replaceAll(
           'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
-          'Ø³ØªØ§Ø± Ø®Ø´Ø¨ÙŠ',
+          'ستار خشبي',
         )
         .replaceAll(
           'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ¿â”˜Ã¥â”˜Ã¨/â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
-          'Ø³ØªØ§Ø± Ø¨Ù†ÙŠ/Ø®Ø´Ø¨ÙŠ',
+          'ستار بني/خشبي',
         )
         .replaceAll(
           'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ¿â”˜Ã¥â”˜Ã¨ / â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
-          'Ø³ØªØ§Ø± Ø¨Ù†ÙŠ/Ø®Ø´Ø¨ÙŠ',
+          'ستار بني/خشبي',
         )
-        .replaceAll('Injecte', 'InjectÃ©e')
-        .replaceAll('Extrude', 'ExtrudÃ©e')
-        .replaceAll('Glissire', 'GlissiÃ¨re');
+        .replaceAll('Injecte', 'Injectée')
+        .replaceAll('Extrude', 'Extrudée')
+        .replaceAll('Glissire', 'Glissière');
 
     // Ensure common variations are fully normalized
     if (cleaned.toLowerCase() == 'lame injectee' ||
-        cleaned.toLowerCase() == 'lame injectÃ©e') {
-      cleaned = 'Lame InjectÃ©e';
+        cleaned.toLowerCase() == 'lame injectée') {
+      cleaned = 'Lame Injectée';
     }
     if (cleaned.toLowerCase() == 'lame extrudee' ||
-        cleaned.toLowerCase() == 'lame extrudÃ©e') {
-      cleaned = 'Lame ExtrudÃ©e';
+        cleaned.toLowerCase() == 'lame extrudée') {
+      cleaned = 'Lame Extrudée';
     }
     if (cleaned.toLowerCase() == 'glissiere 25' ||
-        cleaned.toLowerCase() == 'glissiÃ¨re 25') {
-      cleaned = 'GlissiÃ¨re 25';
+        cleaned.toLowerCase() == 'glissière 25') {
+      cleaned = 'Glissière 25';
     }
     if (cleaned.toLowerCase() == 'glissiere 120' ||
-        cleaned.toLowerCase() == 'glissiÃ¨re 120') {
-      cleaned = 'GlissiÃ¨re 120';
+        cleaned.toLowerCase() == 'glissière 120') {
+      cleaned = 'Glissière 120';
     }
     if (cleaned.toLowerCase() == 'glissiere 100' ||
-        cleaned.toLowerCase() == 'glissiÃ¨re 100') {
-      cleaned = 'GlissiÃ¨re 100';
+        cleaned.toLowerCase() == 'glissière 100') {
+      cleaned = 'Glissière 100';
     }
     return cleaned;
   }
@@ -3579,7 +3579,7 @@ class SqlDatabase {
         qty_mode TEXT NOT NULL DEFAULT 'fixed',
         dimension TEXT,
         base_qty REAL NOT NULL DEFAULT 1,
-        unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
+        unit TEXT NOT NULL DEFAULT 'قطعة',
         mechanism_scope TEXT NOT NULL DEFAULT 'all',
         sort_order INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
@@ -4423,9 +4423,12 @@ class SqlDatabase {
     return nextCode;
   }
 
+  static bool _orderCodeInfrastructureReady = false;
+
   /// Adds the immutable, user-facing order number infrastructure.  [id] can be
   /// a large distributed sync key; [order_code] is the short number people see.
   Future<void> _ensureOrderCodeInfrastructure(DatabaseExecutor executor) async {
+    if (_orderCodeInfrastructureReady) return;
     try {
       await executor.execute(
         'ALTER TABLE Commandes ADD COLUMN order_code INTEGER NOT NULL DEFAULT 0;',
@@ -4443,6 +4446,7 @@ class SqlDatabase {
       'id': 1,
       'last_code': 0,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    _orderCodeInfrastructureReady = true;
   }
 
   /// Gives restored or legacy orders a permanent display number once.  Old
@@ -4450,6 +4454,14 @@ class SqlDatabase {
   /// based on creation order.
   Future<void> _backfillOrderCodes(DatabaseExecutor executor) async {
     await _ensureOrderCodeInfrastructure(executor);
+    try {
+      final needsBackfill = await executor.rawQuery(
+        'SELECT 1 FROM Commandes WHERE order_code IS NULL OR order_code <= 0 LIMIT 1',
+      );
+      if (needsBackfill.isEmpty) return;
+    } catch (_) {
+      // If column query fails, proceed with normal logic
+    }
     final rows = await executor.query(
       'Commandes',
       columns: ['id', 'order_code', 'created_at', 'updated_at'],
@@ -5263,46 +5275,46 @@ class SqlDatabase {
 
     final isMfgAll =
         sLower.contains('full manufacturing') ||
-        sLower.contains('ØªØµÙ†ÙŠØ¹ ÙƒÙ„ÙŠ') ||
-        sLower.contains('Ø§Ù„ØªØµÙ†ÙŠØ¹ Ø§Ù„ÙƒÙ„ÙŠ') ||
+        sLower.contains('تصنيع كلي') ||
+        sLower.contains('التصنيع الكلي') ||
         sLower.contains('fabrication totale') ||
         sLower.contains('full distribution') ||
-        sLower.contains('ØªÙˆØ²ÙŠØ¹ ÙƒÙ„ÙŠ') ||
-        sLower.contains('Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„ÙƒÙ„ÙŠ') ||
+        sLower.contains('توزيع كلي') ||
+        sLower.contains('التوزيع الكلي') ||
         sLower.contains('livraison totale') ||
-        sLower.contains('livrÃ©') ||
+        sLower.contains('livré') ||
         sLower.contains('installation') ||
-        sLower.contains('Ø§Ù„ØªØ±ÙƒÙŠØ¨') ||
+        sLower.contains('التركيب') ||
         sLower.contains('pose') ||
         sLower.contains('reserve') ||
-        sLower.contains('Ù…Ø­Ø¬ÙˆØ²Ø©') ||
+        sLower.contains('محجوزة') ||
         sLower.contains('done') ||
-        sLower.contains('Ù…Ù†ØªÙ‡ÙŠØ©') ||
-        sLower.contains('ØªÙ…Øª');
+        sLower.contains('منتهية') ||
+        sLower.contains('تمت');
 
     final isDistAll =
         sLower.contains('full distribution') ||
-        sLower.contains('ØªÙˆØ²ÙŠØ¹ ÙƒÙ„ÙŠ') ||
-        sLower.contains('Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„ÙƒÙ„ÙŠ') ||
+        sLower.contains('توزيع كلي') ||
+        sLower.contains('التوزيع الكلي') ||
         sLower.contains('livraison totale') ||
-        sLower.contains('livrÃ©') ||
+        sLower.contains('livré') ||
         sLower.contains('installation') ||
-        sLower.contains('Ø§Ù„ØªØ±ÙƒÙŠØ¨') ||
+        sLower.contains('التركيب') ||
         sLower.contains('pose') ||
         sLower.contains('reserve') ||
-        sLower.contains('Ù…Ø­Ø¬ÙˆØ²Ø©') ||
+        sLower.contains('محجوزة') ||
         sLower.contains('done') ||
-        sLower.contains('Ù…Ù†ØªÙ‡ÙŠØ©') ||
-        sLower.contains('ØªÙ…Øª');
+        sLower.contains('منتهية') ||
+        sLower.contains('تمت');
 
     final isMfgPartial =
         sLower.contains('partial manufacturing') ||
-        sLower.contains('ØªØµÙ†ÙŠØ¹ Ø¬Ø²Ø¦ÙŠ') ||
-        sLower.contains('Ø§Ù„ØªØµÙ†ÙŠØ¹ Ø§Ù„Ø¬Ø²Ø¦ÙŠ');
+        sLower.contains('تصنيع جزئي') ||
+        sLower.contains('التصنيع الجزئي');
     final isDistPartial =
         sLower.contains('partial distribution') ||
-        sLower.contains('ØªÙˆØ²ÙŠØ¹ Ø¬Ø²Ø¦ÙŠ') ||
-        sLower.contains('Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„Ø¬Ø²Ø¦ÙŠ');
+        sLower.contains('توزيع جزئي') ||
+        sLower.contains('التوزيع الجزئي');
 
     final isPreMfg =
         sLower == 'pending' ||
@@ -5311,9 +5323,9 @@ class SqlDatabase {
         sLower == 'confirmed' ||
         sLower == 'in progress' ||
         sLower.contains('attente') ||
-        sLower.contains('Ø§Ù†ØªØ¸Ø§Ø±') ||
-        sLower.contains('Ù…Ø¤ÙƒØ¯') ||
-        sLower.contains('Ù‚ÙŠØ§Ø³Ø§Øª');
+        sLower.contains('انتظار') ||
+        sLower.contains('مؤكد') ||
+        sLower.contains('قياسات');
 
     for (var i = 0; i < details.length; i++) {
       final detailId = (details[i]['id'] as num?)?.toInt() ?? 0;
@@ -5398,7 +5410,7 @@ class SqlDatabase {
     }
   }
 
-  /// Ù…Ø²Ø§Ù…Ù†Ø© Ø¢Ù„ÙŠØ© Ù„Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø¨Ù†Ø§Ø¡Ù‹ Ø¹Ù„Ù‰ Ø­Ø§Ù„Ø§Øª Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø·Ù„Ø¨ÙŠØ§Øª Ø§Ù„Ù…Ø³Ø¬Ù„Ø©
+  /// مزامنة آلية لجميع الإسنادات بناءً على حالات جميع الطلبيات المسجلة
   Future<void> syncAllAllocationsFromAllOrderStatuses() async {
     try {
       Database? myDb = await db;
@@ -5424,7 +5436,7 @@ class SqlDatabase {
       FROM Commandes_details d
       JOIN Commandes c ON d.id_commandes = c.id
       WHERE c.id < ? 
-        AND c.status NOT IN ('En attente', 'ÙÙŠ Ø§Ù„Ø§Ù†ØªØ¸Ø§Ø±', 'Pending', 'Draft', 'Ù…Ù„ØºØ§Ø©')
+        AND c.status NOT IN ('En attente', 'في الانتظار', 'Pending', 'Draft', 'ملغاة')
     ''',
       [targetOrderId],
     );
@@ -5576,7 +5588,7 @@ class SqlDatabase {
       int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
       if (currentAllocatedSum + quantity > maxAllowed) {
         throw Exception(
-          'Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø³Ù†Ø¯Ø© ØªØ¬Ø§ÙˆØ²Øª Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­ Ø¨Ù‡ ($maxAllowed Ù‚Ø·Ø¹Ø©). Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ Ù„Ù„Ø¥Ø³Ù†Ø§Ø¯: ${maxAllowed - currentAllocatedSum}',
+          'الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}',
         );
       }
     }
@@ -5656,7 +5668,7 @@ class SqlDatabase {
           int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
           if (currentAllocatedSum + quantity > maxAllowed) {
             throw Exception(
-              'Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø³Ù†Ø¯Ø© ØªØ¬Ø§ÙˆØ²Øª Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­ Ø¨Ù‡ ($maxAllowed Ù‚Ø·Ø¹Ø©). Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ Ù„Ù„Ø¥Ø³Ù†Ø§Ø¯: ${maxAllowed - currentAllocatedSum}',
+              'الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}',
             );
           }
         }
@@ -5691,7 +5703,7 @@ class SqlDatabase {
             .collection('workshops')
             .doc(workshopId);
 
-        // 1. ÙƒØªØ§Ø¨Ø© Ø¹Ù„Ø§Ù…Ø© Ø­Ø°Ù Ø¯Ø§Ø¦Ù…Ø© (tombstone) ØªÙ…Ù†Ø¹ restore Ù…Ù† Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯ Ø§Ù„Ù…Ø­Ø°ÙˆÙ
+        // 1. كتابة علامة حذف دائمة (tombstone) تمنع restore من إعادة الإسناد المحذوف
         try {
           await workshopRef
               .collection('deleted_allocations')
@@ -5801,27 +5813,27 @@ class SqlDatabase {
       }
     } catch (_) {}
 
-    // 1. Ø­Ø°Ù Ù…Ù† SQLite Ø£ÙˆÙ„Ø§Ù‹ (ÙÙˆØ±ÙŠ)
+    // 1. حذف من SQLite أولاً (فوري)
     final res = await myDb.delete(
       'WorkerAllocations',
       where: 'id = ?',
       whereArgs: [allocationId],
     );
 
-    // 2. Ø­Ø°Ù Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø© ÙˆØªØ³Ø¬ÙŠÙ„ Ø¹Ù„Ø§Ù…Ø© Ø§Ù„Ø­Ø°Ù Ø§Ù„Ø¯Ø§Ø¦Ù…Ø©
+    // 2. حذف من السحابة وتسجيل علامة الحذف الدائمة
     await _deleteAllocationFromCloud(allocationId);
 
     if (orderId > 0) {
       await syncOrderAndAllocationsStatus(orderId);
     }
 
-    // Ù…Ù„Ø§Ø­Ø¸Ø©: Ù„Ø§ Ù†Ø³ØªØ¯Ø¹ÙŠ backupToCloud() Ù‡Ù†Ø§ Ù„ØªØ¬Ù†Ø¨ Ø§Ù„ØªØ£Ø®Ø± 20+ Ø«Ø§Ù†ÙŠØ©.
-    // notifyChange() ÙŠØ¹Ù…Ù„ Ø¨Ù€ debounce 1 Ø«Ø§Ù†ÙŠØ© ÙˆÙŠØ·Ù„Ù‚ _silentBackup() ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹.
+    // ملاحظة: لا نستدعي backupToCloud() هنا لتجنب التأخر 20+ ثانية.
+    // notifyChange() يعمل بـ debounce 1 ثانية ويطلق _silentBackup() تلقائياً.
     CloudSyncService().notifyChange();
     return res;
   }
 
-  /// Ø­Ø°Ù Ø¥Ø³Ù†Ø§Ø¯ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø· (Ø¨Ø¯ÙˆÙ† Ø£ÙŠ Ø§ØªØµØ§Ù„ Ø³Ø­Ø§Ø¨Ø©) â€” ÙŠÙØ³ØªØ®Ø¯Ù… Ø¹Ù†Ø¯ ØªØ·Ø¨ÙŠÙ‚ tombstones Ø¨Ø¹Ø¯ Ø§Ù„Ù€ restore
+  /// حذف إسناد محلياً فقط (بدون أي اتصال سحابة) — يُستخدم عند تطبيق tombstones بعد الـ restore
   Future<void> deleteWorkerAllocationLocalOnly(int allocationId) async {
     try {
       Database? myDb = await db;
@@ -5836,7 +5848,7 @@ class SqlDatabase {
     }
   }
 
-  /// Ø­Ø°Ù Achat ÙˆØ¹Ù†Ø§ØµØ±Ù‡ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø· (Ù„Ø§ ÙŠÙØ´ØºÙ‘Ù„ backup) â€” ÙŠÙØ³ØªØ®Ø¯Ù… Ø¨Ø¹Ø¯ restore
+  /// حذف Achat وعناصره محلياً فقط (لا يُشغّل backup) — يُستخدم بعد restore
   Future<void> deleteAchatLocalOnly(int id) async {
     try {
       Database? myDb = await db;
@@ -5848,7 +5860,7 @@ class SqlDatabase {
     }
   }
 
-  /// ØªØ¹Ø·ÙŠÙ„ Ø³Ø¬Ù„ Ø²Ø¬Ø§Ø¬ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø· (is_active=0) â€” ÙŠÙØ³ØªØ®Ø¯Ù… Ø¨Ø¹Ø¯ restore
+  /// تعطيل سجل زجاج محلياً فقط (is_active=0) — يُستخدم بعد restore
   Future<void> setGlassInactiveLocalOnly(int id) async {
     try {
       Database? myDb = await db;
@@ -5864,7 +5876,7 @@ class SqlDatabase {
     }
   }
 
-  /// ðŸ§¹ ØªØµÙÙŠØ± ÙˆØ­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ù…Ù‡Ø§Ù… ÙˆØ§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙÙŠ Ø§Ù„Ø³Ø­Ø§Ø¨Ø© Ù„Ù„ØªØ·ÙˆÙŠØ±
+  /// 🧹 تصفير وحذف جميع المهام والإسنادات محلياً وفي السحابة للتطوير
   Future<void> clearAllWorkerAllocationsFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
@@ -5971,11 +5983,11 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  /// ðŸ§¹ ØªØµÙÙŠØ± Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª ÙˆØ§Ù„Ø¹Ù…Ù„ÙŠØ§Øª Ø§Ù„Ø®Ø§Ø±Ø¬ÙŠØ© Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙÙŠ Ø§Ù„Ø³Ø­Ø§Ø¨Ø© Ù„Ù„ØªØ·ÙˆÙŠØ±
+  /// 🧹 تصفير بيانات التركيبات والعمليات الخارجية محلياً وفي السحابة للتطوير
   Future<void> clearAllInstallationDataFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
-      // 1. ØªØµÙÙŠØ± Ø­Ø§Ù„Ø§Øª Ø§Ù„ØªØ±ÙƒÙŠØ¨ ÙˆØ§Ù„ØªØ­ÙØ¸ ÙˆØ§Ù„Ø²Ø¬Ø§Ø¬ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ ÙÙŠ WorkerAllocations
+      // 1. تصفير حالات التركيب والتحفظ والزجاج بالكامل في WorkerAllocations
       await myDb.rawUpdate('''
         UPDATE WorkerAllocations 
         SET is_transferred_to_dist = 0, transferred_at = NULL,
@@ -5986,7 +5998,7 @@ class SqlDatabase {
             has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
       ''');
 
-      // 2. ØªØµÙÙŠØ± Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ø³ØªÙ„Ø§Ù… Ø§Ù„Ø²Ø¬Ø§Ø¬ ÙˆØ§Ù„Ù…Ø´ØªØ±ÙŠØ§Øª ÙˆØ§Ù„Ù†ÙˆØ§Ù‚Øµ ÙÙŠ Commandes_details
+      // 2. تصفير بيانات استلام الزجاج والمشتريات والنواقص في Commandes_details
       try {
         await myDb.rawUpdate('''
           UPDATE Commandes_details 
@@ -5995,7 +6007,7 @@ class SqlDatabase {
         ''');
       } catch (_) {}
 
-      // 3. Ø­Ø°Ù Ø£ÙŠ Ø³Ø¬Ù„Ø§Øª Ù…Ø³ØªÙ‚Ù„Ø© Ù„Ù„Ø²Ø¬Ø§Ø¬ ÙˆØ§Ù„Ù…Ø´ØªØ±ÙŠØ§Øª
+      // 3. حذف أي سجلات مستقلة للزجاج والمشتريات
       try {
         await myDb.rawDelete('DELETE FROM GlassOrders');
       } catch (_) {}
@@ -6091,7 +6103,7 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  /// ðŸ§¹ ØªØµÙÙŠØ± Ø³Ø¬Ù„Ø§Øª Ø§Ù„Ù…Ø­Ø§Ø³Ø¨Ø© Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙÙŠ Ø§Ù„Ø³Ø­Ø§Ø¨Ø© Ù„Ù„ØªØ·ÙˆÙŠØ±
+  /// 🧹 تصفير سجلات المحاسبة محلياً وفي السحابة للتطوير
   Future<void> clearAllWeeklySettlementsFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
@@ -6318,7 +6330,7 @@ class SqlDatabase {
     final cleanEmail = workerEmail.trim().toLowerCase();
     final cleanUid = workerUid.trim().toLowerCase();
 
-    // 1. Ø§Ø³ØªØ¹Ù„Ø§Ù… Ø¯Ù‚ÙŠÙ‚ ÙŠØ¶Ù…Ù† ÙÙ„ØªØ±Ø© ÙˆØ­ØµØ± Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø§Ù„Ù…Ø³Ù†Ø¯Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ø¹Ø§Ù…Ù„ ÙÙ‚Ø· Ø¨Ø¯ÙˆÙ† ØªØ³Ø±ÙŠØ¨ Ø¥Ø³Ù†Ø§Ø¯Ø§Øª ØºÙŠØ±Ù‡
+    // 1. استعلام دقيق يضمن فلترة وحصر الإسنادات المسندة لهذا العامل فقط بدون تسريب إسنادات غيره
     final List<Map<String, dynamic>> results;
     if (cleanEmail.isNotEmpty) {
       results = await myDb.rawQuery(
@@ -6375,7 +6387,7 @@ class SqlDatabase {
     return results;
   }
 
-  /// Ø±Ø¨Ø· Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø§Ù„Ø¹Ø§Ù…Ù„ Ø¨Ù€ UID Ø§Ù„ØµØ­ÙŠØ­ Ø¨Ø¹Ø¯ Ø§Ù„Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø©
+  /// ربط إسنادات العامل بـ UID الصحيح بعد الاستعادة من السحابة
   Future<void> relinkCurrentWorkerAllocations() async {
     try {
       final user = AppAuthService().currentUser;
@@ -7062,8 +7074,8 @@ class SqlDatabase {
     if (myDb == null) return;
     final nowStr = DateTime.now().toUtc().toIso8601String();
 
-    // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„ØªØ­ÙˆÙŠÙ„ Ø¥Ù„Ù‰ Ø§Ù„ØªÙˆØ²ÙŠØ¹: Ù†Ø¶Ø¨Ø· Ø­Ù‚Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„ ÙÙ‚Ø· â†’ Ø§Ù„Ø¹Ù†ØµØ± ÙŠÙ†ØªÙ‚Ù„ Ù„ØµÙØ­Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ©
-    // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ù„ØºØ§Ø¡ (Ø¥Ø±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ø£Ø±Ø´ÙŠÙ): Ù†ØµÙÙ‘Ø± Ø¬Ù…ÙŠØ¹ Ø­Ù‚ÙˆÙ„ Ø§Ù„ØªØ±ÙƒÙŠØ¨/Ø§Ù„Ø§ÙƒØªÙ…Ø§Ù„ Ø­ØªÙ‰ ÙŠÙ…Ø± Ø§Ù„Ø¹Ù†ØµØ± Ø¨Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰
+    // ✔️ عند التحويل إلى التوزيع: نضبط حقل التحويل فقط → العنصر ينتقل لصفحة التركيبات الميدانية
+    // ✔️ عند الإلغاء (إرجاع من الأرشيف): نصفّر جميع حقول التركيب/الاكتمال حتى يمر العنصر بمرحلة التركيبات الميدانية مرة أخرى
     final Map<String, dynamic> updateFields = isTransferred == 1
         ? {
             'is_transferred_to_dist': 1,
@@ -7073,7 +7085,7 @@ class SqlDatabase {
         : {
             'is_transferred_to_dist': 0,
             'transferred_at': null,
-            // âœ… Ø£Ø³Ø§Ø³ÙŠ: Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ø±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ø£Ø±Ø´ÙŠÙ ÙŠØ¬Ø¨ Ù…Ø³Ø­ Ø­Ø§Ù„Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨ ÙˆØ§Ù„Ø§ÙƒØªÙ…Ø§Ù„ Ù„ÙŠØ¹ÙˆØ¯ Ù„Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ø¨Ø¹Ø¯ Ø°Ù„Ùƒ
+            // ✅ أساسي: عند الإرجاع من الأرشيف يجب مسح حالة التركيب والاكتمال ليعود للتركيبات الميدانية بعد ذلك
             'is_installed': 0,
             'installed_at': null,
             'is_completed': 0,
@@ -7089,7 +7101,7 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    // âš¡ï¸ ØªØ´ØºÙŠÙ„ syncOrder ÙÙŠ Ø§Ù„Ø®Ù„ÙÙŠØ© Ø¯ÙˆÙ† Ø­Ø¸Ø± Ø§Ù„ÙˆØ§Ø¬Ù‡Ø© (ØªØ­Ø³ÙŠÙ† Ø§Ù„Ø³Ø±Ø¹Ø©)
+    // ⚡️ تشغيل syncOrder في الخلفية دون حظر الواجهة (تحسين السرعة)
     () async {
       try {
         final allocRow = await myDb.query(
@@ -7481,7 +7493,7 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  // â”€â”€ Ø§Ù„Ø­Ø¶ÙˆØ± ÙˆØ§Ù„ØºÙŠØ§Ø¨ (WorkerAttendance) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── الحضور والغياب (WorkerAttendance) ──────────────────────────────────────────────
   Future<List<Map<String, dynamic>>> readWorkerAttendance(
     String workerUid,
   ) async {
@@ -7510,7 +7522,7 @@ class SqlDatabase {
     if (myDb == null) return;
 
     if (checkIn == null && checkOut == null && (note == null || note.isEmpty)) {
-      // ðŸ—‘ï¸ Ø¥Ø°Ø§ ÙƒØ§Ù†Øª Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ÙØ§Ø±ØºØ©ØŒ Ø§Ø­Ø°Ù Ø§Ù„Ø³Ø¬Ù„ Ù„ØªØµÙÙŠØ± Ø®ÙŠØ§Ø± Ø§Ù„Ø­Ø¶ÙˆØ± ÙˆØ§Ù„ØºÙŠØ§Ø¨ (ÙØ§Ø±Øº âšª)
+      // 🗑️ إذا كانت البيانات فارغة، احذف السجل لتصفير خيار الحضور والغياب (فارغ ⚪)
       await myDb.delete(
         'WorkerAttendance',
         where: 'worker_uid = ? AND attendance_date = ?',
@@ -7548,7 +7560,7 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  // â”€â”€ Ø§Ù„Ø£Ø¹Ù…Ø§Ù„ Ø§Ù„ÙŠÙˆÙ…ÙŠØ© (WorkerDailyJobs - Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── الأعمال اليومية (WorkerDailyJobs - عمل يومي) ──────────────────────────
   Future<List<Map<String, dynamic>>> readWorkerDailyJobs(
     String workerUid,
   ) async {
@@ -7598,7 +7610,7 @@ class SqlDatabase {
       _withDistributedId({
         'worker_uid': workerUid,
         'work_date': workDate,
-        'title': title.trim().isEmpty ? 'Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ' : title.trim(),
+        'title': title.trim().isEmpty ? 'عمل يومي' : title.trim(),
         'note': note,
         'price': price,
         'is_settled': 0,
@@ -7660,7 +7672,7 @@ class SqlDatabase {
     final double totalAllocEarned =
         (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // 1b. Calculate total earned from unsettled daily jobs (Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ)
+    // 1b. Calculate total earned from unsettled daily jobs (عمل يومي)
     final List<Map<String, dynamic>> dailyJobs = await myDb.rawQuery(
       "SELECT COALESCE(SUM(price), 0) as total FROM WorkerDailyJobs WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
       allKeys,
@@ -7708,7 +7720,7 @@ class SqlDatabase {
         'worker_uid': primaryKey,
         'amount': paymentAmount,
         'transaction_type': 'salary',
-        'note': 'ØªØ³ÙˆÙŠØ© Ø£Ø³Ø¨ÙˆØ¹ÙŠØ© - Ø¯ÙØ¹ Ø£Ø³Ø¨ÙˆØ¹ÙŠ',
+        'note': 'تسوية أسبوعية - دفع أسبوعي',
         'created_at': now,
         'is_settled': 1,
         'settled_at': now,
@@ -7718,13 +7730,13 @@ class SqlDatabase {
     // 6. Record in Treasury as Decaissement (ALWAYS record full payout in selected Caisse)
     if (paymentAmount != 0.0) {
       await insertTreasury(
-        'DÃ©caissement',
+        'Décaissement',
         paymentAmount.abs(),
-        'ØªØ³ÙˆÙŠØ© Ø£Ø³Ø¨ÙˆØ¹ÙŠØ© Ù„Ù„Ø¹Ø§Ù…Ù„ $workerName',
+        'تسوية أسبوعية للعامل $workerName',
         entityType: 'Worker',
         entityId: workerId > 0 ? workerId : null,
         recordedBy: recordedBy,
-        caisseName: caisseName ?? 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
+        caisseName: caisseName ?? 'الصندوق الرئيسي',
         referenceId: -1,
         createdAt: now,
       );
@@ -7739,7 +7751,7 @@ class SqlDatabase {
           'worker_uid': primaryKey,
           'amount': carryover,
           'transaction_type': 'advance',
-          'note': 'Ø±ØµÙŠØ¯ Ù…Ø±Ø­Ù‘Ù„ Ù…Ù† Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹ Ø§Ù„Ø³Ø§Ø¨Ù‚',
+          'note': 'رصيد مرحّل من الأسبوع السابق',
           'created_at': now,
           'is_settled': 0,
         }),
@@ -7788,16 +7800,16 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) {
-      throw StateError('Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…ØªØ§Ø­Ø©.');
+      throw StateError('قاعدة البيانات غير متاحة.');
     }
     await _backfillOrderCodes(myDb);
     if (details.isEmpty) {
       throw StateError(
-        'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø­ÙØ¸ Ø·Ù„Ø¨ÙŠØ© Ø¨Ø¯ÙˆÙ† ØªÙØ§ØµÙŠÙ„.',
+        'لا يمكن حفظ طلبية بدون تفاصيل.',
       );
     }
     if (!total.isFinite || !netPayable.isFinite) {
-      throw StateError('Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ø·Ù„Ø¨ÙŠØ© ØºÙŠØ± ØµØ§Ù„Ø­.');
+      throw StateError('مجموع الطلبية غير صالح.');
     }
 
     // File access is intentionally completed before starting the transaction.
@@ -7983,14 +7995,14 @@ class SqlDatabase {
 
       final countResult = await txn.rawQuery(
         'SELECT COUNT(*) AS count FROM Commandes_details '
-        'WHERE id_commandes = ?',
-        [orderId],
+        'WHERE id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        [orderId, orderId.toString()],
       );
       final savedDetails = (countResult.first['count'] as num?)?.toInt() ?? 0;
       if (savedDetails != preparedDetails.length) {
         throw StateError(
-          'Ù„Ù… ØªÙØ­ÙØ¸ ÙƒÙ„ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨ÙŠØ© '
-          '(${preparedDetails.length} Ù…Ø·Ù„ÙˆØ¨Ø©ØŒ $savedDetails Ù…Ø­ÙÙˆØ¸Ø©).',
+          'لم تُحفظ كل تفاصيل الطلبية '
+          '(${preparedDetails.length} مطلوبة، $savedDetails محفوظة).',
         );
       }
       return orderId;
@@ -8051,7 +8063,7 @@ class SqlDatabase {
       await insertTreasury(
         'Encaissement',
         advancePayment,
-        'دفعة افتتاحية للطلبية #$distributedId',
+        'دفعة افتتاحية للطلبية #$orderCode',
         referenceId: distributedId,
         entityType: 'Client',
         entityId: idClient,
@@ -8379,6 +8391,155 @@ class SqlDatabase {
     return res;
   }
 
+  
+  static const Map<int, int> _unicodeToWin1252Map = <int, int>{
+    0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84,
+    0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88,
+    0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C,
+    0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93,
+    0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B,
+    0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+  };
+
+  String _repairMojibakeString(String text) {
+    if (text.isEmpty ||
+        (!text.contains('Ø') && !text.contains('Ã') && !text.contains('Â') && !text.contains('Ù'))) {
+      return text;
+    }
+    try {
+      final bytes = <int>[];
+      for (final rune in text.runes) {
+        if (rune <= 0xFF) {
+          bytes.add(rune);
+        } else if (_unicodeToWin1252Map.containsKey(rune)) {
+          bytes.add(_unicodeToWin1252Map[rune]!);
+        } else {
+          return text;
+        }
+      }
+      final repaired = utf8.decode(bytes, allowMalformed: false);
+      return repaired.contains('�') ? text : repaired;
+    } catch (_) {
+      return text;
+    }
+  }
+
+  Future<void> _repairCorruptedMojibakeAndLongIdsInTreasury(Database myDb) async {
+    try {
+      // 1. Repair Mojibake and replace huge Order IDs in Treasury
+      final treasuryRows = await myDb.query('Treasury');
+      
+      // Build order_id -> order_code lookup map for fast replacement
+      final orderRows = await myDb.rawQuery('SELECT id, order_code FROM Commandes WHERE order_code > 0');
+      final Map<int, int> orderCodeMap = {};
+      for (final o in orderRows) {
+        final id = (o['id'] as num?)?.toInt();
+        final code = (o['order_code'] as num?)?.toInt();
+        if (id != null && code != null && code > 0) {
+          orderCodeMap[id] = code;
+        }
+      }
+
+      final longNumberRegex = RegExp(r'\b\d{6,}\b');
+
+      for (final row in treasuryRows) {
+        final id = row['id'] as int;
+        var desc = (row['description'] ?? '').toString();
+        var type = (row['transaction_type'] ?? '').toString();
+        var caisse = (row['caisse_name'] ?? '').toString();
+        var recordedBy = (row['recorded_by'] ?? '').toString();
+        bool changed = false;
+
+        // A. Repair Mojibake in text columns
+        final cleanDesc = _repairMojibakeString(desc);
+        if (cleanDesc != desc) {
+          desc = cleanDesc;
+          changed = true;
+        }
+        final cleanType = _repairMojibakeString(type);
+        if (cleanType != type) {
+          type = cleanType;
+          changed = true;
+        }
+        final cleanCaisse = _repairMojibakeString(caisse);
+        if (cleanCaisse != caisse) {
+          caisse = cleanCaisse;
+          changed = true;
+        }
+        final cleanRecorded = _repairMojibakeString(recordedBy);
+        if (cleanRecorded != recordedBy) {
+          recordedBy = cleanRecorded;
+          changed = true;
+        }
+
+        // B. Replace any large distributed order ID (6+ digits) in description with small order_code
+        if (longNumberRegex.hasMatch(desc)) {
+          final newDesc = desc.replaceAllMapped(longNumberRegex, (match) {
+            final numStr = match.group(0)!;
+            final candidateId = int.tryParse(numStr);
+            if (candidateId != null && orderCodeMap.containsKey(candidateId)) {
+              return orderCodeMap[candidateId].toString();
+            }
+            return numStr;
+          });
+          if (newDesc != desc) {
+            desc = newDesc;
+            changed = true;
+          }
+        }
+
+        // Also if reference_id points to an order and description has #refId or رقم refId
+        final refId = (row['reference_id'] as num?)?.toInt();
+        if (refId != null && refId > 100000 && orderCodeMap.containsKey(refId)) {
+          final code = orderCodeMap[refId]!;
+          if (desc.contains(refId.toString())) {
+            desc = desc.replaceAll(refId.toString(), code.toString());
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          await myDb.update(
+            'Treasury',
+            {
+              'description': desc,
+              'transaction_type': type,
+              'caisse_name': caisse,
+              'recorded_by': recordedBy,
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      }
+
+      // 2. Repair Mojibake in WorkerTransactions notes
+      final workerTxns = await myDb.rawQuery("SELECT id, note FROM WorkerTransactions WHERE note LIKE '%Ø%' OR note LIKE '%Ã%' OR note LIKE '%Ù%'");
+      for (final w in workerTxns) {
+        final wId = w['id'] as int;
+        final note = (w['note'] ?? '').toString();
+        final cleanNote = _repairMojibakeString(note);
+        if (cleanNote != note) {
+          await myDb.update('WorkerTransactions', {'note': cleanNote}, where: 'id = ?', whereArgs: [wId]);
+        }
+      }
+
+      // 3. Repair Mojibake in Caisses names
+      final caisseRows = await myDb.rawQuery("SELECT id, name FROM Caisses WHERE name LIKE '%Ø%' OR name LIKE '%Ã%' OR name LIKE '%Ù%'");
+      for (final c in caisseRows) {
+        final cId = c['id'] as int;
+        final name = (c['name'] ?? '').toString();
+        final cleanName = _repairMojibakeString(name);
+        if (cleanName != name) {
+          await myDb.update('Caisses', {'name': cleanName}, where: 'id = ?', whereArgs: [cId]);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error auto-repairing Treasury/Mojibake: $e');
+    }
+  }
+
   Future<void> migrateLegacyTreasuryRecords() async {
     Database? myDb = await db;
     if (myDb == null) return;
@@ -8429,6 +8590,7 @@ class SqlDatabase {
       }
 
       await _ensurePaymentAllocationSchema(myDb);
+      await _repairCorruptedMojibakeAndLongIdsInTreasury(myDb);
 
       // Reconcile only records that pre-date PaymentAllocations. The old
       // implementation created a second Treasury receipt each time this
@@ -8728,10 +8890,12 @@ class SqlDatabase {
 
     // Old callers can still add a deposit, but never by writing directly to
     // Commandes. The single Treasury record is allocated to this order.
+    final orderCode = _positiveInt(orderData.first['order_code']);
+    final displayNum = (orderCode != null && orderCode > 0) ? orderCode : idCommande;
     return insertTreasury(
       'Encaissement',
       amount,
-      'دفعة للطلبية #$idCommande',
+      'دفعة للطلبية #$displayNum',
       referenceId: idCommande,
       entityType: 'Client',
       entityId: clientId,
@@ -9233,7 +9397,7 @@ class SqlDatabase {
           'transaction_type': 'Encaissement',
           'amount': refundedAmount,
           'description':
-              'Ø§Ø³ØªØ±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ù…ÙˆØ±Ø¯ - ÙØ§ØªÙˆØ±Ø© Ù…Ø´ØªØ±ÙŠØ§Øª Ø±Ù‚Ù… $achatId',
+              'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
           'reference_id': achatId,
           'entity_type': 'Supplier',
           'entity_id': supplierId,
@@ -9241,8 +9405,8 @@ class SqlDatabase {
           'created_at': DateTime.now().toUtc().toIso8601String(),
           'old_balance': 0.0,
           'new_balance': 0.0,
-          'caisse_name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
-          'payment_method': 'Ù†Ù‚Ø¯Ø§Ù‹ / EspÃ¨ce',
+          'caisse_name': 'الصندوق الرئيسي',
+          'payment_method': 'نقداً / Espèce',
         }),
       );
     }
@@ -9309,9 +9473,9 @@ class SqlDatabase {
         itemType: item['item_type'] as String,
         colorId: item['color_id'] as int?,
         locationId: 1,
-        // â•ªÂºâ”˜Ã¤â”˜Ã â•ªâ”‚â•ªÂ¬â”˜Ãªâ•ªÂ»â•ªâ•£ â•ªÂºâ”˜Ã¤â•ªâ–’â•ªÂªâ”˜Ã¨â•ªâ”‚â”˜Ã¨ â”˜Ã¢â•ªÂºâ”˜Ã¼â•ªÂ¬â•ªâ–’â•ªÂºâ•ªâ•¢â”˜Ã¨
+        // ╪º┘ä┘à╪│╪¬┘ê╪»╪╣ ╪º┘ä╪▒╪ª┘è╪│┘è ┘â╪º┘ü╪¬╪▒╪º╪╢┘è
         quantityChange: -qty,
-        // â•ªÂ«â•ªâ•¡â”˜Ã  â•ªÂºâ”˜Ã¤â”˜Ã¢â”˜Ã â”˜Ã¨â•ªâŒ
+        // ╪«╪╡┘à ╪º┘ä┘â┘à┘è╪⌐
         transactionType: 'Purchase Item Deleted',
         referenceId: item['achat_id'] as int,
       );
@@ -9411,19 +9575,19 @@ class SqlDatabase {
 
         String desc =
             (transactionType == 'advance'
-                ? 'Ø³Ù„ÙØ© Ù„Ù„Ø¹Ø§Ù…Ù„ '
-                : 'Ø£Ø¬Ø±Ø© Ù„Ù„Ø¹Ø§Ù…Ù„ ') +
+                ? 'سلفة للعامل '
+                : 'أجرة للعامل ') +
             workerName;
         if (note.isNotEmpty) desc += ' - $note';
 
         await insertTreasury(
-          'DÃ©caissement',
+          'Décaissement',
           amount,
           desc,
           entityType: 'Worker',
           entityId: workerId,
           recordedBy: recordedBy ?? 'system',
-          caisseName: caisseName ?? 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
+          caisseName: caisseName ?? 'الصندوق الرئيسي',
           createdAt: now,
         );
       }
@@ -9502,7 +9666,7 @@ class SqlDatabase {
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
       where:
-          "transaction_type = 'DÃ©caissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
       whereArgs: [workerId, oldAmount],
       limit: 1,
     );
@@ -9511,8 +9675,8 @@ class SqlDatabase {
       final treasuryId = records.first['id'] as int;
       String desc =
           (newType == 'advance'
-              ? 'Ø³Ù„ÙØ© Ù„Ù„Ø¹Ø§Ù…Ù„ '
-              : 'Ø£Ø¬Ø±Ø© Ù„Ù„Ø¹Ø§Ù…Ù„ ') +
+              ? 'سلفة للعامل '
+              : 'أجرة للعامل ') +
           workerName;
       if (newNote.isNotEmpty) desc += ' - $newNote';
 
@@ -9543,7 +9707,7 @@ class SqlDatabase {
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
       where:
-          "transaction_type = 'DÃ©caissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
       whereArgs: [workerId, amount],
       limit: 1,
     );
@@ -11034,13 +11198,15 @@ class SqlDatabase {
             : missingLegacy;
         final legacyId = _nextDistributedId();
         final createdAt = order['created_at']?.toString();
+        final orderCode = _positiveInt(order['order_code']);
+        final displayCode = (orderCode != null && orderCode > 0) ? orderCode : orderId;
         await executor.insert(
           'Treasury',
           _withDistributedId({
             'id': legacyId,
             'transaction_type': 'Encaissement',
             'amount': amount,
-            'description': 'ترحيل دفعة قديمة للطلبية #$orderId',
+            'description': 'ترحيل دفعة قديمة للطلبية #$displayCode',
             'reference_id': orderId,
             'recorded_by': 'migration',
             'entity_type': 'Client',
@@ -11371,12 +11537,12 @@ class SqlDatabase {
     // 3. Delete salary payout transactions and carryover transactions created around settlement or with matching createdAt
     if (createdAt.isNotEmpty) {
       await myDb.rawDelete(
-        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%ØªØ³ÙˆÙŠØ©%')",
+        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%تسوية%')",
         [...allKeys, createdAt, amount],
       );
     } else {
       await myDb.rawDelete(
-        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%ØªØ³ÙˆÙŠØ©%')",
+        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%تسوية%')",
         allKeys,
       );
     }
@@ -11416,6 +11582,7 @@ class SqlDatabase {
       'caisse_name': caisseName ?? 'الصندوق الرئيسي',
       'payment_method': paymentMethod ?? 'نقداً / Espèce',
       'created_at': transactionAt,
+      'updated_at': transactionAt,
     });
     final res = await myDb.transaction((txn) async {
       await _ensurePaymentAllocationSchema(txn);
@@ -11549,6 +11716,7 @@ class SqlDatabase {
           'caisse_name': newCaisse,
           'payment_method': newPaymentMethod,
           'created_at': newCreatedAt,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
         whereArgs: [id],
@@ -11608,7 +11776,7 @@ class SqlDatabase {
     return totalInvoices - receipts + refunds;
   }
 
-  /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ù…ÙˆØ±Ø¯ = SUM(total) - SUM(paid_amount) Ù…Ù† Achats
+  /// حساب رصيد المورد = SUM(total) - SUM(paid_amount) من Achats
   Future<double> getSupplierBalance(int supplierId) async {
     final myDb = await db;
     if (myDb == null) return 0.0;
@@ -11619,30 +11787,30 @@ class SqlDatabase {
     );
     final bought = (res.first['bought'] as num?)?.toDouble() ?? 0.0;
     final paid = (res.first['paid'] as num?)?.toDouble() ?? 0.0;
-    // Ù…ÙˆØ¬Ø¨ = Ù†Ø­Ù† Ù…Ø¯ÙŠÙ†ÙˆÙ† Ù„Ù„Ù…ÙˆØ±Ø¯
+    // موجب = نحن مدينون للمورد
     return bought - paid;
   }
 
-  /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ø¹Ø§Ù…Ù„ = Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ù…Ø³ØªØ­Ù‚Ø§Øª - Ù…Ø¬Ù…ÙˆØ¹ Ù…Ø§ Ø¯ÙÙØ¹ Ù„Ù‡
+  /// حساب رصيد العامل = مجموع المستحقات - مجموع ما دُفع له
   Future<double> getWorkerBalance(int workerId) async {
     final myDb = await db;
     if (myDb == null) return 0.0;
 
-    // Ù…Ø¬Ù…ÙˆØ¹ Ù…Ø§ Ø¯ÙÙØ¹ Ù„Ù„Ø¹Ø§Ù…Ù„ Ù…Ù† Ø§Ù„Ø®Ø²ÙŠÙ†Ø©
+    // مجموع ما دُفع للعامل من الخزينة
     final paidRes = await myDb.rawQuery(
       "SELECT COALESCE(SUM(amount), 0) as total FROM Treasury WHERE entity_type = 'Worker' AND entity_id = ?",
       [workerId],
     );
     final totalPaid = (paidRes.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ù…Ø³ØªØ­Ù‚Ø§Øª Ù…Ù† WorkerTransactions (Ø£Ø¬ÙˆØ±)
+    // مجموع المستحقات من WorkerTransactions (أجور)
     final earnedRes = await myDb.rawQuery(
       "SELECT COALESCE(SUM(amount), 0) as total FROM WorkerTransactions WHERE worker_uid = ? AND transaction_type = 'salary'",
       [workerId.toString()],
     );
     final totalEarned = (earnedRes.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // Ù…ÙˆØ¬Ø¨ = Ø§Ù„Ù…Ø­Ù„ Ù…Ø¯ÙŠÙ† Ù„Ù„Ø¹Ø§Ù…Ù„
+    // موجب = المحل مدين للعامل
     return totalEarned - totalPaid;
   }
 
@@ -11707,6 +11875,12 @@ class SqlDatabase {
       )
     ''');
     await _ensureProfileColorsSyncIds(db);
+    try {
+      final treasuryCols = await _tableColumns(db, 'Treasury');
+      if (treasuryCols.isNotEmpty && !treasuryCols.contains('updated_at')) {
+        await db.execute("ALTER TABLE Treasury ADD COLUMN updated_at TEXT;");
+      }
+    } catch (_) {}
 
     final schemaRows = await db.rawQuery('''
       SELECT name
@@ -11920,7 +12094,7 @@ class SqlDatabase {
       // The row's own timestamp can be stale even though the SQLite trigger
       // recorded a fresh change. Publish the trigger timestamp so incremental
       // downloads on other devices cannot skip this update.
-      if (changedAt != null && row.containsKey('updated_at')) {
+      if (changedAt != null) {
         row['updated_at'] = changedAt;
       }
       final sanitized = _sanitizeCloudExportRow(
@@ -12185,7 +12359,7 @@ class SqlDatabase {
     if (!await isDatabaseHealthy()) {
       throw StateError(
         'database image malformed (code 11): '
-        'Ù‚Ø§Ø¹Ø¯Ø© SQLite Ø§Ù„Ù…Ø­Ù„ÙŠØ© ØªØ§Ù„ÙØ©ØŒ ÙˆØªÙ… Ø¥ÙŠÙ‚Ø§Ù Ø§Ù„Ø±ÙØ¹ Ù„Ø­Ù…Ø§ÙŠØ© Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„Ø³Ø­Ø§Ø¨ÙŠØ©.',
+        'قاعدة SQLite المحلية تالفة، وتم إيقاف الرفع لحماية النسخة السحابية.',
       );
     }
 
@@ -12224,7 +12398,7 @@ class SqlDatabase {
     }
     if (failedTables.isNotEmpty) {
       throw StateError(
-        'ØªØ¹Ø°Ø± Ù‚Ø±Ø§Ø¡Ø© Ø¬Ø¯Ø§ÙˆÙ„ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ§Ù„ÙŠØ© Ù„Ù„Ù†Ø³Ø® Ø§Ù„Ø³Ø­Ø§Ø¨ÙŠ: '
+        'تعذر قراءة جداول قاعدة البيانات التالية للنسخ السحابي: '
         '${failedTables.join(', ')}',
       );
     }
@@ -12428,7 +12602,7 @@ class SqlDatabase {
     ''');
     await _ensureShutterColorTables(db);
 
-    // ShutterSqmPrices â€” Ø³Ø¹Ø± Ø§Ù„Ù…ØªØ± Ø§Ù„Ù…Ø±Ø¨Ø¹ Ù„Ù„Ø³ØªØ§Ø± Ø­Ø³Ø¨ Ù†ÙˆØ¹ Ø§Ù„Ø´ÙØ±Ø© ÙˆØ§Ù„Ù„ÙˆÙ†
+    // ShutterSqmPrices — سعر المتر المربع للستار حسب نوع الشفرة واللون
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ShutterSqmPrices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -12458,7 +12632,7 @@ class SqlDatabase {
         qty_mode TEXT NOT NULL DEFAULT 'fixed',
         dimension TEXT,
         base_qty REAL NOT NULL DEFAULT 1,
-        unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
+        unit TEXT NOT NULL DEFAULT 'قطعة',
         mechanism_scope TEXT NOT NULL DEFAULT 'all',
         sort_order INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
@@ -12715,6 +12889,8 @@ class SqlDatabase {
       'modifiedAt',
       'last_updated',
       'lastUpdated',
+      'created_at',
+      'createdAt',
     ];
     for (final key in updateKeys) {
       final raw = row[key];
@@ -12899,9 +13075,9 @@ class SqlDatabase {
       ),
     ];
 
-    // Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ø§Ù„ØªÙŠ ØªØ­ØªÙˆÙŠ Ø¹Ù„Ù‰ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø­Ø³Ø§Ø³Ø©.
-    // Ù„Ù† ÙŠØªÙ… Ù…Ø³Ø­ Ù‡Ø°Ù‡ Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ø¥Ø°Ø§ ÙƒØ§Ù† Ø§Ù„Ù€ payload ÙŠØ¹ÙŠØ¯Ù‡Ø§ ÙØ§Ø±ØºØ© ØªÙ…Ø§Ù…Ø§Ù‹ØŒ
-    // Ù„Ù„Ø­Ù…Ø§ÙŠØ© Ù…Ù† Ø­Ø°Ù Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø¨Ø³Ø¨Ø¨ Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ù‚Ø§Ø¹Ø¯Ø© Ø¨ÙŠØ§Ù†Ø§Øª ÙØ§Ø±ØºØ© Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø©.
+    // الجداول التي تحتوي على بيانات المستخدم الحساسة.
+    // لن يتم مسح هذه الجداول إذا كان الـ payload يعيدها فارغة تماماً،
+    // للحماية من حذف البيانات المحلية بسبب استعادة قاعدة بيانات فارغة من السحابة.
     const sensitiveTransactionalTables = {
       'Client',
       'Projects',
@@ -12958,8 +13134,8 @@ class SqlDatabase {
         }
         final rows = data[table] as List<dynamic>? ?? [];
 
-        // Ø­Ù…Ø§ÙŠØ©: Ø¥Ø°Ø§ ÙƒØ§Ù† Ø§Ù„Ø¬Ø¯ÙˆÙ„ Ø­Ø³Ø§Ø³Ø§Ù‹ ÙˆØ§Ù„Ù€ payload ÙŠØ¹ÙŠØ¯Ù‡ ÙØ§Ø±ØºØ§Ù‹ØŒ
-        // Ø§Ø­ØªÙØ¸ Ø¨Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠØ© ÙˆÙ„Ø§ ØªÙ…Ø³Ø­Ù‡Ø§.
+        // حماية: إذا كان الجدول حساساً والـ payload يعيده فارغاً،
+        // احتفظ بالبيانات المحلية ولا تمسحها.
         if (!replaceAllData &&
             sensitiveTransactionalTables.contains(table) &&
             rows.isEmpty) {
@@ -12969,8 +13145,8 @@ class SqlDatabase {
           continue;
         }
 
-        // ðŸ›¡ï¸ Ø­Ù…Ø§ÙŠØ© Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ø§Ù„Ø­Ø³Ø§Ø³Ø© (Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ØŒ Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø¹Ù…Ø§Ù„ØŒ Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§ØªØŒ Ø§Ù„Ø·Ù„Ø¨ÙŠØ§ØªØŒ Ø§Ù„Ø²Ø¨Ø§Ø¦Ù†ØŒ Ø¥Ù„Ø®):
-        // Ù„Ø§ Ù†Ù…Ø³Ø­ Ù‡Ø°Ù‡ Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ù…Ø­Ù„ÙŠØ§Ù‹ Ø¨Ù€ txn.delete(table) Ø¨Ù„ Ù†Ø¹ØªÙ…Ø¯ Ø§Ù„ØªØ¯Ù…ÙŠØ¬ Ø§Ù„Ø°ÙƒÙŠ (upsert) Ù„Ù„Ø­ÙØ§Ø¸ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø©
+        // 🛡️ حماية الجداول الحساسة (الصندوق، معاملات العمال، الإسنادات، الطلبيات، الزبائن، إلخ):
+        // لا نمسح هذه الجداول محلياً بـ txn.delete(table) بل نعتمد التدميج الذكي (upsert) للحفاظ على المعاملات المحلية الجديدة
         final shouldReplaceTable =
             replaceAllData ||
             (!mergeAllData && !sensitiveTransactionalTables.contains(table));
@@ -13153,14 +13329,14 @@ class SqlDatabase {
     try {
       if (kIsWeb) {
         throw Exception(
-          'Ø§Ù„Ù†Ø³Ø® Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠ Ø§Ù„Ù…Ø¨Ø§Ø´Ø± Ù„Ù…Ù„ÙØ§Øª Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙˆÙŠØ¨. ÙŠØ±Ø¬Ù‰ Ø§Ø³ØªØ®Ø¯Ø§Ù… ØªØµØ¯ÙŠØ± JSON.',
+          'النسخ الاحتياطي المباشر لملفات قاعدة البيانات غير مدعوم على الويب. يرجى استخدام تصدير JSON.',
         );
       }
       final dbPath = await getDatabaseFilePath();
       final dbFile = File(dbPath);
       if (!await dbFile.exists()) {
         throw Exception(
-          'Ù…Ù„Ù Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.',
+          'ملف قاعدة البيانات غير موجود.',
         );
       }
       final tempDir = await getTemporaryDirectory();
@@ -13174,7 +13350,7 @@ class SqlDatabase {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'ØªÙ… ØªØµØ¯ÙŠØ± Ù…Ù„Ù Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ù†Ø¬Ø§Ø­!',
+              'تم تصدير ملف قاعدة البيانات بنجاح!',
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
@@ -13186,7 +13362,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'ÙØ´Ù„ Ø§Ù„ØªØµØ¯ÙŠØ±: $e',
+            'فشل التصدير: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -13217,7 +13393,7 @@ class SqlDatabase {
       if (Platform.isAndroid) {
         // 1. Try Documents folder
         final documentsDir = Directory(
-          '/storage/emulated/0/Documents/ÙˆØ±Ø´ØªÙŠ',
+          '/storage/emulated/0/Documents/ورشتي',
         );
         try {
           if (!await documentsDir.exists()) {
@@ -13227,7 +13403,7 @@ class SqlDatabase {
         } catch (_) {
           // 2. Try Download folder as fallback
           final downloadDir = Directory(
-            '/storage/emulated/0/Download/ÙˆØ±Ø´ØªÙŠ',
+            '/storage/emulated/0/Download/ورشتي',
           );
           try {
             if (!await downloadDir.exists()) {
@@ -13238,7 +13414,7 @@ class SqlDatabase {
             // 3. Try app external storage files directory as ultimate fallback
             final extDir = await getExternalStorageDirectory();
             if (extDir != null) {
-              final appCustomDir = Directory('${extDir.path}/ÙˆØ±Ø´ØªÙŠ');
+              final appCustomDir = Directory('${extDir.path}/ورشتي');
               if (!await appCustomDir.exists()) {
                 await appCustomDir.create(recursive: true);
               }
@@ -13249,7 +13425,7 @@ class SqlDatabase {
       } else {
         // iOS or Desktop
         final docDir = await getApplicationDocumentsDirectory();
-        final customDir = Directory('${docDir.path}/ÙˆØ±Ø´ØªÙŠ');
+        final customDir = Directory('${docDir.path}/ورشتي');
         if (!await customDir.exists()) {
           await customDir.create(recursive: true);
         }
@@ -13273,7 +13449,7 @@ class SqlDatabase {
     try {
       if (kIsWeb) {
         throw Exception(
-          'Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ù…Ù„Ù Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø¨Ø§Ø´Ø± ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙˆÙŠØ¨. ÙŠØ±Ø¬Ù‰ Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ø³ØªÙŠØ±Ø§Ø¯ JSON.',
+          'استيراد ملف قاعدة البيانات المباشر غير مدعوم على الويب. يرجى استخدام استيراد JSON.',
         );
       }
       final params = const OpenFileDialogParams();
@@ -13291,7 +13467,7 @@ class SqlDatabase {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'ØªÙ… Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ù†Ø¬Ø§Ø­! ÙŠØ±Ø¬Ù‰ Ø¥Ø¹Ø§Ø¯Ø© ØªØ´ØºÙŠÙ„ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ù„ØªØ­Ø¯ÙŠØ« ÙƒØ§ÙØ© Ø§Ù„Ø´Ø§Ø´Ø§Øª.',
+              'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
@@ -13303,7 +13479,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'ÙØ´Ù„ Ø§Ù„Ø§Ø³ØªÙŠØ±Ø§Ø¯: $e',
+            'فشل الاستيراد: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -13327,7 +13503,7 @@ class SqlDatabase {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Ø¬Ø§Ø±ÙŠ Ø¨Ø¯Ø¡ Ø§Ù„ØªØ­Ù…ÙŠÙ„ Ø¹Ù„Ù‰ Ø§Ù„Ù…ØªØµÙØ­...',
+              'جاري بدء التحميل على المتصفح...',
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.blue,
@@ -13350,7 +13526,7 @@ class SqlDatabase {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'ØªÙ… ØªØµØ¯ÙŠØ± Ù†Ø³Ø®Ø© JSON Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠØ© Ø¨Ù†Ø¬Ø§Ø­!',
+                'تم تصدير نسخة JSON الاحتياطية بنجاح!',
                 style: TextStyle(fontFamily: 'Cairo'),
               ),
               backgroundColor: Colors.green,
@@ -13363,7 +13539,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'ÙØ´Ù„ ØªØµØ¯ÙŠØ± JSON: $e',
+            'فشل تصدير JSON: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -13376,7 +13552,7 @@ class SqlDatabase {
     try {
       if (kIsWeb) {
         throw Exception(
-          'Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø§Ù„Ù‚ÙŠØ§Ù… Ø¨Ø§Ù„Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ø¹Ø¨Ø± ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ù…ÙˆØ¨Ø§ÙŠÙ„.',
+          'الرجاء القيام بالاستيراد عبر تطبيق الموبايل.',
         );
       } else {
         final params = const OpenFileDialogParams();
@@ -13390,7 +13566,7 @@ class SqlDatabase {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
-                  'ØªÙ… Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ù†Ø³Ø®Ø© JSON Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠØ© Ø¨Ù†Ø¬Ø§Ø­! ÙŠØ±Ø¬Ù‰ Ø¥Ø¹Ø§Ø¯Ø© ØªØ´ØºÙŠÙ„ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚.',
+                  'تم استيراد نسخة JSON الاحتياطية بنجاح! يرجى إعادة تشغيل التطبيق.',
                   style: TextStyle(fontFamily: 'Cairo'),
                 ),
                 backgroundColor: Colors.green,
@@ -13398,7 +13574,7 @@ class SqlDatabase {
             );
           } else {
             throw Exception(
-              'ØªÙ†Ø³ÙŠÙ‚ Ù…Ù„Ù Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠØ© ØºÙŠØ± ØµØ§Ù„Ø­.',
+              'تنسيق ملف النسخة الاحتياطية غير صالح.',
             );
           }
         }
@@ -13408,7 +13584,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'ÙØ´Ù„ Ø§Ø³ØªÙŠØ±Ø§Ø¯ JSON: $e',
+            'فشل استيراد JSON: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -13431,7 +13607,7 @@ class SqlDatabase {
       );
       for (var c in commandes) {
         activities.add({
-          'title': 'Ø·Ù„Ø¨ÙŠØ© #${c['id']} - Ø­Ø§Ù„Ø©: ${c['status']}',
+          'title': 'طلبية #${c['id']} - حالة: ${c['status']}',
           'date': c['created_at'],
           'type': 'commande',
         });
@@ -13447,7 +13623,7 @@ class SqlDatabase {
       for (var a in achats) {
         activities.add({
           'title':
-              'ÙØ§ØªÙˆØ±Ø© Ù…Ø´ØªØ±ÙŠØ§Øª #${a['invoice_number']} - ${a['supplier_name']}',
+              'فاتورة مشتريات #${a['invoice_number']} - ${a['supplier_name']}',
           'date': a['created_at'],
           'type': 'achat',
         });
@@ -13462,7 +13638,7 @@ class SqlDatabase {
       );
       for (var c in clients) {
         activities.add({
-          'title': 'Ø²Ø¨ÙˆÙ† Ø¬Ø¯ÙŠØ¯: ${c['firstname']} ${c['lastname']}',
+          'title': 'زبون جديد: ${c['firstname']} ${c['lastname']}',
           'date': c['created_at'],
           'type': 'client',
         });
@@ -13559,9 +13735,9 @@ class SqlDatabase {
     try {
       final rows = await database.query('Commandes');
 
-      // â”€â”€ Ø­Ø³Ø¨ Ø§Ù„Ø­Ø§Ù„Ø© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── حسب الحالة ─────────────────────────────────────────────────────────
       final Map<String, int> byStatus = {};
-      // â”€â”€ Ø¢Ø®Ø± 6 Ø£Ø´Ù‡Ø± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── آخر 6 أشهر ─────────────────────────────────────────────────────────
       final Map<String, int> monthly = {};
       final now = DateTime.now();
       for (int i = 5; i >= 0; i--) {
@@ -13571,11 +13747,11 @@ class SqlDatabase {
       }
 
       for (final row in rows) {
-        // Ø­Ø³Ø¨ Ø§Ù„Ø­Ø§Ù„Ø©
+        // حسب الحالة
         final status = (row['status'] as String?) ?? 'Unknown';
         byStatus[status] = (byStatus[status] ?? 0) + 1;
 
-        // Ø­Ø³Ø¨ Ø§Ù„Ø´Ù‡Ø±
+        // حسب الشهر
         if (row['created_at'] != null) {
           try {
             final dt = DateTime.parse(row['created_at'].toString());
@@ -13637,9 +13813,9 @@ class SqlDatabase {
       }
     } catch (_) {}
 
-    if (lames.isEmpty) lames = ['Lame InjectÃ©e', 'Lame ExtrudÃ©e'];
+    if (lames.isEmpty) lames = ['Lame Injectée', 'Lame Extrudée'];
     if (glissieres.isEmpty)
-      glissieres = ['GlissiÃ¨re 25', 'GlissiÃ¨re 120', 'GlissiÃ¨re 100'];
+      glissieres = ['Glissière 25', 'Glissière 120', 'Glissière 100'];
 
     return {'lames': lames, 'glissieres': glissieres};
   }
@@ -14477,8 +14653,8 @@ class SqlDatabase {
         await myDb.update(
           'Locations',
           {
-            'name': 'Ø§Ù„Ù…Ø³ØªÙˆØ¯Ø¹ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
-            'type': 'Ù…Ø³ØªÙˆØ¯Ø¹ Ø±Ø¦ÙŠØ³ÙŠ',
+            'name': 'المستودع الرئيسي',
+            'type': 'مستودع رئيسي',
           },
           where: 'id = ?',
           whereArgs: [location['id']],
@@ -15309,7 +15485,7 @@ class SqlDatabase {
 
   // ========================= KIT BUNDLES CRUD =========================
 
-  /// Ù‚Ø±Ø§Ø¡Ø© ÙƒÙ„ Ø§Ù„Ù€ Kits
+  /// قراءة كل الـ Kits
   Future<List<Map<String, dynamic>>> readKitBundles() async {
     final database = await db;
     if (database == null) return [];
@@ -15321,7 +15497,7 @@ class SqlDatabase {
     );
   }
 
-  /// Ø¥Ø¶Ø§ÙØ© Kit Ø¬Ø¯ÙŠØ¯
+  /// إضافة Kit جديد
   Future<int> insertKitBundle({
     required String name,
     String? description,
@@ -15337,7 +15513,7 @@ class SqlDatabase {
     });
   }
 
-  /// ØªØ¹Ø¯ÙŠÙ„ Kit
+  /// تعديل Kit
   Future<void> updateKitBundle(
     int id, {
     required String name,
@@ -15637,7 +15813,7 @@ class SqlDatabase {
 
   // ========================= KIT BUNDLE ITEMS CRUD =========================
 
-  /// Ù‚Ø±Ø§Ø¡Ø© Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø­Ø¯Ø¯
+  /// قراءة مركبات Kit محدد
   Future<List<Map<String, dynamic>>> readKitBundleItems(
     int kitId, {
     int? familyId,
@@ -15662,14 +15838,14 @@ class SqlDatabase {
     );
   }
 
-  /// Ø¥Ø¶Ø§ÙØ© Ù…Ø±ÙƒØ¨ Ù„Ù€ Kit
+  /// إضافة مركب لـ Kit
   Future<int> insertKitBundleItem({
     required int kitId,
     required String componentType,
     required String qtyMode, // 'fixed' | 'by_range' | 'by_variant'
     String? dimension, // 'leaf_height' | 'leaf_width' | null
     double baseQty = 1,
-    String unit = 'Ù‚Ø·Ø¹Ø©',
+    String unit = 'قطعة',
     String mechanismScope = 'all',
     String mechanismScopes = 'belt,crank,motor',
     String bladeScope = 'all',
@@ -15686,7 +15862,7 @@ class SqlDatabase {
       'qty_mode': qtyMode,
       'dimension': dimension,
       'base_qty': baseQty,
-      'unit': 'Ù‚Ø·Ø¹Ø©',
+      'unit': 'قطعة',
       'mechanism_scope': const {'belt', 'crank'}.contains(mechanismScope)
           ? mechanismScope
           : 'all',
@@ -15702,7 +15878,7 @@ class SqlDatabase {
     return result;
   }
 
-  /// ØªØ¹Ø¯ÙŠÙ„ Ù…Ø±ÙƒØ¨ Kit
+  /// تعديل مركب Kit
   Future<void> updateKitBundleItem(
     int id, {
     required String componentType,
@@ -15725,7 +15901,7 @@ class SqlDatabase {
         'qty_mode': qtyMode,
         'dimension': dimension,
         'base_qty': baseQty,
-        'unit': 'Ù‚Ø·Ø¹Ø©',
+        'unit': 'قطعة',
         'mechanism_scope': const {'belt', 'crank'}.contains(mechanismScope)
             ? mechanismScope
             : 'all',
@@ -15743,17 +15919,17 @@ class SqlDatabase {
     CloudSyncService().notifyCatalogChange();
   }
 
-  /// Ø­Ø°Ù Ù…Ø±ÙƒØ¨ Kit
+  /// حذف مركب Kit
   Future<void> deleteKitBundleItem(int id) async {
     final database = await db;
     if (database == null) return;
     await database.delete('KitBundleItems', where: 'id = ?', whereArgs: [id]);
-    // ØªÙØ­Ø°Ù Ø§Ù„Ù†Ø·Ø§Ù‚Ø§Øª ÙˆØ§Ù„Ù…ØªØºÙŠØ±Ø§Øª ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ Ø¨Ø³Ø¨Ø¨ ON DELETE CASCADE
+    // تُحذف النطاقات والمتغيرات تلقائياً بسبب ON DELETE CASCADE
   }
 
   // ========================= KIT ITEM RANGES CRUD =========================
 
-  /// Ù‚Ø±Ø§Ø¡Ø© Ù†Ø·Ø§Ù‚Ø§Øª Ù…Ø±ÙƒØ¨ Ù…Ø­Ø¯Ø¯
+  /// قراءة نطاقات مركب محدد
   Future<List<Map<String, dynamic>>> readKitItemRanges(int itemId) async {
     final database = await db;
     if (database == null) return [];
@@ -15844,7 +16020,7 @@ class SqlDatabase {
     return result;
   }
 
-  /// Ø¥Ø¶Ø§ÙØ© Ù†Ø·Ø§Ù‚
+  /// إضافة نطاق
   Future<int> insertKitItemRange({
     required int itemId,
     required double minMm,
@@ -15901,7 +16077,7 @@ class SqlDatabase {
     return result;
   }
 
-  /// ØªØ¹Ø¯ÙŠÙ„ Ù†Ø·Ø§Ù‚
+  /// تعديل نطاق
   Future<int> updateKitItemRange(
     int id, {
     required double minMm,
@@ -15980,7 +16156,7 @@ class SqlDatabase {
             ? 'Console Quissonnel Standard'
             : group1Name.trim(),
         'compatibility_group_2_name': group2Name.trim().isEmpty
-            ? 'Console Quissonnel SpÃ©cial'
+            ? 'Console Quissonnel Spécial'
             : group2Name.trim(),
       },
       where: 'id = ?',
@@ -15989,14 +16165,14 @@ class SqlDatabase {
     CloudSyncService().notifyCatalogChange();
   }
 
-  /// Ø­Ø°Ù Ù†Ø·Ø§Ù‚
+  /// حذف نطاق
   Future<void> deleteKitItemRange(int id) async {
     final database = await db;
     if (database == null) return;
     await database.delete('KitItemRanges', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// Ø§Ù„Ø¨Ø­Ø« Ø¹Ù† Ø§Ù„Ù†Ø·Ø§Ù‚ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨ Ù„Ù‚ÙŠØ§Ø³ Ù…Ø¹ÙŠÙ†
+  /// البحث عن النطاق المناسب لقياس معين
   Future<Map<String, dynamic>?> findKitItemRangeForDimension(
     int itemId,
     double valueMm,
@@ -16014,7 +16190,7 @@ class SqlDatabase {
 
   // ========================= KIT ITEM VARIANTS CRUD =========================
 
-  /// Ù‚Ø±Ø§Ø¡Ø© Ù…ØªØºÙŠØ±Ø§Øª Ù…Ø±ÙƒØ¨ Ù…Ø­Ø¯Ø¯
+  /// قراءة متغيرات مركب محدد
   Future<List<Map<String, dynamic>>> readKitItemVariants(int itemId) async {
     final database = await db;
     if (database == null) return [];
@@ -16025,7 +16201,7 @@ class SqlDatabase {
     );
   }
 
-  /// Ø¥Ø¶Ø§ÙØ© Ù…ØªØºÙŠØ± (simple/double ouvrant)
+  /// إضافة متغير (simple/double ouvrant)
   Future<int> insertKitItemVariant({
     required int itemId,
     required String ouvrantType, // 'simple' | 'double'
@@ -16044,7 +16220,7 @@ class SqlDatabase {
     });
   }
 
-  /// ØªØ¹Ø¯ÙŠÙ„ Ù…ØªØºÙŠØ±
+  /// تعديل متغير
   Future<void> updateKitItemVariant(
     int id, {
     required String ouvrantType,
@@ -16067,14 +16243,14 @@ class SqlDatabase {
     );
   }
 
-  /// Ø­Ø°Ù Ù…ØªØºÙŠØ±
+  /// حذف متغير
   Future<void> deleteKitItemVariant(int id) async {
     final database = await db;
     if (database == null) return;
     await database.delete('KitItemVariants', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// Ù‚Ø±Ø§Ø¡Ø© ÙƒÙ„ Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø¹ Ù†Ø·Ø§Ù‚Ø§ØªÙ‡Ø§ ÙˆÙ…ØªØºÙŠØ±Ø§ØªÙ‡Ø§ â€” Ù„Ù„Ø­Ø³Ø§Ø¨ ÙÙŠ BOM
+  /// قراءة كل مركبات Kit مع نطاقاتها ومتغيراتها — للحساب في BOM
   Future<List<Map<String, dynamic>>> readKitBundleItemsWithDetails(
     int kitId, {
     int? familyId,

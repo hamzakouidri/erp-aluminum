@@ -227,7 +227,7 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
                                       ),
                                     ),
                                     title: Text(
-                                      'طلب #$orderId - $clientName',
+                                      'طلب #${(order['order_code'] as num?)?.toInt() ?? (order['display_number'] as num?)?.toInt() ?? (orderId < 100000 ? orderId : '')} - $clientName',
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
                                     ),
                                     subtitle: Text(

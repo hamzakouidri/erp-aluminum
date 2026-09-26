@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
 import 'inventory_item_history_screen.dart';
 import 'inventory_adjustment_screen.dart';
@@ -26,6 +28,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   bool _isLoading = true;
   double _totalValue = 0.0;
   bool _showAllItems = false;
+  StreamSubscription? _syncSub;
 
   // Colors
   static const _blue = Color(0xFF2563EB);
@@ -54,10 +57,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
   void initState() {
     super.initState();
     _loadLocations();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadLocations(preferredLocationId: _selectedLocationId);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -373,6 +382,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
             )
           : null,
       actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh, color: Colors.white),
+          tooltip: Localization.translate('تحديث', lang),
+          onPressed: () async {
+            await CloudSyncService().syncPendingNow();
+            _loadLocations(preferredLocationId: _selectedLocationId);
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.recycling, color: Colors.white),
           tooltip: Localization.translate('الفضلات المتاحة', lang),

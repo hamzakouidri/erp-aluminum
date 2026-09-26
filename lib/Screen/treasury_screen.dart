@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:async';
+// unused import removed
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import 'package:intl/intl.dart';
 import '../settings/localization.dart';
+import '../services/cloud_sync_service.dart';
 import 'receipt_pdf_service.dart';
 import '../widgets/resizable_columns_table.dart';
 import '../widgets/numeric_filter_search_field.dart';
@@ -23,14 +25,31 @@ class TreasuryScreen extends StatefulWidget {
 
   const TreasuryScreen({super.key, required this.db, this.readOnly = false});
 
+  static const Map<int, int> _unicodeToWin1252 = <int, int>{
+    0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84,
+    0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88,
+    0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C,
+    0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93,
+    0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B,
+    0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+  };
+
   bool _isIncomeTransaction(Map<String, dynamic> item) {
-    final type = item['transaction_type']?.toString().toLowerCase() ?? '';
-    return type == 'encaissement' ||
-        type == 'income' ||
-        (!type.contains('achat') &&
-            !type.contains('purchase') &&
-            !type.contains('décaissement') &&
-            !type.contains('expense'));
+    final entityType = item['entity_type']?.toString().toLowerCase().trim() ?? '';
+    if (entityType == 'worker') return false;
+
+    final type = item['transaction_type']?.toString().toLowerCase().trim() ?? '';
+    if (type == 'encaissement' || type == 'income') return true;
+    if (type.contains('achat') ||
+        type.contains('purchase') ||
+        type.contains('décaissement') ||
+        type.contains('dã©caissement') ||
+        type.contains('decaissement') ||
+        type.contains('expense')) {
+      return false;
+    }
+    return true;
   }
 
   String _transactionRelation(Map<String, dynamic> item, AppLanguage lang) {
@@ -75,11 +94,21 @@ class TreasuryScreen extends StatefulWidget {
   String _readableText(dynamic value) {
     final text = value?.toString() ?? '';
     if (text.isEmpty ||
-        (!text.contains('Ø') && !text.contains('Ã') && !text.contains('Â'))) {
+        (!text.contains('Ø') && !text.contains('Ã') && !text.contains('Â') && !text.contains('Ù'))) {
       return text;
     }
     try {
-      final repaired = utf8.decode(latin1.encode(text));
+      final bytes = <int>[];
+      for (final rune in text.runes) {
+        if (rune <= 0xFF) {
+          bytes.add(rune);
+        } else if (_unicodeToWin1252.containsKey(rune)) {
+          bytes.add(_unicodeToWin1252[rune]!);
+        } else {
+          return text;
+        }
+      }
+      final repaired = utf8.decode(bytes, allowMalformed: false);
       return repaired.contains('�') ? text : repaired;
     } catch (_) {
       return text;
@@ -787,16 +816,24 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   List<Map<String, dynamic>> _clients = [];
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _suppliers = [];
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _loadData();
     _loadEntities();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadData(silent: true);
+        _loadEntities();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _desktopTableScrollController.dispose();
     _treasuryVerticalScrollController.dispose();
     super.dispose();
@@ -864,8 +901,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     return '';
   }
 
-  Future<void> _loadData() async {
-    if (mounted) setState(() => _isLoading = true);
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _isLoading = true);
     try {
       await widget.db.migrateLegacyTreasuryRecords();
 
@@ -923,7 +960,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     } catch (e) {
       debugPrint('Error loading treasury: $e');
     } finally {
-      if (mounted) {
+      if (!silent && mounted) {
         setState(() => _isLoading = false);
       }
     }
@@ -943,15 +980,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     // 2. Type Filter (income / expense)
     if (_selectedTypeFilter != 'all') {
       filtered = filtered.where((t) {
-        final tType = t['transaction_type']?.toString() ?? '';
-        final isInc =
-            tType == 'Encaissement' ||
-                tType == 'income' ||
-                (!tType.contains('Achat') &&
-                    !tType.contains('Purchase') &&
-                    !tType.contains('Décaissement') &&
-                    !tType.contains('DÃ©caissement') &&
-                    !tType.contains('expense'));
+        final isInc = widget._isIncomeTransaction(t);
         if (_selectedTypeFilter == 'income') {
           return isInc;
         } else {
@@ -1135,15 +1164,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     double inc = 0.0;
     double exp = 0.0;
     for (var row in filtered) {
-      final tType = row['transaction_type']?.toString() ?? '';
-      final isInc =
-          tType == 'Encaissement' ||
-              tType == 'income' ||
-              (!tType.contains('Achat') &&
-                  !tType.contains('Purchase') &&
-                  !tType.contains('Décaissement') &&
-                  !tType.contains('DÃ©caissement') &&
-                  !tType.contains('expense'));
+      final isInc = widget._isIncomeTransaction(row);
       final amt = (row['amount'] as num?)?.toDouble() ?? 0.0;
       if (isInc) {
         inc += amt;
@@ -2776,6 +2797,23 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             .backgroundColor
             : Colors.teal,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: Localization.translate('تحديث', lang),
+            onPressed: () async {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    Localization.translate('جاري التحديث...', lang),
+                  ),
+                  duration: const Duration(milliseconds: 900),
+                ),
+              );
+              await CloudSyncService().syncPendingNow();
+              await _loadData();
+              await _loadEntities();
+            },
+          ),
           IconButton(
             icon: Icon(_showSearch ? Icons.search_off : Icons.search),
             tooltip: Localization.translate('بحث', lang),

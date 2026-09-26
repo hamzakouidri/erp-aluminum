@@ -228,7 +228,7 @@ class _CommandeState extends State<Commande> {
                         await db.insertTreasury(
                           'Encaissement',
                           amount,
-                          'دفعة لطلبية رقم $orderId من الزبون: $clientName',
+                          'دفعة لطلبية رقم ${_displayOrderNumber(orderData)} من الزبون: $clientName',
                           referenceId: orderId,
                           entityType: 'Client',
                           entityId: clientId,

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:database_data/settings/localization.dart';
+import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
 import 'achat_details_screen.dart';
 import 'achat_return_screen.dart';
@@ -27,6 +29,7 @@ class _AchatScreenState extends State<AchatScreen>
   String _searchQuery = '';
   String _selectedStatusFilter = 'الكل';
   int? _expandedAchatId;
+  StreamSubscription? _syncSub;
 
   // ── Palette ───────────────────────────────────────────────────────────────
   static const _blue = Color(0xFF2563EB);
@@ -46,6 +49,11 @@ class _AchatScreenState extends State<AchatScreen>
   void initState() {
     super.initState();
     _refreshList();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _refreshList();
+      }
+    });
   }
 
   void _refreshList() {
@@ -67,6 +75,7 @@ class _AchatScreenState extends State<AchatScreen>
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -263,6 +272,17 @@ class _AchatScreenState extends State<AchatScreen>
             )
           : null,
       actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded),
+          tooltip: Localization.translate(
+            'تحديث',
+            Provider.of<AppSettingsProvider>(context, listen: false).language,
+          ),
+          onPressed: () async {
+            await CloudSyncService().syncPendingNow();
+            _refreshList();
+          },
+        ),
         IconButton(
           icon: Icon(Icons.document_scanner_rounded),
           tooltip: Localization.translate(

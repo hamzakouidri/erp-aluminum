@@ -1263,7 +1263,12 @@ class _CommandePageState extends State<CommandePage> {
       // Final safety net for users who save/reserve the order without ever
       // opening the quantity-and-cost table.
       await _ensureAutomaticProductPrices(addedProducts, onlyMissing: true);
-      await syncService.beginLocalWrite();
+      await syncService.beginLocalWrite().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              debugPrint('beginLocalWrite timeout reached; continuing save');
+            },
+          );
       if (!mounted) return;
       double rawTotal = addedProducts
           .where((p) => !p.isReplaced)
@@ -1315,7 +1320,7 @@ class _CommandePageState extends State<CommandePage> {
             await saveWindowImageToDisk(
               p,
               maxSide: imageMaxSide,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => ''),
+            ).timeout(const Duration(seconds: 3), onTimeout: () => ''),
           );
         } catch (error) {
           debugPrint('Skipping order preview image: $error');
@@ -1461,6 +1466,7 @@ class _CommandePageState extends State<CommandePage> {
         SnackBar(
           content: Text('${t('فشل حفظ الطلبية')}: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 6),
         ),
       );
     } finally {

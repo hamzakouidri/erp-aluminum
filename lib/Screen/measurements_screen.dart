@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import '../services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -57,6 +59,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   // Form State Values
   List<Map<String, dynamic>> _allColors = [];
   Map<String, dynamic>? _selectedColor;
+  StreamSubscription? _syncSub;
 
   List<Map<String, dynamic>> _allProfiles = [];
   Map<String, dynamic>? _selectedProfile;
@@ -129,10 +132,16 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     _loadAllColors();
     _loadAllProfiles();
     _loadSavedMeasurements();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadSavedMeasurements();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _lengthController.dispose();
     _widthController.dispose();
     _locationController.dispose();
@@ -930,6 +939,14 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         backgroundColor: Colors.blue,
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: Localization.translate('تحديث', lang),
+            onPressed: () async {
+              await CloudSyncService().syncPendingNow();
+              _loadSavedMeasurements();
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.unarchive_outlined),
             tooltip: Localization.translate('استيراد قياس ZIP', lang),

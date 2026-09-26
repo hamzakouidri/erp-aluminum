@@ -6,6 +6,7 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 class WorkshopDataDiagnostics {
   const WorkshopDataDiagnostics({
@@ -42,7 +43,7 @@ class SupabaseWorkshopSyncService {
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
   // Realtime handles normal changes. This slow pass only repairs a missed
   // event after sleep/network loss and must not behave like a UI refresh loop.
-  static const Duration _backgroundSyncInterval = Duration(minutes: 3);
+  static const Duration _backgroundSyncInterval = Duration(seconds: 45);
   // A workshop row contains a complete JSON payload.  A 200-row PostgREST
   // upsert can exceed the server statement timeout even though the row count
   // itself looks modest, particularly for order details and stock history.
@@ -769,7 +770,11 @@ class SupabaseWorkshopSyncService {
             unawaited(refreshWorkshopIdentity());
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            unawaited(downloadWorkshopData());
+          }
+        });
   }
 
   Future<void> updateMemberPermissionsByEmail({
@@ -1198,7 +1203,7 @@ class SupabaseWorkshopSyncService {
   }) async {
     var rowsToUpload = rows;
     if (preserveNewerRemote && rows.isNotEmpty) {
-      final remoteUpdatedAt = await _fetchRemoteUpdatedAt();
+      final remoteUpdatedAt = await _fetchRemoteUpdatedAt(targetRows: rows);
       rowsToUpload = rows
           .where((row) {
             final table = row['table_name']?.toString() ?? '';
@@ -1250,13 +1255,49 @@ class SupabaseWorkshopSyncService {
     }
   }
 
-  Future<Map<String, DateTime>> _fetchRemoteUpdatedAt() async {
+  Future<Map<String, DateTime>> _fetchRemoteUpdatedAt({
+    List<Map<String, dynamic>>? targetRows,
+  }) async {
     final workshopUuid = _workshopUuid;
     if (workshopUuid == null || workshopUuid.isEmpty) {
       return <String, DateTime>{};
     }
 
     final result = <String, DateTime>{};
+
+    // Fast path: if specific target rows are provided (incremental upload),
+    // query only those row_ids instead of scanning the entire workshop database.
+    if (targetRows != null && targetRows.isNotEmpty && targetRows.length <= 200) {
+      final targetRowIds = targetRows
+          .map((r) => r['row_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      if (targetRowIds.isNotEmpty) {
+        try {
+          final rows = await _client
+              .from('workshop_sync_rows')
+              .select('table_name,row_id,updated_at')
+              .eq('workshop_id', workshopUuid)
+              .inFilter('row_id', targetRowIds);
+          for (final rawRow in rows) {
+            final row = Map<String, dynamic>.from(rawRow);
+            final table = row['table_name']?.toString() ?? '';
+            final rowId = row['row_id']?.toString() ?? '';
+            final updatedAt = DateTime.tryParse(
+              row['updated_at']?.toString() ?? '',
+            );
+            if (table.isNotEmpty && rowId.isNotEmpty && updatedAt != null) {
+              result[_rowKey(table, rowId)] = updatedAt;
+            }
+          }
+          return result;
+        } catch (error) {
+          debugPrint('Fast remote updated_at lookup failed; falling back to full query: $error');
+        }
+      }
+    }
+
     var start = 0;
     while (true) {
       final rows = await _client

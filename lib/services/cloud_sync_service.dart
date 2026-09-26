@@ -360,7 +360,13 @@ class CloudSyncService {
   /// Cloud restore and upload wait until the complete local operation ends.
   Future<void> beginLocalWrite() async {
     if (_isRestoring) {
-      await _restoreIdleCompleter?.future;
+      try {
+        await _restoreIdleCompleter?.future.timeout(const Duration(seconds: 2));
+      } catch (_) {
+        debugPrint(
+          'CloudSyncService: beginLocalWrite timed out waiting for restore to finish, proceeding anyway.',
+        );
+      }
     }
     _localWriteDepth++;
     _debounceTimer?.cancel();
@@ -2683,6 +2689,27 @@ class CloudSyncService {
 
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _silentBackup();
+  }
+
+  /// Push any pending local changes immediately and pull down the latest cloud updates.
+  Future<void> syncPendingNow() async {
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      try {
+        await supabaseWorkshopSync.uploadPendingChanges();
+      } catch (_) {}
+      try {
+        await supabaseWorkshopSync.downloadWorkshopData();
+      } catch (_) {}
+    } else {
+      try {
+        await backupToCloud();
+      } catch (_) {}
+      try {
+        await refreshFromCloudIfChanged();
+      } catch (_) {}
+    }
+    _dbUpdateController.add('');
   }
 
   /// Publishes a local catalogue edit to the central catalogue when the

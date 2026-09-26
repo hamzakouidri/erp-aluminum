@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' hide TextDirection;
+import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
 import 'achat_details_screen.dart';
@@ -29,11 +31,23 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
   double _totalPaid = 0.0;
   double _totalReturns = 0.0;
   double _remainingDebt = 0.0;
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _loadLedgerData();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadLedgerData();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   String _tr(String ar, String fr, String en, AppLanguage lang) {
@@ -124,7 +138,7 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
             'date': date,
             'type': 'Payment',
             'typeLabel': 'دفعة للمورد / Paiement',
-            'number': t['id'].toString(),
+            'number': (t['id'] is num && (t['id'] as num) < 100000) ? t['id'].toString() : '—',
             'description': desc.isEmpty ? 'تسديد دفعة للمورد' : desc,
             'debit': 0.0,
             'credit': amount, // Credit = Paid to supplier
@@ -140,7 +154,7 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
             'date': date,
             'type': 'Return',
             'typeLabel': 'إرجاع مشتريات / Retour',
-            'number': t['id'].toString(),
+            'number': (t['id'] is num && (t['id'] as num) < 100000) ? t['id'].toString() : '—',
             'description': desc.isEmpty ? 'استرجاع مشتريات من المورد' : desc,
             'debit': 0.0,
             'credit': amount, // Credit = Refund received from supplier
@@ -286,6 +300,14 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
           foregroundColor: Colors.white,
           elevation: 0,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              tooltip: _tr('تحديث', 'Actualiser', 'Refresh', lang),
+              onPressed: () async {
+                await CloudSyncService().syncPendingNow();
+                _loadLedgerData();
+              },
+            ),
             PopupMenuButton<String>(
               icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
               tooltip: _tr(

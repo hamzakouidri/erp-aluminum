@@ -3259,7 +3259,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           child: Row(
             children: [
               _desktopTableCell(
-                '#$id',
+                id < 100000 ? '#$id' : '—',
                 1,
                 contentColor,
                 false,

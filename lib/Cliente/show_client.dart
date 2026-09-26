@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import '../sql_database.dart';
+import '../services/cloud_sync_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
@@ -22,11 +24,23 @@ class _ShowClientState extends State<ShowClient> {
   final SqlDatabase db = SqlDatabase();
   late Future<List<dynamic>> _dataFuture;
   List<dynamic>? _cachedData;
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _refreshClientData();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _refreshClientData();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   void _refreshClientData() {
@@ -217,19 +231,21 @@ class _ShowClientState extends State<ShowClient> {
     BuildContext context,
     int orderId,
     double remaining,
-    String clientName,
-  ) {
+    String clientName, [
+    int? orderCode,
+  ]) {
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
     ).language;
     final amountCtrl = TextEditingController();
+    final displayOrderNum = (orderCode != null && orderCode > 0) ? orderCode : orderId;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          '${Localization.translate("Add payment to order", lang)} #$orderId',
+          '${Localization.translate("Add payment to order", lang)} #$displayOrderNum',
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         content: TextField(
@@ -269,7 +285,7 @@ class _ShowClientState extends State<ShowClient> {
                   await db.insertTreasury(
                     'Encaissement',
                     amount,
-                    'دفعة لطلبية رقم $orderId من الزبون: $clientName',
+                    'دفعة لطلبية رقم $displayOrderNum من الزبون: $clientName',
                     referenceId: orderId,
                     entityType: 'Client',
                     entityId: widget.clientId,
@@ -328,6 +344,14 @@ class _ShowClientState extends State<ShowClient> {
         centerTitle: true,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: Localization.translate('تحديث', lang),
+            onPressed: () async {
+              await CloudSyncService().syncPendingNow();
+              _refreshClientData();
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
             tooltip: Localization.translate('كشف حساب الزبون (Chrono)', lang),
@@ -784,7 +808,7 @@ class _ShowClientState extends State<ShowClient> {
                                               WrapCrossAlignment.center,
                                           children: [
                                             Text(
-                                              '${Localization.translate("Order", lang)} #${order["id"]}',
+                                              '${Localization.translate("Order", lang)} #${(order['order_code'] as num?)?.toInt() ?? (order['display_number'] as num?)?.toInt() ?? order['id']}',
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 14,
@@ -905,6 +929,8 @@ class _ShowClientState extends State<ShowClient> {
                                           order['id'] as int,
                                           orderRemaining,
                                           clientName,
+                                          (order['order_code'] as num?)?.toInt() ??
+                                              (order['display_number'] as num?)?.toInt(),
                                         );
                                       },
                                       child: Text(
