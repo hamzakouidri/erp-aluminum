@@ -3677,6 +3677,9 @@ class WindowModel extends ChangeNotifier {
 
   /// Multi-frame drawings keep the side-cover option enabled by default.
   void _enforceMultiFramePlainFrameRule() {
+    final previousThickness = profileThickness;
+    final previousMullionThickness = mullionThickness;
+    var changedFrame = false;
     final isMultiFrame = getFrameRects().length > 1;
     if (!isMultiFrame) {
       _multiFrameSideCoverManuallyEnabled = false;
@@ -3694,22 +3697,33 @@ class WindowModel extends ChangeNotifier {
       final currentFrame = sliding
           ? slidingFrameOverride ?? getSlidingSectionByType('frame')?.toMap()
           : frameOverride ?? getSectionByType('frame')?.toMap();
-      if (!_overrideHasIntegratedSideCover(currentFrame)) continue;
+      if (!_overrideHasIntegratedSideCover(currentFrame) &&
+          (!hasSideCovers || _overrideAllowsStandaloneSideCover(currentFrame)))
+        continue;
       final configured = getConfiguredSectionsForRole(
         'frame',
         useSlidingSeries: sliding,
       );
-      final plainFrames =
-          (seriesHasConfiguredRoles(series) ? configured : series.sections)
-              .where(
-                (section) =>
-                    _isFrameSection(section) &&
-                    !_sectionHasIntegratedSideCover(section),
-              )
-              .toList();
+      final plainFrames = configured
+          .where(
+            (section) =>
+                !_sectionHasIntegratedSideCover(section) &&
+                (!hasSideCovers || _sectionAllowsStandaloneSideCover(section)),
+          )
+          .toList();
       if (plainFrames.isEmpty) continue;
 
-      final plainFrame = _preferredFrameForSeries(plainFrames, series).toMap();
+      final selected = sliding
+          ? _preferredSlidingFrameForTrackCount(
+              plainFrames,
+              series,
+              _requestedSlidingTrackCount(),
+            )
+          : _preferredFrameForSeries(plainFrames, series);
+      final plainFrame = sliding
+          ? _slidingFrameMapWithRoleOptions(selected, series)
+          : selected.toMap();
+      changedFrame = true;
       if (sliding) {
         slidingFrameOverride = plainFrame;
       } else {
@@ -3718,12 +3732,24 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    final separateCovers = availableSideCovers
-        .where((cover) => !_sectionHasIntegratedSideCover(cover))
-        .toList();
+    if (changedFrame) {
+      updateProfileThickness();
+      _synchronizeDivisionGapsForSeries(
+        previousThickness,
+        previousMullionThickness,
+      );
+    }
+
+    // These are already the side_cover role of the owning series. A cover's
+    // own width/name must not classify it as an integrated FRAME.
+    final separateCovers = availableSideCovers;
     if (separateCovers.isNotEmpty) {
-      selectedSideCover ??= separateCovers.first;
-      sideCoverOverride ??= selectedSideCover!.toMap();
+      if (!separateCovers.any((cover) => cover.id == selectedSideCover?.id)) {
+        selectedSideCover = separateCovers.first;
+      }
+      if (changedFrame || sideCoverOverride == null) {
+        sideCoverOverride = selectedSideCover!.toMap();
+      }
     }
   }
 
@@ -4987,7 +5013,8 @@ class WindowModel extends ChangeNotifier {
   bool get _canSwitchIntegratedFrameToStandaloneSideCover {
     return !isFramePVC &&
         (availableSideCovers.isNotEmpty || standaloneSideCoverWidth > 0) &&
-        _currentFrameHasIntegratedSideCover &&
+        (_currentFrameHasIntegratedSideCover ||
+            !_overrideAllowsStandaloneSideCover(activeFrameOverride)) &&
         _hasFrameThatAllowsStandaloneSideCover;
   }
 
@@ -6010,9 +6037,7 @@ class WindowModel extends ChangeNotifier {
     // Preserve the user's/order's colour only when the newly selected series
     // really supports it. Otherwise choose a valid colour for that series.
     selectedColor ??= _defaultFrameColor();
-    if (selectedColor == null && availableColors.isNotEmpty) {
-      selectedColor = availableColors.first;
-    }
+    if (selectedColor == null) _frameColor = FrameColor.white;
 
     _selectedDbColor = selectedColor == null
         ? null
@@ -20957,34 +20982,6 @@ class WindowModel extends ChangeNotifier {
       return false;
     }
 
-    // A group is one physical frame only when its zones fill one rectangular
-    // footprint. This prevents a small upper frame touching the first zone of
-    // a wider lower row from becoming one fictitious frame around the empty
-    // upper-right area.
-    bool isRectangularFrame(List<WindowZone> candidate) {
-      if (candidate.length <= 1) return true;
-      var minLeft = candidate.first.boundary.left;
-      var maxRight = candidate.first.boundary.right;
-      var minTop = candidate.first.boundary.top;
-      var maxBottom = candidate.first.boundary.bottom;
-      var occupiedArea = 0.0;
-      for (final zone in candidate) {
-        minLeft = math.min(minLeft, zone.boundary.left);
-        maxRight = math.max(maxRight, zone.boundary.right);
-        minTop = math.min(minTop, zone.boundary.top);
-        maxBottom = math.max(maxBottom, zone.boundary.bottom);
-        occupiedArea += zone.boundary.width * zone.boundary.height;
-      }
-      final boundingArea = math.max(
-        1.0,
-        (maxRight - minLeft) * (maxBottom - minTop),
-      );
-      // The gaps between zones are mullions, so a small loss is expected.
-      // A real empty region, such as the upper-right of a partial frame, is
-      // much larger and must split the groups.
-      return occupiedArea / boundingArea >= 0.78;
-    }
-
     for (final zone in zones) {
       final List<int> connectedGroupIndices = [];
       for (int i = 0; i < groups.length; i++) {
@@ -20995,12 +20992,11 @@ class WindowModel extends ChangeNotifier {
             break;
           }
         }
-        if (isConnected &&
-            isRectangularFrame([
-              for (final index in connectedGroupIndices) ...groups[index],
-              zone,
-              ...groups[i],
-            ])) {
+        // A partially visited grid is often L-shaped. Rejecting it before
+        // visiting the remaining panes splits one real frame into several.
+        // Connectivity uses the physical double-frame gap above, so coupled
+        // frames remain separate without an area test on partial groups.
+        if (isConnected) {
           connectedGroupIndices.add(i);
         }
       }

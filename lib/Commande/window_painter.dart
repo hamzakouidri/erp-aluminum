@@ -2644,7 +2644,50 @@ class WindowPainter extends CustomPainter {
     if (coverPath == null) return;
 
     canvas.drawPath(coverPath, paint);
-    canvas.drawPath(coverPath, borderPaint);
+    _drawMultiFrameCoverOutline(canvas, coverPath, borderPaint);
+
+    // The union retains the silhouette but removes the shared diagonal
+    // between two welded cover pieces. Restore that diagonal explicitly.
+    final paintedJoints = <String>{};
+    canvas.save();
+    canvas.clipPath(coverPath);
+    for (final piece in pieces) {
+      for (final atStart in [true, false]) {
+        final joint = jointAt(piece, atStart);
+        if (joint == null) continue;
+        final inner = endpointOf(piece, atStart);
+        final outer = miterOuterPoint(piece, atStart, joint);
+        final key =
+            '${inner.dx.toStringAsFixed(2)},'
+            '${inner.dy.toStringAsFixed(2)}:'
+            '${outer.dx.toStringAsFixed(2)},${outer.dy.toStringAsFixed(2)}';
+        if (paintedJoints.add(key)) {
+          canvas.drawLine(inner, outer, borderPaint);
+        }
+      }
+    }
+    canvas.restore();
+  }
+
+  void _drawMultiFrameCoverOutline(Canvas canvas, Path path, Paint border) {
+    canvas.save();
+    if (model.hasShutter && !model.isCaissonTunnel) {
+      // Both cover strips continue past the box/frame seam. Their separate
+      // closed polygons must not leave a horizontal end-cap on that seam.
+      final y = model.shutterBoxHeight;
+      final bounds = path.getBounds().inflate(2);
+      final clip = Path()..addRect(bounds);
+      final caps = Path();
+      if (bounds.left < 0) {
+        caps.addRect(Rect.fromLTRB(bounds.left, y - 1, 0, y + 1));
+      }
+      if (bounds.right > model.width) {
+        caps.addRect(Rect.fromLTRB(model.width, y - 1, bounds.right, y + 1));
+      }
+      canvas.clipPath(Path.combine(PathOperation.difference, clip, caps));
+    }
+    canvas.drawPath(path, border);
+    canvas.restore();
   }
 
   void _drawMultiFrameShutterBoxCover(
@@ -2684,7 +2727,7 @@ class WindowPainter extends CustomPainter {
         ..lineTo(0, boxHeight)
         ..close();
       canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+      _drawMultiFrameCoverOutline(canvas, path, borderPaint);
     }
     if (hasR) {
       final path = Path()
@@ -2694,7 +2737,7 @@ class WindowPainter extends CustomPainter {
         ..lineTo(w, boxHeight)
         ..close();
       canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+      _drawMultiFrameCoverOutline(canvas, path, borderPaint);
     }
     if (hasT) {
       final path = Path()
@@ -2967,6 +3010,10 @@ class WindowPainter extends CustomPainter {
       ..strokeWidth = 1.2;
     final List<_MullionSegment> horizontalSegments = [];
     final List<_MullionSegment> verticalSegments = [];
+    final physicalFrames = model.getFrameRects();
+    int ownerOf(WindowZone zone) => physicalFrames.indexWhere(
+      (frame) => frame.contains(zone.boundary.center),
+    );
 
     bool verticalMullionShouldReachFloor(double x, double bottom) {
       if (_hasEffectiveBottomFrame) return false;
@@ -2986,6 +3033,10 @@ class WindowPainter extends CustomPainter {
       final z1 = model.zones[i];
       for (int j = i + 1; j < model.zones.length; j++) {
         final z2 = model.zones[j];
+
+        // Coupled frames already have their own two jambs. A mullion only
+        // belongs between panes inside the same physical frame.
+        if (ownerOf(z1) != ownerOf(z2)) continue;
 
         // Check for horizontal boundary
         double overlapLeft = math.max(z1.boundary.left, z2.boundary.left);
@@ -3309,12 +3360,32 @@ class WindowPainter extends CustomPainter {
       }
     }
 
+    // Internal divisions stop at the inner face of their enclosing frame.
+    // The old half-profile extension crossed the mitred outer frame and
+    // left vertical lines and triangular fragments on its lower rail.
+    final openings = Path();
+    for (final frame in physicalFrames) {
+      final frameWidth = model.frameVisibleWidthForRect(frame, fallback: t);
+      final bottom = model.hasBottomFrameForRect(frame)
+          ? frame.bottom - frameWidth
+          : frame.bottom;
+      final opening = Rect.fromLTRB(
+        frame.left + frameWidth,
+        frame.top + frameWidth,
+        frame.right - frameWidth,
+        bottom,
+      );
+      if (!opening.isEmpty) openings.addRect(opening);
+    }
+    canvas.save();
+    canvas.clipPath(openings);
     for (final mullion in mullions.where((m) => !m.isPrimary)) {
       drawMullion(mullion);
     }
     for (final mullion in mullions.where((m) => m.isPrimary)) {
       drawMullion(mullion);
     }
+    canvas.restore();
 
     if (model.selection.type == SelectionType.mullion) {
       bool isH = model.selection.isHorizontalMullion!;

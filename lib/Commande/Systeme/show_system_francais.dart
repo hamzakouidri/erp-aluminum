@@ -234,8 +234,7 @@ class _WindowViewState extends State<WindowView> {
                   selected: zone.slidingSecondCentralHandle,
                   onPressed: () {
                     if (!zone.slidingCentralHandle) return;
-                    widget.model
-                        .toggleSelectedZoneSlidingSecondCentralHandle();
+                    widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
                     setState(() {});
                   },
                 ),
