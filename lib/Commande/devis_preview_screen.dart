@@ -348,34 +348,39 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.translate, color: _blue, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    _invoiceLanguage == AppLanguage.french
-                        ? 'Langue de la facture :'
-                        : 'لغة تفاصيل الفاتورة :',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      fontFamily: 'Cairo',
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: Row(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const Icon(Icons.translate, color: _blue, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      _invoiceLanguage == AppLanguage.french
+                          ? 'Langue de la facture :'
+                          : 'لغة تفاصيل الفاتورة :',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        fontFamily: 'Cairo',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     GestureDetector(
                       onTap: () {
                         if (_invoiceLanguage != AppLanguage.arabic) {
@@ -433,114 +438,121 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               ),
             ],
           ),
+        ),
           if (!_isOfficial) ...[
             const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.dashboard_customize_outlined,
-                      color: _blue,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _invoiceLanguage == AppLanguage.french
-                          ? 'Disposition de l\'image :'
-                          : 'مكان وشكل الصورة :',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        fontFamily: 'Cairo',
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          if (_imageUnderPrices && !_isLoading) {
-                            setState(() {
-                              _imageUnderPrices = false;
-                              _pdfBytes = null;
-                            });
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: !_imageUnderPrices
-                                ? _blue
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Text(
-                            _invoiceLanguage == AppLanguage.french
-                                ? 'A (Latérale)'
-                                : 'A (جانبية)',
-                            style: TextStyle(
-                              color: !_imageUnderPrices
-                                  ? Colors.white
-                                  : Colors.black87,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              fontFamily: 'Cairo',
-                            ),
-                          ),
-                        ),
+                      const Icon(
+                        Icons.dashboard_customize_outlined,
+                        color: _blue,
+                        size: 20,
                       ),
-                      GestureDetector(
-                        onTap: () {
-                          if (!_imageUnderPrices && !_isLoading) {
-                            setState(() {
-                              _imageUnderPrices = true;
-                              _pdfBytes = null;
-                            });
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _imageUnderPrices
-                                ? _blue
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Text(
-                            _invoiceLanguage == AppLanguage.french
-                                ? 'B (Sous prix)'
-                                : 'B (تحت الأسعار)',
-                            style: TextStyle(
-                              color: _imageUnderPrices
-                                  ? Colors.white
-                                  : Colors.black87,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              fontFamily: 'Cairo',
-                            ),
-                          ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _invoiceLanguage == AppLanguage.french
+                            ? 'Disposition de l\'image :'
+                            : 'مكان وشكل الصورة :',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          fontFamily: 'Cairo',
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            if (_imageUnderPrices && !_isLoading) {
+                              setState(() {
+                                _imageUnderPrices = false;
+                                _pdfBytes = null;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: !_imageUnderPrices
+                                  ? _blue
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Text(
+                              _invoiceLanguage == AppLanguage.french
+                                  ? 'A (Latérale)'
+                                  : 'A (جانبية)',
+                              style: TextStyle(
+                                color: !_imageUnderPrices
+                                    ? Colors.white
+                                    : Colors.black87,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            if (!_imageUnderPrices && !_isLoading) {
+                              setState(() {
+                                _imageUnderPrices = true;
+                                _pdfBytes = null;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _imageUnderPrices
+                                  ? _blue
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Text(
+                              _invoiceLanguage == AppLanguage.french
+                                  ? 'B (Sous prix)'
+                                  : 'B (تحت الأسعار)',
+                              style: TextStyle(
+                                color: _imageUnderPrices
+                                    ? Colors.white
+                                    : Colors.black87,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
           if (_isOfficial) ...[

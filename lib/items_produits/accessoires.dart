@@ -2127,7 +2127,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     );
   }
 
-  void _showAccessoryRulesDialog(Map<String, dynamic> item) {
+  void _showAccessoryRulesDialog(Map<String, dynamic> item, {bool readOnly = false}) {
     final gacheItems = _items.where((candidate) {
       final text = '${candidate['name'] ?? ''} ${candidate['type'] ?? ''}'
           .toLowerCase();
@@ -2203,8 +2203,9 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     title: Text(_t('الاختيار الافتراضي')),
                     subtitle: Text(_t('يُختار تلقائياً عند توفر هذا النوع')),
                     value: isDefault,
-                    onChanged: (value) =>
-                        setDialogState(() => isDefault = value),
+                    onChanged: readOnly
+                        ? null
+                        : (value) => setDialogState(() => isDefault = value),
                   ),
                   const Divider(),
                   Text(
@@ -2233,10 +2234,13 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         ),
                       ),
                     ],
-                    onChanged: (value) => setDialogState(() => gacheId = value),
+                    onChanged: readOnly
+                        ? null
+                        : (value) => setDialogState(() => gacheId = value),
                   ),
                   const SizedBox(height: 8),
                   TextField(
+                    enabled: !readOnly,
                     controller: gacheCountCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
@@ -2271,7 +2275,9 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         ),
                       ),
                     ],
-                    onChanged: (value) => setDialogState(() => screwId = value),
+                    onChanged: readOnly
+                        ? null
+                        : (value) => setDialogState(() => screwId = value),
                   ),
                   const SizedBox(height: 6),
                   Text(_t('عدد البراغي يؤخذ من حقل عدد البراغي في الأكسسوار')),
@@ -2308,12 +2314,15 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                           child: Text('حتمي'),
                         ),
                       ],
-                      onChanged: (value) => setDialogState(
-                        () => triangleLinkMode = value ?? 'none',
-                      ),
+                      onChanged: readOnly
+                          ? null
+                          : (value) => setDialogState(
+                              () => triangleLinkMode = value ?? 'none',
+                            ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
+                      enabled: !readOnly,
                       controller: triangleQtyCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
@@ -2340,13 +2349,16 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                           child: Text('مسافة من الأسفل'),
                         ),
                       ],
-                      onChanged: (value) => setDialogState(
-                        () => trianglePositionMode = value ?? 'center',
-                      ),
+                      onChanged: readOnly
+                          ? null
+                          : (value) => setDialogState(
+                              () => trianglePositionMode = value ?? 'center',
+                            ),
                     ),
                     if (trianglePositionMode == 'offset') ...[
                       const SizedBox(height: 8),
                       TextField(
+                        enabled: !readOnly,
                         controller: trianglePositionCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
@@ -2360,6 +2372,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                   ],
                   const SizedBox(height: 8),
                   TextField(
+                    enabled: !readOnly,
                     controller: deductionCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -2376,8 +2389,9 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(dialogContext),
-              child: Text(_t('إلغاء')),
+              child: Text(readOnly ? _t('إغلاق') : _t('إلغاء')),
             ),
+            if (!readOnly)
             ElevatedButton(
               onPressed: saving
                   ? null
@@ -2931,9 +2945,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                 ],
               ),
 
-              trailing: !isUserAdmin
-                  ? null
-                  : Row(
+              trailing: Row(
                       mainAxisSize: MainAxisSize.min,
 
                       children: [
@@ -2948,9 +2960,13 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                             size: 20,
                           ),
 
-                          onPressed: () => _showAccessoryRulesDialog(item),
+                          onPressed: () => _showAccessoryRulesDialog(
+                            item,
+                            readOnly: !isUserAdmin,
+                          ),
                         ),
 
+                        if (isUserAdmin) ...[
                         IconButton(
                           icon: const Icon(
                             Icons.edit,
@@ -2976,6 +2992,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                             _showDeleteDialog(item);
                           },
                         ),
+                        ],
                       ],
                     ),
             ),

@@ -44,25 +44,16 @@ class DesktopScrollCoordinator {
     PointerSignalEvent event,
   ) {
     if (event is! PointerScrollEvent) return;
+    if (_hits.length > 40) {
+      _hits.clear();
+    }
     _hits
         .putIfAbsent(event, () => <_DesktopScrollableRegistration>{})
         .add(registration);
 
-    // PointerSignalEvent objects are unique per wheel tick.  They must not
-    // remain as keys in this static map: pages are opened and closed during a
-    // session, and retaining every wheel event eventually makes hit testing
-    // sluggish and can make scrolling appear to stop.  The normal Flutter
-    // scroll handler has already consumed the event by the next frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _hits.remove(event);
     });
-    // Force a frame to actually be scheduled. If nothing else in the tree
-    // calls setState after this wheel tick (e.g. the pointer is over empty
-    // page chrome, or every scrollable under it is already at its edge), no
-    // frame would otherwise be produced, and this cleanup callback — along
-    // with the fallback logic in handlePointerSignal below — would stay
-    // pending indefinitely instead of running on the next tick.
-    WidgetsBinding.instance.scheduleFrame();
   }
 
   static void rememberPointerPosition(PointerEvent event) {
@@ -73,55 +64,61 @@ class DesktopScrollCoordinator {
     if (event is! PointerScrollEvent) return;
     _lastPointerPosition = event.position;
 
-    // A scrollable can receive the signal before its scrollbar registration
-    // is reached in the hit-test path. Use all registered viewports under the
-    // pointer as a reliable fallback instead of waiting for a thumb drag.
-    final markedTargets =
-        _hits.remove(event) ?? <_DesktopScrollableRegistration>{};
-    final hitTargets = <_DesktopScrollableRegistration>{...markedTargets};
-    if (hitTargets.isEmpty) return;
+    try {
+      final markedTargets =
+          _hits.remove(event) ?? <_DesktopScrollableRegistration>{};
+      final hitTargets = <_DesktopScrollableRegistration>{...markedTargets};
+      if (hitTargets.isEmpty) return;
 
-    final verticalDelta = event.scrollDelta.dy;
-    final horizontalDelta = event.scrollDelta.dx;
-    final useVertical = verticalDelta.abs() >= horizontalDelta.abs();
-    final delta = useVertical ? verticalDelta : horizontalDelta;
-    if (delta == 0) return;
+      final verticalDelta = event.scrollDelta.dy;
+      final horizontalDelta = event.scrollDelta.dx;
+      final useVertical = verticalDelta.abs() >= horizontalDelta.abs();
+      final delta = useVertical ? verticalDelta : horizontalDelta;
+      if (delta == 0) return;
 
-    final candidates = hitTargets
-        .where(
-          (registration) =>
-              registration.bounds?.contains(event.position) == true &&
-              registration.controller.positions.length == 1,
-        )
-        .toList();
-    if (candidates.isEmpty) return;
+      final candidates = hitTargets
+          .where(
+            (registration) =>
+                registration.bounds?.contains(event.position) == true &&
+                registration.controller.positions.length == 1,
+          )
+          .toList();
+      if (candidates.isEmpty) return;
 
-    // The smallest viewport is normally the deepest nested region, while the
-    // largest one is the page fallback.
-    candidates.sort((a, b) {
-      final aArea = a.bounds!.width * a.bounds!.height;
-      final bArea = b.bounds!.width * b.bounds!.height;
-      return aArea.compareTo(bArea);
-    });
-    // Resolve each wheel tick synchronously. Waiting for a later frame could
-    // mistake a previous tick's movement for this tick and discard input.
-    // Stay in the innermost pane under the pointer, including at its edge.
-    // Do not send the remaining wheel input to a different page section.
-    // Try candidates from innermost to outermost.
-    // If the innermost is at its edge, try the next one outward.
-    final requestedAxis = useVertical ? Axis.vertical : Axis.horizontal;
-    for (final candidate in candidates) {
-      if (candidate.axis != requestedAxis && !useVertical) continue;
-      if (candidate.canMove(delta)) {
-        GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-          if (_registrations.contains(candidate) && candidate.canMove(delta)) {
-            candidate.controller.position.pointerScroll(delta);
-          }
-        });
-        return; // تم التسجيل، خروج
+      candidates.sort((a, b) {
+        final aBounds = a.bounds;
+        final bBounds = b.bounds;
+        if (aBounds == null || bBounds == null) return 0;
+        final aArea = aBounds.width * aBounds.height;
+        final bArea = bBounds.width * bBounds.height;
+        return aArea.compareTo(bArea);
+      });
+
+      final requestedAxis = useVertical ? Axis.vertical : Axis.horizontal;
+      // 1. Prioritize scrollables matching the requested axis (e.g. vertical wheel -> vertical scrollable)
+      for (final candidate in candidates) {
+        if (candidate.axis != requestedAxis) continue;
+        if (candidate.canMove(delta)) {
+          GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+            if (_registrations.contains(candidate) && candidate.canMove(delta)) {
+              candidate.controller.position.pointerScroll(delta);
+            }
+          });
+          return;
+        }
       }
-      // هذا الـ candidate عند الحافة → جرّب التالي (الأكبر/الأعلى)
-    }
+      // 2. Fallback: if no matching axis can move and horizontal view is the only scrollable under pointer
+      for (final candidate in candidates) {
+        if (candidate.canMove(delta)) {
+          GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+            if (_registrations.contains(candidate) && candidate.canMove(delta)) {
+              candidate.controller.position.pointerScroll(delta);
+            }
+          });
+          return;
+        }
+      }
+    } catch (_) {}
   }
 
   /// Handles keyboard navigation (arrow keys, Page Up/Down, Home/End) without
@@ -323,23 +320,32 @@ class _DesktopScrollableRegistration {
     if (!context.mounted) return null;
     if (ModalRoute.of(context)?.isCurrent == false) return null;
     var hidden = false;
-    context.visitAncestorElements((element) {
-      if (element.widget is Offstage && (element.widget as Offstage).offstage) {
-        hidden = true;
-        return false;
+    try {
+      context.visitAncestorElements((element) {
+        if (element.widget is Offstage && (element.widget as Offstage).offstage) {
+          hidden = true;
+          return false;
+        }
+        return true;
+      });
+      if (hidden) return null;
+      final renderObject = context.findRenderObject();
+      if (renderObject is! RenderBox ||
+          !renderObject.hasSize ||
+          !renderObject.attached) {
+        return null;
       }
-      return true;
-    });
-    if (hidden) return null;
-    final renderObject = context.findRenderObject();
-    if (renderObject is! RenderBox ||
-        !renderObject.hasSize ||
-        !renderObject.attached)
+      var needsLayout = false;
+      assert(() {
+        if (renderObject.debugNeedsLayout) needsLayout = true;
+        return true;
+      }());
+      if (needsLayout) return null;
+      final origin = renderObject.localToGlobal(Offset.zero);
+      return origin & renderObject.size;
+    } catch (_) {
       return null;
-    final offstage = context.findAncestorWidgetOfExactType<Offstage>();
-    if (offstage?.offstage == true) return null;
-    final origin = renderObject.localToGlobal(Offset.zero);
-    return origin & renderObject.size;
+    }
   }
 
   bool canMove(double delta) {
@@ -539,41 +545,51 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
     // Recompute against the current layout on every tick. A hover flag can
     // remain true after scrolling/rebuilding moves the scrollbar away, and
     // then hijack vertical wheel input until the pointer moves again.
-    final box = context.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) return;
-    final local = box.globalToLocal(event.position);
-    if (local.dx < 0 ||
-        local.dx > box.size.width ||
-        local.dy < box.size.height - _hitBandHeight ||
-        local.dy > box.size.height)
-      return;
-
-    // A standard mouse wheel reports dy. A trackpad or horizontal wheel may
-    // report dx, so preserve that axis when it is the only available delta.
-    final delta = event.scrollDelta.dy != 0
-        ? event.scrollDelta.dy
-        : event.scrollDelta.dx;
-    if (delta == 0) return;
-
-    final position = widget.controller.position;
-    if (!position.hasContentDimensions ||
-        !position.physics.shouldAcceptUserOffset(position))
-      return;
-    final target = (position.pixels + delta)
-        .clamp(position.minScrollExtent, position.maxScrollExtent)
-        .toDouble();
-    if ((target - position.pixels).abs() < 0.5) return;
-
-    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-      if (!mounted || widget.controller.positions.length != 1) return;
-      final current = widget.controller.position;
-      final currentTarget = (current.pixels + delta)
-          .clamp(current.minScrollExtent, current.maxScrollExtent)
-          .toDouble();
-      if ((currentTarget - current.pixels).abs() >= 0.5) {
-        current.pointerScroll(delta);
+    try {
+      final box = context.findRenderObject();
+      if (box is! RenderBox || !box.hasSize || !box.attached) return;
+      var needsLayout = false;
+      assert(() {
+        if (box.debugNeedsLayout) needsLayout = true;
+        return true;
+      }());
+      if (needsLayout) return;
+      final local = box.globalToLocal(event.position);
+      if (local.dx < 0 ||
+          local.dx > box.size.width ||
+          local.dy < box.size.height - _hitBandHeight ||
+          local.dy > box.size.height) {
+        return;
       }
-    });
+
+      // A standard mouse wheel reports dy. A trackpad or horizontal wheel may
+      // report dx, so preserve that axis when it is the only available delta.
+      final delta = event.scrollDelta.dy != 0
+          ? event.scrollDelta.dy
+          : event.scrollDelta.dx;
+      if (delta == 0) return;
+
+      final position = widget.controller.position;
+      if (!position.hasContentDimensions ||
+          !position.physics.shouldAcceptUserOffset(position)) {
+        return;
+      }
+      final target = (position.pixels + delta)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((target - position.pixels).abs() < 0.5) return;
+
+      GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+        if (!mounted || widget.controller.positions.length != 1) return;
+        final current = widget.controller.position;
+        final currentTarget = (current.pixels + delta)
+            .clamp(current.minScrollExtent, current.maxScrollExtent)
+            .toDouble();
+        if ((currentTarget - current.pixels).abs() >= 0.5) {
+          current.pointerScroll(delta);
+        }
+      });
+    } catch (_) {}
   }
 
   @override
@@ -589,7 +605,7 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
             if (mounted) setState(() => _pointerOverScrollbar = false);
           },
           child: Listener(
-            behavior: HitTestBehavior.opaque,
+            behavior: HitTestBehavior.translucent,
             onPointerSignal: _handlePointerSignal,
             child: Scrollbar(
               controller: widget.controller,

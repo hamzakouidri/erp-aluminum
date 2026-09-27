@@ -332,6 +332,8 @@ class SqlDatabase {
     'ProfileCalculationRules',
     'SectionJointLinks',
     'SeriesShutterRules',
+    'AccessoryLinks',
+    'AccessoryRoleLinks',
   ];
 
   static void resetDb() {
@@ -13072,6 +13074,8 @@ class SqlDatabase {
       'SeriesDesignRoles',
       'SectionSharingRules',
       'CatalogItemRules',
+      'AccessoryLinks',
+      'AccessoryRoleLinks',
       'SectionJointLinks',
       'SeriesShutterRules',
       'ClientCodeSequence',

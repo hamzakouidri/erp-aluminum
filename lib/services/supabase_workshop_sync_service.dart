@@ -674,6 +674,7 @@ class SupabaseWorkshopSyncService {
       // recovery path for sleeping devices, dropped channels, and failed
       // uploads whose local change log must remain retryable.
       await downloadWorkshopData();
+      await loadAndApplyWorkshopCatalogConfiguration();
       await uploadPendingChanges();
     } catch (error) {
       print('Supabase background sync retry failed: $error');
@@ -804,7 +805,11 @@ class SupabaseWorkshopSyncService {
       ),
       callback: (_) {
         unawaited(
-          downloadWorkshopData().catchError((e) {
+          downloadWorkshopData().then((_) {
+            unawaited(loadAndApplyWorkshopCatalogConfiguration().catchError((e) {
+              debugPrint('Realtime loadAndApply failed: $e');
+            }));
+          }).catchError((e) {
             debugPrint(
               'Realtime downloadWorkshopData skipped (offline/error): $e',
             );

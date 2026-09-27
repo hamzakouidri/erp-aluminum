@@ -220,6 +220,8 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
+              ],
+              if (settings.isAdmin || settings.canViewAccessories()) ...[
                 _buildMenuCard(
                   context,
                   title: _catalogRulesTitle(lang),

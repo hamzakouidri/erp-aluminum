@@ -2057,12 +2057,13 @@ class _WindowViewState extends State<WindowView> {
     final verticalDelta = event.scrollDelta.dy;
     if (verticalDelta == 0) return;
 
-    // Keep the drawing centred in its own viewport, independent of where the
-    // mouse happens to be on the page.
-    _changeDrawingZoom(
-      verticalDelta < 0 ? _zoomStep : 1 / _zoomStep,
-      _drawingViewportCenter(),
-    );
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (!mounted) return;
+      _changeDrawingZoom(
+        verticalDelta < 0 ? _zoomStep : 1 / _zoomStep,
+        _drawingViewportCenter(),
+      );
+    });
   }
 
   void _resetDrawingZoom() {
@@ -10074,85 +10075,82 @@ class _WindowViewState extends State<WindowView> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: Colors.blue.shade900.withValues(alpha: 0.8),
-      child: Row(
-        children: [
-          const Icon(Icons.drag_indicator_rounded, color: Colors.white),
-          const SizedBox(width: 10),
-          Text(
-            Localization.translate('العمود محدد', lang),
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  toolbarButton(
-                    label: 'Traverse',
-                    icon: Icons.horizontal_rule_rounded,
-                    selected: currentType == MullionProfileType.standard,
-                    onPressed: () => widget.model.setMullionProfile(
-                      MullionProfileType.standard,
-                    ),
-                  ),
-                  toolbarButton(
-                    label: 'Cadre doublé',
-                    icon: Icons.splitscreen_rounded,
-                    selected: currentType == MullionProfileType.flat,
-                    showSubmenuIndicator: true,
-                    onPressed: () => _showMullionFrameSelectorDialog(
-                      context,
-                      MullionProfileType.flat,
-                    ),
-                  ),
-                  toolbarButton(
-                    label: 'Cadre 140',
-                    icon: Icons.view_headline_rounded,
-                    selected: currentType == MullionProfileType.grooved,
-                    showSubmenuIndicator: true,
-                    onPressed: () => _showMullionFrameSelectorDialog(
-                      context,
-                      MullionProfileType.grooved,
-                    ),
-                  ),
-                  if (currentType == MullionProfileType.grooved)
-                    toolbarButton(
-                      label: Localization.translate('قلب الجهة', lang),
-                      icon: Icons.swap_horiz_rounded,
-                      selected: widget.model
-                          .isGroovedMullionCavityOnPositiveSide(
-                            widget.model.selection.isHorizontalMullion!,
-                            widget.model.selection.mullionPosition!,
-                          ),
-                      onPressed: () => widget.model.toggleGroovedMullionCavity(
-                        widget.model.selection.isHorizontalMullion!,
-                        widget.model.selection.mullionPosition!,
-                      ),
-                    ),
-                  const SizedBox(width: 15),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade600,
-                    ),
-                    icon: const Icon(
-                      Icons.delete_sweep,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                    label: Text(
-                      Localization.translate('حذف', lang),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onPressed: () => widget.model.deleteSelectedMullion(),
-                  ),
-                ],
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: Colors.blue.shade900.withValues(alpha: 0.85),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.drag_indicator_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              Localization.translate('العمود محدد', lang),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(width: 12),
+            toolbarButton(
+              label: 'Traverse',
+              icon: Icons.horizontal_rule_rounded,
+              selected: currentType == MullionProfileType.standard,
+              onPressed: () => widget.model.setMullionProfile(
+                MullionProfileType.standard,
               ),
             ),
-          ),
-        ],
+            toolbarButton(
+              label: 'Cadre doublé',
+              icon: Icons.splitscreen_rounded,
+              selected: currentType == MullionProfileType.flat,
+              showSubmenuIndicator: true,
+              onPressed: () => _showMullionFrameSelectorDialog(
+                context,
+                MullionProfileType.flat,
+              ),
+            ),
+            toolbarButton(
+              label: 'Cadre 140',
+              icon: Icons.view_headline_rounded,
+              selected: currentType == MullionProfileType.grooved,
+              showSubmenuIndicator: true,
+              onPressed: () => _showMullionFrameSelectorDialog(
+                context,
+                MullionProfileType.grooved,
+              ),
+            ),
+            if (currentType == MullionProfileType.grooved)
+              toolbarButton(
+                label: Localization.translate('قلب الجهة', lang),
+                icon: Icons.swap_horiz_rounded,
+                selected: widget.model
+                    .isGroovedMullionCavityOnPositiveSide(
+                      widget.model.selection.isHorizontalMullion!,
+                      widget.model.selection.mullionPosition!,
+                    ),
+                onPressed: () => widget.model.toggleGroovedMullionCavity(
+                  widget.model.selection.isHorizontalMullion!,
+                  widget.model.selection.mullionPosition!,
+                ),
+              ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+              icon: const Icon(
+                Icons.delete_sweep,
+                color: Colors.white,
+                size: 16,
+              ),
+              label: Text(
+                Localization.translate('حذف', lang),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              onPressed: () => widget.model.deleteSelectedMullion(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -11243,11 +11241,6 @@ class _WindowViewState extends State<WindowView> {
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.star_rounded, color: Colors.amber),
-          tooltip: Localization.translate('السلاسل الافتراضية', lang),
-          onPressed: _showDrawingDefaultSeriesDialog,
-        ),
         // The mobile bottom panel already owns the quantity/cost action.
         // Keeping this large AppBar action on a narrow screen squeezed the
         // drawing controls and produced horizontal overflow.

@@ -2069,26 +2069,35 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           : const Color(0xFFF0F4FF),
       appBar: AppBar(
         title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _t('كمية السلع المطلوبة'),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                color: Colors.white,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                _t('كمية السلع المطلوبة'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
               ),
             ),
-            Text(
-              clientDisplay,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
+            if (clientDisplay.isNotEmpty)
+              Text(
+                clientDisplay,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
           ],
         ),
-        centerTitle: true,
+        centerTitle: false,
         backgroundColor: isDark
             ? (Theme.of(context).appBarTheme.backgroundColor ??
                   const Color(0xFF1A237E))
@@ -2098,68 +2107,87 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         actionsIconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         actions: [
-          if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
-            IconButton(icon: const Icon(Icons.print), tooltip: 'طباعة الكمية المطلوبة',
-                onPressed: _printRequiredGoods),
-          if (!_isLoading &&
-              _errorMessage == null &&
-              _aggregatedItems.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.manage_search, color: Colors.white),
-              tooltip: _t('إظهار النواقص'),
-              onPressed: _showShortageReport,
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width > 700
+                  ? 550
+                  : MediaQuery.of(context).size.width * 0.62,
             ),
-          if (!_isLoading &&
-              _errorMessage == null &&
-              _cuttableCatalogItems.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.inventory_2_outlined, color: Colors.white),
-              tooltip: _t('اعتماد القص والبقايا'),
-              onPressed: _approveAndStoreCuttingRemainders,
-            ),
-          if (!_isLoading &&
-              _errorMessage == null &&
-              _aggregatedItems.isNotEmpty)
-            IconButton(
-              icon: _isCreatingPurchase
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.shopping_cart_checkout,
-                      color: Colors.white,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.print),
+                      tooltip: 'طباعة الكمية المطلوبة',
+                      onPressed: _printRequiredGoods,
                     ),
-              tooltip: _t('تحويل إلى طلب أو فاتورة شراء'),
-              onPressed: _isCreatingPurchase
-                  ? null
-                  : _convertRequiredGoodsToPurchase,
-            ),
-          if (!_isLoading &&
-              _errorMessage == null &&
-              _productBreakdowns.isNotEmpty)
-            TextButton.icon(
-              icon: const Icon(Icons.table_chart_outlined, color: Colors.white),
-              label: Text(
-                _t('تفاصيل كل منتج'),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
+                  if (!_isLoading &&
+                      _errorMessage == null &&
+                      _aggregatedItems.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.manage_search, color: Colors.white),
+                      tooltip: _t('إظهار النواقص'),
+                      onPressed: _showShortageReport,
+                    ),
+                  if (!_isLoading &&
+                      _errorMessage == null &&
+                      _cuttableCatalogItems.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.inventory_2_outlined, color: Colors.white),
+                      tooltip: _t('اعتماد القص والبقايا'),
+                      onPressed: _approveAndStoreCuttingRemainders,
+                    ),
+                  if (!_isLoading &&
+                      _errorMessage == null &&
+                      _aggregatedItems.isNotEmpty)
+                    IconButton(
+                      icon: _isCreatingPurchase
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.shopping_cart_checkout,
+                              color: Colors.white,
+                            ),
+                      tooltip: _t('تحويل إلى طلب أو فاتورة شراء'),
+                      onPressed: _isCreatingPurchase
+                          ? null
+                          : _convertRequiredGoodsToPurchase,
+                    ),
+                  if (!_isLoading &&
+                      _errorMessage == null &&
+                      _productBreakdowns.isNotEmpty)
+                    TextButton.icon(
+                      icon: const Icon(Icons.table_chart_outlined, color: Colors.white),
+                      label: Text(
+                        _t('تفاصيل كل منتج'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      onPressed: _showProductBreakdownDialog,
+                    ),
+                  if (!_isLoading && _errorMessage == null)
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      tooltip: _t('إعادة الحساب'),
+                      onPressed: _loadAndAggregate,
+                    ),
+                ],
               ),
-              onPressed: _showProductBreakdownDialog,
             ),
-          if (!_isLoading && _errorMessage == null)
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              tooltip: _t('إعادة الحساب'),
-              onPressed: _loadAndAggregate,
-            ),
+          ),
         ],
       ),
       body: _buildBody(),

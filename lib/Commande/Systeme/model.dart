@@ -14536,20 +14536,14 @@ class WindowModel extends ChangeNotifier {
     if (!hasHorizontalBoundaries && !hasVerticalBoundaries) {
       // No partitions remain — reset axis so next split starts fresh
       primaryMullionAxis = null;
-    } else if (primaryMullionAxis == null) {
-      // Set the axis ONCE on the first split, then never change it automatically.
-      // This ensures the first partition the user adds is always the primary (continuous).
-      if (!hasHorizontalBoundaries) {
-        primaryMullionAxis = 'v';
-      } else if (!hasVerticalBoundaries) {
+    } else {
+      // العارضة الأفقية لها الأولوية دائماً حتى لا يقسمها العمود
+      if (hasHorizontalBoundaries) {
         primaryMullionAxis = 'h';
       } else {
-        primaryMullionAxis = 'h';
+        primaryMullionAxis = 'v';
       }
-      // Once set, primaryMullionAxis is only changed explicitly by the user.
     }
-    // If primaryMullionAxis is already set, NEVER override it automatically.
-    // The first partition the user added determines the primary axis forever.
   }
 
   void splitSelectedZoneHorizontal({

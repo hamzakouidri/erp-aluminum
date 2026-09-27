@@ -521,6 +521,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   void _toggleItem(String table, Map<String, dynamic> item, bool enabled) {
+    if (!context.read<AppSettingsProvider>().isAdmin) return;
     final itemId = _itemId(item);
     if (itemId == null) return;
     final rule = _ruleFor(table, itemId);
@@ -1039,6 +1040,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _save() async {
+    if (!context.read<AppSettingsProvider>().isAdmin) return;
     final seriesId = _selectedSeriesId;
     if (_saving || seriesId == null) return;
     setState(() => _saving = true);
@@ -1107,22 +1109,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<AppSettingsProvider>();
-    if (!settings.isAdmin) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(_t('قواعد الكتالوج العامة', 'Règles du catalogue')),
-        ),
-        body: Center(
-          child: Text(
-            _t(
-              'ليس لديك صلاحية للوصول إلى قواعد الكتالوج.',
-              'Vous n\'avez pas accès aux règles du catalogue.',
-            ),
-          ),
-        ),
-      );
-    }
+    context.watch<AppSettingsProvider>(); // rebuild on settings change
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -1145,6 +1132,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           ],
         ),
         actions: [
+          if (context.watch<AppSettingsProvider>().isAdmin)
           IconButton(
             tooltip: _t('حفظ', 'Enregistrer'),
             onPressed: _saving || _selectedSeriesId == null ? null : _save,
@@ -1189,7 +1177,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 _tableView('Joints'),
               ],
             ),
-      floatingActionButton: _selectedSeriesId == null
+      floatingActionButton: (_selectedSeriesId == null ||
+              !context.watch<AppSettingsProvider>().isAdmin)
           ? null
           : FloatingActionButton.extended(
               onPressed: _saving ? null : _save,
@@ -1597,7 +1586,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               child: inspectedItem != null
                   ? SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
-                      child: _buildItemInspector(table, inspectedItem),
+                      child: _buildItemInspector(
+                        table,
+                        inspectedItem,
+                        readOnly: !context.watch<AppSettingsProvider>().isAdmin,
+                      ),
                     )
                   : Center(
                       child: Padding(
@@ -1709,6 +1702,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 }
               },
             ),
+            if (context.read<AppSettingsProvider>().isAdmin)
             IconButton(
               icon: const Icon(Icons.close_rounded, size: 18),
               tooltip: _t('تعطيل من هذه السلسلة', 'Désactiver'),
@@ -1753,19 +1747,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ),
       label: Text(_itemTitle(item)),
       selected: enabled,
-      onSelected: (value) {
-        _toggleItem(table, item, value);
-        if (value && !isWideScreen) {
-          _openMobileInspector(table, item);
-        }
-      },
+      onSelected: context.read<AppSettingsProvider>().isAdmin
+          ? (value) {
+              _toggleItem(table, item, value);
+              if (value && !isWideScreen) {
+                _openMobileInspector(table, item);
+              }
+            }
+          : null,
       tooltip: role == null
           ? null
           : _t('الدور: ${role.ar}', 'Rôle : ${role.fr}'),
     );
   }
 
-  Widget _assemblyRuleEditor(Map<String, dynamic> rule) {
+  Widget _assemblyRuleEditor(Map<String, dynamic> rule, {bool readOnly = false}) {
     final role = rule['role_key'].toString();
     final isClamp = const {
       'clam',
@@ -1812,7 +1808,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               child: Text(_t('الإطار والظلفة', 'Dormant et ouvrant')),
             ),
           ],
-          onChanged: (value) => setState(() => rule['assembly_target'] = value),
+          onChanged: readOnly ? null : (value) => setState(() => rule['assembly_target'] = value),
         ),
         const SizedBox(height: 8),
         Align(
@@ -1835,7 +1831,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 '${section['code'] ?? ''} — ${section['name'] ?? ''}',
               ),
               selected: selectedSectionIds.contains(id),
-              onSelected: (selected) => setState(() {
+              onSelected: readOnly ? null : (selected) => setState(() {
                 final next = {...selectedSectionIds};
                 selected ? next.add(id) : next.remove(id);
                 final nextQuantities = {...assemblySectionSideQuantities(rule)};
@@ -1881,20 +1877,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                             : 'Vis côté ${side + 1} du profilé ${section['code'] ?? ''}',
                       ),
                     ),
-                    onChanged: (value) {
-                      final count = int.tryParse(value);
-                      if (count != null && count >= 0) {
-                        final id = (section['id'] as num).toInt();
-                        final next = {...assemblySectionSideQuantities(rule)};
-                        final current = next[id] ?? (1, 1);
-                        next[id] = isClamp
-                            ? (count, count)
-                            : side == 0
-                            ? (count, current.$2)
-                            : (current.$1, count);
-                        saveSectionQuantities(next);
-                      }
-                    },
+                    onChanged: readOnly
+                        ? null
+                        : (value) {
+                            final count = int.tryParse(value);
+                            if (count != null && count >= 0) {
+                              final id = (section['id'] as num).toInt();
+                              final next = {...assemblySectionSideQuantities(rule)};
+                              final current = next[id] ?? (1, 1);
+                              next[id] = isClamp
+                                  ? (count, count)
+                                  : side == 0
+                                  ? (count, current.$2)
+                                  : (current.$1, count);
+                              saveSectionQuantities(next);
+                            }
+                          },
                   ),
                 ),
               ],
@@ -1918,6 +1916,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     String table,
     Map<String, dynamic> item, {
     VoidCallback? onClose,
+    bool readOnly = false,
   }) {
     final itemId = _itemId(item);
     if (itemId == null) return const SizedBox.shrink();
@@ -2004,10 +2003,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     ),
                   )
                   .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => rule['role_key'] = value);
-              },
+              onChanged: readOnly
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() => rule['role_key'] = value);
+                    },
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -2036,10 +2037,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   child: Text(_t('فتح ومنزلق', 'Ouvrant et coulissant')),
                 ),
               ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => rule['usage_scope'] = value);
-              },
+              onChanged: readOnly
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() => rule['usage_scope'] = value);
+                    },
             ),
             if (isEspagnoletteRule) ...[
               const SizedBox(height: 12),
@@ -2060,8 +2063,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                         border: const OutlineInputBorder(),
                         isDense: true,
                       ),
-                      onChanged: (value) => rule['min_height_mm'] =
-                          double.tryParse(value.trim().replaceAll(',', '.')),
+                      onChanged: readOnly
+                          ? null
+                          : (value) => rule['min_height_mm'] =
+                              double.tryParse(value.trim().replaceAll(',', '.')),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2080,8 +2085,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                         border: const OutlineInputBorder(),
                         isDense: true,
                       ),
-                      onChanged: (value) => rule['max_height_mm'] =
-                          double.tryParse(value.trim().replaceAll(',', '.')),
+                      onChanged: readOnly
+                          ? null
+                          : (value) => rule['max_height_mm'] =
+                              double.tryParse(value.trim().replaceAll(',', '.')),
                     ),
                   ),
                 ],
@@ -2089,9 +2096,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ],
             if (table == 'Accessories') ...[
               const SizedBox(height: 14),
-              _assemblyRuleEditor(rule),
+              _assemblyRuleEditor(rule, readOnly: readOnly),
               const SizedBox(height: 14),
-              _accessoryRelationEditor(item),
+              _accessoryRelationEditor(item, readOnly: readOnly),
             ],
             const SizedBox(height: 14),
             Text(
@@ -2106,15 +2113,16 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               spacing: 8,
               runSpacing: 6,
               children: [
-                _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut')),
+                _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut'), readOnly: readOnly),
                 _ruleChip(
                   rule,
                   'show_in_quantity',
                   _t('جدول الكمية', 'Quantité'),
+                  readOnly: readOnly,
                 ),
-                _ruleChip(rule, 'show_in_dialog', _t('نافذة التغيير', 'Choix')),
+                _ruleChip(rule, 'show_in_dialog', _t('نافذة التغيير', 'Choix'), readOnly: readOnly),
                 if (!isAssemblyScrewRule)
-                  _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin')),
+                  _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin'), readOnly: readOnly),
               ],
             ),
           ],
@@ -2152,6 +2160,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   table,
                   item,
                   onClose: () => Navigator.of(ctx).pop(),
+                  readOnly: !context.read<AppSettingsProvider>().isAdmin,
                 ),
               );
             },
@@ -2181,6 +2190,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     Map<String, dynamic> item,
     Map<String, dynamic> values,
   ) async {
+    if (!context.read<AppSettingsProvider>().isAdmin) return;
     final itemId = _itemId(item);
     if (itemId == null) return;
     try {
@@ -2205,6 +2215,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     int sourceId, {
     bool syncCatalog = true,
   }) async {
+    if (!context.read<AppSettingsProvider>().isAdmin) return;
     try {
       await widget.db.saveAccessoryLinks(
         sourceId,
@@ -2220,7 +2231,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     }
   }
 
-  Widget _accessoryRelationEditor(Map<String, dynamic> item) {
+  Widget _accessoryRelationEditor(Map<String, dynamic> item, {bool readOnly = false}) {
     final screwItems = _accessoriesForRoles(const {
       'kit_screw',
       'box_screw',
@@ -2284,11 +2295,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       child: Text(_itemTitle(screw)),
                     ),
               ],
-              onChanged: (value) => _updateAccessoryFields(item, {
-                'screw_accessory_id': value == null || value == 0
-                    ? null
-                    : value,
-              }),
+              onChanged: readOnly
+                  ? null
+                  : (value) => _updateAccessoryFields(item, {
+                      'screw_accessory_id': value == null || value == 0
+                          ? null
+                          : value,
+                    }),
             ),
           if (screwItems.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -2301,9 +2314,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   'Nombre de vis pour cet élément',
                 ),
               ),
-              onFieldSubmitted: (value) => _updateAccessoryFields(item, {
-                'screw_count': int.tryParse(value.trim()) ?? 0,
-              }),
+              onFieldSubmitted: readOnly
+                  ? null
+                  : (value) => _updateAccessoryFields(item, {
+                      'screw_count': int.tryParse(value.trim()) ?? 0,
+                    }),
             ),
           ],
           if (itemId != null && linkableRoles.isNotEmpty) ...[
@@ -2325,10 +2340,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     'Ajouter un accessoire lié',
                   ),
                   icon: const Icon(Icons.add_circle_outline_rounded),
-                  onPressed: () => setState(() {
-                    links.add({'target_role_key': null, 'quantity': 1});
-                    _dirtyAccessoryLinkIds.add(itemId);
-                  }),
+                  onPressed: readOnly
+                      ? null
+                      : () => setState(() {
+                          links.add({'target_role_key': null, 'quantity': 1});
+                          _dirtyAccessoryLinkIds.add(itemId);
+                        }),
                 ),
               ],
             ),
@@ -2369,13 +2386,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                               child: Text(_t(role.ar, role.fr)),
                             ),
                         ],
-                        onChanged: (value) {
-                          setState(() {
-                            links[index]['target_role_key'] = value;
-                            _dirtyAccessoryLinkIds.add(itemId);
-                          });
-                          _saveAccessoryLinksFor(itemId);
-                        },
+                        onChanged: readOnly
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  links[index]['target_role_key'] = value;
+                                  _dirtyAccessoryLinkIds.add(itemId);
+                                });
+                                _saveAccessoryLinksFor(itemId);
+                              },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -2388,36 +2407,42 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                         decoration: InputDecoration(
                           labelText: _t('العدد', 'Nombre'),
                         ),
-                        onChanged: (value) {
-                          final parsed = int.tryParse(value.trim());
-                          if (parsed == null || parsed <= 0) return;
-                          links[index]['quantity'] = parsed;
-                          links[index].remove('linked_quantity');
-                          _dirtyAccessoryLinkIds.add(itemId);
-                        },
+                        onChanged: readOnly
+                            ? null
+                            : (value) {
+                                final parsed = int.tryParse(value.trim());
+                                if (parsed == null || parsed <= 0) return;
+                                links[index]['quantity'] = parsed;
+                                links[index].remove('linked_quantity');
+                                _dirtyAccessoryLinkIds.add(itemId);
+                              },
                         onTapOutside: (_) {
                           FocusManager.instance.primaryFocus?.unfocus();
                         },
-                        onFieldSubmitted: (value) {
-                          final parsed = int.tryParse(value.trim());
-                          links[index]['quantity'] =
-                              parsed != null && parsed > 0 ? parsed : 1;
-                          links[index].remove('linked_quantity');
-                          _dirtyAccessoryLinkIds.add(itemId);
-                          _saveAccessoryLinksFor(itemId);
-                        },
+                        onFieldSubmitted: readOnly
+                            ? null
+                            : (value) {
+                                final parsed = int.tryParse(value.trim());
+                                links[index]['quantity'] =
+                                    parsed != null && parsed > 0 ? parsed : 1;
+                                links[index].remove('linked_quantity');
+                                _dirtyAccessoryLinkIds.add(itemId);
+                                _saveAccessoryLinksFor(itemId);
+                              },
                       ),
                     ),
                     IconButton(
                       tooltip: _t('حذف الرابط', 'Supprimer le lien'),
                       icon: const Icon(Icons.delete_outline_rounded),
-                      onPressed: () {
-                        setState(() {
-                          links.removeAt(index);
-                          _dirtyAccessoryLinkIds.add(itemId);
-                        });
-                        _saveAccessoryLinksFor(itemId);
-                      },
+                      onPressed: readOnly
+                        ? null
+                        : () {
+                            setState(() {
+                              links.removeAt(index);
+                              _dirtyAccessoryLinkIds.add(itemId);
+                            });
+                            _saveAccessoryLinksFor(itemId);
+                          },
                     ),
                   ],
                 ),
@@ -2429,12 +2454,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     );
   }
 
-  Widget _ruleChip(Map<String, dynamic> rule, String key, String label) {
+  Widget _ruleChip(
+    Map<String, dynamic> rule,
+    String key,
+    String label, {
+    bool readOnly = false,
+  }) {
     final selected = rule[key] == true || rule[key] == 1;
     return FilterChip(
       label: Text(label),
       selected: selected,
-      onSelected: (value) => setState(() => rule[key] = value),
+      onSelected: readOnly ? null : (value) => setState(() => rule[key] = value),
     );
   }
 }

@@ -3092,7 +3092,7 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    final String effectivePrimary = model.primaryMullionAxis ?? 'h';
+    final String effectivePrimary = (horizontalSegments.isNotEmpty) ? 'h' : (model.primaryMullionAxis ?? 'h');
     final List<_MullionVisual> mullions = [];
 
     if (effectivePrimary == 'h') {
@@ -3331,7 +3331,7 @@ class WindowPainter extends CustomPainter {
         isHorizontal: mullion.isHorizontal,
         fill: paint,
         border: border,
-        cavityOnPositiveSide: true,
+        cavityOnPositiveSide: false,
       );
       _drawGroovedMullionProfile(
         canvas,
@@ -3339,12 +3339,17 @@ class WindowPainter extends CustomPainter {
         isHorizontal: mullion.isHorizontal,
         fill: paint,
         border: border,
-        cavityOnPositiveSide: false,
+        cavityOnPositiveSide: true,
       );
+
+      final hasCacheRainure = model.getConfiguredSectionForRole('cache_rainure') != null;
+
       final separatorPaint = Paint()
-        ..color = Colors.black.withValues(alpha: 0.75)
+        ..color = hasCacheRainure
+            ? Colors.black.withValues(alpha: 0.9)
+            : border.color.withValues(alpha: 0.7)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.1, frameWidth * 0.025);
+        ..strokeWidth = hasCacheRainure ? 2.2 : 0.8;
       if (mullion.isHorizontal) {
         canvas.drawLine(
           Offset(combined.left, center),
