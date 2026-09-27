@@ -354,7 +354,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'المدة المتبقية:',
+                                      Localization.translate('المدة المتبقية:', lang),
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: isDark
@@ -681,16 +681,16 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            children: const [
+                            children: [
                               Icon(
                                 Icons.info_outline_rounded,
                                 color: Color(0xFF2563EB),
                                 size: 20,
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
-                                'تجديد الاشتراك',
-                                style: TextStyle(
+                                Localization.translate('تجديد الاشتراك', lang),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                   color: Color(0xFF2563EB),
@@ -700,9 +700,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            details.planType == SubscriptionPlanType.yearly
-                                ? 'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بشهر واحد (30 يوماً)، ابتداءً من تاريخ: ${details.formattedRenewalAvailableDate}.'
-                                : 'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بأسبوع واحد (7 أيام)، ابتداءً من تاريخ: ${details.formattedRenewalAvailableDate}.',
+                            '${Localization.translate(details.planType == SubscriptionPlanType.yearly
+                                ? 'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بشهر واحد (30 يوماً)، ابتداءً من تاريخ:'
+                                : 'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بأسبوع واحد (7 أيام)، ابتداءً من تاريخ:', lang)} ${details.formattedRenewalAvailableDate}.',
                             style: TextStyle(
                               fontSize: 12.5,
                               height: 1.4,

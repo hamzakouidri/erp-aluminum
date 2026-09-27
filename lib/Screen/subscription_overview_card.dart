@@ -193,7 +193,7 @@ class SubscriptionOverviewCard extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'المدة المتبقية:',
+                                  Localization.translate('المدة المتبقية:', lang),
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: isDark

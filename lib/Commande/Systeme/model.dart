@@ -4597,8 +4597,21 @@ class WindowModel extends ChangeNotifier {
       ]) {
         if (override.containsKey(flag)) return _isEnabledFlag(override[flag]);
       }
+      return mullionProfiles[key] == MullionProfileType.flat;
     }
-    return mullionProfiles[key] == MullionProfileType.flat;
+
+    if (mullionProfiles[key] == MullionProfileType.flat) return true;
+    for (final entry in mullionProfiles.entries) {
+      if (entry.value == MullionProfileType.flat) {
+        if (entry.key.startsWith(isHorizontal ? 'H_' : 'V_')) {
+          final p = double.tryParse(entry.key.substring(2));
+          if (p != null && (p - position).abs() < 5.0) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   bool isGroovedFrameMullionAt(bool isHorizontal, double position) =>
@@ -12171,6 +12184,77 @@ class WindowModel extends ChangeNotifier {
 
     double hitSlop = 40.0;
     final mullionT = mullionThickness;
+
+    List<double> findContinuousMullionSpan({
+      required bool isHorizontal,
+      required double position,
+      required double initialStart,
+      required double initialEnd,
+    }) {
+      double fullStart = initialStart;
+      double fullEnd = initialEnd;
+      bool expanded = true;
+      while (expanded) {
+        expanded = false;
+        for (int a = 0; a < zones.length; a++) {
+          for (int b = a + 1; b < zones.length; b++) {
+            final za = zones[a].boundary;
+            final zb = zones[b].boundary;
+            if (isHorizontal) {
+              double? ym;
+              if ((za.bottom - zb.top).abs() <= mullionT + 4) {
+                ym = (za.bottom + zb.top) / 2;
+              } else if ((zb.bottom - za.top).abs() <= mullionT + 4) {
+                ym = (zb.bottom + za.top) / 2;
+              }
+              if (ym != null && (ym - position).abs() <= 4.0) {
+                final segL = math.max(za.left, zb.left);
+                final segR = math.min(za.right, zb.right);
+                if (segL < segR - 2.0) {
+                  if (segL <= fullEnd + mullionT + 6.0 &&
+                      segR >= fullStart - mullionT - 6.0) {
+                    if (segL < fullStart) {
+                      fullStart = segL;
+                      expanded = true;
+                    }
+                    if (segR > fullEnd) {
+                      fullEnd = segR;
+                      expanded = true;
+                    }
+                  }
+                }
+              }
+            } else {
+              double? xm;
+              if ((za.right - zb.left).abs() <= mullionT + 4) {
+                xm = (za.right + zb.left) / 2;
+              } else if ((zb.right - za.left).abs() <= mullionT + 4) {
+                xm = (zb.right + za.left) / 2;
+              }
+              if (xm != null && (xm - position).abs() <= 4.0) {
+                final segT = math.max(za.top, zb.top);
+                final segB = math.min(za.bottom, zb.bottom);
+                if (segT < segB - 2.0) {
+                  if (segT <= fullEnd + mullionT + 6.0 &&
+                      segB >= fullStart - mullionT - 6.0) {
+                    if (segT < fullStart) {
+                      fullStart = segT;
+                      expanded = true;
+                    }
+                    if (segB > fullEnd) {
+                      fullEnd = segB;
+                      expanded = true;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return [fullStart, fullEnd];
+    }
+
     // A completed divider remains selectable even after drawing mode is
     // switched off. Drawing mode controls creation only, never selection.
     if (zones.length > 1) {
@@ -12190,12 +12274,18 @@ class WindowModel extends ChangeNotifier {
                 pos.dx >= overlapLeft - 10 &&
                 pos.dx <= overlapRight + 10 &&
                 (pos.dy - yCenter).abs() < hitSlop) {
+              final span = findContinuousMullionSpan(
+                isHorizontal: true,
+                position: yCenter,
+                initialStart: overlapLeft,
+                initialEnd: overlapRight,
+              );
               selection = SelectionInfo(
                 type: SelectionType.mullion,
                 isHorizontalMullion: true,
                 mullionPosition: yCenter,
-                mullionStart: overlapLeft,
-                mullionEnd: overlapRight,
+                mullionStart: span[0],
+                mullionEnd: span[1],
               );
               showZoneMenu = false;
               activeSubZone = null;
@@ -12215,12 +12305,18 @@ class WindowModel extends ChangeNotifier {
                 pos.dy >= overlapTop - 10 &&
                 pos.dy <= overlapBottom + 10 &&
                 (pos.dx - xCenter).abs() < hitSlop) {
+              final span = findContinuousMullionSpan(
+                isHorizontal: false,
+                position: xCenter,
+                initialStart: overlapTop,
+                initialEnd: overlapBottom,
+              );
               selection = SelectionInfo(
                 type: SelectionType.mullion,
                 isHorizontalMullion: false,
                 mullionPosition: xCenter,
-                mullionStart: overlapTop,
-                mullionEnd: overlapBottom,
+                mullionStart: span[0],
+                mullionEnd: span[1],
               );
               showZoneMenu = false;
               activeSubZone = null;
@@ -21123,6 +21219,43 @@ class WindowModel extends ChangeNotifier {
       }
 
       rects.add(Rect.fromLTRB(minL - t, minT - t, maxR + t, maxB + t));
+    }
+
+    if (coupleFrames && rects.length > 1) {
+      // إزالة أي فراغ بين الكوادر المقترنة بجعلها ملتصقة تماماً
+      for (int i = 0; i < rects.length; i++) {
+        for (int j = i + 1; j < rects.length; j++) {
+          final r1 = rects[i];
+          final r2 = rects[j];
+          final vOverlap =
+              math.min(r1.bottom, r2.bottom) - math.max(r1.top, r2.top);
+          final maxGap = math.max(80.0, profileThickness * 2 + 10.0);
+          if (vOverlap > 10.0) {
+            if ((r2.left - r1.right).abs() <= maxGap) {
+              final commonX = (r1.right + r2.left) / 2.0;
+              rects[i] = Rect.fromLTRB(r1.left, r1.top, commonX, r1.bottom);
+              rects[j] = Rect.fromLTRB(commonX, r2.top, r2.right, r2.bottom);
+            } else if ((r1.left - r2.right).abs() <= maxGap) {
+              final commonX = (r2.right + r1.left) / 2.0;
+              rects[j] = Rect.fromLTRB(r2.left, r2.top, commonX, r2.bottom);
+              rects[i] = Rect.fromLTRB(commonX, r1.top, r1.right, r1.bottom);
+            }
+          }
+          final hOverlap =
+              math.min(r1.right, r2.right) - math.max(r1.left, r2.left);
+          if (hOverlap > 10.0) {
+            if ((r2.top - r1.bottom).abs() <= maxGap) {
+              final commonY = (r1.bottom + r2.top) / 2.0;
+              rects[i] = Rect.fromLTRB(r1.left, r1.top, r1.right, commonY);
+              rects[j] = Rect.fromLTRB(r2.left, commonY, r2.right, r2.bottom);
+            } else if ((r1.top - r2.bottom).abs() <= maxGap) {
+              final commonY = (r2.bottom + r1.top) / 2.0;
+              rects[j] = Rect.fromLTRB(r2.left, r2.top, r2.right, commonY);
+              rects[i] = Rect.fromLTRB(r1.left, commonY, r1.right, r1.bottom);
+            }
+          }
+        }
+      }
     }
 
     return rects;

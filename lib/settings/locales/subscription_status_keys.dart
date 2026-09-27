@@ -1,6 +1,41 @@
 import '../app_settings.dart';
 
 const subscriptionStatusKeys = <String, Map<AppLanguage, String>>{
+  'تجديد الاشتراك': {
+    AppLanguage.arabic: 'تجديد الاشتراك',
+    AppLanguage.french: 'Renouvellement de l’abonnement',
+    AppLanguage.english: 'Renew subscription',
+  },
+  'المدة المتبقية:': {
+    AppLanguage.arabic: 'المدة المتبقية:',
+    AppLanguage.french: 'Durée restante :',
+    AppLanguage.english: 'Time remaining:',
+  },
+  'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بشهر واحد (30 يوماً)، ابتداءً من تاريخ:': {
+    AppLanguage.arabic: 'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بشهر واحد (30 يوماً)، ابتداءً من تاريخ:',
+    AppLanguage.french: 'Votre abonnement est actuellement actif. Le renouvellement est possible un mois (30 jours) avant son expiration, à partir du :',
+    AppLanguage.english: 'Your subscription is currently active. Renewal is available one month (30 days) before it expires, starting on:',
+  },
+  'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بأسبوع واحد (7 أيام)، ابتداءً من تاريخ:': {
+    AppLanguage.arabic: 'اشتراكك سارٍ حالياً. يُتاح التجديد قبل انتهاء الاشتراك بأسبوع واحد (7 أيام)، ابتداءً من تاريخ:',
+    AppLanguage.french: 'Votre abonnement est actuellement actif. Le renouvellement est possible une semaine (7 jours) avant son expiration, à partir du :',
+    AppLanguage.english: 'Your subscription is currently active. Renewal is available one week (7 days) before it expires, starting on:',
+  },
+  'توزيع جزئي': {
+    AppLanguage.arabic: 'توزيع جزئي',
+    AppLanguage.french: 'Distribution partielle',
+    AppLanguage.english: 'Partial distribution',
+  },
+  'توزيع كامل': {
+    AppLanguage.arabic: 'توزيع كامل',
+    AppLanguage.french: 'Distribution complète',
+    AppLanguage.english: 'Full distribution',
+  },
+  'تحت التحفظ': {
+    AppLanguage.arabic: 'تحت التحفظ',
+    AppLanguage.french: 'Sous réserve',
+    AppLanguage.english: 'On hold',
+  },
   'نشط': {
     AppLanguage.arabic: 'نشط',
     AppLanguage.french: 'Actif',

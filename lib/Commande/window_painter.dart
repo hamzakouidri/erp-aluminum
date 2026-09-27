@@ -1422,7 +1422,87 @@ class WindowPainter extends CustomPainter {
   }
 
   Rect _getEffectiveZoneRect(Rect original, double h, double t) {
-    if (!_hasEffectiveBottomFrame && (original.bottom - (h - t)).abs() < 5.0) {
+    Rect result = original;
+    final frames = model.getFrameRects();
+    for (final frame in frames) {
+      if (frame.contains(original.center)) {
+        final fW = model.frameVisibleWidthForRect(frame, fallback: t);
+        final hasBottom = model.hasBottomFrameForRect(frame);
+        final innerLeft = frame.left + fW;
+        final innerRight = frame.right - fW;
+        final innerTop = frame.top + fW;
+        final innerBottom = hasBottom ? frame.bottom - fW : frame.bottom;
+        result = Rect.fromLTRB(
+          math.max(result.left, innerLeft),
+          math.max(result.top, innerTop),
+          math.min(result.right, innerRight),
+          math.min(result.bottom, innerBottom),
+        );
+        break;
+      }
+    }
+    // محاذاة أطراف الزجاج والباركلوز لتتوقف بدقة على وجه الكادر دوبلي بزاوية 90°
+    for (int i = 0; i < model.zones.length; i++) {
+      final z1 = model.zones[i];
+      for (int j = i + 1; j < model.zones.length; j++) {
+        final z2 = model.zones[j];
+        final vOverlap =
+            math.min(z1.boundary.bottom, z2.boundary.bottom) -
+            math.max(z1.boundary.top, z2.boundary.top);
+        if (vOverlap > 5.0) {
+          final xCenter = (z1.boundary.right + z2.boundary.left) / 2.0;
+          if (model.isDoubleFrameMullionAt(false, xCenter)) {
+            final fW = _frameProfileWidthAt(false, xCenter);
+            if ((original.right - z1.boundary.right).abs() < 2.0 &&
+                (original.left - z1.boundary.left).abs() < 2.0) {
+              result = Rect.fromLTRB(
+                result.left,
+                result.top,
+                math.min(result.right, xCenter - fW),
+                result.bottom,
+              );
+            }
+            if ((original.left - z2.boundary.left).abs() < 2.0 &&
+                (original.right - z2.boundary.right).abs() < 2.0) {
+              result = Rect.fromLTRB(
+                math.max(result.left, xCenter + fW),
+                result.top,
+                result.right,
+                result.bottom,
+              );
+            }
+          }
+        }
+        final hOverlap =
+            math.min(z1.boundary.right, z2.boundary.right) -
+            math.max(z1.boundary.left, z2.boundary.left);
+        if (hOverlap > 5.0) {
+          final yCenter = (z1.boundary.bottom + z2.boundary.top) / 2.0;
+          if (model.isDoubleFrameMullionAt(true, yCenter)) {
+            final fW = _frameProfileWidthAt(true, yCenter);
+            if ((original.bottom - z1.boundary.bottom).abs() < 2.0 &&
+                (original.top - z1.boundary.top).abs() < 2.0) {
+              result = Rect.fromLTRB(
+                result.left,
+                result.top,
+                result.right,
+                math.min(result.bottom, yCenter - fW),
+              );
+            }
+            if ((original.top - z2.boundary.top).abs() < 2.0 &&
+                (original.bottom - z2.boundary.bottom).abs() < 2.0) {
+              result = Rect.fromLTRB(
+                result.left,
+                math.max(result.top, yCenter + fW),
+                result.right,
+                result.bottom,
+              );
+            }
+          }
+        }
+      }
+    }
+    if (!_hasEffectiveBottomFrame && (result.bottom - (h - t)).abs() < 5.0) {
       final matchingZone = model.zones.firstWhere(
         (z) =>
             (z.boundary.left - original.left).abs() < 2.0 &&
@@ -1438,7 +1518,7 @@ class WindowPainter extends CustomPainter {
           matchingZone.content == ZoneContent.fixedGlass ||
           matchingZone.content == ZoneContent.empty;
       if (isFixed) {
-        return original; // الثابت يستقر على الإطار السفلي عند (h - t)
+        return result; // الثابت يستقر على الإطار السفلي عند (h - t)
       }
       final frameRect = Rect.fromLTRB(0, _topOffset, model.width, h);
       final sliding = model.frameUsesSlidingSeries(frameRect);
@@ -1450,16 +1530,11 @@ class WindowPainter extends CustomPainter {
         final seuilT = (seuilSection != null && seuilSection.visibleWidth > 0)
             ? seuilSection.visibleWidth
             : 0.0;
-        return Rect.fromLTRB(
-          original.left,
-          original.top,
-          original.right,
-          h - seuilT,
-        );
+        return Rect.fromLTRB(result.left, result.top, result.right, h - seuilT);
       }
-      return Rect.fromLTRB(original.left, original.top, original.right, h);
+      return Rect.fromLTRB(result.left, result.top, result.right, h);
     }
-    return original;
+    return result;
   }
 
   double getInnerTopY(double x, double t, double topOffset) {
@@ -3125,12 +3200,6 @@ class WindowPainter extends CustomPainter {
           v.position > h.end + vThick / 2 + 2.0)
         return false;
 
-      final vIsDouble = model.isDoubleFrameMullionAt(false, v.position);
-      final hIsDouble = model.isDoubleFrameMullionAt(true, h.position);
-
-      if (vIsDouble && !hIsDouble) return false;
-      if (hIsDouble && !vIsDouble) return true;
-
       // If h only terminates at v (T-junction from left or right), h never cuts v
       final hPassesThrough =
           (h.start < v.position - vThick / 2 - 5.0) &&
@@ -3156,12 +3225,6 @@ class WindowPainter extends CustomPainter {
       if (h.position < v.start - hThick / 2 - 2.0 ||
           h.position > v.end + hThick / 2 + 2.0)
         return false;
-
-      final vIsDouble = model.isDoubleFrameMullionAt(false, v.position);
-      final hIsDouble = model.isDoubleFrameMullionAt(true, h.position);
-
-      if (hIsDouble && !vIsDouble) return false;
-      if (vIsDouble && !hIsDouble) return true;
 
       // If v only terminates at h (T-junction from top or bottom), v never cuts h
       final vPassesThrough =
@@ -3456,22 +3519,11 @@ class WindowPainter extends CustomPainter {
               mullion.rect.bottom,
             );
 
-      _drawGroovedMullionProfile(
-        canvas,
-        first,
-        isHorizontal: mullion.isHorizontal,
-        fill: paint,
-        border: border,
-        cavityOnPositiveSide: false,
-      );
-      _drawGroovedMullionProfile(
-        canvas,
-        second,
-        isHorizontal: mullion.isHorizontal,
-        fill: paint,
-        border: border,
-        cavityOnPositiveSide: true,
-      );
+      // رسم الكادر دوبلي: مقطعان مثل الترافيرس تماماً ملتصقان ظهراً لظهر بدون تجاويف داخلية تشوه الرسم
+      canvas.drawRect(first, paint);
+      canvas.drawRect(first, border);
+      canvas.drawRect(second, paint);
+      canvas.drawRect(second, border);
 
       final hasCacheRainure =
           model.getConfiguredSectionForRole('cache_rainure') != null;
@@ -3536,12 +3588,14 @@ class WindowPainter extends CustomPainter {
           : model.isGroovedFrameMullionAt(isH, pos)
           ? _frameProfileWidthAt(isH, pos)
           : mullionT;
+      canvas.save();
+      canvas.clipPath(openings);
       if (isH) {
         canvas.drawRect(
           Rect.fromLTRB(
-            start,
+            start - mullionT,
             pos - selectionThickness / 2,
-            end,
+            end + mullionT,
             pos + selectionThickness / 2,
           ),
           highlightPaint,
@@ -3550,13 +3604,14 @@ class WindowPainter extends CustomPainter {
         canvas.drawRect(
           Rect.fromLTRB(
             pos - selectionThickness / 2,
-            start,
+            start - mullionT,
             pos + selectionThickness / 2,
-            end,
+            end + mullionT,
           ),
           highlightPaint,
         );
       }
+      canvas.restore();
     }
   }
 
