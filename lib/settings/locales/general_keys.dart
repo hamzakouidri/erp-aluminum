@@ -5180,7 +5180,7 @@ This action cannot be undone!''',
     AppLanguage.english: 'An error occurred during duplication:',
   },
   'مسح الطلبية (Supprimer)': {
-    AppLanguage.arabic: 'مسح الطلبية (Supprimer)',
+    AppLanguage.arabic: 'مسح الطلبية',
     AppLanguage.french: 'Supprimer la commande',
     AppLanguage.english: 'Delete Order',
   },

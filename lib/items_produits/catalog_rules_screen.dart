@@ -67,6 +67,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   bool _loadingSeries = false;
   bool _loading = false;
   bool _saving = false;
+  int? _loadedRulesSeriesId;
+  bool get _canSaveRules => !_saving && !_loading &&
+      !_loadingProfiles && !_loadingSeries &&
+      _selectedSeriesId != null &&
+      _loadedRulesSeriesId == _selectedSeriesId;
   bool _isInspectorOpen = false;
   String? _inspectedItemKey;
 
@@ -167,7 +172,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _selectProfile(Map<String, dynamic> profile) async {
+    if (_saving) return;
     setState(() {
+      _loadedRulesSeriesId = null;
       _selectedProfile = profile;
       _selectedSeries = null;
       _selectedSeriesId = null;
@@ -188,12 +195,14 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _selectSeries(Map<String, dynamic> series) async {
+    if (_saving) return;
     final seriesId = (series['id'] as num?)?.toInt();
     if (seriesId == null) return;
     setState(() {
       _selectedSeries = series;
       _selectedSeriesId = seriesId;
       _loading = true;
+      _loadedRulesSeriesId = null;
       _inspectedItemKey = null;
     });
     try {
@@ -256,6 +265,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           if (itemId != null) _ruleFor(table, itemId)['series_id'] = seriesId;
         }
       }
+      _loadedRulesSeriesId = seriesId;
     } catch (e) {
       debugPrint('Error loading series rules: $e');
     } finally {
@@ -1042,7 +1052,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   Future<void> _save() async {
     if (!context.read<AppSettingsProvider>().isAdmin) return;
     final seriesId = _selectedSeriesId;
-    if (_saving || seriesId == null) return;
+    if (!_canSaveRules || seriesId == null) return;
     setState(() => _saving = true);
     try {
       for (final table in _tables) {
@@ -1135,7 +1145,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           if (context.watch<AppSettingsProvider>().isAdmin)
           IconButton(
             tooltip: _t('حفظ', 'Enregistrer'),
-            onPressed: _saving || _selectedSeriesId == null ? null : _save,
+            onPressed: _canSaveRules ? _save : null,
             icon: _saving
                 ? const SizedBox(
                     width: 20,
@@ -1181,7 +1191,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               !context.watch<AppSettingsProvider>().isAdmin)
           ? null
           : FloatingActionButton.extended(
-              onPressed: _saving ? null : _save,
+              onPressed: _canSaveRules ? _save : null,
               icon: _saving
                   ? const SizedBox(
                       width: 20,

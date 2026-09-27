@@ -1587,6 +1587,8 @@ class WindowSnapshot {
   final Set<String> hiddenSideCoverSegments;
   final bool hasInternalSlidingSideCover;
   final Map<String, dynamic>? internalSlidingSideCoverOverride;
+  final Map<String, int>? mullionCreationOrder;
+  final int? mullionStepCounter;
 
   WindowSnapshot(
     this.width,
@@ -1622,8 +1624,10 @@ class WindowSnapshot {
     this.sideCoverSegments,
     this.hiddenSideCoverSegments,
     this.hasInternalSlidingSideCover,
-    this.internalSlidingSideCoverOverride,
-  );
+    this.internalSlidingSideCoverOverride, [
+    this.mullionCreationOrder,
+    this.mullionStepCounter,
+  ]);
 }
 
 extension FrameColorExtension on FrameColor {
@@ -4610,6 +4614,38 @@ class WindowModel extends ChangeNotifier {
       groovedMullionCavityOnPositiveSide[_mullionKey(isHorizontal, position)] ??
       false;
 
+  void recordMullionCreation(bool isHorizontal, double position) {
+    for (final entry in mullionCreationOrder.entries) {
+      if (entry.key.startsWith(isHorizontal ? 'H_' : 'V_')) {
+        final posStr = entry.key.substring(2);
+        final p = double.tryParse(posStr);
+        if (p != null && (p - position).abs() < 5.0) {
+          return;
+        }
+      }
+    }
+    final key = _mullionKey(isHorizontal, position);
+    mullionCreationOrder[key] = ++mullionStepCounter;
+  }
+
+  /// Determines the creation order of a mullion. A lower number means it was created earlier.
+  int getMullionCreationOrder(bool isHorizontal, double position) {
+    final key = _mullionKey(isHorizontal, position);
+    if (mullionCreationOrder.containsKey(key)) {
+      return mullionCreationOrder[key]!;
+    }
+    for (final entry in mullionCreationOrder.entries) {
+      if (entry.key.startsWith(isHorizontal ? 'H_' : 'V_')) {
+        final posStr = entry.key.substring(2);
+        final p = double.tryParse(posStr);
+        if (p != null && (p - position).abs() < 6.0) {
+          return entry.value;
+        }
+      }
+    }
+    return 999999;
+  }
+
   double _sectionVisibleWidth(Map<String, dynamic>? section) {
     if (section == null) return 0.0;
     for (final field in const ['visible_width', 'thickness']) {
@@ -5916,6 +5952,8 @@ class WindowModel extends ChangeNotifier {
   // false = left/top side, true = right/bottom side.
   Map<String, bool> groovedMullionCavityOnPositiveSide = {};
   Map<String, Map<String, dynamic>> mullionSectionOverrides = {};
+  Map<String, int> mullionCreationOrder = {};
+  int mullionStepCounter = 0;
   String? primaryMullionAxis;
   SelectionInfo selection = SelectionInfo.none;
   String? activeSubZone;
@@ -8240,6 +8278,33 @@ class WindowModel extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  /// Applies an order-level selection to both the drawing and its saved state.
+  Future<void> setOrderSeries(AluminumSeries series) async {
+    // Use the same catalogue scopes as the drawing selectors. Numeric names
+    // such as 40000 do not describe whether a series is opening or sliding.
+    final roles = await db.getSeriesDesignRoles(series.id);
+    _rememberSeriesRoleKeys(series, roles);
+    final supportsSliding = seriesSupportsDrawingScopeInSystem(
+      series,
+      'sliding',
+    );
+    final supportsOpening = seriesSupportsDrawingScopeInSystem(
+      series,
+      'opening',
+    );
+    final useSliding =
+        supportsSliding && !supportsOpening ||
+        usesSlidingPrimaryProfiles && !supportsOpening;
+    if (useSliding) {
+      await setActiveSlidingSeries(series);
+      if (systemMode == 'sliding') {
+        await setActiveSeries(series);
+      }
+    } else {
+      await setActiveSeries(series);
+    }
   }
 
   Future<void> setActiveSeries(AluminumSeries series) {
@@ -11123,6 +11188,8 @@ class WindowModel extends ChangeNotifier {
         internalSlidingSideCoverOverride == null
             ? null
             : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
+        Map<String, int>.from(mullionCreationOrder),
+        mullionStepCounter,
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -11710,6 +11777,10 @@ class WindowModel extends ChangeNotifier {
         : Map<String, dynamic>.from(snap.internalSlidingSideCoverOverride!);
     selectedInternalSlidingSideCover = null;
     enforceBottomSideCoverConstraint();
+    if (snap.mullionCreationOrder != null) {
+      mullionCreationOrder = Map.from(snap.mullionCreationOrder!);
+      mullionStepCounter = snap.mullionStepCounter ?? 0;
+    }
 
     selection = SelectionInfo.none;
     activeSubZone = null;
@@ -14534,15 +14605,17 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (!hasHorizontalBoundaries && !hasVerticalBoundaries) {
-      // No partitions remain — reset axis so next split starts fresh
+      // لا توجد أي تقسيمات — إعادة التعيين لتبدأ النافذة من جديد
       primaryMullionAxis = null;
+      mullionCreationOrder.clear();
+      mullionStepCounter = 0;
+    } else if (!hasHorizontalBoundaries) {
+      primaryMullionAxis = 'v';
+    } else if (!hasVerticalBoundaries) {
+      primaryMullionAxis = 'h';
     } else {
-      // العارضة الأفقية لها الأولوية دائماً حتى لا يقسمها العمود
-      if (hasHorizontalBoundaries) {
-        primaryMullionAxis = 'h';
-      } else {
-        primaryMullionAxis = 'v';
-      }
+      // 🟢 إذا وُجد كلاهما: الحفاظ التام على التقسيم الأول الذي بدأ به المستخدم وعدم تغييره
+      primaryMullionAxis ??= 'v';
     }
   }
 
@@ -14552,6 +14625,7 @@ class WindowModel extends ChangeNotifier {
     bool fromTop = true,
   }) {
     if (selectedZone == null) return;
+    primaryMullionAxis ??= 'h'; // 🟢 يثبت أول تقسيم أفقي إذا كانت النافذة فارغة
     _saveSnapshot();
     final zone = selectedZone!;
     final index = zones.indexOf(zone);
@@ -14564,6 +14638,7 @@ class WindowModel extends ChangeNotifier {
             : zone.boundary.bottom - customSizes[0];
         if (splitY > zone.boundary.top + 20 &&
             splitY < zone.boundary.bottom - 20) {
+          recordMullionCreation(true, splitY);
           zones.insert(
             index,
             WindowZone(
@@ -14611,6 +14686,8 @@ class WindowModel extends ChangeNotifier {
         double splitY1 = zone.boundary.top + customSizes[0];
         double splitY2 = zone.boundary.bottom - customSizes[1];
         if (splitY2 > splitY1 + 40) {
+          recordMullionCreation(true, splitY1);
+          recordMullionCreation(true, splitY2);
           zones.insert(
             index,
             WindowZone(
@@ -14683,6 +14760,9 @@ class WindowModel extends ChangeNotifier {
       for (int i = 0; i < parts; i++) {
         double top = zone.boundary.top + (i * stepY) + (i * mullionThickness);
         double bottom = top + stepY;
+        if (i < parts - 1) {
+          recordMullionCreation(true, bottom + mullionThickness / 2);
+        }
         zones.insert(
           index + i,
           WindowZone(
@@ -14842,6 +14922,7 @@ class WindowModel extends ChangeNotifier {
     bool fromLeft = true,
   }) {
     if (selectedZone == null) return;
+    primaryMullionAxis ??= 'v'; // 🟢 يثبت أول تقسيم رأسي إذا كانت النافذة فارغة
     _saveSnapshot();
     final zone = selectedZone!;
     final index = zones.indexOf(zone);
@@ -14854,6 +14935,7 @@ class WindowModel extends ChangeNotifier {
             : zone.boundary.right - customSizes[0];
         if (splitX > zone.boundary.left + 20 &&
             splitX < zone.boundary.right - 20) {
+          recordMullionCreation(false, splitX);
           zones.insert(
             index,
             WindowZone(
@@ -14901,6 +14983,8 @@ class WindowModel extends ChangeNotifier {
         double splitX1 = zone.boundary.left + customSizes[0];
         double splitX2 = zone.boundary.right - customSizes[1];
         if (splitX2 > splitX1 + 40) {
+          recordMullionCreation(false, splitX1);
+          recordMullionCreation(false, splitX2);
           zones.insert(
             index,
             WindowZone(
@@ -14973,6 +15057,9 @@ class WindowModel extends ChangeNotifier {
       for (int i = 0; i < parts; i++) {
         double left = zone.boundary.left + (i * stepX) + (i * mullionThickness);
         double right = left + stepX;
+        if (i < parts - 1) {
+          recordMullionCreation(false, right + mullionThickness / 2);
+        }
         zones.insert(
           index + i,
           WindowZone(
@@ -19892,6 +19979,12 @@ class WindowModel extends ChangeNotifier {
 
   void _splitIntersectingZonesSmart(Offset start, Offset end, bool horizontal) {
     _saveSnapshot();
+    // 🟢 تثبيت أولوية التقسيم الأول (إذا كان أول تقسيم عمودياً يثبت كـ v ولا يتغير)
+    if (horizontal) {
+      primaryMullionAxis ??= 'h';
+    } else {
+      primaryMullionAxis ??= 'v';
+    }
     final List<WindowZone> newZones = [];
     final sep = mullionThickness / 2;
     double minPath = horizontal
@@ -19901,6 +19994,7 @@ class WindowModel extends ChangeNotifier {
         ? math.max(start.dx, end.dx)
         : math.max(start.dy, end.dy);
     double cutLine = _snapCutLineToNearbyMullion(start, end, horizontal);
+    recordMullionCreation(horizontal, cutLine);
 
     for (var z in zones) {
       bool intersects = false;

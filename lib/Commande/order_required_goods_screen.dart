@@ -2563,7 +2563,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب السلع وخطط التقطيع',
+            _t('⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب السلع وخطط التقطيع'),
             style: TextStyle(
               fontSize: 11,
               color: isDark ? Colors.white54 : Colors.blueGrey.shade600,

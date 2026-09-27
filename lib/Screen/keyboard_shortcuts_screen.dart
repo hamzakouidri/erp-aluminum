@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../settings/shortcut_bindings.dart';
@@ -8,76 +12,133 @@ import '../settings/shortcut_bindings.dart';
 class KeyboardShortcutsScreen extends StatefulWidget {
   const KeyboardShortcutsScreen({super.key});
   @override
-  State<KeyboardShortcutsScreen> createState() => _KeyboardShortcutsScreenState();
+  State<KeyboardShortcutsScreen> createState() =>
+      _KeyboardShortcutsScreenState();
 }
 
 class _KeyboardShortcutsScreenState extends State<KeyboardShortcutsScreen> {
-  String? selected;
-  bool ready = false;
-  String tr(String key) => Localization.translate(key, context.watch<AppSettingsProvider>().language);
+  final FocusNode _captureFocus = FocusNode();
+  String? _capturing;
+  bool _ready = false;
+
+  String tr(String key) =>
+      Localization.translate(key, context.read<AppSettingsProvider>().language);
+
   @override
   void initState() {
     super.initState();
-    SharedPreferences.getInstance().then((prefs) async {
-      await ShortcutBindings.instance.reload();
-      if (!mounted) return;
-      setState(() {
-        selected = prefs.getString('shortcut_drawing_mode');
-        ready = true;
-      });
+    ShortcutBindings.instance.reload().then((_) {
+      if (mounted) setState(() => _ready = true);
     });
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(tr('اختصارات لوحة المفاتيح'))),
-    body: ListView(padding: const EdgeInsets.all(20), children: [
-      Text(tr('اختصار تبديل وضع الرسم والتحريك داخل صفحة الرسم. لا يعمل أثناء الكتابة أو فتح نافذة حوار.')),
-      const SizedBox(height: 20),
-      DropdownButtonFormField<String>(
-        value: selected,
-        decoration: InputDecoration(labelText: tr('تبديل وضع الرسم')),
-        hint: Text(tr('غير مفعّل')),
-        items: [for (var code = 65; code <= 90; code++)
-          DropdownMenuItem(value: String.fromCharCode(code),
-            child: Text(String.fromCharCode(code)))],
-        onChanged: !ready ? null : (value) async {
-          final prefs = await SharedPreferences.getInstance();
-          if (value != null) await prefs.setString('shortcut_drawing_mode', value);
-          if (mounted) setState(() => selected = value);
-        },
-      ),
-      TextButton(onPressed: !ready ? null : () async {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('shortcut_drawing_mode');
-        if (mounted) setState(() => selected = null);
-      }, child: Text(tr('إلغاء الاختصار'))),
-      const Divider(),
-      Text(tr('اختصارات التنقل: Ctrl + Alt + الحرف')),
-      Text(tr('لتعديل أو حذف طلبية، حدد زر خياراتها بلوحة المفاتيح أولًا.')),
-      for (final command in ShortcutBindings.commands.entries)
-        ListTile(
-          title: Text(tr(command.value)),
-          subtitle: Text('Ctrl + Alt + ${ShortcutBindings.instance.bindings[command.key] ?? "—"}'),
-          trailing: DropdownButton<String>(
-            value: ShortcutBindings.instance.bindings[command.key] ?? '',
-            items: [DropdownMenuItem(value: '', child: Text(tr('غير مفعّل'))),
-              for (var code = 65; code <= 90; code++)
-                if (!ShortcutBindings.instance.bindings.entries.any((e) =>
-                    e.key != command.key && e.value == String.fromCharCode(code)))
-                  DropdownMenuItem(value: String.fromCharCode(code), child: Text(String.fromCharCode(code)))],
-            onChanged: !ready ? null : (value) async {
-              final prefs = await SharedPreferences.getInstance();
-              if (value == null || value.isEmpty) {
-                await prefs.remove('shortcut_${command.key}');
-              } else {
-                await prefs.setString('shortcut_${command.key}', value);
-              }
-              await ShortcutBindings.instance.reload();
-              if (mounted) setState(() {});
-            },
+  void dispose() {
+    _captureFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save(String command, String? binding) async {
+    if (mounted) setState(() => _capturing = null);
+    final prefs = await SharedPreferences.getInstance();
+    if (binding == null) {
+      await prefs.remove('shortcut_$command');
+    } else {
+      await prefs.setString('shortcut_$command', binding);
+    }
+    if (command == 'drawing_mode') await prefs.remove('shortcut_drawing_mode');
+    await ShortcutBindings.instance.reload();
+    final code = (prefs.getString('workshop_code') ?? '').trim();
+    if (code.isNotEmpty) {
+      await prefs.setString(
+        'pending_workshop_shortcuts_$code',
+        jsonEncode(ShortcutBindings.instance.bindings),
+      );
+      try {
+        await SupabaseWorkshopSyncService().uploadPendingShortcutBindings();
+      } catch (_) {
+        // Workshop sync retries the pending map.
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final command = _capturing;
+    if (command == null) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent) return KeyEventResult.handled;
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() => _capturing = null);
+      return KeyEventResult.handled;
+    }
+    final binding = ShortcutBindings.capture(event);
+    if (binding == null) return KeyEventResult.handled;
+    final duplicate = ShortcutBindings.instance.bindings.entries.any(
+      (entry) =>
+          entry.key != command &&
+          ShortcutBindings.sameShortcut(entry.value, binding),
+    );
+    if (duplicate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr('هذا الاختصار مستخدم لأمر آخر.'))),
+      );
+      return KeyEventResult.handled;
+    }
+    _save(command, binding);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    focusNode: _captureFocus,
+    onKeyEvent: _onKey,
+    child: Scaffold(
+      appBar: AppBar(title: Text(tr('اختصارات لوحة المفاتيح'))),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(tr('تُحفظ الاختصارات لجميع أعضاء الورشة.')),
+          const SizedBox(height: 8),
+          Text(
+            tr(
+              'اختر أمرًا ثم اضغط المفاتيح المطلوبة. لا تعمل الاختصارات أثناء الكتابة أو فتح نافذة حوار.',
+            ),
           ),
-        ),
-    ]),
+          const SizedBox(height: 8),
+          Text(
+            tr('لتعديل أو حذف طلبية، حدد زر خياراتها بلوحة المفاتيح أولًا.'),
+          ),
+          const Divider(),
+          for (final command in ShortcutBindings.commands.entries)
+            ListTile(
+              title: Text(tr(command.value)),
+              subtitle: Text(
+                _capturing == command.key
+                    ? tr('اضغط المفاتيح الآن (Esc للإلغاء)')
+                    : ShortcutBindings.label(
+                        ShortcutBindings.instance.bindings[command.key],
+                      ),
+              ),
+              onTap: !_ready
+                  ? null
+                  : () {
+                      setState(() => _capturing = command.key);
+                      _captureFocus.requestFocus();
+                    },
+              trailing: IconButton(
+                tooltip: tr('إلغاء الاختصار'),
+                icon: const Icon(Icons.close),
+                onPressed:
+                    !_ready ||
+                        !ShortcutBindings.instance.bindings.containsKey(
+                          command.key,
+                        )
+                    ? null
+                    : () => _save(command.key, null),
+              ),
+            ),
+        ],
+      ),
+    ),
   );
 }

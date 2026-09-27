@@ -429,7 +429,9 @@ class SqlDatabase {
                 Platform.environment.containsKey('FLUTTER_TEST')))) {
       return _dbFactory.openDatabase(
         path,
-        options: OpenDatabaseOptions(
+        // FFI/web require their own options implementation. SQLCipher's
+        // similarly named options fail the factory's runtime type cast.
+        options: sqflite_common.OpenDatabaseOptions(
           version: 67,
           onConfigure: (db) async {
             // This PRAGMA returns a row, including when setting its value.

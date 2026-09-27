@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import '../services/supabase_workshop_sync_service.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:database_data/settings/shortcut_bindings.dart';
 
 class WorkshopDataDiagnostics {
   const WorkshopDataDiagnostics({
@@ -383,6 +383,23 @@ class SupabaseWorkshopSyncService {
     }, onConflict: 'workshop_id,table_name,row_id');
   }
 
+  Future<void> uploadPendingShortcutBindings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final code = (_workshopCode ?? prefs.getString('workshop_code') ?? '').trim();
+    if (code.isEmpty) return;
+    final pendingKey = 'pending_workshop_shortcuts_$code';
+    final pending = prefs.getString(pendingKey);
+    if (pending == null) return;
+    final decoded = jsonDecode(pending);
+    if (decoded is! Map) return;
+    final current = await readWorkshopProfile();
+    await saveWorkshopProfile({
+      ...current,
+      'workshop_shortcuts': Map<String, String>.from(decoded),
+    });
+    if (prefs.getString(pendingKey) == pending) await prefs.remove(pendingKey);
+  }
+
   /// Mirrors series-role and catalogue-rule configuration to members of this
   /// workshop. Product definitions themselves remain in the global catalogue;
   /// this row carries only the workshop's configuration of those products.
@@ -643,6 +660,7 @@ class SupabaseWorkshopSyncService {
       // تحميل قواعد الإكسسوارات لضمان وجودها دائماً في هاتف العامل
       await loadAndApplyWorkshopCatalogConfiguration();
       await uploadPendingChanges();
+      await uploadPendingShortcutBindings();
     } catch (error) {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
@@ -674,8 +692,13 @@ class SupabaseWorkshopSyncService {
       // recovery path for sleeping devices, dropped channels, and failed
       // uploads whose local change log must remain retryable.
       await downloadWorkshopData();
-      await loadAndApplyWorkshopCatalogConfiguration();
+      try {
+        await loadAndApplyWorkshopCatalogConfiguration();
+      } catch (e) {
+        debugPrint('loadAndApplyWorkshopCatalogConfiguration in background sync error: ');
+      }
       await uploadPendingChanges();
+      await uploadPendingShortcutBindings();
     } catch (error) {
       print('Supabase background sync retry failed: $error');
     }
@@ -1557,6 +1580,22 @@ class SupabaseWorkshopSyncService {
 
   Future<void> _applyWorkshopProfile(Map<String, dynamic> profile) async {
     final prefs = await SharedPreferences.getInstance();
+    final codeForShortcuts =
+        (_workshopCode ?? prefs.getString('workshop_code') ?? '').trim();
+    final shortcuts = profile['workshop_shortcuts'];
+    if (shortcuts is Map &&
+        prefs.getString('pending_workshop_shortcuts_$codeForShortcuts') == null) {
+      for (final command in ShortcutBindings.commands.keys) {
+        final value = shortcuts[command];
+        if (value is String && value.isNotEmpty) {
+          await prefs.setString('shortcut_$command', value);
+        } else {
+          await prefs.remove('shortcut_$command');
+        }
+      }
+      await prefs.remove('shortcut_drawing_mode');
+      await ShortcutBindings.instance.reload();
+    }
 
     Future<void> saveString(String key, Object? value) async {
       final text = value?.toString().trim() ?? '';

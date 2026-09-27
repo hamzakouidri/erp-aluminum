@@ -3092,155 +3092,286 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    final String effectivePrimary = (horizontalSegments.isNotEmpty) ? 'h' : (model.primaryMullionAxis ?? 'h');
+    // 🟢 احترام الأولوية التي بدأ بها المستخدم دون فرض الأفقي
+    final String effectivePrimary = model.primaryMullionAxis ?? 'h';
     final List<_MullionVisual> mullions = [];
 
-    if (effectivePrimary == 'h') {
-      // Horizontal is primary (continuous):
-      final List<_MullionSegment> mergedHorizontal = _mergeMullionSegments(
-        horizontalSegments,
-        mullionT,
-      );
-      for (var seg in mergedHorizontal) {
-        double left = seg.start - mullionT / 2;
-        double right = seg.end + mullionT / 2;
-        mullions.add(
-          _MullionVisual(
-            rect: Rect.fromLTRB(
-              left,
-              seg.position - mullionT / 2,
-              right,
-              seg.position + mullionT / 2,
-            ),
-            isHorizontal: true,
-            position: seg.position,
-            isPrimary: true,
-          ),
-        );
+    // Helper functions for mullion dimensions
+    double getMullionThickness(bool isH, double pos) {
+      if (model.isDoubleFrameMullionAt(isH, pos)) {
+        return _frameProfileWidthAt(isH, pos) * 2.0;
       }
+      if (model.isGroovedFrameMullionAt(isH, pos)) {
+        return _frameProfileWidthAt(isH, pos);
+      }
+      return mullionT;
+    }
 
-      for (var seg in verticalSegments) {
-        double top = seg.start;
-        double bottom = seg.end;
-        double x = seg.position;
+    final List<_MullionSegment> mergedH = _mergeMullionSegments(
+      horizontalSegments,
+      mullionT,
+    );
+    final List<_MullionSegment> mergedV = _mergeMullionSegments(
+      verticalSegments,
+      mullionT,
+    );
 
-        if ((top - (topOffset + t)).abs() < 5.0) {
-          top = getInnerTopY(x, t, topOffset);
-        } else {
-          bool meetsHAtTop = horizontalSegments.any(
-            (h) => (h.position - top).abs() <= mullionT + 2.0,
-          );
-          if (meetsHAtTop) {
-            top -= 0.8;
-          } else {
-            top -= mullionT / 2;
+    // Checks if horizontal mullion h cuts through vertical mullion v
+    bool hCutsV(_MullionSegment h, _MullionSegment v) {
+      final vThick = getMullionThickness(false, v.position);
+      if (h.position <= v.start + 5.0 || h.position >= v.end - 5.0)
+        return false;
+      if (v.position < h.start - vThick / 2 - 2.0 ||
+          v.position > h.end + vThick / 2 + 2.0)
+        return false;
+
+      final vIsDouble = model.isDoubleFrameMullionAt(false, v.position);
+      final hIsDouble = model.isDoubleFrameMullionAt(true, h.position);
+
+      if (vIsDouble && !hIsDouble) return false;
+      if (hIsDouble && !vIsDouble) return true;
+
+      // If h only terminates at v (T-junction from left or right), h never cuts v
+      final hPassesThrough =
+          (h.start < v.position - vThick / 2 - 5.0) &&
+          (h.end > v.position + vThick / 2 + 5.0);
+      if (!hPassesThrough) return false;
+
+      // Both pass through (4-way cross junction):
+      // 🟢 احترام أسبقية الإنشاء: التقسيم الأقدم في تاريخ النافذة يسبق ويقطع الأحدث
+      final hOrder = model.getMullionCreationOrder(true, h.position);
+      final vOrder = model.getMullionCreationOrder(false, v.position);
+      if (hOrder < vOrder) return true;
+      if (vOrder < hOrder) return false;
+
+      return effectivePrimary == 'h';
+    }
+
+    // Checks if vertical mullion v cuts through horizontal mullion h
+    bool vCutsH(_MullionSegment v, _MullionSegment h) {
+      final vThick = getMullionThickness(false, v.position);
+      final hThick = getMullionThickness(true, h.position);
+      if (v.position <= h.start + 5.0 || v.position >= h.end - 5.0)
+        return false;
+      if (h.position < v.start - hThick / 2 - 2.0 ||
+          h.position > v.end + hThick / 2 + 2.0)
+        return false;
+
+      final vIsDouble = model.isDoubleFrameMullionAt(false, v.position);
+      final hIsDouble = model.isDoubleFrameMullionAt(true, h.position);
+
+      if (hIsDouble && !vIsDouble) return false;
+      if (vIsDouble && !hIsDouble) return true;
+
+      // If v only terminates at h (T-junction from top or bottom), v never cuts h
+      final vPassesThrough =
+          (v.start < h.position - hThick / 2 - 5.0) &&
+          (v.end > h.position + hThick / 2 + 5.0);
+      if (!vPassesThrough) return false;
+
+      // Both pass through (4-way cross junction):
+      // 🟢 احترام أسبقية الإنشاء: التقسيم الأقدم في تاريخ النافذة يسبق ويقطع الأحدث
+      final hOrder = model.getMullionCreationOrder(true, h.position);
+      final vOrder = model.getMullionCreationOrder(false, v.position);
+      if (vOrder < hOrder) return true;
+      if (hOrder < vOrder) return false;
+
+      return effectivePrimary == 'v';
+    }
+
+    // 1. Process Vertical Mullions
+    for (final v in mergedV) {
+      final x = v.position;
+      final vThick = getMullionThickness(false, x);
+      double top = v.start - mullionT / 2;
+      double bottom = v.end + mullionT / 2;
+
+      // Check if top terminates at an uncut horizontal mullion
+      for (final h in mergedH) {
+        final hThick = getMullionThickness(true, h.position);
+        if ((v.start - h.position).abs() <= hThick / 2 + 5.0 &&
+            x >= h.start - vThick / 2 - 2.0 &&
+            x <= h.end + vThick / 2 + 2.0) {
+          if (!vCutsH(v, h)) {
+            top = h.position + hThick / 2 - 0.8;
           }
         }
-
-        bool meetsHAtBottom = horizontalSegments.any(
-          (h) => (h.position - bottom).abs() <= mullionT + 2.0,
-        );
-        if (meetsHAtBottom) {
-          bottom += 0.8;
-        } else {
-          bottom += mullionT / 2;
-        }
-
-        // ── تمديد القائم الرأسي حتى يلامس الأرض/الإطار السفلي الجزئي ──
-        if (verticalMullionShouldReachFloor(x, bottom)) {
-          bottom = h;
-        }
-
-        mullions.add(
-          _MullionVisual(
-            rect: Rect.fromLTRB(
-              x - mullionT / 2,
-              top,
-              x + mullionT / 2,
-              bottom,
-            ),
-            isHorizontal: false,
-            position: seg.position,
-          ),
-        );
-      }
-    } else {
-      // Vertical is primary (continuous):
-      final List<_MullionSegment> mergedVertical = _mergeMullionSegments(
-        verticalSegments,
-        mullionT,
-      );
-      for (var seg in mergedVertical) {
-        double top = seg.start;
-        double bottom = seg.end;
-        double x = seg.position;
-
-        if ((top - (topOffset + t)).abs() < 5.0) {
-          top = getInnerTopY(x, t, topOffset);
-        } else {
-          top -= mullionT / 2;
-        }
-        bottom += mullionT / 2;
-
-        // ── تمديد القائم الرأسي حتى يلامس الأرض/الإطار السفلي الجزئي ──
-        if (verticalMullionShouldReachFloor(x, bottom)) {
-          bottom = h;
-        }
-
-        mullions.add(
-          _MullionVisual(
-            rect: Rect.fromLTRB(
-              x - mullionT / 2,
-              top,
-              x + mullionT / 2,
-              bottom,
-            ),
-            isHorizontal: false,
-            position: seg.position,
-            isPrimary: true,
-          ),
-        );
       }
 
-      for (var seg in horizontalSegments) {
-        double left = seg.start;
-        double right = seg.end;
-        double y = seg.position;
+      if ((v.start - (topOffset + t)).abs() < 5.0) {
+        top = getInnerTopY(x, t, topOffset);
+      }
 
-        bool meetsVAtLeft = verticalSegments.any(
-          (v) => (v.position - left).abs() <= mullionT + 2.0,
-        );
-        if (meetsVAtLeft) {
-          left -= 0.8;
-        } else {
-          left -= mullionT / 2;
+      // Check if bottom terminates at an uncut horizontal mullion
+      for (final h in mergedH) {
+        final hThick = getMullionThickness(true, h.position);
+        if ((v.end - h.position).abs() <= hThick / 2 + 5.0 &&
+            x >= h.start - vThick / 2 - 2.0 &&
+            x <= h.end + vThick / 2 + 2.0) {
+          if (!vCutsH(v, h)) {
+            bottom = h.position - hThick / 2 + 0.8;
+          }
         }
+      }
 
-        bool meetsVAtRight = verticalSegments.any(
-          (v) => (v.position - right).abs() <= mullionT + 2.0,
-        );
-        if (meetsVAtRight) {
-          right += 0.8;
-        } else {
-          right += mullionT / 2;
+      if (verticalMullionShouldReachFloor(x, bottom)) {
+        bottom = h;
+      }
+
+      // Find all horizontal mullions that cut this vertical mullion
+      final cuts = <_MullionSegment>[];
+      for (final h in mergedH) {
+        if (hCutsV(h, v)) {
+          cuts.add(h);
         }
+      }
+      cuts.sort((a, b) => a.position.compareTo(b.position));
 
-        mullions.add(
-          _MullionVisual(
-            rect: Rect.fromLTRB(
-              left,
-              y - mullionT / 2,
-              right,
-              y + mullionT / 2,
+      if (cuts.isEmpty) {
+        if (bottom > top + 1.0) {
+          mullions.add(
+            _MullionVisual(
+              rect: Rect.fromLTRB(x - vThick / 2, top, x + vThick / 2, bottom),
+              isHorizontal: false,
+              position: x,
+              isPrimary: true,
             ),
-            isHorizontal: true,
-            position: seg.position,
-          ),
-        );
+          );
+        }
+      } else {
+        double currentTop = top;
+        for (final cutH in cuts) {
+          final hThick = getMullionThickness(true, cutH.position);
+          final pieceBottom = cutH.position - hThick / 2 + 0.8;
+          if (pieceBottom > currentTop + 1.0) {
+            mullions.add(
+              _MullionVisual(
+                rect: Rect.fromLTRB(
+                  x - vThick / 2,
+                  currentTop,
+                  x + vThick / 2,
+                  pieceBottom,
+                ),
+                isHorizontal: false,
+                position: x,
+                isPrimary: false,
+              ),
+            );
+          }
+          currentTop = cutH.position + hThick / 2 - 0.8;
+        }
+        if (bottom > currentTop + 1.0) {
+          mullions.add(
+            _MullionVisual(
+              rect: Rect.fromLTRB(
+                x - vThick / 2,
+                currentTop,
+                x + vThick / 2,
+                bottom,
+              ),
+              isHorizontal: false,
+              position: x,
+              isPrimary: false,
+            ),
+          );
+        }
+      }
+    }
+
+    // 2. Process Horizontal Mullions
+    for (final h in mergedH) {
+      final y = h.position;
+      final hThick = getMullionThickness(true, y);
+      double left = h.start - mullionT / 2;
+      double right = h.end + mullionT / 2;
+
+      // Check if left terminates at an uncut vertical mullion
+      for (final v in mergedV) {
+        final vThick = getMullionThickness(false, v.position);
+        if ((h.start - v.position).abs() <= vThick / 2 + 5.0 &&
+            y >= v.start - hThick / 2 - 2.0 &&
+            y <= v.end + hThick / 2 + 2.0) {
+          if (!hCutsV(h, v)) {
+            left = v.position + vThick / 2 - 0.8;
+          }
+        }
+      }
+
+      // Check if right terminates at an uncut vertical mullion
+      for (final v in mergedV) {
+        final vThick = getMullionThickness(false, v.position);
+        if ((h.end - v.position).abs() <= vThick / 2 + 5.0 &&
+            y >= v.start - hThick / 2 - 2.0 &&
+            y <= v.end + hThick / 2 + 2.0) {
+          if (!hCutsV(h, v)) {
+            right = v.position - vThick / 2 + 0.8;
+          }
+        }
+      }
+
+      // Find all vertical mullions that cut this horizontal mullion
+      final cuts = <_MullionSegment>[];
+      for (final v in mergedV) {
+        if (vCutsH(v, h)) {
+          cuts.add(v);
+        }
+      }
+      cuts.sort((a, b) => a.position.compareTo(b.position));
+
+      if (cuts.isEmpty) {
+        if (right > left + 1.0) {
+          mullions.add(
+            _MullionVisual(
+              rect: Rect.fromLTRB(left, y - hThick / 2, right, y + hThick / 2),
+              isHorizontal: true,
+              position: y,
+              isPrimary: true,
+            ),
+          );
+        }
+      } else {
+        double currentLeft = left;
+        for (final cutV in cuts) {
+          final vThick = getMullionThickness(false, cutV.position);
+          final pieceRight = cutV.position - vThick / 2 + 0.8;
+          if (pieceRight > currentLeft + 1.0) {
+            mullions.add(
+              _MullionVisual(
+                rect: Rect.fromLTRB(
+                  currentLeft,
+                  y - hThick / 2,
+                  pieceRight,
+                  y + hThick / 2,
+                ),
+                isHorizontal: true,
+                position: y,
+                isPrimary: false,
+              ),
+            );
+          }
+          currentLeft = cutV.position + vThick / 2 - 0.8;
+        }
+        if (right > currentLeft + 1.0) {
+          mullions.add(
+            _MullionVisual(
+              rect: Rect.fromLTRB(
+                currentLeft,
+                y - hThick / 2,
+                right,
+                y + hThick / 2,
+              ),
+              isHorizontal: true,
+              position: y,
+              isPrimary: false,
+            ),
+          );
+        }
       }
     }
 
     void drawMullion(_MullionVisual mullion) {
+      if (mullion.rect.width <= 0 || mullion.rect.height <= 0) return;
+
       if (model.isGroovedFrameMullionAt(
         mullion.isHorizontal,
         mullion.position,
@@ -3288,8 +3419,9 @@ class WindowPainter extends CustomPainter {
         return;
       }
 
-      // A "Cadre double" is two frame-140 style profiles coupled together.
-      // Draw both cavities toward the joint so it reads as one coherent pair.
+      // Cadre double: two frame profiles coupled together back-to-back.
+      // Draws both frame bodies with realistic parclose cavities (تجويف الباركلوز)
+      // facing the adjoining openings on both outer sides, plus a central joint seam line.
       final frameWidth = _frameProfileWidthAt(
         mullion.isHorizontal,
         mullion.position,
@@ -3324,7 +3456,6 @@ class WindowPainter extends CustomPainter {
               mullion.rect.bottom,
             );
 
-      final combined = first.expandToInclude(second);
       _drawGroovedMullionProfile(
         canvas,
         first,
@@ -3342,24 +3473,24 @@ class WindowPainter extends CustomPainter {
         cavityOnPositiveSide: true,
       );
 
-      final hasCacheRainure = model.getConfiguredSectionForRole('cache_rainure') != null;
-
+      final hasCacheRainure =
+          model.getConfiguredSectionForRole('cache_rainure') != null;
       final separatorPaint = Paint()
         ..color = hasCacheRainure
-            ? Colors.black.withValues(alpha: 0.9)
-            : border.color.withValues(alpha: 0.7)
+            ? Colors.black.withValues(alpha: 0.85)
+            : border.color.withValues(alpha: 0.75)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = hasCacheRainure ? 2.2 : 0.8;
+        ..strokeWidth = hasCacheRainure ? 1.8 : 0.9;
       if (mullion.isHorizontal) {
         canvas.drawLine(
-          Offset(combined.left, center),
-          Offset(combined.right, center),
+          Offset(mullion.rect.left, center),
+          Offset(mullion.rect.right, center),
           separatorPaint,
         );
       } else {
         canvas.drawLine(
-          Offset(center, combined.top),
-          Offset(center, combined.bottom),
+          Offset(center, mullion.rect.top),
+          Offset(center, mullion.rect.bottom),
           separatorPaint,
         );
       }
@@ -3457,25 +3588,19 @@ class WindowPainter extends CustomPainter {
     final profileWidth = isHorizontal ? rect.height : rect.width;
     if (profileWidth <= 4.0) return;
 
-    final grooveWidth = math.min(
-      profileWidth * 0.34,
-      math.max(4.0, profileWidth * 0.24),
-    );
-    final highlightInset = math.min(
-      profileWidth * 0.18,
-      math.max(2.0, profileWidth * 0.10),
-    );
+    final grooveWidth = math.min(8.0, profileWidth * 0.25);
+    final highlightInset = math.min(4.0, profileWidth * 0.12);
     final groovePaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.10)
+      ..color = Colors.black.withValues(alpha: 0.08)
       ..style = PaintingStyle.fill;
     final shadowLine = Paint()
-      ..color = Colors.black.withValues(alpha: 0.42)
+      ..color = border.color.withValues(alpha: 0.75)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.8, profileWidth * 0.018);
+      ..strokeWidth = 1.0;
     final highlightLine = Paint()
-      ..color = Colors.white.withValues(alpha: 0.34)
+      ..color = Colors.white.withValues(alpha: 0.35)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.7, profileWidth * 0.014);
+      ..strokeWidth = 0.8;
 
     if (isHorizontal) {
       final groove = cavityOnPositiveSide

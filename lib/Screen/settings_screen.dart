@@ -221,6 +221,9 @@ class SettingsScreen extends StatelessWidget {
       final before = await sync.inspectWorkshopData();
       sync.lastDownloadSummary = '';
       await sync.downloadWorkshopData(full: true);
+      try {
+        await sync.loadAndApplyWorkshopCatalogConfiguration();
+      } catch (_) {}
       final details = sync.lastDownloadSummary.trim();
       final after = await sync.inspectWorkshopData();
       final name = account.workshopName.trim().isEmpty

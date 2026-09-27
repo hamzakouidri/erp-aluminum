@@ -15,6 +15,7 @@ import 'package:flutter/services.dart'
         KeyEvent,
         KeyDownEvent;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
     hide getComponentSize;
@@ -74,20 +75,8 @@ class _WindowViewState extends State<WindowView> {
       return !belongsToDrawing;
     });
     if (!belongsToDrawing ||
-        HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isAltPressed ||
-        HardwareKeyboard.instance.isMetaPressed)
-      return false;
-    final key = event.logicalKey.keyLabel.toUpperCase();
-    unawaited(
-      SharedPreferences.getInstance().then((prefs) {
-        if (mounted &&
-            ModalRoute.of(context)?.isCurrent == true &&
-            prefs.getString('shortcut_drawing_mode') == key) {
-          _toggleDrawingInteractionMode();
-        }
-      }),
-    );
+        !ShortcutBindings.instance.matches('drawing_mode', event)) return false;
+    _toggleDrawingInteractionMode();
     return false;
   }
 

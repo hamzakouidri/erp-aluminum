@@ -717,6 +717,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     try {
       try {
         await SupabaseWorkshopSyncService().downloadWorkshopData();
+        await SupabaseWorkshopSyncService().loadAndApplyWorkshopCatalogConfiguration();
       } catch (_) {}
       await CloudSyncService().fullRecoverySync();
       if (mounted) {
@@ -780,6 +781,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
+        final workspace = context.read<WorkspaceController>();
+        // This dashboard stays mounted behind the other workspace tabs.
+        // Only the active tab may handle Back; the shell returns it home.
+        if (!workspace.isHomeActive ||
+            identical(
+              Navigator.of(context),
+              workspace.navigatorKeyFor('home').currentState,
+            )) {
+          return;
+        }
         // التحقق من أننا في الشاشة الرئيسية فعلاً (لا يوجد مسار سابق)
         final navigator = Navigator.of(context);
         if (navigator.canPop()) {

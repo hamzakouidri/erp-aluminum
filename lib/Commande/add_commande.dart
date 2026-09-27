@@ -1,3 +1,4 @@
+import 'Systeme/selling_price_calculator.dart';
 // Force compile sync trigger
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -1809,97 +1810,48 @@ class _CommandePageState extends State<CommandePage> {
       return;
     }
 
-    var profileCost = 0.0;
-    var glassCost = 0.0;
-    var shutterCost = 0.0;
-    var jointCost = 0.0;
-    var otherProfileCost = 0.0;
-    var mainProfileMeters = 0.0;
-    var accessorySellingCost = 0.0;
-
-    for (final item in bom) {
-      final itemTotal = item.total;
-      if (item.category == 'profile') {
-        profileCost += itemTotal;
-        final name = item.originalName.toLowerCase();
-        final isMain =
-            name.contains('إطار') ||
-            name.contains('frame') ||
-            name.contains('cadre') ||
-            name.contains('ظلفة') ||
-            name.contains('sash') ||
-            name.contains('ouvrant') ||
-            name.contains('تقسيم') ||
-            name.contains('mullion') ||
-            name.contains('باتمو') ||
-            name.contains('batmo');
-        final isRenfort = name.contains('حديد') || name.contains('renfort');
-        if (isMain && !isRenfort) {
-          if (item.pieces != null && item.pieces!.isNotEmpty) {
-            mainProfileMeters += item.pieces!.fold(0.0, (sum, p) => sum + p);
-          } else if (item.length != null) {
-            mainProfileMeters += item.length! / 1000 * item.quantity;
-          }
-        } else {
-          otherProfileCost += itemTotal;
-        }
-      } else if (item.category == 'glass' || item.category == 'panneau') {
-        glassCost += itemTotal;
-      } else if (item.category == 'shutter') {
-        shutterCost += itemTotal;
-      } else if (item.category == 'joint') {
-        jointCost += itemTotal;
-      } else if (item.category == 'accessory' || item.category == 'other') {
-        final override = product.componentOverrides[item.originalName];
-        if (override is Map &&
-            (override['is_selling_calculated'] == 1 ||
-                override['is_selling_calculated'] == true)) {
-          accessorySellingCost += itemTotal;
-        }
-      }
-    }
-
-    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final prefs = await SharedPreferences.getInstance();
-    final pricePerSqm = prefs.getDouble('app_price_per_sqm') ?? 0.0;
-    final marginFactor = 1 + settings.profitMargin / 100;
-    final areaSqm = product.width / 1000 * product.height / 1000;
-    final quantity = product.quantity <= 0 ? 1 : product.quantity;
-    final linearMeterPrice = await _readSeriesLinearMeterPrice(product);
-    final shutterSqmPrice = await _readShutterSquareMeterPrice(product);
-    var shutterSelling = shutterSqmPrice > 0
-        ? shutterSqmPrice * areaSqm * quantity
-        : shutterCost;
-
-    double profileSelling;
-    double glassSelling = glassCost;
-    double accessorySelling = accessorySellingCost;
-    double jointSelling = jointCost;
-    switch (settings.costMethod) {
-      case CostMethod.percentage:
-        profileSelling = profileCost * marginFactor;
-        shutterSelling = shutterCost * marginFactor;
-        accessorySelling *= marginFactor;
-        jointSelling *= marginFactor;
-        break;
-      case CostMethod.squareMeter:
-        final windowPrice = pricePerSqm * areaSqm * quantity;
-        profileSelling = (windowPrice - glassCost).clamp(0.0, double.infinity);
-        break;
-      case CostMethod.linearMeter:
-        profileSelling =
-            mainProfileMeters * linearMeterPrice + otherProfileCost;
-        break;
+    var method = CostMethod
+        .values[prefs.getInt('app_cost_method') ?? CostMethod.percentage.index];
+    if (product.isShutterOnly && method == CostMethod.linearMeter) {
+      method = CostMethod.percentage;
+    }
+    final database = await widget.db.db;
+    Future<double> installationFee(String type) async {
+      final rows =
+          await database?.query(
+            'ShutterSqmPrices',
+            columns: ['price_per_sqm'],
+            where: 'blade_type = ? AND color_id = ?',
+            whereArgs: [type, 0],
+            limit: 1,
+          ) ??
+          [];
+      return rows.isEmpty
+          ? 0
+          : (rows.first['price_per_sqm'] as num?)?.toDouble() ?? 0;
     }
 
-    final totalSelling =
-        profileSelling +
-        glassSelling +
-        shutterSelling +
-        accessorySelling +
-        jointSelling;
-    final rawTotal = bom.fold<double>(0.0, (sum, item) => sum + item.total);
-    final unitPrice = (totalSelling > 0 ? totalSelling : rawTotal) / quantity;
+    final totals = calculateSellingTotals(
+      model: product,
+      items: bom,
+      costMethod: method,
+      profitMargin: prefs.getDouble('app_profit_margin') ?? 0,
+      pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
+      linearMeterPrice: await _readSeriesLinearMeterPrice(product),
+      shutterSqmPrice: await _readShutterSquareMeterPrice(product),
+      profileRules: {
+        for (final rule in pricingRules)
+          if (rule['section_id'] is num)
+            (rule['section_id'] as num).toInt(): rule,
+      },
+      obInstallFee: await installationFee('OB_Install'),
+      demiObInstallFee: await installationFee('DemiOB_Install'),
+      verrouInstallFee: await installationFee('Verrou_Install'),
+      moteurInstallFee: await installationFee('Moteur_Install'),
+    );
+    final quantity = product.quantity <= 0 ? 1 : product.quantity;
+    final unitPrice = totals['total']!['selling']! / quantity;
     if (unitPrice.isFinite && unitPrice >= 0) {
       // Bulk changes intentionally replace the old calculated/manual price:
       // keeping the old override would make the invoice display stale data.
@@ -2160,19 +2112,7 @@ class _CommandePageState extends State<CommandePage> {
         if (localSeries == null) continue;
         final previousTotalCost = product.totalCost;
         final previousManualPrice = product.manualPriceOverride;
-        if (isSlidingSeriesForDrawing(localSeries)) {
-          if (product.systemMode == 'sliding') {
-            await product.setActiveSeries(localSeries);
-          } else {
-            await product.setActiveSlidingSeries(localSeries);
-          }
-          product.loadedSlidingSeriesId = localSeries.id;
-          product.loadedSlidingSeriesName = localSeries.name;
-        } else {
-          await product.setActiveSeries(localSeries);
-          product.loadedSeriesId = localSeries.id;
-          product.loadedSeriesName = localSeries.name;
-        }
+        await product.setOrderSeries(localSeries);
         if (recalculatePrices) {
           await _recalculateProductSellingPrice(product);
         } else {
@@ -2803,9 +2743,9 @@ class _CommandePageState extends State<CommandePage> {
           gradientColors: const [Colors.deepPurple, Colors.purpleAccent],
           onPressed: _isApplyingBulkChange ? null : _showApplyBulkColorDialog,
           icon: const Icon(Icons.palette_outlined, color: Colors.white),
-          label: const Text(
-            'تغيير لون العناصر',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          label: Text(
+            t('تغيير لون العناصر'),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
         ),
@@ -2814,9 +2754,9 @@ class _CommandePageState extends State<CommandePage> {
           gradientColors: const [Colors.indigo, Colors.blueAccent],
           onPressed: _isApplyingBulkChange ? null : _showBulkSeriesDialog,
           icon: const Icon(Icons.layers_outlined, color: Colors.white),
-          label: const Text(
-            'تغيير السلسلة',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          label: Text(
+            t('تغيير السلسلة'),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
         ),
@@ -2825,9 +2765,9 @@ class _CommandePageState extends State<CommandePage> {
           gradientColors: const [Colors.teal, Colors.green],
           onPressed: _isApplyingBulkChange ? null : _showBulkGlassDialog,
           icon: const Icon(Icons.window_outlined, color: Colors.white),
-          label: const Text(
-            'تغيير الزجاج',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          label: Text(
+            t('تغيير الزجاج'),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
         ),

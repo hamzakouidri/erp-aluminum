@@ -3133,9 +3133,9 @@ class _CommandeState extends State<Commande> {
               Text(_t('لا يمكن الحذف')),
             ],
           ),
-          content: const Text(
-            'هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.',
-            textAlign: TextAlign.right,
+          content: Text(
+            _t('هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.'),
+            textAlign: TextAlign.start,
           ),
           actions: [
             ElevatedButton(
@@ -3161,9 +3161,9 @@ class _CommandeState extends State<Commande> {
               Text(_t('غير مصرح')),
             ],
           ),
-          content: const Text(
-            'ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.',
-            textAlign: TextAlign.right,
+          content: Text(
+            _t('ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.'),
+            textAlign: TextAlign.start,
           ),
           actions: [
             ElevatedButton(
@@ -3181,8 +3181,8 @@ class _CommandeState extends State<Commande> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(_t('تأكيد الحذف')),
-        content: const Text(
-          'هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.',
+        content: Text(
+          _t('هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.'),
         ),
         actions: [
           TextButton(

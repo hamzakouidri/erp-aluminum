@@ -3,6 +3,51 @@ import '../app_settings.dart';
 // Remaining labels and messages used by the main application screens.
 // Keep the Arabic source as the key for compatibility with existing calls.
 const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
+  '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب العناصر': {
+    AppLanguage.arabic: '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب العناصر',
+    AppLanguage.french: '⠿ Maintenez une ligne appuyée, puis faites-la glisser pour réorganiser les éléments',
+    AppLanguage.english: '⠿ Press and hold a row, then drag it to reorder items',
+  },
+  '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب السلع وخطط التقطيع': {
+    AppLanguage.arabic: '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب السلع وخطط التقطيع',
+    AppLanguage.french: '⠿ Maintenez une ligne appuyée, puis faites-la glisser pour réorganiser les articles et les plans de coupe',
+    AppLanguage.english: '⠿ Press and hold a row, then drag it to reorder goods and cutting plans',
+  },
+  'سعر المتر الخطي (دج) — من السلسلة': {
+    AppLanguage.arabic: 'سعر المتر الخطي (دج) — من السلسلة',
+    AppLanguage.french: 'Prix au mètre linéaire (DA) — selon la gamme',
+    AppLanguage.english: 'Linear meter price (DZD) — from series',
+  },
+  'تغيير لون العناصر': {
+    AppLanguage.arabic: 'تغيير لون العناصر',
+    AppLanguage.french: 'Changer la couleur des éléments',
+    AppLanguage.english: 'Change item color',
+  },
+  'تغيير السلسلة': {
+    AppLanguage.arabic: 'تغيير السلسلة',
+    AppLanguage.french: 'Changer la gamme',
+    AppLanguage.english: 'Change series',
+  },
+  'تغيير الزجاج': {
+    AppLanguage.arabic: 'تغيير الزجاج',
+    AppLanguage.french: 'Changer le vitrage',
+    AppLanguage.english: 'Change glass',
+  },
+  'هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.': {
+    AppLanguage.arabic: 'هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.',
+    AppLanguage.french: 'Cette commande ne peut pas être supprimée, car certains de ses éléments ont été utilisés ou déduits du stock.\n\nVous pouvez modifier son statut à la place.',
+    AppLanguage.english: 'This order cannot be deleted because some items have been used or deducted from inventory.\n\nYou can change its status instead.',
+  },
+  'ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.': {
+    AppLanguage.arabic: 'ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.',
+    AppLanguage.french: 'Vous n’avez pas l’autorisation de supprimer des commandes.\nContactez le responsable pour obtenir cette autorisation.',
+    AppLanguage.english: 'You do not have permission to delete orders.\nContact the manager to request access.',
+  },
+  'هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.': {
+    AppLanguage.arabic: 'هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.',
+    AppLanguage.french: 'Voulez-vous vraiment supprimer cette commande ?\nCette action est irréversible.',
+    AppLanguage.english: 'Are you sure you want to delete this order?\nThis action cannot be undone.',
+  },
   'بحث بالاسم...': {
     AppLanguage.arabic: 'بحث بالاسم...',
     AppLanguage.french: 'Rechercher par nom...',

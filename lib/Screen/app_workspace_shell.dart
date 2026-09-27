@@ -197,7 +197,9 @@ class WorkspaceController extends ChangeNotifier {
 
     final activeEntry = _entries[_activeIndex];
     final activeNavigator = _navigatorKeys[activeEntry.id]?.currentState;
-    if (activeNavigator != null && await activeNavigator.maybePop()) {
+    if (activeNavigator != null &&
+        activeNavigator.canPop() &&
+        await activeNavigator.maybePop()) {
       return;
     }
 

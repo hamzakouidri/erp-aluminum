@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../sql_database.dart';
 
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_workshop_sync_service.dart';
 
 import 'package:database_data/settings/localization.dart';
 
@@ -2425,6 +2426,19 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                               ),
                       });
                       await widget.db.setAccessoryDefault(id, isDefault);
+                      unawaited(() async {
+                        try {
+                          final sync = SupabaseWorkshopSyncService();
+                          if (sync.isReady || await sync.ensureStarted()) {
+                            final config = await widget.db.exportWorkshopCatalogConfiguration();
+                            if (config.isNotEmpty) {
+                              await sync.saveWorkshopCatalogConfiguration(config);
+                            }
+                          }
+                        } catch (e) {
+                          debugPrint('Error uploading workshop catalog configuration: ');
+                        }
+                      }());
                       await _loadItems();
                       if (dialogContext.mounted) Navigator.pop(dialogContext);
                     },
