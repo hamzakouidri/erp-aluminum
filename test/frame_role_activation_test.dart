@@ -93,6 +93,7 @@ class RoleWindow extends WindowModel {
       'cache_rail',
       'cache_rainure',
       'profile_angle',
+      'face_to_face',
     ].contains(roleKey))
       return null;
     if (roleKey == 'cache_rail' && useSlidingSeries != true) return null;
@@ -499,5 +500,48 @@ void main() {
     expect(angleItem.pieces, hasLength(2));
     model.dispose();
   });
+
+  test('face_to_face role auto-activates on 4-sash sliding and generates 2 central pieces', () {
+    final model = RoleWindow();
+    model.systemMode = 'sliding';
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.slidingSash,
+        slidingSashesCount: 4,
+        slidingTrackCount: 2,
+        boundary: const Rect.fromLTRB(50, 50, 1950, 1150),
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final ftfItem = bom.firstWhere((i) => i.roleKey == 'face_to_face');
+    expect(ftfItem, isNotNull);
+    // 4 sashes meeting in the center requires 2 face-to-face pieces
+    expect(ftfItem.pieces, hasLength(2));
+    expect(ftfItem.selectorType, 'face_to_face');
+    model.dispose();
+  });
+
+  test('face_to_face disabled converts 4-sash to normal overlapping and omits face_to_face pieces', () {
+    final model = RoleWindow();
+    model.systemMode = 'sliding';
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.slidingSash,
+        slidingSashesCount: 4,
+        slidingTrackCount: 2,
+        slidingFaceToFace: false, // explicitly turned off by user
+        boundary: const Rect.fromLTRB(50, 50, 1950, 1150),
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final ftfItems = bom.where((i) => i.roleKey == 'face_to_face');
+    expect(ftfItems, isEmpty);
+    model.dispose();
+  });
 }
+
 

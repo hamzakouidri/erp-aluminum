@@ -12768,6 +12768,8 @@ class SqlDatabase {
       "ALTER TABLE Accessories ADD COLUMN is_lock_condamnation INTEGER DEFAULT 0",
       "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
       "ALTER TABLE Series ADD COLUMN has_three_piece_sash INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE Series ADD COLUMN has_face_to_face INTEGER NOT NULL DEFAULT 0",
+
       "ALTER TABLE WorkerAllocations ADD COLUMN is_transferred_to_dist INTEGER DEFAULT 0",
       "ALTER TABLE WorkerAllocations ADD COLUMN transferred_at TEXT",
       "ALTER TABLE WorkerAllocations ADD COLUMN archive_locked INTEGER DEFAULT 0",

@@ -5071,12 +5071,16 @@ class WindowPainter extends CustomPainter {
         : 18.0;
 
     final int trackCount = zone.slidingTrackCount > 0 ? zone.slidingTrackCount : 2;
-    // Central meeting is standard for 2 rails with 4 sashes and 3 rails with 6 sashes,
-    // or when the user explicitly enables Face-to-Face meeting (e.g. for 4 rails / 4 sashes or 6 rails / 6 sashes).
+    final faceSection = count >= 3
+        ? (model.getConfiguredSectionForRole(
+            'face_to_face',
+            useSlidingSeries: true,
+          ) ?? model.getSlidingSectionByType('face_to_face'))
+        : null;
+    // Central meeting is driven by zone.slidingFaceToFace for even sashes (4 or 6).
+    // When disabled by user, sashes become normal telescopic overlapping sashes.
     final bool hasCentralMeeting =
-        (count == 4 && trackCount == 2) ||
-        (count == 6 && trackCount == 3) ||
-        zone.slidingFaceToFace;
+        zone.slidingFaceToFace && count >= 4 && count % 2 == 0;
     final double meetingCenterX = r.left + r.width / 2.0;
 
     // sashWidth is calculated using chicaneT (overlap).
@@ -5323,23 +5327,14 @@ class WindowPainter extends CustomPainter {
     // the user enabled it on this zone.  For four leaves the central meeting
     // is made from two face-to-face profiles; for three leaves it is one
     // central profile.
-    final faceSection = count >= 3
-        ? model.getConfiguredSectionForRole(
-            'face_to_face',
-            useSlidingSeries: true,
-          )
-        : null;
-    final faceEnabled =
-        ((count == 4 || (count == 6 && zone.slidingTrackCount >= 3)) &&
-            (zone.slidingFaceToFace || faceSection != null)) ||
-        (count == 3 && faceSection != null);
-    if (faceEnabled && count >= 3) {
+    final faceEnabled = hasCentralMeeting && faceSection != null;
+    if (faceEnabled && count >= 4) {
       final configuredFaceSection = faceSection;
       if (configuredFaceSection != null) {
         final rawWidth = configuredFaceSection.visibleWidth > 0
             ? configuredFaceSection.visibleWidth
             : configuredFaceSection.thickness;
-        final faceWidth = rawWidth > 0 ? rawWidth : 0.0;
+        final faceWidth = rawWidth > 0 ? rawWidth : (chicaneT > 0 ? chicaneT : 35.0);
         if (faceWidth > 0) {
           final centerX = hasCentralMeeting ? meetingCenterX : (r.left + ((count - 1) ~/ 2) * (sashWidth - chicaneT) + sashWidth - (chicaneT / 2.0));
           final faceCount = (count == 4 || count == 6) ? 2 : 1;

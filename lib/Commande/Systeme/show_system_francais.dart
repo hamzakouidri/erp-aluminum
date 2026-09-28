@@ -10936,21 +10936,18 @@ class _WindowViewState extends State<WindowView> {
           zone.content == ZoneContent.doubleSash,
     );
     final isSlidingOnlyDrawing = hasSlidingDrawing && !hasOpeningDrawing;
+    final isOpeningOnlyDrawing = hasOpeningDrawing && !hasSlidingDrawing;
     final isMixedDrawing = hasSlidingDrawing && hasOpeningDrawing;
-    // Once the canvas contains both constructions, the first selector must
-    // always be the opening-series selector and the second the sliding one.
-    // The route's historical `systemMode` may still say sliding after adding
-    // an opening frame; using it here swapped the two selectors into generic
-    // "opening/sliding series" labels rather than their real series names.
-    final selectorShowsSliding =
-        isSlidingOnlyDrawing ||
-        (!hasOpeningDrawing &&
-            !hasSlidingDrawing &&
-            widget.model.usesSlidingPrimaryProfiles);
+    final isInitialOrEmptyDrawing = !hasOpeningDrawing && !hasSlidingDrawing;
+
+    // Once the canvas contains opening or both constructions, the first selector
+    // is always the opening-series selector. Only when the drawing contains exclusively
+    // sliding sashes does the first selector become the sliding one.
+    final selectorShowsSliding = isSlidingOnlyDrawing;
 
     // The first selector is the real frame-owning series. A second selector
-    // exists only when the canvas truly contains both opening and sliding
-    // constructions.
+    // exists when the canvas contains both opening and sliding, or in the initial state
+    // so the user can choose either opening or sliding from the start.
     var primarySeries = selectorShowsSliding
         ? widget.model.activeSlidingSeries
         : widget.model.activeSeries;
@@ -11067,6 +11064,15 @@ class _WindowViewState extends State<WindowView> {
           widget.model.activeSlidingSeries!.id != primarySeries?.id &&
           !list.any((s) => s.id == widget.model.activeSlidingSeries!.id)) {
         list.add(widget.model.activeSlidingSeries!);
+      }
+      if (list.isEmpty || isInitialOrEmptyDrawing) {
+        for (var system in widget.model.availableSystems) {
+          for (var s in _seriesForScope(system, 'sliding')) {
+            if (s.id != primarySeries?.id && !list.any((existing) => existing.id == s.id)) {
+              list.add(s);
+            }
+          }
+        }
       }
 
       final uniqueList = <AluminumSeries>[];
@@ -11236,11 +11242,21 @@ class _WindowViewState extends State<WindowView> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.blue.shade900.withValues(alpha: 0.3)
-                      : Colors.blue.shade50,
+                      ? (selectorShowsSliding
+                          ? Colors.green.shade900.withValues(alpha: 0.3)
+                          : Colors.blue.shade900.withValues(alpha: 0.3))
+                      : (selectorShowsSliding
+                          ? Colors.green.shade50
+                          : Colors.blue.shade50),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isDark ? Colors.blue.shade800 : Colors.blue.shade200,
+                    color: isDark
+                        ? (selectorShowsSliding
+                            ? Colors.green.shade800
+                            : Colors.blue.shade800)
+                        : (selectorShowsSliding
+                            ? Colors.green.shade200
+                            : Colors.blue.shade200),
                   ),
                 ),
                 child: DropdownButton<AluminumSeries>(
@@ -11250,16 +11266,31 @@ class _WindowViewState extends State<WindowView> {
                       ? const Color(0xFF1E1E2C)
                       : Colors.white,
                   hint: Text(
-                    Localization.translate('اختر السلسلة', lang),
+                    Localization.translate(
+                      selectorShowsSliding ? 'سلسلة المنزلق' : 'سلسلة الفتح',
+                      lang,
+                    ),
                     style: TextStyle(
-                      color: isDark ? Colors.blue.shade300 : Colors.blue,
+                      color: isDark
+                          ? (selectorShowsSliding
+                              ? Colors.green.shade300
+                              : Colors.blue.shade300)
+                          : (selectorShowsSliding
+                              ? Colors.green
+                              : Colors.blue),
                       fontSize: 12,
                     ),
                   ),
                   underline: const SizedBox(),
                   icon: Icon(
                     Icons.keyboard_arrow_down,
-                    color: isDark ? Colors.blue.shade300 : Colors.blue,
+                    color: isDark
+                        ? (selectorShowsSliding
+                            ? Colors.green.shade300
+                            : Colors.blue.shade300)
+                        : (selectorShowsSliding
+                            ? Colors.green
+                            : Colors.blue),
                     size: 18,
                   ),
                   items: primaryItemsList.map((series) {
@@ -11269,7 +11300,13 @@ class _WindowViewState extends State<WindowView> {
                         series.name,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.blue.shade300 : Colors.blue,
+                          color: isDark
+                              ? (selectorShowsSliding
+                                  ? Colors.green.shade300
+                                  : Colors.blue.shade300)
+                              : (selectorShowsSliding
+                                  ? Colors.green
+                                  : Colors.blue),
                           fontSize: 12,
                         ),
                         overflow: TextOverflow.visible,
@@ -11279,6 +11316,9 @@ class _WindowViewState extends State<WindowView> {
                   onChanged: (AluminumSeries? newSeries) {
                     if (newSeries != null) {
                       if (isMixedDrawing) widget.model.systemMode = 'mixed';
+                      if (isInitialOrEmptyDrawing) {
+                        widget.model.systemMode = 'french';
+                      }
                       if (selectorShowsSliding) {
                         unawaited(
                           widget.model.setActiveSlidingSeries(newSeries),
@@ -11290,11 +11330,11 @@ class _WindowViewState extends State<WindowView> {
                   },
                 ),
               ),
-              // Keep the sliding-series selector visible while a saved
-              // drawing is restoring its catalogue. Previously it vanished
-              // until a value was resolved, which made BS90 look unavailable
-              // on edit and encouraged the default series to be selected.
-              if (isMixedDrawing && slidingItemsList.isNotEmpty) ...[
+              // Show the sliding series selector when the drawing is mixed
+              // or in initial/empty state so the user can choose either or both from the start.
+              // When the drawing has only opening sashes, this is hidden.
+              // When the drawing has only sliding sashes, the first selector shows sliding.
+              if ((isMixedDrawing || isInitialOrEmptyDrawing) && slidingItemsList.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Container(
                   constraints: const BoxConstraints(maxWidth: 160),
@@ -11317,7 +11357,7 @@ class _WindowViewState extends State<WindowView> {
                     isExpanded: true,
                     value: safeSlidingValue,
                     hint: Text(
-                      Localization.translate('اختر السلسلة', lang),
+                      Localization.translate('سلسلة المنزلق', lang),
                       style: TextStyle(
                         color: isDark ? Colors.green.shade300 : Colors.green,
                         fontSize: 12,
@@ -11350,6 +11390,9 @@ class _WindowViewState extends State<WindowView> {
                     }).toList(),
                     onChanged: (AluminumSeries? newSeries) {
                       if (newSeries != null) {
+                        if (isInitialOrEmptyDrawing) {
+                          widget.model.systemMode = 'sliding';
+                        }
                         widget.model.setActiveSlidingSeries(newSeries);
                       }
                     },

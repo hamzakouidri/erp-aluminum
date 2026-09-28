@@ -271,6 +271,16 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'Profil central de recouvrement si nécessaire',
     ),
     _SeriesRole(
+      key: 'face_to_face',
+      ar: 'Face-to-Face',
+      fr: 'Face-to-Face',
+      descriptionAr:
+          'المقطع الأوسط عند التقاء الضلفتين الوسطيتين وجهاً لوجه في المنزلق (Face-to-Face)',
+      descriptionFr:
+          'Profil central de rencontre face-à-face pour les deux vantaux centraux coulissants',
+    ),
+
+    _SeriesRole(
       key: 'reducer',
       ar: 'مخفض الزجاج',
       fr: 'Réducteur',
@@ -356,14 +366,32 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         '${_selectedSeries?['type'] ?? ''} '
                 '${_selectedSeries?['name'] ?? ''}'
             .toLowerCase();
+    if (value.contains('ouvrant') ||
+        value.contains('frappe') ||
+        value.contains('battant') ||
+        value.contains('فتح') ||
+        value.contains('فرنسي') ||
+        RegExp(r'\bex\s*-?\s*\d+').hasMatch(value)) {
+      return false;
+    }
     return value.contains('sliding') ||
         value.contains('couliss') ||
         value.contains('منزلق') ||
         value.contains('جرار') ||
         value.contains('كوليس') ||
-        value.contains('tpr') ||
+        value.contains('67000') ||
+        value.contains('40000') ||
+        value.contains('76000') ||
         value.contains('tpi') ||
-        value.contains('hps');
+        value.contains('hps') ||
+        (value.contains('tpr') &&
+            (value.contains('67') ||
+                value.contains('40') ||
+                value.contains('76') ||
+                value.contains('couliss') ||
+                value.contains('sliding') ||
+                value.contains('منزلق') ||
+                value.trim() == 'tpr'));
   }
 
   bool get _isPvcProfile =>

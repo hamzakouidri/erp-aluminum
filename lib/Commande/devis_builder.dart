@@ -1615,9 +1615,10 @@ class DevisBuilder {
     bool useEntrematique = false;
     bool hasKeyLock = false;
     bool hasSliding = false;
-    bool hasCentralReinforced = false;
-    bool hasCentralSimple = false;
-    bool hasLateralReinforced = false;
+    int centralReinforcedCount = 0;
+    int centralNormalCount = 0;
+    int lateralReinforcedCount = 0;
+    int lateralNormalCount = 0;
 
     if (!isShutterOnly &&
         map['zones'] != null &&
@@ -1638,32 +1639,29 @@ class DevisBuilder {
           }
 
           final reinforcedMap = z['slidingMontantReinforced'] as Map?;
-          if (reinforcedMap != null) {
-            // Check lateral
-            if (reinforcedMap['lateral_0'] == true ||
-                reinforcedMap['lateral_1'] == true) {
-              hasLateralReinforced = true;
+          final sashes = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
+          final currentCentralCount = sashes > 1 ? (sashes - 1) * 2 : 0;
+          for (var i = 0; i < 2; i++) {
+            final isReinforced = reinforcedMap != null &&
+                (reinforcedMap['lateral_$i'] == true ||
+                    (i == 0 && reinforcedMap['lateral_left'] == true) ||
+                    (i == 1 && reinforcedMap['lateral_right'] == true));
+            if (isReinforced) {
+              lateralReinforcedCount++;
+            } else {
+              lateralNormalCount++;
             }
-            // Check central (central_0, central_1, etc.)
-            bool centralReinforced = false;
-            bool centralFound = false;
-            reinforcedMap.forEach((key, val) {
-              if (key.toString().startsWith('central_')) {
-                centralFound = true;
-                if (val == true) {
-                  centralReinforced = true;
-                }
-              }
-            });
-            if (centralFound) {
-              if (centralReinforced) {
-                hasCentralReinforced = true;
-              } else {
-                hasCentralSimple = true;
-              }
+          }
+          for (var i = 0; i < currentCentralCount; i++) {
+            final isReinforced = reinforcedMap != null &&
+                (reinforcedMap['central_$i'] == true ||
+                    (i.isEven && reinforcedMap['central_left'] == true) ||
+                    (i.isOdd && reinforcedMap['central_right'] == true));
+            if (isReinforced) {
+              centralReinforcedCount++;
+            } else {
+              centralNormalCount++;
             }
-          } else {
-            hasCentralSimple = true;
           }
         }
       }
@@ -1686,34 +1684,48 @@ class DevisBuilder {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      // 9. Montant lateral / central renforcé or simple
+      // 9. Montant lateral / central renforcé (only show when reinforced count >= 1)
       if (hasSliding && !isPVC) {
-        if (_currentLang == AppLanguage.french) {
-          details.add(
-            'Montant latéral: ${hasLateralReinforced ? "renforcé" : "simple"}',
-          );
-          if (hasCentralReinforced || hasCentralSimple) {
-            details.add(
-              'Montant central: ${hasCentralReinforced ? "renforcé" : "simple"}',
-            );
+        if (centralReinforcedCount > 0) {
+          if (centralNormalCount > 0) {
+            details.add(switch (_currentLang) {
+              AppLanguage.french =>
+                'Montant central: $centralReinforcedCount renforcé(s), $centralNormalCount non renforcé(s)',
+              AppLanguage.english =>
+                'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
+              AppLanguage.arabic =>
+                'القائم الوسطي: $centralReinforcedCount مدعم، $centralNormalCount عادي',
+            });
+          } else {
+            details.add(switch (_currentLang) {
+              AppLanguage.french =>
+                'Montant central renforcé: $centralReinforcedCount',
+              AppLanguage.english =>
+                'Reinforced central montant: $centralReinforcedCount',
+              AppLanguage.arabic =>
+                'قائم وسطي مدعم: $centralReinforcedCount',
+            });
           }
-        } else if (_currentLang == AppLanguage.english) {
-          details.add(
-            'Lateral montant: ${hasLateralReinforced ? "reinforced" : "simple"}',
-          );
-          if (hasCentralReinforced || hasCentralSimple) {
-            details.add(
-              'Central montant: ${hasCentralReinforced ? "reinforced" : "simple"}',
-            );
-          }
-        } else {
-          details.add(
-            'مقطع جانبي (Montant latéral): ${hasLateralReinforced ? "مدعم" : "عادي"}',
-          );
-          if (hasCentralReinforced || hasCentralSimple) {
-            details.add(
-              'مقطع وسطي (Montant central): ${hasCentralReinforced ? "مدعم" : "عادي"}',
-            );
+        }
+        if (lateralReinforcedCount > 0) {
+          if (lateralNormalCount > 0) {
+            details.add(switch (_currentLang) {
+              AppLanguage.french =>
+                'Montant latéral: $lateralReinforcedCount renforcé(s), $lateralNormalCount non renforcé(s)',
+              AppLanguage.english =>
+                'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
+              AppLanguage.arabic =>
+                'القائم الجانبي: $lateralReinforcedCount مدعم، $lateralNormalCount عادي',
+            });
+          } else {
+            details.add(switch (_currentLang) {
+              AppLanguage.french =>
+                'Montant latéral renforcé: $lateralReinforcedCount',
+              AppLanguage.english =>
+                'Reinforced lateral montant: $lateralReinforcedCount',
+              AppLanguage.arabic =>
+                'قائم جانبي مدعم: $lateralReinforcedCount',
+            });
           }
         }
       }
@@ -2595,11 +2607,6 @@ class DevisBuilder {
     bool isPvc = false,
   }) {
     if (isPvc) return const [];
-    final haystack = '${seriesName ?? ''} ${gameName ?? ''} $displaySeries'
-        .toLowerCase();
-    final isTpr = haystack.contains('tpr') || haystack.contains('67000');
-    final isHps = haystack.contains('hps');
-    if (!isTpr && !isHps) return const [];
 
     final slidingZones = zones
         .where((z) => z['content']?.toString().contains('slidingSash') == true)
@@ -2630,38 +2637,48 @@ class DevisBuilder {
         if (reinforced('lateral', i)) lateralReinforced++;
       }
     }
-    String describe(
-      String fr,
-      String en,
-      String ar,
-      int total,
-      int reinforced,
-    ) {
-      final regular = total - reinforced;
-      return switch (_currentLang) {
-        AppLanguage.french =>
-          '$fr: $reinforced renforcé(s), $regular non renforcé(s)',
-        AppLanguage.english => '$en: $reinforced reinforced, $regular standard',
-        AppLanguage.arabic => '$ar: $reinforced معزز، $regular عادي',
-      };
+
+    final lines = <String>[];
+    if (centralReinforced > 0) {
+      final regular = centralCount - centralReinforced;
+      if (regular > 0) {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            'Montant central: $centralReinforced renforcé(s), $regular non renforcé(s)',
+          AppLanguage.english =>
+            'Central montant: $centralReinforced reinforced, $regular standard',
+          AppLanguage.arabic =>
+            'القائم الوسطي: $centralReinforced مدعم، $regular عادي',
+        });
+      } else {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french => 'Montant central renforcé: $centralReinforced',
+          AppLanguage.english => 'Reinforced central montant: $centralReinforced',
+          AppLanguage.arabic => 'قائم وسطي مدعم: $centralReinforced',
+        });
+      }
     }
 
-    final lines = <String>[
-      describe(
-        'Montant central',
-        'Central montant',
-        'القائم الوسطي',
-        centralCount,
-        centralReinforced,
-      ),
-      describe(
-        'Montant latéral',
-        'Lateral montant',
-        'القائم الجانبي',
-        lateralCount,
-        lateralReinforced,
-      ),
-    ];
+    if (lateralReinforced > 0) {
+      final regular = lateralCount - lateralReinforced;
+      if (regular > 0) {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            'Montant latéral: $lateralReinforced renforcé(s), $regular non renforcé(s)',
+          AppLanguage.english =>
+            'Lateral montant: $lateralReinforced reinforced, $regular standard',
+          AppLanguage.arabic =>
+            'القائم الجانبي: $lateralReinforced مدعم، $regular عادي',
+        });
+      } else {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french => 'Montant latéral renforcé: $lateralReinforced',
+          AppLanguage.english => 'Reinforced lateral montant: $lateralReinforced',
+          AppLanguage.arabic => 'قائم جانبي مدعم: $lateralReinforced',
+        });
+      }
+    }
+
     return lines;
   }
 

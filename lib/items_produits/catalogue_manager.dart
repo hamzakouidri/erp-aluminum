@@ -821,6 +821,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           value: 'chicane',
                           child: Text(_tr('شيكان (Chicane)')),
                         ),
+                        DropdownMenuItem(
+                          value: 'face_to_face',
+                          child: Text(_tr('فيس تو فيس (Face-to-Face)')),
+                        ),
                       ],
                       if (profileType == 'PVC')
                         DropdownMenuItem(
@@ -1017,6 +1021,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType == 'complement_haut_base' ||
                       selectedType == 'bardage' ||
                       selectedType == 'plinthe' ||
+                      selectedType == 'face_to_face' ||
                       selectedType == 'seuil') ...[
                     TextField(
                       controller: visibleWidthCtrl,
@@ -1472,6 +1477,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           value: 'chicane',
                           child: Text(_tr('شيكان (Chicane)')),
                         ),
+                        DropdownMenuItem(
+                          value: 'face_to_face',
+                          child: Text(_tr('فيس تو فيس (Face-to-Face)')),
+                        ),
                       ],
                       if (profileType == 'PVC')
                         DropdownMenuItem(
@@ -1700,6 +1709,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType == 'complement_haut_base' ||
                       selectedType == 'bardage' ||
                       selectedType == 'plinthe' ||
+                      selectedType == 'face_to_face' ||
                       selectedType == 'seuil') ...[
                     TextField(
                       controller: visibleWidthCtrl,

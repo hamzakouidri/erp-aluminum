@@ -592,6 +592,11 @@ class AluminumSeries {
   final String name;
   final String type;
   final bool hasThreePieceSash;
+  /// True when the series rules include a face_to_face role, meaning the two
+  /// central sashes are expected to meet face-to-face when drawn.  Drawings
+  /// that use this series will auto-enable slidingFaceToFace on their sliding
+  /// zones (unless the user explicitly overrides it).
+  final bool hasFaceToFace;
   List<AluminumSection> sections;
 
   AluminumSeries({
@@ -600,6 +605,7 @@ class AluminumSeries {
     required this.name,
     required this.type,
     this.hasThreePieceSash = false,
+    this.hasFaceToFace = false,
     List<AluminumSection>? sections,
   }) : sections = sections ?? [];
 
@@ -610,8 +616,10 @@ class AluminumSeries {
       name: map['name'],
       type: map['type'],
       hasThreePieceSash: (map['has_three_piece_sash'] ?? 0) == 1,
+      hasFaceToFace: (map['has_face_to_face'] ?? 0) == 1,
     );
   }
+
 
   @override
   bool operator ==(Object other) =>
@@ -651,17 +659,34 @@ class AluminumProfileSystem {
 /// series belongs to the sliding or opening drawing.
 bool isSlidingSeriesForDrawing(AluminumSeries series) {
   final value = '${series.type} ${series.name}'.toLowerCase().trim();
+  // Opening series (e.g. TPR EX45, EX 60, Ouvrant, Frappe, etc.) must NEVER be
+  // classified as sliding, even if manufactured by TPR or stored with "Aluminium" in type.
+  if (value.contains('ouvrant') ||
+      value.contains('frappe') ||
+      value.contains('battant') ||
+      value.contains('فتح') ||
+      value.contains('فرنسي') ||
+      RegExp(r'\bex\s*-?\s*\d+').hasMatch(value)) {
+    return false;
+  }
   return value.contains('couliss') ||
       value.contains('sliding') ||
       value.contains('منزلق') ||
       value.contains('جرار') ||
       value.contains('كوليس') ||
-      // TPR/HPS are commercial names for sliding systems. Some catalogue
-      // rows store only "Aluminium" in type, so the series name must also be
-      // accepted when classifying the drawing mode.
-      value.contains('tpr') ||
+      value.contains('67000') ||
+      value.contains('40000') ||
+      value.contains('76000') ||
       value.contains('tpi') ||
-      value.contains('hps');
+      value.contains('hps') ||
+      (value.contains('tpr') &&
+          (value.contains('67') ||
+              value.contains('40') ||
+              value.contains('76') ||
+              value.contains('couliss') ||
+              value.contains('sliding') ||
+              value.contains('منزلق') ||
+              value == 'tpr'));
 }
 
 String normalizeSeriesDesignRoleKey(dynamic raw) {
@@ -701,16 +726,18 @@ bool isOpeningSeriesForDrawing(
   AluminumProfileSystem profile,
 ) {
   final value = '${series.type} ${series.name}'.toLowerCase().trim();
-  // A mixed system must never offer the same series in both selectors. Some
-  // legacy names contain both opening and sliding words, so sliding wins.
-  if (isSlidingSeriesForDrawing(series)) return false;
   final isOpening =
       value.contains('frappe') ||
       value.contains('battant') ||
       value.contains('ouvrant') ||
       value.contains('فتح') ||
-      value.contains('فرنسي');
+      value.contains('فرنسي') ||
+      RegExp(r'\bex\s*-?\s*\d+').hasMatch(value);
   if (isOpening) return true;
+
+  // A mixed system must never offer the same series in both selectors. Some
+  // legacy names contain both opening and sliding words, so sliding wins.
+  if (isSlidingSeriesForDrawing(series)) return false;
 
   // Legacy PVC catalogues can have an unlabeled opening series. Treat it as
   // opening only when it is not explicitly a sliding series.
@@ -1236,7 +1263,7 @@ class WindowZone {
     this.middleHingeDragOffset = 0.0,
     this.doubleSashRatio = 0.5,
     this.doubleSashHasTwoHandles = false,
-    this.slidingFaceToFace = false,
+    bool? slidingFaceToFace,
     this.slidingCentralHandle = false,
     this.slidingSecondCentralHandle = false,
     this.disabledVerticalDivisions = const {},
@@ -1246,7 +1273,11 @@ class WindowZone {
     this.isSubdivided = false,
     this.hasSashPlintheBottom = false,
     Map<String, GlassSpecification>? cellGlassSpec,
-  }) : glass = glass ?? globalDefaultGlass,
+  }) : slidingFaceToFace = slidingFaceToFace ??
+           (slidingSashesCount >= 4 &&
+               slidingTrackCount == 2 &&
+               slidingSashesCount % 2 == 0),
+       glass = glass ?? globalDefaultGlass,
        cellGlassSpec = cellGlassSpec ?? const {},
        slidingMontantReinforced = Map<String, bool>.from(
          slidingMontantReinforced ??
@@ -3152,7 +3183,9 @@ class WindowModel extends ChangeNotifier {
   /// resolver borrow an opening frame or sash.
   bool get usesSlidingPrimaryProfiles {
     if (systemMode == 'sliding') return true;
-    if (systemMode != 'mixed') return false;
+    if (systemMode != 'mixed') {
+      return activeSlidingSeries != null && activeSeries == null;
+    }
 
     final occupiedZones = zones
         .where((zone) => zone.content != ZoneContent.empty)
@@ -3165,7 +3198,9 @@ class WindowModel extends ChangeNotifier {
           zone.content == ZoneContent.singleSash ||
           zone.content == ZoneContent.doubleSash,
     );
-    return hasSlidingZone && !hasOpeningSash;
+    if (hasSlidingZone && !hasOpeningSash) return true;
+    if (hasOpeningSash && !hasSlidingZone) return false;
+    return activeSlidingSeries != null && activeSeries == null;
   }
 
   bool _isPvcSeries(AluminumSeries? series) {
@@ -3468,7 +3503,12 @@ class WindowModel extends ChangeNotifier {
     final configuredIds =
         _seriesDesignRoleSectionIds[series.id]?[roleKey.trim()] ??
         const <int>{};
-    if (configuredIds.isEmpty) return null;
+    if (configuredIds.isEmpty) {
+      if (roleKey.trim() == 'face_to_face') {
+        return getSlidingSectionByType('face_to_face');
+      }
+      return null;
+    }
     final sliding =
         useSlidingSeries ??
         (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
@@ -3496,7 +3536,13 @@ class WindowModel extends ChangeNotifier {
     final configuredIds =
         _seriesDesignRoleSectionIds[series.id]?[roleKey.trim()] ??
         const <int>{};
-    if (configuredIds.isEmpty) return const <AluminumSection>[];
+    if (configuredIds.isEmpty) {
+      if (roleKey.trim() == 'face_to_face') {
+        final sec = getSlidingSectionByType('face_to_face');
+        return sec != null ? [sec] : const <AluminumSection>[];
+      }
+      return const <AluminumSection>[];
+    }
     final sliding =
         useSlidingSeries ??
         (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
@@ -8340,15 +8386,19 @@ class WindowModel extends ChangeNotifier {
     return result.isEmpty ? const {2} : result;
   }
 
-  /// Leaf choices follow the catalogue capability. A composable frame may
-  /// expose 5/6 leaves; a closed three-track system remains limited to 3.
+  /// Leaf choices are independent of rail count. Even on a 2-track series (السكتين),
+  /// a workshop can build 2, 3, 4, or 6 sashes.
   Set<int> get supportedSlidingSashCounts {
-    final tracks = supportedSlidingTrackCounts;
-    final maxCount = tracks.reduce(math.max);
     final minimum = selectedZone?.content == ZoneContent.slidingSash
         ? selectedZone!.slidingTrackCount.clamp(2, 7).toInt()
         : 2;
-    return {for (var count = minimum; count <= maxCount; count++) count};
+    final counts = <int>{};
+    for (final s in const [2, 3, 4, 5, 6]) {
+      if (s >= minimum) {
+        counts.add(s);
+      }
+    }
+    return counts.isEmpty ? const {2, 3, 4, 6} : counts;
   }
 
   /// Returns a manually selected sliding profile only when it belongs to the
@@ -9606,6 +9656,19 @@ class WindowModel extends ChangeNotifier {
                 _sectionWithConfiguredRoleOptions(series, roleKeys, section),
           )
           .toList();
+    }
+
+    final hasFaceToFaceRule = configuredSectionsFor(const ['face_to_face']).isNotEmpty ||
+        series.sections.any((s) => s.type.toLowerCase() == 'face_to_face') ||
+        series.hasFaceToFace;
+    if (hasFaceToFaceRule) {
+      for (final zone in zones) {
+        if (zone.content == ZoneContent.slidingSash &&
+            zone.slidingSashesCount >= 4 &&
+            zone.slidingSashesCount % 2 == 0) {
+          zone.slidingFaceToFace = true;
+        }
+      }
     }
 
     if (seriesChanged) {
@@ -15622,7 +15685,7 @@ class WindowModel extends ChangeNotifier {
     final members = zones
         .where((zone) => frame.contains(zone.boundary.center))
         .toList();
-    if (members.isEmpty) return usesSlidingPrimaryProfiles;
+    if (members.isEmpty) return usesSlidingPrimaryProfiles || systemMode == 'sliding';
 
     final hasSlidingSash = members.any(
       (zone) => zone.content == ZoneContent.slidingSash,
@@ -15633,9 +15696,11 @@ class WindowModel extends ChangeNotifier {
           zone.content == ZoneContent.doubleSash,
     );
 
-    // Fixed-glass and empty cells do not turn a TPR sliding frame into an
-    // opening frame.  Only an actual opening sash owns the opening series.
-    return hasSlidingSash && !hasOpeningSash;
+    if (hasSlidingSash && !hasOpeningSash) return true;
+    if (hasOpeningSash && !hasSlidingSash) return false;
+
+    // Fixed-glass and empty cells: follow the series of this window/frame.
+    return usesSlidingPrimaryProfiles || systemMode == 'sliding';
   }
 
   AluminumSection? frameSectionForRect(Rect frame) {
@@ -17083,9 +17148,13 @@ class WindowModel extends ChangeNotifier {
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
       zone.slidingSashesCount = zone.slidingTrackCount;
     }
+    final faceSection = getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
+        getSlidingSectionByType('face_to_face');
+    final hasFaceToFaceRule = faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
     if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
       if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
-          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) {
+          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
+          hasFaceToFaceRule) {
         zone.slidingFaceToFace = true;
       } else if (zone.slidingTrackCount >= 4) {
         zone.slidingFaceToFace = false;
@@ -17136,9 +17205,13 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     zone.slidingSashesCount = count.clamp(2, 7).toInt();
+    final faceSection = getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
+        getSlidingSectionByType('face_to_face');
+    final hasFaceToFaceRule = faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
     if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
       if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
-          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) {
+          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
+          hasFaceToFaceRule) {
         zone.slidingFaceToFace = true;
       } else if (zone.slidingTrackCount >= 4) {
         zone.slidingFaceToFace = false;
@@ -21744,12 +21817,17 @@ class WindowModel extends ChangeNotifier {
 
   List<List<WindowZone>> _frameZoneGroups() {
     final List<List<WindowZone>> groups = [];
-    final double jointT = profileThickness * 2;
+    // Threshold for two zones belonging to the same physical frame:
+    // An internal mullion gap ≈ mullionThickness (one profile, ~45 mm).
+    // Two *separate* frames have a gap ≈ profileThickness × 2 (~90 mm).
+    // Using mullionThickness + a small tolerance keeps them distinct even
+    // after floating-point rounding during save/reload.
+    final double intraFrameGap = mullionThickness + 4.0;
 
     bool zonesAreAdjacent(WindowZone first, WindowZone second) {
       final verticalTouch =
-          (first.boundary.right - second.boundary.left).abs() < jointT - 2.0 ||
-          (second.boundary.right - first.boundary.left).abs() < jointT - 2.0;
+          (first.boundary.right - second.boundary.left).abs() <= intraFrameGap ||
+          (second.boundary.right - first.boundary.left).abs() <= intraFrameGap;
       if (verticalTouch) {
         final overlapTop = math.max(first.boundary.top, second.boundary.top);
         final overlapBottom = math.min(
@@ -21760,8 +21838,8 @@ class WindowModel extends ChangeNotifier {
       }
 
       final horizontalTouch =
-          (first.boundary.bottom - second.boundary.top).abs() < jointT - 2.0 ||
-          (second.boundary.bottom - first.boundary.top).abs() < jointT - 2.0;
+          (first.boundary.bottom - second.boundary.top).abs() <= intraFrameGap ||
+          (second.boundary.bottom - first.boundary.top).abs() <= intraFrameGap;
       if (horizontalTouch) {
         final overlapLeft = math.max(first.boundary.left, second.boundary.left);
         final overlapRight = math.min(

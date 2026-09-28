@@ -1112,7 +1112,9 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
           child: Row(
             children: [
               if (widget.title.toLowerCase().contains('mixed') ||
-                  widget.title.contains('مختلط'))
+                  widget.title.contains('مختلط') ||
+                  widget.title.contains('التصميم') ||
+                  widget.title.toLowerCase().contains('conception'))
                 SizedBox(
                   width: widget.width ?? 60,
                   height: widget.height ?? 60,

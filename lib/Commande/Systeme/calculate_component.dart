@@ -4277,26 +4277,19 @@ class ComponentCalculator {
           // the two opposing profiles for four leaves on two tracks.  Do not
           // manufacture a fallback row when the series has no such rule.
           final faceSection = sashes >= 3
-              ? window.getConfiguredSectionForRole(
+              ? (window.getConfiguredSectionForRole(
                   'face_to_face',
                   useSlidingSeries: true,
-                )
+                ) ?? window.getSlidingSectionByType('face_to_face'))
               : null;
           final bool hasMeetingInCenter =
-              (sashes == 4 && zone.slidingTrackCount == 2) ||
-              (sashes == 6 && zone.slidingTrackCount == 3) ||
-              zone.slidingFaceToFace;
-          final faceEnabled =
-              zone.slidingFaceToFace ||
-              (hasMeetingInCenter && faceSection != null) ||
-              (sashes == 3 && faceSection != null);
-          if (faceEnabled && sashes >= 3) {
-            if (faceSection != null) {
-              final faceCount = hasMeetingInCenter ? 2 : 1;
-              slidingFaceToFacePieces.addAll(
-                List<double>.filled(faceCount, sashH / 1000.0),
-              );
-            }
+              zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
+          final faceEnabled = hasMeetingInCenter && faceSection != null;
+          if (faceEnabled && sashes >= 4) {
+            final faceCount = 2;
+            slidingFaceToFacePieces.addAll(
+              List<double>.filled(faceCount, sashH / 1000.0),
+            );
           }
           if (hasThreePiece) {
             // New formula for 3-piece sash traverses in sliding systems (e.g. TPR / HPS)
@@ -4777,8 +4770,9 @@ class ComponentCalculator {
       }
 
       if (slidingFaceToFacePieces.isNotEmpty) {
-        final faceOverride = window
-            .getConfiguredSectionForRole('face_to_face', useSlidingSeries: true)
+        final faceOverride = (window
+            .getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
+            window.getSlidingSectionByType('face_to_face'))
             ?.toMap();
         if (faceOverride != null) {
           items.add(
