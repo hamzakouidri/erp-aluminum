@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
+import 'package:database_data/Commande/devis_builder.dart';
+import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'accessory_assembly_rules_test.dart' as fixtures;
 
 class RoleDb extends fixtures.RuleDatabase {
@@ -542,6 +545,381 @@ void main() {
     expect(ftfItems, isEmpty);
     model.dispose();
   });
+
+  test('supportedSlidingSashCounts obeys max_sliding_sashes series rule', () {
+    final model = RoleWindow();
+    model.systemMode = 'sliding';
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.slidingSash,
+        slidingSashesCount: 2,
+        slidingTrackCount: 2,
+        boundary: const Rect.fromLTRB(50, 50, 1950, 1150),
+      ),
+    ];
+
+    // Case 1: No restriction (0 or null) -> allows 2, 3, 4, 5, 6
+    model.slidingSeriesTableConfig = {'max_sliding_sashes': 0};
+    expect(model.supportedSlidingSashCounts, equals({2, 3, 4, 5, 6}));
+
+    // Case 2: Restricted to 2 sashes
+    model.slidingSeriesTableConfig = {'max_sliding_sashes': 2};
+    expect(model.supportedSlidingSashCounts, equals({2}));
+
+    // Case 3: Restricted to 4 sashes
+    model.slidingSeriesTableConfig = {'max_sliding_sashes': 4};
+    expect(model.supportedSlidingSashCounts, equals({2, 3, 4}));
+
+    model.dispose();
+  });
+
+  test('empty frame beside sliding window uses opening series frame and parclose', () {
+    final model = RoleWindow();
+    model.systemMode = 'mixed';
+    final frameSliding = const Rect.fromLTRB(50, 50, 1000, 1150);
+    final frameEmpty = const Rect.fromLTRB(1000, 50, 1950, 1150);
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.slidingSash,
+        slidingSashesCount: 2,
+        slidingTrackCount: 2,
+        boundary: frameSliding,
+      ),
+      WindowZone(
+        id: 'z2',
+        content: ZoneContent.empty,
+        boundary: frameEmpty,
+      ),
+    ];
+    model.componentOverrides['باكيت الزجاج (Parclose)'] = {
+      'id': 50,
+      'name': 'باكيت 514',
+      'max_glass_thickness': 8.0,
+    };
+
+    expect(model.frameUsesSlidingSeries(frameSliding), isTrue);
+    expect(model.frameUsesSlidingSeries(frameEmpty), isFalse);
+    expect(model.usesSlidingPrimaryProfiles, isFalse);
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    // Parclose for the empty frame should be present
+    final parcloseItems = bom.where((i) => i.name.contains('باكيت') || i.name.contains('Parclose'));
+    expect(parcloseItems, isNotEmpty);
+
+    model.dispose();
+  });
+
+  test('sliding montant descriptions show exact counts for reinforced and simple', () {
+    // 1. All simple (2 sashes = 2 lateral, 2 central)
+    final allSimpleDrawing = {
+      'hasShutter': false,
+      'zones': [
+        {
+          'content': 'slidingSash',
+          'slidingSashesCount': 2,
+          'slidingMontantReinforced': {
+            'lateral_0': false,
+            'lateral_1': false,
+            'central_0': false,
+            'central_1': false,
+          },
+        },
+      ],
+    };
+
+    final arLine = DevisBuilder.buildLineItemFromDetail({
+      'id': 1,
+      'window_type': 'coulissant',
+      'largeur': 1200,
+      'hauteur': 1400,
+      'quantity': 1,
+      'price': 1000,
+      'partitions_json': allSimpleDrawing,
+    }, overrideLang: AppLanguage.arabic);
+
+    expect(arLine.details.join('\n'), contains('القائم الوسطي: 2 غير مدعم'));
+    expect(arLine.details.join('\n'), contains('القائم الجانبي: 2 غير مدعم'));
+
+    final frLine = DevisBuilder.buildLineItemFromDetail({
+      'id': 1,
+      'window_type': 'coulissant',
+      'largeur': 1200,
+      'hauteur': 1400,
+      'quantity': 1,
+      'price': 1000,
+      'partitions_json': allSimpleDrawing,
+    }, overrideLang: AppLanguage.french);
+
+    expect(frLine.details.join('\n'), contains('Montant central: 2 simple(s)'));
+    expect(frLine.details.join('\n'), contains('Montant latéral: 2 simple(s)'));
+
+    // 2. Mixed (1 reinforced, 1 simple)
+    final mixedDrawing = {
+      'hasShutter': false,
+      'zones': [
+        {
+          'content': 'slidingSash',
+          'slidingSashesCount': 2,
+          'slidingMontantReinforced': {
+            'lateral_0': true,
+            'lateral_1': false,
+            'central_0': true,
+            'central_1': false,
+          },
+        },
+      ],
+    };
+
+    final arMixed = DevisBuilder.buildLineItemFromDetail({
+      'id': 2,
+      'window_type': 'coulissant',
+      'largeur': 1200,
+      'hauteur': 1400,
+      'quantity': 1,
+      'price': 1000,
+      'partitions_json': mixedDrawing,
+    }, overrideLang: AppLanguage.arabic);
+
+    expect(arMixed.details.join('\n'), contains('القائم الوسطي: 1 مدعم، 1 غير مدعم'));
+    expect(arMixed.details.join('\n'), contains('القائم الجانبي: 1 مدعم، 1 غير مدعم'));
+
+    final frMixed = DevisBuilder.buildLineItemFromDetail({
+      'id': 2,
+      'window_type': 'coulissant',
+      'largeur': 1200,
+      'hauteur': 1400,
+      'quantity': 1,
+      'price': 1000,
+      'partitions_json': mixedDrawing,
+    }, overrideLang: AppLanguage.french);
+
+    expect(frMixed.details.join('\n'), contains('Montant central: 1 renforcé(s), 1 simple(s)'));
+    expect(frMixed.details.join('\n'), contains('Montant latéral: 1 renforcé(s), 1 simple(s)'));
+  });
+
+  test('BOM separates reinforced and simple montants with their pieces when mixed', () {
+    final model = RoleWindow();
+    model.systemMode = 'sliding';
+    model.activeSlidingSeries = AluminumSeries(
+      id: 2,
+      profileId: 1,
+      name: 'Sliding TPR',
+      type: 'sliding',
+      hasThreePieceSash: true,
+    );
+
+    model.componentOverrides['قائم جانبي (Sash Lateral)'] = {
+      'id': 3,
+      'name': 'Montant Lateral Simple',
+    };
+    model.componentOverrides['قائم جانبي معزز (Sash Lateral Renforcé)'] = {
+      'id': 4,
+      'name': 'Montant Lateral Renforce',
+    };
+    model.componentOverrides['قائم وسطي (Sash Central)'] = {
+      'id': 5,
+      'name': 'Montant Central Simple',
+    };
+    model.componentOverrides['قائم وسطي معزز (Sash Central Renforcé)'] = {
+      'id': 6,
+      'name': 'Montant Central Renforce',
+    };
+
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        content: ZoneContent.slidingSash,
+        boundary: const Rect.fromLTWH(0, 0, 1600, 1200),
+        slidingSashesCount: 2,
+        slidingMontantReinforced: {
+          'lateral_0': true,
+          'lateral_1': false,
+          'central_0': true,
+          'central_1': false,
+        },
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final lateralNormal = bom.where((i) => i.name.contains('قائم جانبي (Sash Lateral)'));
+    final lateralRenforced = bom.where((i) => i.name.contains('قائم جانبي معزز'));
+    final centralNormal = bom.where((i) => i.name.contains('قائم وسطي (Sash Central)'));
+    final centralRenforced = bom.where((i) => i.name.contains('قائم وسطي معزز'));
+
+    expect(lateralNormal, isNotEmpty);
+    expect(lateralRenforced, isNotEmpty);
+    expect(centralNormal, isNotEmpty);
+    expect(centralRenforced, isNotEmpty);
+
+    expect(lateralNormal.first.pieces, hasLength(1));
+    expect(lateralRenforced.first.pieces, hasLength(1));
+    expect(centralNormal.first.pieces, hasLength(1));
+    expect(centralRenforced.first.pieces, hasLength(1));
+
+    model.dispose();
+  });
+
+  test('undo restores window drawing state after convertCurrentDrawingToShutter', () async {
+    final model = RoleWindow();
+    model.width = 1200;
+    model.height = 1000;
+    model.zones = [
+      WindowZone(
+        id: 'z_initial',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTWH(0, 0, 1200, 1000),
+      ),
+    ];
+    model.hasSideCovers = true;
+    model.isShutterOnly = false;
+    model.drawingMode = '';
+
+    expect(model.isShutterOnly, isFalse);
+    expect(model.zones, hasLength(1));
+
+    // Convert to shutter
+    model.convertCurrentDrawingToShutter();
+
+    expect(model.isShutterOnly, isTrue);
+    expect(model.hasShutter, isTrue);
+    expect(model.drawingMode, 'shutter_only');
+    expect(model.zones, isEmpty);
+
+    // Call Undo
+    model.undo();
+
+    // Verify window state is fully restored
+    expect(model.isShutterOnly, isFalse);
+    expect(model.drawingMode, isNot('shutter_only'));
+    expect(model.zones, hasLength(1));
+    expect(model.zones.first.id, 'z_initial');
+    expect(model.width, 1200);
+    expect(model.height, 1000);
+
+    await Future.delayed(const Duration(milliseconds: 150));
+    model.dispose();
+  });
+
+  test('saved multi-frame drawing preserves hasSideCovers across notifyListeners', () {
+    final model = RoleWindow();
+    final drawingMap = {
+      'width': 1600.0,
+      'height': 1200.0,
+      'hasSideCovers': true,
+      'zones': [
+        {
+          'id': 'f1',
+          'boundary': {'left': 10.0, 'top': 10.0, 'width': 100.0, 'height': 100.0},
+          'content': 'fixedGlass',
+        },
+        {
+          'id': 'f2',
+          'boundary': {'left': 250.0, 'top': 10.0, 'width': 100.0, 'height': 100.0},
+          'content': 'fixedGlass',
+        },
+      ],
+    };
+
+    applyWindowModelFromMap(model, drawingMap);
+
+    expect(model.hasSideCovers, isTrue);
+    expect(model.multiFrameSideCoverManuallyEnabled, isTrue);
+
+    // Trigger notifyListeners as happens on catalogue load or canvas repaint
+    model.notifyListeners();
+
+    expect(model.getFrameRects().length, greaterThan(1));
+    expect(model.hasSideCovers, isTrue);
+
+    model.dispose();
+  });
+
+  test('updateLayoutMetrics keeps canvasScale stable when bottom panel opens and closes', () {
+    final model = RoleWindow();
+    model.width = 1200;
+    model.height = 1000;
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(50, 50, 1100, 900),
+        content: ZoneContent.fixedGlass,
+      ),
+    ];
+
+    // Initial layout with full screen height (e.g. 800)
+    model.updateLayoutMetrics(const Size(600, 800));
+    final initialScale = model.canvasScale;
+    expect(initialScale, greaterThan(0));
+
+    // Bottom panel opens: height shrinks from 800 to 500
+    model.updateLayoutMetrics(const Size(600, 500));
+    final shrunkScale = model.canvasScale;
+
+    // Scale must remain stable and not bounce/shrink
+    expect(shrunkScale, closeTo(initialScale, 0.0001));
+
+    // Bottom panel closes: height returns to 800
+    model.updateLayoutMetrics(const Size(600, 800));
+    expect(model.canvasScale, closeTo(initialScale, 0.0001));
+
+    model.dispose();
+  });
+
+  test('resizeFrameFromHandles preserves exact mullion thickness and expands zones proportionally', () {
+    final model = RoleWindow();
+    model.profileThickness = 50.0;
+    model.width = 1100.0; // 50 (frame) + 475 (zone1) + 50 (mullion) + 475 (zone2) + 50 (frame)
+    model.height = 1000.0;
+
+    // 2 zones divided by a 50 mm vertical mullion:
+    // Zone 1: left 50, right 525 (width 475)
+    // Mullion: 525 to 575 (width 50)
+    // Zone 2: left 575, right 1050 (width 475)
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(50, 50, 475, 900),
+        content: ZoneContent.fixedGlass,
+      ),
+      WindowZone(
+        id: 'z2',
+        boundary: const Rect.fromLTWH(575, 50, 475, 900),
+        content: ZoneContent.fixedGlass,
+      ),
+    ];
+
+    expect(model.getFrameRects().length, equals(1));
+
+    // Resize frame to the right by +200 mm
+    model.resizeFrameFromHandles(
+      'frame:0',
+      moveLeft: false,
+      moveRight: true,
+      moveTop: false,
+      moveBottom: false,
+      deltaX: 200.0,
+      deltaY: 0.0,
+      saveHistory: false,
+    );
+
+    // Frame must still be 1 single unified frame, not split!
+    expect(model.getFrameRects().length, equals(1));
+
+    // The mullion gap between zone 1 and zone 2 must be EXACTLY 50.0 mm (= profileThickness)!
+    final z1 = model.zones.firstWhere((z) => z.id == 'z1');
+    final z2 = model.zones.firstWhere((z) => z.id == 'z2');
+    final mullionGap = z2.boundary.left - z1.boundary.right;
+    expect(mullionGap, closeTo(50.0, 0.5));
+
+    // Both zones must have grown equally by 100 mm each (475 -> 575)
+    expect(z1.boundary.width, closeTo(575.0, 1.0));
+    expect(z2.boundary.width, closeTo(575.0, 1.0));
+
+    model.dispose();
+  });
 }
+
 
 

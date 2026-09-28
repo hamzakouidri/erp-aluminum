@@ -798,9 +798,10 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       bool useEntrematique = false;
       bool hasKeyLock = false;
       bool hasSliding = false;
-      bool hasCentralReinforced = false;
-      bool hasCentralSimple = false;
-      bool hasLateralReinforced = false;
+      int lateralReinforcedCount = 0;
+      int lateralNormalCount = 0;
+      int centralReinforcedCount = 0;
+      int centralNormalCount = 0;
 
       // Use toMap() zones (same data as devis_builder uses)
       final zonesList = pMap['zones'] as List? ?? [];
@@ -813,27 +814,29 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           hasSliding = true;
           if (z['useClassicHandle'] != true) useEntrematique = true;
           final reinforcedMap = z['slidingMontantReinforced'] as Map?;
-          if (reinforcedMap != null) {
-            if (reinforcedMap['lateral_0'] == true ||
-                reinforcedMap['lateral_1'] == true) {
-              hasLateralReinforced = true;
+          final sashes = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
+          final currentCentralCount = sashes > 1 ? (sashes - 1) * 2 : 0;
+          for (var i = 0; i < 2; i++) {
+            final isReinforced = reinforcedMap != null &&
+                (reinforcedMap['lateral_$i'] == true ||
+                    (i == 0 && reinforcedMap['lateral_left'] == true) ||
+                    (i == 1 && reinforcedMap['lateral_right'] == true));
+            if (isReinforced) {
+              lateralReinforcedCount++;
+            } else {
+              lateralNormalCount++;
             }
-            bool centralFound = false;
-            bool centralReinforced = false;
-            reinforcedMap.forEach((k, v) {
-              if (k.toString().startsWith('central_')) {
-                centralFound = true;
-                if (v == true) centralReinforced = true;
-              }
-            });
-            if (centralFound) {
-              if (centralReinforced)
-                hasCentralReinforced = true;
-              else
-                hasCentralSimple = true;
+          }
+          for (var i = 0; i < currentCentralCount; i++) {
+            final isReinforced = reinforcedMap != null &&
+                (reinforcedMap['central_$i'] == true ||
+                    (i.isEven && reinforcedMap['central_left'] == true) ||
+                    (i.isOdd && reinforcedMap['central_right'] == true));
+            if (isReinforced) {
+              centralReinforcedCount++;
+            } else {
+              centralNormalCount++;
             }
-          } else {
-            hasCentralSimple = true;
           }
         }
       }
@@ -872,29 +875,70 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      // Montant renforcé
+      // Montant renforcé / simple
       if (hasSliding && !isPVC) {
-        if (curLang == AppLanguage.french) {
-          details.add(
-            'Montant latéral: ${hasLateralReinforced ? "renforcé" : "simple"}',
-          );
-          details.add(
-            'Montant central: ${hasCentralReinforced ? "renforcé" : "simple"}',
-          );
-        } else if (curLang == AppLanguage.english) {
-          details.add(
-            'Lateral montant: ${hasLateralReinforced ? "reinforced" : "simple"}',
-          );
-          details.add(
-            'Central montant: ${hasCentralReinforced ? "reinforced" : "simple"}',
-          );
-        } else {
-          details.add(
-            'مقطع جانبي (Montant latéral): ${hasLateralReinforced ? "مدعم" : "عادي"}',
-          );
-          details.add(
-            'مقطع وسطي (Montant central): ${hasCentralReinforced ? "مدعم" : "عادي"}',
-          );
+        final totalLateral = lateralReinforcedCount + lateralNormalCount;
+        if (totalLateral > 0) {
+          if (lateralReinforcedCount > 0 && lateralNormalCount > 0) {
+            details.add(switch (curLang) {
+              AppLanguage.french =>
+                'Montant latéral: $lateralReinforcedCount renforcé(s), $lateralNormalCount simple(s)',
+              AppLanguage.english =>
+                'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
+              AppLanguage.arabic =>
+                'القائم الجانبي: $lateralReinforcedCount مدعم، $lateralNormalCount غير مدعم',
+            });
+          } else if (lateralReinforcedCount > 0) {
+            details.add(switch (curLang) {
+              AppLanguage.french =>
+                'Montant latéral: $lateralReinforcedCount renforcé(s)',
+              AppLanguage.english =>
+                'Lateral montant: $lateralReinforcedCount reinforced',
+              AppLanguage.arabic =>
+                'القائم الجانبي: $lateralReinforcedCount مدعم',
+            });
+          } else {
+            details.add(switch (curLang) {
+              AppLanguage.french =>
+                'Montant latéral: $lateralNormalCount simple(s)',
+              AppLanguage.english =>
+                'Lateral montant: $lateralNormalCount standard',
+              AppLanguage.arabic =>
+                'القائم الجانبي: $lateralNormalCount غير مدعم',
+            });
+          }
+        }
+
+        final totalCentral = centralReinforcedCount + centralNormalCount;
+        if (totalCentral > 0) {
+          if (centralReinforcedCount > 0 && centralNormalCount > 0) {
+            details.add(switch (curLang) {
+              AppLanguage.french =>
+                'Montant central: $centralReinforcedCount renforcé(s), $centralNormalCount simple(s)',
+              AppLanguage.english =>
+                'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
+              AppLanguage.arabic =>
+                'القائم الوسطي: $centralReinforcedCount مدعم، $centralNormalCount غير مدعم',
+            });
+          } else if (centralReinforcedCount > 0) {
+            details.add(switch (curLang) {
+              AppLanguage.french =>
+                'Montant central: $centralReinforcedCount renforcé(s)',
+              AppLanguage.english =>
+                'Central montant: $centralReinforcedCount reinforced',
+              AppLanguage.arabic =>
+                'القائم الوسطي: $centralReinforcedCount مدعم',
+            });
+          } else {
+            details.add(switch (curLang) {
+              AppLanguage.french =>
+                'Montant central: $centralNormalCount simple(s)',
+              AppLanguage.english =>
+                'Central montant: $centralNormalCount standard',
+              AppLanguage.arabic =>
+                'القائم الوسطي: $centralNormalCount غير مدعم',
+            });
+          }
         }
       }
     }

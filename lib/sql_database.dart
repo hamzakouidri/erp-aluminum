@@ -1077,6 +1077,7 @@ class SqlDatabase {
               sliding_chicane_pieces_per_junction INTEGER DEFAULT 1,
               sliding_rail_clearance REAL DEFAULT 1.0,
               custom_formula_notes TEXT DEFAULT '',
+              max_sliding_sashes INTEGER DEFAULT 0,
               updated_at TEXT NOT NULL DEFAULT ''
             )
           ''');
@@ -1119,6 +1120,11 @@ class SqlDatabase {
     try {
       await db.execute(
         "ALTER TABLE SeriesTableConfig ADD COLUMN custom_formula_notes TEXT DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE SeriesTableConfig ADD COLUMN max_sliding_sashes INTEGER DEFAULT 0;',
       );
     } catch (_) {}
 
@@ -16584,6 +16590,7 @@ class SqlDatabase {
     int slidingChicanePiecesPerJunction = 1,
     double slidingRailClearance = 1.0,
     String customFormulaNotes = '',
+    int maxSlidingSashes = 0,
     bool notifySync = true,
   }) async {
     final myDb = await db;
@@ -16593,8 +16600,8 @@ class SqlDatabase {
       INSERT INTO SeriesTableConfig (
         series_id, allowed_section_types, allowed_accessory_ids, allowed_accessory_types, excluded_accessory_ids,
         sash_w_deduction_2, sash_w_deduction_3, sash_w_deduction_4, sash_overlap_val, glass_w_deduction,
-        sliding_chicane_pieces_per_junction, sliding_rail_clearance, custom_formula_notes, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sliding_chicane_pieces_per_junction, sliding_rail_clearance, custom_formula_notes, max_sliding_sashes, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(series_id) DO UPDATE SET
         allowed_section_types = excluded.allowed_section_types,
         allowed_accessory_ids = excluded.allowed_accessory_ids,
@@ -16608,6 +16615,7 @@ class SqlDatabase {
         sliding_chicane_pieces_per_junction = excluded.sliding_chicane_pieces_per_junction,
         sliding_rail_clearance = excluded.sliding_rail_clearance,
         custom_formula_notes = excluded.custom_formula_notes,
+        max_sliding_sashes = excluded.max_sliding_sashes,
         updated_at = excluded.updated_at
     ''',
       [
@@ -16624,6 +16632,7 @@ class SqlDatabase {
         slidingChicanePiecesPerJunction,
         slidingRailClearance,
         customFormulaNotes,
+        maxSlidingSashes,
         DateTime.now().toUtc().toIso8601String(),
       ],
     );

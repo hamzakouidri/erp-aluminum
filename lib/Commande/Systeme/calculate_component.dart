@@ -4693,7 +4693,8 @@ class ComponentCalculator {
             unit: 'قطاع',
             overrideMap: slidingOverrideFor([
               'قائم جانبي معزز (Sash Lateral Renforcé)',
-            ]),
+            ]) ??
+            window.getSlidingSectionByType('sash_lateral_reinforced')?.toMap(),
             preferOverrideMap: true,
             selectorType: 'sash_lateral_reinforced',
             roleKey: 'sash_lateral_reinforced',
@@ -7081,8 +7082,6 @@ class ComponentCalculator {
     Map<String, dynamic>? selectedRosetteProduct;
 
     for (var zone in window.zones) {
-      if (zone.content == ZoneContent.empty) continue;
-
       // جلب قيمة التداخل من قاعدة البيانات أو الافتراضية
       final double overlap = seriesSashOverlap;
 
@@ -7122,8 +7121,9 @@ class ComponentCalculator {
       final double sashGlassDeduction =
           (sw * 2.0) + videVerre + (window.isPVC ? 5.0 : 0.0);
 
-      if (zone.content == ZoneContent.fixedGlass) {
-        // الزجاج الثابت: يمتد داخل أخدود الإطار مباشرةً
+      if (zone.content == ZoneContent.fixedGlass ||
+          zone.content == ZoneContent.empty) {
+        // الزجاج الثابت أو الإطار الفارغ: يمتد داخل أخدود الإطار مباشرةً
         baseGw = clearW - videVerre;
         baseGh = clearH - videVerre;
       } else if (zone.content == ZoneContent.singleSash) {
@@ -7438,11 +7438,12 @@ class ComponentCalculator {
           );
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
-          final bool isSlidingSystem =
-              window.systemMode == 'sliding' ||
-              window.systemMode == 'coulissant' ||
-              window.systemMode == 'منزلق' ||
-              zone.content == ZoneContent.slidingSash;
+          final bool isSlidingSystem = zone.content == ZoneContent.slidingSash ||
+              ((window.systemMode == 'sliding' ||
+                      window.systemMode == 'coulissant' ||
+                      window.systemMode == 'منزلق') &&
+                  zone.content != ZoneContent.empty &&
+                  zone.content != ZoneContent.fixedGlass);
           final double cellThick = window
               .glassPackThicknessIncludingVitrageJoint(cellGlass);
           final double rawCellGlassPackThickness =

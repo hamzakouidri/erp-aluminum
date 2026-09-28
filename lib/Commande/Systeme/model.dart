@@ -427,7 +427,8 @@ class FrameAngleJunction {
 
   double get height => (bottom - top).abs();
 
-  String get label => 'بين الإطار ${firstFrameIndex + 1} و ${secondFrameIndex + 1}';
+  String get label =>
+      'بين الإطار ${firstFrameIndex + 1} و ${secondFrameIndex + 1}';
 }
 
 class AluminumSection {
@@ -592,6 +593,7 @@ class AluminumSeries {
   final String name;
   final String type;
   final bool hasThreePieceSash;
+
   /// True when the series rules include a face_to_face role, meaning the two
   /// central sashes are expected to meet face-to-face when drawn.  Drawings
   /// that use this series will auto-enable slidingFaceToFace on their sliding
@@ -619,7 +621,6 @@ class AluminumSeries {
       hasFaceToFace: (map['has_face_to_face'] ?? 0) == 1,
     );
   }
-
 
   @override
   bool operator ==(Object other) =>
@@ -1273,7 +1274,8 @@ class WindowZone {
     this.isSubdivided = false,
     this.hasSashPlintheBottom = false,
     Map<String, GlassSpecification>? cellGlassSpec,
-  }) : slidingFaceToFace = slidingFaceToFace ??
+  }) : slidingFaceToFace =
+           slidingFaceToFace ??
            (slidingSashesCount >= 4 &&
                slidingTrackCount == 2 &&
                slidingSashesCount % 2 == 0),
@@ -1664,6 +1666,12 @@ class WindowSnapshot {
   final Map<String, dynamic>? internalSlidingSideCoverOverride;
   final Map<String, int>? mullionCreationOrder;
   final int? mullionStepCounter;
+  final bool isShutterOnly;
+  final String drawingMode;
+  final bool drawNextShapeAsShutterOnly;
+  final bool isDrawingMode;
+  final bool hasSideCovers;
+  final bool multiFrameSideCoverManuallyEnabled;
 
   WindowSnapshot(
     this.width,
@@ -1702,6 +1710,12 @@ class WindowSnapshot {
     this.internalSlidingSideCoverOverride, [
     this.mullionCreationOrder,
     this.mullionStepCounter,
+    this.isShutterOnly = false,
+    this.drawingMode = '',
+    this.drawNextShapeAsShutterOnly = false,
+    this.isDrawingMode = false,
+    this.hasSideCovers = true,
+    this.multiFrameSideCoverManuallyEnabled = false,
   ]);
 }
 
@@ -3182,23 +3196,32 @@ class WindowModel extends ChangeNotifier {
   /// still contain fixed-glass or empty zones; those zones must not make the
   /// resolver borrow an opening frame or sash.
   bool get usesSlidingPrimaryProfiles {
-    if (systemMode == 'sliding') return true;
-    if (systemMode != 'mixed') {
-      return activeSlidingSeries != null && activeSeries == null;
-    }
-
-    final occupiedZones = zones
-        .where((zone) => zone.content != ZoneContent.empty)
-        .toList();
-    final hasSlidingZone = occupiedZones.any(
+    final hasSlidingZone = zones.any(
       (zone) => zone.content == ZoneContent.slidingSash,
     );
-    final hasOpeningSash = occupiedZones.any(
+    final hasEmptyOrFixed = zones.any(
+      (zone) =>
+          zone.content == ZoneContent.empty ||
+          zone.content == ZoneContent.fixedGlass,
+    );
+    final hasOpeningSash = zones.any(
       (zone) =>
           zone.content == ZoneContent.singleSash ||
           zone.content == ZoneContent.doubleSash,
     );
-    if (hasSlidingZone && !hasOpeningSash) return true;
+
+    if (systemMode == 'sliding') {
+      if (hasSlidingZone && hasEmptyOrFixed && activeSeries != null) {
+        return false;
+      }
+      return true;
+    }
+    if (systemMode != 'mixed') {
+      return activeSlidingSeries != null && activeSeries == null;
+    }
+
+    if (hasSlidingZone && (hasOpeningSash || hasEmptyOrFixed)) return false;
+    if (hasSlidingZone && !hasOpeningSash && !hasEmptyOrFixed) return true;
     if (hasOpeningSash && !hasSlidingZone) return false;
     return activeSlidingSeries != null && activeSeries == null;
   }
@@ -3784,7 +3807,9 @@ class WindowModel extends ChangeNotifier {
     var changedFrame = false;
     final isMultiFrame = getFrameRects().length > 1;
     if (!isMultiFrame) {
-      _multiFrameSideCoverManuallyEnabled = false;
+      if (!hasSideCovers) {
+        _multiFrameSideCoverManuallyEnabled = false;
+      }
       // A single-frame drawing keeps the user's side-cover state. It must not
       // be reset by notifyListeners or by an unrelated drawing edit.
       return;
@@ -3804,7 +3829,8 @@ class WindowModel extends ChangeNotifier {
           : frameOverride ?? getSectionByType('frame')?.toMap();
       final hasIntegrated = _overrideHasIntegratedSideCover(currentFrame);
       if (!hasIntegrated &&
-          (!hasSideCovers || _overrideAllowsStandaloneSideCover(currentFrame))) {
+          (!hasSideCovers ||
+              _overrideAllowsStandaloneSideCover(currentFrame))) {
         continue;
       }
       final configured = getConfiguredSectionsForRole(
@@ -3814,13 +3840,13 @@ class WindowModel extends ChangeNotifier {
       final candidateSections = configured.isNotEmpty
           ? configured
           : series.sections
-              .where(
-                (s) =>
-                    s.isFrame ||
-                    s.type.toLowerCase() == 'frame' ||
-                    s.type.toLowerCase().contains('cadre'),
-              )
-              .toList();
+                .where(
+                  (s) =>
+                      s.isFrame ||
+                      s.type.toLowerCase() == 'frame' ||
+                      s.type.toLowerCase().contains('cadre'),
+                )
+                .toList();
       var plainFrames = candidateSections
           .where(
             (section) =>
@@ -4924,7 +4950,44 @@ class WindowModel extends ChangeNotifier {
   String shutterLame = 'Lame Injectée';
   String shutterGlissiere = 'Glissière 25';
   String? shutterHeightWarning;
-  String? shutterWidthWarning;
+  List<Map<String, dynamic>> _shutterBladeWarningCatalogue = [];
+
+  String? get shutterWidthWarning {
+    if (!hasShutter) return null;
+    final raw = componentOverrides['الشرائح (Lames)'];
+    if (raw is! Map) return null;
+    final blade = Map<String, dynamic>.from(raw);
+    final limit = _shutterBladeEffectiveMaxWidthMm(blade);
+    if (width <= limit) return null;
+    final candidates =
+        _shutterBladeWarningCatalogue
+            .where(
+              (candidate) =>
+                  _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
+            )
+            .toList()
+          ..sort((a, b) {
+            final result = _shutterBladeEffectiveMaxWidthMm(
+              a,
+            ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
+            return result != 0
+                ? result
+                : (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
+          });
+    final warning =
+        'عرض الستار ${width.toStringAsFixed(0)} مم يتجاوز الحد الأقصى '
+        'للشفرة «${blade['name'] ?? shutterLame}»: ${limit.toStringAsFixed(0)} مم.';
+    if (candidates.isNotEmpty) {
+      final recommended = candidates.first;
+      return '$warning يُنصح بتغيير الشفرة إلى «${recommended['name']}» '
+          '(الحد الأقصى ${_shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0)} مم)، '
+          'وهي التي سيختارها النظام في الوضع التلقائي.';
+    }
+    return _shutterBladeWarningCatalogue.isEmpty
+        ? '$warning اختر شفرة تتحمل هذا العرض.'
+        : '$warning لا توجد شفرة متاحة تتحمل هذا العرض؛ راجع الأبعاد أو حدود الشفرات في الكتالوج.';
+  }
+
   double? shutterMaximumWidthMm;
 
   double get maximumShutterBarLengthMm {
@@ -5043,6 +5106,10 @@ class WindowModel extends ChangeNotifier {
 
   bool hasSideCovers = true;
   bool _multiFrameSideCoverManuallyEnabled = false;
+  bool get multiFrameSideCoverManuallyEnabled => _multiFrameSideCoverManuallyEnabled;
+  set multiFrameSideCoverManuallyEnabled(bool value) {
+    _multiFrameSideCoverManuallyEnabled = value;
+  }
   int _sideCoverSelectionRevision = 0;
   bool sideCoverUseSecondWidth = false;
 
@@ -6151,6 +6218,7 @@ class WindowModel extends ChangeNotifier {
   bool? _lastHasShutter;
   bool? _lastIsCaissonTunnel;
   double? _lastShutterBoxHeight;
+  double _maxObservedLayoutHeight = 0.0;
 
   final SqlDatabase db;
   List<AluminumProfileSystem> availableSystems = [];
@@ -8387,18 +8455,25 @@ class WindowModel extends ChangeNotifier {
   }
 
   /// Leaf choices are independent of rail count. Even on a 2-track series (السكتين),
-  /// a workshop can build 2, 3, 4, or 6 sashes.
+  /// a workshop can build 2, 3, 4, or 6 sashes unless restricted by max_sliding_sashes.
   Set<int> get supportedSlidingSashCounts {
     final minimum = selectedZone?.content == ZoneContent.slidingSash
         ? selectedZone!.slidingTrackCount.clamp(2, 7).toInt()
         : 2;
+    final maxAllowedRaw =
+        (slidingSeriesTableConfig ?? seriesTableConfig)?['max_sliding_sashes'];
+    final maxAllowed = (maxAllowedRaw is num)
+        ? maxAllowedRaw.toInt()
+        : int.tryParse('$maxAllowedRaw') ?? 0;
+    final effectiveMax = (maxAllowed >= 2) ? math.max(minimum, maxAllowed) : 6;
+
     final counts = <int>{};
     for (final s in const [2, 3, 4, 5, 6]) {
-      if (s >= minimum) {
+      if (s >= minimum && s <= effectiveMax) {
         counts.add(s);
       }
     }
-    return counts.isEmpty ? const {2, 3, 4, 6} : counts;
+    return counts.isEmpty ? {minimum} : counts;
   }
 
   /// Returns a manually selected sliding profile only when it belongs to the
@@ -9658,7 +9733,8 @@ class WindowModel extends ChangeNotifier {
           .toList();
     }
 
-    final hasFaceToFaceRule = configuredSectionsFor(const ['face_to_face']).isNotEmpty ||
+    final hasFaceToFaceRule =
+        configuredSectionsFor(const ['face_to_face']).isNotEmpty ||
         series.sections.any((s) => s.type.toLowerCase() == 'face_to_face') ||
         series.hasFaceToFace;
     if (hasFaceToFaceRule) {
@@ -9954,7 +10030,6 @@ class WindowModel extends ChangeNotifier {
     if (!hasShutter) return;
 
     final previousBoxHeight = shutterBoxHeight;
-    shutterWidthWarning = null;
     shutterMaximumWidthMm = null;
     final database = await db.db;
     Map<String, dynamic>? blade;
@@ -10048,6 +10123,14 @@ class WindowModel extends ChangeNotifier {
             .map(Map<String, dynamic>.from)
             .where(isShutterBladeComponent)
             .toList();
+        blades.sort((a, b) {
+          final limitCompare = _shutterBladeEffectiveMaxWidthMm(
+            a,
+          ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
+          if (limitCompare != 0) return limitCompare;
+          return (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
+        });
+        _shutterBladeWarningCatalogue = blades;
         final currentBladeIsManual = _componentWasManuallySelected(blade);
 
         if (blades.isNotEmpty && !currentBladeIsManual) {
@@ -10058,13 +10141,6 @@ class WindowModel extends ChangeNotifier {
           final currentSupportsWidth = blade != null && currentLimit >= width;
 
           if (!currentSupportsWidth) {
-            blades.sort((a, b) {
-              final limitCompare = _shutterBladeEffectiveMaxWidthMm(
-                a,
-              ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
-              if (limitCompare != 0) return limitCompare;
-              return (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
-            });
             final compatible = blades
                 .where(
                   (candidate) =>
@@ -10102,19 +10178,6 @@ class WindowModel extends ChangeNotifier {
             shutterMechanism = 'محرك';
           }
           shutterMaximumWidthMm = _shutterBladeConfiguredMaxWidthMm(blade);
-          final effectiveLimit = maximumAllowedShutterWidthMm;
-          if (width > effectiveLimit) {
-            final configuredLimit = shutterMaximumWidthMm!;
-            shutterWidthWarning =
-                'عرض الستار ${width.toStringAsFixed(0)} مم يتجاوز الحد الأقصى المسجل '
-                'للامة ${blade['name'] ?? shutterLame}: '
-                '${configuredLimit.toStringAsFixed(0)} مم.';
-            if (effectiveLimit < configuredLimit) {
-              shutterWidthWarning =
-                  '${shutterWidthWarning!} الحد الفعلي لطول البارة هو '
-                  '${effectiveLimit.toStringAsFixed(0)} مم.';
-            }
-          }
         }
       } catch (e) {
         print('Error resolving shutter blade width limit: $e');
@@ -10126,6 +10189,7 @@ class WindowModel extends ChangeNotifier {
         await _synchronizeShutterTrackWithBlade(database);
         await _synchronizeShutterPartsWithBlade(database);
       }
+      notifyListeners();
       return;
     }
 
@@ -11369,6 +11433,12 @@ class WindowModel extends ChangeNotifier {
             : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
         Map<String, int>.from(mullionCreationOrder),
         mullionStepCounter,
+        isShutterOnly,
+        drawingMode,
+        drawNextShapeAsShutterOnly,
+        isDrawingMode,
+        hasSideCovers,
+        _multiFrameSideCoverManuallyEnabled,
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -11905,6 +11975,14 @@ class WindowModel extends ChangeNotifier {
         internalSlidingSideCoverOverride == null
             ? null
             : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
+        Map<String, int>.from(mullionCreationOrder),
+        mullionStepCounter,
+        isShutterOnly,
+        drawingMode,
+        drawNextShapeAsShutterOnly,
+        isDrawingMode,
+        hasSideCovers,
+        _multiFrameSideCoverManuallyEnabled,
       ),
     );
 
@@ -11955,6 +12033,12 @@ class WindowModel extends ChangeNotifier {
         ? null
         : Map<String, dynamic>.from(snap.internalSlidingSideCoverOverride!);
     selectedInternalSlidingSideCover = null;
+    isShutterOnly = snap.isShutterOnly;
+    drawingMode = snap.drawingMode;
+    drawNextShapeAsShutterOnly = snap.drawNextShapeAsShutterOnly;
+    isDrawingMode = snap.isDrawingMode;
+    hasSideCovers = snap.hasSideCovers;
+    _multiFrameSideCoverManuallyEnabled = snap.multiFrameSideCoverManuallyEnabled;
     enforceBottomSideCoverConstraint();
     if (snap.mullionCreationOrder != null) {
       mullionCreationOrder = Map.from(snap.mullionCreationOrder!);
@@ -12010,6 +12094,14 @@ class WindowModel extends ChangeNotifier {
         internalSlidingSideCoverOverride == null
             ? null
             : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
+        Map<String, int>.from(mullionCreationOrder),
+        mullionStepCounter,
+        isShutterOnly,
+        drawingMode,
+        drawNextShapeAsShutterOnly,
+        isDrawingMode,
+        hasSideCovers,
+        _multiFrameSideCoverManuallyEnabled,
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -12059,6 +12151,12 @@ class WindowModel extends ChangeNotifier {
         ? null
         : Map<String, dynamic>.from(snap.internalSlidingSideCoverOverride!);
     selectedInternalSlidingSideCover = null;
+    isShutterOnly = snap.isShutterOnly;
+    drawingMode = snap.drawingMode;
+    drawNextShapeAsShutterOnly = snap.drawNextShapeAsShutterOnly;
+    isDrawingMode = snap.isDrawingMode;
+    hasSideCovers = snap.hasSideCovers;
+    _multiFrameSideCoverManuallyEnabled = snap.multiFrameSideCoverManuallyEnabled;
     enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
@@ -12092,6 +12190,16 @@ class WindowModel extends ChangeNotifier {
       return;
     }
 
+    if (lastLayoutSize != null &&
+        (widgetSize.width - lastLayoutSize!.width).abs() > 10.0) {
+      _maxObservedLayoutHeight = widgetSize.height;
+    } else {
+      _maxObservedLayoutHeight =
+          math.max(_maxObservedLayoutHeight, widgetSize.height);
+    }
+    final double effectiveHeight =
+        math.max(widgetSize.height, _maxObservedLayoutHeight);
+
     lastLayoutSize = widgetSize;
     _lastIsEmpty = zones.isEmpty;
     _lastWidth = width;
@@ -12116,6 +12224,9 @@ class WindowModel extends ChangeNotifier {
       final halfHeight = contentHeight * canvasScale / 2;
       final minCenter = halfHeight + viewportPadding / 2;
       final maxCenter = widgetSize.height - halfHeight - viewportPadding / 2;
+      if (maxCenter < minCenter) {
+        return widgetSize.height / 2;
+      }
       return math.min(maxCenter, math.max(minCenter, preferredCenterY));
     }
 
@@ -12123,7 +12234,7 @@ class WindowModel extends ChangeNotifier {
       double virtualW = 2400.0;
       double virtualH = 1800.0;
       double sX = (widgetSize.width - viewportPadding) / virtualW;
-      double sY = (widgetSize.height - viewportPadding) / virtualH;
+      double sY = (effectiveHeight - viewportPadding) / virtualH;
       canvasScale = math.min(sX, sY) * 0.94;
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
       canvasDy = centeredY(virtualH) - (virtualH / 2 * canvasScale);
@@ -12158,7 +12269,7 @@ class WindowModel extends ChangeNotifier {
     final double totalH = height + contentTop + contentBottom;
 
     final double maxW = math.max(100.0, widgetSize.width - viewportPadding);
-    final double maxH = math.max(100.0, widgetSize.height - viewportPadding);
+    final double maxH = math.max(100.0, effectiveHeight - viewportPadding);
 
     double sX = maxW / totalW;
     double sY = maxH / totalH;
@@ -12221,8 +12332,16 @@ class WindowModel extends ChangeNotifier {
     return index;
   }
 
-  Rect? frameRectForSelection(String? key) {
+  int? _frameIndexForSelection(String? key) {
+    if (key == null) return null;
     final index = _frameIndexFromSelectionKey(key);
+    if (index != null) return index;
+    return _frameIndexContainingZone(key);
+  }
+
+  Rect? frameRectForSelection(String? key) {
+    final index =
+        _frameIndexForSelection(key) ?? (getFrameRects().length == 1 ? 0 : null);
     if (index == null) return null;
     final rects = getFrameRects();
     return index < rects.length ? rects[index] : null;
@@ -12896,8 +13015,8 @@ class WindowModel extends ChangeNotifier {
               (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
             final yMid =
                 ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.bottom + zb.top) / 2
-                    : (zb.bottom + za.top) / 2;
+                ? (za.bottom + zb.top) / 2
+                : (zb.bottom + za.top) / 2;
             if ((yMid - oldPos).abs() <= alignThreshold) {
               matchingDividers.add(yMid);
             }
@@ -12907,8 +13026,8 @@ class WindowModel extends ChangeNotifier {
               (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
             final xMid =
                 ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.right + zb.left) / 2
-                    : (zb.right + za.left) / 2;
+                ? (za.right + zb.left) / 2
+                : (zb.right + za.left) / 2;
             if ((xMid - oldPos).abs() <= alignThreshold) {
               matchingDividers.add(xMid);
             }
@@ -14129,7 +14248,8 @@ class WindowModel extends ChangeNotifier {
     required double deltaY,
     bool saveHistory = true,
   }) {
-    final frameIndex = _frameIndexFromSelectionKey(frameSelectionId);
+    final frameIndex = _frameIndexForSelection(frameSelectionId) ??
+        (getFrameRects().length == 1 ? 0 : null);
     if (frameIndex != null) {
       _resizePhysicalFrameFromHandles(
         frameIndex,
@@ -14442,21 +14562,197 @@ class WindowModel extends ChangeNotifier {
 
     final currentInner = currentOuter.deflate(profileThickness);
     final nextInner = nextOuter.deflate(profileThickness);
-    final scaleX = currentInner.width.abs() < 0.001
-        ? 1.0
-        : nextInner.width / currentInner.width;
-    final scaleY = currentInner.height.abs() < 0.001
-        ? 1.0
-        : nextInner.height / currentInner.height;
 
-    for (final zone in group) {
-      final r = zone.boundary;
-      zone.boundary = Rect.fromLTRB(
-        nextInner.left + (r.left - currentInner.left) * scaleX,
-        nextInner.top + (r.top - currentInner.top) * scaleY,
-        nextInner.left + (r.right - currentInner.left) * scaleX,
-        nextInner.top + (r.bottom - currentInner.top) * scaleY,
-      );
+    if (group.length == 1) {
+      group.first.boundary = nextInner;
+    } else {
+      // 1. Identify all vertical mullion intervals within group
+      final rawMullionXIntervals = <List<double>>[];
+      for (var i = 0; i < group.length; i++) {
+        for (var j = 0; j < group.length; j++) {
+          if (i == j) continue;
+          final za = group[i].boundary;
+          final zb = group[j].boundary;
+          if (za.right <= zb.left + 0.1) {
+            final gap = zb.left - za.right;
+            final vOverlap =
+                math.min(za.bottom, zb.bottom) - math.max(za.top, zb.top);
+            if (gap >= 0.0 &&
+                gap <= maximumMullionThickness + 12.0 &&
+                vOverlap > 2.0) {
+              rawMullionXIntervals.add([za.right, zb.left]);
+            }
+          }
+        }
+      }
+      rawMullionXIntervals.sort((a, b) => a[0].compareTo(b[0]));
+      final mergedMullionX = <List<double>>[];
+      for (final interval in rawMullionXIntervals) {
+        if (mergedMullionX.isEmpty) {
+          mergedMullionX.add(List<double>.from(interval));
+        } else {
+          final last = mergedMullionX.last;
+          if (interval[0] <= last[1] + 2.0) {
+            last[1] = math.max(last[1], interval[1]);
+          } else {
+            mergedMullionX.add(List<double>.from(interval));
+          }
+        }
+      }
+
+      // 2. Identify all horizontal mullion intervals within group
+      final rawMullionYIntervals = <List<double>>[];
+      for (var i = 0; i < group.length; i++) {
+        for (var j = 0; j < group.length; j++) {
+          if (i == j) continue;
+          final za = group[i].boundary;
+          final zb = group[j].boundary;
+          if (za.bottom <= zb.top + 0.1) {
+            final gap = zb.top - za.bottom;
+            final hOverlap =
+                math.min(za.right, zb.right) - math.max(za.left, zb.left);
+            if (gap >= 0.0 &&
+                gap <= maximumMullionThickness + 12.0 &&
+                hOverlap > 2.0) {
+              rawMullionYIntervals.add([za.bottom, zb.top]);
+            }
+          }
+        }
+      }
+      rawMullionYIntervals.sort((a, b) => a[0].compareTo(b[0]));
+      final mergedMullionY = <List<double>>[];
+      for (final interval in rawMullionYIntervals) {
+        if (mergedMullionY.isEmpty) {
+          mergedMullionY.add(List<double>.from(interval));
+        } else {
+          final last = mergedMullionY.last;
+          if (interval[0] <= last[1] + 2.0) {
+            last[1] = math.max(last[1], interval[1]);
+          } else {
+            mergedMullionY.add(List<double>.from(interval));
+          }
+        }
+      }
+
+      double totalMullionW = 0.0;
+      for (final m in mergedMullionX) {
+        totalMullionW += (m[1] - m[0]);
+      }
+      final totalGlassOldW = currentInner.width - totalMullionW;
+      final totalGlassNewW = nextInner.width - totalMullionW;
+      final glassScaleX = (totalGlassOldW > 1.0 && totalGlassNewW > 1.0)
+          ? totalGlassNewW / totalGlassOldW
+          : (currentInner.width > 1.0
+              ? nextInner.width / currentInner.width
+              : 1.0);
+
+      double mapX(double x) {
+        if (totalGlassOldW <= 1.0 || totalGlassNewW <= 1.0) {
+          return nextInner.left +
+              (x - currentInner.left) *
+                  (nextInner.width / math.max(1.0, currentInner.width));
+        }
+        double mullionBeforeX = 0.0;
+        for (final m in mergedMullionX) {
+          if (x <= m[0]) {
+            // before this mullion
+          } else if (x >= m[1]) {
+            mullionBeforeX += (m[1] - m[0]);
+          } else {
+            mullionBeforeX += (x - m[0]);
+          }
+        }
+        final glassBeforeX = (x - currentInner.left) - mullionBeforeX;
+        return nextInner.left + (glassBeforeX * glassScaleX) + mullionBeforeX;
+      }
+
+      double totalMullionH = 0.0;
+      for (final m in mergedMullionY) {
+        totalMullionH += (m[1] - m[0]);
+      }
+      final totalGlassOldH = currentInner.height - totalMullionH;
+      final totalGlassNewH = nextInner.height - totalMullionH;
+      final glassScaleY = (totalGlassOldH > 1.0 && totalGlassNewH > 1.0)
+          ? totalGlassNewH / totalGlassOldH
+          : (currentInner.height > 1.0
+              ? nextInner.height / currentInner.height
+              : 1.0);
+
+      double mapY(double y) {
+        if (totalGlassOldH <= 1.0 || totalGlassNewH <= 1.0) {
+          return nextInner.top +
+              (y - currentInner.top) *
+                  (nextInner.height / math.max(1.0, currentInner.height));
+        }
+        double mullionBeforeY = 0.0;
+        for (final m in mergedMullionY) {
+          if (y <= m[0]) {
+            // before this mullion
+          } else if (y >= m[1]) {
+            mullionBeforeY += (m[1] - m[0]);
+          } else {
+            mullionBeforeY += (y - m[0]);
+          }
+        }
+        final glassBeforeY = (y - currentInner.top) - mullionBeforeY;
+        return nextInner.top + (glassBeforeY * glassScaleY) + mullionBeforeY;
+      }
+
+      for (final m in mergedMullionX) {
+        final oldMid = (m[0] + m[1]) / 2.0;
+        final newMid = (mapX(m[0]) + mapX(m[1])) / 2.0;
+        _moveMullionMetadata(
+          _mullionKey(false, oldMid),
+          _mullionKey(false, newMid),
+        );
+      }
+      for (final m in mergedMullionY) {
+        final oldMid = (m[0] + m[1]) / 2.0;
+        final newMid = (mapY(m[0]) + mapY(m[1])) / 2.0;
+        _moveMullionMetadata(
+          _mullionKey(true, oldMid),
+          _mullionKey(true, newMid),
+        );
+      }
+
+      if (selection.type == SelectionType.mullion &&
+          selection.mullionPosition != null) {
+        if (selection.isHorizontalMullion == false) {
+          selection = SelectionInfo(
+            type: SelectionType.mullion,
+            isHorizontalMullion: false,
+            mullionPosition: mapX(selection.mullionPosition!),
+            mullionStart: selection.mullionStart != null
+                ? mapY(selection.mullionStart!)
+                : null,
+            mullionEnd: selection.mullionEnd != null
+                ? mapY(selection.mullionEnd!)
+                : null,
+          );
+        } else {
+          selection = SelectionInfo(
+            type: SelectionType.mullion,
+            isHorizontalMullion: true,
+            mullionPosition: mapY(selection.mullionPosition!),
+            mullionStart: selection.mullionStart != null
+                ? mapX(selection.mullionStart!)
+                : null,
+            mullionEnd: selection.mullionEnd != null
+                ? mapX(selection.mullionEnd!)
+                : null,
+          );
+        }
+      }
+
+      for (final zone in group) {
+        final r = zone.boundary;
+        zone.boundary = Rect.fromLTRB(
+          mapX(r.left),
+          mapY(r.top),
+          mapX(r.right),
+          mapY(r.bottom),
+        );
+      }
     }
 
     Set<int> affectedFrameChain({
@@ -15484,8 +15780,16 @@ class WindowModel extends ChangeNotifier {
 
   bool get hasProfileAngleSupport {
     final sliding = systemMode == 'sliding';
-    return getConfiguredSectionForRole('profile_angle', useSlidingSeries: sliding) != null ||
-        getConfiguredSectionForRole('profile_angle', useSlidingSeries: !sliding) != null ||
+    return getConfiguredSectionForRole(
+              'profile_angle',
+              useSlidingSeries: sliding,
+            ) !=
+            null ||
+        getConfiguredSectionForRole(
+              'profile_angle',
+              useSlidingSeries: !sliding,
+            ) !=
+            null ||
         getSectionByType('profile_angle') != null ||
         getSlidingSectionByType('profile_angle') != null ||
         getSectionByType('tube_carre') != null ||
@@ -15685,7 +15989,8 @@ class WindowModel extends ChangeNotifier {
     final members = zones
         .where((zone) => frame.contains(zone.boundary.center))
         .toList();
-    if (members.isEmpty) return usesSlidingPrimaryProfiles || systemMode == 'sliding';
+    if (members.isEmpty)
+      return usesSlidingPrimaryProfiles || systemMode == 'sliding';
 
     final hasSlidingSash = members.any(
       (zone) => zone.content == ZoneContent.slidingSash,
@@ -15698,6 +16003,13 @@ class WindowModel extends ChangeNotifier {
 
     if (hasSlidingSash && !hasOpeningSash) return true;
     if (hasOpeningSash && !hasSlidingSash) return false;
+
+    final hasSlidingElsewhere = zones.any(
+      (z) => z.content == ZoneContent.slidingSash && !members.contains(z),
+    );
+    if (hasSlidingElsewhere) {
+      return false;
+    }
 
     // Fixed-glass and empty cells: follow the series of this window/frame.
     return usesSlidingPrimaryProfiles || systemMode == 'sliding';
@@ -15780,24 +16092,24 @@ class WindowModel extends ChangeNotifier {
             firstSection.seriesId == secondSection.seriesId;
         final firstHasRole =
             getConfiguredSectionForRole(
-              'cache_rainure',
-              useSlidingSeries: firstSliding,
-            ) !=
-            null ||
+                  'cache_rainure',
+                  useSlidingSeries: firstSliding,
+                ) !=
+                null ||
             (firstSliding
-                ? getSlidingSectionByType('cache_rainure')
-                : getSectionByType('cache_rainure')) !=
-            null;
+                    ? getSlidingSectionByType('cache_rainure')
+                    : getSectionByType('cache_rainure')) !=
+                null;
         final secondHasRole =
             getConfiguredSectionForRole(
-              'cache_rainure',
-              useSlidingSeries: secondSliding,
-            ) !=
-            null ||
+                  'cache_rainure',
+                  useSlidingSeries: secondSliding,
+                ) !=
+                null ||
             (secondSliding
-                ? getSlidingSectionByType('cache_rainure')
-                : getSectionByType('cache_rainure')) !=
-            null;
+                    ? getSlidingSectionByType('cache_rainure')
+                    : getSectionByType('cache_rainure')) !=
+                null;
         // A role on only one of two different series is insufficient: it
         // would leave one face without a compatible Cache-rainure profile.
         if (!(sameSeries
@@ -15880,11 +16192,13 @@ class WindowModel extends ChangeNotifier {
         if (overlapLeft < overlapRight - 5.0) {
           if ((z1.boundary.bottom - z2.boundary.top).abs() <= mullionT ||
               (z2.boundary.bottom - z1.boundary.top).abs() <= mullionT) {
-            final yCenter = ((z1.boundary.bottom - z2.boundary.top).abs() <= mullionT)
+            final yCenter =
+                ((z1.boundary.bottom - z2.boundary.top).abs() <= mullionT)
                 ? (z1.boundary.bottom + z2.boundary.top) / 2.0
                 : (z2.boundary.bottom + z1.boundary.top) / 2.0;
             if (isDoubleFrameMullionAt(true, yCenter)) {
-              final sliding = z1.content == ZoneContent.slidingSash ||
+              final sliding =
+                  z1.content == ZoneContent.slidingSash ||
                   z2.content == ZoneContent.slidingSash;
               segments.add(
                 CadreDoubleRainureSegment(
@@ -15905,11 +16219,13 @@ class WindowModel extends ChangeNotifier {
         if (overlapTop < overlapBottom - 5.0) {
           if ((z1.boundary.right - z2.boundary.left).abs() <= mullionT ||
               (z2.boundary.right - z1.boundary.left).abs() <= mullionT) {
-            final xCenter = ((z1.boundary.right - z2.boundary.left).abs() <= mullionT)
+            final xCenter =
+                ((z1.boundary.right - z2.boundary.left).abs() <= mullionT)
                 ? (z1.boundary.right + z2.boundary.left) / 2.0
                 : (z2.boundary.right + z1.boundary.left) / 2.0;
             if (isDoubleFrameMullionAt(false, xCenter)) {
-              final sliding = z1.content == ZoneContent.slidingSash ||
+              final sliding =
+                  z1.content == ZoneContent.slidingSash ||
                   z2.content == ZoneContent.slidingSash;
               segments.add(
                 CadreDoubleRainureSegment(
@@ -15930,7 +16246,8 @@ class WindowModel extends ChangeNotifier {
     final result = <CadreDoubleRainureSegment>[];
     final grouped = <String, List<CadreDoubleRainureSegment>>{};
     for (final seg in segments) {
-      final key = '${seg.isHorizontal ? "H" : "V"}_${(seg.position / 2.0).round() * 2}';
+      final key =
+          '${seg.isHorizontal ? "H" : "V"}_${(seg.position / 2.0).round() * 2}';
       grouped.putIfAbsent(key, () => []).add(seg);
     }
 
@@ -17017,8 +17334,18 @@ class WindowModel extends ChangeNotifier {
     double oldThickness = profileThickness;
     final useSliding = systemMode == 'sliding' || usesSlidingPrimaryProfiles;
     final activeFrame = useSliding
-        ? getSlidingBaseFrameSection()?.toMap()
-        : frameOverride;
+        ? (slidingFrameOverride ??
+              getConfiguredSectionForRole(
+                'frame',
+                useSlidingSeries: true,
+              )?.toMap() ??
+              getSlidingBaseFrameSection()?.toMap())
+        : (activeFrameOverride ??
+              getConfiguredSectionForRole(
+                'frame',
+                useSlidingSeries: false,
+              )?.toMap() ??
+              frameOverride);
     final series = useSliding ? activeSlidingSeries : activeSeries;
 
     if (activeFrame != null) {
@@ -17148,9 +17475,11 @@ class WindowModel extends ChangeNotifier {
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
       zone.slidingSashesCount = zone.slidingTrackCount;
     }
-    final faceSection = getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
+    final faceSection =
+        getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
         getSlidingSectionByType('face_to_face');
-    final hasFaceToFaceRule = faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
+    final hasFaceToFaceRule =
+        faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
     if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
       if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
           (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
@@ -17205,9 +17534,11 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     zone.slidingSashesCount = count.clamp(2, 7).toInt();
-    final faceSection = getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
+    final faceSection =
+        getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
         getSlidingSectionByType('face_to_face');
-    final hasFaceToFaceRule = faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
+    final hasFaceToFaceRule =
+        faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
     if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
       if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
           (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
@@ -17339,7 +17670,8 @@ class WindowModel extends ChangeNotifier {
   void setSelectedZoneSlidingFaceToFace(bool value) {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
-    if (value && (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
+    if (value &&
+        (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
       return;
     }
     if (zone.slidingFaceToFace == value) return;
@@ -17357,7 +17689,8 @@ class WindowModel extends ChangeNotifier {
   void setSelectedZoneSlidingCentralHandle(bool value) {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
-    if (value && (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
+    if (value &&
+        (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
       return;
     }
     if (zone.slidingCentralHandle == value) return;
@@ -20824,8 +21157,8 @@ class WindowModel extends ChangeNotifier {
               (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
             final yMid =
                 ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.bottom + zb.top) / 2
-                    : (zb.bottom + za.top) / 2;
+                ? (za.bottom + zb.top) / 2
+                : (zb.bottom + za.top) / 2;
             if ((yMid - pos).abs() <= alignThreshold) {
               matchingDividers.add(yMid);
             }
@@ -20835,8 +21168,8 @@ class WindowModel extends ChangeNotifier {
               (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
             final xMid =
                 ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.right + zb.left) / 2
-                    : (zb.right + za.left) / 2;
+                ? (za.right + zb.left) / 2
+                : (zb.right + za.left) / 2;
             if ((xMid - pos).abs() <= alignThreshold) {
               matchingDividers.add(xMid);
             }
@@ -21059,8 +21392,8 @@ class WindowModel extends ChangeNotifier {
               (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
             final yMid =
                 ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.bottom + zb.top) / 2
-                    : (zb.bottom + za.top) / 2;
+                ? (za.bottom + zb.top) / 2
+                : (zb.bottom + za.top) / 2;
             if ((yMid - position).abs() <= 100.0) collinearPositions.add(yMid);
           }
         } else {
@@ -21068,8 +21401,8 @@ class WindowModel extends ChangeNotifier {
               (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
             final xMid =
                 ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.right + zb.left) / 2
-                    : (zb.right + za.left) / 2;
+                ? (za.right + zb.left) / 2
+                : (zb.right + za.left) / 2;
             if ((xMid - position).abs() <= 100.0) collinearPositions.add(xMid);
           }
         }
@@ -21117,8 +21450,8 @@ class WindowModel extends ChangeNotifier {
               (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
             final yMid =
                 ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.bottom + zb.top) / 2
-                    : (zb.bottom + za.top) / 2;
+                ? (za.bottom + zb.top) / 2
+                : (zb.bottom + za.top) / 2;
             if ((yMid - position).abs() <= 100.0) collinearPositions.add(yMid);
           }
         } else {
@@ -21126,8 +21459,8 @@ class WindowModel extends ChangeNotifier {
               (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
             final xMid =
                 ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
-                    ? (za.right + zb.left) / 2
-                    : (zb.right + za.left) / 2;
+                ? (za.right + zb.left) / 2
+                : (zb.right + za.left) / 2;
             if ((xMid - position).abs() <= 100.0) collinearPositions.add(xMid);
           }
         }
@@ -21826,7 +22159,8 @@ class WindowModel extends ChangeNotifier {
 
     bool zonesAreAdjacent(WindowZone first, WindowZone second) {
       final verticalTouch =
-          (first.boundary.right - second.boundary.left).abs() <= intraFrameGap ||
+          (first.boundary.right - second.boundary.left).abs() <=
+              intraFrameGap ||
           (second.boundary.right - first.boundary.left).abs() <= intraFrameGap;
       if (verticalTouch) {
         final overlapTop = math.max(first.boundary.top, second.boundary.top);
@@ -21838,7 +22172,8 @@ class WindowModel extends ChangeNotifier {
       }
 
       final horizontalTouch =
-          (first.boundary.bottom - second.boundary.top).abs() <= intraFrameGap ||
+          (first.boundary.bottom - second.boundary.top).abs() <=
+              intraFrameGap ||
           (second.boundary.bottom - first.boundary.top).abs() <= intraFrameGap;
       if (horizontalTouch) {
         final overlapLeft = math.max(first.boundary.left, second.boundary.left);

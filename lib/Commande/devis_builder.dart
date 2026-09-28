@@ -1189,8 +1189,17 @@ class DevisBuilder {
             lower.startsWith('coulisse:') ||
             lower.startsWith('كوليس:') ||
             lower.startsWith('montant:') ||
-            lower.startsWith('montant central:') ||
-            lower.startsWith('central montant:') ||
+            lower.startsWith('montant central') ||
+            lower.startsWith('montant latéral') ||
+            lower.startsWith('montant lateral') ||
+            lower.startsWith('central montant') ||
+            lower.startsWith('lateral montant') ||
+            lower.startsWith('reinforced central montant') ||
+            lower.startsWith('reinforced lateral montant') ||
+            lower.startsWith('قائم وسطي') ||
+            lower.startsWith('القائم الوسطي') ||
+            lower.startsWith('قائم جانبي') ||
+            lower.startsWith('القائم الجانبي') ||
             lower.startsWith('مونتو مركزي:') ||
             lower.startsWith('المونتو:') ||
             lower.startsWith('moustiquaire:') ||
@@ -1684,47 +1693,67 @@ class DevisBuilder {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      // 9. Montant lateral / central renforcé (only show when reinforced count >= 1)
+      // 9. Montant lateral / central renforcé / simple
       if (hasSliding && !isPVC) {
-        if (centralReinforcedCount > 0) {
-          if (centralNormalCount > 0) {
+        final totalCentral = centralReinforcedCount + centralNormalCount;
+        if (totalCentral > 0) {
+          if (centralReinforcedCount > 0 && centralNormalCount > 0) {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
-                'Montant central: $centralReinforcedCount renforcé(s), $centralNormalCount non renforcé(s)',
+                'Montant central: $centralReinforcedCount renforcé(s), $centralNormalCount simple(s)',
               AppLanguage.english =>
                 'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
               AppLanguage.arabic =>
-                'القائم الوسطي: $centralReinforcedCount مدعم، $centralNormalCount عادي',
+                'القائم الوسطي: $centralReinforcedCount مدعم، $centralNormalCount غير مدعم',
+            });
+          } else if (centralReinforcedCount > 0) {
+            details.add(switch (_currentLang) {
+              AppLanguage.french =>
+                'Montant central: $centralReinforcedCount renforcé(s)',
+              AppLanguage.english =>
+                'Central montant: $centralReinforcedCount reinforced',
+              AppLanguage.arabic =>
+                'القائم الوسطي: $centralReinforcedCount مدعم',
             });
           } else {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
-                'Montant central renforcé: $centralReinforcedCount',
+                'Montant central: $centralNormalCount simple(s)',
               AppLanguage.english =>
-                'Reinforced central montant: $centralReinforcedCount',
+                'Central montant: $centralNormalCount standard',
               AppLanguage.arabic =>
-                'قائم وسطي مدعم: $centralReinforcedCount',
+                'القائم الوسطي: $centralNormalCount غير مدعم',
             });
           }
         }
-        if (lateralReinforcedCount > 0) {
-          if (lateralNormalCount > 0) {
+        final totalLateral = lateralReinforcedCount + lateralNormalCount;
+        if (totalLateral > 0) {
+          if (lateralReinforcedCount > 0 && lateralNormalCount > 0) {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
-                'Montant latéral: $lateralReinforcedCount renforcé(s), $lateralNormalCount non renforcé(s)',
+                'Montant latéral: $lateralReinforcedCount renforcé(s), $lateralNormalCount simple(s)',
               AppLanguage.english =>
                 'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
               AppLanguage.arabic =>
-                'القائم الجانبي: $lateralReinforcedCount مدعم، $lateralNormalCount عادي',
+                'القائم الجانبي: $lateralReinforcedCount مدعم، $lateralNormalCount غير مدعم',
+            });
+          } else if (lateralReinforcedCount > 0) {
+            details.add(switch (_currentLang) {
+              AppLanguage.french =>
+                'Montant latéral: $lateralReinforcedCount renforcé(s)',
+              AppLanguage.english =>
+                'Lateral montant: $lateralReinforcedCount reinforced',
+              AppLanguage.arabic =>
+                'القائم الجانبي: $lateralReinforcedCount مدعم',
             });
           } else {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
-                'Montant latéral renforcé: $lateralReinforcedCount',
+                'Montant latéral: $lateralNormalCount simple(s)',
               AppLanguage.english =>
-                'Reinforced lateral montant: $lateralReinforcedCount',
+                'Lateral montant: $lateralNormalCount standard',
               AppLanguage.arabic =>
-                'قائم جانبي مدعم: $lateralReinforcedCount',
+                'القائم الجانبي: $lateralNormalCount غير مدعم',
             });
           }
         }
@@ -2160,8 +2189,12 @@ class DevisBuilder {
         lower.startsWith('الإغلاق') ||
         lower.startsWith('نوعية الغلق:') ||
         lower.startsWith('montant') ||
-        lower.startsWith('central montant:') ||
-        lower.startsWith('lateral montant:') ||
+        lower.startsWith('central montant') ||
+        lower.startsWith('lateral montant') ||
+        lower.startsWith('قائم وسطي') ||
+        lower.startsWith('القائم الوسطي') ||
+        lower.startsWith('قائم جانبي') ||
+        lower.startsWith('القائم الجانبي') ||
         lower.startsWith('مونتو') ||
         lower.startsWith('المونتو') ||
         lower.startsWith('مقطع وسطي') ||
@@ -2639,42 +2672,66 @@ class DevisBuilder {
     }
 
     final lines = <String>[];
-    if (centralReinforced > 0) {
+    if (centralCount > 0) {
       final regular = centralCount - centralReinforced;
-      if (regular > 0) {
+      if (centralReinforced > 0 && regular > 0) {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
-            'Montant central: $centralReinforced renforcé(s), $regular non renforcé(s)',
+            'Montant central: $centralReinforced renforcé(s), $regular simple(s)',
           AppLanguage.english =>
             'Central montant: $centralReinforced reinforced, $regular standard',
           AppLanguage.arabic =>
-            'القائم الوسطي: $centralReinforced مدعم، $regular عادي',
+            'القائم الوسطي: $centralReinforced مدعم، $regular غير مدعم',
+        });
+      } else if (centralReinforced > 0) {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            'Montant central: $centralReinforced renforcé(s)',
+          AppLanguage.english =>
+            'Central montant: $centralReinforced reinforced',
+          AppLanguage.arabic =>
+            'القائم الوسطي: $centralReinforced مدعم',
         });
       } else {
         lines.add(switch (_currentLang) {
-          AppLanguage.french => 'Montant central renforcé: $centralReinforced',
-          AppLanguage.english => 'Reinforced central montant: $centralReinforced',
-          AppLanguage.arabic => 'قائم وسطي مدعم: $centralReinforced',
+          AppLanguage.french =>
+            'Montant central: $regular simple(s)',
+          AppLanguage.english =>
+            'Central montant: $regular standard',
+          AppLanguage.arabic =>
+            'القائم الوسطي: $regular غير مدعم',
         });
       }
     }
 
-    if (lateralReinforced > 0) {
+    if (lateralCount > 0) {
       final regular = lateralCount - lateralReinforced;
-      if (regular > 0) {
+      if (lateralReinforced > 0 && regular > 0) {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
-            'Montant latéral: $lateralReinforced renforcé(s), $regular non renforcé(s)',
+            'Montant latéral: $lateralReinforced renforcé(s), $regular simple(s)',
           AppLanguage.english =>
             'Lateral montant: $lateralReinforced reinforced, $regular standard',
           AppLanguage.arabic =>
-            'القائم الجانبي: $lateralReinforced مدعم، $regular عادي',
+            'القائم الجانبي: $lateralReinforced مدعم، $regular غير مدعم',
+        });
+      } else if (lateralReinforced > 0) {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            'Montant latéral: $lateralReinforced renforcé(s)',
+          AppLanguage.english =>
+            'Lateral montant: $lateralReinforced reinforced',
+          AppLanguage.arabic =>
+            'القائم الجانبي: $lateralReinforced مدعم',
         });
       } else {
         lines.add(switch (_currentLang) {
-          AppLanguage.french => 'Montant latéral renforcé: $lateralReinforced',
-          AppLanguage.english => 'Reinforced lateral montant: $lateralReinforced',
-          AppLanguage.arabic => 'قائم جانبي مدعم: $lateralReinforced',
+          AppLanguage.french =>
+            'Montant latéral: $regular simple(s)',
+          AppLanguage.english =>
+            'Lateral montant: $regular standard',
+          AppLanguage.arabic =>
+            'القائم الجانبي: $regular غير مدعم',
         });
       }
     }

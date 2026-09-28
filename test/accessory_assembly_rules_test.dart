@@ -945,6 +945,53 @@ void main() {
       4,
     );
   });
+  test(
+    'opening frame and leaves count every corner despite legacy zero bottom',
+    () {
+      for (final sashCount in [0, 1, 2]) {
+        final demands = [
+          const AssemblyDemand(
+            target: 'frame',
+            sliding: false,
+            topCorners: 2,
+            bottomCorners: 2,
+            sectionId: 10,
+          ),
+          if (sashCount > 0)
+            AssemblyDemand(
+              target: 'sash',
+              sliding: false,
+              topCorners: sashCount * 2,
+              bottomCorners: sashCount * 2,
+              sectionId: 20,
+            ),
+        ];
+        expect(
+          assemblyQuantity({
+            'role_key': 'clam',
+            'assembly_section_quantities': '10:1:0,20:1:0',
+          }, demands),
+          4 * (sashCount + 1),
+        );
+      }
+      expect(
+        assemblyQuantity(
+          {'role_key': 'clam', 'assembly_section_quantities': '10:1:0'},
+          const [
+            AssemblyDemand(
+              target: 'frame',
+              sliding: false,
+              topCorners: 2,
+              bottomCorners: 0,
+              sectionId: 10,
+            ),
+          ],
+        ),
+        2,
+      );
+    },
+  );
+
   test('one clamp per corner gives 12 for one frame and two sashes', () {
     const demands = [
       AssemblyDemand(

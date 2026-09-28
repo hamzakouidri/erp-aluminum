@@ -416,6 +416,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       model.useVerrouCentral,
     );
     model.hasSideCovers = readBool('hasSideCovers', model.hasSideCovers);
+    if (model.hasSideCovers) {
+      model.multiFrameSideCoverManuallyEnabled = true;
+    }
     model.sideCoverUseSecondWidth = readBool(
       'sideCoverUseSecondWidth',
       model.sideCoverUseSecondWidth,

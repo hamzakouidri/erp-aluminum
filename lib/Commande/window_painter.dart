@@ -1673,15 +1673,69 @@ class WindowPainter extends CustomPainter {
         _localBottomFrame = previousBottomFrame;
       }
     } else {
-      for (final r in frameRects) {
+      // Compute per-frame insets caused by active profil d'angle junctions.
+      // Each active junction eats tubeW/2 from the right side of the left
+      // frame and tubeW/2 from the left side of the right frame, so the tube
+      // sits perfectly in the gap without adding to the total window width.
+      final junctions = model.getAdjacentFrameJunctions();
+      final activeJunctions = model.activeProfileAngleJunctions;
+
+      // angleSection lookup (same as _drawProfileAngle)
+      final angleSection = model.getConfiguredSectionForRole(
+            'profile_angle',
+            useSlidingSeries: model.systemMode == 'sliding',
+          ) ??
+          model.getConfiguredSectionForRole(
+            'profile_angle',
+            useSlidingSeries: model.systemMode != 'sliding',
+          ) ??
+          model.getSectionByType('profile_angle') ??
+          model.getSlidingSectionByType('profile_angle') ??
+          model.getSectionByType('tube_carre') ??
+          model.getSlidingSectionByType('tube_carre');
+      final double tubeW = (angleSection != null && angleSection.visibleWidth > 0)
+          ? angleSection.visibleWidth.clamp(30.0, 100.0)
+          : 50.0;
+
+      // getAdjacentFrameJunctions() sorts frames by (left, top) before
+      // assigning firstFrameIndex/secondFrameIndex.  We must use the same
+      // order so that the inset map keys align with those indices.
+      final sortedFrames = List<Rect>.from(frameRects)
+        ..sort((a, b) {
+          final cmp = a.left.compareTo(b.left);
+          return cmp != 0 ? cmp : a.top.compareTo(b.top);
+        });
+
+      // Build inset map: sortedFrameIndex → {leftInset, rightInset}
+      final Map<int, double> leftInset = {};
+      final Map<int, double> rightInset = {};
+      for (final j in junctions) {
+        if (activeJunctions.contains(j.index)) {
+          rightInset[j.firstFrameIndex] =
+              (rightInset[j.firstFrameIndex] ?? 0.0) + tubeW / 2.0;
+          leftInset[j.secondFrameIndex] =
+              (leftInset[j.secondFrameIndex] ?? 0.0) + tubeW / 2.0;
+        }
+      }
+
+      for (int si = 0; si < sortedFrames.length; si++) {
+        final r = sortedFrames[si];
+        final lIn = leftInset[si] ?? 0.0;
+        final rIn = rightInset[si] ?? 0.0;
+
+        // Adjusted frame rect: pulled inward on touching sides.
+        final rAdj = (lIn > 0 || rIn > 0)
+            ? Rect.fromLTRB(r.left + lIn, r.top, r.right - rIn, r.bottom)
+            : r;
+
         // A frame rectangle already starts below the shutter box.  Drawing it
         // with the global [topOffset] after translating only partly on Y made
         // its height lose the shutter-box height a second time.  In a
         // multi-frame shutter drawing this left a transparent/short frame
         // behind the new frame.  Use the frame's own local coordinate system
-        // instead: (0, 0) → (r.width, r.height).
+        // instead: (0, 0) → (rAdj.width, rAdj.height).
         canvas.save();
-        canvas.translate(r.left, r.top);
+        canvas.translate(rAdj.left, rAdj.top);
         final localThickness = model.frameVisibleWidthForRect(r, fallback: t);
         final previousBottomFrame = _localBottomFrame;
         _localBottomFrame = model.hasBottomFrameForRect(r);
@@ -1694,8 +1748,8 @@ class WindowPainter extends CustomPainter {
         try {
           _drawOuterFrame(
             canvas,
-            r.width,
-            r.height,
+            rAdj.width,
+            rAdj.height,
             localThickness,
             0.0,
             sourceFrame: r,
@@ -2058,12 +2112,14 @@ class WindowPainter extends CustomPainter {
     final activeJunctions = model.activeProfileAngleJunctions;
     for (final j in junctions) {
       if (activeJunctions.contains(j.index)) {
-        final rect = Rect.fromLTRB(
-          j.x - tubeW / 2.0,
-          j.top,
-          j.x + tubeW / 2.0,
-          j.bottom,
-        );
+        // The two adjacent frames were each pulled back by tubeW/2 on their
+        // touching sides in _drawOuterFrames.  The tube therefore sits in the
+        // gap from (firstFrame.right - tubeW/2) to (secondFrame.left + tubeW/2).
+        // When the frames are perfectly touching (first.right == second.left)
+        // this equals j.x - tubeW/2 … j.x + tubeW/2 — centred at the seam.
+        final gapLeft = j.firstFrame.right - tubeW / 2.0;
+        final gapRight = j.secondFrame.left + tubeW / 2.0;
+        final rect = Rect.fromLTRB(gapLeft, j.top, gapRight, j.bottom);
         drawTubeAt(rect, isJunction: true);
       }
     }

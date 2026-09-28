@@ -132,10 +132,7 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
         target: 'frame',
         sliding: sliding,
         topCorners: 2,
-        bottomCorners:
-            !window.hasBottomFrameForRect(rect)
-            ? 0
-            : 2,
+        bottomCorners: !window.hasBottomFrameForRect(rect) ? 0 : 2,
         sectionId: sectionId(sliding, true),
       ),
     );
@@ -188,7 +185,9 @@ int assemblyQuantity(
   Map<String, dynamic> rule,
   Iterable<AssemblyDemand> demands,
 ) {
-  final role = '${rule['role_key'] ?? ''}';
+  final role = '${rule['role_key'] ?? ''}'.trim().toLowerCase();
+  final perCornerClamp =
+      assemblyAccessoryRoles.contains(role) && role != 'assembly_screw';
   final configuredTarget = '${rule['assembly_target'] ?? ''}';
   final target = const {'frame', 'sash', 'both'}.contains(configuredTarget)
       ? configuredTarget
@@ -210,7 +209,14 @@ int assemblyQuantity(
     final sectionQuantities = demand.sectionId == null
         ? null
         : sectionSideQuantities[demand.sectionId];
-    if (sectionQuantities != null) {
+    // The catalogue exposes one count per corner for rectangular clamps.
+    // Old rows can still contain a hidden second-side value of zero. It is
+    // meaningful for profile ends/screws, not for a frame or sash corner.
+    if (perCornerClamp &&
+        (demand.target == 'frame' || demand.target == 'sash')) {
+      final perCorner = sectionQuantities?.$1 ?? top;
+      quantity += (demand.topCorners + demand.bottomCorners) * perCorner;
+    } else if (sectionQuantities != null) {
       quantity +=
           demand.topCorners * sectionQuantities.$1 +
           demand.bottomCorners * sectionQuantities.$2;

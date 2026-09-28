@@ -329,6 +329,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   final _glassWidthController = TextEditingController();
   final _chicanePiecesController = TextEditingController(text: '1');
   final _railClearanceController = TextEditingController(text: '1');
+  final _maxSashesController = TextEditingController();
   final _formulaNotesController = TextEditingController();
 
   String _t(String ar, String fr) {
@@ -366,6 +367,16 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         '${_selectedSeries?['type'] ?? ''} '
                 '${_selectedSeries?['name'] ?? ''}'
             .toLowerCase();
+    final hasSlidingRole = [
+      'sash_lateral',
+      'sash_central',
+      'rail',
+      'seuil',
+      'face_to_face',
+      'chicanne',
+    ].any((k) => (_sectionIdsByRole[k]?.isNotEmpty ?? false));
+    if (hasSlidingRole) return true;
+
     if (value.contains('ouvrant') ||
         value.contains('frappe') ||
         value.contains('battant') ||
@@ -374,6 +385,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         RegExp(r'\bex\s*-?\s*\d+').hasMatch(value)) {
       return false;
     }
+
     return value.contains('sliding') ||
         value.contains('couliss') ||
         value.contains('منزلق') ||
@@ -442,6 +454,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     _glassWidthController.dispose();
     _chicanePiecesController.dispose();
     _railClearanceController.dispose();
+    _maxSashesController.dispose();
     _formulaNotesController.dispose();
     super.dispose();
   }
@@ -551,6 +564,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'sliding_rail_clearance',
       fallback: '1',
     );
+    final maxSashesVal = config?['max_sliding_sashes'];
+    final parsedMaxSashes = maxSashesVal is num
+        ? maxSashesVal.toInt()
+        : int.tryParse('$maxSashesVal') ?? 0;
+    _maxSashesController.text = parsedMaxSashes > 0 ? '$parsedMaxSashes' : '';
     _formulaNotesController.text =
         config?['custom_formula_notes']?.toString() ?? '';
   }
@@ -1006,6 +1024,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         slidingChicanePiecesPerJunction: _positiveInt(_chicanePiecesController),
         slidingRailClearance: _decimal(_railClearanceController, fallback: 1),
         customFormulaNotes: _formulaNotesController.text.trim(),
+        maxSlidingSashes: int.tryParse(_maxSashesController.text.trim()) ?? 0,
         notifySync: false,
       );
       // Saving the three local rule groups is one user action. Return control
@@ -2118,6 +2137,14 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           _formulaField(
             _railClearanceController,
             _t('خلوص تركيب السكة (مم)', 'Jeu de pose du rail (mm)'),
+          ),
+          _formulaField(
+            _maxSashesController,
+            _t(
+              'أقصى عدد ضلفات مسموح به (اتركه فارغاً لفتح الكل: 2، 3، 4، 6)',
+              'Nombre max d’ouvrants autorisés (vide = tous : 2, 3, 4, 6)',
+            ),
+            integer: true,
           ),
           TextField(
             controller: _formulaNotesController,

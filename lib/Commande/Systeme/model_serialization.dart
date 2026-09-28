@@ -590,6 +590,7 @@ extension WindowModelSerialization on WindowModel {
       'useDemiOB': effectiveUseDemiOB,
       'useVerrouCentral': useVerrouCentral,
       'hasSideCovers': hasSideCovers,
+      'multiFrameSideCoverManuallyEnabled': multiFrameSideCoverManuallyEnabled,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
       'hasInternalSlidingSideCover': hasInternalSlidingSideCover,
       'useCustomSideCoverLayout': useCustomSideCoverLayout,
@@ -766,6 +767,14 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       ? rawHasSideCovers != 0
       : rawHasSideCovers.toString().trim().toLowerCase() != 'false' &&
             rawHasSideCovers.toString().trim() != '0';
+  if (map.containsKey('multiFrameSideCoverManuallyEnabled')) {
+    model.multiFrameSideCoverManuallyEnabled =
+        map['multiFrameSideCoverManuallyEnabled'] == true ||
+        map['multiFrameSideCoverManuallyEnabled']?.toString().toLowerCase() ==
+            'true';
+  } else if (model.hasSideCovers) {
+    model.multiFrameSideCoverManuallyEnabled = true;
+  }
   model.sideCoverUseSecondWidth = map['sideCoverUseSecondWidth'] ?? false;
   model.hasInternalSlidingSideCover =
       map['hasInternalSlidingSideCover'] == true ||
