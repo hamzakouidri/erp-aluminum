@@ -1810,30 +1810,32 @@ class WindowPainter extends CustomPainter {
               ? model.getSlidingSectionByType('cache_rainure')
               : model.getSectionByType('cache_rainure'));
       if (insideSection == null && outsideSection == null) continue;
-      // Cache-rainure is deliberately shown as two slightly separated black
-      // seam lines, one per face, so it is visible exactly between the two
-      // compatible frames without obscuring their profile colours.
-      final seam = Paint()
+      // Cache-rainure appears with a visible width of 11 mm between the two frames.
+      const double visibleWidth = 11.0;
+      final stripRect = contact.isVertical
+          ? Rect.fromLTRB(
+              contact.coordinate - visibleWidth / 2.0,
+              contact.start,
+              contact.coordinate + visibleWidth / 2.0,
+              contact.end,
+            )
+          : Rect.fromLTRB(
+              contact.start,
+              contact.coordinate - visibleWidth / 2.0,
+              contact.end,
+              contact.coordinate + visibleWidth / 2.0,
+            );
+
+      final fillPaint = Paint()
+        ..color = const Color(0xFF1A1A1A)
+        ..style = PaintingStyle.fill;
+      canvas.drawRect(stripRect, fillPaint);
+
+      final borderPaint = Paint()
         ..color = Colors.black
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0;
-      if (contact.isVertical) {
-        for (final x in [contact.coordinate - 1.5, contact.coordinate + 1.5]) {
-          canvas.drawLine(
-            Offset(x, contact.start),
-            Offset(x, contact.end),
-            seam,
-          );
-        }
-      } else {
-        for (final y in [contact.coordinate - 1.5, contact.coordinate + 1.5]) {
-          canvas.drawLine(
-            Offset(contact.start, y),
-            Offset(contact.end, y),
-            seam,
-          );
-        }
-      }
+        ..strokeWidth = 1.0;
+      canvas.drawRect(stripRect, borderPaint);
     }
 
     // Bavette is an optional visible cover. In bottom mode it follows the
@@ -1955,7 +1957,7 @@ class WindowPainter extends CustomPainter {
   }
 
   void _drawProfileAngle(Canvas canvas, double w, double h, double top) {
-    if (model.profileAngleMode <= 0) return;
+    if (!model.usesProfileAngle) return;
     final angleSection = model.getConfiguredSectionForRole(
           'profile_angle',
           useSlidingSeries: model.systemMode == 'sliding',
@@ -1965,21 +1967,14 @@ class WindowPainter extends CustomPainter {
           useSlidingSeries: model.systemMode != 'sliding',
         ) ??
         model.getSectionByType('profile_angle') ??
-        model.getSlidingSectionByType('profile_angle');
+        model.getSlidingSectionByType('profile_angle') ??
+        model.getSectionByType('tube_carre') ??
+        model.getSlidingSectionByType('tube_carre');
     final double tubeW = (angleSection != null && angleSection.visibleWidth > 0)
         ? angleSection.visibleWidth.clamp(30.0, 100.0)
         : 50.0;
 
-    final sides = <String>[];
-    if (model.profileAngleMode == 1 || model.profileAngleMode == 3) sides.add('right');
-    if (model.profileAngleMode == 2 || model.profileAngleMode == 3) sides.add('left');
-
-    for (final side in sides) {
-      final bool isRight = side == 'right';
-      final double left = isRight ? w : -tubeW;
-      final double right = isRight ? (w + tubeW) : 0.0;
-      final rect = Rect.fromLTRB(left, top, right, h);
-
+    void drawTubeAt(Rect rect, {bool isRight = true, bool isJunction = false}) {
       // 1. Base aluminium tube body
       canvas.drawRect(rect, _buildPaint(rect));
 
@@ -2004,56 +1999,88 @@ class WindowPainter extends CustomPainter {
         ..strokeWidth = 1.0;
       canvas.drawRect(innerRect, innerPaint);
 
-      // 4. 2D Perpendicular corner representation (Tube Carré 90°)
-      // Draw return facet to illustrate orthogonal return of 90°
-      final facetW = tubeW * 0.35;
-      final returnRect = isRight
-          ? Rect.fromLTRB(rect.right - facetW, rect.top, rect.right, rect.bottom)
-          : Rect.fromLTRB(rect.left, rect.top, rect.left + facetW, rect.bottom);
+      // 4. Perpendicular corner representation (Tube Carré 90°)
+      // Between frames: drawn as a single solid column touching both frames.
+      // On outer borders: draw return facet to show orthogonal return.
+      if (!isJunction) {
+        final facetW = tubeW * 0.35;
+        final returnRect = isRight
+            ? Rect.fromLTRB(rect.right - facetW, rect.top, rect.right, rect.bottom)
+            : Rect.fromLTRB(rect.left, rect.top, rect.left + facetW, rect.bottom);
 
-      final facetShading = Paint()
-        ..color = Colors.black.withOpacity(0.12)
-        ..style = PaintingStyle.fill;
-      canvas.drawRect(returnRect, facetShading);
+        final facetShading = Paint()
+          ..color = Colors.black.withOpacity(0.12)
+          ..style = PaintingStyle.fill;
+        canvas.drawRect(returnRect, facetShading);
 
-      final facetBorder = Paint()
-        ..color = _fb.withOpacity(0.5)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0;
-      canvas.drawLine(
-        Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.top),
-        Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.bottom),
-        facetBorder,
-      );
+        final facetBorder = Paint()
+          ..color = _fb.withOpacity(0.5)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
+        canvas.drawLine(
+          Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.top),
+          Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.bottom),
+          facetBorder,
+        );
 
-      // Miter corner lines at top and bottom to indicate 90° return
-      if (isRight) {
-        canvas.drawLine(
-          Offset(rect.right - facetW, rect.top),
-          Offset(rect.right, rect.top + facetW),
-          facetBorder,
-        );
-        canvas.drawLine(
-          Offset(rect.right - facetW, rect.bottom),
-          Offset(rect.right, rect.bottom - facetW),
-          facetBorder,
-        );
-      } else {
-        canvas.drawLine(
-          Offset(rect.left + facetW, rect.top),
-          Offset(rect.left, rect.top + facetW),
-          facetBorder,
-        );
-        canvas.drawLine(
-          Offset(rect.left + facetW, rect.bottom),
-          Offset(rect.left, rect.bottom - facetW),
-          facetBorder,
-        );
+        if (isRight) {
+          canvas.drawLine(
+            Offset(rect.right - facetW, rect.top),
+            Offset(rect.right, rect.top + facetW),
+            facetBorder,
+          );
+          canvas.drawLine(
+            Offset(rect.right - facetW, rect.bottom),
+            Offset(rect.right, rect.bottom - facetW),
+            facetBorder,
+          );
+        } else {
+          canvas.drawLine(
+            Offset(rect.left + facetW, rect.top),
+            Offset(rect.left, rect.top + facetW),
+            facetBorder,
+          );
+          canvas.drawLine(
+            Offset(rect.left + facetW, rect.bottom),
+            Offset(rect.left, rect.bottom - facetW),
+            facetBorder,
+          );
+        }
       }
 
       // 5. Angle 90° indication badge at vertical center
       final center = Offset(rect.center.dx, rect.center.dy);
       _draw90DegreeCornerBadge(canvas, center);
+    }
+
+    // A. Draw multi-frame junctions
+    final junctions = model.getAdjacentFrameJunctions();
+    final activeJunctions = model.activeProfileAngleJunctions;
+    for (final j in junctions) {
+      if (activeJunctions.contains(j.index)) {
+        final rect = Rect.fromLTRB(
+          j.x - tubeW / 2.0,
+          j.top,
+          j.x + tubeW / 2.0,
+          j.bottom,
+        );
+        drawTubeAt(rect, isJunction: true);
+      }
+    }
+
+    // B. Draw single frame / outer edges
+    if (model.profileAngleMode > 0) {
+      final sides = <String>[];
+      if (model.profileAngleMode == 1 || model.profileAngleMode == 3) sides.add('right');
+      if (model.profileAngleMode == 2 || model.profileAngleMode == 3) sides.add('left');
+
+      for (final side in sides) {
+        final bool isRight = side == 'right';
+        final double left = isRight ? w : -tubeW;
+        final double right = isRight ? (w + tubeW) : 0.0;
+        final rect = Rect.fromLTRB(left, top, right, h);
+        drawTubeAt(rect, isRight: isRight, isJunction: false);
+      }
     }
   }
 
@@ -3685,36 +3712,33 @@ class WindowPainter extends CustomPainter {
 
       final hasCacheRainure =
           model.getConfiguredSectionForRole('cache_rainure') != null ||
-          model.getSectionByType('cache_rainure') != null;
+          model.getSectionByType('cache_rainure') != null ||
+          model.getSlidingSectionByType('cache_rainure') != null;
       if (hasCacheRainure) {
-        final seam = Paint()
-          ..color = Colors.black87
+        const double visibleWidth = 11.0;
+        final stripRect = mullion.isHorizontal
+            ? Rect.fromLTRB(
+                mullion.rect.left,
+                center - visibleWidth / 2.0,
+                mullion.rect.right,
+                center + visibleWidth / 2.0,
+              )
+            : Rect.fromLTRB(
+                center - visibleWidth / 2.0,
+                mullion.rect.top,
+                center + visibleWidth / 2.0,
+                mullion.rect.bottom,
+              );
+        final fillPaint = Paint()
+          ..color = const Color(0xFF1A1A1A)
+          ..style = PaintingStyle.fill;
+        canvas.drawRect(stripRect, fillPaint);
+
+        final borderPaint = Paint()
+          ..color = Colors.black
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0;
-        const offset = 1.2;
-        if (mullion.isHorizontal) {
-          canvas.drawLine(
-            Offset(mullion.rect.left, center - offset),
-            Offset(mullion.rect.right, center - offset),
-            seam,
-          );
-          canvas.drawLine(
-            Offset(mullion.rect.left, center + offset),
-            Offset(mullion.rect.right, center + offset),
-            seam,
-          );
-        } else {
-          canvas.drawLine(
-            Offset(center - offset, mullion.rect.top),
-            Offset(center - offset, mullion.rect.bottom),
-            seam,
-          );
-          canvas.drawLine(
-            Offset(center + offset, mullion.rect.top),
-            Offset(center + offset, mullion.rect.bottom),
-            seam,
-          );
-        }
+          ..strokeWidth = 1.0;
+        canvas.drawRect(stripRect, borderPaint);
       } else {
         final separatorPaint = Paint()
           ..color = border.color.withValues(alpha: 0.75)

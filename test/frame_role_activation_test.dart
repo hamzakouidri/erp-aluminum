@@ -92,6 +92,7 @@ class RoleWindow extends WindowModel {
       'cache_dormant',
       'cache_rail',
       'cache_rainure',
+      'profile_angle',
     ].contains(roleKey))
       return null;
     if (roleKey == 'cache_rail' && useSlidingSeries != true) return null;
@@ -243,6 +244,13 @@ void main() {
     final cacheRainure =
         bom.where((i) => i.roleKey == 'cache_rainure').toList();
     expect(cacheRainure, isNotEmpty);
+    expect(
+      cacheRainure.every((i) =>
+          i.cuttingList != null &&
+          i.cuttingList!.contains('قطع القص:') &&
+          i.cuttingList!.contains('مم')),
+      isTrue,
+    );
     model.dispose();
   });
 
@@ -338,4 +346,158 @@ void main() {
     );
     model.dispose();
   });
+
+  test('multi-frame junctions detection for 3 and 4 adjacent frames', () {
+    final model = RoleWindow();
+    // 3 adjacent frames side by side
+    model.zones = [
+      WindowZone(
+        id: 'f1',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(50, 50, 550, 1150),
+      ),
+      WindowZone(
+        id: 'f2',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(650, 50, 1150, 1150),
+      ),
+      WindowZone(
+        id: 'f3',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(1250, 50, 1750, 1150),
+      ),
+    ];
+    final junctions3 = model.getAdjacentFrameJunctions();
+    expect(junctions3, hasLength(2));
+    expect(junctions3[0].label, 'بين الإطار 1 و 2');
+    expect(junctions3[1].label, 'بين الإطار 2 و 3');
+    expect(junctions3[0].height, closeTo(1200, 1.0));
+    expect(junctions3[1].height, closeTo(1200, 1.0));
+
+    // 4 adjacent frames side by side
+    model.zones = [
+      WindowZone(
+        id: 'f1',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(50, 50, 450, 1150),
+      ),
+      WindowZone(
+        id: 'f2',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(550, 50, 950, 1150),
+      ),
+      WindowZone(
+        id: 'f3',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(1050, 50, 1450, 1150),
+      ),
+      WindowZone(
+        id: 'f4',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(1550, 50, 1950, 1150),
+      ),
+    ];
+    final junctions4 = model.getAdjacentFrameJunctions();
+    expect(junctions4, hasLength(3));
+    expect(junctions4[0].label, 'بين الإطار 1 و 2');
+    expect(junctions4[1].label, 'بين الإطار 2 و 3');
+    expect(junctions4[2].label, 'بين الإطار 3 و 4');
+    model.dispose();
+  });
+
+  test('multi-frame profil d angle selection and BOM calculation for specific or all junctions', () {
+    final model = RoleWindow();
+    // 4 frames
+    model.zones = [
+      WindowZone(
+        id: 'f1',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(50, 50, 450, 1150),
+      ),
+      WindowZone(
+        id: 'f2',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(550, 50, 950, 1150),
+      ),
+      WindowZone(
+        id: 'f3',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(1050, 50, 1450, 1150),
+      ),
+      WindowZone(
+        id: 'f4',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(1550, 50, 1950, 1150),
+      ),
+    ];
+
+    expect(model.usesProfileAngle, isFalse);
+
+    // 1. Select only between Frame 1 & 2 (junction 0)
+    model.toggleProfileAngleJunction(0, true);
+    expect(model.usesProfileAngle, isTrue);
+    expect(model.profileAngleModeName, 'بين الإطار 1 و 2 (90°)');
+
+    var bom = ComponentCalculator.generateBom(model, {});
+    var angleItem = bom.firstWhere((i) => i.roleKey == 'profile_angle');
+    expect(angleItem.pieces, hasLength(1));
+    expect(angleItem.pieces!.first, closeTo(1.2, 0.001));
+    expect(angleItem.cuttingList, 'بين الإطار 1 و 2');
+
+    // 2. Select between Frame 3 & 4 as well (junctions 0 and 2)
+    model.toggleProfileAngleJunction(2, true);
+    expect(model.profileAngleModeName, '2 فواصل (90°)');
+    bom = ComponentCalculator.generateBom(model, {});
+    angleItem = bom.firstWhere((i) => i.roleKey == 'profile_angle');
+    expect(angleItem.pieces, hasLength(2));
+    expect(angleItem.cuttingList, 'بين الإطار 1 و 2 + بين الإطار 3 و 4');
+
+    // 3. Select all junctions (كلها)
+    model.setAllProfileAngleJunctions(true);
+    expect(model.profileAngleJunctions, hasLength(3));
+    expect(model.profileAngleModeName, 'جميع الفواصل (3) (90°)');
+    bom = ComponentCalculator.generateBom(model, {});
+    angleItem = bom.firstWhere((i) => i.roleKey == 'profile_angle');
+    expect(angleItem.pieces, hasLength(3));
+    expect(angleItem.cuttingList, 'بين الإطار 1 و 2 + بين الإطار 2 و 3 + بين الإطار 3 و 4');
+
+    // 4. Clear all junctions
+    model.setAllProfileAngleJunctions(false);
+    expect(model.usesProfileAngle, isFalse);
+    bom = ComponentCalculator.generateBom(model, {});
+    expect(bom.any((i) => i.roleKey == 'profile_angle'), isFalse);
+
+    model.dispose();
+  });
+
+  test('mandatory profile_angle in series rules automatically activates in BOM', () {
+    final model = RoleWindow();
+    model.mandatory.addAll(['false:profile_angle', 'true:profile_angle']);
+    // 3 frames
+    model.zones = [
+      WindowZone(
+        id: 'f1',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(50, 50, 550, 1150),
+      ),
+      WindowZone(
+        id: 'f2',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(650, 50, 1150, 1150),
+      ),
+      WindowZone(
+        id: 'f3',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTRB(1250, 50, 1750, 1150),
+      ),
+    ];
+
+    expect(model.usesProfileAngle, isTrue);
+    expect(model.activeProfileAngleJunctions, hasLength(2));
+    final bom = ComponentCalculator.generateBom(model, {});
+    final angleItem = bom.firstWhere((i) => i.roleKey == 'profile_angle');
+    expect(angleItem.pieces, hasLength(2));
+    model.dispose();
+  });
 }
+

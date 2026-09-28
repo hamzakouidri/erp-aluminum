@@ -3588,23 +3588,26 @@ class ComponentCalculator {
               ? window.getSlidingSectionByType('cache_rainure')
               : window.getSectionByType('cache_rainure'));
       if (section == null) continue;
+      final baseItem = createProfile(
+        'Cache-rainure (${sliding ? 'Coulissant' : 'Ouvrant'})',
+        colorName,
+        pieces: pieces,
+        unit: 'قطاع',
+        overrideMap: section.toMap(),
+        preferOverrideMap: true,
+        selectorType: 'cache_rainure',
+        roleKey: 'cache_rainure',
+      );
+      final cutPiecesText = baseItem.cuttingList ??
+          'قطع القص: ${pieces.map((p) => '${(p * 1000).round()} مم').join(' ، ')}';
       items.add(
-        createProfile(
-          'Cache-rainure (${sliding ? 'Coulissant' : 'Ouvrant'})',
-          colorName,
-          pieces: pieces,
-          unit: 'قطاع',
-          overrideMap: section.toMap(),
-          preferOverrideMap: true,
-          selectorType: 'cache_rainure',
-          roleKey: 'cache_rainure',
-        ).copyWith(
+        baseItem.copyWith(
           sourceSeriesId:
               (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
           materialType: (sliding ? window.isSlidingPVC : window.isPVC)
               ? 'pvc'
               : 'aluminium',
-          cuttingList: 'داخل + خارج لكل التقاء إطارين / كادر دوبلي',
+          cuttingList: '$cutPiecesText (داخل + خارج)',
         ),
       );
     }
@@ -3660,42 +3663,69 @@ class ComponentCalculator {
       }
     }
 
-    if (window.profileAngleMode > 0) {
-      final int count = window.profileAngleMode == 3 ? 2 : 1;
-      final pieces = List.generate(count, (_) => window.height / 1000.0);
+    if (window.usesProfileAngle) {
       final sliding = window.systemMode == 'sliding';
       final section = window.getConfiguredSectionForRole('profile_angle', useSlidingSeries: sliding) ??
           window.getConfiguredSectionForRole('profile_angle', useSlidingSeries: !sliding) ??
           window.getSectionByType('profile_angle') ??
-          window.getSlidingSectionByType('profile_angle');
+          window.getSlidingSectionByType('profile_angle') ??
+          window.getSectionByType('tube_carre') ??
+          window.getSlidingSectionByType('tube_carre');
       final override = slidingOverrideFor([
             "بروفيل الزاوية 90° (Profil d'angle)",
             "بروفيل الزاوية (Profil d'angle)",
             'profile_angle',
             "profil d'angle",
+            'tube_carre',
           ]) ??
           section?.toMap();
-      final sideLabel = window.profileAngleMode == 1
-          ? 'يمين (90°)'
-          : (window.profileAngleMode == 2 ? 'يسار (90°)' : 'الجهتين (90°)');
-      items.add(
-        createProfile(
-          "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
-          colorName,
-          pieces: pieces,
-          unit: 'قطاع',
-          overrideMap: override,
-          preferOverrideMap: true,
-          selectorType: 'profile_angle',
-          roleKey: 'profile_angle',
-        ).copyWith(
-          sourceSeriesId:
-              (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
-          materialType:
-              (sliding ? window.isSlidingPVC : window.isPVC) ? 'pvc' : 'aluminium',
-          cuttingList: sideLabel,
-        ),
-      );
+
+      final anglePieces = <double>[];
+      final labels = <String>[];
+
+      // Multi-frame junctions
+      final junctions = window.getAdjacentFrameJunctions();
+      final activeJunctions = window.activeProfileAngleJunctions;
+      for (final j in junctions) {
+        if (activeJunctions.contains(j.index)) {
+          anglePieces.add(j.height / 1000.0);
+          labels.add(j.label);
+        }
+      }
+
+      // Outer edge / single-frame mode
+      if (window.profileAngleMode > 0) {
+        final int outerCount = window.profileAngleMode == 3 ? 2 : 1;
+        for (int i = 0; i < outerCount; i++) {
+          anglePieces.add(window.height / 1000.0);
+        }
+        final outerLabel = window.profileAngleMode == 1
+            ? 'يمين (90°)'
+            : (window.profileAngleMode == 2 ? 'يسار (90°)' : 'الجهتين (90°)');
+        labels.add(outerLabel);
+      }
+
+      if (anglePieces.isNotEmpty) {
+        final cuttingListLabel = labels.join(' + ');
+        items.add(
+          createProfile(
+            "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
+            colorName,
+            pieces: anglePieces,
+            unit: 'قطاع',
+            overrideMap: override,
+            preferOverrideMap: true,
+            selectorType: 'profile_angle',
+            roleKey: 'profile_angle',
+          ).copyWith(
+            sourceSeriesId:
+                (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
+            materialType:
+                (sliding ? window.isSlidingPVC : window.isPVC) ? 'pvc' : 'aluminium',
+            cuttingList: cuttingListLabel,
+          ),
+        );
+      }
     }
 
     // Caniveau is an outside-only channel fixed under an existing lower

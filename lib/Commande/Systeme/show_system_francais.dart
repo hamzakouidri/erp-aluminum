@@ -8461,44 +8461,148 @@ class _WindowViewState extends State<WindowView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      Localization.translate(
-                        "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
-                        lang,
-                      ),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    ToggleButtons(
-                      isSelected: [0, 1, 2, 3]
-                          .map((mode) => widget.model.profileAngleMode == mode)
-                          .toList(),
-                      onPressed: (index) {
-                        setState(() {
-                          widget.model.setProfileAngleMode(index);
-                        });
-                      },
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(Localization.translate('إيقاف', lang)),
+                        Text(
+                          Localization.translate(
+                            "بروفيل الزاوية 90° (Tube carré)",
+                            lang,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(Localization.translate('يمين', lang)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(Localization.translate('يسار', lang)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(Localization.translate('الجهتين', lang)),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.settings, size: 14),
+                          label: Text(
+                            Localization.translate('تخصيص', lang),
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onPressed: () => _showProfileAngleDialog(context),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    Builder(
+                      builder: (context) {
+                        final junctions = widget.model.getAdjacentFrameJunctions();
+                        if (junctions.isNotEmpty) {
+                          final active = widget.model.activeProfileAngleJunctions;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: junctions.map((j) {
+                                  final isSel = active.contains(j.index);
+                                  return FilterChip(
+                                    label: Text(
+                                      j.label,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: isSel
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                    selected: isSel,
+                                    onSelected: (val) {
+                                      setState(() {
+                                        widget.model.toggleProfileAngleJunction(
+                                          j.index,
+                                          val,
+                                        );
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      Localization.translate('الكل', lang),
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        widget.model.setAllProfileAngleJunctions(true);
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      Localization.translate('إلغاء', lang),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.red,
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        widget.model.setAllProfileAngleJunctions(false);
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        }
+                        return ToggleButtons(
+                          isSelected: [0, 1, 2, 3]
+                              .map((mode) => widget.model.profileAngleMode == mode)
+                              .toList(),
+                          onPressed: (index) {
+                            setState(() {
+                              widget.model.setProfileAngleMode(index);
+                            });
+                          },
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Text(Localization.translate('إيقاف', lang)),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Text(Localization.translate('يمين', lang)),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Text(Localization.translate('يسار', lang)),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Text(Localization.translate('الجهتين', lang)),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -11598,128 +11702,306 @@ class _WindowViewState extends State<WindowView> {
       context,
       listen: false,
     ).language;
+    final junctions = widget.model.getAdjacentFrameJunctions();
+    final hasJunctions = junctions.isNotEmpty;
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      Localization.translate(
-                        "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
-                        lang,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.square_foot_rounded, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Text(
+                                Localization.translate(
+                                  "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
+                                  lang,
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
                       ),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                      const SizedBox(height: 8),
+                      if (hasJunctions) ...[
+                        Text(
+                          Localization.translate(
+                            'حدد الفواصل بين الإطارات المتلاصقة التي يركب فيها أنبوب الزاوية 90°:',
+                            lang,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              icon: const Icon(Icons.select_all, size: 18),
+                              label: Text(
+                                Localization.translate('تحديد الكل', lang),
+                              ),
+                              onPressed: () {
+                                widget.model.setAllProfileAngleJunctions(true);
+                                setModalState(() {});
+                                setState(() {});
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              icon: const Icon(Icons.clear_all, size: 18),
+                              label: Text(
+                                Localization.translate('إلغاء الكل', lang),
+                              ),
+                              onPressed: () {
+                                widget.model.setAllProfileAngleJunctions(false);
+                                setModalState(() {});
+                                setState(() {});
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ...junctions.map((j) {
+                          final isSelected = widget.model
+                              .activeProfileAngleJunctions
+                              .contains(j.index);
+                          return Card(
+                            elevation: isSelected ? 2 : 0,
+                            color: isSelected
+                                ? Colors.blue.withOpacity(0.08)
+                                : Theme.of(context).cardColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(
+                                color: isSelected
+                                    ? Colors.blue
+                                    : Colors.grey.shade300,
+                                width: isSelected ? 1.5 : 1,
+                              ),
+                            ),
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            child: CheckboxListTile(
+                              title: Text(
+                                Localization.translate(j.label, lang),
+                                style: TextStyle(
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  color: isSelected
+                                      ? Colors.blue.shade900
+                                      : null,
+                                ),
+                              ),
+                              subtitle: Text(
+                                Localization.translate(
+                                  'طول القطاع: ${j.height.toStringAsFixed(0)} مم',
+                                  lang,
+                                ),
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              value: isSelected,
+                              activeColor: Colors.blue,
+                              onChanged: (checked) {
+                                widget.model.toggleProfileAngleJunction(
+                                  j.index,
+                                  checked,
+                                );
+                                setModalState(() {});
+                                setState(() {});
+                              },
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(
+                              color: widget.model.activeProfileAngleJunctions.isEmpty
+                                  ? Colors.red.shade300
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          tileColor: widget.model.activeProfileAngleJunctions.isEmpty
+                              ? Colors.red.withOpacity(0.06)
+                              : null,
+                          leading: const Icon(Icons.block_rounded, color: Colors.red),
+                          title: Text(
+                            Localization.translate('إلغاء بروفيل الزاوية بين الإطارات (إيقاف)', lang),
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Text(
+                            Localization.translate('بدون أي أنبوب زاوية بين الإطارات المتلاصقة', lang),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          trailing: widget.model.activeProfileAngleJunctions.isEmpty
+                              ? const Icon(Icons.check, color: Colors.red)
+                              : null,
+                          onTap: () {
+                            widget.model.setAllProfileAngleJunctions(false);
+                            setModalState(() {});
+                            setState(() {});
+                          },
+                        ),
+                        const Divider(height: 24),
+                      ],
+                      Text(
+                        Localization.translate(
+                          hasJunctions
+                              ? 'أطراف الإطار الخارجية (يمين / يسار):'
+                              : 'اختر جهة تركيب بروفيل الزاوية 90°:',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      ListTile(
+                        leading: const Icon(Icons.block_rounded, color: Colors.grey),
+                        title: Text(
+                          Localization.translate(
+                            hasJunctions
+                                ? 'بدون زاوية على الأطراف الخارجية'
+                                : 'إيقاف / بدون بروفيل زاوية',
+                            lang,
+                          ),
+                        ),
+                        trailing: widget.model.profileAngleMode == 0
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () {
+                          widget.model.setProfileAngleMode(0);
+                          setModalState(() {});
+                          setState(() {});
+                          if (!hasJunctions) Navigator.pop(ctx);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.border_right_rounded,
+                          color: Colors.blue,
+                        ),
+                        title: Text(
+                          Localization.translate('جهة اليمين (90° Droite)', lang),
+                        ),
+                        subtitle: Text(
+                          Localization.translate(
+                            'أنبوب زاوية 90° على القائم الأيمن الخارجي',
+                            lang,
+                          ),
+                        ),
+                        trailing: widget.model.profileAngleMode == 1
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () {
+                          widget.model.setProfileAngleMode(1);
+                          setModalState(() {});
+                          setState(() {});
+                          if (!hasJunctions) Navigator.pop(ctx);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.border_left_rounded,
+                          color: Colors.blue,
+                        ),
+                        title: Text(
+                          Localization.translate('جهة اليسار (90° Gauche)', lang),
+                        ),
+                        subtitle: Text(
+                          Localization.translate(
+                            'أنبوب زاوية 90° على القائم الأيسر الخارجي',
+                            lang,
+                          ),
+                        ),
+                        trailing: widget.model.profileAngleMode == 2
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () {
+                          widget.model.setProfileAngleMode(2);
+                          setModalState(() {});
+                          setState(() {});
+                          if (!hasJunctions) Navigator.pop(ctx);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.border_vertical_rounded,
+                          color: Colors.blue,
+                        ),
+                        title: Text(
+                          Localization.translate(
+                            'الجهتين معاً (90° Les deux côtés)',
+                            lang,
+                          ),
+                        ),
+                        subtitle: Text(
+                          Localization.translate(
+                            'أنبوب زاوية 90° على القائمين الخارجيين',
+                            lang,
+                          ),
+                        ),
+                        trailing: widget.model.profileAngleMode == 3
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () {
+                          widget.model.setProfileAngleMode(3);
+                          setModalState(() {});
+                          setState(() {});
+                          if (!hasJunctions) Navigator.pop(ctx);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                ListTile(
-                  leading: const Icon(Icons.block_rounded, color: Colors.grey),
-                  title: Text(
-                    Localization.translate('إيقاف / بدون بروفيل زاوية', lang),
-                  ),
-                  trailing: widget.model.profileAngleMode == 0
-                      ? const Icon(Icons.check, color: Colors.blue)
-                      : null,
-                  onTap: () {
-                    widget.model.setProfileAngleMode(0);
-                    setState(() {});
-                    Navigator.pop(ctx);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(
-                    Icons.border_right_rounded,
-                    color: Colors.blue,
-                  ),
-                  title: Text(
-                    Localization.translate('جهة اليمين (90° Droite)', lang),
-                  ),
-                  subtitle: Text(
-                    Localization.translate(
-                      'أنبوب زاوية 90° على القائم الأيمن للإطار',
-                      lang,
-                    ),
-                  ),
-                  trailing: widget.model.profileAngleMode == 1
-                      ? const Icon(Icons.check, color: Colors.blue)
-                      : null,
-                  onTap: () {
-                    widget.model.setProfileAngleMode(1);
-                    setState(() {});
-                    Navigator.pop(ctx);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(
-                    Icons.border_left_rounded,
-                    color: Colors.blue,
-                  ),
-                  title: Text(
-                    Localization.translate('جهة اليسار (90° Gauche)', lang),
-                  ),
-                  subtitle: Text(
-                    Localization.translate(
-                      'أنبوب زاوية 90° على القائم الأيسر للإطار',
-                      lang,
-                    ),
-                  ),
-                  trailing: widget.model.profileAngleMode == 2
-                      ? const Icon(Icons.check, color: Colors.blue)
-                      : null,
-                  onTap: () {
-                    widget.model.setProfileAngleMode(2);
-                    setState(() {});
-                    Navigator.pop(ctx);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(
-                    Icons.border_vertical_rounded,
-                    color: Colors.blue,
-                  ),
-                  title: Text(
-                    Localization.translate(
-                      'الجهتين معاً (90° Les deux côtés)',
-                      lang,
-                    ),
-                  ),
-                  subtitle: Text(
-                    Localization.translate(
-                      'أنبوب زاوية 90° على القائمين الأيمن والأيسر',
-                      lang,
-                    ),
-                  ),
-                  trailing: widget.model.profileAngleMode == 3
-                      ? const Icon(Icons.check, color: Colors.blue)
-                      : null,
-                  onTap: () {
-                    widget.model.setProfileAngleMode(3);
-                    setState(() {});
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -14843,14 +15125,14 @@ class _WindowViewState extends State<WindowView> {
         children.add(const SizedBox(width: 8));
         children.add(
           _ContentButton(
-            label: widget.model.profileAngleMode == 0
-                ? Localization.translate('إضافة بروفيل زاوية 90°', lang)
-                : Localization.translate(
+            label: widget.model.usesProfileAngle
+                ? Localization.translate(
                     'بروفيل زاوية 90°: ${widget.model.profileAngleModeName}',
                     lang,
-                  ),
+                  )
+                : Localization.translate('إضافة بروفيل زاوية 90°', lang),
             icon: Icons.square_foot_rounded,
-            selected: widget.model.profileAngleMode > 0,
+            selected: widget.model.usesProfileAngle,
             onPressed: () {
               _showProfileAngleDialog(context);
             },

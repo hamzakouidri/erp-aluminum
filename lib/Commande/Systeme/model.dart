@@ -4827,6 +4827,7 @@ class WindowModel extends ChangeNotifier {
 
   /// Junction indices between adjacent frames where 90° angle profile is installed.
   Set<int> profileAngleJunctions = <int>{};
+  bool profileAngleJunctionsDisabled = false;
   int cacheRailLeftCount = 0;
   int cacheRailRightCount = 0;
 
@@ -15385,6 +15386,8 @@ class WindowModel extends ChangeNotifier {
         // means it is always installed at a compatible frame-to-frame joint.
         : role == 'cache_rainure'
         ? true
+        : role == 'profile_angle'
+        ? usesProfileAngle
         : false;
   }
 
@@ -15421,12 +15424,102 @@ class WindowModel extends ChangeNotifier {
     return getConfiguredSectionForRole('profile_angle', useSlidingSeries: sliding) != null ||
         getConfiguredSectionForRole('profile_angle', useSlidingSeries: !sliding) != null ||
         getSectionByType('profile_angle') != null ||
-        getSlidingSectionByType('profile_angle') != null;
+        getSlidingSectionByType('profile_angle') != null ||
+        getSectionByType('tube_carre') != null ||
+        getSlidingSectionByType('tube_carre') != null;
   }
 
-  bool get usesProfileAngle => profileAngleMode > 0;
+  /// Finds all touching/adjacent vertical seams between independent frames.
+  /// Frames are ordered horizontally from left to right.
+  List<FrameAngleJunction> getAdjacentFrameJunctions() {
+    final frames = getFrameRects();
+    if (frames.length < 2) return [];
+
+    final sortedFrames = List<Rect>.from(frames)
+      ..sort((a, b) {
+        final cmp = a.left.compareTo(b.left);
+        return cmp != 0 ? cmp : a.top.compareTo(b.top);
+      });
+    final junctions = <FrameAngleJunction>[];
+    final maxGap = math.max(80.0, profileThickness * 2 + 10.0);
+
+    for (int i = 0; i < sortedFrames.length; i++) {
+      for (int j = i + 1; j < sortedFrames.length; j++) {
+        final first = sortedFrames[i];
+        final second = sortedFrames[j];
+
+        final start = math.max(first.top, second.top);
+        final end = math.min(first.bottom, second.bottom);
+        if (end <= start + 10.0) continue;
+
+        if ((second.left - first.right).abs() <= maxGap) {
+          final hasIntermediate = sortedFrames.asMap().entries.any((entry) {
+            final idx = entry.key;
+            if (idx == i || idx == j) return false;
+            final r = entry.value;
+            return r.left >= first.right - 5.0 &&
+                r.right <= second.left + 5.0 &&
+                math.min(r.bottom, end) > math.max(r.top, start) + 10.0;
+          });
+          if (hasIntermediate) continue;
+
+          junctions.add(
+            FrameAngleJunction(
+              index: junctions.length,
+              firstFrameIndex: i,
+              secondFrameIndex: j,
+              firstFrame: first,
+              secondFrame: second,
+              x: (first.right + second.left) / 2.0,
+              top: start,
+              bottom: end,
+            ),
+          );
+        }
+      }
+    }
+    return junctions;
+  }
+
+  /// Returns the set of active junction indices.
+  /// If [profileAngleJunctions] is non-empty, user explicit selection is used.
+  /// If the series rules make 'profile_angle' required, all junctions default to active.
+  Set<int> get activeProfileAngleJunctions {
+    if (profileAngleJunctionsDisabled) return const <int>{};
+    final junctions = getAdjacentFrameJunctions();
+    if (junctions.isEmpty) return const <int>{};
+    if (profileAngleJunctions.isNotEmpty) {
+      return profileAngleJunctions
+          .where((idx) => idx >= 0 && idx < junctions.length)
+          .toSet();
+    }
+    if (frameRoleRequiredInAllScopes('profile_angle')) {
+      return List.generate(junctions.length, (i) => i).toSet();
+    }
+    return const <int>{};
+  }
+
+  bool get usesProfileAngle =>
+      activeProfileAngleJunctions.isNotEmpty || profileAngleMode > 0;
 
   String get profileAngleModeName {
+    final junctions = getAdjacentFrameJunctions();
+    final activeJunctions = activeProfileAngleJunctions;
+    if (activeJunctions.isNotEmpty && junctions.isNotEmpty) {
+      if (activeJunctions.length == junctions.length) {
+        return junctions.length == 1
+            ? '${junctions.first.label} (90°)'
+            : 'جميع الفواصل (${activeJunctions.length}) (90°)';
+      } else if (activeJunctions.length == 1) {
+        final j = junctions.firstWhere(
+          (j) => activeJunctions.contains(j.index),
+          orElse: () => junctions.first,
+        );
+        return '${j.label} (90°)';
+      } else {
+        return '${activeJunctions.length} فواصل (90°)';
+      }
+    }
     switch (profileAngleMode) {
       case 1:
         return 'يمين (90°)';
@@ -15439,6 +15532,48 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  void toggleProfileAngleJunction(int junctionIndex, [bool? enabled]) {
+    _saveSnapshot();
+    profileAngleJunctionsDisabled = false;
+    final junctions = getAdjacentFrameJunctions();
+    if (profileAngleJunctions.isEmpty &&
+        frameRoleRequiredInAllScopes('profile_angle')) {
+      profileAngleJunctions = List.generate(junctions.length, (i) => i).toSet();
+    }
+    final shouldEnable =
+        enabled ?? !profileAngleJunctions.contains(junctionIndex);
+    if (shouldEnable) {
+      profileAngleJunctions.add(junctionIndex);
+    } else {
+      profileAngleJunctions.remove(junctionIndex);
+      if (profileAngleJunctions.isEmpty) {
+        profileAngleJunctionsDisabled = true;
+      }
+    }
+    notifyListeners();
+  }
+
+  void setAllProfileAngleJunctions(bool enabled) {
+    _saveSnapshot();
+    if (enabled) {
+      profileAngleJunctionsDisabled = false;
+      final junctions = getAdjacentFrameJunctions();
+      profileAngleJunctions = List.generate(junctions.length, (i) => i).toSet();
+    } else {
+      profileAngleJunctionsDisabled = true;
+      profileAngleJunctions.clear();
+    }
+    notifyListeners();
+  }
+
+  void clearProfileAngle() {
+    _saveSnapshot();
+    profileAngleMode = 0;
+    profileAngleJunctionsDisabled = true;
+    profileAngleJunctions.clear();
+    notifyListeners();
+  }
+
   void setProfileAngleMode(int mode) {
     final next = mode.clamp(0, 3).toInt();
     _saveSnapshot();
@@ -15447,7 +15582,16 @@ class WindowModel extends ChangeNotifier {
   }
 
   void cycleProfileAngleMode() {
-    setProfileAngleMode((profileAngleMode + 1) % 4);
+    final junctions = getAdjacentFrameJunctions();
+    if (junctions.isNotEmpty) {
+      if (activeProfileAngleJunctions.isEmpty) {
+        setAllProfileAngleJunctions(true);
+      } else {
+        clearProfileAngle();
+      }
+    } else {
+      setProfileAngleMode((profileAngleMode + 1) % 4);
+    }
   }
 
   bool frameRoleRequiredInAllScopes(String role) {
@@ -15574,12 +15718,20 @@ class WindowModel extends ChangeNotifier {
               'cache_rainure',
               useSlidingSeries: firstSliding,
             ) !=
+            null ||
+            (firstSliding
+                ? getSlidingSectionByType('cache_rainure')
+                : getSectionByType('cache_rainure')) !=
             null;
         final secondHasRole =
             getConfiguredSectionForRole(
               'cache_rainure',
               useSlidingSeries: secondSliding,
             ) !=
+            null ||
+            (secondSliding
+                ? getSlidingSectionByType('cache_rainure')
+                : getSectionByType('cache_rainure')) !=
             null;
         // A role on only one of two different series is insufficient: it
         // would leave one face without a compatible Cache-rainure profile.
