@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'order_measurements_details_screen.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:typed_data';
@@ -1364,6 +1365,29 @@ class _CommandeState extends State<Commande> {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        icon: const Icon(Icons.list_alt_outlined),
+                        label: Text(
+                          lang == AppLanguage.arabic
+                              ? 'التفاصيل'
+                              : lang == AppLanguage.french
+                              ? 'Détails'
+                              : 'Details',
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderMeasurementsDetailsScreen(
+                                orderData: orderData,
+                                db: db,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(width: 8),
                       Container(
@@ -3134,7 +3158,9 @@ class _CommandeState extends State<Commande> {
             ],
           ),
           content: Text(
-            _t('هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.'),
+            _t(
+              'هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.',
+            ),
             textAlign: TextAlign.start,
           ),
           actions: [
@@ -3162,7 +3188,9 @@ class _CommandeState extends State<Commande> {
             ],
           ),
           content: Text(
-            _t('ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.'),
+            _t(
+              'ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.',
+            ),
             textAlign: TextAlign.start,
           ),
           actions: [
@@ -3182,7 +3210,9 @@ class _CommandeState extends State<Commande> {
       builder: (dialogContext) => AlertDialog(
         title: Text(_t('تأكيد الحذف')),
         content: Text(
-          _t('هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.'),
+          _t(
+            'هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.',
+          ),
         ),
         actions: [
           TextButton(
@@ -4224,29 +4254,37 @@ class _CommandeState extends State<Commande> {
           Focus(
             canRequestFocus: false,
             onKeyEvent: (_, event) {
-              if (ModalRoute.of(context) is PopupRoute) return KeyEventResult.ignored;
+              if (ModalRoute.of(context) is PopupRoute)
+                return KeyEventResult.ignored;
               final shortcuts = ShortcutBindings.instance;
               final settings = context.read<AppSettingsProvider>();
               final id = (order['id'] as num?)?.toInt();
               if (id == null) return KeyEventResult.ignored;
-              if (shortcuts.matches('edit_order', event) && settings.canEditOrders()) {
-                openOrderInWorkspaceTab(context, db: db, editCommandeId: id, onSaved: _fetchCommandes);
+              if (shortcuts.matches('edit_order', event) &&
+                  settings.canEditOrders()) {
+                openOrderInWorkspaceTab(
+                  context,
+                  db: db,
+                  editCommandeId: id,
+                  onSaved: _fetchCommandes,
+                );
                 return KeyEventResult.handled;
               }
-              if (shortcuts.matches('delete_order', event) && settings.canDeleteOrders()) {
+              if (shortcuts.matches('delete_order', event) &&
+                  settings.canDeleteOrders()) {
                 _showDeleteConfirmDialog(id);
                 return KeyEventResult.handled;
               }
               return KeyEventResult.ignored;
             },
             child: Center(
-            child: IconButton(
-              icon: const Icon(Icons.more_horiz_rounded, size: 18),
-              onPressed: () => _showOrderOptions(context, order),
-              tooltip: Localization.translate('خيارات الطلبية', lang),
-              visualDensity: VisualDensity.compact,
+              child: IconButton(
+                icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                onPressed: () => _showOrderOptions(context, order),
+                tooltip: Localization.translate('خيارات الطلبية', lang),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
-          ),
           ),
         ],
       );
@@ -4325,16 +4363,50 @@ class _CommandeState extends State<Commande> {
                       child: ResizableColumnsTable(
                         persistenceKey: 'orders',
                         footerCells: {
-                          'total': Text(data.fold<double>(0, (sum, row) => sum +
-                            ((row['net_payable'] as num?)?.toDouble() ?? (row['total'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                          'advance': Text(data.fold<double>(0, (sum, row) => sum +
-                            ((row['advance_payment'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                          'remaining': Text(data.fold<double>(0, (sum, row) => sum +
-                            ((row['net_payable'] as num?)?.toDouble() ?? (row['total'] as num?)?.toDouble() ?? 0) -
-                            ((row['advance_payment'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                          'total': Text(
+                            data
+                                .fold<double>(
+                                  0,
+                                  (sum, row) =>
+                                      sum +
+                                      ((row['net_payable'] as num?)
+                                              ?.toDouble() ??
+                                          (row['total'] as num?)?.toDouble() ??
+                                          0),
+                                )
+                                .toStringAsFixed(2),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          'advance': Text(
+                            data
+                                .fold<double>(
+                                  0,
+                                  (sum, row) =>
+                                      sum +
+                                      ((row['advance_payment'] as num?)
+                                              ?.toDouble() ??
+                                          0),
+                                )
+                                .toStringAsFixed(2),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          'remaining': Text(
+                            data
+                                .fold<double>(
+                                  0,
+                                  (sum, row) =>
+                                      sum +
+                                      ((row['net_payable'] as num?)
+                                              ?.toDouble() ??
+                                          (row['total'] as num?)?.toDouble() ??
+                                          0) -
+                                      ((row['advance_payment'] as num?)
+                                              ?.toDouble() ??
+                                          0),
+                                )
+                                .toStringAsFixed(2),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         },
                         columns: columns,
                         rows: rows,

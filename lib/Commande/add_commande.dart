@@ -21,6 +21,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'order_table_edit_screen.dart';
+import 'order_measurements_confirm_screen.dart';
+import 'item_measurements_dialog.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
@@ -748,6 +750,65 @@ class _CommandePageState extends State<CommandePage> {
       ).toIso8601String();
     } catch (_) {
       return now.toIso8601String();
+    }
+  }
+
+  Future<void> _showProductMeasurements(WindowModel product) async {
+    final settings = context.read<AppSettingsProvider>();
+    final language = settings.language;
+    final orderId = widget.editCommandeId;
+    final detailId = _persistedDetailIds[product];
+    Map<String, dynamic> detail = {
+      'largeur': product.width,
+      'hauteur': product.height,
+      'quantity': product.quantity,
+      'partitions_json': jsonEncode({'position': product.position}),
+    };
+    Map<String, dynamic>? order;
+    try {
+      if (orderId != null && detailId != null) {
+        final details = await widget.db.readCommandeDetails(orderId);
+        final matches = details.where((row) => row['id'] == detailId);
+        if (matches.isEmpty) throw StateError('Missing order item');
+        detail = Map<String, dynamic>.from(matches.first);
+        detail['measurement_allocations'] = await widget.db
+            .readWorkerAllocations(detailId);
+        order = await widget.db.readCommandeWithClientById(orderId);
+      }
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => ItemMeasurementsDialog(
+          detail: detail,
+          language: language,
+          canConfirm: order != null && settings.canConfirmMeasurements(),
+          isSaved: order != null,
+        ),
+      );
+      if (confirm != true || !mounted || order == null) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OrderMeasurementsConfirmScreen(
+            orderData: order!,
+            db: widget.db,
+            initialDetailId: detailId,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            language == AppLanguage.arabic
+                ? 'تعذر تحميل القياسات. أعد المحاولة.'
+                : language == AppLanguage.french
+                ? 'Impossible de charger les mesures. Réessayez.'
+                : 'Could not load measurements. Please retry.',
+          ),
+        ),
+      );
     }
   }
 
@@ -2745,7 +2806,10 @@ class _CommandePageState extends State<CommandePage> {
           icon: const Icon(Icons.palette_outlined, color: Colors.white),
           label: Text(
             t('تغيير لون العناصر'),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           height: 50,
         ),
@@ -2756,7 +2820,10 @@ class _CommandePageState extends State<CommandePage> {
           icon: const Icon(Icons.layers_outlined, color: Colors.white),
           label: Text(
             t('تغيير السلسلة'),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           height: 50,
         ),
@@ -2767,7 +2834,10 @@ class _CommandePageState extends State<CommandePage> {
           icon: const Icon(Icons.window_outlined, color: Colors.white),
           label: Text(
             t('تغيير الزجاج'),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           height: 50,
         ),
@@ -4062,6 +4132,14 @@ class _CommandePageState extends State<CommandePage> {
                         ),
                         Row(
                           children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.straighten,
+                                color: Colors.teal,
+                              ),
+                              tooltip: t('عرض القياسات'),
+                              onPressed: () => _showProductMeasurements(p),
+                            ),
                             if (!p.isReplaced) ...[
                               IconButton(
                                 icon: const Icon(
@@ -4255,7 +4333,7 @@ class _CommandePageState extends State<CommandePage> {
                                   // options remain available in its bottom
                                   // panel; the old standalone shutter page is
                                   // no longer part of the edit flow.
-                                  await _prepareBulkCatalog([p]);
+                                  unawaited(_prepareBulkCatalog([p]));
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(

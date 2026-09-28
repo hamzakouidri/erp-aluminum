@@ -185,37 +185,182 @@ bool bomUsesOrderLevelCutting(BomItem item) {
       (item.pieces?.any((piece) => piece > 0) ?? false);
 }
 
-String requiredGoodsDisplayName(BomItem item) => item.name
-    .split('\n')
-    .where((line) => !line.contains('المطلوب الفعلي'))
-    .join('\n')
-    .trim();
+String _extractRoleLabel(String orig) {
+  final trimmed = orig.trim();
+  if (trimmed.startsWith('Cadre doublé') ||
+      trimmed.startsWith('Cadre double') ||
+      trimmed.startsWith('كادر دوبلي') ||
+      trimmed.startsWith('كادر دبل')) {
+    return 'كادر دوبلي';
+  }
+  if (trimmed.contains('الإطار (Frame)') ||
+      trimmed == 'الإطار' ||
+      trimmed == 'Frame' ||
+      trimmed == 'Cadre') {
+    return 'الإطار';
+  }
+  if (trimmed.contains('إطار منزلق') ||
+      trimmed.contains('Cadre Coulissant')) {
+    return 'إطار منزلق';
+  }
+  if (trimmed.contains('تقسيم الزجاج') ||
+      trimmed.contains('Mullion') ||
+      trimmed.contains('Traverse') ||
+      trimmed.contains('تقسيم')) {
+    return 'التقسيم';
+  }
+  if (trimmed.contains('ضلفة') ||
+      trimmed.contains('دلفة') ||
+      trimmed.contains('Sash') ||
+      trimmed.contains('Ouvrant')) {
+    return 'الضلفة';
+  }
+  if (trimmed.contains('باركلوز') || trimmed.contains('Parclose')) {
+    return 'الباركلوز';
+  }
+  return trimmed;
+}
+
+String _cleanProfileName(BomItem item) {
+  final lines = item.name
+      .split('\n')
+      .where((line) => !line.contains('المطلوب الفعلي'))
+      .map((l) => l.trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+
+  String candidate = '';
+  if (lines.length >= 2 && lines[1].isNotEmpty) {
+    candidate = lines[1];
+  } else if (lines.isNotEmpty) {
+    candidate = lines[0];
+  } else {
+    candidate = item.originalName.trim();
+  }
+
+  candidate = candidate
+      .replaceAll(
+        RegExp(
+          r'^(Cadre doublé|Cadre double|كادر دوبلي|كادر دبل)\s*[-—–:]*\s*',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .replaceAll(
+        RegExp(
+          r'^(تقسيم الزجاج \(Mullion\)|تقسيم الزجاج|Mullion|Traverse|عارضة|قائم|تقسيم)\s*[-—–:]*\s*',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .replaceAll(
+        RegExp(
+          r'^(الإطار \(Frame\)|إطار منزلق \(Cadre Coulissant\)|الإطار|إطار|Frame|Cadre)\s*[-—–:]*\s*',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .trim();
+
+  if (candidate.isEmpty) {
+    if (item.profileCode != null && item.profileCode!.trim().isNotEmpty) {
+      candidate = item.profileCode!.trim();
+    } else {
+      candidate = item.originalName.trim();
+    }
+  }
+  return candidate;
+}
+
+String _extractCodeFromName(String text) {
+  final match = RegExp(
+    r'^([A-Za-z0-9_\-\.\/]+)\s*[-—–:]\s*',
+  ).firstMatch(text.trim());
+  if (match != null) {
+    final code = match.group(1)!.trim();
+    if (code.length >= 2 && !code.toLowerCase().startsWith('kit')) {
+      return code.toUpperCase();
+    }
+  }
+  return '';
+}
+
+String _normalizeColorKey(BomItem item) {
+  final name = (item.colorName ?? '').trim().toLowerCase();
+  if (name.isNotEmpty) {
+    return 'COLOR:$name';
+  }
+  if (item.colorId != null && item.colorId! > 0) {
+    return 'COLOR_ID:${item.colorId}';
+  }
+  return 'COLOR:DEFAULT';
+}
+
+String requiredGoodsDisplayName(BomItem item) {
+  final normCategory = item.category.trim().toLowerCase();
+  final usesOrderCutting = bomUsesOrderLevelCutting(item);
+  if (normCategory == 'profile' ||
+      normCategory == 'frame' ||
+      normCategory == 'mullion' ||
+      normCategory == 'sash' ||
+      usesOrderCutting) {
+    final clean = _cleanProfileName(item);
+    if (clean.isNotEmpty) return clean;
+  }
+  return item.name
+      .split('\n')
+      .where((line) => !line.contains('المطلوب الفعلي'))
+      .join('\n')
+      .trim();
+}
 
 String requiredGoodsAggregationKey(BomItem item, String category) {
+  final normCategory = category.trim().toLowerCase();
   final usesOrderCutting = bomUsesOrderLevelCutting(item);
-  final itemIdentifier = item.catalogItemId != null
-      ? '${item.inventoryItemType ?? category}:${item.catalogItemId}'
-      : (item.profileCode != null && item.profileCode!.isNotEmpty)
-      ? 'CODE:${item.profileCode}'
-      : usesOrderCutting
-      ? 'CUT:${item.originalName}:${requiredGoodsDisplayName(item)}'
-      : 'NAME:${item.name}';
-  // Accessory roles such as "window handle" are not a product identity.
-  // Keep the resolved catalogue name in the key so two different handles
-  // (Rotax, Frutto, …) never collapse into one stock row merely because they
-  // share the same functional role.
-  final accessoryName = category == 'accessory'
+  final isProfile = normCategory == 'profile' ||
+      normCategory == 'frame' ||
+      normCategory == 'mullion' ||
+      normCategory == 'sash' ||
+      usesOrderCutting;
+
+  if (isProfile) {
+    final cleanName = _cleanProfileName(item);
+    final code = (item.profileCode != null && item.profileCode!.trim().isNotEmpty)
+        ? item.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
+        : _extractCodeFromName(cleanName);
+    final idKey = code.isNotEmpty
+        ? 'CODE:$code'
+        : (item.catalogItemId != null && item.catalogItemId! > 0)
+        ? 'CAT:${item.catalogItemId}'
+        : 'NAME:${cleanName.toLowerCase()}';
+    final colorKey = _normalizeColorKey(item);
+    final lengthKey = (item.length ?? 0) > 0 ? (item.length!).toStringAsFixed(2) : '6.00';
+    return 'PROFILE___${idKey}___${colorKey}___${item.unit.trim().toLowerCase()}___$lengthKey';
+  }
+
+  // Non-profile items: Accessories, Joints, Glass, Shutters, etc.
+  final itemIdentifier = (item.catalogItemId != null && item.catalogItemId! > 0)
+      ? '${item.inventoryItemType ?? normCategory}:${item.catalogItemId}'
+      : (item.profileCode != null && item.profileCode!.trim().isNotEmpty)
+      ? 'CODE:${item.profileCode!.trim().toUpperCase()}'
+      : 'NAME:${requiredGoodsDisplayName(item).toLowerCase()}';
+
+  final accessoryName = normCategory == 'accessory'
       ? requiredGoodsDisplayName(item).toLowerCase()
       : '';
-  return '${category}___SERIES:${item.sourceSeriesId ?? ''}___${itemIdentifier}___'
-      '${item.colorId ?? item.colorName ?? ''}___${item.unit}___'
-      '${item.length ?? ''}___${item.glassHeight ?? ''}___$accessoryName';
+  final colorKey = _normalizeColorKey(item);
+  final lengthKey = (item.length ?? 0) > 0 ? (item.length!).toStringAsFixed(2) : '';
+  final heightKey = (item.glassHeight ?? 0) > 0 ? (item.glassHeight!).toStringAsFixed(2) : '';
+
+  return '${normCategory}___${itemIdentifier}___'
+      '${colorKey}___${item.unit.trim().toLowerCase()}___'
+      '${lengthKey}___${heightKey}___$accessoryName';
 }
 
 /// A Kit is one configured bundle. Its contents can carry different colours,
 /// but must still remain beneath that single Kit row in required goods.
 String requiredGoodsKitAggregationKey(String category, String kitName, {int? seriesId}) =>
-    'KIT___${category}___SERIES:${seriesId ?? ''}___${kitName.trim().toLowerCase()}';
+    'KIT___${category.trim().toLowerCase()}___${kitName.trim().toLowerCase()}';
 
 /// Child rows are generated from the Kit page with this stable prefix. The
 /// Kit header itself has a logical UI key instead and must never be rendered
@@ -527,21 +672,21 @@ enum _PurchaseDocumentKind { purchaseOrder, purchaseInvoice }
 
 class AggregatedGoodItem {
   final String name;
-  final String originalName;
+  String originalName;
   final String category;
   final String unit;
-  final String? imagePath;
+  String? imagePath;
   double unitPrice; // non-final to allow computing it later for kits
   double totalQuantity;
   double totalCost;
-  final String? profileCode;
+  String? profileCode;
   final String? colorName;
   final double? stockLength;
   final double? glassHeight;
-  final int? catalogItemId;
+  int? catalogItemId;
   final String? inventoryItemType;
-  final int? colorId;
-  final bool isMissing;
+  int? colorId;
+  bool isMissing;
   final List<double> cuttingPieces;
   OrderCuttingPlan? cuttingPlan;
 
@@ -573,6 +718,43 @@ class AggregatedGoodItem {
     this.kitSubItems = const [],
     this.kitGroupName,
   }) : cuttingPieces = List<double>.from(cuttingPieces);
+
+  void mergeWith(
+    BomItem bom,
+    double purchaseQty,
+    double bomCost,
+    bool usesOrderCutting,
+  ) {
+    totalCost += bomCost;
+    totalQuantity += purchaseQty;
+    if (usesOrderCutting && bom.pieces != null && bom.pieces!.isNotEmpty) {
+      cuttingPieces.addAll(bom.pieces!);
+    }
+    if (catalogItemId == null && bom.catalogItemId != null) {
+      catalogItemId = bom.catalogItemId;
+    }
+    if ((profileCode == null || profileCode!.trim().isEmpty) &&
+        (bom.profileCode != null && bom.profileCode!.trim().isNotEmpty)) {
+      profileCode = bom.profileCode;
+    }
+    if ((imagePath == null || imagePath!.trim().isEmpty) &&
+        (bom.imagePath != null && bom.imagePath!.trim().isNotEmpty)) {
+      imagePath = bom.imagePath;
+    }
+    if (colorId == null && bom.colorId != null) {
+      colorId = bom.colorId;
+    }
+    if (unitPrice <= 0 && bom.unitPrice > 0) {
+      unitPrice = bom.unitPrice;
+    }
+    if (isMissing && !bom.isMissing) {
+      isMissing = false;
+    }
+    final role = _extractRoleLabel(bom.originalName);
+    if (role.isNotEmpty && !originalName.contains(role)) {
+      originalName = originalName.isEmpty ? role : '$originalName • $role';
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1303,17 +1485,23 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
               if (aggregationMap.containsKey(aggregationKey)) {
                 final aggregate = aggregationMap[aggregationKey]!;
-                aggregate.totalCost += bomCost;
-                aggregate.totalQuantity += purchaseQty;
-                if (usesOrderCutting) {
-                  aggregate.cuttingPieces.addAll(bom.pieces!);
-                }
+                aggregate.mergeWith(bom, purchaseQty, bomCost, usesOrderCutting);
               } else {
+                final isProfile = category == 'profile' ||
+                    category == 'frame' ||
+                    category == 'mullion' ||
+                    category == 'sash' ||
+                    usesOrderCutting;
+                final cleanName = isProfile
+                    ? _cleanProfileName(bom)
+                    : (usesOrderCutting ? requiredGoodsDisplayName(bom) : bom.name);
+                final displayName = cleanName.isNotEmpty
+                    ? cleanName
+                    : requiredGoodsDisplayName(bom);
+
                 aggregationMap[aggregationKey] = AggregatedGoodItem(
-                  name: usesOrderCutting
-                      ? requiredGoodsDisplayName(bom)
-                      : bom.name,
-                  originalName: bom.originalName,
+                  name: displayName,
+                  originalName: _extractRoleLabel(bom.originalName),
                   category: category,
                   unit: bom.unit,
                   imagePath: bom.imagePath,
@@ -1328,7 +1516,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   inventoryItemType: bom.inventoryItemType,
                   colorId: bom.colorId,
                   isMissing: bom.isMissing,
-                  cuttingPieces: usesOrderCutting ? bom.pieces! : const [],
+                  cuttingPieces: usesOrderCutting && bom.pieces != null
+                      ? List<double>.from(bom.pieces!)
+                      : const [],
                   kitSubItems: const [],
                   kitGroupName: null,
                 );
@@ -3021,8 +3211,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       ].join('|');
 
   String _cuttingKeyForItem(AggregatedGoodItem item) =>
-      '${item.inventoryItemType}:${item.catalogItemId}:${item.colorId}:'
-      '${item.stockLength}:${item.originalName}';
+      '${item.category}:${item.name}:${item.profileCode ?? ''}:${item.colorName ?? item.colorId ?? ''}:${item.stockLength}';
 
   void _toggleCuttingPlanExpansion(String key) {
     setState(() {

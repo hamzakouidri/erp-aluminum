@@ -523,6 +523,7 @@ class WindowPainter extends CustomPainter {
           : topOffset;
       _drawConfiguredSideCovers(canvas, w, h, sideCoverTopY);
       _drawFrameRoleProfiles(canvas, w, h, topOffset);
+      _drawProfileAngle(canvas, w, h, topOffset);
     }
 
     if (model.hasShutter &&
@@ -1795,14 +1796,20 @@ class WindowPainter extends CustomPainter {
     // side-cover drawing: only shared frame seams receive it.
     for (final contact in model.getCacheRainureContacts()) {
       final insideSection = model.getConfiguredSectionForRole(
-        'cache_rainure',
-        useSlidingSeries: contact.insideUsesSlidingSeries,
-      );
+            'cache_rainure',
+            useSlidingSeries: contact.insideUsesSlidingSeries,
+          ) ??
+          (contact.insideUsesSlidingSeries
+              ? model.getSlidingSectionByType('cache_rainure')
+              : model.getSectionByType('cache_rainure'));
       final outsideSection = model.getConfiguredSectionForRole(
-        'cache_rainure',
-        useSlidingSeries: contact.outsideUsesSlidingSeries,
-      );
-      if (insideSection == null || outsideSection == null) continue;
+            'cache_rainure',
+            useSlidingSeries: contact.outsideUsesSlidingSeries,
+          ) ??
+          (contact.outsideUsesSlidingSeries
+              ? model.getSlidingSectionByType('cache_rainure')
+              : model.getSectionByType('cache_rainure'));
+      if (insideSection == null && outsideSection == null) continue;
       // Cache-rainure is deliberately shown as two slightly separated black
       // seam lines, one per face, so it is visible exactly between the two
       // compatible frames without obscuring their profile colours.
@@ -1945,6 +1952,157 @@ class WindowPainter extends CustomPainter {
         }
       }
     }
+  }
+
+  void _drawProfileAngle(Canvas canvas, double w, double h, double top) {
+    if (model.profileAngleMode <= 0) return;
+    final angleSection = model.getConfiguredSectionForRole(
+          'profile_angle',
+          useSlidingSeries: model.systemMode == 'sliding',
+        ) ??
+        model.getConfiguredSectionForRole(
+          'profile_angle',
+          useSlidingSeries: model.systemMode != 'sliding',
+        ) ??
+        model.getSectionByType('profile_angle') ??
+        model.getSlidingSectionByType('profile_angle');
+    final double tubeW = (angleSection != null && angleSection.visibleWidth > 0)
+        ? angleSection.visibleWidth.clamp(30.0, 100.0)
+        : 50.0;
+
+    final sides = <String>[];
+    if (model.profileAngleMode == 1 || model.profileAngleMode == 3) sides.add('right');
+    if (model.profileAngleMode == 2 || model.profileAngleMode == 3) sides.add('left');
+
+    for (final side in sides) {
+      final bool isRight = side == 'right';
+      final double left = isRight ? w : -tubeW;
+      final double right = isRight ? (w + tubeW) : 0.0;
+      final rect = Rect.fromLTRB(left, top, right, h);
+
+      // 1. Base aluminium tube body
+      canvas.drawRect(rect, _buildPaint(rect));
+
+      // 2. Outer border
+      final borderPaint = Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+      canvas.drawRect(rect, borderPaint);
+
+      // 3. Hollow square tube wall lines (thickness 3.5mm)
+      const double wallT = 3.5;
+      final innerRect = Rect.fromLTRB(
+        rect.left + wallT,
+        rect.top + wallT,
+        rect.right - wallT,
+        rect.bottom - wallT,
+      );
+      final innerPaint = Paint()
+        ..color = _fb.withOpacity(0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      canvas.drawRect(innerRect, innerPaint);
+
+      // 4. 2D Perpendicular corner representation (Tube Carré 90°)
+      // Draw return facet to illustrate orthogonal return of 90°
+      final facetW = tubeW * 0.35;
+      final returnRect = isRight
+          ? Rect.fromLTRB(rect.right - facetW, rect.top, rect.right, rect.bottom)
+          : Rect.fromLTRB(rect.left, rect.top, rect.left + facetW, rect.bottom);
+
+      final facetShading = Paint()
+        ..color = Colors.black.withOpacity(0.12)
+        ..style = PaintingStyle.fill;
+      canvas.drawRect(returnRect, facetShading);
+
+      final facetBorder = Paint()
+        ..color = _fb.withOpacity(0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      canvas.drawLine(
+        Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.top),
+        Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.bottom),
+        facetBorder,
+      );
+
+      // Miter corner lines at top and bottom to indicate 90° return
+      if (isRight) {
+        canvas.drawLine(
+          Offset(rect.right - facetW, rect.top),
+          Offset(rect.right, rect.top + facetW),
+          facetBorder,
+        );
+        canvas.drawLine(
+          Offset(rect.right - facetW, rect.bottom),
+          Offset(rect.right, rect.bottom - facetW),
+          facetBorder,
+        );
+      } else {
+        canvas.drawLine(
+          Offset(rect.left + facetW, rect.top),
+          Offset(rect.left, rect.top + facetW),
+          facetBorder,
+        );
+        canvas.drawLine(
+          Offset(rect.left + facetW, rect.bottom),
+          Offset(rect.left, rect.bottom - facetW),
+          facetBorder,
+        );
+      }
+
+      // 5. Angle 90° indication badge at vertical center
+      final center = Offset(rect.center.dx, rect.center.dy);
+      _draw90DegreeCornerBadge(canvas, center);
+    }
+  }
+
+  void _draw90DegreeCornerBadge(Canvas canvas, Offset center) {
+    const text = '90°';
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final badgeW = textPainter.width + 14;
+    final badgeH = textPainter.height + 6;
+    final badgeRect = Rect.fromCenter(
+      center: center,
+      width: badgeW,
+      height: badgeH,
+    );
+
+    final bgPaint = Paint()
+      ..color = const Color(0xFF1E88E5)
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(badgeRect, const Radius.circular(4)),
+      bgPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(badgeRect, const Radius.circular(4)),
+      borderPaint,
+    );
+
+    textPainter.paint(
+      canvas,
+      Offset(
+        badgeRect.left + (badgeRect.width - textPainter.width) / 2,
+        badgeRect.top + (badgeRect.height - textPainter.height) / 2,
+      ),
+    );
   }
 
   double _slidingFrameWidth(double fallback) {
@@ -3519,32 +3677,62 @@ class WindowPainter extends CustomPainter {
               mullion.rect.bottom,
             );
 
-      // رسم الكادر دوبلي: مقطعان مثل الترافيرس تماماً ملتصقان ظهراً لظهر بدون تجاويف داخلية تشوه الرسم
+      // رسم الكادر دوبلي: مقطعان نظيفان ملتصقان ظهراً لظهر بدون خطوط التجويف الإضافية
       canvas.drawRect(first, paint);
       canvas.drawRect(first, border);
       canvas.drawRect(second, paint);
       canvas.drawRect(second, border);
 
       final hasCacheRainure =
-          model.getConfiguredSectionForRole('cache_rainure') != null;
-      final separatorPaint = Paint()
-        ..color = hasCacheRainure
-            ? Colors.black.withValues(alpha: 0.85)
-            : border.color.withValues(alpha: 0.75)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = hasCacheRainure ? 1.8 : 0.9;
-      if (mullion.isHorizontal) {
-        canvas.drawLine(
-          Offset(mullion.rect.left, center),
-          Offset(mullion.rect.right, center),
-          separatorPaint,
-        );
+          model.getConfiguredSectionForRole('cache_rainure') != null ||
+          model.getSectionByType('cache_rainure') != null;
+      if (hasCacheRainure) {
+        final seam = Paint()
+          ..color = Colors.black87
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
+        const offset = 1.2;
+        if (mullion.isHorizontal) {
+          canvas.drawLine(
+            Offset(mullion.rect.left, center - offset),
+            Offset(mullion.rect.right, center - offset),
+            seam,
+          );
+          canvas.drawLine(
+            Offset(mullion.rect.left, center + offset),
+            Offset(mullion.rect.right, center + offset),
+            seam,
+          );
+        } else {
+          canvas.drawLine(
+            Offset(center - offset, mullion.rect.top),
+            Offset(center - offset, mullion.rect.bottom),
+            seam,
+          );
+          canvas.drawLine(
+            Offset(center + offset, mullion.rect.top),
+            Offset(center + offset, mullion.rect.bottom),
+            seam,
+          );
+        }
       } else {
-        canvas.drawLine(
-          Offset(center, mullion.rect.top),
-          Offset(center, mullion.rect.bottom),
-          separatorPaint,
-        );
+        final separatorPaint = Paint()
+          ..color = border.color.withValues(alpha: 0.75)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9;
+        if (mullion.isHorizontal) {
+          canvas.drawLine(
+            Offset(mullion.rect.left, center),
+            Offset(mullion.rect.right, center),
+            separatorPaint,
+          );
+        } else {
+          canvas.drawLine(
+            Offset(center, mullion.rect.top),
+            Offset(center, mullion.rect.bottom),
+            separatorPaint,
+          );
+        }
       }
     }
 
@@ -4858,39 +5046,101 @@ class WindowPainter extends CustomPainter {
         ? (model.selectedSlimMontantProfile!['visible_width'] as num).toDouble()
         : 18.0;
 
-    // sashWidth is calculated using chicaneT (overlap)
-    double sashWidth = (r.width + (count - 1) * chicaneT) / count;
+    final int trackCount = zone.slidingTrackCount > 0 ? zone.slidingTrackCount : 2;
+    // Central meeting is standard for 2 rails with 4 sashes and 3 rails with 6 sashes,
+    // or when the user explicitly enables Face-to-Face meeting (e.g. for 4 rails / 4 sashes or 6 rails / 6 sashes).
+    final bool hasCentralMeeting =
+        (count == 4 && trackCount == 2) ||
+        (count == 6 && trackCount == 3) ||
+        zone.slidingFaceToFace;
+    final double meetingCenterX = r.left + r.width / 2.0;
 
-    List<int> tracks;
-    if (count == 2) {
-      if (zone.openDirection == OpenDirection.left) {
-        tracks = [1, 0];
-      } else {
-        tracks = [0, 1];
-      }
-    } else if (count == 3) {
-      tracks = [0, 1, 0];
-    } else if (count == 4) {
-      tracks = [0, 1, 1, 0];
+    // sashWidth is calculated using chicaneT (overlap).
+    // When meeting in the center (4 or 6 sashes), the two halves meet side-by-side without overlapping each other.
+    double sashWidth;
+    if (hasCentralMeeting) {
+      final int halfCount = count ~/ 2;
+      final int overlapsPerHalf = halfCount - 1;
+      sashWidth = (r.width / 2.0 + overlapsPerHalf * chicaneT) / halfCount;
     } else {
-      tracks = List.generate(count, (i) => i % 2);
+      sashWidth = (r.width + (count - 1) * chicaneT) / count;
     }
 
-    // The ordinary two-track arrangement paints the outer leaves on top of
-    // the middle leaves.  Face-to-Face deliberately reverses that order so
-    // the two middle leaves are the visible meeting pair.  Keep the
-    // historical alternating order for two leaves, where there is no
-    // middle/outer distinction.
-    final drawTrackOrder =
-        (count >= 3 && zone.slidingTrackCount == 2 && zone.slidingFaceToFace)
-        ? const <int>[0, 1]
-        : (count >= 3 ? const <int>[1, 0] : const <int>[0, 1]);
-    for (final tg in drawTrackOrder) {
-      for (int i = 0; i < count; i++) {
-        if (tracks[i] != tg) continue;
-
+    Rect getSashRect(int i) {
+      if (!hasCentralMeeting) {
         double left = r.left + i * (sashWidth - chicaneT);
-        Rect sashRect = Rect.fromLTRB(left, r.top, left + sashWidth, r.bottom);
+        return Rect.fromLTRB(left, r.top, left + sashWidth, r.bottom);
+      }
+
+      final int halfCount = count ~/ 2;
+      if (i < halfCount) {
+        // Left half: central leaf ends precisely at meetingCenterX
+        if (i == halfCount - 1) {
+          return Rect.fromLTRB(meetingCenterX - sashWidth, r.top, meetingCenterX, r.bottom);
+        } else if (i == 0) {
+          return Rect.fromLTRB(r.left, r.top, r.left + sashWidth, r.bottom);
+        } else {
+          double left = r.left + i * (sashWidth - chicaneT);
+          return Rect.fromLTRB(left, r.top, left + sashWidth, r.bottom);
+        }
+      } else {
+        // Right half: central leaf starts precisely at meetingCenterX side-by-side
+        final int rightIndex = i - halfCount;
+        if (rightIndex == 0) {
+          return Rect.fromLTRB(meetingCenterX, r.top, meetingCenterX + sashWidth, r.bottom);
+        } else if (i == count - 1) {
+          return Rect.fromLTRB(r.right - sashWidth, r.top, r.right, r.bottom);
+        } else {
+          double left = meetingCenterX + rightIndex * (sashWidth - chicaneT);
+          return Rect.fromLTRB(left, r.top, left + sashWidth, r.bottom);
+        }
+      }
+    }
+
+    List<int> tracks;
+    List<int> sashDrawOrder;
+
+    if (count == 2) {
+      if (zone.openDirection == OpenDirection.left) {
+        tracks = [0, 1];
+        sashDrawOrder = [0, 1];
+      } else {
+        tracks = [1, 0];
+        sashDrawOrder = [1, 0];
+      }
+    } else if (count == 3) {
+      // Cascading/telescopic overlapping based on open direction
+      if (zone.openDirection == OpenDirection.left) {
+        tracks = trackCount >= 3 ? [0, 1, 2] : [0, 1, 1];
+        sashDrawOrder = [0, 1, 2];
+      } else {
+        tracks = trackCount >= 3 ? [2, 1, 0] : [1, 1, 0];
+        sashDrawOrder = [2, 1, 0];
+      }
+    } else if (!hasCentralMeeting) {
+      // Sequential telescopic overlapping (الرسم والتصور القديم)
+      if (zone.openDirection == OpenDirection.left) {
+        tracks = List.generate(count, (i) => i % trackCount);
+        sashDrawOrder = List.generate(count, (i) => i);
+      } else {
+        tracks = List.generate(count, (i) => (count - 1 - i) % trackCount);
+        sashDrawOrder = List.generate(count, (i) => count - 1 - i);
+      }
+    } else if (count == 4) {
+      tracks = [0, 1, 1, 0];
+      sashDrawOrder = [0, 3, 1, 2];
+    } else if (count == 6) {
+      tracks = trackCount >= 3 ? [0, 1, 2, 2, 1, 0] : [0, 1, 1, 1, 1, 0];
+      sashDrawOrder = [0, 5, 1, 4, 2, 3];
+    } else {
+      tracks = List.generate(count, (i) => i % trackCount);
+      sashDrawOrder = List.generate(count, (i) => i);
+    }
+
+    final int maxTrack = tracks.reduce(math.max);
+    for (final i in sashDrawOrder) {
+      final int tg = tracks[i];
+      Rect sashRect = getSashRect(i);
 
         // Calculate left and right profile widths for this specific sash
         final leftLateralReinforced =
@@ -4901,18 +5151,36 @@ class WindowPainter extends CustomPainter {
             zone.slidingMontantReinforced['lateral_1'] ??
             zone.slidingMontantReinforced['lateral_right'] ??
             false;
+        // Determine whether this side of the sash is an outer or central meeting lateral montant:
+        // - 4 sashes: sash 0 left (outer), sash 1 right (meeting), sash 2 left (meeting), sash 3 right (outer)
+        // - 6 sashes with 3 tracks: sash 0 left (outer), sash 2 right (meeting), sash 3 left (meeting), sash 5 right (outer)
+        final bool isMeetingJunctionRight = hasCentralMeeting && ((count == 4 && i == 1) || (count == 6 && i == 2));
+        final bool isMeetingJunctionLeft = hasCentralMeeting && ((count == 4 && i == 2) || (count == 6 && i == 3));
+
+        final bool isLateralLeft = (i == 0) || isMeetingJunctionLeft;
+        final bool isLateralRight = (i == count - 1) || isMeetingJunctionRight;
+
         final bool isLeftSlim =
+            !isLateralLeft &&
             (i > 0) &&
             (zone.slidingMontantSlim['central_${(i - 1) * 2 + 1}'] ?? false);
         final bool isRightSlim =
+            !isLateralRight &&
             (i < count - 1) &&
             (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
 
-        final double leftProfileW = (i == 0)
-            ? (leftLateralReinforced ? reinforcedLateralT : normalLateralT)
+        final bool leftReinforced = (i == 0)
+            ? leftLateralReinforced
+            : (zone.slidingMontantReinforced['lateral_${i * 2}'] ?? false);
+        final bool rightReinforced = (i == count - 1)
+            ? rightLateralReinforced
+            : (zone.slidingMontantReinforced['lateral_${i * 2 + 1}'] ?? false);
+
+        final double leftProfileW = isLateralLeft
+            ? (leftReinforced ? reinforcedLateralT : normalLateralT)
             : (isLeftSlim ? slimProfileW : chicaneT);
-        final double rightProfileW = (i == count - 1)
-            ? (rightLateralReinforced ? reinforcedLateralT : normalLateralT)
+        final double rightProfileW = isLateralRight
+            ? (rightReinforced ? reinforcedLateralT : normalLateralT)
             : (isRightSlim ? slimProfileW : chicaneT);
         final double topProfileW = traverseT;
         final double bottomProfileW = zone.hasSashPlintheBottom
@@ -4971,7 +5239,7 @@ class WindowPainter extends CustomPainter {
             glassR,
             zone.sashColor,
             zone.selectedDbColor,
-            dimmed: (tg == 0),
+            dimmed: (tg < maxTrack),
             isSlidingSash: true,
             squareLeft: isLeftSlim,
             squareRight: isRightSlim,
@@ -5025,7 +5293,6 @@ class WindowPainter extends CustomPainter {
           );
         }
       }
-    }
 
     // Face-to-Face is a catalogue role, not a name-based fallback.  It is
     // drawn only when the active sliding series has assigned that role and
@@ -5039,7 +5306,8 @@ class WindowPainter extends CustomPainter {
           )
         : null;
     final faceEnabled =
-        (count == 4 && zone.slidingTrackCount == 2 && zone.slidingFaceToFace) ||
+        ((count == 4 || (count == 6 && zone.slidingTrackCount >= 3)) &&
+            (zone.slidingFaceToFace || faceSection != null)) ||
         (count == 3 && faceSection != null);
     if (faceEnabled && count >= 3) {
       final configuredFaceSection = faceSection;
@@ -5049,11 +5317,8 @@ class WindowPainter extends CustomPainter {
             : configuredFaceSection.thickness;
         final faceWidth = rawWidth > 0 ? rawWidth : 0.0;
         if (faceWidth > 0) {
-          final junction = count == 4 ? 1 : (count - 1) ~/ 2;
-          final rightEdge =
-              r.left + junction * (sashWidth - chicaneT) + sashWidth;
-          final centerX = rightEdge - (chicaneT / 2.0);
-          final faceCount = count == 4 ? 2 : 1;
+          final centerX = hasCentralMeeting ? meetingCenterX : (r.left + ((count - 1) ~/ 2) * (sashWidth - chicaneT) + sashWidth - (chicaneT / 2.0));
+          final faceCount = (count == 4 || count == 6) ? 2 : 1;
           for (var faceIndex = 0; faceIndex < faceCount; faceIndex++) {
             final offset = faceCount == 2
                 ? (faceIndex == 0 ? -faceWidth / 2.0 : faceWidth / 2.0)
@@ -5080,23 +5345,33 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    // A central handle is optional and belongs to the meeting of the middle
-    // pair only.  Draw it after all leaves and the Face-to-Face profile so it
-    // cannot disappear under the other middle sash.
-    if (zone.slidingCentralHandle &&
-        zone.slidingTrackCount == 2 &&
-        count == 4 &&
-        _shouldDrawWindowHardware) {
-      final centralLeft = r.left + (sashWidth - chicaneT);
-      final centralSash = Rect.fromLTRB(
-        centralLeft,
-        r.top,
-        centralLeft + sashWidth,
-        r.bottom,
+    // Always ensure the meeting vertical seam line is cleanly drawn between the two central sashes
+    if (hasCentralMeeting) {
+      canvas.drawLine(
+        Offset(meetingCenterX, r.top),
+        Offset(meetingCenterX, r.bottom),
+        Paint()
+          ..color = _fb
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
       );
+    }
+
+    // Draw handles on the meeting middle leaves on both sides
+    final meetingLeftIndex = count == 4 ? 1 : (count == 6 ? 2 : -1);
+    final meetingRightIndex = count == 4 ? 2 : (count == 6 ? 3 : -1);
+
+    if (hasCentralMeeting &&
+        meetingLeftIndex != -1 &&
+        meetingRightIndex != -1 &&
+        _shouldDrawWindowHardware) {
+      final centralLeftSash = getSashRect(meetingLeftIndex);
+      final centralRightSash = getSashRect(meetingRightIndex);
+
+      // Handle on left middle leaf (faces right towards meeting center)
       _drawWindowDrawHandle(
         canvas,
-        centralSash,
+        centralLeftSash,
         OpenDirection.right,
         zone.handlePositionRatio ?? 0.5,
         t: t,
@@ -5104,20 +5379,8 @@ class WindowPainter extends CustomPainter {
         isTopBound: isTopBound,
         zone: zone,
       );
-    }
-    if (zone.slidingSecondCentralHandle &&
-        zone.slidingTrackCount == 2 &&
-        count == 4 &&
-        _shouldDrawWindowHardware) {
-      // The mirrored middle handle is intentionally only a visual handle.
-      // Its BOM row is added separately without any lock hardware.
-      final centralRightLeft = r.left + 2 * (sashWidth - chicaneT);
-      final centralRightSash = Rect.fromLTRB(
-        centralRightLeft,
-        r.top,
-        centralRightLeft + sashWidth,
-        r.bottom,
-      );
+
+      // Handle on right middle leaf (faces left towards meeting center)
       _drawWindowDrawHandle(
         canvas,
         centralRightSash,

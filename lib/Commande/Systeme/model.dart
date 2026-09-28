@@ -386,6 +386,50 @@ class FrameCacheRainureContact {
   double get length => math.max(0.0, end - start);
 }
 
+class CadreDoubleRainureSegment {
+  final bool isHorizontal;
+  final double position;
+  final double start;
+  final double end;
+  final bool usesSlidingSeries;
+
+  const CadreDoubleRainureSegment({
+    required this.isHorizontal,
+    required this.position,
+    required this.start,
+    required this.end,
+    required this.usesSlidingSeries,
+  });
+
+  double get length => math.max(0.0, end - start);
+}
+
+class FrameAngleJunction {
+  final int index;
+  final int firstFrameIndex;
+  final int secondFrameIndex;
+  final Rect firstFrame;
+  final Rect secondFrame;
+  final double x;
+  final double top;
+  final double bottom;
+
+  const FrameAngleJunction({
+    required this.index,
+    required this.firstFrameIndex,
+    required this.secondFrameIndex,
+    required this.firstFrame,
+    required this.secondFrame,
+    required this.x,
+    required this.top,
+    required this.bottom,
+  });
+
+  double get height => (bottom - top).abs();
+
+  String get label => 'بين الإطار ${firstFrameIndex + 1} و ${secondFrameIndex + 1}';
+}
+
 class AluminumSection {
   final int id;
   final int seriesId;
@@ -3574,6 +3618,14 @@ class WindowModel extends ChangeNotifier {
     AluminumSeries series,
     List<AluminumSection> frames,
   ) {
+    final isMultiFrame = getFrameRects().length > 1;
+    if (isMultiFrame) {
+      final plain = frames
+          .where((frame) => !_sectionHasIntegratedSideCover(frame))
+          .toList();
+      if (plain.isNotEmpty) return plain;
+    }
+
     if (!hasShutter || isCaissonTunnel || _isPvcSeries(series)) return frames;
 
     final sideCoverCapable = frames
@@ -3691,6 +3743,9 @@ class WindowModel extends ChangeNotifier {
       // be reset by notifyListeners or by an unrelated drawing edit.
       return;
     }
+    if (!_multiFrameSideCoverManuallyEnabled) {
+      hasSideCovers = false;
+    }
 
     // Joining frames changes their profile construction, not the user's
     // cover switch or individually hidden sides. Never reset these on notify.
@@ -3701,20 +3756,37 @@ class WindowModel extends ChangeNotifier {
       final currentFrame = sliding
           ? slidingFrameOverride ?? getSlidingSectionByType('frame')?.toMap()
           : frameOverride ?? getSectionByType('frame')?.toMap();
-      if (!_overrideHasIntegratedSideCover(currentFrame) &&
-          (!hasSideCovers || _overrideAllowsStandaloneSideCover(currentFrame)))
+      final hasIntegrated = _overrideHasIntegratedSideCover(currentFrame);
+      if (!hasIntegrated &&
+          (!hasSideCovers || _overrideAllowsStandaloneSideCover(currentFrame))) {
         continue;
+      }
       final configured = getConfiguredSectionsForRole(
         'frame',
         useSlidingSeries: sliding,
       );
-      final plainFrames = configured
+      final candidateSections = configured.isNotEmpty
+          ? configured
+          : series.sections
+              .where(
+                (s) =>
+                    s.isFrame ||
+                    s.type.toLowerCase() == 'frame' ||
+                    s.type.toLowerCase().contains('cadre'),
+              )
+              .toList();
+      var plainFrames = candidateSections
           .where(
             (section) =>
                 !_sectionHasIntegratedSideCover(section) &&
                 (!hasSideCovers || _sectionAllowsStandaloneSideCover(section)),
           )
           .toList();
+      if (plainFrames.isEmpty) {
+        plainFrames = candidateSections
+            .where((section) => !_sectionHasIntegratedSideCover(section))
+            .toList();
+      }
       if (plainFrames.isEmpty) continue;
 
       final selected = sliding
@@ -3733,6 +3805,10 @@ class WindowModel extends ChangeNotifier {
       } else {
         frameOverride = plainFrame;
         selectedFrameCode = plainFrame['code']?.toString();
+      }
+
+      if (hasIntegrated && !_multiFrameSideCoverManuallyEnabled) {
+        hasSideCovers = false;
       }
     }
 
@@ -4061,7 +4137,8 @@ class WindowModel extends ChangeNotifier {
   }) {
     final role = (profile['design_role_key'] ?? '').toString();
     if (role == 'sash_central_reinforced' ||
-        role == 'sash_lateral_reinforced') {
+        role == 'sash_lateral_reinforced' ||
+        role == 'chicane_renforcee') {
       return true;
     }
     if (role == 'sash_central' || role == 'sash_lateral') return false;
@@ -4076,10 +4153,22 @@ class WindowModel extends ChangeNotifier {
         description.contains('unreinforced')) {
       return false;
     }
-    return code.endsWith(central ? '107' : '108') ||
+    if (code.endsWith(central ? '107' : '108') ||
         name.contains('معزز') ||
         name.contains('renforc') ||
-        type.contains('renforc');
+        type.contains('renforc')) {
+      return true;
+    }
+    // In series where the chicane itself acts as the central montant reinforcement
+    if (central &&
+        (role == 'chicane' ||
+            name.contains('chicane') ||
+            type.contains('chicane') ||
+            name.contains('شيكان') ||
+            type.contains('شيكان'))) {
+      return true;
+    }
+    return false;
   }
 
   void applySlidingMontantOverride(
@@ -4668,6 +4757,13 @@ class WindowModel extends ChangeNotifier {
     return 0.0;
   }
 
+  double frameProfileWidthAt(bool isHorizontal, double position) {
+    final section = effectiveMullionSectionAt(isHorizontal, position);
+    final width = _sectionVisibleWidth(section);
+    if (width > 0) return width;
+    return profileThickness;
+  }
+
   /// Uses the widest selected mullion while finding adjoining zones. This
   /// keeps a custom frame-140 or double-frame selection from being skipped.
   double get maximumMullionThickness {
@@ -4725,6 +4821,12 @@ class WindowModel extends ChangeNotifier {
 
   /// Bavette mode: 0 disabled, 1 bottom only, 2 all four directions.
   int optionalBavetteMode = 0;
+
+  /// Profil d'angle mode: 0 disabled, 1 right (يمين), 2 left (يسار), 3 both (الجهتين).
+  int profileAngleMode = 0;
+
+  /// Junction indices between adjacent frames where 90° angle profile is installed.
+  Set<int> profileAngleJunctions = <int>{};
   int cacheRailLeftCount = 0;
   int cacheRailRightCount = 0;
 
@@ -12708,84 +12810,151 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     bool isH = selection.isHorizontalMullion!;
     double oldPos = selection.mullionPosition!;
-    final oldKey = _mullionKey(isH, oldPos);
     final t = profileThickness;
-    final mullionT = mullionThickness;
-    final sep = mullionT / 2;
-    double newPos = oldPos;
+    final isDouble = isDoubleFrameMullionAt(isH, oldPos);
+    final profileW = frameProfileWidthAt(isH, oldPos);
+    final effectiveThickness = isDouble ? profileW * 2.0 : mullionThickness;
+    final sep = effectiveThickness / 2;
+
+    double newPos = (section == 1)
+        ? newVal + t + sep
+        : (isH ? height : width) - newVal - t - sep;
+
+    // محاذاة كل التقسيمات التي تقع على نفس المستوى (كالعلوية والسفلية)
+    const alignThreshold = 100.0;
+    final matchingDividers = <double>{oldPos};
+    for (var i = 0; i < zones.length; i++) {
+      for (var j = i + 1; j < zones.length; j++) {
+        final za = zones[i].boundary;
+        final zb = zones[j].boundary;
+        if (isH) {
+          if ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
+            final yMid =
+                ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.bottom + zb.top) / 2
+                    : (zb.bottom + za.top) / 2;
+            if ((yMid - oldPos).abs() <= alignThreshold) {
+              matchingDividers.add(yMid);
+            }
+          }
+        } else {
+          if ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
+            final xMid =
+                ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.right + zb.left) / 2
+                    : (zb.right + za.left) / 2;
+            if ((xMid - oldPos).abs() <= alignThreshold) {
+              matchingDividers.add(xMid);
+            }
+          }
+        }
+      }
+    }
+
     if (isH) {
-      newPos = (section == 1) ? newVal + t + sep : height - newVal - t - sep;
       double minAllowedY = t * 2;
       double maxAllowedY = height - t * 2;
       for (var z in zones) {
-        if ((z.boundary.bottom - (oldPos - sep)).abs() < 2) {
-          if (z.boundary.top + 50 > minAllowedY) {
-            minAllowedY = z.boundary.top + 50;
+        for (final divY in matchingDividers) {
+          if ((z.boundary.bottom - divY).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.top + 50 > minAllowedY) {
+              minAllowedY = z.boundary.top + 50;
+            }
           }
-        }
-        if ((z.boundary.top - (oldPos + sep)).abs() < 2) {
-          if (z.boundary.bottom - 50 < maxAllowedY) {
-            maxAllowedY = z.boundary.bottom - 50;
+          if ((z.boundary.top - divY).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.bottom - 50 < maxAllowedY) {
+              maxAllowedY = z.boundary.bottom - 50;
+            }
           }
         }
       }
       if (newPos - sep < minAllowedY) newPos = minAllowedY + sep;
       if (newPos + sep > maxAllowedY) newPos = maxAllowedY - sep;
-      double delta = newPos - oldPos;
-      for (var z in zones) {
-        if ((z.boundary.bottom - (oldPos - sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left,
-            z.boundary.top,
-            z.boundary.right,
-            z.boundary.bottom + delta,
-          );
-        } else if ((z.boundary.top - (oldPos + sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left,
-            z.boundary.top + delta,
-            z.boundary.right,
-            z.boundary.bottom,
-          );
+
+      for (int i = 0; i < zones.length; i++) {
+        var z = zones[i];
+        for (final divY in matchingDividers) {
+          if (z.boundary.bottom <= divY + 4.0 &&
+              (divY - z.boundary.bottom).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left,
+                z.boundary.top,
+                z.boundary.right,
+                newPos - sep,
+              ),
+            );
+            z = zones[i];
+          } else if (z.boundary.top >= divY - 4.0 &&
+              (z.boundary.top - divY).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left,
+                newPos + sep,
+                z.boundary.right,
+                z.boundary.bottom,
+              ),
+            );
+            z = zones[i];
+          }
         }
       }
     } else {
-      newPos = (section == 1) ? newVal + t + sep : width - newVal - t - sep;
       double minAllowedX = t * 2;
       double maxAllowedX = width - t * 2;
       for (var z in zones) {
-        if ((z.boundary.right - (oldPos - sep)).abs() < 2) {
-          if (z.boundary.left + 50 > minAllowedX) {
-            minAllowedX = z.boundary.left + 50;
+        for (final divX in matchingDividers) {
+          if ((z.boundary.right - divX).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.left + 50 > minAllowedX) {
+              minAllowedX = z.boundary.left + 50;
+            }
           }
-        }
-        if ((z.boundary.left - (oldPos + sep)).abs() < 2) {
-          if (z.boundary.right - 50 < maxAllowedX) {
-            maxAllowedX = z.boundary.right - 50;
+          if ((z.boundary.left - divX).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.right - 50 < maxAllowedX) {
+              maxAllowedX = z.boundary.right - 50;
+            }
           }
         }
       }
       if (newPos - sep < minAllowedX) newPos = minAllowedX + sep;
       if (newPos + sep > maxAllowedX) newPos = maxAllowedX - sep;
-      double delta = newPos - oldPos;
-      for (var z in zones) {
-        if ((z.boundary.right - (oldPos - sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left,
-            z.boundary.top,
-            z.boundary.right + delta,
-            z.boundary.bottom,
-          );
-        } else if ((z.boundary.left - (oldPos + sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left + delta,
-            z.boundary.top,
-            z.boundary.right,
-            z.boundary.bottom,
-          );
+
+      for (int i = 0; i < zones.length; i++) {
+        var z = zones[i];
+        for (final divX in matchingDividers) {
+          if (z.boundary.right <= divX + 4.0 &&
+              (divX - z.boundary.right).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left,
+                z.boundary.top,
+                newPos - sep,
+                z.boundary.bottom,
+              ),
+            );
+            z = zones[i];
+          } else if (z.boundary.left >= divX - 4.0 &&
+              (z.boundary.left - divX).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                newPos + sep,
+                z.boundary.top,
+                z.boundary.right,
+                z.boundary.bottom,
+              ),
+            );
+            z = zones[i];
+          }
         }
       }
     }
+
+    for (final oldDiv in matchingDividers) {
+      _moveMullionMetadata(_mullionKey(isH, oldDiv), _mullionKey(isH, newPos));
+    }
+
     selection = SelectionInfo(
       type: SelectionType.mullion,
       isHorizontalMullion: isH,
@@ -12793,7 +12962,7 @@ class WindowModel extends ChangeNotifier {
       mullionStart: selection.mullionStart,
       mullionEnd: selection.mullionEnd,
     );
-    _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
+    _snapNearbyParallelMullions(isHorizontal: isH, targetPos: newPos);
     notifyListeners();
   }
 
@@ -15247,6 +15416,40 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get hasProfileAngleSupport {
+    final sliding = systemMode == 'sliding';
+    return getConfiguredSectionForRole('profile_angle', useSlidingSeries: sliding) != null ||
+        getConfiguredSectionForRole('profile_angle', useSlidingSeries: !sliding) != null ||
+        getSectionByType('profile_angle') != null ||
+        getSlidingSectionByType('profile_angle') != null;
+  }
+
+  bool get usesProfileAngle => profileAngleMode > 0;
+
+  String get profileAngleModeName {
+    switch (profileAngleMode) {
+      case 1:
+        return 'يمين (90°)';
+      case 2:
+        return 'يسار (90°)';
+      case 3:
+        return 'الجهتين (90°)';
+      default:
+        return 'إيقاف';
+    }
+  }
+
+  void setProfileAngleMode(int mode) {
+    final next = mode.clamp(0, 3).toInt();
+    _saveSnapshot();
+    profileAngleMode = next;
+    notifyListeners();
+  }
+
+  void cycleProfileAngleMode() {
+    setProfileAngleMode((profileAngleMode + 1) % 4);
+  }
+
   bool frameRoleRequiredInAllScopes(String role) {
     final scopes = [false, true].where(
       (sliding) =>
@@ -15332,7 +15535,8 @@ class WindowModel extends ChangeNotifier {
 
   bool frameCanUseCacheRainure(Rect frame) {
     final section = frameSectionForRect(frame);
-    return section != null && _sectionAllowsStandaloneSideCover(section);
+    if (section == null) return false;
+    return !_sectionHasIntegratedSideCover(section);
   }
 
   /// Finds seams shared by two independent frames. A seam is eligible only
@@ -15439,6 +15643,121 @@ class WindowModel extends ChangeNotifier {
     return contacts;
   }
 
+  /// Finds all Cadre double mullion segments in the drawing.
+  /// Each Cadre double divider receives two Cache-rainure cuts (inside and outside).
+  List<CadreDoubleRainureSegment> getCadreDoubleRainureSegments() {
+    final segments = <CadreDoubleRainureSegment>[];
+    if (zones.length < 2) return segments;
+
+    final double mullionT =
+        math.max(maximumMullionThickness, profileThickness * 2) + 8.0;
+
+    for (int i = 0; i < zones.length; i++) {
+      final z1 = zones[i];
+      for (int j = i + 1; j < zones.length; j++) {
+        final z2 = zones[j];
+
+        // Horizontal boundary
+        final overlapLeft = math.max(z1.boundary.left, z2.boundary.left);
+        final overlapRight = math.min(z1.boundary.right, z2.boundary.right);
+        if (overlapLeft < overlapRight - 5.0) {
+          if ((z1.boundary.bottom - z2.boundary.top).abs() <= mullionT ||
+              (z2.boundary.bottom - z1.boundary.top).abs() <= mullionT) {
+            final yCenter = ((z1.boundary.bottom - z2.boundary.top).abs() <= mullionT)
+                ? (z1.boundary.bottom + z2.boundary.top) / 2.0
+                : (z2.boundary.bottom + z1.boundary.top) / 2.0;
+            if (isDoubleFrameMullionAt(true, yCenter)) {
+              final sliding = z1.content == ZoneContent.slidingSash ||
+                  z2.content == ZoneContent.slidingSash;
+              segments.add(
+                CadreDoubleRainureSegment(
+                  isHorizontal: true,
+                  position: yCenter,
+                  start: overlapLeft,
+                  end: overlapRight,
+                  usesSlidingSeries: sliding,
+                ),
+              );
+            }
+          }
+        }
+
+        // Vertical boundary
+        final overlapTop = math.max(z1.boundary.top, z2.boundary.top);
+        final overlapBottom = math.min(z1.boundary.bottom, z2.boundary.bottom);
+        if (overlapTop < overlapBottom - 5.0) {
+          if ((z1.boundary.right - z2.boundary.left).abs() <= mullionT ||
+              (z2.boundary.right - z1.boundary.left).abs() <= mullionT) {
+            final xCenter = ((z1.boundary.right - z2.boundary.left).abs() <= mullionT)
+                ? (z1.boundary.right + z2.boundary.left) / 2.0
+                : (z2.boundary.right + z1.boundary.left) / 2.0;
+            if (isDoubleFrameMullionAt(false, xCenter)) {
+              final sliding = z1.content == ZoneContent.slidingSash ||
+                  z2.content == ZoneContent.slidingSash;
+              segments.add(
+                CadreDoubleRainureSegment(
+                  isHorizontal: false,
+                  position: xCenter,
+                  start: overlapTop,
+                  end: overlapBottom,
+                  usesSlidingSeries: sliding,
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (segments.length <= 1) return segments;
+    final result = <CadreDoubleRainureSegment>[];
+    final grouped = <String, List<CadreDoubleRainureSegment>>{};
+    for (final seg in segments) {
+      final key = '${seg.isHorizontal ? "H" : "V"}_${(seg.position / 2.0).round() * 2}';
+      grouped.putIfAbsent(key, () => []).add(seg);
+    }
+
+    for (final list in grouped.values) {
+      list.sort((a, b) => a.start.compareTo(b.start));
+      var currentStart = list.first.start;
+      var currentEnd = list.first.end;
+      var currentPos = list.first.position;
+      var isH = list.first.isHorizontal;
+      var sliding = list.first.usesSlidingSeries;
+
+      for (int i = 1; i < list.length; i++) {
+        final s = list[i];
+        if (s.start <= currentEnd + 5.0) {
+          currentEnd = math.max(currentEnd, s.end);
+        } else {
+          result.add(
+            CadreDoubleRainureSegment(
+              isHorizontal: isH,
+              position: currentPos,
+              start: currentStart,
+              end: currentEnd,
+              usesSlidingSeries: sliding,
+            ),
+          );
+          currentStart = s.start;
+          currentEnd = s.end;
+          currentPos = s.position;
+          sliding = s.usesSlidingSeries;
+        }
+      }
+      result.add(
+        CadreDoubleRainureSegment(
+          isHorizontal: isH,
+          position: currentPos,
+          start: currentStart,
+          end: currentEnd,
+          usesSlidingSeries: sliding,
+        ),
+      );
+    }
+    return result;
+  }
+
   bool get usesSeuil =>
       usesFrameRole('seuil', sliding: usesSlidingPrimaryProfiles);
 
@@ -15500,8 +15819,8 @@ class WindowModel extends ChangeNotifier {
   /// Plinthe belongs to its opening frame, not neighbouring sliding frames.
   bool hasBottomFrameForRect(Rect frameRect) {
     final sliding = frameUsesSlidingSeries(frameRect);
-    if (sliding) return true;
     if (usesFrameRole('seuil', sliding: sliding)) return false;
+    if (sliding) return true;
     for (final zone in zones) {
       if (!frameRect.contains(zone.boundary.center)) continue;
       final local = componentOverrides['frame-bottom:${zone.id}'];
@@ -16612,6 +16931,16 @@ class WindowModel extends ChangeNotifier {
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
       zone.slidingSashesCount = zone.slidingTrackCount;
     }
+    if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
+      if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
+          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) {
+        zone.slidingFaceToFace = true;
+      } else if (zone.slidingTrackCount >= 4) {
+        zone.slidingFaceToFace = false;
+      }
+    } else {
+      zone.slidingFaceToFace = false;
+    }
     // A series may provide a ready-made 4/5/6-rail frame in addition to the
     // composable two-rail base. Select that exact complete frame as soon as
     // the user chooses its rail count. If it does not exist, keep the base
@@ -16655,7 +16984,14 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     zone.slidingSashesCount = count.clamp(2, 7).toInt();
-    if (zone.slidingSashesCount != 4) {
+    if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
+      if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
+          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) {
+        zone.slidingFaceToFace = true;
+      } else if (zone.slidingTrackCount >= 4) {
+        zone.slidingFaceToFace = false;
+      }
+    } else {
       zone.slidingFaceToFace = false;
       zone.slidingCentralHandle = false;
       zone.slidingSecondCentralHandle = false;
@@ -16769,18 +17105,18 @@ class WindowModel extends ChangeNotifier {
   /// Whether the active sliding series has explicitly assigned the
   /// Face-to-Face profile role.  A missing rule means the option does not
   /// exist; the painter and BOM must not guess a profile by its name.
-  bool get supportsSlidingFaceToFace =>
-      getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) !=
-      null;
+  bool get supportsSlidingFaceToFace {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.slidingSash) return false;
+    return zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0;
+  }
 
   void setSelectedZoneSlidingFaceToFace(bool value) {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
-    if (value &&
-        (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2)) {
+    if (value && (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
       return;
     }
-    if (value && !supportsSlidingFaceToFace) return;
     if (zone.slidingFaceToFace == value) return;
     _saveSnapshot();
     zone.slidingFaceToFace = value;
@@ -16796,11 +17132,7 @@ class WindowModel extends ChangeNotifier {
   void setSelectedZoneSlidingCentralHandle(bool value) {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
-    // The central handle described for the two-track layout is the meeting
-    // handle of the middle pair.  It is not a valid option for two or three
-    // leaves and is intentionally kept per zone.
-    if (value &&
-        (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2)) {
+    if (value && (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
       return;
     }
     if (zone.slidingCentralHandle == value) return;
@@ -16822,8 +17154,8 @@ class WindowModel extends ChangeNotifier {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
     if (value &&
-        (zone.slidingSashesCount != 4 ||
-            zone.slidingTrackCount != 2 ||
+        (zone.slidingSashesCount < 4 ||
+            zone.slidingSashesCount % 2 != 0 ||
             !zone.slidingCentralHandle)) {
       return;
     }
@@ -20242,8 +20574,10 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     bool isH = selection.isHorizontalMullion!;
     double pos = selection.mullionPosition!;
-    final oldKey = _mullionKey(isH, pos);
-    final sep = mullionThickness / 2;
+    final isDouble = isDoubleFrameMullionAt(isH, pos);
+    final profileW = frameProfileWidthAt(isH, pos);
+    final effectiveThickness = isDouble ? profileW * 2.0 : mullionThickness;
+    final sep = effectiveThickness / 2;
     final t = profileThickness;
     final selectedStart = selection.mullionStart ?? double.negativeInfinity;
     final selectedEnd = selection.mullionEnd ?? double.infinity;
@@ -20254,19 +20588,53 @@ class WindowModel extends ChangeNotifier {
           math.min(spanEnd, selectedEnd) - 2.0;
     }
 
+    const alignThreshold = 100.0;
+    final matchingDividers = <double>{pos};
+    for (var i = 0; i < zones.length; i++) {
+      for (var j = i + 1; j < zones.length; j++) {
+        final za = zones[i].boundary;
+        final zb = zones[j].boundary;
+        if (isH) {
+          if ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
+            final yMid =
+                ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.bottom + zb.top) / 2
+                    : (zb.bottom + za.top) / 2;
+            if ((yMid - pos).abs() <= alignThreshold) {
+              matchingDividers.add(yMid);
+            }
+          }
+        } else {
+          if ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
+            final xMid =
+                ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.right + zb.left) / 2
+                    : (zb.right + za.left) / 2;
+            if ((xMid - pos).abs() <= alignThreshold) {
+              matchingDividers.add(xMid);
+            }
+          }
+        }
+      }
+    }
+
     if (isH) {
       double minAllowedY = t * 2;
       double maxAllowedY = height - t * 2;
       for (var z in zones) {
         if (!overlapsSelectedSpan(z)) continue;
-        if ((z.boundary.bottom - (pos - sep)).abs() < 2) {
-          if (z.boundary.top + 50 > minAllowedY) {
-            minAllowedY = z.boundary.top + 50;
+        for (final divY in matchingDividers) {
+          if ((z.boundary.bottom - divY).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.top + 50 > minAllowedY) {
+              minAllowedY = z.boundary.top + 50;
+            }
           }
-        }
-        if ((z.boundary.top - (pos + sep)).abs() < 2) {
-          if (z.boundary.bottom - 50 < maxAllowedY) {
-            maxAllowedY = z.boundary.bottom - 50;
+          if ((z.boundary.top - divY).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.bottom - 50 < maxAllowedY) {
+              maxAllowedY = z.boundary.bottom - 50;
+            }
           }
         }
       }
@@ -20276,23 +20644,40 @@ class WindowModel extends ChangeNotifier {
       double actualDelta = newPos - pos;
       if (actualDelta == 0) return;
 
-      for (var z in zones) {
+      for (int i = 0; i < zones.length; i++) {
+        var z = zones[i];
         if (!overlapsSelectedSpan(z)) continue;
-        if ((z.boundary.bottom - (pos - sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left,
-            z.boundary.top,
-            z.boundary.right,
-            z.boundary.bottom + actualDelta,
-          );
-        } else if ((z.boundary.top - (pos + sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left,
-            z.boundary.top + actualDelta,
-            z.boundary.right,
-            z.boundary.bottom,
-          );
+        for (final divY in matchingDividers) {
+          if (z.boundary.bottom <= divY + 4.0 &&
+              (divY - z.boundary.bottom).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left,
+                z.boundary.top,
+                z.boundary.right,
+                z.boundary.bottom + actualDelta,
+              ),
+            );
+            z = zones[i];
+          } else if (z.boundary.top >= divY - 4.0 &&
+              (z.boundary.top - divY).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left,
+                z.boundary.top + actualDelta,
+                z.boundary.right,
+                z.boundary.bottom,
+              ),
+            );
+            z = zones[i];
+          }
         }
+      }
+      for (final oldDiv in matchingDividers) {
+        _moveMullionMetadata(
+          _mullionKey(isH, oldDiv),
+          _mullionKey(isH, oldDiv + actualDelta),
+        );
       }
       selection = SelectionInfo(
         type: SelectionType.mullion,
@@ -20301,21 +20686,22 @@ class WindowModel extends ChangeNotifier {
         mullionStart: selection.mullionStart,
         mullionEnd: selection.mullionEnd,
       );
-      _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
       _snapNearbyParallelMullions(isHorizontal: true, targetPos: newPos);
     } else {
       double minAllowedX = t * 2;
       double maxAllowedX = width - t * 2;
       for (var z in zones) {
         if (!overlapsSelectedSpan(z)) continue;
-        if ((z.boundary.right - (pos - sep)).abs() < 2) {
-          if (z.boundary.left + 50 > minAllowedX) {
-            minAllowedX = z.boundary.left + 50;
+        for (final divX in matchingDividers) {
+          if ((z.boundary.right - divX).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.left + 50 > minAllowedX) {
+              minAllowedX = z.boundary.left + 50;
+            }
           }
-        }
-        if ((z.boundary.left - (pos + sep)).abs() < 2) {
-          if (z.boundary.right - 50 < maxAllowedX) {
-            maxAllowedX = z.boundary.right - 50;
+          if ((z.boundary.left - divX).abs() <= effectiveThickness + 8.0) {
+            if (z.boundary.right - 50 < maxAllowedX) {
+              maxAllowedX = z.boundary.right - 50;
+            }
           }
         }
       }
@@ -20325,23 +20711,40 @@ class WindowModel extends ChangeNotifier {
       double actualDelta = newPos - pos;
       if (actualDelta == 0) return;
 
-      for (var z in zones) {
+      for (int i = 0; i < zones.length; i++) {
+        var z = zones[i];
         if (!overlapsSelectedSpan(z)) continue;
-        if ((z.boundary.right - (pos - sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left,
-            z.boundary.top,
-            z.boundary.right + actualDelta,
-            z.boundary.bottom,
-          );
-        } else if ((z.boundary.left - (pos + sep)).abs() < 2) {
-          z.boundary = Rect.fromLTRB(
-            z.boundary.left + actualDelta,
-            z.boundary.top,
-            z.boundary.right,
-            z.boundary.bottom,
-          );
+        for (final divX in matchingDividers) {
+          if (z.boundary.right <= divX + 4.0 &&
+              (divX - z.boundary.right).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left,
+                z.boundary.top,
+                z.boundary.right + actualDelta,
+                z.boundary.bottom,
+              ),
+            );
+            z = zones[i];
+          } else if (z.boundary.left >= divX - 4.0 &&
+              (z.boundary.left - divX).abs() <= effectiveThickness + 8.0) {
+            zones[i] = z.copyWith(
+              boundary: Rect.fromLTRB(
+                z.boundary.left + actualDelta,
+                z.boundary.top,
+                z.boundary.right,
+                z.boundary.bottom,
+              ),
+            );
+            z = zones[i];
+          }
         }
+      }
+      for (final oldDiv in matchingDividers) {
+        _moveMullionMetadata(
+          _mullionKey(isH, oldDiv),
+          _mullionKey(isH, oldDiv + actualDelta),
+        );
       }
       selection = SelectionInfo(
         type: SelectionType.mullion,
@@ -20350,7 +20753,6 @@ class WindowModel extends ChangeNotifier {
         mullionStart: selection.mullionStart,
         mullionEnd: selection.mullionEnd,
       );
-      _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
       _snapNearbyParallelMullions(isHorizontal: false, targetPos: newPos);
     }
     notifyListeners();
@@ -20420,14 +20822,45 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     final isHorizontal = selection.isHorizontalMullion!;
     final position = selection.mullionPosition!;
-    String key = _mullionKey(isHorizontal, position);
-    mullionProfiles[key] = type;
-    mullionSectionOverrides.remove(key);
-    if (type != MullionProfileType.grooved) {
-      groovedMullionCavityOnPositiveSide.remove(key);
-      _restoreGlassOnBothSidesOfMullion(isHorizontal, position);
-    } else {
-      _enforceGroovedMullionGlassSide(isHorizontal, position);
+
+    // تعيين النوع لكل التقسيمات التي تقع على نفس المستوى (كالعلوية والسفلية)
+    final collinearPositions = <double>{position};
+    for (var i = 0; i < zones.length; i++) {
+      for (var j = i + 1; j < zones.length; j++) {
+        final za = zones[i].boundary;
+        final zb = zones[j].boundary;
+        if (isHorizontal) {
+          if ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
+            final yMid =
+                ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.bottom + zb.top) / 2
+                    : (zb.bottom + za.top) / 2;
+            if ((yMid - position).abs() <= 100.0) collinearPositions.add(yMid);
+          }
+        } else {
+          if ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
+            final xMid =
+                ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.right + zb.left) / 2
+                    : (zb.right + za.left) / 2;
+            if ((xMid - position).abs() <= 100.0) collinearPositions.add(xMid);
+          }
+        }
+      }
+    }
+
+    for (final pos in collinearPositions) {
+      final key = _mullionKey(isHorizontal, pos);
+      mullionProfiles[key] = type;
+      mullionSectionOverrides.remove(key);
+      if (type != MullionProfileType.grooved) {
+        groovedMullionCavityOnPositiveSide.remove(key);
+        _restoreGlassOnBothSidesOfMullion(isHorizontal, pos);
+      } else {
+        _enforceGroovedMullionGlassSide(isHorizontal, pos);
+      }
     }
     notifyListeners();
   }
@@ -20446,27 +20879,50 @@ class WindowModel extends ChangeNotifier {
     }
 
     _saveSnapshot();
-    final key = _mullionKey(
-      selection.isHorizontalMullion!,
-      selection.mullionPosition!,
-    );
+    final isHorizontal = selection.isHorizontalMullion!;
+    final position = selection.mullionPosition!;
+
+    final collinearPositions = <double>{position};
+    for (var i = 0; i < zones.length; i++) {
+      for (var j = i + 1; j < zones.length; j++) {
+        final za = zones[i].boundary;
+        final zb = zones[j].boundary;
+        if (isHorizontal) {
+          if ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.bottom - za.top).abs() <= maximumMullionThickness + 8.0) {
+            final yMid =
+                ((za.bottom - zb.top).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.bottom + zb.top) / 2
+                    : (zb.bottom + za.top) / 2;
+            if ((yMid - position).abs() <= 100.0) collinearPositions.add(yMid);
+          }
+        } else {
+          if ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0 ||
+              (zb.right - za.left).abs() <= maximumMullionThickness + 8.0) {
+            final xMid =
+                ((za.right - zb.left).abs() <= maximumMullionThickness + 8.0)
+                    ? (za.right + zb.left) / 2
+                    : (zb.right + za.left) / 2;
+            if ((xMid - position).abs() <= 100.0) collinearPositions.add(xMid);
+          }
+        }
+      }
+    }
+
     final selected = Map<String, dynamic>.from(section);
     selected['mullion_profile_type'] = type.name;
     selected['is_double_frame'] = type == MullionProfileType.flat;
-    mullionProfiles[key] = type;
-    mullionSectionOverrides[key] = selected;
-    if (type != MullionProfileType.grooved) {
-      groovedMullionCavityOnPositiveSide.remove(key);
-      _restoreGlassOnBothSidesOfMullion(
-        selection.isHorizontalMullion!,
-        selection.mullionPosition!,
-      );
-    }
-    if (type == MullionProfileType.grooved) {
-      _enforceGroovedMullionGlassSide(
-        selection.isHorizontalMullion!,
-        selection.mullionPosition!,
-      );
+
+    for (final pos in collinearPositions) {
+      final key = _mullionKey(isHorizontal, pos);
+      mullionProfiles[key] = type;
+      mullionSectionOverrides[key] = Map<String, dynamic>.from(selected);
+      if (type != MullionProfileType.grooved) {
+        groovedMullionCavityOnPositiveSide.remove(key);
+        _restoreGlassOnBothSidesOfMullion(isHorizontal, pos);
+      } else {
+        _enforceGroovedMullionGlassSide(isHorizontal, pos);
+      }
     }
     notifyListeners();
   }

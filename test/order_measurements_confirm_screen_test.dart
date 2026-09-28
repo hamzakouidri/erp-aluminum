@@ -24,6 +24,31 @@ void main() {
       },
     );
 
+    test(
+      'reopening ten different confirmed measurements preserves every piece',
+      () {
+        final confirmed = List.generate(
+          10,
+          (i) => {'width': 1200 + i, 'height': 1440 + i, 'position': 'Room $i'},
+        );
+        final instances = normalizeMeasurementInstances(
+          originalQuantity: 10,
+          originalWidth: 1200,
+          originalHeight: 1440,
+          defaultPosition: '',
+          savedInstances: const [],
+          confirmedInstances: confirmed,
+        );
+        expect(instances, hasLength(10));
+        for (var i = 0; i < 10; i++) {
+          expect(instances[i]['width'], 1200 + i);
+          expect(instances[i]['height'], 1440 + i);
+          expect(instances[i]['position'], 'Room $i');
+          expect(instances[i]['qty'], 1);
+        }
+      },
+    );
+
     test('a partial confirmation remains partial after reopening', () {
       final instances = normalizeMeasurementInstances(
         originalQuantity: 3,

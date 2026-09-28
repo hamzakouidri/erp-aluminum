@@ -1,6 +1,11 @@
 import '../app_settings.dart';
 
 final Map<String, Map<AppLanguage, String>> measurementKeys = {
+  'عرض القياسات': {
+    AppLanguage.arabic: 'عرض القياسات',
+    AppLanguage.french: 'Voir les mesures',
+    AppLanguage.english: 'View measurements',
+  },
   'ورقة رفع القياسات الذكية': {
     AppLanguage.arabic: 'ورقة رفع القياسات الذكية',
     AppLanguage.french: 'Fiche de prise de mesures',
@@ -17,14 +22,18 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.english: 'Share Compressed Measurement ZIP',
   },
   'خطأ: لم يتم العثور على ملف البيانات الأساسي داخل الـ ZIP': {
-    AppLanguage.arabic: 'خطأ: لم يتم العثور على ملف البيانات الأساسي داخل الـ ZIP',
-    AppLanguage.french: 'Erreur : Fichier de données principal introuvable dans le ZIP',
+    AppLanguage.arabic:
+        'خطأ: لم يتم العثور على ملف البيانات الأساسي داخل الـ ZIP',
+    AppLanguage.french:
+        'Erreur : Fichier de données principal introuvable dans le ZIP',
     AppLanguage.english: 'Error: Main data file not found inside the ZIP',
   },
   'تم استيراد واسترجاع ورقة القياس بجميع مرفقاتها بنجاح!': {
     AppLanguage.arabic: 'تم استيراد واسترجاع ورقة القياس بجميع مرفقاتها بنجاح!',
-    AppLanguage.french: 'Fiche de mesure et ses pièces jointes importées avec succès !',
-    AppLanguage.english: 'Measurement sheet and attachments imported successfully!',
+    AppLanguage.french:
+        'Fiche de mesure et ses pièces jointes importées avec succès !',
+    AppLanguage.english:
+        'Measurement sheet and attachments imported successfully!',
   },
   'خطأ أثناء استيراد الـ ZIP': {
     AppLanguage.arabic: 'خطأ أثناء استيراد الـ ZIP',

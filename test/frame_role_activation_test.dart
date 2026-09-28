@@ -229,6 +229,23 @@ void main() {
     },
   );
 
+  test('cache-rainure applies to cadre double mullions inside and outside', () {
+    final model = RoleWindow();
+    model.zones[0].boundary = const Rect.fromLTRB(50, 50, 950, 1150);
+    model.zones[1].boundary = const Rect.fromLTRB(1050, 50, 1950, 1150);
+    model.mullionProfiles['V_1000.0'] = MullionProfileType.flat;
+
+    final segments = model.getCadreDoubleRainureSegments();
+    expect(segments, hasLength(1));
+    expect(segments.single.length, 1100);
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final cacheRainure =
+        bom.where((i) => i.roleKey == 'cache_rainure').toList();
+    expect(cacheRainure, isNotEmpty);
+    model.dispose();
+  });
+
   test(
     'all three roles generate one linked gasket per position at actual length',
     () async {
@@ -262,4 +279,63 @@ void main() {
       model.dispose();
     },
   );
+
+  test('profile angle mode sets and calculates pieces correctly', () async {
+    final model = RoleWindow();
+    expect(model.profileAngleMode, 0);
+    expect(model.usesProfileAngle, false);
+
+    model.setProfileAngleMode(1); // right
+    expect(model.profileAngleMode, 1);
+    expect(model.usesProfileAngle, true);
+    expect(model.profileAngleModeName, 'يمين (90°)');
+
+    var items = ComponentCalculator.generateBom(model, {});
+    var angleItem = items.firstWhere(
+      (item) => (item.roleKey == 'profile_angle' || item.selectorType == 'profile_angle'),
+    );
+    expect(angleItem.pieces, hasLength(1));
+    expect(angleItem.pieces!.first, closeTo(1.2, 0.001)); // window height = 1200mm = 1.2m
+    expect(angleItem.cuttingList, 'يمين (90°)');
+
+    model.setProfileAngleMode(3); // both
+    expect(model.profileAngleMode, 3);
+    expect(model.profileAngleModeName, 'الجهتين (90°)');
+
+    items = ComponentCalculator.generateBom(model, {});
+    angleItem = items.firstWhere(
+      (item) => (item.roleKey == 'profile_angle' || item.selectorType == 'profile_angle'),
+    );
+    expect(angleItem.pieces, hasLength(2));
+    expect(angleItem.pieces![0], closeTo(1.2, 0.001));
+    expect(angleItem.pieces![1], closeTo(1.2, 0.001));
+    expect(angleItem.cuttingList, 'الجهتين (90°)');
+
+    model.dispose();
+  });
+
+  test('isSlidingMontantReinforced recognizes chicane and chicane_renforcee', () {
+    final model = RoleWindow();
+    expect(
+      model.isSlidingMontantReinforced({'design_role_key': 'chicane_renforcee'}, central: true),
+      isTrue,
+    );
+    expect(
+      model.isSlidingMontantReinforced({'design_role_key': 'chicane'}, central: true),
+      isTrue,
+    );
+    expect(
+      model.isSlidingMontantReinforced({'name': 'Chicane', 'type': 'chicane'}, central: true),
+      isTrue,
+    );
+    expect(
+      model.isSlidingMontantReinforced({'name': 'شيكان عادية', 'type': 'profil'}, central: true),
+      isTrue,
+    );
+    expect(
+      model.isSlidingMontantReinforced({'name': 'قائم وسطي', 'type': 'sash'}, central: true),
+      isFalse,
+    );
+    model.dispose();
+  });
 }

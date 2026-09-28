@@ -1018,12 +1018,12 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 
     Widget targetPage;
 
-    // Read at creation time too: the first asynchronous page load may still
-    // be pending when the user chooses a system.
-    final defaults = await SharedPreferences.getInstance();
-    if (!context.mounted) return;
-    _defaultOpeningSeriesId = defaults.getInt('default_opening_series_id');
-    _defaultSlidingSeriesId = defaults.getInt('default_sliding_series_id');
+    if (_defaultOpeningSeriesId == null && _defaultSlidingSeriesId == null) {
+      final defaults = await SharedPreferences.getInstance();
+      if (!context.mounted) return;
+      _defaultOpeningSeriesId = defaults.getInt('default_opening_series_id');
+      _defaultSlidingSeriesId = defaults.getInt('default_sliding_series_id');
+    }
 
     switch (systemType) {
       case 'sliding':
@@ -1033,7 +1033,6 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
         }
         targetPage = WindowView(systemMode: 'sliding', model: model);
-        await model.loadCatalogData('sliding');
         break;
       case 'french':
         final model = _makeModel(thickness: 60);
@@ -1041,7 +1040,6 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           model.loadedSeriesId = _defaultOpeningSeriesId;
         }
         targetPage = WindowView(systemMode: 'french', model: model);
-        await model.loadCatalogData('french');
         break;
       case 'mixed':
         final model = _makeModel(thickness: 60);
@@ -1053,7 +1051,6 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
         }
         targetPage = WindowView(systemMode: 'mixed', model: model);
-        await model.loadCatalogData('mixed');
         break;
       case 'rolling':
         targetPage = WindowView(

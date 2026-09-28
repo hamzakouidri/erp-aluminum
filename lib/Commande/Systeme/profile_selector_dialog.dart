@@ -935,10 +935,8 @@ class CatalogCandidateResolver {
               !_profileSupportsEnabledSideCover(section)) {
             return false;
           }
-          final isPvc = normalizedMaterial == 'pvc';
           if (isFrameSelector &&
               query.multiFrameDrawing &&
-              isPvc &&
               profileHasIntegratedSideCover(section)) {
             return false;
           }

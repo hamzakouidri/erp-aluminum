@@ -4,14 +4,42 @@ import 'package:database_data/Commande/order_required_goods_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('identical catalogue items and kits remain separated by series', () {
-    BomItem item(int series) => BomItem(category: 'profile',
-      originalName: 'Frame', name: 'Frame', quantity: 1, unit: 'bar',
-      unitPrice: 10, catalogItemId: 12, sourceSeriesId: series);
-    expect(requiredGoodsAggregationKey(item(19), 'profile'),
-      isNot(requiredGoodsAggregationKey(item(41), 'profile')));
-    expect(requiredGoodsKitAggregationKey('accessory', 'Kit', seriesId: 19),
-      isNot(requiredGoodsKitAggregationKey('accessory', 'Kit', seriesId: 41)));
+  test('identical catalogue items and kits aggregate across series without duplication', () {
+    BomItem item(int series) => BomItem(
+      category: 'profile',
+      originalName: 'Frame',
+      name: 'Frame\n4001 - إطار بغطاء جانبي',
+      profileCode: '4001',
+      quantity: 1,
+      unit: 'قطاع',
+      unitPrice: 10,
+      catalogItemId: 12,
+      sourceSeriesId: series,
+    );
+    // Outer frame and Cadre double of same profile code must aggregate into one key
+    final cadreDoubleItem = BomItem(
+      category: 'profile',
+      originalName: 'Cadre doublé — 4001',
+      name: 'Cadre doublé — 4001\n4001 - إطار بغطاء جانبي',
+      profileCode: '4001',
+      quantity: 1,
+      unit: 'قطاع',
+      unitPrice: 10,
+      catalogItemId: 12,
+      sourceSeriesId: null,
+    );
+    expect(
+      requiredGoodsAggregationKey(item(19), 'profile'),
+      equals(requiredGoodsAggregationKey(item(41), 'profile')),
+    );
+    expect(
+      requiredGoodsAggregationKey(item(19), 'profile'),
+      equals(requiredGoodsAggregationKey(cadreDoubleItem, 'profile')),
+    );
+    expect(
+      requiredGoodsKitAggregationKey('accessory', 'Kit', seriesId: 19),
+      equals(requiredGoodsKitAggregationKey('accessory', 'Kit', seriesId: 41)),
+    );
   });
   group('required goods order data', () {
     test('database rows are materialized with stable dynamic map types', () {

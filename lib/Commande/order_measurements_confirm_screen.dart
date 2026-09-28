@@ -99,11 +99,13 @@ List<Map<String, dynamic>> normalizeMeasurementInstances({
 class OrderMeasurementsConfirmScreen extends StatefulWidget {
   final Map<String, dynamic> orderData;
   final SqlDatabase db;
+  final int? initialDetailId;
 
   const OrderMeasurementsConfirmScreen({
     super.key,
     required this.orderData,
     required this.db,
+    this.initialDetailId,
   });
 
   @override
@@ -115,8 +117,12 @@ class _OrderMeasurementsConfirmScreenState
     extends State<OrderMeasurementsConfirmScreen> {
   bool _isLoading = true;
   bool _isSaving = false; // لمنع الضغط المزدوج على زر الحفظ
-  bool _isSavingBeforeExit = false;
   bool _canLeaveScreen = false;
+  final Set<int> _lockedDetails = {};
+
+  bool get _allConfirmed =>
+      _detailsList.isNotEmpty &&
+      _detailsList.every((d) => _lockedDetails.contains(d['id']));
   List<Map<String, dynamic>> _detailsList = [];
 
   // Controllers maps: detailId -> list of instance editors
@@ -163,8 +169,20 @@ class _OrderMeasurementsConfirmScreenState
       final rawDetails = await widget.db.readCommandeDetails(orderId);
 
       _detailsList = List<Map<String, dynamic>>.from(rawDetails);
+      final selectedIndex = _detailsList.indexWhere(
+        (d) => d['id'] == widget.initialDetailId,
+      );
+      if (selectedIndex > 0) {
+        _detailsList.insert(0, _detailsList.removeAt(selectedIndex));
+      }
 
+      for (final editors in _editors.values) {
+        for (final editor in editors) {
+          editor.dispose();
+        }
+      }
       _editors.clear();
+      _lockedDetails.clear();
       for (final detail in _detailsList) {
         final detailId = detail['id'] as int;
         final originalQty = measurementQuantityValue(
@@ -206,13 +224,26 @@ class _OrderMeasurementsConfirmScreenState
           } catch (_) {}
         }
 
+        if (parsedConfirmed.length == originalQty &&
+            parsedConfirmed.every(
+              (row) =>
+                  row is Map &&
+                  measurementQuantityValue(row['width'] ?? row['largeur']) >
+                      0 &&
+                  measurementQuantityValue(row['height'] ?? row['hauteur']) > 0,
+            )) {
+          _lockedDetails.add(detailId);
+        }
+
         final List<InstanceEditor> editorsList = [];
         final normalizedInstances = normalizeMeasurementInstances(
           originalQuantity: originalQty,
           originalWidth: originalW,
           originalHeight: originalH,
           defaultPosition: defaultPos,
-          savedInstances: parsedInstances,
+          savedInstances: _lockedDetails.contains(detailId)
+              ? []
+              : parsedInstances,
           confirmedInstances: parsedConfirmed,
         );
         for (final inst in normalizedInstances) {
@@ -247,9 +278,7 @@ class _OrderMeasurementsConfirmScreenState
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             '${_uiText('خطأ أثناء تحميل البيانات', 'Erreur lors du chargement des données', 'Error loading data')}: $e',
@@ -298,7 +327,7 @@ class _OrderMeasurementsConfirmScreenState
     return (instances: instances, confirmed: confirmed);
   }
 
-  Future<bool> _saveAllMeasurements({bool quietly = false}) async {
+  Future<bool> _saveAllMeasurements() async {
     try {
       final myDb = await widget.db.db;
       if (myDb == null) return false;
@@ -314,7 +343,7 @@ class _OrderMeasurementsConfirmScreenState
           return false;
         }
         final payload = _measurementPayload(detailId);
-        if (payload.instances.isEmpty) return false;
+        if (payload.confirmed.length != confirmedQuantity) return false;
         await widget.db.updateCommandeDetailConfirmedMesures(
           detailId,
           jsonEncode(payload.instances),
@@ -351,7 +380,7 @@ class _OrderMeasurementsConfirmScreenState
       return;
     }
     final payload = _measurementPayload(detailId);
-    if (payload.instances.isEmpty) {
+    if (payload.instances.isEmpty || payload.confirmed.length != sum) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.redAccent,
@@ -410,6 +439,16 @@ class _OrderMeasurementsConfirmScreenState
         );
       }
     }
+  }
+
+  @override
+  void dispose() {
+    for (final editors in _editors.values) {
+      for (final editor in editors) {
+        editor.dispose();
+      }
+    }
+    super.dispose();
   }
 
   // --- PDF Sticker Generation ---
@@ -983,31 +1022,46 @@ class _OrderMeasurementsConfirmScreenState
     final subtextColor = isDark ? Colors.grey.shade300 : Colors.black54;
 
     return PopScope(
-      canPop: _canLeaveScreen,
+      canPop: !_isSaving && (_allConfirmed || _canLeaveScreen),
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop || _isSavingBeforeExit) return;
-        _isSavingBeforeExit = true;
-        final saved = await _saveAllMeasurements(quietly: true);
-        if (!mounted) return;
-        if (!saved) {
-          _isSavingBeforeExit = false;
-          ScaffoldMessenger.of(this.context).showSnackBar(
-            SnackBar(
-              backgroundColor: Colors.redAccent,
-              content: Text(
-                _tr(
-                  'تعذر حفظ القياسات. صحّح الكميات أو الأبعاد قبل الخروج.',
-                  'Impossible d’enregistrer les mesures. Corrigez les quantités ou les dimensions avant de quitter.',
-                  'Could not save measurements. Correct quantities or dimensions before leaving.',
-                  lang,
-                ),
+        if (didPop || _isSaving) return;
+        final leave = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(
+              _tr(
+                'الخروج دون تأكيد؟',
+                'Quitter sans confirmer ?',
+                'Leave without confirming?',
+                lang,
               ),
             ),
-          );
-          return;
+            content: Text(
+              _tr(
+                'لن تُحفظ التغييرات غير المؤكدة.',
+                'Les modifications non confirmées ne seront pas enregistrées.',
+                'Unconfirmed changes will not be saved.',
+                lang,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(
+                  _tr('متابعة', 'Continuer', 'Continue editing', lang),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(_tr('خروج', 'Quitter', 'Leave', lang)),
+              ),
+            ],
+          ),
+        );
+        if (leave == true && mounted) {
+          setState(() => _canLeaveScreen = true);
+          Navigator.of(this.context).pop();
         }
-        setState(() => _canLeaveScreen = true);
-        Navigator.of(this.context).pop();
       },
       child: Directionality(
         textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
@@ -1111,6 +1165,7 @@ class _OrderMeasurementsConfirmScreenState
                     final imagePath = detail['drawing_image_path']?.toString();
                     final editorsList = _editors[detailId] ?? [];
                     final currentSum = _getSumQty(detailId);
+                    final locked = _lockedDetails.contains(detailId);
                     final match = currentSum == totalQty;
 
                     return Card(
@@ -1294,6 +1349,7 @@ class _OrderMeasurementsConfirmScreenState
                               itemBuilder: (context, edIndex) {
                                 final ed = editorsList[edIndex];
                                 final isActive =
+                                    !locked &&
                                     _activeEditIndices[detailId] == edIndex;
 
                                 if (isActive) {
@@ -1435,7 +1491,8 @@ class _OrderMeasurementsConfirmScreenState
                                                 ),
                                               ),
                                             ),
-                                            if (editorsList.length > 1) ...[
+                                            if (!locked &&
+                                                editorsList.length > 1) ...[
                                               const SizedBox(width: 8),
                                               IconButton(
                                                 icon: const Icon(
@@ -1539,20 +1596,21 @@ class _OrderMeasurementsConfirmScreenState
                                             ),
                                           ),
                                         ),
-                                        IconButton(
-                                          icon: const Icon(
-                                            Icons.edit_rounded,
-                                            color: Colors.blue,
-                                            size: 20,
+                                        if (!locked)
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.edit_rounded,
+                                              color: Colors.blue,
+                                              size: 20,
+                                            ),
+                                            onPressed: () {
+                                              setState(() {
+                                                _activeEditIndices[detailId] =
+                                                    edIndex;
+                                              });
+                                            },
                                           ),
-                                          onPressed: () {
-                                            setState(() {
-                                              _activeEditIndices[detailId] =
-                                                  edIndex;
-                                            });
-                                          },
-                                        ),
-                                        if (editorsList.length > 1)
+                                        if (!locked && editorsList.length > 1)
                                           IconButton(
                                             icon: const Icon(
                                               Icons.delete_forever_rounded,
@@ -1605,7 +1663,7 @@ class _OrderMeasurementsConfirmScreenState
                                 spacing: 12,
                                 runSpacing: 8,
                                 children: [
-                                  if (currentSum < totalQty) ...[
+                                  if (!locked && currentSum < totalQty) ...[
                                     TextButton.icon(
                                       icon: const Icon(
                                         Icons.add_circle_outline_rounded,
@@ -1646,6 +1704,17 @@ class _OrderMeasurementsConfirmScreenState
                                       },
                                     ),
                                   ],
+                                  if (locked)
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.edit_rounded),
+                                      label: Text(
+                                        _tr('تعديل', 'Modifier', 'Edit', lang),
+                                      ),
+                                      onPressed: () => setState(() {
+                                        _lockedDetails.remove(detailId);
+                                        _activeEditIndices[detailId] = -1;
+                                      }),
+                                    ),
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.indigo,
@@ -1661,14 +1730,29 @@ class _OrderMeasurementsConfirmScreenState
                                     icon: const Icon(Icons.save_rounded),
                                     label: Text(
                                       _tr(
-                                        'حفظ القياسات',
-                                        'Enregistrer les mesures',
-                                        'Save measurements',
+                                        locked
+                                            ? 'القياسات مؤكدة'
+                                            : 'تأكيد القياسات',
+                                        locked
+                                            ? 'Mesures confirmées'
+                                            : 'Confirmer les mesures',
+                                        locked
+                                            ? 'Measurements confirmed'
+                                            : 'Confirm measurements',
                                         lang,
                                       ),
                                     ),
-                                    onPressed: () =>
-                                        _saveInstances(detailId, totalQty),
+                                    onPressed: locked || _isSaving
+                                        ? null
+                                        : () async {
+                                            setState(() => _isSaving = true);
+                                            await _saveInstances(
+                                              detailId,
+                                              totalQty,
+                                            );
+                                            if (mounted)
+                                              setState(() => _isSaving = false);
+                                          },
                                   ),
                                   TextButton.icon(
                                     icon: const Icon(
@@ -1754,9 +1838,15 @@ class _OrderMeasurementsConfirmScreenState
                                   lang,
                                 )
                               : _tr(
-                                  'تم حفظ كل القياسات 💾',
-                                  'Toutes les mesures sont enregistrées 💾',
-                                  'All measurements saved 💾',
+                                  _allConfirmed
+                                      ? 'كل القياسات مؤكدة'
+                                      : 'تأكيد كل القياسات',
+                                  _allConfirmed
+                                      ? 'Toutes les mesures sont confirmées'
+                                      : 'Confirmer toutes les mesures',
+                                  _allConfirmed
+                                      ? 'All measurements confirmed'
+                                      : 'Confirm all measurements',
                                   lang,
                                 ),
                           style: const TextStyle(
@@ -1764,97 +1854,99 @@ class _OrderMeasurementsConfirmScreenState
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        onPressed: () async {
-                          // 1. Validate sums
-                          bool allValid = true;
-                          for (final detail in _detailsList) {
-                            final detailId = detail['id'] as int;
-                            final totalQty = measurementQuantityValue(
-                              detail['quantity'],
-                              fallback: 1,
-                            );
-                            final sum = _getSumQty(detailId);
-                            if (sum != totalQty) {
-                              allValid = false;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: Colors.redAccent,
-                                  content: Text(
-                                    _tr(
-                                      sum < totalQty
-                                          ? 'القياسات غير مكتملة للعنصر #$detailId: تم تأكيد $sum من $totalQty، وبقي ${totalQty - sum} في الرسم.'
-                                          : 'مجموع كميات القياسات للعنصر #$detailId ($sum) أكبر من الكمية الإجمالية ($totalQty)!',
-                                      sum < totalQty
-                                          ? 'Mesures incomplètes (#$detailId) : $sum sur $totalQty confirmées, il reste ${totalQty - sum} dans le dessin.'
-                                          : 'La somme des quantités (#$detailId: $sum) dépasse le total ($totalQty) !',
-                                      sum < totalQty
-                                          ? 'Measurements are incomplete for item #$detailId: $sum of $totalQty confirmed; ${totalQty - sum} remain in the drawing.'
-                                          : 'Total quantity sum (#$detailId: $sum) exceeds ($totalQty)!',
-                                      lang,
+                        onPressed: _allConfirmed || _isSaving
+                            ? null
+                            : () async {
+                                // 1. Validate sums
+                                bool allValid = true;
+                                for (final detail in _detailsList) {
+                                  final detailId = detail['id'] as int;
+                                  final totalQty = measurementQuantityValue(
+                                    detail['quantity'],
+                                    fallback: 1,
+                                  );
+                                  final sum = _getSumQty(detailId);
+                                  if (sum != totalQty) {
+                                    allValid = false;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        backgroundColor: Colors.redAccent,
+                                        content: Text(
+                                          _tr(
+                                            sum < totalQty
+                                                ? 'القياسات غير مكتملة للعنصر #$detailId: تم تأكيد $sum من $totalQty، وبقي ${totalQty - sum} في الرسم.'
+                                                : 'مجموع كميات القياسات للعنصر #$detailId ($sum) أكبر من الكمية الإجمالية ($totalQty)!',
+                                            sum < totalQty
+                                                ? 'Mesures incomplètes (#$detailId) : $sum sur $totalQty confirmées, il reste ${totalQty - sum} dans le dessin.'
+                                                : 'La somme des quantités (#$detailId: $sum) dépasse le total ($totalQty) !',
+                                            sum < totalQty
+                                                ? 'Measurements are incomplete for item #$detailId: $sum of $totalQty confirmed; ${totalQty - sum} remain in the drawing.'
+                                                : 'Total quantity sum (#$detailId: $sum) exceeds ($totalQty)!',
+                                            lang,
+                                          ),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                    break;
+                                  }
+                                }
+
+                                if (!allValid) return;
+
+                                // 2. حفظ محلي سريع بدون انتظار السحابة
+                                if (_isSaving) return;
+                                setState(() => _isSaving = true);
+                                final saved = await _saveAllMeasurements();
+                                if (!mounted) return;
+                                setState(() => _isSaving = false);
+
+                                if (saved) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        _tr(
+                                          '✅ تم حفظ القياسات',
+                                          '✅ Les mesures ont été enregistrées avec succès',
+                                          '✅ All measurements saved',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      backgroundColor: Colors.teal,
+                                      duration: const Duration(seconds: 2),
                                     ),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
+                                  );
+
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => OrderAllocationScreen(
+                                        orderData: widget.orderData,
+                                        db: widget.db,
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              );
-                              break;
-                            }
-                          }
-
-                          if (!allValid) return;
-
-                          // 2. حفظ محلي سريع بدون انتظار السحابة
-                          if (_isSaving) return;
-                          setState(() => _isSaving = true);
-                          final saved = await _saveAllMeasurements();
-                          if (!mounted) return;
-                          setState(() => _isSaving = false);
-
-                          if (saved) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _tr(
-                                    '✅ تم حفظ القياسات',
-                                    '✅ Les mesures ont été enregistrées avec succès',
-                                    '✅ All measurements saved',
-                                    lang,
-                                  ),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                backgroundColor: Colors.teal,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => OrderAllocationScreen(
-                                  orderData: widget.orderData,
-                                  db: widget.db,
-                                ),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                backgroundColor: Colors.redAccent,
-                                content: Text(
-                                  _tr(
-                                    'تعذر حفظ القياسات. أعد المحاولة وتحقق من البيانات.',
-                                    'Impossible d’enregistrer les mesures. Réessayez et vérifiez les données.',
-                                    'Could not save measurements. Try again and check the data.',
-                                    lang,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                        },
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: Colors.redAccent,
+                                      content: Text(
+                                        _tr(
+                                          'تعذر حفظ القياسات. أعد المحاولة وتحقق من البيانات.',
+                                          'Impossible d’enregistrer les mesures. Réessayez et vérifiez les données.',
+                                          'Could not save measurements. Try again and check the data.',
+                                          lang,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
                       ),
                     ),
                   ),
@@ -1870,6 +1962,13 @@ class InstanceEditor {
   final TextEditingController heightCtrl;
   final TextEditingController qtyCtrl;
   final TextEditingController positionCtrl;
+
+  void dispose() {
+    widthCtrl.dispose();
+    heightCtrl.dispose();
+    qtyCtrl.dispose();
+    positionCtrl.dispose();
+  }
 
   InstanceEditor({
     required this.widthCtrl,

@@ -3570,13 +3570,23 @@ class ComponentCalculator {
       cacheRainurePieces[contact.insideUsesSlidingSeries]!.add(lengthM);
       cacheRainurePieces[contact.outsideUsesSlidingSeries]!.add(lengthM);
     }
+    for (final segment in window.getCadreDoubleRainureSegments()) {
+      final lengthM = segment.length / 1000.0;
+      if (lengthM <= 0) continue;
+      // Inside + outside cuts for Cadre double mullion
+      cacheRainurePieces[segment.usesSlidingSeries]!.add(lengthM);
+      cacheRainurePieces[segment.usesSlidingSeries]!.add(lengthM);
+    }
     for (final sliding in [false, true]) {
       final pieces = cacheRainurePieces[sliding]!;
       if (pieces.isEmpty) continue;
       final section = window.getConfiguredSectionForRole(
-        'cache_rainure',
-        useSlidingSeries: sliding,
-      );
+            'cache_rainure',
+            useSlidingSeries: sliding,
+          ) ??
+          (sliding
+              ? window.getSlidingSectionByType('cache_rainure')
+              : window.getSectionByType('cache_rainure'));
       if (section == null) continue;
       items.add(
         createProfile(
@@ -3594,7 +3604,7 @@ class ComponentCalculator {
           materialType: (sliding ? window.isSlidingPVC : window.isPVC)
               ? 'pvc'
               : 'aluminium',
-          cuttingList: 'داخل + خارج لكل التقاء إطارين',
+          cuttingList: 'داخل + خارج لكل التقاء إطارين / كادر دوبلي',
         ),
       );
     }
@@ -3648,6 +3658,44 @@ class ComponentCalculator {
           ),
         );
       }
+    }
+
+    if (window.profileAngleMode > 0) {
+      final int count = window.profileAngleMode == 3 ? 2 : 1;
+      final pieces = List.generate(count, (_) => window.height / 1000.0);
+      final sliding = window.systemMode == 'sliding';
+      final section = window.getConfiguredSectionForRole('profile_angle', useSlidingSeries: sliding) ??
+          window.getConfiguredSectionForRole('profile_angle', useSlidingSeries: !sliding) ??
+          window.getSectionByType('profile_angle') ??
+          window.getSlidingSectionByType('profile_angle');
+      final override = slidingOverrideFor([
+            "بروفيل الزاوية 90° (Profil d'angle)",
+            "بروفيل الزاوية (Profil d'angle)",
+            'profile_angle',
+            "profil d'angle",
+          ]) ??
+          section?.toMap();
+      final sideLabel = window.profileAngleMode == 1
+          ? 'يمين (90°)'
+          : (window.profileAngleMode == 2 ? 'يسار (90°)' : 'الجهتين (90°)');
+      items.add(
+        createProfile(
+          "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
+          colorName,
+          pieces: pieces,
+          unit: 'قطاع',
+          overrideMap: override,
+          preferOverrideMap: true,
+          selectorType: 'profile_angle',
+          roleKey: 'profile_angle',
+        ).copyWith(
+          sourceSeriesId:
+              (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
+          materialType:
+              (sliding ? window.isSlidingPVC : window.isPVC) ? 'pvc' : 'aluminium',
+          cuttingList: sideLabel,
+        ),
+      );
     }
 
     // Caniveau is an outside-only channel fixed under an existing lower
@@ -4204,11 +4252,17 @@ class ComponentCalculator {
                   useSlidingSeries: true,
                 )
               : null;
+          final bool hasMeetingInCenter =
+              (sashes == 4 && zone.slidingTrackCount == 2) ||
+              (sashes == 6 && zone.slidingTrackCount == 3) ||
+              zone.slidingFaceToFace;
           final faceEnabled =
-              zone.slidingFaceToFace || (sashes == 3 && faceSection != null);
+              zone.slidingFaceToFace ||
+              (hasMeetingInCenter && faceSection != null) ||
+              (sashes == 3 && faceSection != null);
           if (faceEnabled && sashes >= 3) {
             if (faceSection != null) {
-              final faceCount = sashes == 4 ? 2 : 1;
+              final faceCount = hasMeetingInCenter ? 2 : 1;
               slidingFaceToFacePieces.addAll(
                 List<double>.filled(faceCount, sashH / 1000.0),
               );
@@ -4227,9 +4281,16 @@ class ComponentCalculator {
               slidingSashTraversePieces.addAll([tLen / 1000.0, tLen / 1000.0]);
             }
 
-            // Lateral pieces (2 lateral profiles per window/sash assembly)
-            for (int i = 0; i < 2; i++) {
-              final legacyKey = i == 0 ? 'lateral_left' : 'lateral_right';
+            final int lateralCount = hasMeetingInCenter ? 4 : 2;
+            final int centralsCount = hasMeetingInCenter
+                ? (sashes == 4 ? 4 : 8)
+                : ((sashes * 2) - 2);
+
+            // Lateral pieces (2 outer laterals, plus 2 meeting in center for 4 or 6 sashes)
+            for (int i = 0; i < lateralCount; i++) {
+              final legacyKey = i == 0
+                  ? 'lateral_left'
+                  : (i == lateralCount - 1 ? 'lateral_right' : 'lateral_$i');
               final reinforced =
                   zone.slidingMontantReinforced['lateral_$i'] ??
                   zone.slidingMontantReinforced[legacyKey] ??
@@ -4240,8 +4301,7 @@ class ComponentCalculator {
                   .add(sashH / 1000.0);
             }
 
-            // Central / chicane pieces (2 pieces for 2-sash, 4 pieces for 3-sash, 6 pieces for 4-sash)
-            int centralsCount = (sashes * 2) - 2;
+            // Central / chicane pieces
             for (int s = 0; s < centralsCount; s++) {
               final legacyKey = s.isEven ? 'central_left' : 'central_right';
               final reinforced =
@@ -4319,22 +4379,10 @@ class ComponentCalculator {
           // Outer handles always carry their lock hardware.  The first
           // central handle is functional and carries one more set; the
           // optional mirrored central handle is visual-only.
-          final functionalCentralHandle =
-              zone.slidingCentralHandle &&
-              sashes == 4 &&
-              zone.slidingTrackCount == 2;
+          final functionalCentralHandle = hasMeetingInCenter;
           slidingTotalEspagnolettes += 2 + (functionalCentralHandle ? 1 : 0);
-          // Two outer leaves always have handles.  The optional third handle
-          // belongs to the meeting of the middle pair in a four-leaf,
-          // two-track drawing and is selected per zone.
-          slidingTotalHandles +=
-              2 +
-              (functionalCentralHandle ? 1 : 0) +
-              (zone.slidingSecondCentralHandle &&
-                      sashes == 4 &&
-                      zone.slidingTrackCount == 2
-                  ? 1
-                  : 0);
+          // Two outer leaves always have handles. When meeting in center, both middle leaves have handles.
+          slidingTotalHandles += 2 + (hasMeetingInCenter ? 2 : 0);
           // One sliding-series kit serves one independent pair of leaves.
           // Count every sliding zone/frame separately and keep an additional
           // kit for an unpaired leaf in odd 3/5-leaf configurations.
@@ -4635,7 +4683,8 @@ class ComponentCalculator {
         final baseCentral =
             slidingOverrideFor([centralName, 'قائم وسطي (Central)']) ??
             window.getSlidingSectionByType('sash_central')?.toMap() ??
-            window.getSlidingSectionByType('central')?.toMap();
+            window.getSlidingSectionByType('central')?.toMap() ??
+            window.getSlidingSectionByType('chicane')?.toMap();
 
         items.add(
           createProfile(
@@ -4652,14 +4701,22 @@ class ComponentCalculator {
       }
 
       if (slidingSashCentralReinforcedPieces.isNotEmpty) {
+        final reinforcedCentral =
+            slidingOverrideFor([
+              'قائم وسطي معزز (Sash Central Renforcé)',
+              'شيكان معزز (Chicane Renforcée)',
+              'الشيكان (Chicane)',
+            ]) ??
+            window.getSlidingSectionByType('sash_central_reinforced')?.toMap() ??
+            window.getSlidingSectionByType('chicane_renforcee')?.toMap() ??
+            window.getSlidingSectionByType('chicane')?.toMap() ??
+            window.getSlidingSectionByType('sash_central')?.toMap();
         items.add(
           createProfile(
             'قائم وسطي معزز (Sash Central Renforcé)',
             colorName,
             pieces: slidingSashCentralReinforcedPieces,
-            overrideMap: slidingOverrideFor([
-              'قائم وسطي معزز (Sash Central Renforcé)',
-            ]),
+            overrideMap: reinforcedCentral,
             preferOverrideMap: true,
             selectorType: 'sash_central_reinforced',
             roleKey: 'sash_central_reinforced',
@@ -4740,7 +4797,7 @@ class ComponentCalculator {
                 ?.toMap();
         items.add(
           createProfile(
-            'مكمل علوي وسفلي للمونتوسليم 10 سم (Complément haut et bas)',
+            'قطاع وصلة مكمل علوي وسفلي للمونتوسليم 10 سم (Taquet / Complément haut et bas)',
             colorName,
             pieces: slidingSlimCleatPieces,
             unit: 'قطاع',

@@ -197,7 +197,7 @@ class _WindowViewState extends State<WindowView> {
             );
           }).toList(),
         );
-        if (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2) {
+        if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
           return handleButtons;
         }
         return Column(
@@ -208,28 +208,9 @@ class _WindowViewState extends State<WindowView> {
             Wrap(
               spacing: 8,
               children: [
-                _ContentButton(
-                  label: 'مقبض وسط الضلفتين',
-                  icon: Icons.more_horiz_rounded,
-                  selected: zone.slidingCentralHandle,
-                  onPressed: () {
-                    widget.model.toggleSelectedZoneSlidingCentralHandle();
-                    setState(() {});
-                  },
-                ),
-                _ContentButton(
-                  label: 'مقبض الوسط الثاني (شكلي)',
-                  icon: Icons.more_horiz_outlined,
-                  selected: zone.slidingSecondCentralHandle,
-                  onPressed: () {
-                    if (!zone.slidingCentralHandle) return;
-                    widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
-                    setState(() {});
-                  },
-                ),
                 if (widget.model.supportsSlidingFaceToFace)
                   _ContentButton(
-                    label: 'Face-to-Face',
+                    label: 'التقاء الوسط (Face-to-Face)',
                     icon: Icons.layers_rounded,
                     selected: zone.slidingFaceToFace,
                     onPressed: () {
@@ -237,6 +218,27 @@ class _WindowViewState extends State<WindowView> {
                       setState(() {});
                     },
                   ),
+                if (zone.slidingFaceToFace || (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) ...[
+                  _ContentButton(
+                    label: 'مقبض وسط الضلفتين',
+                    icon: Icons.more_horiz_rounded,
+                    selected: zone.slidingCentralHandle,
+                    onPressed: () {
+                      widget.model.toggleSelectedZoneSlidingCentralHandle();
+                      setState(() {});
+                    },
+                  ),
+                  _ContentButton(
+                    label: 'مقبض الوسط الثاني (شكلي)',
+                    icon: Icons.more_horiz_outlined,
+                    selected: zone.slidingSecondCentralHandle,
+                    onPressed: () {
+                      if (!zone.slidingCentralHandle) return;
+                      widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
+                      setState(() {});
+                    },
+                  ),
+                ],
               ],
             ),
           ],
@@ -645,7 +647,13 @@ class _WindowViewState extends State<WindowView> {
       );
       final centralRoleProfiles = await db.getDesignSectionsForDrawingRoles(
         montantRoleSeriesId,
-        const ['sash_central', 'central'],
+        const [
+          'sash_central',
+          'central',
+          'chicane',
+          'chicane_renforcee',
+          'sash_central_reinforced',
+        ],
         usageScope: 'sliding',
       );
 
@@ -744,6 +752,7 @@ class _WindowViewState extends State<WindowView> {
               'sash_central_reinforced',
               'sash_traverse',
               'chicane',
+              'chicane_renforcee',
             ]
           : const ['sash', 'sash_extension'],
       usageScope: sliding ? 'sliding' : 'opening',
@@ -777,9 +786,8 @@ class _WindowViewState extends State<WindowView> {
     // classify them again from commercial names such as TPR/HPS: that old
     // heuristic was able to put opening frames in the sliding picker.
     var filtered = profiles.toList();
-    final isMultiFramePvc =
-        widget.model.getFrameRects().length > 1 && _seriesIsPvc(series);
-    if (isMultiFramePvc) {
+    final isMultiFrame = widget.model.getFrameRects().length > 1;
+    if (isMultiFrame) {
       return filtered
           .where((profile) => !profileHasIntegratedSideCover(profile))
           .toList();
@@ -8448,6 +8456,54 @@ class _WindowViewState extends State<WindowView> {
                   onChanged: widget.model.toggleOptionalTriangle,
                 ),
 
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Localization.translate(
+                        "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
+                        lang,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ToggleButtons(
+                      isSelected: [0, 1, 2, 3]
+                          .map((mode) => widget.model.profileAngleMode == mode)
+                          .toList(),
+                      onPressed: (index) {
+                        setState(() {
+                          widget.model.setProfileAngleMode(index);
+                        });
+                      },
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(Localization.translate('إيقاف', lang)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(Localization.translate('يمين', lang)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(Localization.translate('يسار', lang)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(Localization.translate('الجهتين', lang)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
               if (widget.model.getConfiguredSectionForRole(
                     'cache_rail',
                     useSlidingSeries: true,
@@ -8615,6 +8671,31 @@ class _WindowViewState extends State<WindowView> {
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
+                          ),
+                          Builder(
+                            builder: (context) {
+                              final linkedCentral =
+                                  widget.model.componentOverrides['قائم وسطي معزز (Sash Central Renforcé)']?['name'] ??
+                                  widget.model.componentOverrides['قائم وسطي (Sash Central)']?['name'] ??
+                                  widget.model.getSlidingSectionByType('sash_central_reinforced')?.name ??
+                                  widget.model.getSlidingSectionByType('chicane_renforcee')?.name ??
+                                  widget.model.getSlidingSectionByType('chicane')?.name;
+                              if (linkedCentral != null &&
+                                  linkedCentral.toString().isNotEmpty) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Text(
+                                    '${Localization.translate('البروفيل:', lang)} $linkedCentral',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blue.shade700,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
                           ),
                           Wrap(
                             children: List.generate(centralCount, (index) {
@@ -11512,6 +11593,138 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  void _showProfileAngleDialog(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      Localization.translate(
+                        "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
+                        lang,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: const Icon(Icons.block_rounded, color: Colors.grey),
+                  title: Text(
+                    Localization.translate('إيقاف / بدون بروفيل زاوية', lang),
+                  ),
+                  trailing: widget.model.profileAngleMode == 0
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () {
+                    widget.model.setProfileAngleMode(0);
+                    setState(() {});
+                    Navigator.pop(ctx);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.border_right_rounded,
+                    color: Colors.blue,
+                  ),
+                  title: Text(
+                    Localization.translate('جهة اليمين (90° Droite)', lang),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'أنبوب زاوية 90° على القائم الأيمن للإطار',
+                      lang,
+                    ),
+                  ),
+                  trailing: widget.model.profileAngleMode == 1
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () {
+                    widget.model.setProfileAngleMode(1);
+                    setState(() {});
+                    Navigator.pop(ctx);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.border_left_rounded,
+                    color: Colors.blue,
+                  ),
+                  title: Text(
+                    Localization.translate('جهة اليسار (90° Gauche)', lang),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'أنبوب زاوية 90° على القائم الأيسر للإطار',
+                      lang,
+                    ),
+                  ),
+                  trailing: widget.model.profileAngleMode == 2
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () {
+                    widget.model.setProfileAngleMode(2);
+                    setState(() {});
+                    Navigator.pop(ctx);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.border_vertical_rounded,
+                    color: Colors.blue,
+                  ),
+                  title: Text(
+                    Localization.translate(
+                      'الجهتين معاً (90° Les deux côtés)',
+                      lang,
+                    ),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'أنبوب زاوية 90° على القائمين الأيمن والأيسر',
+                      lang,
+                    ),
+                  ),
+                  trailing: widget.model.profileAngleMode == 3
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () {
+                    widget.model.setProfileAngleMode(3);
+                    setState(() {});
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showSplitDialog(BuildContext context, bool isHorizontal) {
     final zone = widget.model.selectedZone;
     if (zone == null) return;
@@ -12141,10 +12354,7 @@ class _WindowViewState extends State<WindowView> {
                           isCaissonTunnel: widget.model.isCaissonTunnel,
                           hasSideCovers: widget.model.hasSideCovers,
                           multiFrameDrawing:
-                              widget.model.getFrameRects().length > 1 &&
-                              (useSlidingProfiles
-                                  ? widget.model.isSlidingPVC
-                                  : widget.model.isPVC),
+                              widget.model.getFrameRects().length > 1,
                           accessoryDrawingMode: useSlidingProfiles
                               ? AccessoryDrawingMode.sliding
                               : AccessoryDrawingMode.opening,
@@ -12254,43 +12464,45 @@ class _WindowViewState extends State<WindowView> {
                           });
                         },
                       ),
-                      if (zone.slidingSashesCount == 4 &&
-                          zone.slidingTrackCount == 2) ...[
-                        const SizedBox(width: 8),
-                        _ContentButton(
-                          label: 'مقبض وسط الضلفتين',
-                          icon: Icons.more_horiz_rounded,
-                          selected: zone.slidingCentralHandle,
-                          onPressed: () {
-                            setState(() {
-                              widget.model
-                                  .toggleSelectedZoneSlidingCentralHandle();
-                            });
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        _ContentButton(
-                          label: 'مقبض الوسط الثاني (شكلي)',
-                          icon: Icons.more_horiz_outlined,
-                          selected: zone.slidingSecondCentralHandle,
-                          onPressed: () {
-                            if (!zone.slidingCentralHandle) return;
-                            setState(() {
-                              widget.model
-                                  .toggleSelectedZoneSlidingSecondCentralHandle();
-                            });
-                          },
-                        ),
+                      if (zone.slidingSashesCount >= 4 &&
+                          zone.slidingSashesCount % 2 == 0) ...[
                         if (widget.model.supportsSlidingFaceToFace) ...[
                           const SizedBox(width: 8),
                           _ContentButton(
-                            label: 'Face-to-Face',
+                            label: Localization.translate('التقاء الوسط (Face-to-Face)', lang),
                             icon: Icons.layers_rounded,
                             selected: zone.slidingFaceToFace,
                             onPressed: () {
                               setState(() {
                                 widget.model
                                     .toggleSelectedZoneSlidingFaceToFace();
+                              });
+                            },
+                          ),
+                        ],
+                        if (zone.slidingFaceToFace || (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) ...[
+                          const SizedBox(width: 8),
+                          _ContentButton(
+                            label: 'مقبض وسط الضلفتين',
+                            icon: Icons.more_horiz_rounded,
+                            selected: zone.slidingCentralHandle,
+                            onPressed: () {
+                              setState(() {
+                                widget.model
+                                    .toggleSelectedZoneSlidingCentralHandle();
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          _ContentButton(
+                            label: 'مقبض الوسط الثاني (شكلي)',
+                            icon: Icons.more_horiz_outlined,
+                            selected: zone.slidingSecondCentralHandle,
+                            onPressed: () {
+                              if (!zone.slidingCentralHandle) return;
+                              setState(() {
+                                widget.model
+                                    .toggleSelectedZoneSlidingSecondCentralHandle();
                               });
                             },
                           ),
@@ -13009,6 +13221,7 @@ class _WindowViewState extends State<WindowView> {
               'sash_central_reinforced',
               'central',
               'chicane',
+              'chicane_renforcee',
             ].contains(role)
           : const [
               'sash_lateral',
@@ -13045,6 +13258,10 @@ class _WindowViewState extends State<WindowView> {
           type.contains('وسطي') ||
           name.contains('central') ||
           name.contains('وسطي') ||
+          type.contains('chicane') ||
+          name.contains('chicane') ||
+          type.contains('شيكان') ||
+          name.contains('شيكان') ||
           code.endsWith('105') ||
           code.endsWith('107');
     }
@@ -13090,7 +13307,21 @@ class _WindowViewState extends State<WindowView> {
         )
         .toList();
     if (candidates.isEmpty && allCandidates.isNotEmpty) {
-      candidates = allCandidates;
+      if (reinforced && central) {
+        final chicaneCandidates = allCandidates.where((item) {
+          final t =
+              '${item['type'] ?? ''} ${item['name'] ?? ''} ${item['design_role_key'] ?? ''}'
+                  .toLowerCase();
+          return t.contains('chicane') ||
+              t.contains('شيكان') ||
+              t.contains('renforc') ||
+              t.contains('معزز');
+        }).toList();
+        if (chicaneCandidates.isNotEmpty) candidates = chicaneCandidates;
+      }
+      if (candidates.isEmpty) {
+        candidates = allCandidates;
+      }
     }
     if (candidates.isEmpty) return;
 
@@ -14318,6 +14549,23 @@ class _WindowViewState extends State<WindowView> {
               ),
             );
           }
+          if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: zone.slidingFaceToFace
+                    ? 'التقاء الضلفتين الوسطيتين: مفعّل'
+                    : 'التقاء الضلفتين الوسطيتين: غير مفعّل',
+                icon: Icons.layers_rounded,
+                selected: zone.slidingFaceToFace,
+                onPressed: () {
+                  setState(() {
+                    widget.model.toggleSelectedZoneSlidingFaceToFace();
+                  });
+                },
+              ),
+            );
+          }
           final supportsCacheRail =
               widget.model.getConfiguredSectionForRole(
                 'cache_rail',
@@ -14421,6 +14669,69 @@ class _WindowViewState extends State<WindowView> {
           if (mounted) setState(() {});
         }
 
+        if (widget.model.getFrameRects().length > 1) {
+          if (openingProfiles.isNotEmpty) {
+            final current = widget.model.frameOverride;
+            final hasIntegrated =
+                current != null && profileHasIntegratedSideCover(current);
+            final inProfiles = current != null &&
+                openingProfiles.any((p) => p['id'] == current['id']);
+            if (current == null || hasIntegrated || !inProfiles) {
+              final plain = openingProfiles.firstWhere(
+                (p) => !profileHasIntegratedSideCover(p),
+                orElse: () => openingProfiles.first,
+              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && widget.model.getFrameRects().length > 1) {
+                  selectFrameProfile(plain, sliding: false);
+                }
+              });
+            }
+          }
+          if (slidingProfiles.isNotEmpty) {
+            final current = widget.model.slidingFrameOverride;
+            final hasIntegrated =
+                current != null && profileHasIntegratedSideCover(current);
+            final inProfiles = current != null &&
+                slidingProfiles.any((p) => p['id'] == current['id']);
+            if (current == null || hasIntegrated || !inProfiles) {
+              final plain = slidingProfiles.firstWhere(
+                (p) => !profileHasIntegratedSideCover(p),
+                orElse: () => slidingProfiles.first,
+              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && widget.model.getFrameRects().length > 1) {
+                  selectFrameProfile(plain, sliding: true);
+                }
+              });
+            }
+          }
+        }
+
+        final Map<String, dynamic>? activeOpeningFrameMap =
+            widget.model.getFrameRects().length > 1 &&
+                    (widget.model.frameOverride == null ||
+                        profileHasIntegratedSideCover(widget.model.frameOverride!) ||
+                        !openingProfiles.any((p) => p['id'] == widget.model.frameOverride?['id'])) &&
+                    openingProfiles.isNotEmpty
+                ? openingProfiles.firstWhere(
+                    (p) => !profileHasIntegratedSideCover(p),
+                    orElse: () => openingProfiles.first,
+                  )
+                : widget.model.frameOverride;
+
+        final Map<String, dynamic>? activeSlidingFrameMap =
+            widget.model.getFrameRects().length > 1 &&
+                    (widget.model.slidingFrameOverride == null ||
+                        profileHasIntegratedSideCover(widget.model.slidingFrameOverride!) ||
+                        !slidingProfiles.any((p) => p['id'] == widget.model.slidingFrameOverride?['id'])) &&
+                    slidingProfiles.isNotEmpty
+                ? slidingProfiles.firstWhere(
+                    (p) => !profileHasIntegratedSideCover(p),
+                    orElse: () => slidingProfiles.first,
+                  )
+                : widget.model.getSlidingBaseFrameSection()?.toMap();
+
         void addFrameProfileButtons(
           List<Map<String, dynamic>> profiles, {
           required bool sliding,
@@ -14436,8 +14747,8 @@ class _WindowViewState extends State<WindowView> {
                 ? '$codeStr$nameStr'
                 : '$prefix: $codeStr$nameStr';
             final selectedMap = sliding
-                ? widget.model.getSlidingBaseFrameSection()?.toMap()
-                : widget.model.frameOverride;
+                ? activeSlidingFrameMap
+                : activeOpeningFrameMap;
             final isSelected =
                 selectedMap != null && selectedMap['id'] == item['id'];
 
@@ -14527,6 +14838,24 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         }
+
+        // زر بروفيل الزاوية 90° (Profil d'angle / Tube carré 90°)
+        children.add(const SizedBox(width: 8));
+        children.add(
+          _ContentButton(
+            label: widget.model.profileAngleMode == 0
+                ? Localization.translate('إضافة بروفيل زاوية 90°', lang)
+                : Localization.translate(
+                    'بروفيل زاوية 90°: ${widget.model.profileAngleModeName}',
+                    lang,
+                  ),
+            icon: Icons.square_foot_rounded,
+            selected: widget.model.profileAngleMode > 0,
+            onPressed: () {
+              _showProfileAngleDialog(context);
+            },
+          ),
+        );
 
         if (!widget.model.isPVC &&
             widget.model.canUseOpeningOnlyOptions &&
@@ -15200,44 +15529,46 @@ class _WindowViewState extends State<WindowView> {
               },
             ),
           );
-          if (zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) {
-            children.add(const SizedBox(width: 8));
-            children.add(
-              _ContentButton(
-                label: 'مقبض وسط الضلفتين',
-                icon: Icons.more_horiz_rounded,
-                selected: zone.slidingCentralHandle,
-                onPressed: () {
-                  setState(() {
-                    widget.model.toggleSelectedZoneSlidingCentralHandle();
-                  });
-                },
-              ),
-            );
-            children.add(const SizedBox(width: 8));
-            children.add(
-              _ContentButton(
-                label: 'مقبض الوسط الثاني (شكلي)',
-                icon: Icons.more_horiz_outlined,
-                selected: zone.slidingSecondCentralHandle,
-                onPressed: () {
-                  if (!zone.slidingCentralHandle) return;
-                  setState(() {
-                    widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
-                  });
-                },
-              ),
-            );
+          if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
             if (widget.model.supportsSlidingFaceToFace) {
               children.add(const SizedBox(width: 8));
               children.add(
                 _ContentButton(
-                  label: 'Face-to-Face',
+                  label: Localization.translate('التقاء الوسط (Face-to-Face)', lang),
                   icon: Icons.layers_rounded,
                   selected: zone.slidingFaceToFace,
                   onPressed: () {
                     setState(() {
                       widget.model.toggleSelectedZoneSlidingFaceToFace();
+                    });
+                  },
+                ),
+              );
+            }
+            if (zone.slidingFaceToFace || (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) {
+              children.add(const SizedBox(width: 8));
+              children.add(
+                _ContentButton(
+                  label: 'مقبض وسط الضلفتين',
+                  icon: Icons.more_horiz_rounded,
+                  selected: zone.slidingCentralHandle,
+                  onPressed: () {
+                    setState(() {
+                      widget.model.toggleSelectedZoneSlidingCentralHandle();
+                    });
+                  },
+                ),
+              );
+              children.add(const SizedBox(width: 8));
+              children.add(
+                _ContentButton(
+                  label: 'مقبض الوسط الثاني (شكلي)',
+                  icon: Icons.more_horiz_outlined,
+                  selected: zone.slidingSecondCentralHandle,
+                  onPressed: () {
+                    if (!zone.slidingCentralHandle) return;
+                    setState(() {
+                      widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
                     });
                   },
                 ),
