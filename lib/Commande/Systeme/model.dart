@@ -5,6 +5,7 @@ import 'glass_joint_fit.dart';
 import 'profile_selector_dialog.dart'
     show CatalogCandidateResolver, CatalogCandidateQuery, AccessoryDrawingMode;
 import 'package:flutter/material.dart';
+import 'package:database_data/settings/app_settings.dart' show AppLanguage;
 import '../../sql_database.dart';
 import 'package:database_data/utils/real_color_resolver.dart';
 
@@ -4952,41 +4953,114 @@ class WindowModel extends ChangeNotifier {
   String? shutterHeightWarning;
   List<Map<String, dynamic>> _shutterBladeWarningCatalogue = [];
 
-  String? get shutterWidthWarning {
+  void setShutterBladeWarningCatalogue(List<Map<String, dynamic>> blades) {
+    _shutterBladeWarningCatalogue = blades;
+  }
+
+  Map<String, dynamic>? get recommendedShutterBlade {
     if (!hasShutter) return null;
     final raw = componentOverrides['الشرائح (Lames)'];
     if (raw is! Map) return null;
     final blade = Map<String, dynamic>.from(raw);
     final limit = _shutterBladeEffectiveMaxWidthMm(blade);
     if (width <= limit) return null;
-    final candidates =
-        _shutterBladeWarningCatalogue
-            .where(
-              (candidate) =>
-                  _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
-            )
-            .toList()
-          ..sort((a, b) {
-            final result = _shutterBladeEffectiveMaxWidthMm(
-              a,
-            ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
-            return result != 0
-                ? result
-                : (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
-          });
-    final warning =
-        'عرض الستار ${width.toStringAsFixed(0)} مم يتجاوز الحد الأقصى '
-        'للشفرة «${blade['name'] ?? shutterLame}»: ${limit.toStringAsFixed(0)} مم.';
+
+    final candidates = _shutterBladeWarningCatalogue
+        .where(
+          (candidate) =>
+              _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
+        )
+        .toList()
+      ..sort((a, b) {
+        final result = _shutterBladeEffectiveMaxWidthMm(
+          a,
+        ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
+        if (result != 0) return result;
+        return (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
+      });
+
     if (candidates.isNotEmpty) {
-      final recommended = candidates.first;
-      return '$warning يُنصح بتغيير الشفرة إلى «${recommended['name']}» '
-          '(الحد الأقصى ${_shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0)} مم)، '
-          'وهي التي سيختارها النظام في الوضع التلقائي.';
+      return candidates.first;
     }
-    return _shutterBladeWarningCatalogue.isEmpty
-        ? '$warning اختر شفرة تتحمل هذا العرض.'
-        : '$warning لا توجد شفرة متاحة تتحمل هذا العرض؛ راجع الأبعاد أو حدود الشفرات في الكتالوج.';
+    return null;
   }
+
+  void applyRecommendedShutterBlade() {
+    final recommended = recommendedShutterBlade;
+    if (recommended == null) return;
+    final automaticSelection = Map<String, dynamic>.from(recommended)
+      ..['manual_selection'] = false
+      ..['user_selected'] = false
+      ..['automatic_selection'] = true;
+    componentOverrides['الشرائح (Lames)'] = automaticSelection;
+    shutterLame = automaticSelection['name']?.toString() ?? shutterLame;
+    final subtype =
+        (automaticSelection['shutter_subtype']?.toString() ?? '').toLowerCase();
+    final name = (automaticSelection['name']?.toString() ?? '').toLowerCase();
+    if (subtype == 'extruded' ||
+        name.contains('extruded') ||
+        name.contains('إكسترودي')) {
+      shutterMechanism = 'محرك';
+    }
+    shutterMaximumWidthMm =
+        _shutterBladeConfiguredMaxWidthMm(automaticSelection);
+    notifyListeners();
+  }
+
+  String? localizedShutterWidthWarning([AppLanguage lang = AppLanguage.arabic]) {
+    if (!hasShutter) return null;
+    final raw = componentOverrides['الشرائح (Lames)'];
+    if (raw is! Map) return null;
+    final blade = Map<String, dynamic>.from(raw);
+    final limit = _shutterBladeEffectiveMaxWidthMm(blade);
+    if (width <= limit) return null;
+
+    final recommended = recommendedShutterBlade;
+    final bladeName = blade['name']?.toString() ?? shutterLame;
+    final wStr = width.toStringAsFixed(0);
+    final limitStr = limit.toStringAsFixed(0);
+
+    if (lang == AppLanguage.french) {
+      final base =
+          'La largeur du volet ($wStr mm) dépasse la limite maximale de la lame «$bladeName» ($limitStr mm).';
+      if (recommended != null) {
+        final recName = recommended['name']?.toString() ?? '';
+        final recLimit =
+            _shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0);
+        return '$base Il est recommandé de choisir «$recName» (max $recLimit mm), sélectionnée automatiquement par le système.';
+      }
+      return _shutterBladeWarningCatalogue.isEmpty
+          ? '$base Veuillez choisir une lame adaptée à cette largeur.'
+          : '$base Aucune lame disponible ne supporte cette largeur ; vérifiez les dimensions ou le catalogue.';
+    } else if (lang == AppLanguage.english) {
+      final base =
+          'Shutter width ($wStr mm) exceeds the maximum limit for blade «$bladeName» ($limitStr mm).';
+      if (recommended != null) {
+        final recName = recommended['name']?.toString() ?? '';
+        final recLimit =
+            _shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0);
+        return '$base It is recommended to choose «$recName» (max $recLimit mm), automatically selected by the system.';
+      }
+      return _shutterBladeWarningCatalogue.isEmpty
+          ? '$base Please select a blade that supports this width.'
+          : '$base No blade available supports this width; please check dimensions or catalogue limits.';
+    } else {
+      final base =
+          'عرض الستار $wStr مم يتجاوز الحد الأقصى للشفرة «$bladeName»: $limitStr مم.';
+      if (recommended != null) {
+        final recName = recommended['name']?.toString() ?? '';
+        final recLimit =
+            _shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0);
+        return '$base يُنصح بتغيير الشفرة إلى «$recName» (الحد الأقصى $recLimit مم)، وهي التي سيختارها النظام في الوضع التلقائي.';
+      }
+      return _shutterBladeWarningCatalogue.isEmpty
+          ? '$base اختر شفرة تتحمل هذا العرض.'
+          : '$base لا توجد شفرة متاحة تتحمل هذا العرض؛ راجع الأبعاد أو حدود الشفرات في الكتالوج.';
+    }
+  }
+
+  String? get shutterWidthWarning =>
+      localizedShutterWidthWarning(AppLanguage.arabic);
 
   double? shutterMaximumWidthMm;
 
@@ -8777,12 +8851,29 @@ class WindowModel extends ChangeNotifier {
             }
           }
 
+          if (newSliding == null) {
+            for (final sys in availableSystems) {
+              if (sys.id == currentSystem.id) continue;
+              if (!profileSystemsShareMaterial(currentSystem, sys)) continue;
+              for (final candidate in sys.series) {
+                if (seriesSupportsDrawingScopeInSystem(
+                  candidate,
+                  'sliding',
+                  profile: sys,
+                )) {
+                  newSliding = candidate;
+                  break;
+                }
+              }
+              if (newSliding != null) break;
+            }
+          }
+
           if (newSliding != null) {
             if (activeSlidingSeries?.id != newSliding.id) {
               await _setActiveSlidingSeries(newSliding);
             }
-          } else {
-            activeSlidingSeries = null;
+          } else if (activeSlidingSeries == null) {
             slidingFrameOverride = null;
             slidingSashOverride = null;
             _clearSlidingProfileOverrides();
@@ -9238,9 +9329,11 @@ class WindowModel extends ChangeNotifier {
         var res = await d.query(
           'Sections',
           where:
+              'series_id = ? AND '
               '(type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?) AND '
               '(type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?)',
           whereArgs: [
+            series.id,
             '%bouchon%',
             '%bouchon%',
             '%بوشون%',
@@ -9261,21 +9354,6 @@ class WindowModel extends ChangeNotifier {
             '%منو%',
           ],
         );
-        if (res.isEmpty) {
-          res = await d.query(
-            'Sections',
-            where:
-                'type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?',
-            whereArgs: [
-              '%bouchon%',
-              '%bouchon%',
-              '%بوشون%',
-              '%بوشون%',
-              '%bochon%',
-              '%bochon%',
-            ],
-          );
-        }
         if (res.isNotEmpty) {
           componentOverrides['بوشون باتمو (Bouchon Batmo)'] =
               Map<String, dynamic>.from(res.first);

@@ -919,6 +919,111 @@ void main() {
 
     model.dispose();
   });
+
+  test('double sash omits Bouchon Batmo when no rule or section is configured', () {
+    final model = RoleWindow();
+    model.width = 1200;
+    model.height = 1400;
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(50, 50, 1100, 1300),
+        content: ZoneContent.doubleSash,
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final hasBouchon = bom.any((item) =>
+        item.originalName.contains('Bouchon Batmo') ||
+        item.originalName.contains('بوشون باتمو'));
+    expect(hasBouchon, isFalse);
+
+    model.dispose();
+  });
+
+  test('door key locks and cylinders are preserved on aluminum opening windows', () {
+    final model = RoleWindow();
+    model.width = 1000;
+    model.height = 2000;
+    model.hasBottomFrame = true;
+    model.zones = [
+      WindowZone(
+        id: 'door',
+        boundary: const Rect.fromLTWH(50, 50, 900, 1900),
+        content: ZoneContent.singleSash,
+        isSash105: true,
+        lockType: LockType.clef,
+      ),
+    ];
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final hasCanon = bom.any((item) =>
+        item.originalName.contains('كانون') ||
+        item.originalName.contains('Canon') ||
+        item.originalName.contains('قفل'));
+    expect(hasCanon, isTrue);
+
+    // Should NOT convert door cylinder into window cremone
+    final cremoneItem = bom.firstWhere(
+      (item) => item.originalName.contains('كريمون (Cremone)'),
+      orElse: () => BomItem(category: 'accessory', name: '', originalName: '', quantity: 0, unit: '', unitPrice: 0),
+    );
+    expect(cremoneItem.quantity, equals(0));
+
+    model.dispose();
+  });
+
+  test('System OB generates 3 triangle pieces including horizontal compas piece', () {
+    final model = RoleWindow();
+    model.width = 800;
+    model.height = 1200;
+    model.useSystemOB = true;
+    model.zones = [
+      WindowZone(
+        id: 'ob_sash',
+        boundary: const Rect.fromLTWH(50, 50, 700, 1100),
+        content: ZoneContent.singleSash,
+      ),
+    ];
+
+    // Configure a triangle profile — getSectionByType('triangle') fallback
+    // will find it from activeSeries.sections automatically.
+    model.activeSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'Test Series',
+      type: 'opening',
+      sections: [
+        AluminumSection(
+          id: 999,
+          seriesId: 1,
+          name: 'Tringle 999',
+          code: 'TR999',
+          type: 'triangle',
+          barLength: 6.0,
+          visibleWidth: 15.0,
+        ),
+      ],
+    );
+    model.componentOverrides['System OB'] = {
+      'triangle_link_mode': 'required',
+      'triangle_deduction_mm': 100.0,
+      'triangle_width_deduction_mm': 50.0,
+      'triangle_quantity': 1,
+    };
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final obTriangle = bom.firstWhere(
+      (item) => item.originalName.contains('System OB') && item.originalName.contains('تراينغل'),
+      orElse: () => BomItem(category: 'profile', name: '', originalName: '', quantity: 0, unit: '', unitPrice: 0),
+    );
+    expect(obTriangle.name.isNotEmpty, isTrue);
+    // 3 pieces: 2 vertical + 1 horizontal
+    expect(obTriangle.pieces?.length, equals(3));
+    expect(obTriangle.cuttingList, contains('(أفقي)'));
+
+    model.dispose();
+  });
 }
 
 

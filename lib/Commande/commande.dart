@@ -7,6 +7,9 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/order_workspace_screen.dart';
+import 'package:database_data/Screen/app_workspace_shell.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import '../settings/shortcut_bindings.dart';
 import 'package:flutter/services.dart';
 import 'package:database_data/settings/localization.dart';
@@ -31,6 +34,7 @@ import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
+import 'package:printing/printing.dart';
 
 import '../services/auth_service.dart';
 
@@ -326,6 +330,34 @@ class _CommandeState extends State<Commande> {
 
   Future<void> _openNewOrderForm() async {
     await openOrderInWorkspaceTab(context, db: db, onSaved: _fetchCommandes);
+  }
+
+  /// يفتح أي شاشة كـ tab مستقل في الـ Workspace (مثل طلبية التعديل تماماً).
+  /// إذا كان الـ Workspace غير متاح (classic mode) يُستخدم Navigator.push عادياً.
+  void _openInWorkspaceTab({
+    required String entryId,
+    required String title,
+    required IconData icon,
+    required Widget content,
+  }) {
+    final isWindows =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final usesWorkspace = isWindows || settings.viewMode != AppViewMode.classic;
+    if (usesWorkspace) {
+      final workspace =
+          Provider.of<WorkspaceController>(context, listen: false);
+      workspace.open(
+        entryId: entryId,
+        title: title,
+        icon: icon,
+        content: content,
+      );
+    } else {
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(builder: (_) => content),
+      );
+    }
   }
 
   void _fetchCommandes() {
@@ -2413,12 +2445,13 @@ class _CommandeState extends State<Commande> {
                         );
                         _dismissHeavyLoadingDialog();
                         if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DevisPreviewScreen(data: devis),
-                          ),
+                        final orderId = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'bon_charge_$orderId',
+                          title:
+                              '${Localization.translate('بون الشحن', lang)} #$orderId',
+                          icon: Icons.local_shipping_outlined,
+                          content: DevisPreviewScreen(data: devis),
                         );
                       } catch (e) {
                         _dismissHeavyLoadingDialog();
@@ -2466,11 +2499,27 @@ class _CommandeState extends State<Commande> {
                           orderData['id'],
                         );
                         final workshop = await DevisBuilder.loadWorkshopInfo();
-                        await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
-                          order: orderData,
-                          items: items,
-                          workshopName: workshop.name,
-                          db: db,
+                        final pdfBytes =
+                            await PdfFicheCoupeApi.generateFicheCoupe(
+                              order: orderData,
+                              items: items,
+                              workshopName: workshop.name,
+                              db: db,
+                            );
+                        if (!mounted) return;
+                        final orderId2 = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'fiche_coupe_$orderId2',
+                          title:
+                              '${Localization.translate('ورقة التقطيع', lang)} #$orderId2',
+                          icon: Icons.cut_outlined,
+                          content: PdfPreview(
+                            build: (_) async => pdfBytes,
+                            canChangeOrientation: false,
+                            canChangePageFormat: false,
+                            canDebug: false,
+                            pdfFileName: 'Fiche_Coupe_$orderId2.pdf',
+                          ),
                         );
                       } catch (e) {
                         if (mounted) {
@@ -2506,13 +2555,15 @@ class _CommandeState extends State<Commande> {
                     ),
                     onTap: () {
                       Navigator.pop(ctx);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => OrderRequiredGoodsScreen(
-                            orderData: orderData,
-                            db: db,
-                          ),
+                      final ordId = orderData['id']?.toString() ?? '';
+                      _openInWorkspaceTab(
+                        entryId: 'required_goods_$ordId',
+                        title:
+                            '${Localization.translate('كمية السلع المطلوبة', lang)} #$ordId',
+                        icon: Icons.inventory_2_outlined,
+                        content: OrderRequiredGoodsScreen(
+                          orderData: orderData,
+                          db: db,
                         ),
                       );
                     },
@@ -2541,19 +2592,21 @@ class _CommandeState extends State<Commande> {
                     ),
                     onTap: () {
                       Navigator.pop(ctx);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => OrderMeasurementsConfirmScreen(
-                            orderData: orderData,
-                            db: db,
-                          ),
+                      final ordId = orderData['id']?.toString() ?? '';
+                      _openInWorkspaceTab(
+                        entryId: 'measurements_$ordId',
+                        title:
+                            '${Localization.translate('تأكيد القياسات', lang)} #$ordId',
+                        icon: Icons.line_weight_rounded,
+                        content: OrderMeasurementsConfirmScreen(
+                          orderData: orderData,
+                          db: db,
                         ),
                       );
                     },
                   ),
 
-                // 3.9 توزيع المهام وإسناد العمل للعمال (تختفي عند التصنيع الكلي، التوزيع، التركيب، التحفظات أو الانتهاء)
+                // 3.9 توزيع المهام وإسناد العمل للعمال
                 if (settings.canAllocateTasks() && !isDistributedOrBeyond)
                   ListTile(
                     leading: const Icon(
@@ -2574,13 +2627,15 @@ class _CommandeState extends State<Commande> {
                     ),
                     onTap: () {
                       Navigator.pop(ctx);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => OrderAllocationScreen(
-                            orderData: orderData,
-                            db: db,
-                          ),
+                      final ordId = orderData['id']?.toString() ?? '';
+                      _openInWorkspaceTab(
+                        entryId: 'allocation_$ordId',
+                        title:
+                            '${Localization.translate('توزيع المهام', lang)} #$ordId',
+                        icon: Icons.engineering_rounded,
+                        content: OrderAllocationScreen(
+                          orderData: orderData,
+                          db: db,
                         ),
                       );
                     },

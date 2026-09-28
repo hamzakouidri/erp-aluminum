@@ -2371,6 +2371,7 @@ class _WindowViewState extends State<WindowView> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     final hasSelection = widget.model.selectedZone != null;
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
@@ -2401,7 +2402,7 @@ class _WindowViewState extends State<WindowView> {
                     padding: const EdgeInsets.all(12),
                     color: Colors.orange.shade100,
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.warning_amber_rounded,
@@ -2410,13 +2411,48 @@ class _WindowViewState extends State<WindowView> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            widget.model.shutterWidthWarning!,
+                            widget.model.localizedShutterWidthWarning(lang) ??
+                                widget.model.shutterWidthWarning!,
                             style: TextStyle(
                               color: Colors.orange.shade900,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
+                        if (widget.model.recommendedShutterBlade != null) ...[
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange.shade800,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            icon: const Icon(
+                              Icons.check_circle_outline,
+                              size: 16,
+                            ),
+                            label: Text(
+                              lang == AppLanguage.french
+                                  ? 'Appliquer la lame recommandée'
+                                  : (lang == AppLanguage.english
+                                      ? 'Apply recommended blade'
+                                      : 'تطبيق الشفرة المقترحة'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            onPressed: () async {
+                              widget.model.applyRecommendedShutterBlade();
+                              await widget.model.updateShutterDefaultsIfNeeded();
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -8127,25 +8163,68 @@ class _WindowViewState extends State<WindowView> {
                       border: Border.all(color: Colors.orange.shade300),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.straighten,
-                          color: Colors.orange.shade800,
-                          size: 20,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.straighten,
+                              color: Colors.orange.shade800,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.model.localizedShutterWidthWarning(lang) ??
+                                    widget.model.shutterWidthWarning!,
+                                style: TextStyle(
+                                  color: Colors.orange.shade900,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            widget.model.shutterWidthWarning!,
-                            style: TextStyle(
-                              color: Colors.orange.shade900,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                        if (widget.model.recommendedShutterBlade != null) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange.shade800,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              icon: const Icon(
+                                Icons.check_circle_outline,
+                                size: 14,
+                              ),
+                              label: Text(
+                                lang == AppLanguage.french
+                                    ? 'Appliquer la recommandation'
+                                    : (lang == AppLanguage.english
+                                        ? 'Apply recommendation'
+                                        : 'تطبيق المقترح'),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: () async {
+                                widget.model.applyRecommendedShutterBlade();
+                                await widget.model.updateShutterDefaultsIfNeeded();
+                                if (mounted) setState(() {});
+                              },
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -11407,8 +11486,10 @@ class _WindowViewState extends State<WindowView> {
                   }).toList(),
                   onChanged: (AluminumSeries? newSeries) {
                     if (newSeries != null) {
-                      if (isMixedDrawing) widget.model.systemMode = 'mixed';
-                      if (isInitialOrEmptyDrawing) {
+                      if (isMixedDrawing || widget.model.systemMode == 'mixed') {
+                        widget.model.systemMode = 'mixed';
+                      } else if (isInitialOrEmptyDrawing &&
+                          widget.systemMode != 'mixed') {
                         widget.model.systemMode = 'french';
                       }
                       if (selectorShowsSliding) {
@@ -11422,11 +11503,13 @@ class _WindowViewState extends State<WindowView> {
                   },
                 ),
               ),
-              // Show the sliding series selector when the drawing is mixed
-              // or in initial/empty state so the user can choose either or both from the start.
-              // When the drawing has only opening sashes, this is hidden.
-              // When the drawing has only sliding sashes, the first selector shows sliding.
-              if ((isMixedDrawing || isInitialOrEmptyDrawing) &&
+              // Show the sliding series selector when the drawing is mixed,
+              // when the mode is mixed, or in initial/empty state so the user
+              // can choose either or both from the start.
+              if ((isMixedDrawing ||
+                      isInitialOrEmptyDrawing ||
+                      widget.model.systemMode == 'mixed' ||
+                      widget.systemMode == 'mixed') &&
                   slidingItemsList.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Container(
@@ -14332,14 +14415,68 @@ class _WindowViewState extends State<WindowView> {
     }
 
     if (widget.model.hasShutter && widget.model.shutterWidthWarning != null) {
+      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      final rec = widget.model.recommendedShutterBlade;
       items.add(
-        SizedBox(
-          width: 340,
-          child: SingleChildScrollView(
-            child: Text(
-              widget.model.shutterWidthWarning!,
-              style: TextStyle(color: Colors.orange.shade900, fontSize: 12),
-            ),
+        Container(
+          width: 360,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            border: Border.all(color: Colors.orange.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.straighten, color: Colors.orange.shade800, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      widget.model.localizedShutterWidthWarning(lang) ??
+                          widget.model.shutterWidthWarning!,
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (rec != null) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade800,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.check_circle_outline, size: 14),
+                    label: Text(
+                      lang == AppLanguage.french
+                          ? 'Appliquer la recommandation'
+                          : (lang == AppLanguage.english
+                              ? 'Apply recommendation'
+                              : 'تطبيق المقترح'),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      widget.model.applyRecommendedShutterBlade();
+                      await widget.model.updateShutterDefaultsIfNeeded();
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -14470,9 +14607,11 @@ class _WindowViewState extends State<WindowView> {
         ),
       ];
     }
+    final lang =
+        Provider.of<AppSettingsProvider>(context, listen: false).language;
     final current = widget.model.componentOverrides['الشرائح (Lames)'];
     final currentId = current?['id'];
-    return _shutterLamesOptions.map((opt) {
+    final list = _shutterLamesOptions.map<Widget>((opt) {
       final isSelected = currentId != null && opt['id'] == currentId;
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -14505,8 +14644,10 @@ class _WindowViewState extends State<WindowView> {
               final selected =
                   widget.model.componentOverrides['الشرائح (Lames)'];
               if (selected?['id'] != opt['id']) return;
-              final warning = widget.model.shutterWidthWarning;
+              final warning = widget.model.localizedShutterWidthWarning(lang) ??
+                  widget.model.shutterWidthWarning;
               if (warning != null) {
+                final rec = widget.model.recommendedShutterBlade;
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
                   ..showSnackBar(
@@ -14514,6 +14655,21 @@ class _WindowViewState extends State<WindowView> {
                       content: Text(warning),
                       backgroundColor: Colors.orange.shade900,
                       duration: const Duration(seconds: 8),
+                      action: rec != null
+                          ? SnackBarAction(
+                              label: lang == AppLanguage.french
+                                  ? 'Appliquer'
+                                  : (lang == AppLanguage.english
+                                      ? 'Apply'
+                                      : 'تطبيق المقترح'),
+                              textColor: Colors.yellowAccent,
+                              onPressed: () async {
+                                widget.model.applyRecommendedShutterBlade();
+                                await widget.model.updateShutterDefaultsIfNeeded();
+                                if (mounted) setState(() {});
+                              },
+                            )
+                          : null,
                     ),
                   );
               }
@@ -14524,6 +14680,75 @@ class _WindowViewState extends State<WindowView> {
         ],
       );
     }).toList();
+
+    if (widget.model.shutterWidthWarning != null) {
+      final warning = widget.model.localizedShutterWidthWarning(lang) ??
+          widget.model.shutterWidthWarning!;
+      final rec = widget.model.recommendedShutterBlade;
+      list.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.orange.shade300),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 16,
+                  color: Colors.orange.shade900,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    warning,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (rec != null) ...[
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.orange.shade900,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.check_circle, size: 14),
+                    label: Text(
+                      lang == AppLanguage.french
+                          ? 'Appliquer'
+                          : (lang == AppLanguage.english ? 'Apply' : 'تطبيق'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () async {
+                      widget.model.applyRecommendedShutterBlade();
+                      await widget.model.updateShutterDefaultsIfNeeded();
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return list;
   }
 
   // تبويب السكك

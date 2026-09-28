@@ -371,7 +371,7 @@ class BomItem {
         return 'Vis pour Renfort';
       }
       if (original.contains('براغي الباتمو')) {
-        return 'Vis Meneau';
+        return 'Vis Meneau 3.9×50';
       }
       if (original.contains('براغي بوشون باتمو')) {
         return 'Vis Bouchon Meneau';
@@ -489,7 +489,7 @@ class BomItem {
         return 'Renfort Screws';
       }
       if (original.contains('براغي الباتمو')) {
-        return 'Batmo Screws';
+        return 'Batmo Screws 3.9×50';
       }
       if (original.contains('براغي بوشون باتمو')) {
         return 'Bouchon Batmo Screws';
@@ -2730,6 +2730,7 @@ class ComponentCalculator {
       for (var i = 0; i < count; i++) {
         triangleDrawingRuns.add({
           'height_mm': math.max(0.0, zone.boundary.height).toDouble(),
+          'width_mm': math.max(0.0, zone.boundary.width).toDouble(),
           'handle_ratio': (zone.handlePositionRatio ?? 0.5)
               .clamp(0.0, 1.0)
               .toDouble(),
@@ -2927,17 +2928,17 @@ class ComponentCalculator {
 
     final bool useCremone =
         !window.isPVC &&
-        window.systemMode != 'sliding' &&
-        window.hasBottomFrame;
+        window.systemMode != 'sliding';
     int cremoneQty = 0;
     if (useCremone) {
-      cremoneQty = totalHandles + keyHandles + condamnationHandles;
+      cremoneQty = totalHandles;
       // Nested sash handles are included in totalHandles but do not have an
       // independent WindowZone boundary. Use the drawing height as a safe
       // fallback for those legacy/nested cases, keeping the count aligned.
       while (triangleDrawingRuns.length < cremoneQty) {
         triangleDrawingRuns.add({
           'height_mm': math.max(0.0, window.height.toDouble()).toDouble(),
+          'width_mm': math.max(0.0, window.width.toDouble()).toDouble(),
           'handle_ratio': 0.5,
         });
       }
@@ -2945,12 +2946,6 @@ class ComponentCalculator {
         triangleDrawingRuns.removeRange(cremoneQty, triangleDrawingRuns.length);
       }
       totalHandles = 0;
-      keyHandles = 0;
-      condamnationHandles = 0;
-      keyLocks = 0;
-      condamnationLocks = 0;
-      doorCanons = 0;
-      gachePortes = 0;
     }
 
     int configuredGacheCount(Iterable<String> keys) {
@@ -5083,26 +5078,49 @@ class ComponentCalculator {
         batmoScrews = 4;
       }
       items.add(
-        createAccessory('براغي الباتمو', qty: batmoScrews * doubleSashCount),
+        createAccessory('براغي الباتمو 3.9*50', qty: batmoScrews * doubleSashCount),
       );
-      items.add(
-        createProfile(
-          'Bouchon Batmo',
-          accessoryColorName,
-          unit: 'قطعة',
-          qty: doubleSashCount.toDouble(),
-          overrideMap: window.componentOverrides['بوشون باتمو (Bouchon Batmo)'],
-          preferOverrideMap: true,
-          selectorType: 'bouchon_batmo',
-          roleKey: 'bouchon_batmo',
-        ),
-      );
-      items.add(
-        createAccessory(
-          'براغي بوشون باتمو',
-          qty: (doubleSashCount * 2).toInt(),
-        ),
-      );
+      final bouchonOverride =
+          window.componentOverrides['بوشون باتمو (Bouchon Batmo)'];
+      final bouchonSection =
+          window.getConfiguredSectionForRole('bouchon_batmo') ??
+          window.getSectionByType('bouchon_batmo');
+      final hasBouchonBatmo = bouchonSection != null ||
+          (bouchonOverride is Map && bouchonOverride.isNotEmpty);
+
+      if (hasBouchonBatmo) {
+        if (bouchonSection != null ||
+            (bouchonOverride is Map &&
+                bouchonOverride.containsKey('bar_length'))) {
+          items.add(
+            createProfile(
+              'Bouchon Batmo',
+              accessoryColorName,
+              unit: 'قطعة',
+              qty: doubleSashCount.toDouble(),
+              overrideMap: bouchonOverride,
+              preferOverrideMap: true,
+              selectorType: 'bouchon_batmo',
+              roleKey: 'bouchon_batmo',
+            ),
+          );
+        } else {
+          items.add(
+            createAccessory(
+              'بوشون باتمو (Bouchon Batmo)',
+              qty: doubleSashCount,
+              roleKeyOverride: 'bouchon_batmo',
+              selectorTypeOverride: 'bouchon_batmo',
+            ),
+          );
+        }
+        items.add(
+          createAccessory(
+            'براغي بوشون باتمو',
+            qty: (doubleSashCount * 2).toInt(),
+          ),
+        );
+      }
     }
 
     // --- 2. الإكسسوارات (Accessories) ---
@@ -5302,14 +5320,17 @@ class ComponentCalculator {
         }
       }
 
+      final bool isCremoneActive = !isSystemObActive && !isDemiObActive;
       if (useCremone && cremoneQty > 0) {
         final cremoneOverride = window.componentOverrides['كريمون (Cremone)'];
         final triangleRule = cremoneOverride is Map
             ? Map<String, dynamic>.from(cremoneOverride)
             : const <String, dynamic>{};
         final triangleProfile = window
-            .getConfiguredSectionForRole('triangle')
-            ?.toMap();
+                .getConfiguredSectionForRole('triangle')
+                ?.toMap() ??
+            window.getSectionByType('triangle')?.toMap() ??
+            window.getSlidingSectionByType('triangle')?.toMap();
         // A Cremone always drives two Tringle cuts when the series has a
         // Tringle profile.  The manager configures only the total deduction;
         // the drawing supplies the real handle position.
@@ -5322,9 +5343,10 @@ class ComponentCalculator {
             'كريمون (Cremone)',
             color: accessoryColorName,
             qty: cremoneQty,
+            isActive: isCremoneActive,
           ),
         );
-        if (useTriangle) {
+        if (useTriangle && isCremoneActive) {
           double numberFromRule(String key) {
             final value = triangleRule[key];
             return value is num
@@ -8853,8 +8875,14 @@ class ComponentCalculator {
           slidingSeriesId != null &&
           accessory.sourceSeriesId == slidingSeriesId;
       final triangleProfile = window
-          .getConfiguredSectionForRole('triangle', useSlidingSeries: sliding)
-          ?.toMap();
+              .getConfiguredSectionForRole('triangle', useSlidingSeries: sliding)
+              ?.toMap() ??
+          (sliding
+              ? (window.getSlidingSectionByType('triangle') ??
+                  window.getSectionByType('triangle'))
+              : (window.getSectionByType('triangle') ??
+                  window.getSlidingSectionByType('triangle')))
+              ?.toMap();
       if (triangleProfile == null) continue;
 
       final int multiplier = math
@@ -8876,6 +8904,15 @@ class ComponentCalculator {
             ]
           : triangleDrawingRuns;
 
+      final bool isObAccessory =
+          key.contains('OB') || accessory.originalName.contains('OB');
+      final double rawWidthDeduction =
+          triangleRuleNumber(rule, 'triangle_width_deduction_mm');
+      final double widthDeduction = math.max(
+        0.0,
+        rawWidthDeduction > 0 ? rawWidthDeduction : deduction,
+      );
+
       for (var index = 0; index < baseAccessoryCount * multiplier; index++) {
         final run = sourceRuns[index % sourceRuns.length];
         final double total = math
@@ -8892,9 +8929,27 @@ class ComponentCalculator {
             : total / 2.0;
         final double second = math.max(0.0, total - first).toDouble();
         pieces.addAll([first / 1000.0, second / 1000.0]);
-        cutPairs.add(
-          '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)}',
-        );
+
+        if (isObAccessory) {
+          final sashW = run['width_mm'] ??
+              (window.width.toDouble() / math.max(1, baseAccessoryCount));
+          final double third =
+              math.max(0.0, sashW - widthDeduction).toDouble();
+          if (third > 0) {
+            pieces.add(third / 1000.0);
+            cutPairs.add(
+              '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)} + ${third.toStringAsFixed(0)} (أفقي)',
+            );
+          } else {
+            cutPairs.add(
+              '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)}',
+            );
+          }
+        } else {
+          cutPairs.add(
+            '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)}',
+          );
+        }
       }
       if (pieces.isEmpty) continue;
 

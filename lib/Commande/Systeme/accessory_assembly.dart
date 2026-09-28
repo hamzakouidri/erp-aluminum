@@ -213,8 +213,9 @@ int assemblyQuantity(
     // Old rows can still contain a hidden second-side value of zero. It is
     // meaningful for profile ends/screws, not for a frame or sash corner.
     if (perCornerClamp &&
+        sectionQuantities != null &&
         (demand.target == 'frame' || demand.target == 'sash')) {
-      final perCorner = sectionQuantities?.$1 ?? top;
+      final perCorner = sectionQuantities.$1;
       quantity += (demand.topCorners + demand.bottomCorners) * perCorner;
     } else if (sectionQuantities != null) {
       quantity +=

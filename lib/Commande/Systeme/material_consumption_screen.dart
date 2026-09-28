@@ -3078,7 +3078,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.straighten,
@@ -3088,7 +3088,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        widget.model.shutterWidthWarning!,
+                        widget.model.localizedShutterWidthWarning(lang) ??
+                            widget.model.shutterWidthWarning!,
                         style: TextStyle(
                           color: Colors.orange.shade900,
                           fontSize: 14,
@@ -3096,6 +3097,37 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         ),
                       ),
                     ),
+                    if (widget.model.recommendedShutterBlade != null) ...[
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade800,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: Text(
+                          lang == AppLanguage.french
+                              ? 'Appliquer la lame recommandée'
+                              : (lang == AppLanguage.english
+                                  ? 'Apply recommended blade'
+                                  : 'تطبيق الشفرة المقترحة'),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () async {
+                          widget.model.applyRecommendedShutterBlade();
+                          await widget.model.updateShutterDefaultsIfNeeded();
+                          await _fetchDefaults();
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),

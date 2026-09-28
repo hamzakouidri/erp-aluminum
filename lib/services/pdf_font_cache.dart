@@ -23,9 +23,11 @@ class PdfFontCache {
   }
 
   static Future<PdfFontBundle> _load() async {
+    // Cairo-Regular.ttf في هذا المشروع لا يحتوي على حروف عربية (Latin-only).
+    // نستخدم Amiri الذي يدعم العربية والفرنسية بشكل كامل.
     final data = await Future.wait<ByteData>([
-      rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
-      rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
+      rootBundle.load('assets/fonts/Amiri-Regular.ttf'),
+      rootBundle.load('assets/fonts/Amiri-Bold.ttf'),
     ]);
     return PdfFontBundle(
       regular: pw.Font.ttf(data[0]),
