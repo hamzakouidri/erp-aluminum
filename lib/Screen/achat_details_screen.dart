@@ -18,12 +18,14 @@ class AchatDetailsScreen extends StatefulWidget {
   final int achatId;
   final String invoiceNumber;
   final String supplierName;
+  final SqlDatabase? db;
 
   const AchatDetailsScreen({
     super.key,
     required this.achatId,
     required this.invoiceNumber,
     required this.supplierName,
+    this.db,
   });
 
   @override
@@ -31,7 +33,7 @@ class AchatDetailsScreen extends StatefulWidget {
 }
 
 class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
-  final SqlDatabase _db = SqlDatabase();
+  late final SqlDatabase _db;
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _invoiceController = TextEditingController();
   final TextEditingController _supplierController = TextEditingController();
@@ -57,6 +59,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _db = widget.db ?? SqlDatabase();
     _originalInvoice = widget.invoiceNumber;
     _originalSupplier = widget.supplierName;
     _invoiceController.text = widget.invoiceNumber;

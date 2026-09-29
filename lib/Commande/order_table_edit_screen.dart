@@ -875,8 +875,17 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      // Montant renforcé / simple
-      if (hasSliding && !isPVC) {
+      final bool hasThreePiece = !isPVC &&
+          ((p.activeSlidingSeries?.hasThreePieceSash ?? false) ||
+              (p.activeSeries?.hasThreePieceSash ?? false) ||
+              pMap['hasThreePieceSash'] == true ||
+              pMap['has_three_piece_sash'] == 1 ||
+              '${p.activeSlidingSeries?.name ?? pMap['slidingSeriesName'] ?? ''}'
+                  .toLowerCase()
+                  .contains('tpr'));
+
+      // Montant renforcé / simple - only for 3-piece sash series
+      if (hasSliding && !isPVC && hasThreePiece) {
         final totalLateral = lateralReinforcedCount + lateralNormalCount;
         if (totalLateral > 0) {
           if (lateralReinforcedCount > 0 && lateralNormalCount > 0) {

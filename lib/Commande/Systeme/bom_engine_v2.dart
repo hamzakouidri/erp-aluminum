@@ -175,13 +175,9 @@ class BomEngineV2 {
         if (await _itemHasRuleCandidate(window, item)) {
           return item;
         }
-        // This is a second validation pass, not the source of the BOM.  The
-        // drawing has already created this active component with a real
-        // quantity. A legacy/mismatched exact-series rule (common after a
-        // catalog sync or duplicated series) must not make a gasket or an
-        // accessory disappear silently from the quantity table. Keep it
-        // visible as an unlinked row so it can be diagnosed or replaced.
-        return item.isActive && item.requiredQuantity > 0 ? item : null;
+        // If an item does not exist in the active series rules, it must NOT
+        // appear in the BOM/quantities table.
+        return null;
       }),
     );
     final kept = resolved.whereType<BomItem>().toList();

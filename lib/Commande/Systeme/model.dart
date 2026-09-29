@@ -3124,7 +3124,56 @@ class WindowModel extends ChangeNotifier {
   String? loadedSlidingSeriesName;
   int? loadedSeriesId;
   int? loadedSlidingSeriesId;
-  ReinforcementMode reinforcementMode = ReinforcementMode.fullSubstitution;
+  ReinforcementMode _reinforcementMode = ReinforcementMode.fullSubstitution;
+
+  ReinforcementMode get autoReinforcementMode {
+    final series = effectiveSlidingSeries ?? activeSeries;
+    if (series != null) {
+      final sections = series.sections;
+
+      // 1. Independent screwed renfort
+      final hasIndependentRenfort = sections.any((s) {
+        final t = s.type.toLowerCase();
+        final n = s.name.toLowerCase();
+        return t == 'independent_renfort' ||
+            t == 'renfort' ||
+            t.contains('rapporte') ||
+            n.contains('renfort rapporté') ||
+            n.contains('renfort rapporte') ||
+            n.contains('تدعيم مستقل');
+      });
+      if (hasIndependentRenfort) {
+        return ReinforcementMode.independentScrewed;
+      }
+
+      // 2. Chicane combinée / renforcée
+      final hasChicaneRenforcee = sections.any((s) {
+        final t = s.type.toLowerCase();
+        final n = s.name.toLowerCase();
+        return t == 'chicane_renforcee' ||
+            t.contains('chicane_renf') ||
+            n.contains('chicane renforc') ||
+            n.contains('شيكان معزز') ||
+            n.contains('شيكان مدعم');
+      });
+      if (hasChicaneRenforcee) {
+        return ReinforcementMode.chicaneCombination;
+      }
+    }
+
+    if (componentOverrides.containsKey('عمود تدعيم مستقل (Profilé de Renfort Rapporté)') ||
+        componentOverrides.containsKey('عمود مدعم مستقل (Profilé de Renfort Rapporté)')) {
+      return ReinforcementMode.independentScrewed;
+    }
+    if (componentOverrides.containsKey('شيكان معزز (Chicane Renforcée)')) {
+      return ReinforcementMode.chicaneCombination;
+    }
+
+    return ReinforcementMode.fullSubstitution;
+  }
+
+  ReinforcementMode get reinforcementMode => autoReinforcementMode;
+  set reinforcementMode(ReinforcementMode value) => _reinforcementMode = value;
   Map<String, dynamic>? seriesDesignConfig;
   final Map<int, Set<String>> _seriesDesignRoleKeys = {};
   final Map<int, Map<String, Set<int>>> _seriesDesignRoleSectionIds = {};
@@ -16317,6 +16366,18 @@ class WindowModel extends ChangeNotifier {
             : (firstHasRole && secondHasRole))) {
           continue;
         }
+        // If an active profile angle or tube carre junction joins these two frames,
+        // no cache-rainure can be placed at this junction seam.
+        final activeAngles = activeProfileAngleJunctions;
+        if (activeAngles.isNotEmpty) {
+          final allJunctions = getAdjacentFrameJunctions();
+          final hasAngleJunction = allJunctions.any((j) =>
+              activeAngles.contains(j.index) &&
+              ((j.firstFrame == first && j.secondFrame == second) ||
+                  (j.firstFrame == second && j.secondFrame == first)));
+          if (hasAngleJunction) continue;
+        }
+
         final insideRoleSeries = firstHasRole ? firstSliding : secondSliding;
         final outsideRoleSeries = sameSeries ? insideRoleSeries : secondSliding;
 

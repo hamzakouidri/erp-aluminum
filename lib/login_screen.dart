@@ -69,6 +69,12 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isLoginMode = true;
   bool _isWorkerSignup = false;
   final _workshopCodeController = TextEditingController();
+  final FocusNode _workshopNameFocusNode = FocusNode();
+  final FocusNode _workshopCodeFocusNode = FocusNode();
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _confirmPasswordFocusNode = FocusNode();
 
   late AnimationController _animationController;
   late List<Particle> _particles;
@@ -88,8 +94,7 @@ class _LoginScreenState extends State<LoginScreen>
     final normalized = _normalizeGmailAddress(_emailController.text);
     if (normalized == null) {
       setState(() {
-        _errorMessage =
-            'يرجى استعمال بريد Gmail صحيح ينتهي بـ @gmail.com.';
+        _errorMessage = 'يرجى استعمال بريد Gmail صحيح ينتهي بـ @gmail.com.';
         _isLoading = false;
       });
       return false;
@@ -144,11 +149,17 @@ class _LoginScreenState extends State<LoginScreen>
 
   String _getFriendlyErrorMessage(Object e) {
     if (e.toString().contains('WORKSHOP_USER_LIMIT_REACHED')) {
-      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
       return switch (lang) {
-        AppLanguage.arabic => 'عذرًا، اكتمل عدد المستخدمين المسموح به لهذه الورشة. يُرجى التواصل مع مدير الورشة.',
-        AppLanguage.french => 'Le nombre maximal d’utilisateurs autorisés pour cet atelier est atteint. Veuillez contacter le responsable de l’atelier.',
-        AppLanguage.english => 'This workshop has reached its user limit. Please contact the workshop manager.',
+        AppLanguage.arabic =>
+          'عذرًا، اكتمل عدد المستخدمين المسموح به لهذه الورشة. يُرجى التواصل مع مدير الورشة.',
+        AppLanguage.french =>
+          'Le nombre maximal d’utilisateurs autorisés pour cet atelier est atteint. Veuillez contacter le responsable de l’atelier.',
+        AppLanguage.english =>
+          'This workshop has reached its user limit. Please contact the workshop manager.',
       };
     }
     if (e is AppAuthException) {
@@ -1159,9 +1170,7 @@ class _LoginScreenState extends State<LoginScreen>
         // Clear the plugin's cached Google account so the chooser is shown
         // instead of silently reusing the previous email.
         try {
-          await GoogleSignIn(
-            serverClientId: _googleServerClientId,
-          ).signOut();
+          await GoogleSignIn(serverClientId: _googleServerClientId).signOut();
         } catch (_) {}
         final googleUser = await GoogleSignIn(
           serverClientId: _googleServerClientId,
@@ -1688,6 +1697,12 @@ class _LoginScreenState extends State<LoginScreen>
     _confirmPasswordController.dispose();
     _workshopNameController.dispose();
     _workshopCodeController.dispose();
+    _workshopNameFocusNode.dispose();
+    _workshopCodeFocusNode.dispose();
+    _nameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -1773,187 +1788,288 @@ class _LoginScreenState extends State<LoginScreen>
                     const SizedBox(height: 32),
 
                     // Frosted Glassmorphism Card
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(24.0),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                        child: Container(
-                          padding: const EdgeInsets.all(28.0),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.06),
-                            borderRadius: BorderRadius.circular(24.0),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.12),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                _isLoginMode
-                                    ? Localization.translate(
-                                        'تسجيل الدخول',
-                                        lang,
-                                      )
-                                    : Localization.translate(
-                                        'إنشاء حساب جديد',
-                                        lang,
-                                      ),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                    CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(LogicalKeyboardKey.enter): () {
+                          if (!_isLoading) {
+                            if (_isLoginMode) {
+                              _login();
+                            } else {
+                              _register();
+                            }
+                          }
+                        },
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                        ): () {
+                          if (!_isLoading) {
+                            if (_isLoginMode) {
+                              _login();
+                            } else {
+                              _register();
+                            }
+                          }
+                        },
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24.0),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                          child: Container(
+                            padding: const EdgeInsets.all(28.0),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(24.0),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                                width: 1.5,
                               ),
-                              const SizedBox(height: 24),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  _isLoginMode
+                                      ? Localization.translate(
+                                          'تسجيل الدخول',
+                                          lang,
+                                        )
+                                      : Localization.translate(
+                                          'إنشاء حساب جديد',
+                                          lang,
+                                        ),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
 
-                              if (!_isLoginMode) ...[
-                                Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 10,
-                                  children: [
-                                    ChoiceChip(
-                                      label: Text(
-                                        Localization.translate(
-                                          'إنشاء ورشة (مدير)',
+                                if (!_isLoginMode) ...[
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 10,
+                                    children: [
+                                      ChoiceChip(
+                                        label: Text(
+                                          Localization.translate(
+                                            'إنشاء ورشة (مدير)',
+                                            lang,
+                                          ),
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                        selected: !_isWorkerSignup,
+                                        selectedColor: Colors.blueAccent,
+                                        backgroundColor: Colors.white,
+                                        labelStyle: TextStyle(
+                                          color: !_isWorkerSignup
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                        onSelected: (val) {
+                                          setState(() {
+                                            _isWorkerSignup = !val;
+                                          });
+                                        },
+                                      ),
+                                      ChoiceChip(
+                                        label: Text(
+                                          Localization.translate(
+                                            'الانضمام إلى ورشة موجودة',
+                                            lang,
+                                          ),
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                        selected: _isWorkerSignup,
+                                        selectedColor: Colors.blueAccent,
+                                        backgroundColor: Colors.white,
+                                        labelStyle: TextStyle(
+                                          color: _isWorkerSignup
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                        onSelected: (val) {
+                                          setState(() {
+                                            _isWorkerSignup = val;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 20),
+                                  if (!_isWorkerSignup) ...[
+                                    TextField(
+                                      controller: _workshopNameController,
+                                      focusNode: _workshopNameFocusNode,
+                                      textInputAction: TextInputAction.next,
+                                      onSubmitted: (_) =>
+                                          _workshopCodeFocusNode.requestFocus(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: Localization.translate(
+                                          'اسم المصنع / الورشة',
                                           lang,
                                         ),
-                                        style: const TextStyle(
+                                        labelStyle: const TextStyle(
+                                          color: Colors.white70,
                                           fontFamily: 'Cairo',
                                         ),
+                                        filled: true,
+                                        fillColor: Colors.white.withOpacity(
+                                          0.04,
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.storefront,
+                                          color: Colors.white60,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: Colors.white.withOpacity(
+                                              0.12,
+                                            ),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: Colors.blueAccent,
+                                            width: 2,
+                                          ),
+                                        ),
                                       ),
-                                      selected: !_isWorkerSignup,
-                                      selectedColor: Colors.blueAccent,
-                                      backgroundColor: Colors.white,
-                                      labelStyle: TextStyle(
-                                        color: !_isWorkerSignup
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                      onSelected: (val) {
-                                        setState(() {
-                                          _isWorkerSignup = !val;
-                                        });
-                                      },
                                     ),
-                                    ChoiceChip(
-                                      label: Text(
-                                        Localization.translate(
-                                          'الانضمام إلى ورشة موجودة',
+                                  ] else ...[
+                                    TextField(
+                                      controller: _workshopCodeController,
+                                      focusNode: _workshopCodeFocusNode,
+                                      textInputAction: TextInputAction.next,
+                                      onSubmitted: (_) =>
+                                          _nameFocusNode.requestFocus(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: Localization.translate(
+                                          'كود الورشة (ضروري)',
                                           lang,
                                         ),
-                                        style: const TextStyle(
+                                        labelStyle: const TextStyle(
+                                          color: Colors.white70,
                                           fontFamily: 'Cairo',
                                         ),
+                                        filled: true,
+                                        fillColor: Colors.white.withOpacity(
+                                          0.04,
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.qr_code,
+                                          color: Colors.white60,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: Colors.white.withOpacity(
+                                              0.12,
+                                            ),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: Colors.blueAccent,
+                                            width: 2,
+                                          ),
+                                        ),
                                       ),
-                                      selected: _isWorkerSignup,
-                                      selectedColor: Colors.blueAccent,
-                                      backgroundColor: Colors.white,
-                                      labelStyle: TextStyle(
-                                        color: _isWorkerSignup
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                      onSelected: (val) {
-                                        setState(() {
-                                          _isWorkerSignup = val;
-                                        });
-                                      },
                                     ),
                                   ],
-                                ),
-                                const SizedBox(height: 20),
-                                if (!_isWorkerSignup) ...[
-                                  TextField(
-                                    controller: _workshopNameController,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontFamily: 'Cairo',
-                                    ),
-                                    decoration: InputDecoration(
-                                      labelText: Localization.translate(
-                                        'اسم المصنع / الورشة',
-                                        lang,
-                                      ),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                        fontFamily: 'Cairo',
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white.withOpacity(0.04),
-                                      prefixIcon: const Icon(
-                                        Icons.storefront,
-                                        color: Colors.white60,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(
-                                          color: Colors.white.withOpacity(0.12),
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.blueAccent,
-                                          width: 2,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ] else ...[
-                                  TextField(
-                                    controller: _workshopCodeController,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontFamily: 'Cairo',
-                                    ),
-                                    decoration: InputDecoration(
-                                      labelText: Localization.translate(
-                                        'كود الورشة (ضروري)',
-                                        lang,
-                                      ),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                        fontFamily: 'Cairo',
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white.withOpacity(0.04),
-                                      prefixIcon: const Icon(
-                                        Icons.qr_code,
-                                        color: Colors.white60,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(
-                                          color: Colors.white.withOpacity(0.12),
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.blueAccent,
-                                          width: 2,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                  const SizedBox(height: 16),
                                 ],
-                                const SizedBox(height: 16),
-                              ],
 
-                              if (!_isLoginMode) ...[
+                                if (!_isLoginMode) ...[
+                                  TextField(
+                                    controller: _nameController,
+                                    focusNode: _nameFocusNode,
+                                    textInputAction: TextInputAction.next,
+                                    onSubmitted: (_) =>
+                                        _emailFocusNode.requestFocus(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontFamily: 'Cairo',
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: Localization.translate(
+                                        'الاسم الكامل',
+                                        lang,
+                                      ),
+                                      labelStyle: const TextStyle(
+                                        color: Colors.white70,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.04),
+                                      prefixIcon: const Icon(
+                                        Icons.person_outline,
+                                        color: Colors.white60,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.white.withOpacity(0.12),
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                          color: Colors.blueAccent,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+
                                 TextField(
-                                  controller: _nameController,
+                                  controller: _emailController,
+                                  focusNode: _emailFocusNode,
+                                  textInputAction: TextInputAction.next,
+                                  onSubmitted: (_) =>
+                                      _passwordFocusNode.requestFocus(),
+                                  keyboardType: TextInputType.emailAddress,
+                                  onChanged: _onGmailLocalPartChanged,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'[A-Za-z0-9._%+\-]'),
+                                    ),
+                                  ],
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontFamily: 'Cairo',
                                   ),
                                   decoration: InputDecoration(
                                     labelText: Localization.translate(
-                                      'الاسم الكامل',
+                                      'البريد الإلكتروني',
                                       lang,
                                     ),
                                     labelStyle: const TextStyle(
@@ -1963,8 +2079,13 @@ class _LoginScreenState extends State<LoginScreen>
                                     filled: true,
                                     fillColor: Colors.white.withOpacity(0.04),
                                     prefixIcon: const Icon(
-                                      Icons.person_outline,
+                                      Icons.email_outlined,
                                       color: Colors.white60,
+                                    ),
+                                    suffixText: '@gmail.com',
+                                    suffixStyle: const TextStyle(
+                                      color: Colors.white70,
+                                      fontFamily: 'Cairo',
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
@@ -1981,159 +2102,40 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 16),
-                              ],
-
-                              TextField(
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                textInputAction: TextInputAction.next,
-                                onChanged: _onGmailLocalPartChanged,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(
-                                    RegExp(r'[A-Za-z0-9._%+\-]'),
-                                  ),
-                                ],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontFamily: 'Cairo',
-                                ),
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    'البريد الإلكتروني',
-                                    lang,
-                                  ),
-                                  labelStyle: const TextStyle(
-                                    color: Colors.white70,
-                                    fontFamily: 'Cairo',
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.04),
-                                  prefixIcon: const Icon(
-                                    Icons.email_outlined,
-                                    color: Colors.white60,
-                                  ),
-                                  suffixText: '@gmail.com',
-                                  suffixStyle: const TextStyle(
-                                    color: Colors.white70,
-                                    fontFamily: 'Cairo',
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                      color: Colors.white.withOpacity(0.12),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Colors.blueAccent,
-                                      width: 2,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (!_isLoginMode) ...[
-                                const SizedBox(height: 6),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4.0,
-                                  ),
-                                  child: Text(
-                                    Localization.translate(
-                                      '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
-                                      lang,
-                                    ),
-                                    style: TextStyle(
-                                      color: Colors.amber.shade300,
-                                      fontSize: 11,
-                                      fontFamily: 'Cairo',
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 16),
-
-                              TextField(
-                                controller: _passwordController,
-                                obscureText: _obscurePassword,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontFamily: 'Cairo',
-                                ),
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    'كلمة المرور',
-                                    lang,
-                                  ),
-                                  labelStyle: const TextStyle(
-                                    color: Colors.white70,
-                                    fontFamily: 'Cairo',
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.04),
-                                  prefixIcon: const Icon(
-                                    Icons.lock_outline,
-                                    color: Colors.white60,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                      color: Colors.white.withOpacity(0.12),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Colors.blueAccent,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: Colors.white60,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _obscurePassword = !_obscurePassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                              if (_isLoginMode) ...[
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: TextButton(
-                                    onPressed: _resetPassword,
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: const Size(50, 30),
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
+                                if (!_isLoginMode) ...[
+                                  const SizedBox(height: 6),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4.0,
                                     ),
                                     child: Text(
                                       Localization.translate(
-                                        'نسيت كلمة المرور؟',
+                                        '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
                                         lang,
                                       ),
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: Colors.amber.shade300,
+                                        fontSize: 11,
                                         fontFamily: 'Cairo',
-                                        fontSize: 13,
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
-                              const SizedBox(height: 16),
+                                ],
+                                const SizedBox(height: 16),
 
-                              if (!_isLoginMode) ...[
                                 TextField(
-                                  controller: _confirmPasswordController,
+                                  controller: _passwordController,
+                                  focusNode: _passwordFocusNode,
+                                  textInputAction: _isLoginMode
+                                      ? TextInputAction.done
+                                      : TextInputAction.next,
+                                  onSubmitted: (_) {
+                                    if (_isLoginMode) {
+                                      if (!_isLoading) _login();
+                                    } else {
+                                      _confirmPasswordFocusNode.requestFocus();
+                                    }
+                                  },
                                   obscureText: _obscurePassword,
                                   style: const TextStyle(
                                     color: Colors.white,
@@ -2141,7 +2143,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                   decoration: InputDecoration(
                                     labelText: Localization.translate(
-                                      'تأكيد كلمة المرور',
+                                      'كلمة المرور',
                                       lang,
                                     ),
                                     labelStyle: const TextStyle(
@@ -2167,179 +2169,268 @@ class _LoginScreenState extends State<LoginScreen>
                                         width: 2,
                                       ),
                                     ),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_off
+                                            : Icons.visibility,
+                                        color: Colors.white60,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _obscurePassword = !_obscurePassword;
+                                        });
+                                      },
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(height: 20),
-                              ],
-
-                              if (_errorMessage.isNotEmpty)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.12),
-                                    border: Border.all(
-                                      color: Colors.red.withOpacity(0.3),
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.error_outline,
-                                        color: Colors.redAccent,
+                                if (_isLoginMode) ...[
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton(
+                                      onPressed: _resetPassword,
+                                      style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        minimumSize: const Size(50, 30),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
+                                      child: Text(
+                                        Localization.translate(
+                                          'نسيت كلمة المرور؟',
+                                          lang,
+                                        ),
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+
+                                if (!_isLoginMode) ...[
+                                  TextField(
+                                    controller: _confirmPasswordController,
+                                    focusNode: _confirmPasswordFocusNode,
+                                    textInputAction: TextInputAction.done,
+                                    onSubmitted: (_) {
+                                      if (!_isLoading) _register();
+                                    },
+                                    obscureText: _obscurePassword,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontFamily: 'Cairo',
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: Localization.translate(
+                                        'تأكيد كلمة المرور',
+                                        lang,
+                                      ),
+                                      labelStyle: const TextStyle(
+                                        color: Colors.white70,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.04),
+                                      prefixIcon: const Icon(
+                                        Icons.lock_outline,
+                                        color: Colors.white60,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.white.withOpacity(0.12),
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                          color: Colors.blueAccent,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
+
+                                if (_errorMessage.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.12),
+                                      border: Border.all(
+                                        color: Colors.red.withOpacity(0.3),
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.error_outline,
+                                          color: Colors.redAccent,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            _errorMessage,
+                                            style: const TextStyle(
+                                              color: Colors.redAccent,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                if (_isLoading)
+                                  const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: 8.0,
+                                      ),
+                                      child: CircularProgressIndicator(
+                                        color: Colors.blueAccent,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      ElevatedButton(
+                                        onPressed: _isLoginMode
+                                            ? _login
+                                            : _register,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blueAccent,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 14,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          elevation: 4,
+                                        ),
                                         child: Text(
-                                          _errorMessage,
+                                          _isLoginMode
+                                              ? Localization.translate(
+                                                  'تسجيل الدخول',
+                                                  lang,
+                                                )
+                                              : Localization.translate(
+                                                  'إنشاء حساب',
+                                                  lang,
+                                                ),
                                           style: const TextStyle(
-                                            color: Colors.redAccent,
-                                            fontSize: 14,
+                                            fontFamily: 'Cairo',
+                                            fontSize: 18,
                                             fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+
+                                      OutlinedButton(
+                                        onPressed: _signInWithGoogle,
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 14,
+                                          ),
+                                          side: BorderSide(
+                                            color: Colors.white.withOpacity(
+                                              0.2,
+                                            ),
+                                            width: 1.5,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          backgroundColor: Colors.white
+                                              .withOpacity(0.08),
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Image.network(
+                                              'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png',
+                                              height: 22,
+                                              errorBuilder:
+                                                  (
+                                                    context,
+                                                    error,
+                                                    stackTrace,
+                                                  ) => const Icon(
+                                                    Icons.g_mobiledata,
+                                                    size: 22,
+                                                    color: Colors.white,
+                                                  ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              _isLoginMode
+                                                  ? Localization.translate(
+                                                      'الدخول باستخدام Google',
+                                                      lang,
+                                                    )
+                                                  : Localization.translate(
+                                                      'التسجيل باستخدام Google',
+                                                      lang,
+                                                    ),
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+
+                                      TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _isLoginMode = !_isLoginMode;
+                                            _errorMessage = '';
+                                          });
+                                        },
+                                        child: Text(
+                                          _isLoginMode
+                                              ? Localization.translate(
+                                                  'ليس لديك حساب؟ إنشاء حساب جديد',
+                                                  lang,
+                                                )
+                                              : Localization.translate(
+                                                  'لديك حساب بالفعل؟ تسجيل الدخول',
+                                                  lang,
+                                                ),
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 14,
                                             fontFamily: 'Cairo',
                                           ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-
-                              if (_isLoading)
-                                const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: 8.0,
-                                    ),
-                                    child: CircularProgressIndicator(
-                                      color: Colors.blueAccent,
-                                    ),
-                                  ),
-                                )
-                              else
-                                Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    ElevatedButton(
-                                      onPressed: _isLoginMode
-                                          ? _login
-                                          : _register,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blueAccent,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        elevation: 4,
-                                      ),
-                                      child: Text(
-                                        _isLoginMode
-                                            ? Localization.translate(
-                                                'تسجيل الدخول',
-                                                lang,
-                                              )
-                                            : Localization.translate(
-                                                'إنشاء حساب',
-                                                lang,
-                                              ),
-                                        style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-
-                                    OutlinedButton(
-                                      onPressed: _signInWithGoogle,
-                                      style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        side: BorderSide(
-                                          color: Colors.white.withOpacity(0.2),
-                                          width: 1.5,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        backgroundColor: Colors.white
-                                            .withOpacity(0.08),
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Image.network(
-                                            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png',
-                                            height: 22,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    const Icon(
-                                                      Icons.g_mobiledata,
-                                                      size: 22,
-                                                      color: Colors.white,
-                                                    ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Text(
-                                            _isLoginMode
-                                                ? Localization.translate(
-                                                    'الدخول باستخدام Google',
-                                                    lang,
-                                                  )
-                                                : Localization.translate(
-                                                    'التسجيل باستخدام Google',
-                                                    lang,
-                                                  ),
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-
-                                    TextButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _isLoginMode = !_isLoginMode;
-                                          _errorMessage = '';
-                                        });
-                                      },
-                                      child: Text(
-                                        _isLoginMode
-                                            ? Localization.translate(
-                                                'ليس لديك حساب؟ إنشاء حساب جديد',
-                                                lang,
-                                              )
-                                            : Localization.translate(
-                                                'لديك حساب بالفعل؟ تسجيل الدخول',
-                                                lang,
-                                              ),
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 14,
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),

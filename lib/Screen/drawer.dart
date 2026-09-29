@@ -1,3 +1,4 @@
+import 'electronic_payment_screen.dart';
 import 'package:database_data/Screen/workers_management_screen.dart';
 import 'package:database_data/Screen/treasury_screen.dart';
 import 'package:database_data/Screen/worker_finances_screen.dart';
@@ -17,6 +18,8 @@ import 'achat_screen.dart';
 import 'trash_screen.dart';
 import 'suppliers_screen.dart';
 import 'settings_screen.dart';
+import 'storage_dashboard_screen.dart';
+import 'cutting_optimization_screen.dart';
 import 'selected_systems_screen.dart';
 import 'price_management_screen.dart';
 import 'global_consumption_report_screen.dart';
@@ -40,7 +43,6 @@ import '../services/supabase_workshop_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
-import 'dart:async';
 
 class AppDrawer extends StatefulWidget {
   /// Used by the permanent desktop sidebar.  Mobile drawers still close with
@@ -791,6 +793,24 @@ class _AppDrawerState extends State<AppDrawer> {
           color: Colors.redAccent,
         ),
       );
+      orderItems.add(
+        _desktopMenuItem(
+          title: _desktopLabel(
+            lang,
+            arabic: 'تحسين القص (Optimisation)',
+            french: 'Optimisation de coupe',
+            english: 'Cutting Optimization',
+          ),
+          icon: Icons.architecture_rounded,
+          onTap: () => _openScreen(
+            'cutting_optimization',
+            Icons.architecture_rounded,
+            CuttingOptimizationScreen(db: db),
+            titleKey: 'cutting_optimization',
+          ),
+          color: Colors.indigo,
+        ),
+      );
     }
     if (settings.canViewSales()) {
       orderItems.add(
@@ -1170,8 +1190,44 @@ class _AppDrawerState extends State<AppDrawer> {
       );
     }
 
+    managementItems.add(
+      _desktopMenuItem(
+        title: _desktopLabel(
+          lang,
+          arabic: 'استهلاك التخزين والذاكرة',
+          french: 'Stockage & Mémoire',
+          english: 'Storage & Memory',
+        ),
+        icon: Icons.pie_chart_outline_rounded,
+        onTap: () => _openScreen(
+          'storage_dashboard',
+          Icons.pie_chart_outline_rounded,
+          StorageDashboardScreen(db: db),
+          titleKey: 'storage_dashboard',
+        ),
+        color: const Color(0xFF0D9488),
+      ),
+    );
+
     final accountItems = <Widget>[
-      if (settings.canViewSubscription())
+      if (settings.canViewSubscription()) ...[
+        _desktopMenuItem(
+          title: _desktopLabel(
+            lang,
+            arabic: 'الدفع الإلكتروني وتجديد الاشتراك',
+            french: 'Paiement en ligne & abonnements',
+            english: 'Online Payment & Subscriptions',
+          ),
+          icon: Icons.credit_card_rounded,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const ElectronicPaymentScreen(),
+              ),
+            );
+          },
+          color: Colors.teal,
+        ),
         _desktopMenuItem(
           title: _desktopLabel(
             lang,
@@ -1183,6 +1239,7 @@ class _AppDrawerState extends State<AppDrawer> {
           onTap: () => showSubscriptionReviewDialog(context),
           color: Colors.amber,
         ),
+      ],
       _desktopMenuItem(
         title: _desktopLabel(
           lang,
@@ -1745,6 +1802,26 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
+          if (settings.canViewOrders())
+            ListTile(
+              leading: const Icon(Icons.architecture_rounded, color: Colors.indigo),
+              title: Text(
+                _desktopLabel(
+                  lang,
+                  arabic: 'تحسين القص (Optimisation)',
+                  french: 'Optimisation de coupe',
+                  english: 'Cutting Optimization',
+                ),
+              ),
+              onTap: () {
+                _openScreen(
+                  'cutting_optimization',
+                  Icons.architecture_rounded,
+                  CuttingOptimizationScreen(db: db),
+                  titleKey: 'cutting_optimization',
+                );
+              },
+            ),
 
           if (settings.canViewProjects())
             ListTile(
@@ -2011,9 +2088,46 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
+          ListTile(
+            leading: const Icon(Icons.pie_chart_outline_rounded, color: Color(0xFF0D9488)),
+            title: Text(
+              _desktopLabel(
+                lang,
+                arabic: 'استهلاك التخزين والذاكرة',
+                french: 'Stockage & Mémoire',
+                english: 'Storage & Memory',
+              ),
+            ),
+            onTap: () {
+              _openScreen(
+                'storage_dashboard',
+                Icons.pie_chart_outline_rounded,
+                StorageDashboardScreen(db: db),
+                titleKey: 'storage_dashboard',
+              );
+            },
+          ),
 
           if (settings.canViewSubscription()) ...[
             const Divider(),
+            ListTile(
+              leading: const Icon(
+                Icons.credit_card_rounded,
+                color: Colors.teal,
+              ),
+              title: Text(
+                Localization.translate('الدفع الإلكتروني وتجديد الاشتراك', lang),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ElectronicPaymentScreen(),
+                  ),
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(
                 Icons.card_membership_rounded,

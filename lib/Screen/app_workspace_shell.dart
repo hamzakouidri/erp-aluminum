@@ -560,7 +560,7 @@ class AppWorkspaceShell extends StatelessWidget {
   }
 }
 
-class _WorkspaceContentHost extends StatelessWidget {
+class _WorkspaceContentHost extends StatefulWidget {
   final WorkspaceEntry entry;
   final bool active;
 
@@ -571,22 +571,38 @@ class _WorkspaceContentHost extends StatelessWidget {
   });
 
   @override
+  State<_WorkspaceContentHost> createState() => _WorkspaceContentHostState();
+}
+
+class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
+  late final ScrollController _primaryScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _primaryScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final navigatorKey = Provider.of<WorkspaceController>(
       context,
       listen: false,
-    ).navigatorKeyFor(entry.id);
+    ).navigatorKeyFor(widget.entry.id);
 
-    return Navigator(
-      key: navigatorKey,
-      onGenerateInitialRoutes: (_, __) {
-        return [
-          MaterialPageRoute(
-            builder: (_) => entry.content,
-            settings: RouteSettings(name: entry.id),
-          ),
-        ];
-      },
+    return PrimaryScrollController(
+      controller: _primaryScrollController,
+      child: Navigator(
+        key: navigatorKey,
+        onGenerateInitialRoutes: (_, __) {
+          return [
+            MaterialPageRoute(
+              builder: (_) => widget.entry.content,
+              settings: RouteSettings(name: widget.entry.id),
+            ),
+          ];
+        },
+      ),
     );
   }
 }

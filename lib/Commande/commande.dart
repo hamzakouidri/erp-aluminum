@@ -30,6 +30,7 @@ import 'package:database_data/Commande/order_required_goods_screen.dart';
 import 'package:database_data/Commande/order_measurements_confirm_screen.dart';
 import 'package:database_data/Commande/partial_proforma_screen.dart';
 import 'package:database_data/Screen/order_allocation_screen.dart';
+import '../Screen/cutting_optimization_screen.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
@@ -2506,6 +2507,27 @@ class _CommandeState extends State<Commande> {
                 if (isConfirmedOrBeyond) const Divider(),
 
                 // 2. Fiche de Coupe
+                ListTile(
+                  leading: const Icon(Icons.architecture_rounded, color: Colors.indigo),
+                  title: Text(
+                    Localization.translate(
+                      'تحسين القص (Optimisation de Coupe)',
+                      lang,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CuttingOptimizationScreen(
+                          db: db,
+                          initialOrderId: orderId,
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 if (settings.canViewFicheDeCoupe())
                   ListTile(
                     leading: const Icon(Icons.cut, color: Colors.orange),

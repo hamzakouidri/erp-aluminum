@@ -7,6 +7,7 @@ import '../sql_database.dart';
 import 'achat_details_screen.dart';
 import 'achat_return_screen.dart';
 import 'ai_scanner_screen.dart';
+import 'trash_screen.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 
@@ -290,6 +291,25 @@ class _AchatScreenState extends State<AchatScreen>
             Provider.of<AppSettingsProvider>(context, listen: false).language,
           ),
           onPressed: _openAiScanner,
+        ),
+        IconButton(
+          icon: const Icon(Icons.auto_delete_rounded),
+          tooltip: Localization.translate(
+            'سلة مهملات فواتير الشراء',
+            Provider.of<AppSettingsProvider>(context, listen: false).language,
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TrashScreen(
+                  db: widget.db,
+                  initialIndex: 1,
+                  onOrderRestored: _refreshList,
+                ),
+              ),
+            ).then((_) => _refreshList());
+          },
         ),
         SizedBox(width: 8),
       ],
@@ -1249,17 +1269,23 @@ class _AchatScreenState extends State<AchatScreen>
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            title: Text(
-              Localization.translate('حذف نهائي للفاتورة', lang),
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: _red,
-              ),
+            title: Row(
+              children: [
+                const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                const SizedBox(width: 8),
+                Text(
+                  Localization.translate('نقل الفاتورة إلى سلة المهملات', lang),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: _red,
+                  ),
+                ),
+              ],
             ),
             content: Text(
-              "${Localization.translate('هل أنت متأكد من رغبتك في حذف الفاتورة رقم: ', lang)}$invoiceNumber${Localization.translate(' نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.', lang)}",
+              "${Localization.translate('هل أنت متأكد من رغبتك في نقل الفاتورة رقم: ', lang)}$invoiceNumber${Localization.translate(' إلى سلة المهملات؟ يمكنك استرجاعها لاحقاً من سلة المهملات.', lang)}",
               style: const TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 13,
@@ -1285,18 +1311,27 @@ class _AchatScreenState extends State<AchatScreen>
                   ),
                 ),
                 onPressed: () async {
-                  await widget.db.deleteAchat(id);
+                  Navigator.pop(context);
+                  await widget.db.deleteAchatToTrash(id);
                   _refreshList();
-                  if (context.mounted) {
-                    Navigator.pop(context);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
                           Localization.translate(
-                            'تم حذف الفاتورة نهائياً',
-                            Provider.of<AppSettingsProvider>(context).language,
+                            'تم نقل الفاتورة إلى سلة المهملات',
+                            Provider.of<AppSettingsProvider>(context, listen: false).language,
                           ),
-                          style: TextStyle(fontFamily: 'Cairo'),
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                        action: SnackBarAction(
+                          label: Localization.translate('استرجاع', lang),
+                          textColor: Colors.amberAccent,
+                          onPressed: () async {
+                            await widget.db.restoreAchat(id);
+                            _refreshList();
+                          },
                         ),
                         backgroundColor: Colors.black87,
                         behavior: SnackBarBehavior.floating,
@@ -1306,10 +1341,10 @@ class _AchatScreenState extends State<AchatScreen>
                 },
                 child: Text(
                   Localization.translate(
-                    'حذف نهائي',
+                    'نقل إلى السلة',
                     Provider.of<AppSettingsProvider>(context).language,
                   ),
-                  style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+                  style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
                 ),
               ),
             ],

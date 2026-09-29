@@ -70,11 +70,10 @@ void main() {
       print("Calling buildPdfBytes first time...");
       final bytes1 = await PdfInvoiceApi.buildPdfBytes(data);
       expect(bytes1.length, greaterThan(0));
-      
-      print("Calling buildPdfBytes second time...");
-      final bytes2 = await PdfInvoiceApi.buildPdfBytes(data, imageUnderPrices: true);
-      expect(bytes2.length, greaterThan(0));
 
+      print("Calling buildPdfBytes second time...");
+      final bytes2 = await PdfInvoiceApi.buildPdfBytes(data, imageMode: 0);
+      expect(bytes2.length, greaterThan(0));
     } catch (e, stack) {
       print("Error generating PDF with real images: $e");
       print(stack);

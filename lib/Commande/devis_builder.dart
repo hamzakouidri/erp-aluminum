@@ -670,10 +670,19 @@ class DevisBuilder {
       'montant central',
       'montant latéral',
       'montant lateral',
+      'central montant',
+      'lateral montant',
       'central sash',
       'lateral sash',
       'مقطع الوسط',
       'مقطع الجانب',
+      'قائم وسطي',
+      'القائم الوسطي',
+      'قائم جانبي',
+      'القائم الجانبي',
+      'مونتو مركزي',
+      'مونتو جانبي',
+      'المونتو',
     ];
 
     for (final p in prefixes) {
@@ -1691,8 +1700,16 @@ class DevisBuilder {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      // 9. Montant lateral / central renforcé / simple
-      if (hasSliding && !isPVC) {
+      final bool hasThreePiece = !isPVC &&
+          (map['hasThreePieceSash'] == true ||
+              map['has_three_piece_sash'] == 1 ||
+              map['has_three_piece_sash'] == true ||
+              '${map['slidingSeriesName'] ?? seriesName ?? ''}'
+                  .toLowerCase()
+                  .contains('tpr'));
+
+      // 9. Montant lateral / central renforcé / simple - only for 3-piece sash series
+      if (hasSliding && !isPVC && hasThreePiece) {
         final totalCentral = centralReinforcedCount + centralNormalCount;
         if (totalCentral > 0) {
           if (centralReinforcedCount > 0 && centralNormalCount > 0) {
@@ -2021,6 +2038,7 @@ class DevisBuilder {
         details.addAll(
           _slidingMontantDetails(
             zones,
+            map: map,
             seriesName: seriesName,
             gameName: gameName,
             displaySeries: displaySeries,
@@ -2993,12 +3011,22 @@ class DevisBuilder {
 
   static List<String> _slidingMontantDetails(
     List<Map<String, dynamic>> zones, {
+    Map<String, dynamic>? map,
     String? seriesName,
     String? gameName,
     required String displaySeries,
     bool isPvc = false,
   }) {
     if (isPvc) return const [];
+
+    final bool hasThreePiece = !isPvc &&
+        (map?['hasThreePieceSash'] == true ||
+            map?['has_three_piece_sash'] == 1 ||
+            map?['has_three_piece_sash'] == true ||
+            '${map?['slidingSeriesName'] ?? seriesName ?? displaySeries}'
+                .toLowerCase()
+                .contains('tpr'));
+    if (!hasThreePiece) return const [];
 
     final slidingZones = zones
         .where((z) => z['content']?.toString().contains('slidingSash') == true)

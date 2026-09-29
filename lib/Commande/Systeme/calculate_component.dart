@@ -6362,23 +6362,63 @@ class ComponentCalculator {
           : (double.tryParse(bladeHeightMatch.group(0)!.replaceAll(',', '.')) ??
                 43.0);
       final safeBladeHeightMm = bladeHeightMm > 0 ? bladeHeightMm : 43.0;
-      final numBladesShutter =
-          ((window.height - window.shutterBoxHeight) / safeBladeHeightMm + 2)
+      final frameRects = window.getFrameRects();
+      final hasMultiFrames = frameRects.length > 1;
+
+      final bladePieces = <double>[];
+      int totalBladesCount = 0;
+      final lameFinalePieces = <double>[];
+
+      double capThick = 0.0;
+      if (linkedBladeEndCap != null) {
+        final rawThickness = linkedBladeEndCap['cap_thickness'];
+        capThick = rawThickness is num
+            ? rawThickness.toDouble()
+            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
+      }
+
+      if (hasMultiFrames) {
+        for (final rect in frameRects) {
+          final fWidth = rect.width;
+          final fHeight = rect.height;
+          final fNumBlades = ((fHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
               .ceil()
               .clamp(0, 100000)
               .toInt();
+          totalBladesCount += fNumBlades;
 
-      double bladeLengthM = (window.width - 65) / 1000.0;
-      // The exact cap linked to this blade shortens every blade at both ends.
-      // No generic cap or hard-coded thickness is allowed as a fallback.
-      if (linkedBladeEndCap != null) {
-        final rawThickness = linkedBladeEndCap['cap_thickness'];
-        final bladesCapThickness = rawThickness is num
-            ? rawThickness.toDouble()
-            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
-        bladeLengthM -= (2 * bladesCapThickness) / 1000.0;
+          double fBladeLengthM = math.max(0.0, (fWidth - 65.0)) / 1000.0;
+          if (capThick > 0) {
+            fBladeLengthM = math.max(0.0, fBladeLengthM - (2 * capThick) / 1000.0);
+          }
+          bladePieces.addAll(List<double>.filled(fNumBlades, fBladeLengthM));
+
+          double fLameFinaleM = math.max(0.0, (fWidth - 65.0)) / 1000.0;
+          if (capThick > 0) {
+            fLameFinaleM = math.max(0.0, fLameFinaleM - (2 * capThick) / 1000.0);
+          }
+          lameFinalePieces.add(fLameFinaleM);
+        }
+      } else {
+        final numBladesShutter =
+            ((window.height - window.shutterBoxHeight) / safeBladeHeightMm + 2)
+                .ceil()
+                .clamp(0, 100000)
+                .toInt();
+        totalBladesCount = numBladesShutter;
+        double bladeLengthM = math.max(0.0, (window.width - 65.0)) / 1000.0;
+        if (capThick > 0) {
+          bladeLengthM = math.max(0.0, bladeLengthM - (2 * capThick) / 1000.0);
+        }
+        bladePieces.addAll(List<double>.filled(numBladesShutter, bladeLengthM));
+
+        double lameFinaleLengthM = math.max(0.0, (window.width - 65.0)) / 1000.0;
+        if (capThick > 0) {
+          lameFinaleLengthM = math.max(0.0, lameFinaleLengthM - (2 * capThick) / 1000.0);
+        }
+        lameFinalePieces.add(lameFinaleLengthM);
       }
-      final bladePieces = List<double>.filled(numBladesShutter, bladeLengthM);
+
       items.add(
         createShutter(
           'الشرائح (Lames)',
@@ -6391,9 +6431,9 @@ class ComponentCalculator {
       // ===== 6. أغطية الشفرات (Bouchons Lames) =====
       // End caps are automatic and are shown only in the quantity/cost table.
       if (isBouchonLameActive) {
-        final int bladeEndCapQty = numBladesShutter.isOdd
-            ? numBladesShutter - 1
-            : numBladesShutter;
+        final int bladeEndCapQty = totalBladesCount.isOdd
+            ? totalBladesCount - 1
+            : totalBladesCount;
         items.add(
           createShutter(
             'أغطية الشفرات (Bouchons Lames)',
@@ -6404,23 +6444,14 @@ class ComponentCalculator {
       }
 
       // ===== 7. الشريحة النهائية (Lame Finale) =====
-      double lameFinaleLengthM = (window.width - 65) / 1000.0;
-      if (linkedBladeEndCap != null) {
-        final rawThickness = linkedBladeEndCap['cap_thickness'];
-        final finalBladeCapThickness = rawThickness is num
-            ? rawThickness.toDouble()
-            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
-        lameFinaleLengthM -= (2 * finalBladeCapThickness) / 1000.0;
-      }
       items.add(
         createShutter(
           'الشريحة النهائية (Lame Finale)',
           color: shutterColorName,
-          pieces: [lameFinaleLengthM],
+          pieces: lameFinalePieces,
           unit: 'بارة',
         ),
       );
-
       // ===== 8. السكك (Coulisses) =====
       items.add(
         createShutter(
@@ -9091,12 +9122,14 @@ class ComponentCalculator {
 
       final bool isObAccessory =
           key.contains('OB') || accessory.originalName.contains('OB');
+      final bool isVerrouAccessory =
+          _textHasAny(key, const ['فيلرو', 'فيرو', 'verrou', 'Verrou']);
+      final double rawUpperVerrou =
+          triangleRuleNumber(rule, 'verrou_upper_mm');
+      final double rawLowerVerrou =
+          triangleRuleNumber(rule, 'verrou_lower_mm');
       final double rawWidthDeduction =
           triangleRuleNumber(rule, 'triangle_width_deduction_mm');
-      final double widthDeduction = math.max(
-        0.0,
-        rawWidthDeduction > 0 ? rawWidthDeduction : deduction,
-      );
 
       for (var index = 0; index < baseAccessoryCount * multiplier; index++) {
         final run = sourceRuns[index % sourceRuns.length];
@@ -9106,33 +9139,51 @@ class ComponentCalculator {
               (run['height_mm'] ?? window.height.toDouble()) - deduction,
             )
             .toDouble();
-        final double first = positionMode == 'offset'
-            ? triangleRuleNumber(
-                rule,
-                'triangle_position_mm',
-              ).clamp(0.0, total).toDouble()
-            : total / 2.0;
-        final double second = math.max(0.0, total - first).toDouble();
+
+        double first;
+        double second;
+
+        if (isVerrouAccessory && (rawUpperVerrou > 0 || rawLowerVerrou > 0)) {
+          final upOff = rawUpperVerrou > 0 ? rawUpperVerrou : 50.0;
+          final lowOff = rawLowerVerrou > 0 ? rawLowerVerrou : 30.0;
+          first = math.max(0.0, (total / 2.0) - upOff).toDouble();
+          second = math.max(0.0, (total / 2.0) - lowOff).toDouble();
+        } else if (positionMode == 'offset') {
+          first = triangleRuleNumber(
+            rule,
+            'triangle_position_mm',
+          ).clamp(0.0, total).toDouble();
+          second = math.max(0.0, total - first).toDouble();
+        } else {
+          first = total / 2.0;
+          second = math.max(0.0, total - first).toDouble();
+        }
         pieces.addAll([first / 1000.0, second / 1000.0]);
 
         if (isObAccessory) {
           final sashW = run['width_mm'] ??
               (window.width.toDouble() / math.max(1, baseAccessoryCount));
+          final double autoObWidthDeduction = sashW <= 650.0
+              ? 180.0
+              : (sashW <= 1000.0 ? 280.0 : 380.0);
+          final double effectiveWidthDeduction = rawWidthDeduction > 0
+              ? rawWidthDeduction
+              : (deduction > 0 ? deduction : autoObWidthDeduction);
           final double third =
-              math.max(0.0, sashW - widthDeduction).toDouble();
+              math.max(0.0, sashW - effectiveWidthDeduction).toDouble();
           if (third > 0) {
             pieces.add(third / 1000.0);
             cutPairs.add(
-              '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)} + ${third.toStringAsFixed(0)} (أفقي)',
+              ' +  +  (أفقي)',
             );
           } else {
             cutPairs.add(
-              '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)}',
+              ' + ',
             );
           }
         } else {
           cutPairs.add(
-            '${first.toStringAsFixed(0)} + ${second.toStringAsFixed(0)}',
+            ' + ',
           );
         }
       }

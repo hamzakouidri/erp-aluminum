@@ -2074,26 +2074,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   /// warning placeholders that caused the original ghost-item problem.
   List<BomItem> _resolvedFallbackBomItems(Iterable<BomItem> items) {
     return items
-        .where((item) => item.isActive && (item.requiredQuantity > 0 || item.quantity > 0 || (item.pieces != null && item.pieces!.isNotEmpty)))
+        .where((item) {
+          if (!item.isActive || item.requiredQuantity <= 0) return false;
+          final category = item.selectorCategory ?? item.category;
+          final requiresCatalogueIdentity = const {
+            'profile',
+            'accessory',
+            'other',
+            'joint',
+          }.contains(category);
+          if (!requiresCatalogueIdentity) return true;
+          return (item.catalogItemId ?? 0) > 0 ||
+              _bomItemHasResolvedSelection(item);
+        })
         .toList(growable: false);
-  }
-
-  List<BomItem> _mergeStrictWithRaw(List<BomItem> strict, List<BomItem> raw) {
-    final result = List<BomItem>.from(strict);
-    final coveredOriginalNames = strict.map((i) => i.originalName).toSet();
-    final coveredRoles = strict
-        .map((i) => (i.roleKey ?? i.selectorType ?? '').trim().toLowerCase())
-        .where((r) => r.isNotEmpty)
-        .toSet();
-    for (final item in raw) {
-      if (!item.isActive || (item.requiredQuantity <= 0 && item.quantity <= 0 && (item.pieces == null || item.pieces!.isEmpty))) continue;
-      final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
-      if (!coveredOriginalNames.contains(item.originalName) &&
-          (role.isEmpty || !coveredRoles.contains(role))) {
-        result.add(item);
-      }
-    }
-    return result;
   }
 
   Future<List<BomItem>> _generateStrictVisibleBomItems(
@@ -2125,9 +2119,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         final dbReady = await SqlDatabase().db != null;
         if (dbReady) {
           final strictItems = await _generateStrictVisibleBomItems(engine);
-          final merged = _mergeStrictWithRaw(strictItems, rawBomItems);
-          if (merged.isNotEmpty || visibleBomItems.isEmpty) {
-            visibleBomItems = merged;
+          if (strictItems.isNotEmpty || visibleBomItems.isEmpty) {
+            visibleBomItems = strictItems;
           }
         }
       } catch (error, stackTrace) {
@@ -2219,7 +2212,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         visibleBomItems = _resolvedFallbackBomItems(bomItems);
       } else {
         final strictItems = await _generateStrictVisibleBomItems(engine);
-        visibleBomItems = _mergeStrictWithRaw(strictItems, bomItems);
+        final resolvedItems = _resolvedFallbackBomItems(bomItems);
+        visibleBomItems = strictItems.isEmpty && resolvedItems.isNotEmpty
+            ? resolvedItems
+            : strictItems;
       }
       _setFetchProgress(0.88);
       // The strict BOM is ready at this point. Publish it immediately instead

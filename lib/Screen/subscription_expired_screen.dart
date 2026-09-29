@@ -1,7 +1,5 @@
+import 'electronic_payment_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import '../login_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
@@ -92,6 +90,39 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 24),
+              // Direct Electronic Payment Button
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ElectronicPaymentScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.credit_card_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                label: Text(
+                  Localization.translate('تجديد فوري بالبطاقة (الذهبية / CIB / بريدي موب)', lang),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E88E5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 3,
+                ),
+              ),
+              const SizedBox(height: 14),
+
               ElevatedButton.icon(
                 onPressed: () async {
                   // ضع رقم هاتفك هنا مع مفتاح الدولة (مثال للجزائر: 213)

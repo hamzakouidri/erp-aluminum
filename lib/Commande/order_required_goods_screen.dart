@@ -2689,6 +2689,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             achatId: achatId,
             invoiceNumber: firstInvoiceNumber,
             supplierName: request['supplier_name'] as String,
+            db: widget.db,
           ),
         ),
       );

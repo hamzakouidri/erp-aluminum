@@ -630,6 +630,9 @@ extension WindowModelSerialization on WindowModel {
       'seriesId': savedPrimarySeries?.id ?? loadedSeriesId,
       'slidingSeriesName': activeSlidingSeries?.name ?? loadedSlidingSeriesName,
       'slidingSeriesId': activeSlidingSeries?.id ?? loadedSlidingSeriesId,
+      'hasThreePieceSash': (activeSlidingSeries?.hasThreePieceSash ?? false) ||
+          (savedPrimarySeries?.hasThreePieceSash ?? false) ||
+          (activeSeries?.hasThreePieceSash ?? false),
       'reinforcementMode': reinforcementMode.name,
       'profileName': () {
         if (savedPrimarySeries == null || availableSystems.isEmpty) return null;

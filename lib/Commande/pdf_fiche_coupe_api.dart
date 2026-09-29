@@ -117,19 +117,39 @@ class PdfFicheCoupeApi {
         margin: const pw.EdgeInsets.fromLTRB(20, 20, 20, 24),
         textDirection: tr.isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
         theme: pw.ThemeData.withFont(base: font, bold: fontBold),
-        // ── رأس الصفحة ──
-        header: (ctx) => _buildPageHeader(
-          workshopName: workshopName,
-          address: address,
-          phone: phone,
-          logoWidget: logoWidget,
-          orderDate: orderDate,
-          clientName: clientName,
-          commandeId: commandeId,
-          enteredBy: enteredBy,
-          fontBold: fontBold,
-          tr: tr,
-        ),
+        // ── رأس الصفحة ── يظهر اسم المؤسسة وتفاصيلها في بداية الورقة فقط
+        header: (ctx) {
+          if (ctx.pageNumber > 1) {
+            return pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 6),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    ' - ',
+                    style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey600),
+                  ),
+                  pw.Text(
+                    tr.page(ctx.pageNumber, ctx.pagesCount),
+                    style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey600),
+                  ),
+                ],
+              ),
+            );
+          }
+          return _buildPageHeader(
+            workshopName: workshopName,
+            address: address,
+            phone: phone,
+            logoWidget: logoWidget,
+            orderDate: orderDate,
+            clientName: clientName,
+            commandeId: commandeId,
+            enteredBy: enteredBy,
+            fontBold: fontBold,
+            tr: tr,
+          );
+        },
         // ── ذيل الصفحة ──
         footer: (ctx) => _buildPageFooter(workshopName, ctx, font, tr),
         build: (ctx) {
@@ -412,26 +432,33 @@ class PdfFicheCoupeApi {
     }
 
     if (hasDetails) {
-      // تخطيط عمودين: رسم (42%) | فراغ فاصل | جداول (58%)
+      // تخطيط عمودين: رسم أكبر قليلاً (48%) تحت الفراغ وأمام التفاصيل | فراغ فاصل | جداول (52%)
       widgets.add(
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             // عمود الرسم
             pw.Expanded(
-              flex: 42,
-              child: pw.Container(
-                padding: const pw.EdgeInsets.all(4),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: _kBorder, width: 0.5),
-                ),
-                child: drawingWidget,
+              flex: 48,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.SizedBox(height: 6),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(5),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: _kBorder, width: 0.5),
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                    ),
+                    child: drawingWidget,
+                  ),
+                ],
               ),
             ),
             pw.SizedBox(width: 10),
             // عمود الجداول
             pw.Expanded(
-              flex: 58,
+              flex: 52,
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: detailColumn,

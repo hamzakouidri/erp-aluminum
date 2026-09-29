@@ -314,6 +314,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       title: Localization.translate('ورشتي', settings.language),
       themeMode: settings.themeMode,
       scrollBehavior: const DesktopScrollBehavior(),
+      shortcuts: <ShortcutActivator, Intent>{
+        ...WidgetsApp.defaultShortcuts,
+        const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
+        const SingleActivator(LogicalKeyboardKey.numpadEnter): const ActivateIntent(),
+      },
       theme: AppTheme.lightTheme(
         settings.fontSizeScale,
         fontFamily: uiFontFamily,
@@ -369,6 +374,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             if (event is KeyDownEvent && _activateFocusedDialogButton(event)) {
               return KeyEventResult.handled;
             }
+
+            // Keyboard scrolling (Arrow keys, PageUp/Down, Home/End) first
+            final handledScroll = DesktopScrollCoordinator.handleKeyEvent(event);
+            if (handledScroll) {
+              return KeyEventResult.handled;
+            }
+
+            // Fallback focus traversal for arrow keys only when not consumed by scrolling:
             if (event is KeyDownEvent &&
                 focusContext != null &&
                 !keyboard.isControlPressed &&
@@ -388,8 +401,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 return KeyEventResult.handled;
               }
             }
-            final handled = DesktopScrollCoordinator.handleKeyEvent(event);
-            return handled ? KeyEventResult.handled : KeyEventResult.ignored;
+
+            return KeyEventResult.ignored;
           },
           child: Listener(
             behavior: HitTestBehavior.translucent,

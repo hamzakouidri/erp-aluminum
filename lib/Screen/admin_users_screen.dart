@@ -1,3 +1,4 @@
+import '../services/algerian_payment_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'storage_dashboard_screen.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -40,6 +42,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _baridiMobRipController = TextEditingController();
+  final TextEditingController _chargilySecretKeyController = TextEditingController();
+  bool _isChargilyLive = false;
+  bool _obscureChargilyKey = true;
   bool _isSavingPaymentSettings = false;
 
   String _t(String key) => Localization.translate(
@@ -104,6 +109,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     _tabController.dispose();
     _searchController.dispose();
     _baridiMobRipController.dispose();
+    _chargilySecretKeyController.dispose();
     super.dispose();
   }
 
@@ -113,9 +119,15 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           .collection(SubscriptionPaymentSettings.collectionName)
           .doc(SubscriptionPaymentSettings.documentName)
           .get();
+      final gatewayConfig = await AlgerianPaymentService().getPaymentGatewayConfig();
       if (!mounted) return;
-      _baridiMobRipController.text =
-          snapshot.data()?['baridiMobRip']?.toString() ?? '';
+      final rip = snapshot.data()?['baridiMobRip']?.toString() ??
+          (gatewayConfig['baridi_mob_rip']?.toString() ?? '');
+      _baridiMobRipController.text = rip;
+      _chargilySecretKeyController.text =
+          (gatewayConfig['secret_key'] ?? '').toString();
+      _isChargilyLive = gatewayConfig['is_live'] == true;
+      setState(() {});
     } catch (error) {
       debugPrint('Could not load subscription payment settings: $error');
     }
@@ -126,26 +138,29 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       return;
     }
     final rip = _baridiMobRipController.text.trim();
-    if (rip.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_t('أدخل رقم CCP/RIP أولاً.'))));
-      return;
-    }
+    final secretKey = _chargilySecretKeyController.text.trim();
+
     setState(() => _isSavingPaymentSettings = true);
     try {
-      await SubscriptionPaymentSettings().saveBaridiMobRip(rip);
+      if (rip.isNotEmpty) {
+        await SubscriptionPaymentSettings().saveBaridiMobRip(rip);
+      }
+      await AlgerianPaymentService().savePaymentGatewayConfig(
+        secretKey: secretKey,
+        isLive: _isChargilyLive,
+        baridiMobRip: rip.isNotEmpty ? rip : null,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_t('تم حفظ رقم CCP/RIP. سيظهر للمستخدمين مباشرة.')),
+          content: Text(_t('تم حفظ إعدادات بوابات الدفع (Chargily & BaridiMob) بنجاح.')),
           backgroundColor: Colors.green,
         ),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t('تعذر حفظ رقم CCP/RIP:')} $error')),
+        SnackBar(content: Text('${_t('تعذر حفظ إعدادات الدفع:')} $error')),
       );
     } finally {
       if (mounted) setState(() => _isSavingPaymentSettings = false);
@@ -162,28 +177,110 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _t('بيانات دفع الاشتراك'),
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  const Icon(Icons.payments_rounded, color: Color(0xFF1E88E5)),
+                  const SizedBox(width: 8),
+                  Text(
+                    _t('إعدادات الدفع الإلكتروني والاشتراكات (الجزائر)'),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
-                _t(
-                  'ضع رقم الحساب البريدي الجاري الذي سيدفع إليه المشتركون. سيظهر لهم في مراجعة الاشتراك.',
-                ),
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                _t('تهيئة وسائل الدفع الرقمي بالبطاقة الذهبية، بطاقة CIB، فيزا / ماستركارد، وتطبيق بريدي موب.'),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+
+              // BaridiMob RIP
               TextField(
                 controller: _baridiMobRipController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: _t('رقم CCP / RIP لـ BaridiMob'),
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.account_balance_rounded),
+                  labelText: _t('رقم CCP / RIP لـ BaridiMob (20 رقماً)'),
+                  hintText: '00799999000000000000',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.account_balance_rounded, color: Colors.amber),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
+
+              // Chargily Pay V2 Config Section
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.credit_card_rounded, color: Color(0xFF1E88E5), size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          _t('بوابة الدفع Chargily Pay V2 (الذهبية / CIB / Visa)'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _chargilySecretKeyController,
+                      obscureText: _obscureChargilyKey,
+                      decoration: InputDecoration(
+                        labelText: _t('مفتاح السر لـ Chargily (API Secret Key)'),
+                        hintText: 'test_sk_... أو live_sk_...',
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.vpn_key_rounded),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureChargilyKey ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscureChargilyKey = !_obscureChargilyKey;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        _isChargilyLive
+                            ? _t('الوضع المباشر الحقيقي (Live Mode - مدفوعات حقيقية)')
+                            : _t('وضع التجربة (Test Mode - بيئة اختبار مجانية)'),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: _isChargilyLive ? Colors.green.shade700 : Colors.orange.shade800,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _isChargilyLive
+                            ? _t('تتم المعاملات المالية الفعلية مع البنوك وبريد الجزائر')
+                            : _t('يستخدم بطاقات الاختبار دون خصم أموال حقيقية'),
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      value: _isChargilyLive,
+                      onChanged: (val) {
+                        setState(() {
+                          _isChargilyLive = val;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: FilledButton.icon(
@@ -197,7 +294,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save_rounded),
-                  label: Text(_t('حفظ رقم الدفع')),
+                  label: Text(_t('حفظ إعدادات بوابات الدفع')),
                 ),
               ),
             ],
@@ -328,7 +425,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       if (ctx.mounted) {
         final durationText = durationDays == null
             ? _t('اشتراك دائم')
-            : durationDays! < 0
+            : durationDays < 0
             ? _tf('اختبار لمدة {minutes} دقيقة', {'minutes': -durationDays})
             : _tf('لمدة {days} يومًا', {'days': durationDays});
         final usersText = maxUsers == null || maxUsers >= 999
@@ -1806,6 +1903,18 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       appBar: AppBar(
         title: Text(_t('إدارة المشتركين والورشات')),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.pie_chart_outline_rounded),
+            tooltip: _t('استهلاك التخزين والذاكرة'),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StorageDashboardScreen()),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: [

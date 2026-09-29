@@ -3501,6 +3501,34 @@ class _WindowViewState extends State<WindowView> {
                                 }
                               }
                             },
+                            onLongPressMoveUpdate: (details) {
+                              if (widget.model.selectedZone?.content ==
+                                      ZoneContent.doubleSash &&
+                                  widget.model.activeSubZone == 'all' &&
+                                  widget.model.isDrawingMode) {
+                                final zone = widget.model.selectedZone!;
+                                final bounds = zone.boundary;
+                                final modelPos =
+                                    _getModelPos(details.localPosition);
+                                double newRatio =
+                                    (modelPos.dx - bounds.left) / bounds.width;
+                                newRatio = newRatio.clamp(0.15, 0.85);
+                                widget.model.updateZoneDoubleSashRatio(
+                                  zone.id,
+                                  newRatio,
+                                );
+                              }
+                            },
+                            onLongPressEnd: (details) {
+                              if (widget.model.selectedZone?.content ==
+                                      ZoneContent.doubleSash &&
+                                  widget.model.activeSubZone == 'all') {
+                                widget.model.saveSnapshotOutside();
+                              }
+                              _isDraggingHandle = false;
+                              _isDraggingHinge = false;
+                              _suppressHandleDragForLongPress = false;
+                            },
                             onScaleStart: (details) {
                               if (_isDrawerOpen || _isLeftDrawerOpen) {
                                 setState(() {
@@ -3593,16 +3621,18 @@ class _WindowViewState extends State<WindowView> {
                                   final canInteractWithHardware =
                                       widget.model.isInternalView ||
                                       widget.model.showInternalHardware;
+                                  final bool isDoubleBothSelected =
+                                      zone.content == ZoneContent.doubleSash &&
+                                      widget.model.activeSubZone == 'all';
 
                                   if (canInteractWithHardware &&
                                       (zone.content == ZoneContent.singleSash ||
                                           zone.content ==
                                               ZoneContent.doubleSash)) {
-                                    final isLeftActive =
-                                        (zone.openDirection ==
-                                        OpenDirection.left);
-                                    final activeIsRight =
-                                        !isLeftActive; // fallback/default
+                                    final activeIsRight = widget.model.activeSubZone != null &&
+                                            widget.model.activeSubZone != 'all'
+                                        ? widget.model.activeSubZone!.startsWith('right')
+                                        : (zone.openDirection != OpenDirection.left);
 
                                     final sep = 4.0;
                                     final midX =
@@ -3633,68 +3663,70 @@ class _WindowViewState extends State<WindowView> {
                                               : OpenDirection.right)
                                         : zone.openDirection!;
 
-                                    // Precise hit testing for handle
-                                    double hRatio =
-                                        zone.handlePositionRatio ?? 0.5;
-                                    double hX = sashRect.center.dx;
-                                    double hY = sashRect.center.dy;
-
-                                    if (handleSide == OpenDirection.left) {
-                                      hX = sashRect.left + 20;
-                                      double topYVal = getSashTopY(
-                                        hX,
-                                        sashRect.top,
-                                        widget.model.profileThickness,
-                                        topOffset,
-                                        isTopBound,
+                                    // Precise hit testing for handle - disabled when both sashes are selected!
+                                    if (!isDoubleBothSelected) {
+                                      double hRatio =
+                                          zone.handlePositionRatio ?? 0.5;
+                                      double hX = sashRect.center.dx;
+                                      double hY = sashRect.center.dy;
+  
+                                      if (handleSide == OpenDirection.left) {
+                                        hX = sashRect.left + 20;
+                                        double topYVal = getSashTopY(
+                                          hX,
+                                          sashRect.top,
+                                          widget.model.profileThickness,
+                                          topOffset,
+                                          isTopBound,
+                                        );
+                                        hY =
+                                            topYVal +
+                                            ((sashRect.bottom - topYVal) *
+                                                (1.0 - hRatio));
+                                      } else if (handleSide ==
+                                          OpenDirection.right) {
+                                        hX = sashRect.right - 20;
+                                        double topYVal = getSashTopY(
+                                          hX,
+                                          sashRect.top,
+                                          widget.model.profileThickness,
+                                          topOffset,
+                                          isTopBound,
+                                        );
+                                        hY =
+                                            topYVal +
+                                            ((sashRect.bottom - topYVal) *
+                                                (1.0 - hRatio));
+                                      } else if (handleSide ==
+                                          OpenDirection.top) {
+                                        hX =
+                                            sashRect.left +
+                                            (sashRect.width * hRatio);
+                                        double topYVal = getSashTopY(
+                                          hX,
+                                          sashRect.top,
+                                          widget.model.profileThickness,
+                                          topOffset,
+                                          isTopBound,
+                                        );
+                                        hY = topYVal + 22;
+                                      } else if (handleSide ==
+                                          OpenDirection.bottom) {
+                                        hY = sashRect.bottom - 22;
+                                        hX =
+                                            sashRect.left +
+                                            (sashRect.width * hRatio);
+                                      }
+  
+                                      final handleScreenPos = modelToScreen(
+                                        Offset(hX, hY),
                                       );
-                                      hY =
-                                          topYVal +
-                                          ((sashRect.bottom - topYVal) *
-                                              (1.0 - hRatio));
-                                    } else if (handleSide ==
-                                        OpenDirection.right) {
-                                      hX = sashRect.right - 20;
-                                      double topYVal = getSashTopY(
-                                        hX,
-                                        sashRect.top,
-                                        widget.model.profileThickness,
-                                        topOffset,
-                                        isTopBound,
-                                      );
-                                      hY =
-                                          topYVal +
-                                          ((sashRect.bottom - topYVal) *
-                                              (1.0 - hRatio));
-                                    } else if (handleSide ==
-                                        OpenDirection.top) {
-                                      hX =
-                                          sashRect.left +
-                                          (sashRect.width * hRatio);
-                                      double topYVal = getSashTopY(
-                                        hX,
-                                        sashRect.top,
-                                        widget.model.profileThickness,
-                                        topOffset,
-                                        isTopBound,
-                                      );
-                                      hY = topYVal + 22;
-                                    } else if (handleSide ==
-                                        OpenDirection.bottom) {
-                                      hY = sashRect.bottom - 22;
-                                      hX =
-                                          sashRect.left +
-                                          (sashRect.width * hRatio);
-                                    }
-
-                                    final handleScreenPos = modelToScreen(
-                                      Offset(hX, hY),
-                                    );
-                                    if ((touchScreen - handleScreenPos)
-                                            .distance <
-                                        45.0) {
-                                      _isDraggingHandle = true;
-                                      hitHandle = true;
+                                      if ((touchScreen - handleScreenPos)
+                                              .distance <
+                                          45.0) {
+                                        _isDraggingHandle = true;
+                                        hitHandle = true;
+                                      }
                                     }
 
                                     // Precise hit testing for hinges
@@ -3892,11 +3924,16 @@ class _WindowViewState extends State<WindowView> {
                                     final double dist =
                                         (touchScreen.dx - dividerScreenX).abs();
 
+                                    final double hitThreshold =
+                                        (zone.content == ZoneContent.doubleSash &&
+                                                widget.model.activeSubZone == 'all')
+                                            ? 60.0
+                                            : 30.0;
                                     if (zone.content ==
                                             ZoneContent.doubleSash &&
-                                        dist < 30.0 &&
-                                        touchScreen.dy >= topScreenY &&
-                                        touchScreen.dy <= bottomScreenY) {
+                                        dist < hitThreshold &&
+                                        touchScreen.dy >= topScreenY - 20.0 &&
+                                        touchScreen.dy <= bottomScreenY + 20.0) {
                                       widget.model.selectAt(
                                         modelPos,
                                         isLongPress: true,
@@ -4303,6 +4340,10 @@ class _WindowViewState extends State<WindowView> {
                                 } else if (!_suppressHandleDragForLongPress &&
                                     _isDraggingHandle &&
                                     widget.model.selectedZone != null &&
+                                    !(widget.model.selectedZone!.content ==
+                                            ZoneContent.doubleSash &&
+                                        widget.model.activeSubZone ==
+                                            'all') &&
                                     widget.model.isDrawingMode) {
                                   _handleHandleDrag(
                                     details.focalPointDelta,
@@ -8891,88 +8932,6 @@ class _WindowViewState extends State<WindowView> {
                 ),
                 const SizedBox(height: 10),
 
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        Localization.translate('قاعدة التدعيم (Règle de Renfort):', lang),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<ReinforcementMode>(
-                        value: widget.model.reinforcementMode,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                          filled: true,
-                          fillColor: Theme.of(context).cardColor,
-                        ),
-                        items: [
-                          DropdownMenuItem(
-                            value: ReinforcementMode.fullSubstitution,
-                            child: Text(
-                              switch (lang) {
-                                AppLanguage.french =>
-                                  '1. Substitution complète (Profilé renforcé)',
-                                AppLanguage.english =>
-                                  '1. Full substitution (Reinforced profile)',
-                                AppLanguage.arabic =>
-                                  'القسم 1: تبديل كامل للقطاع (عمود مدعم)',
-                              },
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: ReinforcementMode.chicaneCombination,
-                            child: Text(
-                              switch (lang) {
-                                AppLanguage.french =>
-                                  '2. Chicane combinée (1 Renforcée + 1 Standard)',
-                                AppLanguage.english =>
-                                  '2. Combined chicane (1 Reinforced + 1 Standard)',
-                                AppLanguage.arabic =>
-                                  'القسم 2: شيكان مدعمة + شيكان عادية',
-                              },
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: ReinforcementMode.independentScrewed,
-                            child: Text(
-                              switch (lang) {
-                                AppLanguage.french =>
-                                  '3. Renfort rapporté vissé (+ vis et caches)',
-                                AppLanguage.english =>
-                                  '3. Screwed independent renfort (+ screws & caps)',
-                                AppLanguage.arabic =>
-                                  'القسم 3: عمود مستقل ببراغي وأغطية',
-                              },
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                        ],
-                        onChanged: (mode) {
-                          if (mode != null) {
-                            setState(() {
-                              widget.model.reinforcementMode = mode;
-                            });
-                            widget.model.refreshUI();
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
                 Builder(
                   builder: (context) {
                     final montantProfiles = <Map<String, dynamic>>[
@@ -8989,8 +8948,17 @@ class _WindowViewState extends State<WindowView> {
                           _isSlidingMontantCandidate(item, central: true),
                     );
 
-                    // 2. إذا كانت السلسلة فيها مونطو منزلق أو تم اختيار عمود مستقل ببراغي
-                    if ((isSupported ||
+                    final bool hasThreePiece =
+                        (widget.model.effectiveSlidingSeries?.hasThreePieceSash ??
+                            widget.model.activeSlidingSeries?.hasThreePieceSash ??
+                            false) ||
+                        '${widget.model.effectiveSlidingSeries?.name ?? widget.model.activeSlidingSeries?.name ?? ''}'
+                            .toLowerCase()
+                            .contains('tpr');
+
+                    // 2. إذا كانت السلسلة فيها مونطو منزلق (3 قطع) أو تم اختيار عمود مستقل ببراغي
+                    if (hasThreePiece &&
+                        (isSupported ||
                             widget.model.reinforcementMode ==
                                 ReinforcementMode.independentScrewed) &&
                         firstSlidingZone != null) {
@@ -16168,82 +16136,94 @@ class _WindowViewState extends State<WindowView> {
             });
           }
 
-          // Add Lateral label
-          children.add(
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-              child: Text(
-                Localization.translate('الجانبي (Lateral):', lang),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                  color: Colors.blue,
-                ),
-              ),
-            ),
-          );
+          final bool hasThreePieceSliding =
+              (widget.model.effectiveSlidingSeries?.hasThreePieceSash ??
+                  widget.model.activeSlidingSeries?.hasThreePieceSash ??
+                  false) ||
+              '${widget.model.effectiveSlidingSeries?.name ?? widget.model.activeSlidingSeries?.name ?? ''}'
+                  .toLowerCase()
+                  .contains('tpr');
 
-          for (var item in lateralProfiles) {
-            final codeStr =
-                (item['code'] != null && item['code'].toString().isNotEmpty)
-                ? '${item['code']} - '
-                : '';
-            final nameStr = item['name'] ?? 'بدون اسم';
-            final label = '$codeStr$nameStr';
-            final isSelected = isLateralSelected(item);
-
+          if (hasThreePieceSliding && lateralProfiles.isNotEmpty) {
+            // Add Lateral label
             children.add(
               Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _ProfileButton(
-                  label: label,
-                  code: item['code']?.toString(),
-                  imagePath: item['image_path']?.toString(),
-                  selected: isSelected,
-                  onPressed: () => selectLateral(item),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Text(
+                  Localization.translate('الجانبي (Lateral):', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Colors.blue,
+                  ),
                 ),
               ),
             );
+
+            for (var item in lateralProfiles) {
+              final codeStr =
+                  (item['code'] != null && item['code'].toString().isNotEmpty)
+                  ? '${item['code']} - '
+                  : '';
+              final nameStr = item['name'] ?? 'بدون اسم';
+              final label = '$codeStr$nameStr';
+              final isSelected = isLateralSelected(item);
+
+              children.add(
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _ProfileButton(
+                    label: label,
+                    code: item['code']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    selected: isSelected,
+                    onPressed: () => selectLateral(item),
+                  ),
+                ),
+              );
+            }
+
+            children.add(const SizedBox(width: 12));
           }
 
-          children.add(const SizedBox(width: 12));
-
-          // Add Central label
-          children.add(
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-              child: Text(
-                Localization.translate('الوسطي (Central):', lang),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                  color: Colors.blue,
-                ),
-              ),
-            ),
-          );
-
-          for (var item in centralProfiles) {
-            final codeStr =
-                (item['code'] != null && item['code'].toString().isNotEmpty)
-                ? '${item['code']} - '
-                : '';
-            final nameStr = item['name'] ?? 'بدون اسم';
-            final label = '$codeStr$nameStr';
-            final isSelected = isCentralSelected(item);
-
+          if (hasThreePieceSliding && centralProfiles.isNotEmpty) {
+            // Add Central label
             children.add(
               Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _ProfileButton(
-                  label: label,
-                  code: item['code']?.toString(),
-                  imagePath: item['image_path']?.toString(),
-                  selected: isSelected,
-                  onPressed: () => selectCentral(item),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Text(
+                  Localization.translate('الوسطي (Central):', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Colors.blue,
+                  ),
                 ),
               ),
             );
+
+            for (var item in centralProfiles) {
+              final codeStr =
+                  (item['code'] != null && item['code'].toString().isNotEmpty)
+                  ? '${item['code']} - '
+                  : '';
+              final nameStr = item['name'] ?? 'بدون اسم';
+              final label = '$codeStr$nameStr';
+              final isSelected = isCentralSelected(item);
+
+              children.add(
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _ProfileButton(
+                    label: label,
+                    code: item['code']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    selected: isSelected,
+                    onPressed: () => selectCentral(item),
+                  ),
+                ),
+              );
+            }
           }
           if (traverseProfiles.isNotEmpty) {
             children.add(const SizedBox(width: 12));

@@ -1,0 +1,1126 @@
+import 'dart:convert';
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/settings/localization.dart';
+import 'package:database_data/sql_database.dart';
+import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/model_serialization.dart';
+import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/cutting_settings.dart';
+import 'package:database_data/services/cutting_optimizer_engine.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import '../services/pdf_font_cache.dart';
+
+enum OptimizationMode {
+  singleOrder, // 1. طلبية كاملة
+  multipleOrders, // 2. عدة طلبيات
+  orderRange, // 3. جزء من طلبية لغاية النهاية
+  customElements, // 4. عناصر مختارة من طلبيات مختلفة
+}
+
+class CuttingOptimizationScreen extends StatefulWidget {
+  final SqlDatabase db;
+  final int? initialOrderId;
+
+  const CuttingOptimizationScreen({
+    super.key,
+    required this.db,
+    this.initialOrderId,
+  });
+
+  @override
+  State<CuttingOptimizationScreen> createState() =>
+      _CuttingOptimizationScreenState();
+}
+
+class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
+    with SingleTickerProviderStateMixin {
+  OptimizationMode _selectedMode = OptimizationMode.singleOrder;
+  bool _isLoadingOrders = true;
+  bool _isOptimizing = false;
+
+  List<Map<String, dynamic>> _allOrders = [];
+  Map<int, List<Map<String, dynamic>>> _orderDetailsCache = {};
+
+  // Mode 1: Single Order
+  int? _selectedOrderId;
+
+  // Mode 2: Multiple Orders
+  final Set<int> _selectedOrderIds = {};
+
+  // Mode 3: Order Range
+  int? _rangeOrderId;
+  int _rangeStartItemIndex = 1;
+  int? _rangeEndItemIndex;
+
+  // Mode 4: Custom Elements
+  final Set<int> _selectedDetailIds = {};
+
+  // Optimization Parameters
+  double _barLengthMm = 6000.0;
+  double _sawKerfMm = CuttingSettings.sawKerfMm;
+  double _chuteThresholdMm = 800.0;
+
+  // Optimization Results
+  CuttingOptimizationReport? _report;
+  String _selectedProfileFilter = 'الكل';
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedOrderId = widget.initialOrderId;
+    _rangeOrderId = widget.initialOrderId;
+    if (widget.initialOrderId != null) {
+      _selectedOrderIds.add(widget.initialOrderId!);
+    }
+    _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() => _isLoadingOrders = true);
+    try {
+      final orders = await widget.db.readCommandesWithClients();
+      final active = orders.where((o) {
+        final isDeleted = o['is_deleted'] == 1;
+        return !isDeleted;
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _allOrders = active;
+          if (_selectedOrderId == null && active.isNotEmpty) {
+            _selectedOrderId = (active.first['id'] as num?)?.toInt();
+            _rangeOrderId = _selectedOrderId;
+          }
+          _isLoadingOrders = false;
+        });
+        if (_selectedOrderId != null) {
+          _loadDetailsForOrder(_selectedOrderId!);
+          _runOptimization();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading orders: $e');
+      if (mounted) setState(() => _isLoadingOrders = false);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadDetailsForOrder(int orderId) async {
+    if (_orderDetailsCache.containsKey(orderId)) {
+      return _orderDetailsCache[orderId]!;
+    }
+    try {
+      final details = await widget.db.readCommandeDetails(orderId);
+      _orderDetailsCache[orderId] = details;
+      return details;
+    } catch (e) {
+      debugPrint('Error loading details for order $orderId: $e');
+      return [];
+    }
+  }
+
+  Future<void> _runOptimization() async {
+    setState(() => _isOptimizing = true);
+
+    try {
+      final List<CuttingPiece> pieces = [];
+
+      switch (_selectedMode) {
+        case OptimizationMode.singleOrder:
+          if (_selectedOrderId != null) {
+            final details = await _loadDetailsForOrder(_selectedOrderId!);
+            final orderName = _getOrderName(_selectedOrderId!);
+            for (final d in details) {
+              pieces.addAll(_extractPiecesFromDetail(d, _selectedOrderId!, orderName));
+            }
+          }
+          break;
+
+        case OptimizationMode.multipleOrders:
+          for (final oId in _selectedOrderIds) {
+            final details = await _loadDetailsForOrder(oId);
+            final orderName = _getOrderName(oId);
+            for (final d in details) {
+              pieces.addAll(_extractPiecesFromDetail(d, oId, orderName));
+            }
+          }
+          break;
+
+        case OptimizationMode.orderRange:
+          if (_rangeOrderId != null) {
+            final details = await _loadDetailsForOrder(_rangeOrderId!);
+            final orderName = _getOrderName(_rangeOrderId!);
+            final start = math.max(1, _rangeStartItemIndex) - 1;
+            final end = _rangeEndItemIndex != null
+                ? math.min(details.length, _rangeEndItemIndex!)
+                : details.length;
+
+            for (int i = start; i < end; i++) {
+              if (i >= 0 && i < details.length) {
+                pieces.addAll(_extractPiecesFromDetail(details[i], _rangeOrderId!, orderName));
+              }
+            }
+          }
+          break;
+
+        case OptimizationMode.customElements:
+          for (final order in _allOrders) {
+            final oId = (order['id'] as num?)?.toInt() ?? 0;
+            final details = await _loadDetailsForOrder(oId);
+            final orderName = _getOrderName(oId);
+            for (final d in details) {
+              final dId = (d['id'] as num?)?.toInt() ?? 0;
+              if (_selectedDetailIds.contains(dId)) {
+                pieces.addAll(_extractPiecesFromDetail(d, oId, orderName));
+              }
+            }
+          }
+          break;
+      }
+
+      final report = CuttingOptimizerEngine.optimize(
+        pieces: pieces,
+        barLengthMm: _barLengthMm,
+        sawKerfMm: _sawKerfMm,
+        usableRemnantThresholdMm: _chuteThresholdMm,
+      );
+
+      if (mounted) {
+        setState(() {
+          _report = report;
+          _selectedProfileFilter = 'الكل';
+          _isOptimizing = false;
+        });
+      }
+    } catch (e, st) {
+      debugPrint('Optimization error: $e\n$st');
+      if (mounted) setState(() => _isOptimizing = false);
+    }
+  }
+
+  String _getOrderName(int orderId) {
+    final o = _allOrders.firstWhere(
+      (order) => order['id'] == orderId,
+      orElse: () => {},
+    );
+    final clientName = o['client_name'] ?? o['name'] ?? '';
+    final code = o['order_code'] ?? o['id'] ?? '';
+    return 'طلب #$code - $clientName';
+  }
+
+  List<CuttingPiece> _extractPiecesFromDetail(
+    Map<String, dynamic> detail,
+    int orderId,
+    String orderName,
+  ) {
+    final pieces = <CuttingPiece>[];
+    final rawJson = detail['partitions_json']?.toString() ?? '';
+    if (rawJson.trim().isEmpty) return pieces;
+
+    try {
+      final data = jsonDecode(rawJson);
+      if (data is! Map) return pieces;
+
+      final window = WindowModel(db: widget.db);
+      applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
+
+      final rawQty = detail['quantity'] ?? detail['quantite'] ?? 1;
+      final quantity = (rawQty is num ? rawQty.toInt() : int.tryParse('$rawQty') ?? 1).clamp(1, 1000);
+      final detailId = (detail['id'] as num?)?.toInt() ?? 0;
+      final windowName = detail['window_type'] ?? detail['type'] ?? 'عنصر $detailId';
+
+      final bom = ComponentCalculator.generateBom(window, const {});
+
+      for (final item in bom) {
+        if (!item.isActive || item.category != 'profile') continue;
+        if (item.pieces == null || item.pieces!.isEmpty) continue;
+
+        final profileName = item.name.trim();
+        final profileCode = item.profileCode ?? '';
+        final color = (detail['color']?.toString().isNotEmpty == true)
+            ? detail['color'].toString()
+            : 'Standard';
+
+        for (final lenM in item.pieces!) {
+          final lenMm = (lenM * 1000.0).roundToDouble();
+          if (lenMm <= 0) continue;
+
+          for (int q = 0; q < quantity; q++) {
+            pieces.add(
+              CuttingPiece(
+                id: '${detailId}_${profileName}_${lenMm}_$q',
+                orderId: orderId,
+                orderName: orderName,
+                detailId: detailId,
+                windowName: '$windowName (#$quantity)',
+                profileName: profileName,
+                profileCode: profileCode,
+                color: color,
+                lengthMm: lenMm,
+                angleLeft: 45,
+                angleRight: 45,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing detail for cutting: $e');
+    }
+    return pieces;
+  }
+
+  Future<void> _exportPdfReport() async {
+    if (_report == null || _report!.groups.isEmpty) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('جاري تجهيز وثيقة تحسين القص PDF...', style: TextStyle(fontFamily: 'Cairo')),
+      ),
+    );
+
+    try {
+      final pdf = pw.Document();
+      final fonts = await PdfFontCache.load();
+      final ttf = fonts.regular;
+      final ttfBold = fonts.bold;
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),
+          textDirection: pw.TextDirection.rtl,
+          build: (ctx) => [
+            // Title Header
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'مخطط تحسين القص (Optimisation de Coupe)',
+                    style: pw.TextStyle(font: ttfBold, fontSize: 18),
+                  ),
+                  pw.Text(
+                    'التاريخ: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}',
+                    style: pw.TextStyle(font: ttf, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 8),
+
+            // Summary Stats
+            pw.Container(
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: pw.BorderRadius.circular(6),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  pw.Text('إجمالي البارات المطلوبة (6م): ${_report!.totalBars}', style: pw.TextStyle(font: ttfBold, fontSize: 11)),
+                  pw.Text('إجمالي القطع: ${_report!.totalPieces}', style: pw.TextStyle(font: ttf, fontSize: 11)),
+                  pw.Text('نسبة الاستغلال والوفر: ${_report!.overallEfficiency.toStringAsFixed(1)}%', style: pw.TextStyle(font: ttfBold, fontSize: 11, color: PdfColors.blue800)),
+                  pw.Text('الفواضل الصالحة للاستعمال: ${_report!.totalMetersUsableRemnants.toStringAsFixed(2)} م', style: pw.TextStyle(font: ttf, fontSize: 11, color: PdfColors.green800)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 12),
+
+            // Tables per Profile Group
+            ..._report!.groups.map((group) {
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Container(
+                    color: PdfColors.grey200,
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('${group.profileName} (${group.color})', style: pw.TextStyle(font: ttfBold, fontSize: 12)),
+                        pw.Text('البارات: ${group.barsNeeded} | القطع: ${group.totalPieces} | الكفاءة: ${group.efficiencyPercentage.toStringAsFixed(1)}%', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.TableHelper.fromTextArray(
+                    border: pw.TableBorder.all(color: PdfColors.grey300),
+                    headerStyle: pw.TextStyle(font: ttfBold, fontSize: 9),
+                    cellStyle: pw.TextStyle(font: ttf, fontSize: 8),
+                    headers: ['البار #', 'القطع المقصوصة (مم)', 'المستغل (مم)', 'الفضل المتبقي (مم)', 'الحالة'],
+                    data: group.bars.map((bar) {
+                      final cutsDesc = bar.cuts.map((c) => '${c.piece.lengthMm.toStringAsFixed(0)} مم (${c.piece.windowName})').join(' + ');
+                      return [
+                        'بار ${bar.barNumber}',
+                        cutsDesc,
+                        '${bar.usedLengthMm.toStringAsFixed(0)} مم',
+                        '${bar.remnantLengthMm.toStringAsFixed(0)} مم',
+                        bar.isUsableRemnant ? 'فضلة صالحة' : 'رايش',
+                      ];
+                    }).toList(),
+                  ),
+                  pw.SizedBox(height: 12),
+                ],
+              );
+            }),
+          ],
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (format) async => pdf.save(),
+        name: 'cutting_optimization_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+      );
+    } catch (e) {
+      debugPrint('Error generating cutting optimization PDF: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: Text(
+          Localization.translate('تحسين وتقطيع البروفيلات (Optimisation)', lang),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          if (_report != null && _report!.groups.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf_rounded),
+              tooltip: Localization.translate('طباعة وحفظ كـ PDF', lang),
+              onPressed: _exportPdfReport,
+            ),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: Localization.translate('إعادة الحساب والتحسين', lang),
+            onPressed: _runOptimization,
+          ),
+        ],
+      ),
+      body: _isLoadingOrders
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Mode Selector Bar (4 Modes)
+                _buildModeSelector(lang, isDark),
+
+                // Main Content Area
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Left Configuration Sidebar
+                      SizedBox(
+                        width: 320,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildScopeSelectorCard(lang, isDark),
+                              const SizedBox(height: 16),
+                              _buildCuttingParamsCard(lang, isDark),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onPressed: _isOptimizing ? null : _runOptimization,
+                                icon: _isOptimizing
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation(Colors.white),
+                                        ),
+                                      )
+                                    : const Icon(Icons.play_arrow_rounded),
+                                label: Text(
+                                  Localization.translate('تشغيل خوارزمية التحسين', lang),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Right Results Area
+                      Expanded(
+                        child: _isOptimizing
+                            ? const Center(child: CircularProgressIndicator())
+                            : (_report == null || _report!.groups.isEmpty)
+                                ? _buildEmptyState(lang, isDark)
+                                : _buildResultsDashboard(lang, isDark),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildModeSelector(AppLanguage lang, bool isDark) {
+    return Container(
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildModeTab(
+              mode: OptimizationMode.singleOrder,
+              title: Localization.translate('1. طلبية كاملة', lang),
+              icon: Icons.assignment_rounded,
+            ),
+            const SizedBox(width: 8),
+            _buildModeTab(
+              mode: OptimizationMode.multipleOrders,
+              title: Localization.translate('2. عدة طلبيات مجمعة', lang),
+              icon: Icons.layers_rounded,
+            ),
+            const SizedBox(width: 8),
+            _buildModeTab(
+              mode: OptimizationMode.orderRange,
+              title: Localization.translate('3. جزء من طلبية لنهايتها', lang),
+              icon: Icons.start_rounded,
+            ),
+            const SizedBox(width: 8),
+            _buildModeTab(
+              mode: OptimizationMode.customElements,
+              title: Localization.translate('4. عناصر مختارة من طلبيات', lang),
+              icon: Icons.check_box_rounded,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeTab({
+    required OptimizationMode mode,
+    required String title,
+    required IconData icon,
+  }) {
+    final isSelected = _selectedMode == mode;
+    final primaryColor = Theme.of(context).primaryColor;
+
+    return ChoiceChip(
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() => _selectedMode = mode);
+          _runOptimization();
+        }
+      },
+      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : primaryColor),
+      label: Text(
+        title,
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          fontSize: 12,
+          color: isSelected ? Colors.white : null,
+        ),
+      ),
+      selectedColor: primaryColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    );
+  }
+
+  Widget _buildScopeSelectorCard(AppLanguage lang, bool isDark) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              Localization.translate('نطاق التحسين', lang),
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            if (_selectedMode == OptimizationMode.singleOrder) ...[
+              DropdownButtonFormField<int>(
+                value: _selectedOrderId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'اختر الطلبية',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                items: _allOrders.map((o) {
+                  final id = (o['id'] as num?)?.toInt() ?? 0;
+                  return DropdownMenuItem<int>(
+                    value: id,
+                    child: Text(
+                      _getOrderName(id),
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  setState(() => _selectedOrderId = val);
+                  if (val != null) _loadDetailsForOrder(val);
+                },
+              ),
+            ] else if (_selectedMode == OptimizationMode.multipleOrders) ...[
+              Text(
+                'حدد الطلبيات المراد دمجها (${_selectedOrderIds.length}):',
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.builder(
+                  itemCount: _allOrders.length,
+                  itemBuilder: (context, idx) {
+                    final o = _allOrders[idx];
+                    final id = (o['id'] as num?)?.toInt() ?? 0;
+                    final isChecked = _selectedOrderIds.contains(id);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: isChecked,
+                      title: Text(_getOrderName(id), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                      onChanged: (checked) {
+                        setState(() {
+                          if (checked == true) {
+                            _selectedOrderIds.add(id);
+                            _loadDetailsForOrder(id);
+                          } else {
+                            _selectedOrderIds.remove(id);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            ] else if (_selectedMode == OptimizationMode.orderRange) ...[
+              DropdownButtonFormField<int>(
+                value: _rangeOrderId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'الطلبية المحددة',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                items: _allOrders.map((o) {
+                  final id = (o['id'] as num?)?.toInt() ?? 0;
+                  return DropdownMenuItem<int>(
+                    value: id,
+                    child: Text(_getOrderName(id), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  setState(() => _rangeOrderId = val);
+                  if (val != null) _loadDetailsForOrder(val);
+                },
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: '$_rangeStartItemIndex',
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'من العنصر رقم',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (val) => _rangeStartItemIndex = int.tryParse(val) ?? 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: _rangeEndItemIndex != null ? '$_rangeEndItemIndex' : '',
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'إلى نهاية الطلب',
+                        hintText: 'النهاية',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (val) => _rangeEndItemIndex = int.tryParse(val),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (_selectedMode == OptimizationMode.customElements) ...[
+              Text(
+                'اختر العناصر المطلوبة (${_selectedDetailIds.length} عنصر):',
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: 220,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.builder(
+                  itemCount: _allOrders.length,
+                  itemBuilder: (context, idx) {
+                    final o = _allOrders[idx];
+                    final id = (o['id'] as num?)?.toInt() ?? 0;
+                    return FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _loadDetailsForOrder(id),
+                      builder: (context, snap) {
+                        final items = snap.data ?? [];
+                        if (items.isEmpty) return const SizedBox.shrink();
+                        return ExpansionTile(
+                          dense: true,
+                          title: Text(_getOrderName(id), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                          children: items.map((d) {
+                            final dId = (d['id'] as num?)?.toInt() ?? 0;
+                            final wName = d['window_type'] ?? 'عنصر #$dId';
+                            final qty = d['quantity'] ?? 1;
+                            final isChecked = _selectedDetailIds.contains(dId);
+                            return CheckboxListTile(
+                              dense: true,
+                              value: isChecked,
+                              title: Text('$wName (كمية: $qty)', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10)),
+                              onChanged: (c) {
+                                setState(() {
+                                  if (c == true) {
+                                    _selectedDetailIds.add(dId);
+                                  } else {
+                                    _selectedDetailIds.remove(dId);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCuttingParamsCard(AppLanguage lang, bool isDark) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              Localization.translate('إعدادات المنشار والبارات', lang),
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<double>(
+              value: _barLengthMm,
+              decoration: const InputDecoration(
+                labelText: 'طول البار الخام القياسي',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+              items: const [
+                DropdownMenuItem(value: 6000.0, child: Text('6.00 متر (6000 مم)')),
+                DropdownMenuItem(value: 6500.0, child: Text('6.50 متر (6500 مم)')),
+                DropdownMenuItem(value: 5800.0, child: Text('5.80 متر (5800 مم)')),
+              ],
+              onChanged: (val) {
+                if (val != null) setState(() => _barLengthMm = val);
+              },
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    initialValue: '$_sawKerfMm',
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'سماكة القرص (Kerf)',
+                      suffixText: 'مم',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (val) {
+                      final v = double.tryParse(val);
+                      if (v != null && v > 0) _sawKerfMm = v;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    initialValue: '$_chuteThresholdMm',
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'حد الفضلة الصالحة',
+                      suffixText: 'مم',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (val) {
+                      final v = double.tryParse(val);
+                      if (v != null && v > 0) _chuteThresholdMm = v;
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(AppLanguage lang, bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.content_cut_rounded, size: 64, color: Colors.grey.withOpacity(0.4)),
+          const SizedBox(height: 12),
+          Text(
+            Localization.translate('اضغط على "تشغيل خوارزمية التحسين" لبدء القص الأمثل', lang),
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsDashboard(AppLanguage lang, bool isDark) {
+    final report = _report!;
+    final filteredGroups = _selectedProfileFilter == 'الكل'
+        ? report.groups
+        : report.groups.where((g) => g.profileName == _selectedProfileFilter).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Stat Badges
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'إجمالي البارات',
+                  value: '${report.totalBars} بار',
+                  subtitle: 'طول ${_barLengthMm.toInt()} مم',
+                  color: const Color(0xFF2563EB),
+                  icon: Icons.view_column_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'عدد القطع المطلوبة',
+                  value: '${report.totalPieces} قطعة',
+                  subtitle: '${report.totalMetersUsed.toStringAsFixed(1)} متر طولي',
+                  color: const Color(0xFF0D9488),
+                  icon: Icons.straighten_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'نسبة الوفر والكفاءة',
+                  value: '${report.overallEfficiency.toStringAsFixed(1)}%',
+                  subtitle: 'استغلال أمثل',
+                  color: const Color(0xFF10B981),
+                  icon: Icons.trending_up_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'الفواضل الصالحة (≥${_chuteThresholdMm.toInt()}مم)',
+                  value: '${report.totalMetersUsableRemnants.toStringAsFixed(1)} م',
+                  subtitle: 'تُحفظ لإعادة الاستخدام',
+                  color: const Color(0xFFF59E0B),
+                  icon: Icons.inventory_2_rounded,
+                  isDark: isDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Profile Filter Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('الكل', style: TextStyle(fontFamily: 'Cairo')),
+                  selected: _selectedProfileFilter == 'الكل',
+                  onSelected: (s) => setState(() => _selectedProfileFilter = 'الكل'),
+                ),
+                const SizedBox(width: 8),
+                ...report.groups.map((g) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text('${g.profileName} (${g.barsNeeded} بار)', style: const TextStyle(fontFamily: 'Cairo')),
+                      selected: _selectedProfileFilter == g.profileName,
+                      onSelected: (s) => setState(() => _selectedProfileFilter = g.profileName),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Visual Bars per Group
+          ...filteredGroups.map((group) => _buildGroupCard(group, lang, isDark)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupCard(ProfileOptimizationGroup group, AppLanguage lang, bool isDark) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2563EB).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.architecture_rounded, color: Color(0xFF2563EB), size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${group.profileName} - لون (${group.color})',
+                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+                Chip(
+                  backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
+                  label: Text(
+                    'كفاءة: ${group.efficiencyPercentage.toStringAsFixed(1)}% | ${group.barsNeeded} بار',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF059669), fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Bar Layouts
+            ...group.bars.map((bar) => _buildBarLayoutView(bar, isDark)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBarLayoutView(OptimizedBar bar, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'بار رقم #${bar.barNumber} (${bar.barLengthMm.toInt()} مم)',
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              Text(
+                bar.isUsableRemnant
+                    ? 'فضل متبقي صالح: ${bar.remnantLengthMm.toInt()} مم'
+                    : 'رايش هدر: ${bar.remnantLengthMm.toInt()} مم',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: bar.isUsableRemnant ? const Color(0xFF059669) : Colors.red,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Visual Bar Graphic
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 38,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final totalWidth = constraints.maxWidth;
+                  return Row(
+                    children: [
+                      ...bar.cuts.map((cut) {
+                        final cutPct = (cut.lengthMm / bar.barLengthMm).clamp(0.01, 1.0);
+                        return Container(
+                          width: totalWidth * cutPct,
+                          margin: const EdgeInsets.only(right: 1.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB),
+                            border: Border.all(color: Colors.white, width: 0.5),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${cut.lengthMm.toInt()} مم',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }),
+                      if (bar.remnantLengthMm > 0)
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: bar.isUsableRemnant
+                                  ? const Color(0xFF10B981) // Green for usable chute
+                                  : const Color(0xFF94A3B8), // Grey for scrap
+                              border: Border.all(color: Colors.white, width: 0.5),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              bar.isUsableRemnant
+                                  ? 'فضلة ${bar.remnantLengthMm.toInt()}'
+                                  : 'رايش ${bar.remnantLengthMm.toInt()}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Pieces breakdown description text
+          Wrap(
+            spacing: 8,
+            children: bar.cuts.map((c) {
+              return Text(
+                '• ${c.lengthMm.toInt()}مم (${c.piece.windowName})',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
+                  color: isDark ? Colors.grey[300] : Colors.grey[700],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required Color color,
+    required IconData icon,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+              Icon(icon, size: 16, color: color),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(value, style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          Text(subtitle, style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: isDark ? Colors.grey[500] : Colors.grey[400])),
+        ],
+      ),
+    );
+  }
+}

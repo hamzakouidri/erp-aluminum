@@ -1,3 +1,4 @@
+import 'electronic_payment_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -636,6 +637,40 @@ class SubscriptionReviewDialog extends StatelessWidget {
                             },
                           ),
                           const SizedBox(height: 14),
+
+                          // Electronic Payment Button
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ElectronicPaymentScreen(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.credit_card_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            label: const Text(
+                              'الدفع الإلكتروني الفوري (الذهبية / CIB / بريدي موب)',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1E88E5),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              elevation: 2,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
 
                           // WhatsApp Contact Button
                           ElevatedButton.icon(

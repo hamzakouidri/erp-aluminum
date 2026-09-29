@@ -1488,7 +1488,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     ? item.width / item.height
                     : 4 / 3;
                 final double imgW = constraints.maxWidth;
-                final double imgH = (imgW / ratio).clamp(0, 280);
+                final double imgH = (imgW / ratio).clamp(0.0, 280.0).toDouble();
                 return Center(
                   child: Opacity(
                     opacity: item.isReplaced ? 0.6 : 1.0,

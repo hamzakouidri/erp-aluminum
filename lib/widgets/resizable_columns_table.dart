@@ -968,9 +968,15 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               children: [
                 for (final column in columns)
                   _buildCell(
-                    row.cells.length > (originalIndexById[column.id] ?? -1)
-                        ? row.cells[originalIndexById[column.id]!]
-                        : const SizedBox.shrink(),
+                    (() {
+                      final origIdx = originalIndexById[column.id];
+                      if (origIdx != null &&
+                          origIdx >= 0 &&
+                          origIdx < row.cells.length) {
+                        return row.cells[origIdx];
+                      }
+                      return const SizedBox.shrink();
+                    })(),
                     column,
                     borderColor,
                   ),

@@ -623,6 +623,7 @@ class SqlDatabase {
     await _ensureClientCodeInfrastructure(db);
     await _ensureOrderCodeInfrastructure(db);
     await _ensureOrderTrashInfrastructure(db);
+    await _ensureAchatTrashInfrastructure(db);
     await _ensureRemnantInventorySchema(db);
     await _ensureAdvancedKitCompatibilitySchema(db);
     await _ensureDecorPanelDesignSchema(db);
@@ -9553,18 +9554,116 @@ class SqlDatabase {
     return 1;
   }
 
+  static bool _achatTrashInfrastructureReady = false;
+
+  Future<void> _ensureAchatTrashInfrastructure(DatabaseExecutor executor) async {
+    if (_achatTrashInfrastructureReady) return;
+    try {
+      await executor.execute(
+        'ALTER TABLE Achats ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Achats ADD COLUMN deleted_at TEXT;',
+      );
+    } catch (_) {}
+    _achatTrashInfrastructureReady = true;
+  }
+
+  Future<int> deleteAchatToTrash(int id) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureAchatTrashInfrastructure(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final res = await myDb.update(
+      'Achats',
+      {
+        'is_deleted': 1,
+        'deleted_at': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
+  Future<int> restoreAchat(int id) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureAchatTrashInfrastructure(myDb);
+    final res = await myDb.update(
+      'Achats',
+      {
+        'is_deleted': 0,
+        'deleted_at': null,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
+  Future<List<Map<String, dynamic>>> readTrashAchats() async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+    await _ensureAchatTrashInfrastructure(myDb);
+    return await myDb.rawQuery(
+      'SELECT * FROM Achats WHERE is_deleted = 1 ORDER BY deleted_at DESC, created_at DESC',
+    );
+  }
+
+  Future<int> countTrashAchats() async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureAchatTrashInfrastructure(myDb);
+    final res = await myDb.rawQuery(
+      'SELECT COUNT(*) as count FROM Achats WHERE is_deleted = 1',
+    );
+    if (res.isEmpty) return 0;
+    return (res.first['count'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> emptyAchatTrash() async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureAchatTrashInfrastructure(myDb);
+    final trashed = await readTrashAchats();
+    int count = 0;
+    for (final a in trashed) {
+      final id = a['id'] as int?;
+      if (id != null) {
+        try {
+          await deleteAchat(id);
+          count++;
+        } catch (_) {}
+      }
+    }
+    return count;
+  }
+
   Future<List<Map<String, dynamic>>> readAchats() async {
     Database? myDb = await db;
-    return await myDb!.query('Achats', orderBy: 'created_at DESC');
+    if (myDb == null) return [];
+    await _ensureAchatTrashInfrastructure(myDb);
+    return await myDb.query(
+      'Achats',
+      where: 'is_deleted IS NULL OR is_deleted = 0',
+      orderBy: 'created_at DESC',
+    );
   }
 
   Future<List<Map<String, dynamic>>> readAchatsBySupplierName(
     String supplierName,
   ) async {
     Database? myDb = await db;
-    return await myDb!.query(
+    if (myDb == null) return [];
+    await _ensureAchatTrashInfrastructure(myDb);
+    return await myDb.query(
       'Achats',
-      where: 'supplier_name = ?',
+      where: 'supplier_name = ? AND (is_deleted IS NULL OR is_deleted = 0)',
       whereArgs: [supplierName],
       orderBy: 'created_at DESC',
     );
@@ -9574,9 +9673,11 @@ class SqlDatabase {
     int supplierId,
   ) async {
     Database? myDb = await db;
-    return await myDb!.query(
+    if (myDb == null) return [];
+    await _ensureAchatTrashInfrastructure(myDb);
+    return await myDb.query(
       'Achats',
-      where: 'supplier_id = ?',
+      where: 'supplier_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
       whereArgs: [supplierId],
       orderBy: 'created_at DESC',
     );
@@ -17727,4 +17828,83 @@ class SqlDatabase {
       return {};
     }
   }
+
+  /// Returns the database file size in bytes on disk (or 0 on web).
+  Future<int> getDatabaseFileSizeBytes() async {
+    if (kIsWeb) return 0;
+    try {
+      final dataPath = await _getWritableDatabasesPath();
+      final file = File(join(dataPath, 'test.db'));
+      if (await file.exists()) {
+        return await file.length();
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  /// Reclaims unused disk space by running SQLite VACUUM.
+  Future<void> vacuumDatabase() async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    try {
+      await myDb.execute('VACUUM');
+    } catch (e) {
+      debugPrint('Error running VACUUM: $e');
+    }
+  }
+
+  /// Returns row counts for major database categories.
+  Future<Map<String, int>> getStorageCategoryCounts() async {
+    Database? myDb = await db;
+    if (myDb == null) return {};
+
+    Future<int> countTable(String table, [String? where]) async {
+      try {
+        final query = where != null
+            ? 'SELECT COUNT(*) as c FROM $table WHERE $where'
+            : 'SELECT COUNT(*) as c FROM $table';
+        final res = await myDb.rawQuery(query);
+        return (res.first['c'] as num?)?.toInt() ?? 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    final int commandesCount =
+        await countTable('Commandes') + await countTable('Commandes_details');
+    final int achatsCount =
+        await countTable('Achats') +
+        await countTable('Achat_items') +
+        await countTable('Achat_Details');
+    final int inventoryCount =
+        await countTable('InventoryTransactions') +
+        await countTable('CurrentStock') +
+        await countTable('MaterialRemnants');
+    final int treasuryCount =
+        await countTable('Treasury') +
+        await countTable('WorkerTransactions') +
+        await countTable('PaymentAllocations');
+    final int catalogCount =
+        await countTable('Profile') +
+        await countTable('Series') +
+        await countTable('ProfileColors');
+    final int clientsSuppliersCount =
+        await countTable('Client') +
+        await countTable('Suppliers') +
+        await countTable('Employees');
+    final int trashCount =
+        await countTable('Commandes', 'is_deleted = 1') +
+        await countTable('Achats', 'is_deleted = 1');
+
+    return {
+      'commandes': commandesCount,
+      'achats': achatsCount,
+      'inventory': inventoryCount,
+      'treasury': treasuryCount,
+      'catalog': catalogCount,
+      'clients_suppliers': clientsSuppliersCount,
+      'trash': trashCount,
+    };
+  }
 }
+

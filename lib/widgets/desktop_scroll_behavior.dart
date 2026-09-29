@@ -85,7 +85,7 @@ class DesktopScrollCoordinator {
           .where(
             (registration) =>
                 registration.bounds?.contains(event.position) == true &&
-                registration.controller.positions.length == 1,
+                registration.controller.positions.isNotEmpty,
           )
           .toList();
       if (candidates.isEmpty) return;
@@ -105,9 +105,11 @@ class DesktopScrollCoordinator {
         if (candidate.axis != requestedAxis) continue;
         if (candidate.canMove(delta)) {
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-            if (_registrations.contains(candidate) &&
-                candidate.canMove(delta)) {
-              candidate.controller.position.pointerScroll(delta);
+            if (_registrations.contains(candidate)) {
+              final pos = candidate.activePosition;
+              if (pos != null && pos.hasContentDimensions) {
+                pos.pointerScroll(delta);
+              }
             }
           });
           return;
@@ -117,9 +119,11 @@ class DesktopScrollCoordinator {
       for (final candidate in candidates) {
         if (candidate.canMove(delta)) {
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-            if (_registrations.contains(candidate) &&
-                candidate.canMove(delta)) {
-              candidate.controller.position.pointerScroll(delta);
+            if (_registrations.contains(candidate)) {
+              final pos = candidate.activePosition;
+              if (pos != null && pos.hasContentDimensions) {
+                pos.pointerScroll(delta);
+              }
             }
           });
           return;
@@ -207,10 +211,9 @@ class DesktopScrollCoordinator {
           (registration) =>
               registration.axis == resolvedAxis &&
               registration.bounds != null &&
-              registration.controller.positions.length == 1 &&
+              registration.controller.positions.isNotEmpty &&
               (focusedContext == null ||
-                  ModalRoute.of(registration.context) ==
-                      ModalRoute.of(focusedContext)),
+                  ModalRoute.of(registration.context)?.isActive == true),
         )
         .toList();
     registrations.sort((a, b) {
@@ -262,8 +265,8 @@ class DesktopScrollCoordinator {
           },
         );
     for (final registration in candidates) {
-      final position = registration.controller.position;
-      if (!_canMovePosition(position, direction)) continue;
+      final position = registration.activePosition;
+      if (position == null || !_canMovePosition(position, direction)) continue;
       _applyKeyScroll(position, direction, isLineStep: isLineStep);
       return true;
     }
@@ -323,9 +326,20 @@ class _DesktopScrollableRegistration {
   final Axis axis;
   final BuildContext context;
 
+  ScrollPosition? get activePosition {
+    if (controller.positions.isEmpty) return null;
+    for (final pos in controller.positions) {
+      if (pos.hasContentDimensions && pos.physics.shouldAcceptUserOffset(pos)) {
+        return pos;
+      }
+    }
+    return controller.positions.first;
+  }
+
   Rect? get bounds {
     if (!context.mounted) return null;
-    if (ModalRoute.of(context)?.isCurrent == false) return null;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isActive) return null;
     var hidden = false;
     try {
       context.visitAncestorElements((element) {
@@ -357,11 +371,11 @@ class _DesktopScrollableRegistration {
   }
 
   bool canMove(double delta) {
-    if (bounds == null || controller.positions.length != 1) return false;
+    if (bounds == null) return false;
     final offstage = context.findAncestorWidgetOfExactType<Offstage>();
     if (offstage?.offstage == true) return false;
-    final position = controller.position;
-    if (!position.hasContentDimensions) return false;
+    final position = activePosition;
+    if (position == null || !position.hasContentDimensions) return false;
     if (!position.physics.shouldAcceptUserOffset(position)) return false;
     return delta < 0
         ? position.pixels > position.minScrollExtent
@@ -469,6 +483,11 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
   const DesktopScrollBehavior();
 
   @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+  }
+
+  @override
   Set<PointerDeviceKind> get dragDevices => {
     PointerDeviceKind.touch,
     PointerDeviceKind.mouse,
@@ -486,7 +505,7 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
   ) {
     final isWindowsDesktop =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-    final controller = details.controller;
+    final controller = details.controller ?? PrimaryScrollController.maybeOf(context);
     final axis = axisDirectionToAxis(details.direction);
 
     if (isWindowsDesktop && controller != null && axis == Axis.horizontal) {
@@ -497,11 +516,6 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
       );
     }
 
-    // Register vertical views too. The coordinator uses these registrations
-    // only as a fallback when the innermost widget is already at an edge, so
-    // the wheel can continue into the page instead of appearing to stop after
-    // the first scrollable region. `_RegisteredDesktopScrollable` unregisters
-    // on disposal, including during workspace tab rebuilds.
     if (isWindowsDesktop && controller != null && axis == Axis.vertical) {
       return _RegisteredDesktopScrollable(
         controller: controller,
@@ -547,7 +561,7 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent ||
-        widget.controller.positions.length != 1) {
+        widget.controller.positions.isEmpty) {
       return;
     }
     // Recompute against the current layout on every tick. A hover flag can
@@ -577,7 +591,7 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
           : event.scrollDelta.dx;
       if (delta == 0) return;
 
-      final position = widget.controller.position;
+      final position = widget.controller.positions.first;
       if (!position.hasContentDimensions ||
           !position.physics.shouldAcceptUserOffset(position)) {
         return;
@@ -588,8 +602,8 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
       if ((target - position.pixels).abs() < 0.5) return;
 
       GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-        if (!mounted || widget.controller.positions.length != 1) return;
-        final current = widget.controller.position;
+        if (!mounted || widget.controller.positions.isEmpty) return;
+        final current = widget.controller.positions.first;
         final currentTarget = (current.pixels + delta)
             .clamp(current.minScrollExtent, current.maxScrollExtent)
             .toDouble();
