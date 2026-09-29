@@ -795,9 +795,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final candidates = allSections.where((section) {
       final sourceSeriesId = (section['source_series_id'] as num?)?.toInt();
       if (sourceSeriesId == targetSeriesId) return false;
-      if (role.key == 'side_cover') return _isSideCoverSection(section);
-      if (role.key == 'bardage') return _isBardageSection(section);
-      return true;
+      return _sectionMatchesRole(section, role.key);
     }).toList();
     if (!mounted) return;
     if (candidates.isEmpty) {
@@ -1398,6 +1396,57 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         text.contains('بارداش') ||
         text.contains('برداج') ||
         text.contains('برداش');
+  }
+
+  /// Returns true if the section's type matches what is expected for [roleKey].
+  /// This is used to filter the sharing dialog so the user only sees sections
+  /// that are of the same kind as the role being configured.
+  bool _sectionMatchesRole(Map<String, dynamic> section, String roleKey) {
+    if (roleKey == 'side_cover') return _isSideCoverSection(section);
+    if (roleKey == 'bardage') return _isBardageSection(section);
+
+    final rawType = (section['type']?.toString() ?? '').trim().toLowerCase();
+
+    // Map every role key to the set of section types that are valid for it.
+    const Map<String, List<String>> roleToTypes = {
+      'frame':               ['frame'],
+      'frame_extension':     ['frame', 'frame_extension'],
+      'sash':                ['sash', 'sash_batmo', 'sash_porte'],
+      'sash_extension':      ['sash', 'sash_extension'],
+      'sash_lateral':        ['sash', 'sash_lateral'],
+      'sash_central':        ['sash', 'sash_central'],
+      'sash_traverse':       ['sash', 'sash_traverse', 'traverse'],
+      'montant_central_slim':['montant_central_slim'],
+      'complement_haut_base':['complement_haut_base'],
+      'mullion':             ['mullion', 'traverse'],
+      'glazing_bead':        ['parclose'],
+      'profile_angle':       ['profile_angle'],
+      'caniveau':            ['caniveau'],
+      'cache_caniveau':      ['cache_caniveau'],
+      'cache_rainure':       ['cache_rainure'],
+      'cache_rail':          ['cache_rail'],
+      'bavette':             ['bavette'],
+      'seuil':               ['seuil'],
+      'batmo':               ['batmo'],
+      'bouchon_batmo':       ['bouchon_batmo'],
+      'plant':               ['plinthe'],
+      'porte_joint':         ['porte_joint'],
+      'triangle':            ['triangle'],
+      'renfort':             ['renfort'],
+      'cache_renfort':       ['cache_renfort'],
+      'cache_dormant':       ['cache_dormant'],
+      'rail':                ['rail'],
+      'chicane':             ['chicane'],
+      'face_to_face':        ['face_to_face'],
+      'reducer':             ['reducer'],
+    };
+
+    final allowed = roleToTypes[roleKey];
+    if (allowed == null) {
+      // Unknown role — do not restrict (show all non-gasket types).
+      return true;
+    }
+    return allowed.any((t) => rawType == t || rawType.startsWith('${t}_'));
   }
 
   Widget _selectedRoleRulesList(_SeriesRole role) {

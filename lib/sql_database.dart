@@ -3744,6 +3744,7 @@ class SqlDatabase {
     String type, {
     double pricePerMeter = 0.0,
     int hasThreePieceSash = 0,
+    String? reinforcementType,
   }) async {
     Database? myDb = await db;
     var res = await myDb!.insert('Series', {
@@ -3752,6 +3753,7 @@ class SqlDatabase {
       'type': type,
       'price_per_meter': pricePerMeter,
       'has_three_piece_sash': hasThreePieceSash,
+      if (reinforcementType != null) 'reinforcement_type': reinforcementType,
     });
     CloudSyncService().notifyChange();
     return res;
@@ -3988,6 +3990,7 @@ class SqlDatabase {
     String type, {
     double pricePerMeter = 0.0,
     int hasThreePieceSash = 0,
+    String? reinforcementType,
   }) async {
     Database? myDb = await db;
     var res = await myDb!.update(
@@ -3998,6 +4001,7 @@ class SqlDatabase {
         'type': type,
         'price_per_meter': pricePerMeter,
         'has_three_piece_sash': hasThreePieceSash,
+        if (reinforcementType != null) 'reinforcement_type': reinforcementType,
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -4482,6 +4486,81 @@ class SqlDatabase {
       // Column already exists
     }
     _orderTrashInfrastructureReady = true;
+  }
+
+  bool _orderStockReservationInfrastructureReady = false;
+
+  /// Ensures stock reservation columns exist on Commandes
+  /// to support stock booking (حجز السلع للطلبية).
+  Future<void> _ensureOrderStockReservationInfrastructure(DatabaseExecutor executor) async {
+    if (_orderStockReservationInfrastructureReady) return;
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN is_stock_reserved INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN stock_reserved_at TEXT;',
+      );
+    } catch (_) {}
+    _orderStockReservationInfrastructureReady = true;
+  }
+
+  Future<bool> setOrderStockReservation({
+    required int orderId,
+    required bool reserved,
+    List<int>? remnantIds,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return false;
+    await _ensureOrderStockReservationInfrastructure(myDb);
+
+    final now = DateTime.now().toIso8601String();
+    await myDb.update(
+      'Commandes',
+      {
+        'is_stock_reserved': reserved ? 1 : 0,
+        'stock_reserved_at': reserved ? now : null,
+      },
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+
+    try {
+      if (reserved && remnantIds != null && remnantIds.isNotEmpty) {
+        final idPlaceholders = List.filled(remnantIds.length, '?').join(',');
+        await myDb.rawUpdate('''
+          UPDATE MaterialRemnants
+          SET status = 'reserved', reserved_order_id = ?, reserved_at = ?
+          WHERE id IN ($idPlaceholders) AND (status = 'available' OR reserved_order_id = ?)
+        ''', [orderId, now, ...remnantIds, orderId]);
+      } else if (!reserved) {
+        await myDb.rawUpdate('''
+          UPDATE MaterialRemnants
+          SET status = 'available', reserved_order_id = NULL, reserved_at = NULL
+          WHERE reserved_order_id = ? AND status = 'reserved'
+        ''', [orderId]);
+      }
+    } catch (e) {
+      debugPrint('Warning updating MaterialRemnants reservation: $e');
+    }
+
+    return true;
+  }
+
+  Future<bool> isOrderStockReserved(int orderId) async {
+    final myDb = await db;
+    if (myDb == null) return false;
+    await _ensureOrderStockReservationInfrastructure(myDb);
+    final rows = await myDb.query(
+      'Commandes',
+      columns: ['is_stock_reserved'],
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+    if (rows.isEmpty) return false;
+    return (rows.first['is_stock_reserved'] as num?)?.toInt() == 1;
   }
 
   /// Adds the immutable, user-facing order number infrastructure.  [id] can be
@@ -5030,6 +5109,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureOrderTrashInfrastructure(myDb);
+    await _ensureOrderStockReservationInfrastructure(myDb);
     await _backfillOrderCodes(myDb);
     return await myDb.rawQuery('''
           SELECT c.*,
@@ -9407,16 +9487,33 @@ class SqlDatabase {
     return rows.isNotEmpty ? rows.first : null;
   }
 
+  Future<bool> achatInvoiceNumberExists(String invoiceNumber) async {
+    Database? myDb = await db;
+    if (myDb == null) return false;
+    final rows = await myDb.query(
+      'Achats',
+      columns: ['id'],
+      where: 'invoice_number = ?',
+      whereArgs: [invoiceNumber],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   Future<String> getNextAchatInvoiceNumber() async {
     Database? myDb = await db;
-    final rows = await myDb!.query('Achats', columns: ['invoice_number']);
+    if (myDb == null) return 'ACH-0001';
+    final rows = await myDb.query('Achats', columns: ['invoice_number']);
     int maxSuffix = 0;
-    final regex = RegExp(r'(\d+)$');
+    final regex = RegExp(r'(\d+)');
+    final existingSet = <String>{};
 
     for (final row in rows) {
-      final invoice = (row['invoice_number'] ?? '').toString();
-      final match = regex.firstMatch(invoice);
-      if (match != null) {
+      final invoice = (row['invoice_number'] ?? '').toString().trim();
+      if (invoice.isNotEmpty) {
+        existingSet.add(invoice.toUpperCase());
+      }
+      for (final match in regex.allMatches(invoice)) {
         final suffix = int.tryParse(match.group(1)!) ?? 0;
         if (suffix > maxSuffix) {
           maxSuffix = suffix;
@@ -9424,7 +9521,17 @@ class SqlDatabase {
       }
     }
 
-    return 'ACH-${(maxSuffix + 1).toString().padLeft(4, '0')}';
+    int candidate = maxSuffix + 1;
+    while (true) {
+      final numStr = 'ACH-${candidate.toString().padLeft(4, '0')}';
+      final upper = numStr.toUpperCase();
+      if (!existingSet.contains(upper) &&
+          !existingSet.contains('$upper-M') &&
+          !existingSet.contains('$upper-G')) {
+        return numStr;
+      }
+      candidate++;
+    }
   }
 
   Future<int> deleteAchat(int id) async {
@@ -13068,6 +13175,7 @@ class SqlDatabase {
       "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
       "ALTER TABLE Series ADD COLUMN has_three_piece_sash INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE Series ADD COLUMN has_face_to_face INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE Series ADD COLUMN reinforcement_type TEXT DEFAULT 'full_substitution'",
 
       "ALTER TABLE WorkerAllocations ADD COLUMN is_transferred_to_dist INTEGER DEFAULT 0",
       "ALTER TABLE WorkerAllocations ADD COLUMN transferred_at TEXT",
@@ -15288,8 +15396,15 @@ class SqlDatabase {
       for (var row in colors) row['id'] as int: row['name'].toString(),
     };
 
-    // 2. Sections
-    final sections = await myDb.query('Sections');
+    // 2. Sections — join Series + Profile to expose code / series / system name
+    final sectionRows = await myDb.rawQuery('''
+      SELECT sec.id, sec.name, sec.code,
+             ser.name  AS series_name,
+             p.name    AS profile_name
+      FROM Sections sec
+      LEFT JOIN Series  ser ON sec.series_id  = ser.id
+      LEFT JOIN Profile p   ON ser.profile_id = p.id
+    ''');
     final sectionColors = await myDb.query('SectionColorPrices');
     Map<int, List<int>> sectionColorMap = {};
     for (var row in sectionColors) {
@@ -15297,9 +15412,18 @@ class SqlDatabase {
       int cId = row['color_id'] as int;
       sectionColorMap.putIfAbsent(sId, () => []).add(cId);
     }
-    for (var row in sections) {
+    for (var row in sectionRows) {
       int id = row['id'] as int;
-      String name = row['name'].toString();
+      final rawName   = row['name']?.toString()         ?? '';
+      final rawCode   = row['code']?.toString()         ?? '';
+      final serName   = row['series_name']?.toString()  ?? '';
+      final profName  = row['profile_name']?.toString() ?? '';
+      // Build disambiguating display name identical to readCurrentStock
+      final codeStr    = rawCode.isNotEmpty ? '[$rawCode] ' : '';
+      final prefix     = [profName, serName].where((s) => s.isNotEmpty).join(' - ');
+      final displayName = prefix.isNotEmpty
+          ? '$prefix - $codeStr$rawName'
+          : '$codeStr$rawName';
       List<int> cIds = sectionColorMap[id] ?? [];
       if (cIds.isEmpty) cIds = [0]; // default no color
 
@@ -15308,12 +15432,15 @@ class SqlDatabase {
         double qty = stockMap[key] ?? 0.0;
         String cName = cId == 0 ? '' : (colorMap[cId] ?? '');
         allItems.add({
-          'item_type': 'Section',
-          'item_id': id,
-          'item_name': name,
-          'color_id': cId == 0 ? null : cId,
-          'color_name': cName,
-          'quantity': qty,
+          'item_type':    'Section',
+          'item_id':      id,
+          'item_name':    displayName,
+          'item_code':    rawCode,
+          'series_name':  serName,
+          'profile_name': profName,
+          'color_id':     cId == 0 ? null : cId,
+          'color_name':   cName,
+          'quantity':     qty,
         });
       }
     }
@@ -15434,12 +15561,24 @@ class SqlDatabase {
         String cName = cId == 0 ? '' : (colorMap[cId] ?? '');
 
         if (type == 'Section') {
-          final r = await myDb.query(
-            'Sections',
-            where: 'id = ?',
-            whereArgs: [id],
-          );
-          if (r.isNotEmpty) itemName = r.first['name'].toString();
+          final r = await myDb.rawQuery('''
+            SELECT sec.name, sec.code,
+                   ser.name AS series_name,
+                   p.name   AS profile_name
+            FROM Sections sec
+            LEFT JOIN Series  ser ON sec.series_id  = ser.id
+            LEFT JOIN Profile p   ON ser.profile_id = p.id
+            WHERE sec.id = ?
+          ''', [id]);
+          if (r.isNotEmpty) {
+            final rawName  = r.first['name']?.toString()         ?? '';
+            final rawCode  = r.first['code']?.toString()         ?? '';
+            final serName  = r.first['series_name']?.toString()  ?? '';
+            final profName = r.first['profile_name']?.toString() ?? '';
+            final codeStr  = rawCode.isNotEmpty ? '[$rawCode] ' : '';
+            final prefix   = [profName, serName].where((s) => s.isNotEmpty).join(' - ');
+            itemName = prefix.isNotEmpty ? '$prefix - $codeStr$rawName' : '$codeStr$rawName';
+          }
         } else if (type == 'Accessory') {
           final r = await myDb.query(
             'Accessories',

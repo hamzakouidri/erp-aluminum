@@ -2274,6 +2274,629 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  void _showSplitShutterDialog(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final frames = List<Rect>.from(widget.model.getFrameRects())
+      ..sort((a, b) => a.left.compareTo(b.left));
+    final hasMultipleFrames = frames.length > 1;
+
+    int selectedTab = widget.model.isShutterSplit
+        ? (widget.model.shutterSplitMode == 'custom' ? 1 : 0)
+        : (hasMultipleFrames ? 0 : 1);
+
+    int divisionCount = widget.model.shutterSplits.length >= 2
+        ? widget.model.shutterSplits.length
+        : 2;
+
+    List<TextEditingController> divisionControllers = [];
+    void initDivisionControllers(int count) {
+      for (final c in divisionControllers) {
+        c.dispose();
+      }
+      divisionControllers = [];
+      if (widget.model.isShutterSplit &&
+          widget.model.shutterSplitMode == 'custom' &&
+          widget.model.shutterSplits.length == count) {
+        for (final s in widget.model.shutterSplits) {
+          divisionControllers.add(
+            TextEditingController(text: s.width.toStringAsFixed(1)),
+          );
+        }
+      } else {
+        final equalW = (widget.model.width / count).toStringAsFixed(1);
+        for (int i = 0; i < count; i++) {
+          divisionControllers.add(TextEditingController(text: equalW));
+        }
+      }
+    }
+
+    initDivisionControllers(divisionCount);
+
+    final Map<int, TextEditingController> frameHeightControllers = {};
+    for (int i = 0; i < frames.length; i++) {
+      double? existingH;
+      if (widget.model.isShutterSplit) {
+        final match = widget.model.shutterSplits.where(
+          (s) => s.frameIndex == i,
+        );
+        if (match.isNotEmpty) {
+          existingH = match.first.customHeight;
+        }
+      }
+      frameHeightControllers[i] = TextEditingController(
+        text: (existingH ?? frames[i].height).toStringAsFixed(1),
+      );
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.view_column_rounded,
+                    color: Colors.teal.shade400,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          Localization.translate(
+                            'فصل وتقسيم صناديق الستار',
+                            lang,
+                          ),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          widget.model.isShutterSplit
+                              ? '${Localization.translate('الحالة: مفصول إلى', lang)} (${widget.model.effectiveShutterSplits.length}) ${Localization.translate('صناديق مستقلة', lang)}'
+                              : Localization.translate(
+                                  'الحالة: صندوق واحد موحد',
+                                  lang,
+                                ),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.model.isShutterSplit
+                                ? Colors.teal
+                                : Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.black26 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                onTap: () =>
+                                    setDialogState(() => selectedTab = 0),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selectedTab == 0
+                                        ? (isDark
+                                            ? Colors.teal.shade800
+                                            : Colors.teal.shade100)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      Localization.translate(
+                                        'صندوق لكل إطار',
+                                        lang,
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: selectedTab == 0
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                        color: selectedTab == 0
+                                            ? (isDark
+                                                ? Colors.white
+                                                : Colors.teal.shade900)
+                                            : (isDark
+                                                ? Colors.white70
+                                                : Colors.black87),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () =>
+                                    setDialogState(() => selectedTab = 1),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selectedTab == 1
+                                        ? (isDark
+                                            ? Colors.teal.shade800
+                                            : Colors.teal.shade100)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      Localization.translate(
+                                        'تقسيم إطار واحد',
+                                        lang,
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: selectedTab == 1
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                        color: selectedTab == 1
+                                            ? (isDark
+                                                ? Colors.white
+                                                : Colors.teal.shade900)
+                                            : (isDark
+                                                ? Colors.white70
+                                                : Colors.black87),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      if (selectedTab == 0) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.blue.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  Localization.translate(
+                                    'التقسيم التلقائي يخصص صندوقاً مستقلاً ومحركاً ومجاري لكل إطار (بما في ذلك زاوية 90° دون إنقاص قياس الستار). يمكنك تعديل ارتفاع الستار للإطار الأقصر.',
+                                    lang,
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${Localization.translate('الإطارات المكتشفة', lang)} (${frames.length}):',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...frames.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final frame = entry.value;
+                          final hCtrl = frameHeightControllers[idx]!;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF28283E)
+                                  : Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.white12
+                                    : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: Colors.teal.withOpacity(0.2),
+                                  child: Text(
+                                    '${idx + 1}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.teal,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${Localization.translate('إطار', lang)} ${idx + 1}',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${Localization.translate('العرض', lang)}: ${frame.width.toStringAsFixed(0)} mm',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark
+                                              ? Colors.white60
+                                              : Colors.black54,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: hCtrl,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    decoration: InputDecoration(
+                                      labelText: Localization.translate(
+                                        'ارتفاع الستار',
+                                        lang,
+                                      ),
+                                      labelStyle: const TextStyle(fontSize: 10),
+                                      suffixText: 'mm',
+                                      suffixStyle: const TextStyle(
+                                        fontSize: 10,
+                                      ),
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 8,
+                                          ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.amber.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.amber,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  Localization.translate(
+                                    'تقسيم الصندوق في إطار واحد إلى عدة أقسام مستقلة. الترتيب يبدأ من اليمين إلى اليسار.',
+                                    lang,
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Text(
+                              Localization.translate('عدد الأقسام:', lang),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            SegmentedButton<int>(
+                              segments: const [
+                                ButtonSegment(value: 2, label: Text('2')),
+                                ButtonSegment(value: 3, label: Text('3')),
+                                ButtonSegment(value: 4, label: Text('4')),
+                              ],
+                              selected: {divisionCount},
+                              onSelectionChanged: (Set<int> newSelection) {
+                                setDialogState(() {
+                                  divisionCount = newSelection.first;
+                                  initDivisionControllers(divisionCount);
+                                });
+                              },
+                            ),
+                            const Spacer(),
+                            TextButton.icon(
+                              icon: const Icon(Icons.balance, size: 16),
+                              label: Text(
+                                Localization.translate('توزيع بالتساوي', lang),
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              onPressed: () {
+                                setDialogState(() {
+                                  final equalW =
+                                      (widget.model.width / divisionCount)
+                                          .toStringAsFixed(1);
+                                  for (final c in divisionControllers) {
+                                    c.text = equalW;
+                                  }
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ...List.generate(divisionCount, (i) {
+                          final label = i == 0
+                              ? Localization.translate(
+                                  'الصندوق 1 (اليمين)',
+                                  lang,
+                                )
+                              : (i == divisionCount - 1
+                                  ? '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('اليسار', lang)})'
+                                  : '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('الوسط', lang)})');
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF28283E)
+                                  : Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.white12
+                                    : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: Colors.teal.withOpacity(0.2),
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.teal,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: divisionControllers[i],
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    decoration: InputDecoration(
+                                      labelText: Localization.translate(
+                                        'العرض',
+                                        lang,
+                                      ),
+                                      labelStyle: const TextStyle(fontSize: 10),
+                                      suffixText: 'mm',
+                                      suffixStyle: const TextStyle(
+                                        fontSize: 10,
+                                      ),
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 8,
+                                          ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '${Localization.translate('العرض الكلي للإطار:', lang)} ${widget.model.width.toStringAsFixed(1)} mm',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                if (widget.model.isShutterSplit)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red.shade400,
+                    ),
+                    icon: const Icon(Icons.merge_type, size: 16),
+                    label: Text(
+                      Localization.translate(
+                        'دمج الصناديق (إلغاء الفصل)',
+                        lang,
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        widget.model.resetShutterSplit();
+                      });
+                      widget.model.refreshUI();
+                      Navigator.pop(dialogCtx);
+                    },
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: Text(
+                    Localization.translate('إلغاء', lang),
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.check, size: 16),
+                  label: Text(Localization.translate('تطبيق الفصل', lang)),
+                  onPressed: () {
+                    setState(() {
+                      if (selectedTab == 0) {
+                        widget.model.autoSplitShutterPerFrame();
+                        for (int i = 0; i < frames.length; i++) {
+                          final hVal = double.tryParse(
+                            frameHeightControllers[i]!.text.replaceAll(',', '.'),
+                          );
+                          if (hVal != null && hVal > 0) {
+                            widget.model.setShutterSplitHeight(i, hVal);
+                          }
+                        }
+                      } else {
+                        final widths = divisionControllers
+                            .map(
+                              (c) =>
+                                  double.tryParse(
+                                    c.text.replaceAll(',', '.'),
+                                  ) ??
+                                  (widget.model.width / divisionCount),
+                            )
+                            .toList();
+                        widget.model.splitShutterCustomDivisions(
+                          widths,
+                          startFromRight: true,
+                        );
+                      }
+                    });
+                    widget.model.refreshUI();
+                    Navigator.pop(dialogCtx);
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   List<Widget> _buildWindowsAppBarDrawingControls(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2349,6 +2972,29 @@ class _WindowViewState extends State<WindowView> {
           ),
         ),
       ),
+      if (widget.model.hasShutter)
+        TextButton.icon(
+          style: buttonStyle,
+          onPressed: () => _showSplitShutterDialog(context),
+          icon: Icon(
+            Icons.view_column_rounded,
+            size: 18,
+            color: widget.model.isShutterSplit ? Colors.teal.shade700 : null,
+          ),
+          label: Text(
+            widget.model.isShutterSplit
+                ? Localization.translate(
+                    'فصل الصناديق (${widget.model.effectiveShutterSplits.length})',
+                    lang,
+                  )
+                : Localization.translate('فصل الصناديق', lang),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: widget.model.isShutterSplit ? Colors.teal.shade700 : null,
+            ),
+          ),
+        ),
       iconButton(
         icon: Icons.center_focus_strong_outlined,
         tooltip: Localization.translate('توسيط الرسم', lang),
@@ -8514,6 +9160,18 @@ class _WindowViewState extends State<WindowView> {
                     widget.model.setShutterPosition(value);
                   },
                 ),
+                const SizedBox(height: 10),
+                _ContentButton(
+                  label: widget.model.isShutterSplit
+                      ? Localization.translate(
+                          'فصل الصناديق (${widget.model.effectiveShutterSplits.length})',
+                          lang,
+                        )
+                      : Localization.translate('فصل الصناديق', lang),
+                  icon: Icons.view_column_rounded,
+                  selected: widget.model.isShutterSplit,
+                  onPressed: () => _showSplitShutterDialog(context),
+                ),
               ],
 
               const Divider(height: 20),
@@ -10375,15 +11033,18 @@ class _WindowViewState extends State<WindowView> {
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
 
     SimpleDialogOption typeOption(
+      BuildContext dialogContext,
       MullionProfileType type,
       String label,
       IconData icon,
     ) {
       return SimpleDialogOption(
         onPressed: () {
-          Navigator.pop(context);
+          Navigator.pop(dialogContext);
           if (type == MullionProfileType.standard) {
-            widget.model.setMullionProfile(type);
+            setState(() {
+              widget.model.setMullionProfile(type);
+            });
           } else {
             unawaited(_showMullionFrameSelectorDialog(context, type));
           }
@@ -10413,16 +11074,19 @@ class _WindowViewState extends State<WindowView> {
         title: Text(Localization.translate('نوع التقسيم', lang)),
         children: [
           typeOption(
+            dialogContext,
             MullionProfileType.standard,
             Localization.translate('Traverse — تقسيم عادي', lang),
             Icons.horizontal_rule_rounded,
           ),
           typeOption(
+            dialogContext,
             MullionProfileType.flat,
             Localization.translate('Cadre double — إطار مزدوج', lang),
             Icons.splitscreen_rounded,
           ),
           typeOption(
+            dialogContext,
             MullionProfileType.grooved,
             Localization.translate('Cadre 140 — إطار بتجويف واحد', lang),
             Icons.view_headline_rounded,
@@ -11940,6 +12604,48 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ),
             ),
+            if (widget.model.hasShutter) ...[
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: () => _showSplitShutterDialog(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.model.isShutterSplit
+                        ? Colors.teal.shade600
+                        : Colors.blueGrey,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.view_column_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        widget.model.isShutterSplit
+                            ? Localization.translate(
+                                'فصل الصناديق (${widget.model.effectiveShutterSplits.length})',
+                                lang,
+                              )
+                            : Localization.translate('فصل الصناديق', lang),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(width: 8),
             // زر إعادة التكبير
             InkWell(
@@ -12076,6 +12782,68 @@ class _WindowViewState extends State<WindowView> {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      // Corner Frame Compatibility Card
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: widget.model.frameSwitchedForProfileAngle
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.blue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: widget.model.frameSwitchedForProfileAngle
+                                ? Colors.green.shade600
+                                : Colors.blue.shade400,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              widget.model.frameSwitchedForProfileAngle
+                                  ? Icons.published_with_changes
+                                  : Icons.info_outline,
+                              color: widget.model.frameSwitchedForProfileAngle
+                                  ? Colors.green.shade800
+                                  : Colors.blue.shade800,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    Localization.translate('توافق الإطارات عند الزاوية 90°', lang),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                      color: widget.model.frameSwitchedForProfileAngle
+                                          ? Colors.green.shade900
+                                          : Colors.blue.shade900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    widget.model.frameSwitchedForProfileAngle
+                                        ? '${Localization.translate('تم استبدال الإطار تلقائياً بإطار بدون غطاء مدمج مطابق في العرض الظاهر ليناسب زاوية 90°:', lang)} (${widget.model.profileAngleFrameSwitchNotice ?? ""})'
+                                        : Localization.translate(
+                                            'لا يمكن تركيب إطار بغطاء مدمج عند الزاوية 90°؛ يقوم النظام تلقائياً باختيار إطار بدون غطاء مدمج مطابق تماماً في العرض الظاهر.',
+                                            lang,
+                                          ),
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: Colors.grey.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       if (hasJunctions) ...[
                         Text(
                           Localization.translate(

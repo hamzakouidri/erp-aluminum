@@ -95,35 +95,44 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
   }
 
   void _showAwaitingPaymentDialog() {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: lang == AppLanguage.arabic ? TextDirection.rtl : TextDirection.ltr,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
-            children: const [
-              Icon(Icons.hourglass_top_rounded, color: Color(0xFF2563EB)),
-              SizedBox(width: 10),
-              Text('بانتظار إتمام الدفع...', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+            children: [
+              const Icon(Icons.hourglass_top_rounded, color: Color(0xFF2563EB)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  Localization.translate('بانتظار إتمام الدفع...', lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                ),
+              ),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Text(
-                'تم فتح صفحة الدفع الآمنة على المتصفح.\nيرجى إدخال بيانات البطاقة والرمز السري SMS المرسل إلى هاتفك لإتمام المعاملة.',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.5),
+                Localization.translate(
+                  'تم فتح صفحة الدفع الآمنة على المتصفح.\nيرجى إدخال بيانات البطاقة والرمز السري SMS المرسل إلى هاتفك لإتمام المعاملة.',
+                  lang,
+                ),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.5),
               ),
-              SizedBox(height: 16),
-              CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const CircularProgressIndicator(),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(Localization.translate('إلغاء', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -135,7 +144,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                 Navigator.pop(ctx);
                 await _verifyPaymentStatus();
               },
-              child: const Text('تحقق من تفعيل الدفع', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              child: Text(
+                Localization.translate('تحقق من تفعيل الدفع', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
@@ -173,11 +185,12 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
   }
 
   void _showSuccessDialog() {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: lang == AppLanguage.arabic ? TextDirection.rtl : TextDirection.ltr,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           content: Column(
@@ -185,14 +198,14 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             children: [
               const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 70),
               const SizedBox(height: 16),
-              const Text(
-                'تم الدفع وتفعيل الاشتراك بنجاح!',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                Localization.translate('تم الدفع وتفعيل الاشتراك بنجاح!', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'تم تجديد اشتراك الورشة لـ ${_selectedPlan.titleAr} (${_selectedPlan.durationLabelAr}). شكراً لثقتكم!',
+                '${Localization.translate('تم تجديد اشتراك الورشة لـ', lang)} ${_selectedPlan.titleAr} (${_selectedPlan.durationLabelAr}). ${Localization.translate('شكراً لثقتكم!', lang)}',
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
@@ -209,7 +222,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                 Navigator.pop(ctx);
                 Navigator.pop(context);
               },
-              child: const Text('العودة للتطبيق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              child: Text(
+                Localization.translate('العودة للتطبيق', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
@@ -235,16 +251,23 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
       );
 
       if (success && mounted) {
+        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         showDialog(
           context: context,
           builder: (ctx) => Directionality(
-            textDirection: TextDirection.rtl,
+            textDirection: lang == AppLanguage.arabic ? TextDirection.rtl : TextDirection.ltr,
             child: AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('تم استلام معلومات التحويل', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-              content: const Text(
-                'تم إرسال إشعار الدفع عبر بريدي موب للإدارة.\nسيتم مراجعة رقم المعاملة وتفعيل الاشتراك خلال دقائق معدودة.',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              title: Text(
+                Localization.translate('تم استلام معلومات التحويل', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+              ),
+              content: Text(
+                Localization.translate(
+                  'تم إرسال إشعار الدفع عبر بريدي موب للإدارة.\nسيتم مراجعة رقم المعاملة وتفعيل الاشتراك خلال دقائق معدودة.',
+                  lang,
+                ),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
               ),
               actions: [
                 ElevatedButton(
@@ -252,7 +275,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                     Navigator.pop(ctx);
                     Navigator.pop(context);
                   },
-                  child: const Text('موافق', style: TextStyle(fontFamily: 'Cairo')),
+                  child: Text(Localization.translate('موافق', lang), style: const TextStyle(fontFamily: 'Cairo')),
                 ),
               ],
             ),
@@ -283,7 +306,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: lang == AppLanguage.arabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
         appBar: AppBar(
@@ -300,7 +323,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Cards & Logos Showcase Banner
-              _buildPaymentLogosBanner(isDark),
+              _buildPaymentLogosBanner(lang, isDark),
               const SizedBox(height: 20),
 
               // Step 1: Select Plan
@@ -314,7 +337,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ...AlgerianPaymentService.defaultPlans.map((plan) => _buildPlanTile(plan, isDark)),
+              ...AlgerianPaymentService.defaultPlans.map((plan) => _buildPlanTile(plan, lang, isDark)),
               const SizedBox(height: 24),
 
               // Step 2: Select Payment Method
@@ -330,9 +353,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               const SizedBox(height: 12),
               _buildMethodCard(
                 type: PaymentMethodType.edahabia,
-                title: 'البطاقة الذهبية (Edahabia)',
-                subtitle: 'دفع فوري آمن لبريد الجزائر مع رمز SMS',
-                badge: 'الأكثر استخداماً',
+                title: Localization.translate('البطاقة الذهبية (Edahabia)', lang),
+                subtitle: Localization.translate('دفع فوري آمن لبريد الجزائر مع رمز SMS', lang),
+                badge: Localization.translate('الأكثر استخداماً', lang),
                 icon: Icons.credit_card_rounded,
                 badgeColor: const Color(0xFFF59E0B),
                 isDark: isDark,
@@ -340,9 +363,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               const SizedBox(height: 10),
               _buildMethodCard(
                 type: PaymentMethodType.cib,
-                title: 'بطاقة CIB البنكية',
-                subtitle: 'جميع البنوك الجزائرية (BNA, BEA, CPA, BDL, BADR, إلخ)',
-                badge: 'شبكة SATIM',
+                title: Localization.translate('بطاقة CIB البنكية', lang),
+                subtitle: Localization.translate('جميع البنوك الجزائرية (BNA, BEA, CPA, BDL, BADR, إلخ)', lang),
+                badge: Localization.translate('شبكة SATIM', lang),
                 icon: Icons.account_balance_rounded,
                 badgeColor: const Color(0xFF2563EB),
                 isDark: isDark,
@@ -350,9 +373,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               const SizedBox(height: 10),
               _buildMethodCard(
                 type: PaymentMethodType.baridiMob,
-                title: 'بريدي موب (BaridiMob)',
-                subtitle: 'تحويل فوري للتطبيق عبر RIP والـ QR',
-                badge: 'تحويل مباشر',
+                title: Localization.translate('بريدي موب (BaridiMob)', lang),
+                subtitle: Localization.translate('تحويل فوري للتطبيق عبر RIP والـ QR', lang),
+                badge: Localization.translate('تحويل مباشر', lang),
                 icon: Icons.smartphone_rounded,
                 badgeColor: const Color(0xFF10B981),
                 isDark: isDark,
@@ -360,9 +383,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               const SizedBox(height: 10),
               _buildMethodCard(
                 type: PaymentMethodType.visaMastercard,
-                title: 'كارت فيزا / ماستركارد (Visa / Mastercard)',
-                subtitle: 'البطاقات الدولية والمحلية المعتمدة',
-                badge: 'دولي',
+                title: Localization.translate('كارت فيزا / ماستركارد (Visa / Mastercard)', lang),
+                subtitle: Localization.translate('البطاقات الدولية والمحلية المعتمدة', lang),
+                badge: Localization.translate('دولي', lang),
                 icon: Icons.public_rounded,
                 badgeColor: const Color(0xFF8B5CF6),
                 isDark: isDark,
@@ -371,20 +394,23 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
 
               // Specific View per Method
               if (_selectedMethod == PaymentMethodType.baridiMob)
-                _buildBaridiMobSection(isDark)
+                _buildBaridiMobSection(lang, isDark)
               else
-                _buildCardPaySection(isDark),
+                _buildCardPaySection(lang, isDark),
 
               const SizedBox(height: 20),
               // Security Guarantee Footer
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.lock_outline_rounded, size: 16, color: Colors.grey),
-                  SizedBox(width: 6),
-                  Text(
-                    'دفع مشفر وآمن 100% ومطابق لمعايير الأمان البنكي وبريد الجزائر',
-                    style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey),
+                children: [
+                  const Icon(Icons.lock_outline_rounded, size: 16, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      Localization.translate('دفع مشفر وآمن 100% ومطابق لمعايير الأمان البنكي وبريد الجزائر', lang),
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ],
               ),
@@ -395,7 +421,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
     );
   }
 
-  Widget _buildPaymentLogosBanner(bool isDark) {
+  Widget _buildPaymentLogosBanner(AppLanguage lang, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
       decoration: BoxDecoration(
@@ -417,9 +443,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
       ),
       child: Column(
         children: [
-          const Text(
-            'بوابة الدفع الإلكتروني المعتمدة',
-            style: TextStyle(
+          Text(
+            Localization.translate('بوابة الدفع الإلكتروني المعتمدة', lang),
+            style: const TextStyle(
               fontFamily: 'Cairo',
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -427,18 +453,18 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'الدفع متاح الآن مباشرة بالبطاقات الجزائرية دون الحاجة للتنقل',
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.white70),
+          Text(
+            Localization.translate('الدفع متاح الآن مباشرة بالبطاقات الجزائرية دون الحاجة للتنقل', lang),
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.white70),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildBrandBadge('الذهبية', Colors.amber[700]!),
-              _buildBrandBadge('CIB', Colors.cyan[400]!),
-              _buildBrandBadge('BaridiMob', const Color(0xFF10B981)),
+              _buildBrandBadge(Localization.translate('الذهبية', lang), Colors.amber[700]!),
+              _buildBrandBadge(Localization.translate('CIB', lang), Colors.cyan[400]!),
+              _buildBrandBadge(Localization.translate('BaridiMob', lang), const Color(0xFF10B981)),
               _buildBrandBadge('Visa / MC', Colors.purple[300]!),
             ],
           ),
@@ -467,7 +493,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
     );
   }
 
-  Widget _buildPlanTile(SubscriptionPlan plan, bool isDark) {
+  Widget _buildPlanTile(SubscriptionPlan plan, AppLanguage lang, bool isDark) {
     final isSelected = _selectedPlan.id == plan.id;
     return GestureDetector(
       onTap: () => setState(() => _selectedPlan = plan),
@@ -520,9 +546,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                             color: Colors.amber[700],
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text(
-                            'الأكثر طلباً',
-                            style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                          child: Text(
+                            Localization.translate('الأكثر طلباً', lang),
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
@@ -539,7 +565,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${NumberFormat('#,###').format(plan.priceDzd)} د.ج',
+                  '${NumberFormat('#,###').format(plan.priceDzd)} ${Localization.translate('د.ج', lang)}',
                   style: const TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -549,7 +575,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                 ),
                 if (plan.originalPriceDzd != null)
                   Text(
-                    '${NumberFormat('#,###').format(plan.originalPriceDzd)} د.ج',
+                    '${NumberFormat('#,###').format(plan.originalPriceDzd)} ${Localization.translate('د.ج', lang)}',
                     style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 11,
@@ -661,7 +687,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
     );
   }
 
-  Widget _buildCardPaySection(bool isDark) {
+  Widget _buildCardPaySection(AppLanguage lang, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -680,9 +706,12 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('المبلغ الإجمالي للدفع:', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
               Text(
-                '${NumberFormat('#,###').format(_selectedPlan.priceDzd)} د.ج',
+                Localization.translate('المبلغ الإجمالي للدفع:', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              ),
+              Text(
+                '${NumberFormat('#,###').format(_selectedPlan.priceDzd)} ${Localization.translate('د.ج', lang)}',
                 style: const TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 20,
@@ -709,7 +738,9 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                   )
                 : const Icon(Icons.payment_rounded),
             label: Text(
-              _isLoading ? 'جاري تجهيز بوابة الدفع...' : 'ادفع الآن بالبطاقة (${_selectedMethod == PaymentMethodType.edahabia ? "الذهبية" : "CIB"})',
+              _isLoading
+                  ? Localization.translate('جاري تجهيز بوابة الدفع...', lang)
+                  : '${Localization.translate('ادفع الآن بالبطاقة', lang)} (${_selectedMethod == PaymentMethodType.edahabia ? Localization.translate('الذهبية', lang) : "CIB"})',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
             ),
           ),
@@ -718,7 +749,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
     );
   }
 
-  Widget _buildBaridiMobSection(bool isDark) {
+  Widget _buildBaridiMobSection(AppLanguage lang, bool isDark) {
     final rip = (_gatewayConfig['baridi_mob_rip'] ?? '00799999000000000000').toString();
 
     return Container(
@@ -736,14 +767,17 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'خطوات الدفع عبر بريدي موب (BaridiMob):',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+          Text(
+            Localization.translate('خطوات الدفع عبر بريدي موب (BaridiMob):', lang),
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const SizedBox(height: 8),
-          const Text(
-            '1. انسخ رقم الـ RIP أدناه.\n2. افتح تطبيق BaridiMob وقم بإجراء تحويل بالمبلغ المطلوب.\n3. ضع رقم المعاملة (N° de transaction) هنا لتفعيل اشتراكك.',
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, height: 1.5),
+          Text(
+            Localization.translate(
+              '1. انسخ رقم الـ RIP أدناه.\n2. افتح تطبيق BaridiMob وقم بإجراء تحويل بالمبلغ المطلوب.\n3. ضع رقم المعاملة (N° de transaction) هنا لتفعيل اشتراكك.',
+              lang,
+            ),
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, height: 1.5),
           ),
           const SizedBox(height: 12),
 
@@ -761,7 +795,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('رقم الحساب البريدي (RIP):', style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey)),
+                      Text(
+                        Localization.translate('رقم الحساب البريدي (RIP):', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
+                      ),
                       Text(
                         rip,
                         style: const TextStyle(fontFamily: 'Courier', fontWeight: FontWeight.bold, fontSize: 15),
@@ -771,11 +808,11 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.copy_rounded, color: Color(0xFF2563EB)),
-                  tooltip: 'نسخ رقم الـ RIP',
+                  tooltip: Localization.translate('نسخ رقم الـ RIP', lang),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: rip));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم نسخ رقم الـ RIP بنجاح')),
+                      SnackBar(content: Text(Localization.translate('تم نسخ رقم الـ RIP بنجاح', lang))),
                     );
                   },
                 ),
@@ -787,19 +824,19 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
           // Transaction Input
           TextField(
             controller: _baridiMobTxController,
-            decoration: const InputDecoration(
-              labelText: 'رقم معاملة بريدي موب (Numéro de transaction)',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.receipt_long_rounded),
+            decoration: InputDecoration(
+              labelText: Localization.translate('رقم معاملة بريدي موب (Numéro de transaction)', lang),
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.receipt_long_rounded),
             ),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _baridiMobNotesController,
-            decoration: const InputDecoration(
-              labelText: 'ملاحظة إضافية (اختياري - اسم الورشة أو رقم الهاتف)',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.notes_rounded),
+            decoration: InputDecoration(
+              labelText: Localization.translate('ملاحظة إضافية (اختياري - اسم الورشة أو رقم الهاتف)', lang),
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.notes_rounded),
             ),
           ),
           const SizedBox(height: 14),
@@ -814,7 +851,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             icon: _isSubmittingBaridiMob
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)))
                 : const Icon(Icons.send_rounded),
-            label: const Text('تأكيد التحويل وإرسال الإشعار', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+            label: Text(
+              Localization.translate('تأكيد التحويل وإرسال الإشعار', lang),
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),

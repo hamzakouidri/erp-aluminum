@@ -20,6 +20,7 @@ import 'locales/translation_phase7_keys.dart';
 import 'locales/translation_phase8_keys.dart';
 import 'locales/translation_phase9_keys.dart';
 import 'locales/translation_phase10_keys.dart';
+import 'locales/translation_phase11_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -42,6 +43,7 @@ class Localization {
     ...translationPhase8Keys,
     ...translationPhase9Keys,
     ...translationPhase10Keys,
+    ...translationPhase11Keys,
     ...shortcutKeys,
     ...subscriptionStatusKeys,
   };

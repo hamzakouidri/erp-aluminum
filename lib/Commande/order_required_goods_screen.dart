@@ -20,6 +20,8 @@ import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/Screen/achat_details_screen.dart';
+import 'package:database_data/Screen/app_workspace_shell.dart'
+    show openAdaptiveScreen;
 
 bool isExplicitlyReplacedProduct(bool modelIsReplaced, dynamic savedValue) {
   if (modelIsReplaced || savedValue == true) return true;
@@ -841,6 +843,213 @@ class AggregatedGoodItem {
   }
 }
 
+class _ConvertGoodsToPurchaseDialog extends StatefulWidget {
+  final List<Map<String, dynamic>> suppliers;
+  final List<Map<String, dynamic>> locations;
+  final String nextNumber;
+  final List<AggregatedGoodItem> purchaseItems;
+  final String Function(String key) t;
+
+  const _ConvertGoodsToPurchaseDialog({
+    required this.suppliers,
+    required this.locations,
+    required this.nextNumber,
+    required this.purchaseItems,
+    required this.t,
+  });
+
+  @override
+  State<_ConvertGoodsToPurchaseDialog> createState() =>
+      _ConvertGoodsToPurchaseDialogState();
+}
+
+class _ConvertGoodsToPurchaseDialogState
+    extends State<_ConvertGoodsToPurchaseDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _numberController;
+  int? _supplierId;
+  int? _locationId;
+  var _documentKind = _PurchaseDocumentKind.purchaseOrder;
+
+  @override
+  void initState() {
+    super.initState();
+    _numberController = TextEditingController(text: widget.nextNumber);
+    _supplierId = widget.suppliers.first['id'] as int?;
+    _locationId = widget.locations.first['id'] as int?;
+  }
+
+  @override
+  void dispose() {
+    _numberController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final glassItemsForDialog = widget.purchaseItems
+        .where((item) => item.category == 'glass')
+        .toList();
+    final otherItemsForDialog = widget.purchaseItems
+        .where((item) => item.category != 'glass')
+        .toList();
+
+    return AlertDialog(
+      title: Text(widget.t('تحويل الكميات المطلوبة إلى شراء')),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<_PurchaseDocumentKind>(
+                value: _PurchaseDocumentKind.purchaseOrder,
+                groupValue: _documentKind,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _documentKind = value);
+                  }
+                },
+                title: Text(widget.t('طلب شراء (مسودة)')),
+                subtitle: Text(
+                  widget.t('يمكن مراجعته وتأكيده لاحقًا دون إدخال المخزون.'),
+                ),
+              ),
+              RadioListTile<_PurchaseDocumentKind>(
+                value: _PurchaseDocumentKind.purchaseInvoice,
+                groupValue: _documentKind,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _documentKind = value);
+                  }
+                },
+                title: Text(widget.t('فاتورة شراء')),
+                subtitle: Text(
+                  widget.t('تُنشأ بالعناصر المحسوبة وقابلة للتعديل.'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _numberController,
+                decoration: InputDecoration(
+                  labelText: _documentKind == _PurchaseDocumentKind.purchaseOrder
+                      ? widget.t('رقم طلب الشراء')
+                      : widget.t('رقم فاتورة الشراء'),
+                  border: const OutlineInputBorder(),
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? widget.t('أدخل رقم الوثيقة')
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: _supplierId,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: widget.t('المورّد'),
+                  border: const OutlineInputBorder(),
+                ),
+                items: widget.suppliers
+                    .map(
+                      (supplier) => DropdownMenuItem<int>(
+                        value: supplier['id'] as int,
+                        child: Text(supplier['name']?.toString() ?? ''),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => _supplierId = value),
+                validator: (value) =>
+                    value == null ? widget.t('اختر المورّد') : null,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: _locationId,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: widget.t('مكان التخزين'),
+                  border: const OutlineInputBorder(),
+                ),
+                items: widget.locations
+                    .map(
+                      (location) => DropdownMenuItem<int>(
+                        value: location['id'] as int,
+                        child: Text(location['name']?.toString() ?? ''),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => _locationId = value),
+                validator: (value) =>
+                    value == null ? widget.t('اختر مكان التخزين') : null,
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  '${widget.purchaseItems.length} ${widget.t('صنف مرتبط سيُضاف إلى الوثيقة')}',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              if (glassItemsForDialog.isNotEmpty &&
+                  otherItemsForDialog.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.cyan.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.cyan.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Text(
+                    '${widget.t('سيتم فصل الشراء تلقائيًا إلى وثيقتين:')} '
+                    '${widget.t('الزجاج')} (${glassItemsForDialog.length})، '
+                    '${widget.t('وباقي العناصر')} (${otherItemsForDialog.length}). '
+                    '${widget.t('يمكن تعديل كل وثيقة بعد إنشائها.')}',
+                    style: TextStyle(
+                      color: Colors.cyan.shade900,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(widget.t('إلغاء')),
+        ),
+        ElevatedButton.icon(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            final supplier = widget.suppliers.firstWhere(
+              (row) => row['id'] == _supplierId,
+            );
+            Navigator.pop(context, {
+              'kind': _documentKind,
+              'number': _numberController.text.trim(),
+              'supplier_id': _supplierId,
+              'supplier_name': supplier['name']?.toString() ?? '',
+              'location_id': _locationId,
+            });
+          },
+          icon: const Icon(Icons.shopping_cart_checkout),
+          label: Text(widget.t('إنشاء')),
+        ),
+      ],
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // الشاشة الرئيسية
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1315,6 +1524,20 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   String _selectedCategory = 'all';
   Map<String, double> _mainWarehouseStock = const {};
   String _mainWarehouseName = 'المستودع الرئيسي';
+  bool _isStockReserved = false;
+
+  Future<void> _refreshReservationStatus() async {
+    final orderId = _safeInt(widget.orderData['id']);
+    if (orderId == null) return;
+    try {
+      final reserved = await widget.db.isOrderStockReserved(orderId);
+      if (mounted) {
+        setState(() {
+          _isStockReserved = reserved;
+        });
+      }
+    } catch (_) {}
+  }
 
   List<AggregatedGoodItem> get _visibleItems => _selectedCategory == 'all'
       ? _aggregatedItems
@@ -2208,6 +2431,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       });
 
       final stockSnapshot = await _loadMainWarehouseStock();
+      final isReserved = await widget.db.isOrderStockReserved(orderId);
       setState(() {
         _aggregatedItems = sorted;
         _mainWarehouseStock = stockSnapshot.$1;
@@ -2215,6 +2439,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         _productCount = successCount;
         _productBreakdowns = breakdownsTemp;
         _processingWarnings = warnings;
+        _isStockReserved = isReserved;
         _isLoading = false;
       });
       if (widget.issueAtManufacturingStart &&
@@ -2456,174 +2681,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       return;
     }
 
-    final formKey = GlobalKey<FormState>();
-    final numberController = TextEditingController(text: nextNumber);
-    int? supplierId = suppliers.first['id'] as int?;
-    int? locationId = locations.first['id'] as int?;
-    var documentKind = _PurchaseDocumentKind.purchaseOrder;
-    final glassItemsForDialog = purchaseItems
-        .where((item) => item.category == 'glass')
-        .toList();
-    final otherItemsForDialog = purchaseItems
-        .where((item) => item.category != 'glass')
-        .toList();
-
     final request = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(_t('تحويل الكميات المطلوبة إلى شراء')),
-          content: SizedBox(
-            width: 420,
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RadioListTile<_PurchaseDocumentKind>(
-                    value: _PurchaseDocumentKind.purchaseOrder,
-                    groupValue: documentKind,
-                    onChanged: (value) =>
-                        setDialogState(() => documentKind = value!),
-                    title: Text(_t('طلب شراء (مسودة)')),
-                    subtitle: Text(
-                      _t('يمكن مراجعته وتأكيده لاحقًا دون إدخال المخزون.'),
-                    ),
-                  ),
-                  RadioListTile<_PurchaseDocumentKind>(
-                    value: _PurchaseDocumentKind.purchaseInvoice,
-                    groupValue: documentKind,
-                    onChanged: (value) =>
-                        setDialogState(() => documentKind = value!),
-                    title: Text(_t('فاتورة شراء')),
-                    subtitle: Text(
-                      _t('تُنشأ بالعناصر المحسوبة وقابلة للتعديل.'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: numberController,
-                    decoration: InputDecoration(
-                      labelText:
-                          documentKind == _PurchaseDocumentKind.purchaseOrder
-                          ? _t('رقم طلب الشراء')
-                          : _t('رقم فاتورة الشراء'),
-                      border: const OutlineInputBorder(),
-                    ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? _t('أدخل رقم الوثيقة')
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: supplierId,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: _t('المورّد'),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: suppliers
-                        .map(
-                          (supplier) => DropdownMenuItem<int>(
-                            value: supplier['id'] as int,
-                            child: Text(supplier['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) =>
-                        setDialogState(() => supplierId = value),
-                    validator: (value) =>
-                        value == null ? _t('اختر المورّد') : null,
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: locationId,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: _t('مكان التخزين'),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: locations
-                        .map(
-                          (location) => DropdownMenuItem<int>(
-                            value: location['id'] as int,
-                            child: Text(location['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) =>
-                        setDialogState(() => locationId = value),
-                    validator: (value) =>
-                        value == null ? _t('اختر مكان التخزين') : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(
-                      '${purchaseItems.length} ${_t('صنف مرتبط سيُضاف إلى الوثيقة')}',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  if (glassItemsForDialog.isNotEmpty &&
-                      otherItemsForDialog.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.cyan.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.cyan.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Text(
-                        '${_t('سيتم فصل الشراء تلقائيًا إلى وثيقتين:')} '
-                        '${_t('الزجاج')} (${glassItemsForDialog.length})، '
-                        '${_t('وباقي العناصر')} (${otherItemsForDialog.length}). '
-                        '${_t('يمكن تعديل كل وثيقة بعد إنشائها.')}',
-                        style: TextStyle(
-                          color: Colors.cyan.shade900,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_t('إلغاء')),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                final supplier = suppliers.firstWhere(
-                  (row) => row['id'] == supplierId,
-                );
-                Navigator.pop(dialogContext, {
-                  'kind': documentKind,
-                  'number': numberController.text.trim(),
-                  'supplier_id': supplierId,
-                  'supplier_name': supplier['name']?.toString() ?? '',
-                  'location_id': locationId,
-                });
-              },
-              icon: const Icon(Icons.shopping_cart_checkout),
-              label: Text(_t('إنشاء')),
-            ),
-          ],
-        ),
+      builder: (dialogContext) => _ConvertGoodsToPurchaseDialog(
+        suppliers: suppliers,
+        locations: locations,
+        nextNumber: nextNumber,
+        purchaseItems: purchaseItems,
+        t: _t,
       ),
     );
-    numberController.dispose();
     if (request == null || !mounted) return;
 
     setState(() => _isCreatingPurchase = true);
@@ -2640,10 +2707,21 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       var firstInvoiceNumber = baseNumber;
       final createdDescriptions = <String>[];
 
+      Future<String> resolveUniqueNumber(String requested) async {
+        var candidate = requested;
+        var suffix = 2;
+        while (await widget.db.achatInvoiceNumberExists(candidate)) {
+          candidate = '$requested-$suffix';
+          suffix++;
+        }
+        return candidate;
+      }
+
       if (otherItems.isNotEmpty) {
-        final materialsNumber = glassItems.isEmpty
+        final rawMaterialsNumber = glassItems.isEmpty
             ? baseNumber
             : '$baseNumber-M';
+        final materialsNumber = await resolveUniqueNumber(rawMaterialsNumber);
         firstAchatId = await _createAchatDocumentFromItems(
           number: materialsNumber,
           request: request,
@@ -2656,14 +2734,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
 
       if (glassItems.isNotEmpty) {
-        final glassNumber = otherItems.isEmpty ? baseNumber : '$baseNumber-G';
+        final rawGlassNumber = otherItems.isEmpty ? baseNumber : '$baseNumber-G';
+        final glassNumber = await resolveUniqueNumber(rawGlassNumber);
         final glassAchatId = await _createAchatDocumentFromItems(
           number: glassNumber,
           request: request,
           items: glassItems,
         );
-        firstAchatId = glassAchatId;
-        firstInvoiceNumber = glassNumber;
+        firstAchatId ??= glassAchatId;
+        if (firstAchatId == glassAchatId) firstInvoiceNumber = glassNumber;
         createdDescriptions.add(
           '${_t('الزجاج')}: ${glassItems.length} ${_t('سطر')} / '
           '${_roundQuantity(_purchaseDocumentItemsTotalArea(glassItems), 'm²')} m²',
@@ -2682,15 +2761,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         );
       }
       if (!mounted) return;
-      await Navigator.push(
+      final docTitle = request['kind'] == _PurchaseDocumentKind.purchaseOrder
+          ? '${_t('طلب شراء')} #$firstInvoiceNumber'
+          : '${_t('فاتورة شراء')} #$firstInvoiceNumber';
+      openAdaptiveScreen(
         context,
-        MaterialPageRoute(
-          builder: (context) => AchatDetailsScreen(
-            achatId: achatId,
-            invoiceNumber: firstInvoiceNumber,
-            supplierName: request['supplier_name'] as String,
-            db: widget.db,
-          ),
+        title: docTitle,
+        icon: Icons.receipt_long_outlined,
+        screen: AchatDetailsScreen(
+          achatId: achatId,
+          invoiceNumber: firstInvoiceNumber,
+          supplierName: request['supplier_name'] as String,
+          db: widget.db,
         ),
       );
     } catch (error) {
@@ -2931,10 +3013,28 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   if (!_isLoading &&
                       _errorMessage == null &&
                       _aggregatedItems.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.manage_search, color: Colors.white),
-                      tooltip: _t('إظهار النواقص'),
-                      onPressed: _showShortageReport,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber.shade700,
+                          foregroundColor: Colors.white,
+                          elevation: 1,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(Icons.analytics_outlined, size: 18),
+                        label: Text(
+                          _t('تقرير النواقص والمخزون'),
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: _showShortageReport,
+                      ),
                     ),
                   if (!_isLoading &&
                       _errorMessage == null &&
@@ -3080,12 +3180,92 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     return Column(
       children: [
+        _buildReservationStatusBanner(),
         // شريط معلومات الملخص
         _buildInfoBanner(),
         if (_processingWarnings.isNotEmpty) _buildWarningsBanner(),
         // القائمة
         Expanded(child: _buildGroupedList()),
       ],
+    );
+  }
+
+  Widget _buildReservationStatusBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: _isStockReserved
+            ? Colors.green.shade50
+            : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _isStockReserved ? Colors.green.shade600 : Colors.grey.shade400,
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isStockReserved ? Icons.check_circle : Icons.inventory_2_outlined,
+            color: _isStockReserved ? Colors.green.shade700 : Colors.grey.shade700,
+            size: 22,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _t('حالة حجز السلع بالمخزون:'),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: _isStockReserved ? Colors.green.shade700 : Colors.grey.shade500,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _isStockReserved ? Icons.check : Icons.lock_open,
+                  size: 13,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _isStockReserved ? _t('تم الحجز') : _t('لم يُحجز بعد'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          TextButton.icon(
+            onPressed: _showShortageReport,
+            icon: Icon(
+              _isStockReserved ? Icons.edit_note : Icons.bookmark_add_outlined,
+              size: 16,
+              color: _isStockReserved ? Colors.green.shade800 : const Color(0xFF1A237E),
+            ),
+            label: Text(
+              _isStockReserved ? _t('إدارة الحجز / النواقص') : _t('حجز السلع للطلبية'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: _isStockReserved ? Colors.green.shade800 : const Color(0xFF1A237E),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -4465,6 +4645,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ),
       ),
     );
+    if (mounted) {
+      await _refreshReservationStatus();
+    }
     // Propagate the completed issue through this intermediate page so the
     // order action can actually advance to the requested manufacturing stage.
     if (inventoryIssued == true &&
@@ -5990,6 +6173,7 @@ class _OrderShortageReportPage extends StatefulWidget {
 
 class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
   bool _automaticAttempted = false;
+  bool _isStockReserved = false;
 
   int get orderId => widget.orderId;
   SqlDatabase get db => widget.db;
@@ -5999,6 +6183,7 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
   @override
   void initState() {
     super.initState();
+    _loadReservationStatus();
     if (widget.autoApply) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_automaticAttempted) {
@@ -6006,6 +6191,53 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
           _applyInventoryIssue(context, automatic: true);
         }
       });
+    }
+  }
+
+  Future<void> _loadReservationStatus() async {
+    try {
+      final reserved = await db.isOrderStockReserved(orderId);
+      if (mounted) {
+        setState(() {
+          _isStockReserved = reserved;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleStockReservation(BuildContext context) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    String t(String key) => Localization.translate(key, lang);
+    final newStatus = !_isStockReserved;
+    final remnantIds = _usedRemnantIds();
+    try {
+      await db.setOrderStockReservation(
+        orderId: orderId,
+        reserved: newStatus,
+        remnantIds: remnantIds,
+      );
+      if (!context.mounted) return;
+      setState(() {
+        _isStockReserved = newStatus;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newStatus
+                ? t('تم حجز سلع هذه الطلبية في المخزون بنجاح')
+                : t('تم إلغاء حجز سلع هذه الطلبية في المخزون'),
+          ),
+          backgroundColor: newStatus ? Colors.green : Colors.orange,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${t('تعذر تحديث الحجز')}: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -6174,6 +6406,94 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),
         children: [
+          Card(
+            color: _isStockReserved
+                ? Colors.green.withValues(alpha: 0.12)
+                : Colors.grey.withValues(alpha: 0.08),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                color: _isStockReserved ? Colors.green.shade600 : Colors.grey.shade400,
+                width: 1.5,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    _isStockReserved ? Icons.check_circle : Icons.inventory_2_outlined,
+                    color: _isStockReserved ? Colors.green.shade700 : Colors.grey.shade600,
+                    size: 32,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              t('حالة حجز السلع بالمخزون:'),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: _isStockReserved ? Colors.green.shade700 : Colors.grey.shade500,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _isStockReserved ? Icons.check : Icons.lock_open,
+                                    size: 13,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _isStockReserved ? t('تم الحجز') : t('لم يُحجز بعد'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _isStockReserved
+                              ? t('تم حجز القطع والفواضل اللازمة لهذه الطلبية بالمخزون لمنع استهلاكها لطلبيات أخرى.')
+                              : t('حجز السلع يربط القطع والفواضل المحددة بالطلبية ويضمن عدم استهلاكها لطلبيات أخرى.'),
+                          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _toggleStockReservation(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isStockReserved ? Colors.red.shade700 : Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    icon: Icon(_isStockReserved ? Icons.cancel_outlined : Icons.bookmark_add_outlined, size: 18),
+                    label: Text(
+                      _isStockReserved ? t('إلغاء الحجز') : t('حجز السلع للطلبية'),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           Card(
             color: totalMissingKinds == 0
                 ? Colors.green.withValues(alpha: 0.1)

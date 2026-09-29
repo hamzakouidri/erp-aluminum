@@ -583,6 +583,9 @@ extension WindowModelSerialization on WindowModel {
       'shutterPosition': shutterPosition,
       'shutterDriveSide': shutterDriveSide,
       'customShutterBoxHeight': customShutterBoxHeight,
+      'isShutterSplit': isShutterSplit,
+      'shutterSplitMode': shutterSplitMode,
+      'shutterSplits': shutterSplits.map((s) => s.toMap()).toList(),
       'selectedShutterLameId': selectedShutterLameId,
       'selectedShutterKitId': selectedShutterKitId,
       'selectedShutterMotorId': selectedShutterMotorId,
@@ -746,6 +749,15 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       (model.shutterMechanism == 'حزام' ? 'left' : model.shutterDriveSide);
   model.customShutterBoxHeight = (map['customShutterBoxHeight'] as num?)
       ?.toDouble();
+  model.isShutterSplit = map['isShutterSplit'] == true ||
+      map['isShutterSplit']?.toString().toLowerCase() == 'true';
+  model.shutterSplitMode = map['shutterSplitMode']?.toString() ?? 'per_frame';
+  if (map['shutterSplits'] is List) {
+    model.shutterSplits = (map['shutterSplits'] as List)
+        .whereType<Map>()
+        .map((m) => ShutterSplitSection.fromMap(Map<String, dynamic>.from(m)))
+        .toList();
+  }
   model.selectedShutterLameId = (map['selectedShutterLameId'] as num?)?.toInt();
   model.selectedShutterKitId = (map['selectedShutterKitId'] as num?)?.toInt();
   model.selectedShutterMotorId = (map['selectedShutterMotorId'] as num?)

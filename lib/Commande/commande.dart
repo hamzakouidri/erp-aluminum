@@ -410,6 +410,7 @@ class _CommandeState extends State<Commande> {
     'advance': TextEditingController(),
     'remaining': TextEditingController(),
     'status': TextEditingController(),
+    'stock_reserved': TextEditingController(),
     'creator': TextEditingController(),
   };
   final Map<String, NumericFilterState> _orderNumericFilters = {};
@@ -559,6 +560,17 @@ class _CommandeState extends State<Commande> {
               return false;
             }
             break;
+          case 'stock_reserved':
+            final isReserved = (d['is_stock_reserved'] as num?)?.toInt() == 1;
+            final reservedAr = isReserved ? 'تم الحجز' : 'لم يُحجز بعد';
+            final reservedFr = isReserved ? 'réservé' : 'non réservé';
+            final lower = filterVal.toLowerCase();
+            if (!reservedAr.toLowerCase().contains(lower) &&
+                !reservedFr.toLowerCase().contains(lower) &&
+                !(isReserved ? 'محجوز' : 'غير محجوز').contains(lower)) {
+              return false;
+            }
+            break;
           case 'creator':
             final rawPlatform = d['creation_platform']?.toString();
             final creatorStr = _formatCreatorDisplay(rawPlatform).toLowerCase();
@@ -636,6 +648,11 @@ class _CommandeState extends State<Commande> {
             final aSt = (a['status'] ?? '').toString();
             final bSt = (b['status'] ?? '').toString();
             comp = aSt.compareTo(bSt);
+            break;
+          case 'stock_reserved':
+            final aRes = (a['is_stock_reserved'] as num?)?.toInt() ?? 0;
+            final bRes = (b['is_stock_reserved'] as num?)?.toInt() ?? 0;
+            comp = aRes.compareTo(bRes);
             break;
           case 'creator':
             final aCr = _formatCreatorDisplay(
@@ -1225,6 +1242,61 @@ class _CommandeState extends State<Commande> {
                                           ),
                                         ),
                                       ),
+                                      Builder(
+                                        builder: (ctx) {
+                                          final isStockReserved =
+                                              (data[index]['is_stock_reserved'] as num?)?.toInt() == 1;
+                                          final lang = Provider.of<AppSettingsProvider>(
+                                            ctx,
+                                            listen: false,
+                                          ).language;
+                                          return Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 7,
+                                              vertical: 2.5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isStockReserved
+                                                  ? Colors.green.withValues(alpha: 0.15)
+                                                  : Colors.grey.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: isStockReserved
+                                                    ? Colors.green.shade600
+                                                    : Colors.grey.shade400,
+                                                width: 0.8,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  isStockReserved
+                                                      ? Icons.check_circle
+                                                      : Icons.inventory_2_outlined,
+                                                  size: 11,
+                                                  color: isStockReserved
+                                                      ? Colors.green.shade800
+                                                      : Colors.grey.shade600,
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Text(
+                                                  isStockReserved
+                                                      ? Localization.translate('تم الحجز', lang)
+                                                      : Localization.translate('لم يُحجز بعد', lang),
+                                                  style: TextStyle(
+                                                    color: isStockReserved
+                                                        ? Colors.green.shade900
+                                                        : Colors.grey.shade700,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ],
                                   ),
                                 ],
@@ -1245,31 +1317,93 @@ class _CommandeState extends State<Commande> {
                                         ),
                                       ),
                                       const SizedBox(height: 5),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _getStatusColor(status),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
+                                      Wrap(
+                                        spacing: 4,
+                                        runSpacing: 4,
+                                        alignment: WrapAlignment.end,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: _getStatusColor(status),
+                                              borderRadius: BorderRadius.circular(
+                                                20,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              _translateStatus(
+                                                status,
+                                                Provider.of<AppSettingsProvider>(
+                                                  context,
+                                                  listen: false,
+                                                ).language,
+                                              ),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                        child: Text(
-                                          _translateStatus(
-                                            status,
-                                            Provider.of<AppSettingsProvider>(
-                                              context,
-                                              listen: false,
-                                            ).language,
+                                          Builder(
+                                            builder: (ctx) {
+                                              final isStockReserved =
+                                                  (data[index]['is_stock_reserved'] as num?)?.toInt() == 1;
+                                              final lang = Provider.of<AppSettingsProvider>(
+                                                ctx,
+                                                listen: false,
+                                              ).language;
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 2.5,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: isStockReserved
+                                                      ? Colors.green.withValues(alpha: 0.15)
+                                                      : Colors.grey.withValues(alpha: 0.12),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  border: Border.all(
+                                                    color: isStockReserved
+                                                        ? Colors.green.shade600
+                                                        : Colors.grey.shade400,
+                                                    width: 0.8,
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      isStockReserved
+                                                          ? Icons.check_circle
+                                                          : Icons.inventory_2_outlined,
+                                                      size: 11,
+                                                      color: isStockReserved
+                                                          ? Colors.green.shade800
+                                                          : Colors.grey.shade600,
+                                                    ),
+                                                    const SizedBox(width: 3),
+                                                    Text(
+                                                      isStockReserved
+                                                          ? Localization.translate('تم الحجز', lang)
+                                                          : Localization.translate('لم يُحجز بعد', lang),
+                                                      style: TextStyle(
+                                                        color: isStockReserved
+                                                            ? Colors.green.shade900
+                                                            : Colors.grey.shade700,
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
                                           ),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -4223,6 +4357,37 @@ class _CommandeState extends State<Commande> {
         maxWidth: 220,
       ),
       ResizableTableColumn(
+        id: 'stock_reserved',
+        label: _buildOrderSortableHeaderCell(
+          label: lang == AppLanguage.french
+              ? 'Statut stock'
+              : Localization.translate('حالة السلع', lang),
+          colKey: 'stock_reserved',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: lang == AppLanguage.french
+              ? 'Réservation...'
+              : Localization.translate('حالة السلع...', lang),
+          controller: _orderColumnControllers['stock_reserved'],
+          lang: lang,
+          options: [
+            Localization.translate('الكل', lang),
+            lang == AppLanguage.french
+                ? 'Réservé'
+                : Localization.translate('تم الحجز', lang),
+            lang == AppLanguage.french
+                ? 'Non réservé'
+                : Localization.translate('لم يُحجز بعد', lang),
+          ],
+          optionsTooltip: Localization.translate('تصفية حسب حجز السلع', lang),
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 130,
+        minWidth: 95,
+        maxWidth: 220,
+      ),
+      ResizableTableColumn(
         id: 'creator',
         label: _buildOrderSortableHeaderCell(
           label: Localization.translate('المُدخل', lang),
@@ -4402,7 +4567,7 @@ class _CommandeState extends State<Commande> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          // Status
+          // Status (حالة الورشة)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -4418,6 +4583,60 @@ class _CommandeState extends State<Commande> {
                 fontWeight: FontWeight.w800,
               ),
             ),
+          ),
+          // Stock Reservation Status (حالة السلع: réservé / non réservé)
+          Builder(
+            builder: (ctx) {
+              final isStockReserved =
+                  (order['is_stock_reserved'] as num?)?.toInt() == 1;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isStockReserved
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.grey.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isStockReserved
+                        ? Colors.green.shade600
+                        : Colors.grey.shade400,
+                    width: 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isStockReserved
+                          ? Icons.check_circle
+                          : Icons.inventory_2_outlined,
+                      size: 13,
+                      color: isStockReserved
+                          ? Colors.green.shade800
+                          : Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isStockReserved
+                          ? (lang == AppLanguage.french
+                              ? 'Réservé'
+                              : Localization.translate('تم الحجز', lang))
+                          : (lang == AppLanguage.french
+                              ? 'Non réservé'
+                              : Localization.translate('لم يُحجز بعد', lang)),
+                      style: TextStyle(
+                        color: isStockReserved
+                            ? Colors.green.shade900
+                            : Colors.grey.shade700,
+                        fontFamily: 'Cairo',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
           // Creator
           Text(

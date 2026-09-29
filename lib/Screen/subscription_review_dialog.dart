@@ -525,16 +525,19 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
-                            children: const [
-                              Icon(
+                            children: [
+                              const Icon(
                                 Icons.autorenew_rounded,
                                 color: Colors.green,
                                 size: 22,
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
-                                'تجديد الاشتراك متاح الآن',
-                                style: TextStyle(
+                                Localization.translate(
+                                  'تجديد الاشتراك متاح الآن',
+                                  lang,
+                                ),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
                                   color: Colors.green,
@@ -545,8 +548,14 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const SizedBox(height: 10),
                           Text(
                             details.planType == SubscriptionPlanType.yearly
-                                ? 'يمكنك تجديد اشتراكك السنوي الآن نظراً لاقتراب موعد الانتهاء بأقل من شهر.'
-                                : 'يمكنك تجديد اشتراكك الآن نظراً لاقتراب موعد الانتهاء بأقل من أسبوع.',
+                                ? Localization.translate(
+                                    'يمكنك تجديد اشتراكك السنوي الآن نظراً لاقتراب موعد الانتهاء بأقل من شهر.',
+                                    lang,
+                                  )
+                                : Localization.translate(
+                                    'يمكنك تجديد اشتراكك الآن نظراً لاقتراب موعد الانتهاء بأقل من أسبوع.',
+                                    lang,
+                                  ),
                             style: TextStyle(
                               fontSize: 12.5,
                               color: isDark
@@ -592,7 +601,10 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'الدفع عبر BaridiMob (CCP/RIP):',
+                                            Localization.translate(
+                                              'الدفع عبر BaridiMob (CCP/RIP):',
+                                              lang,
+                                            ),
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: isDark
@@ -603,7 +615,10 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                           Text(
                                             hasRip
                                                 ? baridiMobRip
-                                                : 'لم يتم تحديد الرقم بعد',
+                                                : Localization.translate(
+                                                    'لم يتم تحديد الرقم بعد',
+                                                    lang,
+                                                  ),
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 13,
@@ -652,9 +667,12 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               color: Colors.white,
                               size: 20,
                             ),
-                            label: const Text(
-                              'الدفع الإلكتروني الفوري (الذهبية / CIB / بريدي موب)',
-                              style: TextStyle(
+                            label: Text(
+                              Localization.translate(
+                                'الدفع الإلكتروني الفوري (الذهبية / CIB / بريدي موب)',
+                                lang,
+                              ),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13.5,
@@ -680,9 +698,12 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               color: Colors.white,
                               size: 22,
                             ),
-                            label: const Text(
-                              'طلب تجديد الاشتراك عبر واتساب',
-                              style: TextStyle(
+                            label: Text(
+                              Localization.translate(
+                                'طلب تجديد الاشتراك عبر واتساب',
+                                lang,
+                              ),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,

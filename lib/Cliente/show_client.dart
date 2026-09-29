@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -10,6 +11,9 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../Screen/client_ledger_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../Commande/partial_proforma_screen.dart';
+import '../Commande/devis_builder.dart';
+import '../Commande/devis_preview_screen.dart';
 
 class ShowClient extends StatefulWidget {
   final int clientId;

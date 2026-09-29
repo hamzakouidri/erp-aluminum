@@ -6050,6 +6050,11 @@ class ComponentCalculator {
         bladeEndCapThicknessMm: bladeCapThicknessMm,
       );
 
+      final int shutterSplitCount =
+          (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty)
+              ? window.effectiveShutterSplits.length
+              : 1;
+
       // ===== 1. الكيت (Kit) - أول مركب، فقط لغير النفق =====
       bool hasTunnelManoeuvreKit = false;
       void addAndExpandKit(
@@ -6168,9 +6173,9 @@ class ComponentCalculator {
           hasTunnelManoeuvreKit = true;
         }
         final bool perLeaf = kitPerLeafMap[groupName] ?? false;
-        final double kitQty = perLeaf
+        final double kitQty = (perLeaf
             ? ((doubleSashCount * 2) + singleSashCount).toDouble()
-            : 1.0;
+            : 1.0) * shutterSplitCount;
 
         // `isMotorized` describes the mechanism, but every kit uses the
         // same source: its KitBundles record and exact stored French name.
@@ -6188,9 +6193,9 @@ class ComponentCalculator {
 
         if (hasConfiguredKitItems) {
           final String shutterVariant = isExtrudedBlade ? 'extruded' : 'normal';
-          final int leafCount = perLeaf
+          final int leafCount = (perLeaf
               ? ((doubleSashCount * 2) + singleSashCount)
-              : 1;
+              : 1) * shutterSplitCount;
           var expandedItems = expandKitBundle(
             groupName,
             matchedKitItems!,
@@ -6254,7 +6259,7 @@ class ComponentCalculator {
           addAndExpandKit('كيت فولي (Kit Volet)', 'V');
         }
         // براغي الكيت
-        items.add(createShutter('براغي الكيت', qty: 8));
+        items.add(createShutter('براغي الكيت', qty: 8.0 * shutterSplitCount));
       } else {
         // Select the configured CT bundle matching the selected tunnel kit and
         // tunnel height when the catalogue contains more than one variant.
@@ -6297,6 +6302,11 @@ class ComponentCalculator {
       // ===== 2. الصندوق وبراغيه =====
       if (!isTunnel) {
         List<double> caissonPieces = [window.width / 1000.0 - 0.01];
+        if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
+          caissonPieces = window.effectiveShutterSplits
+              .map((s) => math.max(0.0, s.width / 1000.0 - 0.01))
+              .toList();
+        }
         items.add(
           createShutter(
             'الصندوق (Caisson)',
@@ -6305,7 +6315,7 @@ class ComponentCalculator {
             unit: 'بارة',
           ),
         );
-        items.add(createShutter('براغي الصندوق', qty: 10));
+        items.add(createShutter('براغي الصندوق', qty: 10.0 * shutterSplitCount));
       }
 
       // ===== 3. المحور (Axe) =====
@@ -6314,6 +6324,11 @@ class ComponentCalculator {
       // quantity and official catalogue price never disappear.
       {
         List<double> axePieces = [(window.width - 75) / 1000.0];
+        if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
+          axePieces = window.effectiveShutterSplits
+              .map((s) => math.max(0.0, (s.width - 75.0) / 1000.0))
+              .toList();
+        }
         items.add(
           createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
         );
@@ -6325,25 +6340,25 @@ class ComponentCalculator {
           createShutter(
             'المانيفال (Manivelle)',
             color: shutterColorName,
-            qty: 1,
+            qty: shutterSplitCount.toDouble(),
           ),
         );
-        items.add(createShutter('براغي المانيفال', qty: isTunnel ? 1 : 4));
+        items.add(createShutter('براغي المانيفال', qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount));
       } else if (window.shutterMechanism == 'محرك') {
         // This is the selected shutter motor, not a KitBundle child.  Keep it
         // in the shutter section as an independent row.  Only rows emitted by
         // expandKitBundle are allowed to carry the tunnel kitGroupName.
         items.add(
-          createShutter('المحرك (Moteur)', color: shutterColorName, qty: 1),
+          createShutter('المحرك (Moteur)', color: shutterColorName, qty: shutterSplitCount.toDouble()),
         );
-        items.add(createShutter('براغي المحرك', qty: isTunnel ? 1 : 4));
+        items.add(createShutter('براغي المحرك', qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount));
       }
       if (window.shutterMechanism == 'محرك') {
         if (window.motorHasInterrupteur) {
-          items.add(createShutter('قاطعة (Interrupteur)', qty: 1));
+          items.add(createShutter('قاطعة (Interrupteur)', qty: shutterSplitCount.toDouble()));
         }
         if (window.motorHasTelecommande) {
-          items.add(createShutter('جهاز تحكم (Télécommande)', qty: 1));
+          items.add(createShutter('جهاز تحكم (Télécommande)', qty: shutterSplitCount.toDouble()));
         }
       }
 
@@ -6377,7 +6392,29 @@ class ComponentCalculator {
             : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
       }
 
-      if (hasMultiFrames) {
+      if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
+        for (final split in window.effectiveShutterSplits) {
+          final sWidth = split.width;
+          final sHeight = split.customHeight ?? window.height;
+          final sNumBlades = ((sHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
+              .ceil()
+              .clamp(0, 100000)
+              .toInt();
+          totalBladesCount += sNumBlades;
+
+          double sBladeLengthM = math.max(0.0, (sWidth - 65.0)) / 1000.0;
+          if (capThick > 0) {
+            sBladeLengthM = math.max(0.0, sBladeLengthM - (2 * capThick) / 1000.0);
+          }
+          bladePieces.addAll(List<double>.filled(sNumBlades, sBladeLengthM));
+
+          double sLameFinaleM = math.max(0.0, (sWidth - 65.0)) / 1000.0;
+          if (capThick > 0) {
+            sLameFinaleM = math.max(0.0, sLameFinaleM - (2 * capThick) / 1000.0);
+          }
+          lameFinalePieces.add(sLameFinaleM);
+        }
+      } else if (hasMultiFrames) {
         for (final rect in frameRects) {
           final fWidth = rect.width;
           final fHeight = rect.height;
@@ -6453,42 +6490,56 @@ class ComponentCalculator {
         ),
       );
       // ===== 8. السكك (Coulisses) =====
+      List<double> coulissePieces = [coulisseLengthM, coulisseLengthM];
+      if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
+        coulissePieces = [];
+        for (final split in window.effectiveShutterSplits) {
+          final sH = split.customHeight ?? window.height;
+          final sLengthM = (window.isCaissonTunnel ? (sH + 20.0) : (sH - caissonSize)) / 1000.0;
+          final validLen = math.max(0.0, sLengthM);
+          coulissePieces.add(validLen);
+          coulissePieces.add(validLen);
+        }
+      }
+      final double totalCoulisseLengthM =
+          coulissePieces.fold(0.0, (sum, len) => sum + len);
+
       items.add(
         createShutter(
           'السكك (Coulisses)',
           color: shutterColorName,
-          pieces: [coulisseLengthM, coulisseLengthM],
+          pieces: coulissePieces,
           unit: 'بارة',
         ),
       );
 
       // ===== 9. جوان بروس (Joint Brosse) =====
-      if (isTunnel) {
-        items.add(
-          createJoint(
-            'جوان بروس للستار (Joint Brosse Shutter)',
-            qty: coulisseLengthM * 4,
-            unit: 'متر',
-          ),
-        );
-      } else if (!isTunnel) {
-        items.add(
-          createJoint(
-            'جوان بروس للستار (Joint Brosse Shutter)',
-            qty: coulisseLengthM * 4,
-            unit: 'متر',
-          ),
-        );
-      }
+      items.add(
+        createJoint(
+          'جوان بروس للستار (Joint Brosse Shutter)',
+          qty: totalCoulisseLengthM * 2,
+          unit: 'متر',
+        ),
+      );
 
       // ===== 10. أطاش (Attache) =====
       // Every active shutter kit contains two Attaches. Count the total from
       // shutter width, then list only the remaining standalone Attaches:
       // 2 below 1200 mm, 3 from 1200 mm, 4 from 1600 mm, and 5 from 2000 mm.
-      final int totalAttaches = window.width >= 2000
-          ? 5
-          : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
-      final int attachesIncludedByKit = isKitActive ? 2 : 0;
+      int totalAttaches = 0;
+      if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
+        for (final split in window.effectiveShutterSplits) {
+          final w = split.width;
+          totalAttaches += w >= 2000
+              ? 5
+              : (w >= 1600 ? 4 : (w >= 1200 ? 3 : 2));
+        }
+      } else {
+        totalAttaches = window.width >= 2000
+            ? 5
+            : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
+      }
+      final int attachesIncludedByKit = isKitActive ? (2 * shutterSplitCount) : 0;
       final int attachesToAdd = (totalAttaches - attachesIncludedByKit)
           .clamp(0, totalAttaches)
           .toInt();
@@ -6510,7 +6561,7 @@ class ComponentCalculator {
                 'طانديم (Tandem)',
                 'tandem_group',
                 isActive: isTandemActive,
-                qty: 1,
+                qty: shutterSplitCount.toDouble(),
                 category: 'shutter',
               ),
             );
@@ -6523,7 +6574,7 @@ class ComponentCalculator {
                 'الامبو (Embout)',
                 'embout_group',
                 isActive: isEmboutActive,
-                qty: 1,
+                qty: shutterSplitCount.toDouble(),
                 category: 'shutter',
               ),
             );
@@ -6532,7 +6583,7 @@ class ComponentCalculator {
                 'سيبور رولمو (Support Roulement)',
                 'roulement_group',
                 isActive: isSupportRoulementActive,
-                qty: 1,
+                qty: shutterSplitCount.toDouble(),
                 category: 'shutter',
               ),
             );
@@ -6546,7 +6597,7 @@ class ComponentCalculator {
                 'سيبور موتور (Support Moteur)',
                 'motor_support_group',
                 isActive: isSupportMoteurActive,
-                qty: 1,
+                qty: shutterSplitCount.toDouble(),
                 category: 'shutter',
               ),
             );

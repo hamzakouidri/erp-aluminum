@@ -7804,109 +7804,123 @@ class WindowPainter extends CustomPainter {
             model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
     const coulisseWidth = 25.0;
     final double coulisseTop = boxSize;
-    final double coulisseHeight = h - boxSize;
 
-    final coulissePaint = Paint();
-    if (_isWoodColor() && TextureCache.woodTexture != null) {
-      _applyWoodShader(
-        coulissePaint,
-        Rect.fromLTWH(0, coulisseTop, w, coulisseHeight),
-      );
-    } else {
-      coulissePaint.color = _fc[1];
-    }
-    coulissePaint.style = PaintingStyle.fill;
+    final splits = model.effectiveShutterSplits;
 
-    final coulisseBorder = Paint()
-      ..color = _fb
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
+    for (int sIdx = 0; sIdx < splits.length; sIdx++) {
+      final split = splits[sIdx];
+      final splitLeft = split.leftOffset;
+      final splitW = split.width;
+      final splitRight = splitLeft + splitW;
+      final effectiveH = split.customHeight != null ? math.min(h, split.customHeight!) : h;
+      final double coulisseHeight = effectiveH - boxSize;
+      if (coulisseHeight <= 0) continue;
 
-    if (!model.removedShutterSides.contains('left')) {
-      canvas.drawRect(
-        Rect.fromLTWH(0, coulisseTop, coulisseWidth, coulisseHeight),
-        coulissePaint,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(0, coulisseTop, coulisseWidth, coulisseHeight),
-        coulisseBorder,
-      );
-    }
-    if (!model.removedShutterSides.contains('right')) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          w - coulisseWidth,
-          coulisseTop,
-          coulisseWidth,
-          coulisseHeight,
-        ),
-        coulissePaint,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          w - coulisseWidth,
-          coulisseTop,
-          coulisseWidth,
-          coulisseHeight,
-        ),
-        coulisseBorder,
-      );
-    }
-
-    final visibleSlatsHeight = (h - boxSize) * position;
-    canvas.save();
-    final leftClip = model.removedShutterSides.contains('left')
-        ? 0.0
-        : coulisseWidth;
-    final rightClip = model.removedShutterSides.contains('right')
-        ? w
-        : w - coulisseWidth;
-    canvas.clipRect(
-      Rect.fromLTRB(leftClip, boxSize, rightClip, boxSize + visibleSlatsHeight),
-    );
-
-    final slatsPaint = Paint();
-    if (_isWoodColor() && TextureCache.woodTexture != null) {
-      _applyWoodShader(
-        slatsPaint,
-        Rect.fromLTRB(
-          leftClip,
-          boxSize,
-          rightClip,
-          boxSize + visibleSlatsHeight,
-        ),
-      );
-    } else {
-      slatsPaint.color = _fc[0].withValues(alpha: 0.95);
-    }
-    slatsPaint.style = PaintingStyle.fill;
-
-    for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
-      if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= h) {
-        break;
+      final coulissePaint = Paint();
+      if (_isWoodColor() && TextureCache.woodTexture != null) {
+        _applyWoodShader(
+          coulissePaint,
+          Rect.fromLTWH(splitLeft, coulisseTop, splitW, coulisseHeight),
+        );
+      } else {
+        coulissePaint.color = _fc[1];
       }
-      canvas.drawRect(
-        Rect.fromLTRB(leftClip, y, rightClip, y + 20.0),
-        slatsPaint,
-      );
-    }
+      coulissePaint.style = PaintingStyle.fill;
 
-    final linePaint = Paint()
-      ..color = _isWoodColor() ? Colors.black : _fb.withValues(alpha: 0.4)
-      ..strokeWidth = _isWoodColor() ? 1.5 : 1.0
-      ..style = PaintingStyle.stroke;
+      final coulisseBorder = Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1;
 
-    for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
-      if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= h) {
-        break;
+      final bool drawLeftTrack = (sIdx == 0)
+          ? !model.removedShutterSides.contains('left')
+          : true;
+      if (drawLeftTrack) {
+        canvas.drawRect(
+          Rect.fromLTWH(splitLeft, coulisseTop, coulisseWidth, coulisseHeight),
+          coulissePaint,
+        );
+        canvas.drawRect(
+          Rect.fromLTWH(splitLeft, coulisseTop, coulisseWidth, coulisseHeight),
+          coulisseBorder,
+        );
       }
-      canvas.drawLine(
-        Offset(leftClip, y + 20.0),
-        Offset(rightClip, y + 20.0),
-        linePaint,
+
+      final bool drawRightTrack = (sIdx == splits.length - 1)
+          ? !model.removedShutterSides.contains('right')
+          : true;
+      if (drawRightTrack) {
+        canvas.drawRect(
+          Rect.fromLTWH(
+            splitRight - coulisseWidth,
+            coulisseTop,
+            coulisseWidth,
+            coulisseHeight,
+          ),
+          coulissePaint,
+        );
+        canvas.drawRect(
+          Rect.fromLTWH(
+            splitRight - coulisseWidth,
+            coulisseTop,
+            coulisseWidth,
+            coulisseHeight,
+          ),
+          coulisseBorder,
+        );
+      }
+
+      final visibleSlatsHeight = coulisseHeight * position;
+      canvas.save();
+      final leftClip = drawLeftTrack ? splitLeft + coulisseWidth : splitLeft;
+      final rightClip = drawRightTrack ? splitRight - coulisseWidth : splitRight;
+      canvas.clipRect(
+        Rect.fromLTRB(leftClip, boxSize, rightClip, boxSize + visibleSlatsHeight),
       );
+
+      final slatsPaint = Paint();
+      if (_isWoodColor() && TextureCache.woodTexture != null) {
+        _applyWoodShader(
+          slatsPaint,
+          Rect.fromLTRB(
+            leftClip,
+            boxSize,
+            rightClip,
+            boxSize + visibleSlatsHeight,
+          ),
+        );
+      } else {
+        slatsPaint.color = _fc[0].withValues(alpha: 0.95);
+      }
+      slatsPaint.style = PaintingStyle.fill;
+
+      for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
+        if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= effectiveH) {
+          break;
+        }
+        canvas.drawRect(
+          Rect.fromLTRB(leftClip, y, rightClip, y + 20.0),
+          slatsPaint,
+        );
+      }
+
+      final linePaint = Paint()
+        ..color = _isWoodColor() ? Colors.black : _fb.withValues(alpha: 0.4)
+        ..strokeWidth = _isWoodColor() ? 1.5 : 1.0
+        ..style = PaintingStyle.stroke;
+
+      for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
+        if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= effectiveH) {
+          break;
+        }
+        canvas.drawLine(
+          Offset(leftClip, y + 20.0),
+          Offset(rightClip, y + 20.0),
+          linePaint,
+        );
+      }
+      canvas.restore();
     }
-    canvas.restore();
   }
 
   /// Renders the motor controls independently from the shutter box so they
@@ -8039,197 +8053,224 @@ class WindowPainter extends CustomPainter {
         this._isWoodColor() &&
         (model.selectedShutterColor == null ||
             model.selectedShutterColor?['id'] == model.selectedDbColor?['id']);
-    double startX = 0.0;
-    double endX = w;
-    double boxWidth = endX - startX;
 
-    final boxRect = Rect.fromLTWH(startX, 0, boxWidth, boxSize);
+    final splits = model.effectiveShutterSplits;
 
-    final mechanism = model.shutterMechanism;
-    bool isRight = model.shutterDriveSide == 'right';
-    if (!model.isInternalView) {
-      isRight = !isRight;
-    }
-    double sign = isRight ? 1.0 : -1.0;
+    for (int sIdx = 0; sIdx < splits.length; sIdx++) {
+      final split = splits[sIdx];
+      double startX = split.leftOffset;
+      double boxWidth = split.width;
+      double endX = startX + boxWidth;
+      double effectiveBoxSize = split.customHeight != null && split.customHeight! < boxSize
+          ? split.customHeight!
+          : boxSize;
 
-    // Draw Motor mechanism BEFORE the box so it appears from behind
-    if (mechanism == 'محرك') {
-      if (drawOnlyManualControls) return;
+      final boxRect = Rect.fromLTWH(startX, 0, boxWidth, effectiveBoxSize);
 
-      double sideX = isRight ? (endX - 10) : (startX + 10);
-      double startY = -10; // Start above/behind the box
-      double wireLength = h * 0.65 + boxSize;
-      double step = wireLength / 3;
-
-      Paint motorPaint = Paint()
-        ..color = const Color(0xFF212121)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4.5
-        ..strokeCap = StrokeCap.round;
-
-      Path wirePath = Path();
-      wirePath.moveTo(sideX, startY);
-
-      wirePath.quadraticBezierTo(
-        sideX + (sign * 45),
-        startY + (step * 0.5),
-        sideX + (sign * 20),
-        startY + step,
-      );
-      wirePath.quadraticBezierTo(
-        sideX - (sign * 5),
-        startY + (step * 1.5),
-        sideX + (sign * 30),
-        startY + (step * 2.0),
-      );
-      wirePath.quadraticBezierTo(
-        sideX + (sign * 55),
-        startY + (step * 2.5),
-        sideX + (sign * 15),
-        startY + wireLength,
-      );
-
-      canvas.drawPath(wirePath, motorPaint);
-
-      double endXPos = sideX + (sign * 15);
-      double endY = startY + wireLength;
-
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(endXPos, endY + 8),
-            width: 14,
-            height: 20,
-          ),
-          const Radius.circular(4),
-        ),
-        Paint()
-          ..color = const Color(0xFF212121)
-          ..style = PaintingStyle.fill,
-      );
-
-      Paint pinPaint = Paint()
-        ..color = Colors.grey.shade400
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round;
-
-      canvas.drawLine(
-        Offset(endXPos - 3, endY + 18),
-        Offset(endXPos - 3, endY + 28),
-        pinPaint,
-      );
-      canvas.drawLine(
-        Offset(endXPos + 3, endY + 18),
-        Offset(endXPos + 3, endY + 28),
-        pinPaint,
-      );
-    }
-
-    if (!drawOnlyManualControls) {
-      // Draw the box cover
-      final Paint boxPaint = Paint();
-      if (_isWoodColor() && TextureCache.woodTexture != null) {
-        _applyWoodShader(boxPaint, boxRect);
-      } else {
-        boxPaint.color = _fc[1];
+      final mechanism = model.shutterMechanism;
+      bool isRight = model.shutterDriveSide == 'right';
+      if (!model.isInternalView) {
+        isRight = !isRight;
       }
-      boxPaint.style = PaintingStyle.fill;
+      double sign = isRight ? 1.0 : -1.0;
 
-      canvas.drawRect(boxRect, boxPaint);
-      canvas.drawRect(
-        boxRect,
-        Paint()
-          ..color = _fb
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
-    }
+      // Draw Motor mechanism BEFORE the box so it appears from behind
+      if (mechanism == 'محرك') {
+        if (!drawOnlyManualControls) {
+          double sideX = isRight ? (endX - 10) : (startX + 10);
+          double startY = -10; // Start above/behind the box
+          double wireLength = h * 0.65 + effectiveBoxSize;
+          double step = wireLength / 3;
 
-    // Draw Strap and Crank AFTER the box (on top of it)
-    if (model.isInternalView &&
-        mechanism != 'Manuel' &&
-        mechanism != '' &&
-        mechanism != 'محرك') {
-      Paint paint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
+          Paint motorPaint = Paint()
+            ..color = const Color(0xFF212121)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4.5
+            ..strokeCap = StrokeCap.round;
 
-      double frontX = isRight ? (endX - 25.0) : (startX + 25.0);
+          Path wirePath = Path();
+          wirePath.moveTo(sideX, startY);
 
-      if (mechanism == 'حزام') {
-        paint.color = Colors.grey.shade400;
-        paint.strokeWidth = 14.0;
+          wirePath.quadraticBezierTo(
+            sideX + (sign * 45),
+            startY + (step * 0.5),
+            sideX + (sign * 20),
+            startY + step,
+          );
+          wirePath.quadraticBezierTo(
+            sideX - (sign * 5),
+            startY + (step * 1.5),
+            sideX + (sign * 30),
+            startY + (step * 2.0),
+          );
+          wirePath.quadraticBezierTo(
+            sideX + (sign * 55),
+            startY + (step * 2.5),
+            sideX + (sign * 15),
+            startY + wireLength,
+          );
 
-        // If height > 2m (2000mm), place strap in middle of door, else raise it about 30cm from bottom (h - 300).
-        double strapLength = (h > 2000) ? (h / 2) : (h - 300);
-        if (strapLength < 100) strapLength = 100; // safety
+          canvas.drawPath(wirePath, motorPaint);
 
-        canvas.drawLine(
-          Offset(frontX, boxSize * 0.25),
-          // Starts from upper quarter of the box
-          Offset(frontX, boxSize + strapLength),
-          paint,
-        );
+          double endXPos = sideX + (sign * 15);
+          double endY = startY + wireLength;
 
-        final boxCenter = Offset(frontX, boxSize + strapLength + 37.5);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                center: Offset(endXPos, endY + 8),
+                width: 14,
+                height: 20,
+              ),
+              const Radius.circular(4),
+            ),
+            Paint()
+              ..color = const Color(0xFF212121)
+              ..style = PaintingStyle.fill,
+          );
+
+          Paint pinPaint = Paint()
+            ..color = Colors.grey.shade400
+            ..strokeWidth = 2.5
+            ..strokeCap = StrokeCap.round;
+
+          canvas.drawLine(
+            Offset(endXPos - 3, endY + 18),
+            Offset(endXPos - 3, endY + 28),
+            pinPaint,
+          );
+          canvas.drawLine(
+            Offset(endXPos + 3, endY + 18),
+            Offset(endXPos + 3, endY + 28),
+            pinPaint,
+          );
+        }
+      }
+
+      if (!drawOnlyManualControls) {
+        // Draw the box cover
+        final Paint boxPaint = Paint();
+        if (_isWoodColor() && TextureCache.woodTexture != null) {
+          _applyWoodShader(boxPaint, boxRect);
+        } else {
+          boxPaint.color = _fc[1];
+        }
+        boxPaint.style = PaintingStyle.fill;
+
+        canvas.drawRect(boxRect, boxPaint);
         canvas.drawRect(
-          Rect.fromCenter(center: boxCenter, width: 32, height: 75),
+          boxRect,
           Paint()
-            ..color = Colors.white
-            ..style = PaintingStyle.fill,
-        );
-        canvas.drawRect(
-          Rect.fromCenter(center: boxCenter, width: 32, height: 75),
-          Paint()
-            ..color = Colors.grey.shade600
+            ..color = _fb
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.5,
         );
-        canvas.drawLine(
-          Offset(frontX - 8, boxCenter.dy - 22),
-          Offset(frontX + 8, boxCenter.dy - 22),
-          Paint()
-            ..color = Colors.black87
-            ..strokeWidth = 3,
-        );
-      } else if (mechanism == 'مانيفال' ||
-          mechanism == 'منايفال' ||
-          mechanism.toLowerCase().contains('manivelle')) {
-        paint.color = Colors.grey.shade300;
-        paint.strokeWidth = 10.0;
-        paint.strokeJoin = StrokeJoin.round;
-        double rodLength = h * 0.5;
 
-        canvas.drawCircle(
-          Offset(frontX, 10), // Revert to top of the box
-          9,
-          Paint()
-            ..color = Colors.grey.shade600
-            ..style = PaintingStyle.fill,
-        );
-        canvas.drawLine(
-          Offset(frontX, 10), // Revert to top of the box
-          Offset(frontX, boxSize + rodLength),
-          paint,
-        );
+        // Partition seam line between adjacent boxes when split
+        if (splits.length > 1 && sIdx < splits.length - 1) {
+          canvas.drawLine(
+            Offset(endX, 0),
+            Offset(endX, effectiveBoxSize),
+            Paint()
+              ..color = const Color(0xFF0F172A)
+              ..strokeWidth = 2.5,
+          );
+          canvas.drawLine(
+            Offset(endX + 1, 0),
+            Offset(endX + 1, effectiveBoxSize),
+            Paint()
+              ..color = Colors.white54
+              ..strokeWidth = 1.0,
+          );
+        }
+      }
 
-        double zigzagWidth = isRight ? -60.0 : 60.0;
+      // Draw Strap and Crank AFTER the box (on top of it)
+      if (model.isInternalView &&
+          mechanism != 'Manuel' &&
+          mechanism != '' &&
+          mechanism != 'محرك') {
+        Paint paint = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
 
-        Path crankPath = Path();
-        crankPath.moveTo(frontX, boxSize + rodLength);
-        crankPath.lineTo(frontX + zigzagWidth, boxSize + rodLength + 15);
-        crankPath.lineTo(frontX + zigzagWidth, boxSize + rodLength + 105);
-        crankPath.lineTo(frontX, boxSize + rodLength + 120);
-        canvas.drawPath(crankPath, paint);
+        double frontX = isRight ? (endX - 25.0) : (startX + 25.0);
 
-        canvas.drawLine(
-          Offset(frontX, boxSize + rodLength + 120),
-          Offset(frontX, boxSize + rodLength + 180),
-          Paint()
-            ..color = Colors.white
-            ..strokeWidth = 14
-            ..strokeCap = StrokeCap.round,
-        );
+        if (mechanism == 'حزام') {
+          paint.color = Colors.grey.shade400;
+          paint.strokeWidth = 14.0;
+
+          // If height > 2m (2000mm), place strap in middle of door, else raise it about 30cm from bottom (h - 300).
+          double strapLength = (h > 2000) ? (h / 2) : (h - 300);
+          if (strapLength < 100) strapLength = 100; // safety
+
+          canvas.drawLine(
+            Offset(frontX, effectiveBoxSize * 0.25),
+            // Starts from upper quarter of the box
+            Offset(frontX, effectiveBoxSize + strapLength),
+            paint,
+          );
+
+          final boxCenter = Offset(frontX, effectiveBoxSize + strapLength + 37.5);
+          canvas.drawRect(
+            Rect.fromCenter(center: boxCenter, width: 32, height: 75),
+            Paint()
+              ..color = Colors.white
+              ..style = PaintingStyle.fill,
+          );
+          canvas.drawRect(
+            Rect.fromCenter(center: boxCenter, width: 32, height: 75),
+            Paint()
+              ..color = Colors.grey.shade600
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5,
+          );
+          canvas.drawLine(
+            Offset(frontX - 8, boxCenter.dy - 22),
+            Offset(frontX + 8, boxCenter.dy - 22),
+            Paint()
+              ..color = Colors.black87
+              ..strokeWidth = 3,
+          );
+        } else if (mechanism == 'مانيفال' ||
+            mechanism == 'منايفال' ||
+            mechanism.toLowerCase().contains('manivelle')) {
+          paint.color = Colors.grey.shade300;
+          paint.strokeWidth = 10.0;
+          paint.strokeJoin = StrokeJoin.round;
+          double rodLength = h * 0.5;
+
+          canvas.drawCircle(
+            Offset(frontX, 10), // Revert to top of the box
+            9,
+            Paint()
+              ..color = Colors.grey.shade600
+              ..style = PaintingStyle.fill,
+          );
+          canvas.drawLine(
+            Offset(frontX, 10), // Revert to top of the box
+            Offset(frontX, effectiveBoxSize + rodLength),
+            paint,
+          );
+
+          double zigzagWidth = isRight ? -60.0 : 60.0;
+
+          Path crankPath = Path();
+          crankPath.moveTo(frontX, effectiveBoxSize + rodLength);
+          crankPath.lineTo(frontX + zigzagWidth, effectiveBoxSize + rodLength + 15);
+          crankPath.lineTo(frontX + zigzagWidth, effectiveBoxSize + rodLength + 105);
+          crankPath.lineTo(frontX, effectiveBoxSize + rodLength + 120);
+          canvas.drawPath(crankPath, paint);
+
+          canvas.drawLine(
+            Offset(frontX, effectiveBoxSize + rodLength + 120),
+            Offset(frontX, effectiveBoxSize + rodLength + 180),
+            Paint()
+              ..color = Colors.white
+              ..strokeWidth = 14
+              ..strokeCap = StrokeCap.round,
+          );
+        }
       }
     }
   }

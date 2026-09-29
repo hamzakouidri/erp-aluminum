@@ -222,6 +222,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     );
     String selectedType = series['type']?.toString() ?? 'Frappe';
     bool hasThreePieceSash = (series['has_three_piece_sash'] ?? 0) == 1;
+    String selectedRenfortType =
+        series['reinforcement_type']?.toString() ?? 'full_substitution';
 
     showDialog(
       context: context,
@@ -269,6 +271,41 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     onChanged: (val) =>
                         setDialogState(() => hasThreePieceSash = val),
                   ),
+                  SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: [
+                      'full_substitution',
+                      'chicane_combination',
+                      'independent_screwed',
+                      'none',
+                    ].contains(selectedRenfortType)
+                        ? selectedRenfortType
+                        : 'full_substitution',
+                    decoration: InputDecoration(
+                      labelText: _tr('نوع تدعيم المونطو (Type de Renfort)'),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'full_substitution',
+                        child: Text(_tr('استبدال كامل للمقطع (Full Substitution - مثل TPR)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'chicane_combination',
+                        child: Text(_tr('شيكان مدعمة مدمجة (Chicane Renforcée)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'independent_screwed',
+                        child: Text(_tr('عمود تدعيم مستقل ببراغي (Renfort Rapporté)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'none',
+                        child: Text(_tr('لا تدعم التدعيم (Sans Renfort)')),
+                      ),
+                    ],
+                    onChanged: (val) =>
+                        setDialogState(() => selectedRenfortType = val!),
+                  ),
                 ],
               ],
             ),
@@ -293,6 +330,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       nameCtrl.text,
                       selectedType,
                       hasThreePieceSash: hasThreePieceSash ? 1 : 0,
+                      reinforcementType: selectedRenfortType,
                     );
                     _loadSeries(_selectedProfileId!);
                     if (context.mounted) {
@@ -320,6 +358,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final nameCtrl = TextEditingController();
     String selectedType = 'Frappe';
     bool hasThreePieceSash = false;
+    String selectedRenfortType = 'full_substitution';
 
     showDialog(
       context: context,
@@ -360,12 +399,40 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   SizedBox(height: 10),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      'دعم ضلفة 3 قطع (Lateral/Central/Traverse)',
+                    title: Text(
+                      _tr('دعم ضلفة 3 قطع (Lateral/Central/Traverse)'),
                     ),
                     value: hasThreePieceSash,
                     onChanged: (val) =>
                         setDialogState(() => hasThreePieceSash = val),
+                  ),
+                  SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: selectedRenfortType,
+                    decoration: InputDecoration(
+                      labelText: _tr('نوع تدعيم المونطو (Type de Renfort)'),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'full_substitution',
+                        child: Text(_tr('استبدال كامل للمقطع (Full Substitution - مثل TPR)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'chicane_combination',
+                        child: Text(_tr('شيكان مدعمة مدمجة (Chicane Renforcée)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'independent_screwed',
+                        child: Text(_tr('عمود تدعيم مستقل ببراغي (Renfort Rapporté)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'none',
+                        child: Text(_tr('لا تدعم التدعيم (Sans Renfort)')),
+                      ),
+                    ],
+                    onChanged: (val) =>
+                        setDialogState(() => selectedRenfortType = val!),
                   ),
                 ],
               ],
@@ -390,6 +457,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       nameCtrl.text,
                       selectedType,
                       hasThreePieceSash: hasThreePieceSash ? 1 : 0,
+                      reinforcementType: selectedRenfortType,
                     );
                     _loadSeries(_selectedProfileId!);
                     if (context.mounted) {
@@ -840,14 +908,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         isFrameRole = val == 'frame';
                         isSashRole = val == 'sash';
                         isMullionRole = val == 'mullion';
-                        final bool isTprHps =
-                            seriesName.contains('TPR') ||
-                            seriesName.contains('HPS');
+                        final bool is3PieceSash =
+                            hasThreePieceSash ||
+                            seriesName.contains('TPR');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
                                 seriesType == 'منزلق' ||
                                 seriesType == 'جرار') &&
-                            isTprHps) {
+                            is3PieceSash) {
                           selectedType = sashSubtype;
                         } else {
                           selectedType = val;
@@ -888,8 +956,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       (seriesType == 'Coulissant' ||
                           seriesType == 'منزلق' ||
                           seriesType == 'جرار') &&
-                      (seriesName.contains('TPR') ||
-                          seriesName.contains('HPS'))) ...[
+                      (hasThreePieceSash ||
+                          seriesName.contains('TPR'))) ...[
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value:
@@ -1303,6 +1371,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
         ? selectedType
         : 'sash_lateral';
     int? selectedRenfortId = section['linked_renfort_id'] as int?;
+    bool hasThreePieceSash =
+        (_currentSeries.firstWhere(
+              (s) => s['id'] == _selectedSeriesId,
+              orElse: () => {},
+            )['has_three_piece_sash'] ??
+            0) ==
+        1;
     String profileType = _profiles
         .firstWhere(
           (p) => p['id'] == _selectedProfileId,
@@ -1497,14 +1572,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         isFrameRole = val == 'frame';
                         isSashRole = val == 'sash';
                         isMullionRole = val == 'mullion';
-                        final bool isTprHps =
-                            seriesName.contains('TPR') ||
-                            seriesName.contains('HPS');
+                        final bool is3PieceSash =
+                            hasThreePieceSash ||
+                            seriesName.contains('TPR');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
                                 seriesType == 'منزلق' ||
                                 seriesType == 'جرار') &&
-                            isTprHps) {
+                            is3PieceSash) {
                           selectedType = sashSubtype;
                         } else {
                           selectedType = val!;
@@ -1545,8 +1620,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       (seriesType == 'Coulissant' ||
                           seriesType == 'منزلق' ||
                           seriesType == 'جرار') &&
-                      (seriesName.contains('TPR') ||
-                          seriesName.contains('HPS'))) ...[
+                      (hasThreePieceSash ||
+                          seriesName.contains('TPR'))) ...[
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value:

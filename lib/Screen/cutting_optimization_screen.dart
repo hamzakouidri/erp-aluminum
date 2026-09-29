@@ -278,9 +278,11 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
   Future<void> _exportPdfReport() async {
     if (_report == null || _report!.groups.isEmpty) return;
 
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('جاري تجهيز وثيقة تحسين القص PDF...', style: TextStyle(fontFamily: 'Cairo')),
+      SnackBar(
+        content: Text(Localization.translate('جاري تجهيز وثيقة تحسين القص PDF...', lang), style: const TextStyle(fontFamily: 'Cairo')),
       ),
     );
 
@@ -294,7 +296,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4.landscape,
           theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),
-          textDirection: pw.TextDirection.rtl,
+          textDirection: lang == AppLanguage.arabic ? pw.TextDirection.rtl : pw.TextDirection.ltr,
           build: (ctx) => [
             // Title Header
             pw.Header(
@@ -303,11 +305,11 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    'مخطط تحسين القص (Optimisation de Coupe)',
+                    Localization.translate('مخطط تحسين القص (Optimisation de Coupe)', lang),
                     style: pw.TextStyle(font: ttfBold, fontSize: 18),
                   ),
                   pw.Text(
-                    'التاريخ: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}',
+                    '${Localization.translate('التاريخ:', lang)} ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}',
                     style: pw.TextStyle(font: ttf, fontSize: 10),
                   ),
                 ],
@@ -325,10 +327,10 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
                 children: [
-                  pw.Text('إجمالي البارات المطلوبة (6م): ${_report!.totalBars}', style: pw.TextStyle(font: ttfBold, fontSize: 11)),
-                  pw.Text('إجمالي القطع: ${_report!.totalPieces}', style: pw.TextStyle(font: ttf, fontSize: 11)),
-                  pw.Text('نسبة الاستغلال والوفر: ${_report!.overallEfficiency.toStringAsFixed(1)}%', style: pw.TextStyle(font: ttfBold, fontSize: 11, color: PdfColors.blue800)),
-                  pw.Text('الفواضل الصالحة للاستعمال: ${_report!.totalMetersUsableRemnants.toStringAsFixed(2)} م', style: pw.TextStyle(font: ttf, fontSize: 11, color: PdfColors.green800)),
+                  pw.Text('${Localization.translate('إجمالي البارات المطلوبة', lang)}: ${_report!.totalBars}', style: pw.TextStyle(font: ttfBold, fontSize: 11)),
+                  pw.Text('${Localization.translate('إجمالي القطع:', lang)} ${_report!.totalPieces}', style: pw.TextStyle(font: ttf, fontSize: 11)),
+                  pw.Text('${Localization.translate('نسبة الاستغلال والوفر:', lang)} ${_report!.overallEfficiency.toStringAsFixed(1)}%', style: pw.TextStyle(font: ttfBold, fontSize: 11, color: PdfColors.blue800)),
+                  pw.Text('${Localization.translate('الفواضل الصالحة للاستعمال:', lang)} ${_report!.totalMetersUsableRemnants.toStringAsFixed(2)} ${Localization.translate('م', lang)}', style: pw.TextStyle(font: ttf, fontSize: 11, color: PdfColors.green800)),
                 ],
               ),
             ),
@@ -346,7 +348,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
                         pw.Text('${group.profileName} (${group.color})', style: pw.TextStyle(font: ttfBold, fontSize: 12)),
-                        pw.Text('البارات: ${group.barsNeeded} | القطع: ${group.totalPieces} | الكفاءة: ${group.efficiencyPercentage.toStringAsFixed(1)}%', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                        pw.Text('${Localization.translate('البارات:', lang)} ${group.barsNeeded} | ${Localization.translate('القطع:', lang)} ${group.totalPieces} | ${Localization.translate('الكفاءة:', lang)} ${group.efficiencyPercentage.toStringAsFixed(1)}%', style: pw.TextStyle(font: ttf, fontSize: 10)),
                       ],
                     ),
                   ),
@@ -355,15 +357,21 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                     border: pw.TableBorder.all(color: PdfColors.grey300),
                     headerStyle: pw.TextStyle(font: ttfBold, fontSize: 9),
                     cellStyle: pw.TextStyle(font: ttf, fontSize: 8),
-                    headers: ['البار #', 'القطع المقصوصة (مم)', 'المستغل (مم)', 'الفضل المتبقي (مم)', 'الحالة'],
+                    headers: [
+                      Localization.translate('البار #', lang),
+                      Localization.translate('القطع المقصوصة (مم)', lang),
+                      Localization.translate('المستغل (مم)', lang),
+                      Localization.translate('الفضل المتبقي (مم)', lang),
+                      Localization.translate('الحالة', lang),
+                    ],
                     data: group.bars.map((bar) {
-                      final cutsDesc = bar.cuts.map((c) => '${c.piece.lengthMm.toStringAsFixed(0)} مم (${c.piece.windowName})').join(' + ');
+                      final cutsDesc = bar.cuts.map((c) => '${c.piece.lengthMm.toStringAsFixed(0)} ${Localization.translate('مم', lang)} (${c.piece.windowName})').join(' + ');
                       return [
-                        'بار ${bar.barNumber}',
+                        '${Localization.translate('بار', lang)} ${bar.barNumber}',
                         cutsDesc,
-                        '${bar.usedLengthMm.toStringAsFixed(0)} مم',
-                        '${bar.remnantLengthMm.toStringAsFixed(0)} مم',
-                        bar.isUsableRemnant ? 'فضلة صالحة' : 'رايش',
+                        '${bar.usedLengthMm.toStringAsFixed(0)} ${Localization.translate('مم', lang)}',
+                        '${bar.remnantLengthMm.toStringAsFixed(0)} ${Localization.translate('مم', lang)}',
+                        bar.isUsableRemnant ? Localization.translate('فضلة صالحة', lang) : Localization.translate('رايش', lang),
                       ];
                     }).toList(),
                   ),
@@ -573,10 +581,10 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               DropdownButtonFormField<int>(
                 value: _selectedOrderId,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'اختر الطلبية',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: InputDecoration(
+                  labelText: Localization.translate('اختر الطلبية', lang),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
                 items: _allOrders.map((o) {
                   final id = (o['id'] as num?)?.toInt() ?? 0;
@@ -596,7 +604,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               ),
             ] else if (_selectedMode == OptimizationMode.multipleOrders) ...[
               Text(
-                'حدد الطلبيات المراد دمجها (${_selectedOrderIds.length}):',
+                '${Localization.translate('حدد الطلبيات المراد دمجها', lang)} (${_selectedOrderIds.length}):',
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -634,10 +642,10 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               DropdownButtonFormField<int>(
                 value: _rangeOrderId,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'الطلبية المحددة',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: InputDecoration(
+                  labelText: Localization.translate('الطلبية المحددة', lang),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
                 items: _allOrders.map((o) {
                   final id = (o['id'] as num?)?.toInt() ?? 0;
@@ -658,9 +666,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                     child: TextFormField(
                       initialValue: '$_rangeStartItemIndex',
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'من العنصر رقم',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate('من العنصر رقم', lang),
+                        border: const OutlineInputBorder(),
                       ),
                       onChanged: (val) => _rangeStartItemIndex = int.tryParse(val) ?? 1,
                     ),
@@ -670,10 +678,10 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                     child: TextFormField(
                       initialValue: _rangeEndItemIndex != null ? '$_rangeEndItemIndex' : '',
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'إلى نهاية الطلب',
-                        hintText: 'النهاية',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate('إلى نهاية الطلب', lang),
+                        hintText: Localization.translate('النهاية', lang),
+                        border: const OutlineInputBorder(),
                       ),
                       onChanged: (val) => _rangeEndItemIndex = int.tryParse(val),
                     ),
@@ -682,7 +690,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               ),
             ] else if (_selectedMode == OptimizationMode.customElements) ...[
               Text(
-                'اختر العناصر المطلوبة (${_selectedDetailIds.length} عنصر):',
+                '${Localization.translate('اختر العناصر المطلوبة', lang)} (${_selectedDetailIds.length}):',
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -707,13 +715,13 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                           title: Text(_getOrderName(id), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                           children: items.map((d) {
                             final dId = (d['id'] as num?)?.toInt() ?? 0;
-                            final wName = d['window_type'] ?? 'عنصر #$dId';
+                            final wName = d['window_type'] ?? '${Localization.translate('إطار', lang)} #$dId';
                             final qty = d['quantity'] ?? 1;
                             final isChecked = _selectedDetailIds.contains(dId);
                             return CheckboxListTile(
                               dense: true,
                               value: isChecked,
-                              title: Text('$wName (كمية: $qty)', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10)),
+                              title: Text('$wName (${Localization.translate('الكمية', lang)}: $qty)', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10)),
                               onChanged: (c) {
                                 setState(() {
                                   if (c == true) {
@@ -755,15 +763,15 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             const SizedBox(height: 12),
             DropdownButtonFormField<double>(
               value: _barLengthMm,
-              decoration: const InputDecoration(
-                labelText: 'طول البار الخام القياسي',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: InputDecoration(
+                labelText: Localization.translate('طول البار الخام القياسي', lang),
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               ),
-              items: const [
-                DropdownMenuItem(value: 6000.0, child: Text('6.00 متر (6000 مم)')),
-                DropdownMenuItem(value: 6500.0, child: Text('6.50 متر (6500 مم)')),
-                DropdownMenuItem(value: 5800.0, child: Text('5.80 متر (5800 مم)')),
+              items: [
+                DropdownMenuItem(value: 6000.0, child: Text('6.00 ${Localization.translate('متر', lang)} (6000 ${Localization.translate('مم', lang)})')),
+                DropdownMenuItem(value: 6500.0, child: Text('6.50 ${Localization.translate('متر', lang)} (6500 ${Localization.translate('مم', lang)})')),
+                DropdownMenuItem(value: 5800.0, child: Text('5.80 ${Localization.translate('متر', lang)} (5800 ${Localization.translate('مم', lang)})')),
               ],
               onChanged: (val) {
                 if (val != null) setState(() => _barLengthMm = val);
@@ -776,10 +784,10 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                   child: TextFormField(
                     initialValue: '$_sawKerfMm',
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'سماكة القرص (Kerf)',
-                      suffixText: 'مم',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('سماكة القرص (Kerf)', lang),
+                      suffixText: Localization.translate('مم', lang),
+                      border: const OutlineInputBorder(),
                     ),
                     onChanged: (val) {
                       final v = double.tryParse(val);
@@ -792,10 +800,10 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                   child: TextFormField(
                     initialValue: '$_chuteThresholdMm',
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'حد الفضلة الصالحة',
-                      suffixText: 'مم',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('حد الفضلة الصالحة', lang),
+                      suffixText: Localization.translate('مم', lang),
+                      border: const OutlineInputBorder(),
                     ),
                     onChanged: (val) {
                       final v = double.tryParse(val);
@@ -843,9 +851,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             children: [
               Expanded(
                 child: _buildMetricCard(
-                  title: 'إجمالي البارات',
-                  value: '${report.totalBars} بار',
-                  subtitle: 'طول ${_barLengthMm.toInt()} مم',
+                  title: Localization.translate('إجمالي البارات', lang),
+                  value: '${report.totalBars} ${Localization.translate('بار', lang)}',
+                  subtitle: '${Localization.translate('طول', lang)} ${_barLengthMm.toInt()} ${Localization.translate('مم', lang)}',
                   color: const Color(0xFF2563EB),
                   icon: Icons.view_column_rounded,
                   isDark: isDark,
@@ -854,9 +862,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: _buildMetricCard(
-                  title: 'عدد القطع المطلوبة',
-                  value: '${report.totalPieces} قطعة',
-                  subtitle: '${report.totalMetersUsed.toStringAsFixed(1)} متر طولي',
+                  title: Localization.translate('عدد القطع المطلوبة', lang),
+                  value: '${report.totalPieces} ${Localization.translate('قطعة', lang)}',
+                  subtitle: '${report.totalMetersUsed.toStringAsFixed(1)} ${Localization.translate('متر طولي', lang)}',
                   color: const Color(0xFF0D9488),
                   icon: Icons.straighten_rounded,
                   isDark: isDark,
@@ -865,9 +873,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: _buildMetricCard(
-                  title: 'نسبة الوفر والكفاءة',
+                  title: Localization.translate('نسبة الوفر والكفاءة', lang),
                   value: '${report.overallEfficiency.toStringAsFixed(1)}%',
-                  subtitle: 'استغلال أمثل',
+                  subtitle: Localization.translate('استغلال أمثل', lang),
                   color: const Color(0xFF10B981),
                   icon: Icons.trending_up_rounded,
                   isDark: isDark,
@@ -876,9 +884,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: _buildMetricCard(
-                  title: 'الفواضل الصالحة (≥${_chuteThresholdMm.toInt()}مم)',
-                  value: '${report.totalMetersUsableRemnants.toStringAsFixed(1)} م',
-                  subtitle: 'تُحفظ لإعادة الاستخدام',
+                  title: '${Localization.translate('الفواضل الصالحة', lang)} (≥${_chuteThresholdMm.toInt()}${Localization.translate('مم', lang)})',
+                  value: '${report.totalMetersUsableRemnants.toStringAsFixed(1)} ${Localization.translate('م', lang)}',
+                  subtitle: Localization.translate('تُحفظ لإعادة الاستخدام', lang),
                   color: const Color(0xFFF59E0B),
                   icon: Icons.inventory_2_rounded,
                   isDark: isDark,
@@ -894,7 +902,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             child: Row(
               children: [
                 ChoiceChip(
-                  label: const Text('الكل', style: TextStyle(fontFamily: 'Cairo')),
+                  label: Text(Localization.translate('الكل', lang), style: const TextStyle(fontFamily: 'Cairo')),
                   selected: _selectedProfileFilter == 'الكل',
                   onSelected: (s) => setState(() => _selectedProfileFilter = 'الكل'),
                 ),
@@ -903,7 +911,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
-                      label: Text('${g.profileName} (${g.barsNeeded} بار)', style: const TextStyle(fontFamily: 'Cairo')),
+                      label: Text('${g.profileName} (${g.barsNeeded} ${Localization.translate('بار', lang)})', style: const TextStyle(fontFamily: 'Cairo')),
                       selected: _selectedProfileFilter == g.profileName,
                       onSelected: (s) => setState(() => _selectedProfileFilter = g.profileName),
                     ),
@@ -947,7 +955,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      '${group.profileName} - لون (${group.color})',
+                      '${group.profileName} - ${Localization.translate('لون', lang)} (${group.color})',
                       style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                   ],
@@ -955,7 +963,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                 Chip(
                   backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
                   label: Text(
-                    'كفاءة: ${group.efficiencyPercentage.toStringAsFixed(1)}% | ${group.barsNeeded} بار',
+                    '${Localization.translate('كفاءة', lang)}: ${group.efficiencyPercentage.toStringAsFixed(1)}% | ${group.barsNeeded} ${Localization.translate('بار', lang)}',
                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF059669), fontSize: 12),
                   ),
                 ),
@@ -964,14 +972,14 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             const SizedBox(height: 14),
 
             // Bar Layouts
-            ...group.bars.map((bar) => _buildBarLayoutView(bar, isDark)),
+            ...group.bars.map((bar) => _buildBarLayoutView(bar, lang, isDark)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBarLayoutView(OptimizedBar bar, bool isDark) {
+  Widget _buildBarLayoutView(OptimizedBar bar, AppLanguage lang, bool isDark) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -987,13 +995,13 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'بار رقم #${bar.barNumber} (${bar.barLengthMm.toInt()} مم)',
+                '${Localization.translate('بار رقم', lang)} #${bar.barNumber} (${bar.barLengthMm.toInt()} ${Localization.translate('مم', lang)})',
                 style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text(
                 bar.isUsableRemnant
-                    ? 'فضل متبقي صالح: ${bar.remnantLengthMm.toInt()} مم'
-                    : 'رايش هدر: ${bar.remnantLengthMm.toInt()} مم',
+                    ? '${Localization.translate('فضل متبقي صالح:', lang)} ${bar.remnantLengthMm.toInt()} ${Localization.translate('مم', lang)}'
+                    : '${Localization.translate('رايش هدر:', lang)} ${bar.remnantLengthMm.toInt()} ${Localization.translate('مم', lang)}',
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 11,
@@ -1026,7 +1034,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                           ),
                           alignment: Alignment.center,
                           child: Text(
-                            '${cut.lengthMm.toInt()} مم',
+                            '${cut.lengthMm.toInt()} ${Localization.translate('مم', lang)}',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 10,
@@ -1048,8 +1056,8 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                             alignment: Alignment.center,
                             child: Text(
                               bar.isUsableRemnant
-                                  ? 'فضلة ${bar.remnantLengthMm.toInt()}'
-                                  : 'رايش ${bar.remnantLengthMm.toInt()}',
+                                  ? '${Localization.translate('فضلة', lang)} ${bar.remnantLengthMm.toInt()}'
+                                  : '${Localization.translate('رايش', lang)} ${bar.remnantLengthMm.toInt()}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,
@@ -1072,7 +1080,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             spacing: 8,
             children: bar.cuts.map((c) {
               return Text(
-                '• ${c.lengthMm.toInt()}مم (${c.piece.windowName})',
+                '• ${c.lengthMm.toInt()}${Localization.translate('مم', lang)} (${c.piece.windowName})',
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 11,

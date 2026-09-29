@@ -117,6 +117,39 @@ class ShutterBoxResolution {
   final double maximumSupportedHeight;
 }
 
+/// Represents one independent section of a split shutter box / curtain.
+class ShutterSplitSection {
+  final double width;
+  final double leftOffset;
+  final double? customHeight;
+  final String label;
+  final int? frameIndex;
+
+  const ShutterSplitSection({
+    required this.width,
+    required this.leftOffset,
+    this.customHeight,
+    this.label = '',
+    this.frameIndex,
+  });
+
+  Map<String, dynamic> toMap() => {
+    'width': width,
+    'leftOffset': leftOffset,
+    'customHeight': customHeight,
+    'label': label,
+    'frameIndex': frameIndex,
+  };
+
+  factory ShutterSplitSection.fromMap(Map<String, dynamic> map) => ShutterSplitSection(
+    width: (map['width'] as num?)?.toDouble() ?? 0.0,
+    leftOffset: (map['leftOffset'] as num?)?.toDouble() ?? 0.0,
+    customHeight: (map['customHeight'] as num?)?.toDouble(),
+    label: map['label']?.toString() ?? '',
+    frameIndex: (map['frameIndex'] as num?)?.toInt(),
+  );
+}
+
 /// Short codes saved in `KitBundles.description`. They are the stable source
 /// of truth for kit purpose; names remain free commercial labels.
 String normalizeKitDescriptionCode(dynamic raw) {
@@ -623,6 +656,7 @@ class AluminumSeries {
   /// that use this series will auto-enable slidingFaceToFace on their sliding
   /// zones (unless the user explicitly overrides it).
   final bool hasFaceToFace;
+  final String? reinforcementType;
   List<AluminumSection> sections;
 
   AluminumSeries({
@@ -632,6 +666,7 @@ class AluminumSeries {
     required this.type,
     this.hasThreePieceSash = false,
     this.hasFaceToFace = false,
+    this.reinforcementType,
     List<AluminumSection>? sections,
   }) : sections = sections ?? [];
 
@@ -643,6 +678,7 @@ class AluminumSeries {
       type: map['type'],
       hasThreePieceSash: (map['has_three_piece_sash'] ?? 0) == 1,
       hasFaceToFace: (map['has_face_to_face'] ?? 0) == 1,
+      reinforcementType: map['reinforcement_type']?.toString(),
     );
   }
 
@@ -3129,6 +3165,15 @@ class WindowModel extends ChangeNotifier {
   ReinforcementMode get autoReinforcementMode {
     final series = effectiveSlidingSeries ?? activeSeries;
     if (series != null) {
+      final explicitType = series.reinforcementType?.toLowerCase();
+      if (explicitType == 'full_substitution') {
+        return ReinforcementMode.fullSubstitution;
+      } else if (explicitType == 'chicane_combination') {
+        return ReinforcementMode.chicaneCombination;
+      } else if (explicitType == 'independent_screwed') {
+        return ReinforcementMode.independentScrewed;
+      }
+
       final sections = series.sections;
 
       // 1. Independent screwed renfort
@@ -4974,6 +5019,13 @@ class WindowModel extends ChangeNotifier {
   /// Junction indices between adjacent frames where 90° angle profile is installed.
   Set<int> profileAngleJunctions = <int>{};
   bool profileAngleJunctionsDisabled = false;
+  Map<String, dynamic>? _preProfileAngleFrameOverride;
+  Map<String, dynamic>? _preProfileAngleSlidingOverride;
+  bool _frameSwitchedForProfileAngle = false;
+  String? _profileAngleFrameSwitchNotice;
+
+  bool get frameSwitchedForProfileAngle => _frameSwitchedForProfileAngle;
+  String? get profileAngleFrameSwitchNotice => _profileAngleFrameSwitchNotice;
   int cacheRailLeftCount = 0;
   int cacheRailRightCount = 0;
 
@@ -5017,6 +5069,132 @@ class WindowModel extends ChangeNotifier {
   bool motorHasTelecommande = false;
 
   String shutterMechanism = 'حزام';
+
+  /// هل تم تفعيل فصل الصناديق
+  bool isShutterSplit = false;
+
+  /// وضع التقسيم: 'per_frame' (لكل إطار صندوقه) أو 'custom_divisions' (تقسيم يدوي)
+  String shutterSplitMode = 'per_frame';
+
+  /// أقسام الصناديق المقسمة
+  List<ShutterSplitSection> shutterSplits = [];
+
+  /// يعيد أقسام الصناديق الفعالة (إما الصناديق المقسمة أو صندوق واحد موحد)
+  List<ShutterSplitSection> get effectiveShutterSplits {
+    if (!hasShutter || !isShutterSplit || shutterSplits.isEmpty) {
+      return [
+        ShutterSplitSection(
+          width: width.toDouble(),
+          leftOffset: 0.0,
+          customHeight: customShutterBoxHeight,
+          label: 'صندوق موحد',
+        ),
+      ];
+    }
+    return shutterSplits;
+  }
+
+  /// فصل الصناديق تلقائياً لكل إطار (أو بناءً على فواصل 90 درجة)
+  void autoSplitShutterPerFrame() {
+    final frames = getFrameRects();
+    if (frames.length < 2) {
+      final half = (width / 2.0).roundToDouble();
+      splitShutterCustomDivisions([half, width - half], startFromRight: true);
+      return;
+    }
+
+    final sortedFrames = List<Rect>.from(frames)
+      ..sort((a, b) => a.left.compareTo(b.left));
+
+    final newSplits = <ShutterSplitSection>[];
+    for (int i = 0; i < sortedFrames.length; i++) {
+      final f = sortedFrames[i];
+      newSplits.add(
+        ShutterSplitSection(
+          width: f.width,
+          leftOffset: f.left,
+          customHeight: f.height < height ? math.max(150.0, f.height) : null,
+          label: 'صندوق إطار ${i + 1}',
+          frameIndex: i,
+        ),
+      );
+    }
+
+    isShutterSplit = true;
+    shutterSplitMode = 'per_frame';
+    shutterSplits = newSplits;
+    _saveSnapshot();
+    notifyListeners();
+  }
+
+  /// تقسيم الصندوق لإطار واحد بعدة عروض (البداية من اليمين كقاعدة أساسية)
+  void splitShutterCustomDivisions(List<double> widths, {bool startFromRight = true}) {
+    if (widths.isEmpty) return;
+    final totalW = width.toDouble();
+    final newSplits = <ShutterSplitSection>[];
+
+    if (startFromRight) {
+      double currentRight = totalW;
+      final temp = <ShutterSplitSection>[];
+      for (int i = 0; i < widths.length; i++) {
+        final w = widths[i];
+        final left = math.max(0.0, currentRight - w);
+        temp.add(
+          ShutterSplitSection(
+            width: w,
+            leftOffset: left,
+            label: 'صندوق ${i + 1}',
+          ),
+        );
+        currentRight = left;
+      }
+      temp.sort((a, b) => a.leftOffset.compareTo(b.leftOffset));
+      newSplits.addAll(temp);
+    } else {
+      double currentLeft = 0.0;
+      for (int i = 0; i < widths.length; i++) {
+        final w = widths[i];
+        newSplits.add(
+          ShutterSplitSection(
+            width: w,
+            leftOffset: currentLeft,
+            label: 'صندوق ${i + 1}',
+          ),
+        );
+        currentLeft += w;
+      }
+    }
+
+    isShutterSplit = true;
+    shutterSplitMode = 'custom_divisions';
+    shutterSplits = newSplits;
+    _saveSnapshot();
+    notifyListeners();
+  }
+
+  /// تخصيص أو تصغير ارتفاع الستار لصندوق/إطار معين
+  void setShutterSplitHeight(int index, double? newHeight) {
+    if (index < 0 || index >= shutterSplits.length) return;
+    final old = shutterSplits[index];
+    shutterSplits[index] = ShutterSplitSection(
+      width: old.width,
+      leftOffset: old.leftOffset,
+      customHeight: newHeight,
+      label: old.label,
+      frameIndex: old.frameIndex,
+    );
+    isShutterSplit = true;
+    _saveSnapshot();
+    notifyListeners();
+  }
+
+  /// دمج الصناديق والعودة لصندوق موحد
+  void resetShutterSplit() {
+    isShutterSplit = false;
+    shutterSplits.clear();
+    _saveSnapshot();
+    notifyListeners();
+  }
 
   // Belt shutters are left-driven by default. An explicit saved/user choice
   // still replaces this value during deserialization or from the UI.
@@ -16166,6 +16344,7 @@ class WindowModel extends ChangeNotifier {
         profileAngleJunctionsDisabled = true;
       }
     }
+    adaptFramesForProfileAngle();
     notifyListeners();
   }
 
@@ -16179,6 +16358,7 @@ class WindowModel extends ChangeNotifier {
       profileAngleJunctionsDisabled = true;
       profileAngleJunctions.clear();
     }
+    adaptFramesForProfileAngle();
     notifyListeners();
   }
 
@@ -16187,6 +16367,7 @@ class WindowModel extends ChangeNotifier {
     profileAngleMode = 0;
     profileAngleJunctionsDisabled = true;
     profileAngleJunctions.clear();
+    adaptFramesForProfileAngle();
     notifyListeners();
   }
 
@@ -16194,6 +16375,7 @@ class WindowModel extends ChangeNotifier {
     final next = mode.clamp(0, 3).toInt();
     _saveSnapshot();
     profileAngleMode = next;
+    adaptFramesForProfileAngle();
     notifyListeners();
   }
 
@@ -16207,6 +16389,114 @@ class WindowModel extends ChangeNotifier {
       }
     } else {
       setProfileAngleMode((profileAngleMode + 1) % 4);
+    }
+  }
+
+  /// Searches for a compatible frame section without integrated side cover (couvre-joint)
+  /// that matches the current frame's visible width (العرض الظاهر).
+  AluminumSection? findCompatibleNoCoverFrame({
+    required AluminumSection currentFrame,
+    bool sliding = false,
+  }) {
+    final series = sliding ? activeSlidingSeries : activeFrameSeries;
+    if (series == null) return null;
+
+    final targetVisibleWidth = currentFrame.visibleWidth > 0
+        ? currentFrame.visibleWidth
+        : (currentFrame.thickness > 0 ? currentFrame.thickness : profileThickness);
+
+    final candidateSections = series.sections.where((section) {
+      if (section.id == currentFrame.id) return false;
+      final type = section.type.toLowerCase();
+      final isCadre = section.isFrame || type == 'frame' || type.contains('cadre');
+      if (!isCadre) return false;
+
+      // Must NOT have integrated side cover
+      if (_sectionHasIntegratedSideCover(section)) return false;
+      if (section.couvreJointWidth > 0) return false;
+
+      return true;
+    }).toList();
+
+    if (candidateSections.isEmpty) return null;
+
+    // Sort candidates by closeness to targetVisibleWidth
+    candidateSections.sort((a, b) {
+      final aW = a.visibleWidth > 0 ? a.visibleWidth : (a.thickness > 0 ? a.thickness : 0.0);
+      final bW = b.visibleWidth > 0 ? b.visibleWidth : (b.thickness > 0 ? b.thickness : 0.0);
+      final diffA = (aW - targetVisibleWidth).abs();
+      final diffB = (bW - targetVisibleWidth).abs();
+      if ((diffA - diffB).abs() > 0.01) {
+        return diffA.compareTo(diffB);
+      }
+      return a.name.compareTo(b.name);
+    });
+
+    return candidateSections.first;
+  }
+
+  /// Automatically adapts frames touching corner profile by switching them
+  /// to a compatible frame without integrated cover and with matching visible width.
+  void adaptFramesForProfileAngle() {
+    if (usesProfileAngle) {
+      // Opening series frame check
+      final currentOpening = activeFrameOverride ?? getSectionByType('frame')?.toMap();
+      final bool openingHasCover = _overrideHasIntegratedSideCover(currentOpening) ||
+          (currentOpening != null && ((currentOpening['couvre_joint_width'] as num?)?.toDouble() ?? 0) > 0);
+
+      if (openingHasCover && currentOpening != null && activeFrameSeries != null) {
+        final currentSec = AluminumSection.fromMap(currentOpening);
+        final compatible = findCompatibleNoCoverFrame(
+          currentFrame: currentSec,
+          sliding: false,
+        );
+        if (compatible != null) {
+          if (!_frameSwitchedForProfileAngle) {
+            _preProfileAngleFrameOverride = currentOpening;
+          }
+          final override = compatible.toMap();
+          override['manual_selection'] = true;
+          applyFrameOverride(override, sliding: false);
+          _frameSwitchedForProfileAngle = true;
+          _profileAngleFrameSwitchNotice = compatible.name;
+        }
+      }
+
+      // Sliding series frame check
+      final currentSliding = slidingFrameOverride ?? getSlidingBaseFrameSection()?.toMap();
+      final bool slidingHasCover = _overrideHasIntegratedSideCover(currentSliding) ||
+          (currentSliding != null && ((currentSliding['couvre_joint_width'] as num?)?.toDouble() ?? 0) > 0);
+
+      if (slidingHasCover && currentSliding != null && activeSlidingSeries != null) {
+        final currentSec = AluminumSection.fromMap(currentSliding);
+        final compatible = findCompatibleNoCoverFrame(
+          currentFrame: currentSec,
+          sliding: true,
+        );
+        if (compatible != null) {
+          if (!_frameSwitchedForProfileAngle) {
+            _preProfileAngleSlidingOverride = currentSliding;
+          }
+          final override = compatible.toMap();
+          override['manual_selection'] = true;
+          applyFrameOverride(override, sliding: true);
+          _frameSwitchedForProfileAngle = true;
+          _profileAngleFrameSwitchNotice = compatible.name;
+        }
+      }
+    } else {
+      if (_frameSwitchedForProfileAngle) {
+        if (_preProfileAngleFrameOverride != null) {
+          applyFrameOverride(_preProfileAngleFrameOverride!, sliding: false);
+          _preProfileAngleFrameOverride = null;
+        }
+        if (_preProfileAngleSlidingOverride != null) {
+          applyFrameOverride(_preProfileAngleSlidingOverride!, sliding: true);
+          _preProfileAngleSlidingOverride = null;
+        }
+        _frameSwitchedForProfileAngle = false;
+        _profileAngleFrameSwitchNotice = null;
+      }
     }
   }
 
