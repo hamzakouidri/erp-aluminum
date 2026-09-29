@@ -24,8 +24,8 @@ class DesktopScrollCoordinator {
   DesktopScrollCoordinator._();
 
   static final Set<_DesktopScrollableRegistration> _registrations = {};
-  static final Map<PointerSignalEvent, Set<_DesktopScrollableRegistration>>
-  _hits = {};
+  static final Map<PointerEvent, Set<_DesktopScrollableRegistration>> _hits =
+      {};
   static Offset? _lastPointerPosition;
 
   static void _register(_DesktopScrollableRegistration registration) {
@@ -44,15 +44,19 @@ class DesktopScrollCoordinator {
     PointerSignalEvent event,
   ) {
     if (event is! PointerScrollEvent) return;
+    // Hit-test transforms create separate event wrappers for the same wheel
+    // tick. Use the original event, as Flutter's signal resolver does, so
+    // translated descendants and the root listener share the same hit list.
+    final eventKey = event.original ?? event;
     if (_hits.length > 40) {
       _hits.clear();
     }
     _hits
-        .putIfAbsent(event, () => <_DesktopScrollableRegistration>{})
+        .putIfAbsent(eventKey, () => <_DesktopScrollableRegistration>{})
         .add(registration);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _hits.remove(event);
+      _hits.remove(eventKey);
     });
   }
 
@@ -66,7 +70,8 @@ class DesktopScrollCoordinator {
 
     try {
       final markedTargets =
-          _hits.remove(event) ?? <_DesktopScrollableRegistration>{};
+          _hits.remove(event.original ?? event) ??
+          <_DesktopScrollableRegistration>{};
       final hitTargets = <_DesktopScrollableRegistration>{...markedTargets};
       if (hitTargets.isEmpty) return;
 
@@ -100,7 +105,8 @@ class DesktopScrollCoordinator {
         if (candidate.axis != requestedAxis) continue;
         if (candidate.canMove(delta)) {
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-            if (_registrations.contains(candidate) && candidate.canMove(delta)) {
+            if (_registrations.contains(candidate) &&
+                candidate.canMove(delta)) {
               candidate.controller.position.pointerScroll(delta);
             }
           });
@@ -111,7 +117,8 @@ class DesktopScrollCoordinator {
       for (final candidate in candidates) {
         if (candidate.canMove(delta)) {
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-            if (_registrations.contains(candidate) && candidate.canMove(delta)) {
+            if (_registrations.contains(candidate) &&
+                candidate.canMove(delta)) {
               candidate.controller.position.pointerScroll(delta);
             }
           });
@@ -322,7 +329,8 @@ class _DesktopScrollableRegistration {
     var hidden = false;
     try {
       context.visitAncestorElements((element) {
-        if (element.widget is Offstage && (element.widget as Offstage).offstage) {
+        if (element.widget is Offstage &&
+            (element.widget as Offstage).offstage) {
           hidden = true;
           return false;
         }

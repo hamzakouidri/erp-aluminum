@@ -2487,7 +2487,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final creator = _formatCreatorDisplay(
         order['creation_platform']?.toString(),
       );
-      final assignedWorkers = _assignedWorkersMap[orderId] ?? 'غير مُسند';
+      final assignedWorkers = _assignedWorkersMap[orderId] ??
+          _desktopText(lang, 'غير مُسند', 'Non assigné', 'Unassigned');
 
       return ResizableTableRow(
         onTap: _openOrders,
@@ -2666,7 +2667,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final creator = _formatCreatorDisplay(
       order['creation_platform']?.toString(),
     );
-    final assignedWorkers = _assignedWorkersMap[orderId] ?? 'غير مُسند';
+    final assignedWorkers = _assignedWorkersMap[orderId] ??
+        _desktopText(lang, 'غير مُسند', 'Non assigné', 'Unassigned');
 
     return Material(
       color: Colors.transparent,

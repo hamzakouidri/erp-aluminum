@@ -2505,6 +2505,7 @@ class _CommandeState extends State<Commande> {
                               items: items,
                               workshopName: workshop.name,
                               db: db,
+                              language: lang,
                             );
                         if (!mounted) return;
                         final orderId2 = orderData['id']?.toString() ?? '';

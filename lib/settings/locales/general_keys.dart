@@ -6737,4 +6737,249 @@ This action cannot be undone!''',
     AppLanguage.french: 'Séries par défaut enregistrées avec succès',
     AppLanguage.english: 'Default series saved successfully',
   },
+  'Seuil (بروفيل C)': {
+    AppLanguage.arabic: 'بروفيل C (Seuil)',
+    AppLanguage.french: 'Seuil (profil C)',
+    AppLanguage.english: 'Threshold (C profile)',
+  },
+  'مفعل حتميًا حسب قواعد السلسلة': {
+    AppLanguage.arabic: 'مفعل حتميًا حسب قواعد السلسلة',
+    AppLanguage.french: 'Activé selon les règles de la série',
+    AppLanguage.english: 'Required by series rules',
+  },
+  'يستبدل الإطار السفلي': {
+    AppLanguage.arabic: 'يستبدل الإطار السفلي',
+    AppLanguage.french: 'Remplace le dormant bas',
+    AppLanguage.english: 'Replaces bottom frame',
+  },
+  'تفعيل الكانيفو (Système C zéro)': {
+    AppLanguage.arabic: 'تفعيل الكانيفو (Système C zéro)',
+    AppLanguage.french: 'Activer Caniveau (Système C zéro)',
+    AppLanguage.english: 'Enable Caniveau (C-zero system)',
+  },
+  'غير متاح مع بروفيل C / Seuil': {
+    AppLanguage.arabic: 'غير متاح مع بروفيل C / Seuil',
+    AppLanguage.french: 'Non disponible avec Seuil (profil C)',
+    AppLanguage.english: 'Not available with Seuil (C profile)',
+  },
+  'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً': {
+    AppLanguage.arabic: 'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً',
+    AppLanguage.french: 'Nécessite le dormant bas et ajoute capot et bouchon',
+    AppLanguage.english: 'Requires bottom frame and auto-adds cover and cap',
+  },
+  'البافيت (Bavette)': {
+    AppLanguage.arabic: 'البافيت (Bavette)',
+    AppLanguage.french: 'Bavette',
+    AppLanguage.english: 'Bavette',
+  },
+  'أسفل فقط': {
+    AppLanguage.arabic: 'أسفل فقط',
+    AppLanguage.french: 'Bas uniquement',
+    AppLanguage.english: 'Bottom only',
+  },
+  'الجهات الأربع': {
+    AppLanguage.arabic: 'الجهات الأربع',
+    AppLanguage.french: '4 Côtés',
+    AppLanguage.english: '4 Sides',
+  },
+  'كاش الإطار (Cache dormant)': {
+    AppLanguage.arabic: 'كاش الإطار (Cache dormant)',
+    AppLanguage.french: 'Cache dormant',
+    AppLanguage.english: 'Frame cover (Cache dormant)',
+  },
+  'يتبع فقط جهات الإطار الموجودة': {
+    AppLanguage.arabic: 'يتبع فقط جهات الإطار الموجودة',
+    AppLanguage.french: 'Suit uniquement les côtés du dormant existants',
+    AppLanguage.english: 'Follows only existing frame sides',
+  },
+  'تراينغل (Triangle)': {
+    AppLanguage.arabic: 'تراينغل (Triangle)',
+    AppLanguage.french: 'Triangle',
+    AppLanguage.english: 'Triangle',
+  },
+  'استعمال اختياري حسب ربط الأكسيسوار': {
+    AppLanguage.arabic: 'استعمال اختياري حسب ربط الأكسيسوار',
+    AppLanguage.french: 'Optionnel selon la liaison de l’accessoire',
+    AppLanguage.english: 'Optional depending on accessory link',
+  },
+  'تدعيم المونطو والأعمدة (Renfort)': {
+    AppLanguage.arabic: 'تدعيم المونطو والأعمدة',
+    AppLanguage.french: 'Renfort des montants',
+    AppLanguage.english: 'Montant reinforcement',
+  },
+  'تدعيم المونطو والأعمدة': {
+    AppLanguage.arabic: 'تدعيم المونطو والأعمدة',
+    AppLanguage.french: 'Renfort des montants',
+    AppLanguage.english: 'Montant reinforcement',
+  },
+  'قاعدة التدعيم (Règle de Renfort):': {
+    AppLanguage.arabic: 'قاعدة التدعيم:',
+    AppLanguage.french: 'Règle de renfort :',
+    AppLanguage.english: 'Reinforcement rule:',
+  },
+  'قاعدة التدعيم:': {
+    AppLanguage.arabic: 'قاعدة التدعيم:',
+    AppLanguage.french: 'Règle de renfort :',
+    AppLanguage.english: 'Reinforcement rule:',
+  },
+  'قاعدة التدعيم': {
+    AppLanguage.arabic: 'قاعدة التدعيم',
+    AppLanguage.french: 'Règle de renfort',
+    AppLanguage.english: 'Reinforcement rule',
+  },
+  'هذه السلسلة تدعم الأعمدة المدعمة': {
+    AppLanguage.arabic: 'هذه السلسلة تدعم الأعمدة المدعمة',
+    AppLanguage.french: 'Cette série supporte les montants renforcés',
+    AppLanguage.english: 'This series supports reinforced montants',
+  },
+  'لا توجد مقابض مفعّلة لهذه السلسلة': {
+    AppLanguage.arabic: 'لا توجد مقابض مفعّلة لهذه السلسلة',
+    AppLanguage.french: 'Aucune poignée activée pour cette série',
+    AppLanguage.english: 'No handles enabled for this series',
+  },
+  'لا توجد إطارات متوفرة لهذه السلسلة': {
+    AppLanguage.arabic: 'لا توجد إطارات متوفرة لهذه السلسلة',
+    AppLanguage.french: 'Aucun dormant disponible pour cette série',
+    AppLanguage.english: 'No frames available for this series',
+  },
+  'لا توجد درف متوفرة لهذه السلسلة': {
+    AppLanguage.arabic: 'لا توجد درف متوفرة لهذه السلسلة',
+    AppLanguage.french: 'Aucun ouvrant disponible pour cette série',
+    AppLanguage.english: 'No sashes available for this series',
+  },
+  'بروفيل الزاوية 90° (Tube carré)': {
+    AppLanguage.arabic: 'بروفيل الزاوية 90° (تيبيكاري)',
+    AppLanguage.french: 'Profilé d\'angle 90° (Tube carré)',
+    AppLanguage.english: '90° Angle Profile (Square Tube)',
+  },
+  'بروفيل الزاوية 90° (Profil d\'angle / Tube carré)': {
+    AppLanguage.arabic: 'بروفيل الزاوية 90° (تيبيكاري)',
+    AppLanguage.french: 'Profilé d\'angle 90° (Tube carré)',
+    AppLanguage.english: '90° Angle Profile (Square Tube)',
+  },
+  'حدد الفواصل بين الإطارات المتلاصقة التي يركب فيها أنبوب الزاوية 90°:': {
+    AppLanguage.arabic: 'حدد الفواصل بين الإطارات المتلاصقة التي يركب فيها أنبوب الزاوية 90°:',
+    AppLanguage.french: 'Sélectionnez les jonctions entre cadres recevant le tube d\'angle 90° :',
+    AppLanguage.english: 'Select junctions between frames receiving 90° angle tube:',
+  },
+  'إلغاء بروفيل الزاوية بين الإطارات (إيقاف)': {
+    AppLanguage.arabic: 'إلغاء بروفيل الزاوية بين الإطارات (إيقاف)',
+    AppLanguage.french: 'Désactiver le tube d\'angle entre cadres',
+    AppLanguage.english: 'Disable angle tube between frames',
+  },
+  'بدون أي أنبوب زاوية بين الإطارات المتلاصقة': {
+    AppLanguage.arabic: 'بدون أي أنبوب زاوية بين الإطارات المتلاصقة',
+    AppLanguage.french: 'Aucun tube d\'angle entre les cadres adjacents',
+    AppLanguage.english: 'No angle tube between adjacent frames',
+  },
+  'أطراف الإطار الخارجية (يمين / يسار):': {
+    AppLanguage.arabic: 'أطراف الإطار الخارجية (يمين / يسار):',
+    AppLanguage.french: 'Extrémités extérieures du cadre (droite / gauche) :',
+    AppLanguage.english: 'Outer frame edges (right / left):',
+  },
+  'اختر جهة تركيب بروفيل الزاوية 90°:': {
+    AppLanguage.arabic: 'اختر جهة تركيب بروفيل الزاوية 90°:',
+    AppLanguage.french: 'Choisissez le côté de pose du profilé d\'angle 90° :',
+    AppLanguage.english: 'Choose placement side for 90° angle profile:',
+  },
+  'بدون زاوية على الأطراف الخارجية': {
+    AppLanguage.arabic: 'بدون زاوية على الأطراف الخارجية',
+    AppLanguage.french: 'Sans cornière sur les extrémités extérieures',
+    AppLanguage.english: 'No angle on outer edges',
+  },
+  'إيقاف / بدون بروفيل زاوية': {
+    AppLanguage.arabic: 'إيقاف / بدون بروفيل زاوية',
+    AppLanguage.french: 'Désactivé / Sans profilé d\'angle',
+    AppLanguage.english: 'Disabled / No angle profile',
+  },
+  'جهة اليمين (90° Droite)': {
+    AppLanguage.arabic: 'جهة اليمين (90° يمين)',
+    AppLanguage.french: 'Côté droit (90° Droite)',
+    AppLanguage.english: 'Right side (90° Right)',
+  },
+  'أنبوب زاوية 90° على القائم الأيمن الخارجي': {
+    AppLanguage.arabic: 'أنبوب زاوية 90° على القائم الأيمن الخارجي',
+    AppLanguage.french: 'Tube d\'angle 90° sur montant droit extérieur',
+    AppLanguage.english: '90° angle tube on outer right montant',
+  },
+  'جهة اليسار (90° Gauche)': {
+    AppLanguage.arabic: 'جهة اليسار (90° يسار)',
+    AppLanguage.french: 'Côté gauche (90° Gauche)',
+    AppLanguage.english: 'Left side (90° Left)',
+  },
+  'أنبوب زاوية 90° على القائم الأيسر الخارجي': {
+    AppLanguage.arabic: 'أنبوب زاوية 90° على القائم الأيسر الخارجي',
+    AppLanguage.french: 'Tube d\'angle 90° sur montant gauche extérieur',
+    AppLanguage.english: '90° angle tube on outer left montant',
+  },
+  'الجهتين معاً (90° Les deux côtés)': {
+    AppLanguage.arabic: 'الجهتين معاً (90° الطرفين)',
+    AppLanguage.french: 'Les deux côtés (90° Droite et Gauche)',
+    AppLanguage.english: 'Both sides (90° Right and Left)',
+  },
+  'أنبوب زاوية 90° على القائمين الخارجيين': {
+    AppLanguage.arabic: 'أنبوب زاوية 90° على القائمين الخارجيين',
+    AppLanguage.french: 'Tube d\'angle 90° sur les deux montants extérieurs',
+    AppLanguage.english: '90° angle tube on both outer montants',
+  },
+  'أنبوب زاوية 90° على كلا الجانبين الأيمن والأيسر': {
+    AppLanguage.arabic: 'أنبوب زاوية 90° على كلا الجانبين الأيمن والأيسر',
+    AppLanguage.french: 'Tube d\'angle 90° sur les deux côtés droit et gauche',
+    AppLanguage.english: '90° angle tube on both right and left sides',
+  },
+  'عمود تدعيم مستقل (Profilé Renfort Rapporté)': {
+    AppLanguage.arabic: 'عمود تدعيم مستقل',
+    AppLanguage.french: 'Profilé Renfort Rapporté',
+    AppLanguage.english: 'Independent Renfort Profile',
+  },
+  'عمود تدعيم مستقل': {
+    AppLanguage.arabic: 'عمود تدعيم مستقل',
+    AppLanguage.french: 'Profilé Renfort Rapporté',
+    AppLanguage.english: 'Independent Renfort Profile',
+  },
+  'Profilé Renfort Rapporté': {
+    AppLanguage.arabic: 'عمود تدعيم مستقل',
+    AppLanguage.french: 'Profilé Renfort Rapporté',
+    AppLanguage.english: 'Independent Renfort Profile',
+  },
+  'براغي تثبيت العمود المدعم 3.9×38 (Vis Renfort 3.9×38)': {
+    AppLanguage.arabic: 'براغي تثبيت العمود المدعم 3.9×38',
+    AppLanguage.french: 'Vis Renfort 3.9×38',
+    AppLanguage.english: 'Reinforcement Screws 3.9×38',
+  },
+  'Vis Renfort 3.9×38': {
+    AppLanguage.arabic: 'براغي تثبيت العمود المدعم 3.9×38',
+    AppLanguage.french: 'Vis Renfort 3.9×38',
+    AppLanguage.english: 'Reinforcement Screws 3.9×38',
+  },
+  'أغطية العمود المدعم (Caches Renfort)': {
+    AppLanguage.arabic: 'أغطية العمود المدعم',
+    AppLanguage.french: 'Caches Renfort',
+    AppLanguage.english: 'Reinforcement End Caps',
+  },
+  'Caches Renfort': {
+    AppLanguage.arabic: 'أغطية العمود المدعم',
+    AppLanguage.french: 'Caches Renfort',
+    AppLanguage.english: 'Reinforcement End Caps',
+  },
+  'شيكان معزز (Chicane Renforcée)': {
+    AppLanguage.arabic: 'شيكان معزز',
+    AppLanguage.french: 'Chicane Renforcée',
+    AppLanguage.english: 'Reinforced Chicane',
+  },
+  'Chicane Renforcée': {
+    AppLanguage.arabic: 'شيكان معزز',
+    AppLanguage.french: 'Chicane Renforcée',
+    AppLanguage.english: 'Reinforced Chicane',
+  },
+  'غير مُسند': {
+    AppLanguage.arabic: 'غير مُسند',
+    AppLanguage.french: 'Non assigné',
+    AppLanguage.english: 'Unassigned',
+  },
+  'غير مسند': {
+    AppLanguage.arabic: 'غير مسند',
+    AppLanguage.french: 'Non assigné',
+    AppLanguage.english: 'Unassigned',
+  },
 };

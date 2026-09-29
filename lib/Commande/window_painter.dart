@@ -1706,27 +1706,9 @@ class WindowPainter extends CustomPainter {
           return cmp != 0 ? cmp : a.top.compareTo(b.top);
         });
 
-      // Build inset map: sortedFrameIndex → {leftInset, rightInset}
-      final Map<int, double> leftInset = {};
-      final Map<int, double> rightInset = {};
-      for (final j in junctions) {
-        if (activeJunctions.contains(j.index)) {
-          rightInset[j.firstFrameIndex] =
-              (rightInset[j.firstFrameIndex] ?? 0.0) + tubeW / 2.0;
-          leftInset[j.secondFrameIndex] =
-              (leftInset[j.secondFrameIndex] ?? 0.0) + tubeW / 2.0;
-        }
-      }
-
       for (int si = 0; si < sortedFrames.length; si++) {
         final r = sortedFrames[si];
-        final lIn = leftInset[si] ?? 0.0;
-        final rIn = rightInset[si] ?? 0.0;
-
-        // Adjusted frame rect: pulled inward on touching sides.
-        final rAdj = (lIn > 0 || rIn > 0)
-            ? Rect.fromLTRB(r.left + lIn, r.top, r.right - rIn, r.bottom)
-            : r;
+        final rAdj = r;
 
         // A frame rectangle already starts below the shutter box.  Drawing it
         // with the global [topOffset] after translating only partly on Y made
@@ -2112,13 +2094,12 @@ class WindowPainter extends CustomPainter {
     final activeJunctions = model.activeProfileAngleJunctions;
     for (final j in junctions) {
       if (activeJunctions.contains(j.index)) {
-        // The two adjacent frames were each pulled back by tubeW/2 on their
-        // touching sides in _drawOuterFrames.  The tube therefore sits in the
-        // gap from (firstFrame.right - tubeW/2) to (secondFrame.left + tubeW/2).
-        // When the frames are perfectly touching (first.right == second.left)
-        // this equals j.x - tubeW/2 … j.x + tubeW/2 — centred at the seam.
-        final gapLeft = j.firstFrame.right - tubeW / 2.0;
-        final gapRight = j.secondFrame.left + tubeW / 2.0;
+        double gapLeft = math.min(j.firstFrame.right, j.secondFrame.left);
+        double gapRight = math.max(j.firstFrame.right, j.secondFrame.left);
+        if ((gapRight - gapLeft).abs() < 1.0) {
+          gapLeft = j.x - tubeW / 2.0;
+          gapRight = j.x + tubeW / 2.0;
+        }
         final rect = Rect.fromLTRB(gapLeft, j.top, gapRight, j.bottom);
         drawTubeAt(rect, isJunction: true);
       }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -13,6 +14,7 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:database_data/Commande/window_painter.dart';
+import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
@@ -683,6 +685,9 @@ class AggregatedGoodItem {
   final String? colorName;
   final double? stockLength;
   final double? glassHeight;
+  int pieceCount;
+  WindowModel? sourceModel;
+  Uint8List? drawingSnapshot;
   int? catalogItemId;
   final String? inventoryItemType;
   int? colorId;
@@ -709,6 +714,9 @@ class AggregatedGoodItem {
     this.colorName,
     this.stockLength,
     this.glassHeight,
+    this.pieceCount = 0,
+    this.sourceModel,
+    this.drawingSnapshot,
     this.catalogItemId,
     this.inventoryItemType,
     this.colorId,
@@ -723,10 +731,30 @@ class AggregatedGoodItem {
     BomItem bom,
     double purchaseQty,
     double bomCost,
-    bool usesOrderCutting,
-  ) {
+    bool usesOrderCutting, {
+    WindowModel? model,
+  }) {
     totalCost += bomCost;
     totalQuantity += purchaseQty;
+    if (bom.pieceCount != null && bom.pieceCount! > 0) {
+      pieceCount += bom.pieceCount!;
+    } else if (unit.trim().toLowerCase() == 'قطعة' ||
+        unit.trim().toLowerCase() == 'piece') {
+      pieceCount += purchaseQty.round();
+    } else if (category == 'glass') {
+      pieceCount += 1;
+    }
+    if (sourceModel == null && model != null) {
+      sourceModel = model;
+    } else if (model != null &&
+        model.zones.any((z) =>
+            z.glass.decorH > 0 ||
+            z.glass.decorV > 0 ||
+            z.glass.hasRosettes ||
+            z.glass.decorBaguetteId != null ||
+            z.glass.decorRosetteId != null)) {
+      sourceModel = model;
+    }
     if (usesOrderCutting && bom.pieces != null && bom.pieces!.isNotEmpty) {
       cuttingPieces.addAll(bom.pieces!);
     }
@@ -780,37 +808,441 @@ class OrderRequiredGoodsScreen extends StatefulWidget {
 
 class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   Future<void> _printRequiredGoods() async {
-    final detailed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('طباعة الكمية المطلوبة'),
-      content: const Text('كيف تريد عرض الكيت في التقرير؟'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('باسم الكيت')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('بالعناصر المفصلة')),
-      ],
-    ));
+    final isFrench = _currentLang == AppLanguage.french;
+    final detailed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isFrench ? 'Imprimer les besoins en matières' : 'طباعة الكمية المطلوبة'),
+        content: Text(
+          isFrench
+              ? 'Comment souhaitez-vous afficher les Kits dans le rapport ?'
+              : 'كيف تريد عرض الكيت في التقرير؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(isFrench ? 'Par nom de Kit' : 'باسم الكيت'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(isFrench ? 'Avec éléments détaillés' : 'بالعناصر المفصلة'),
+          ),
+        ],
+      ),
+    );
     if (detailed == null || !mounted) return;
+
     final fonts = await PdfFontCache.load();
-    final rows = <List<String>>[];
-    for (final item in _aggregatedItems) {
-      rows.add([item.category, item.name, item.totalQuantity.toStringAsFixed(2), item.unit]);
-      if (detailed && item.kitGroupName != null) {
-        for (final child in item.kitSubItems) {
-          rows.add(['', '${item.name} / ${child.name}', child.purchaseQuantity.toStringAsFixed(2), child.unit]);
+    final isRtl = !isFrench;
+    final textDir = isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr;
+
+    final clientName = (widget.orderData['client_name'] ??
+            widget.orderData['nom_client'] ??
+            '')
+        .toString()
+        .trim();
+    final orderDate = (widget.orderData['date'] ??
+            widget.orderData['date_commande'] ??
+            '')
+        .toString()
+        .trim();
+
+    // Group items by category
+    final profiles = _aggregatedItems.where((i) => i.category == 'profile').toList();
+    final accessories = _aggregatedItems.where((i) => i.category == 'accessory').toList();
+    final glassItems = _aggregatedItems.where((i) => i.category == 'glass').toList();
+    final shutters = _aggregatedItems.where((i) => i.category == 'shutter').toList();
+    final joints = _aggregatedItems.where((i) => i.category == 'joint').toList();
+    final otherItems = _aggregatedItems
+        .where((i) =>
+            i.category != 'profile' &&
+            i.category != 'accessory' &&
+            i.category != 'glass' &&
+            i.category != 'shutter' &&
+            i.category != 'joint')
+        .toList();
+
+    // Capture glass drawings if available
+    final glassImages = <String, Uint8List>{};
+    for (final g in glassItems) {
+      if (g.sourceModel != null) {
+        final key = '${g.stockLength?.round()}_${g.glassHeight?.round()}';
+        if (!glassImages.containsKey(key)) {
+          try {
+            final bytes = await captureWindowImage(
+              g.sourceModel!,
+              maxSide: 450,
+              showDrawingDimensions: true,
+            );
+            glassImages[key] = bytes;
+          } catch (_) {}
         }
       }
     }
+
+    pw.Widget buildSectionHeader(String title, PdfColor color) {
+      return pw.Container(
+        margin: const pw.EdgeInsets.only(top: 14, bottom: 6),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: pw.BoxDecoration(
+          color: color,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+        ),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              title,
+              style: pw.TextStyle(
+                color: PdfColors.white,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final pdf = pw.Document();
-    pdf.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      textDirection: pw.TextDirection.rtl,
-      theme: pw.ThemeData.withFont(base: fonts.regular, bold: fonts.bold),
-      build: (_) => [
-        pw.Text('الكمية المطلوبة - الطلبية ${widget.orderData['id']}'),
-        pw.SizedBox(height: 12),
-        pw.TableHelper.fromTextArray(headers: ['الفئة', 'العنصر', 'الكمية', 'الوحدة'], data: rows),
-      ],
-    ));
-    await Printing.layoutPdf(onLayout: (_) => pdf.save(), name: 'Required_goods_${widget.orderData['id']}.pdf');
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        textDirection: textDir,
+        theme: pw.ThemeData.withFont(base: fonts.regular, bold: fonts.bold),
+        build: (ctx) {
+          final content = <pw.Widget>[];
+
+          // Header
+          content.add(
+            pw.Container(
+              padding: const pw.EdgeInsets.only(bottom: 10),
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(color: PdfColors.grey400, width: 1.5),
+                ),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: isRtl
+                        ? pw.CrossAxisAlignment.end
+                        : pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        isFrench
+                            ? 'Besoins en Matières - Commande N° ${widget.orderData['id']}'
+                            : 'الكميات والمواد المطلوبة - الطلبية رقم ${widget.orderData['id']}',
+                        style: pw.TextStyle(
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.indigo900,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        isFrench
+                            ? 'Client: ${clientName.isNotEmpty ? clientName : "-"}   •   Date: ${orderDate.isNotEmpty ? orderDate : "-"}'
+                            : 'الزبون: ${clientName.isNotEmpty ? clientName : "-"}   •   التاريخ: ${orderDate.isNotEmpty ? orderDate : "-"}',
+                        style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                      ),
+                    ],
+                  ),
+                  pw.Text(
+                    '${_aggregatedItems.length} ${isFrench ? "articles" : "سلعة"}',
+                    style: pw.TextStyle(
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.indigo700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+          // 1. PROFILES SECTION
+          if (profiles.isNotEmpty) {
+            content.add(
+              buildSectionHeader(
+                isFrench ? '1. PROFILÉS ALUMINIUM' : '1. البروفيلات (قطاعات الألمنيوم)',
+                PdfColors.blueGrey800,
+              ),
+            );
+            final pRows = <List<String>>[];
+            for (final p in profiles) {
+              pRows.add([
+                p.profileCode ?? '-',
+                p.name,
+                p.colorName ?? '-',
+                _purchaseQuantityLabel(p),
+                p.stockLength != null && p.stockLength! > 0
+                    ? '${p.stockLength!.toStringAsFixed(2)} m'
+                    : '-',
+              ]);
+            }
+            content.add(
+              pw.TableHelper.fromTextArray(
+                headers: isFrench
+                    ? ['Code', 'Désignation', 'Couleur', 'Quantité (Barres)', 'Longueur']
+                    : ['الكود', 'اسم القطاع', 'اللون', 'كمية الشراء', 'طول القطاع'],
+                data: pRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey700),
+                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              ),
+            );
+          }
+
+          // 2. ACCESSORIES SECTION
+          if (accessories.isNotEmpty) {
+            content.add(
+              buildSectionHeader(
+                isFrench ? '2. ACCESSOIRES & QUINCAILLERIE' : '2. الإكسسوارات والمستلزمات',
+                PdfColors.teal800,
+              ),
+            );
+            final aRows = <List<String>>[];
+            for (final a in accessories) {
+              aRows.add([
+                a.profileCode ?? '-',
+                a.name,
+                a.colorName ?? '-',
+                _roundQuantity(a.totalQuantity, a.unit),
+                isFrench ? (a.unit == 'قطعة' ? 'U' : a.unit) : a.unit,
+              ]);
+              if (detailed && a.kitGroupName != null) {
+                for (final sub in a.kitSubItems) {
+                  aRows.add([
+                    sub.profileCode ?? '',
+                    '   • ${sub.name}',
+                    sub.colorName ?? '-',
+                    _roundQuantity(sub.purchaseQuantity, sub.unit),
+                    isFrench ? (sub.unit == 'قطعة' ? 'U' : sub.unit) : sub.unit,
+                  ]);
+                }
+              }
+            }
+            content.add(
+              pw.TableHelper.fromTextArray(
+                headers: isFrench
+                    ? ['Réf / Code', 'Désignation', 'Couleur', 'Quantité', 'Unité']
+                    : ['الكود / المرجع', 'اسم الملحق', 'اللون', 'الكمية', 'الوحدة'],
+                data: aRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.teal700),
+                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              ),
+            );
+          }
+
+          // 3. GLASS SECTION (Real cut dimensions, piece counts, decor & diagrams)
+          if (glassItems.isNotEmpty) {
+            content.add(
+              buildSectionHeader(
+                isFrench
+                    ? '3. VITRAGE (DIMENSIONS RÉELLES DE COUPE & DÉCOR)'
+                    : '3. الزجاج (مقاسات التقطيع الحقيقية والديكور الداخلي)',
+                PdfColors.cyan900,
+              ),
+            );
+            final gRows = <List<String>>[];
+            for (final g in glassItems) {
+              final dims = (g.stockLength != null && g.glassHeight != null && g.stockLength! > 0 && g.glassHeight! > 0)
+                  ? '${g.stockLength!.round()} × ${g.glassHeight!.round()} mm'
+                  : '-';
+              final pieces = '${g.pieceCount > 0 ? g.pieceCount : 1}';
+              final sqm = '${_roundQuantity(g.totalQuantity, 'm²')} m²';
+
+              // Extract decor info
+              String decorText = '-';
+              if (g.sourceModel != null) {
+                final decorZones = g.sourceModel!.zones.where((z) =>
+                    z.glass.decorH > 0 ||
+                    z.glass.decorV > 0 ||
+                    z.glass.hasRosettes ||
+                    z.glass.decorBaguetteId != null ||
+                    z.glass.decorRosetteId != null).toList();
+                if (decorZones.isNotEmpty) {
+                  final dz = decorZones.first;
+                  final h = dz.glass.decorH;
+                  final v = dz.glass.decorV;
+                  final hasRos = dz.glass.hasRosettes || dz.glass.decorRosetteId != null;
+                  final parts = <String>[];
+                  if (h > 0 || v > 0) {
+                    parts.add(isFrench ? 'Baguette $h H × $v V (${dz.glass.decorThickness}mm)' : 'باجيت: $h أفقي × $v عمودي (${dz.glass.decorThickness}مم)');
+                  }
+                  if (hasRos) {
+                    parts.add(isFrench ? '+ Rosettes' : '+ وردات ديكور');
+                  }
+                  decorText = parts.join(' • ');
+                }
+              }
+
+              gRows.add([
+                g.name,
+                dims,
+                pieces,
+                sqm,
+                decorText,
+              ]);
+            }
+            content.add(
+              pw.TableHelper.fromTextArray(
+                headers: isFrench
+                    ? ['Spécification / Type', 'Dimensions de coupe (L × H mm)', 'Nb Pièces', 'Surface (m²)', 'Décor (Baguettes / Rosettes)']
+                    : ['مواصفات ونوع الزجاج', 'القياس الحقيقي للقص (عرض × ارتفاع مم)', 'عدد الألواح', 'المساحة (م²)', 'ملاحظات الديكور والتقسيمات'],
+                data: gRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.cyan800),
+                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              ),
+            );
+
+            // Add glass drawing diagrams for the supplier if available
+            if (glassImages.isNotEmpty) {
+              content.add(pw.SizedBox(height: 8));
+              content.add(
+                pw.Text(
+                  isFrench
+                      ? 'Schémas des vitrages et disposition des décors pour le vitrier :'
+                      : 'رسومات النوافذ ومواقع تقسيمات الديكور والوردات لمورد الزجاج:',
+                  style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.cyan900),
+                ),
+              );
+              content.add(pw.SizedBox(height: 4));
+              final drawingWidgets = <pw.Widget>[];
+              for (final entry in glassImages.entries) {
+                drawingWidgets.add(
+                  pw.Container(
+                    width: 140,
+                    height: 140,
+                    margin: const pw.EdgeInsets.only(right: 8, bottom: 8),
+                    padding: const pw.EdgeInsets.all(3),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.cyan400, width: 1),
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                    ),
+                    child: pw.Column(
+                      children: [
+                        pw.Expanded(
+                          child: pw.Image(pw.MemoryImage(entry.value), fit: pw.BoxFit.contain),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Text(
+                          '${entry.key.replaceAll('_', ' × ')} mm',
+                          style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              content.add(pw.Wrap(children: drawingWidgets));
+            }
+          }
+
+          // 4. SHUTTERS SECTION
+          if (shutters.isNotEmpty) {
+            content.add(
+              buildSectionHeader(
+                isFrench ? '4. COMPOSANTS DE VOLET ROULANT' : '4. مكونات الستار (Volet Roulant)',
+                PdfColors.orange900,
+              ),
+            );
+            final sRows = <List<String>>[];
+            for (final s in shutters) {
+              sRows.add([
+                s.profileCode ?? '-',
+                s.name,
+                _roundQuantity(s.totalQuantity, s.unit),
+                isFrench ? (s.unit == 'قطعة' ? 'U' : s.unit) : s.unit,
+              ]);
+            }
+            content.add(
+              pw.TableHelper.fromTextArray(
+                headers: isFrench
+                    ? ['Code', 'Désignation', 'Quantité', 'Unité']
+                    : ['الكود', 'العنصر', 'الكمية', 'الوحدة'],
+                data: sRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.orange800),
+                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              ),
+            );
+          }
+
+          // 5. JOINTS SECTION
+          if (joints.isNotEmpty) {
+            content.add(
+              buildSectionHeader(
+                isFrench ? '5. JOINTS D\'ÉTANCHÉITÉ' : '5. الجوانات ومواد الإحكام',
+                PdfColors.brown700,
+              ),
+            );
+            final jRows = <List<String>>[];
+            for (final j in joints) {
+              jRows.add([
+                j.name,
+                '${_roundQuantity(j.totalQuantity, j.unit)} ${isFrench ? (j.unit == "متر" ? "m" : j.unit) : j.unit}',
+              ]);
+            }
+            content.add(
+              pw.TableHelper.fromTextArray(
+                headers: isFrench ? ['Désignation', 'Longueur'] : ['اسم الجوان', 'الكمية'],
+                data: jRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.brown600),
+                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              ),
+            );
+          }
+
+          // 6. OTHER ITEMS SECTION
+          if (otherItems.isNotEmpty) {
+            content.add(
+              buildSectionHeader(
+                isFrench ? '6. AUTRES ARTICLES / PANNEAUX' : '6. أصناف أخرى / ألواح الحشو',
+                PdfColors.grey800,
+              ),
+            );
+            final oRows = <List<String>>[];
+            for (final o in otherItems) {
+              oRows.add([
+                o.name,
+                _roundQuantity(o.totalQuantity, o.unit),
+                o.unit,
+              ]);
+            }
+            content.add(
+              pw.TableHelper.fromTextArray(
+                headers: isFrench ? ['Désignation', 'Quantité', 'Unité'] : ['العنصر', 'الكمية', 'الوحدة'],
+                data: oRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey700),
+                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              ),
+            );
+          }
+
+          return content;
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (_) => pdf.save(),
+      name: 'Required_goods_${widget.orderData['id']}.pdf',
+    );
   }
   bool _isLoading = true;
   String? _errorMessage;
@@ -1151,11 +1583,25 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
     await engine.stabilizeSelections(window: model, items: generate());
     await engine.stabilizeSelections(window: model, items: generate());
-    // A failure must be reported for this product, never replaced with an
-    // unvalidated raw BOM that invents requirements absent from the table.
-    return engine.filterItemsByAvailableCandidates(
-      window: model, items: generate(),
+    final raw = generate();
+    final strict = await engine.filterItemsByAvailableCandidates(
+      window: model, items: raw,
     );
+    final coveredNames = strict.map((i) => i.originalName).toSet();
+    final coveredRoles = strict
+        .map((i) => (i.roleKey ?? i.selectorType ?? '').trim().toLowerCase())
+        .where((r) => r.isNotEmpty)
+        .toSet();
+    final result = List<BomItem>.from(strict);
+    for (final item in raw) {
+      if (!item.isActive || (item.requiredQuantity <= 0 && item.quantity <= 0 && (item.pieces == null || item.pieces!.isEmpty))) continue;
+      final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
+      if (!coveredNames.contains(item.originalName) &&
+          (role.isEmpty || !coveredRoles.contains(role))) {
+        result.add(item);
+      }
+    }
+    return result;
   }
 
   Future<void> _loadAndAggregate() async {
@@ -1404,10 +1850,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               );
               final isKitHeader = isRequiredGoodsKitHeader(bom, kitName);
               final double kitQtyToAdd = isKitHeader ? purchaseQty : 0.0;
-              // The header is a display group only. Its price is derived from
-              // physical components configured on the Kit page, never added
-              // a second time on top of them.
-              final double kitCostToAdd = isKitHeader ? 0.0 : bomCost;
+              // If the kit has standalone pricing (no separate sub-items),
+              // preserve the header's cost so it does not collapse to 0.
+              final double kitCostToAdd = isKitHeader ? (bomCost > 0 ? bomCost : 0.0) : bomCost;
 
               if (aggregationMap.containsKey(kitKey)) {
                 final agg = aggregationMap[kitKey]!;
@@ -1485,7 +1930,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
               if (aggregationMap.containsKey(aggregationKey)) {
                 final aggregate = aggregationMap[aggregationKey]!;
-                aggregate.mergeWith(bom, purchaseQty, bomCost, usesOrderCutting);
+                aggregate.mergeWith(
+                  bom,
+                  purchaseQty,
+                  bomCost,
+                  usesOrderCutting,
+                  model: model,
+                );
               } else {
                 final isProfile = category == 'profile' ||
                     category == 'frame' ||
@@ -1512,6 +1963,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   colorName: bom.colorName,
                   stockLength: bom.length,
                   glassHeight: bom.glassHeight,
+                  pieceCount: bom.pieceCount ??
+                      (bom.unit.trim().toLowerCase() == 'قطعة'
+                          ? purchaseQty.round()
+                          : (category == 'glass' ? 1 : 0)),
+                  sourceModel: model,
                   catalogItemId: bom.catalogItemId,
                   inventoryItemType: bom.inventoryItemType,
                   colorId: bom.colorId,
@@ -1566,7 +2022,20 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       // حساب سعر الوحدة الفعلي لكل طقم (Kit) كمجموع أسعار مكوناته
       for (final item in aggregationMap.values) {
         if (item.kitGroupName != null && item.totalQuantity > 0) {
-          item.unitPrice = item.totalCost / item.totalQuantity;
+          if (item.kitSubItems.isNotEmpty) {
+            final subCost = item.kitSubItems.fold<double>(
+              0.0,
+              (sum, sub) => sum + (sub.quantity * sub.unitPrice),
+            );
+            if (subCost > 0) {
+              item.totalCost = subCost;
+              item.unitPrice = item.totalCost / item.totalQuantity;
+            }
+          } else if (item.unitPrice > 0 && item.totalCost == 0) {
+            item.totalCost = item.totalQuantity * item.unitPrice;
+          } else if (item.totalCost > 0 && item.unitPrice == 0) {
+            item.unitPrice = item.totalCost / item.totalQuantity;
+          }
         }
       }
 
@@ -1648,6 +2117,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
         'أغطية الشفرات (Bouchons Lames)',
       ),
+      'كيت صندوق النفق (Kit Caisson Tunnel)': isTunnel,
       'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
       'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
       'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
@@ -2483,10 +2953,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   Widget _buildCategoryFilters() {
     const filters = <(String, String, IconData)>[
       ('all', 'الكل', Icons.apps_rounded),
-      ('accessory', 'الإكسسوارات', Icons.build_outlined),
       ('profile', 'البروفيلات', Icons.view_stream_outlined),
-      ('joint', 'الجوانات', Icons.horizontal_rule_rounded),
+      ('accessory', 'الإكسسوارات', Icons.build_outlined),
+      ('glass', 'الزجاج', Icons.grid_view_rounded),
       ('shutter', 'مكونات الستار', Icons.blinds_outlined),
+      ('joint', 'الجوانات', Icons.horizontal_rule_rounded),
     ];
     return SizedBox(
       height: 58,
@@ -2728,22 +3199,39 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
     final rows = <ResizableTableRow>[];
 
+    // تجميع العناصر حسب الفئات لعرض أقسام مفصولة ومنظمة
+    final Map<String, List<AggregatedGoodItem>> grouped = {};
     for (final item in _visibleItems) {
-      rows.add(_buildDesktopRequiredGoodsRow(item, item.category, isDark));
-      final kitName = item.kitGroupName;
-      if (kitName != null &&
-          kitName.isNotEmpty &&
-          _expandedKits.contains(item.name)) {
-        for (final child in item.kitSubItems) {
-          if (!child.originalName.startsWith('${kitName}_')) continue;
-          rows.add(_buildDesktopKitChildRow(child, isDark));
-        }
+      grouped.putIfAbsent(item.category, () => []).add(item);
+    }
+    final categories = grouped.keys.toList()
+      ..sort((a, b) => _categorySortIndex(a).compareTo(_categorySortIndex(b)));
+
+    final showCategoryHeaders = _selectedCategory == 'all';
+
+    for (final cat in categories) {
+      final items = grouped[cat]!;
+      if (showCategoryHeaders) {
+        rows.add(_buildDesktopCategoryHeaderRow(cat, items, isDark));
       }
 
-      final plan = item.cuttingPlan;
-      if (plan != null &&
-          _expandedCuttingPlans.contains(_cuttingKeyForItem(item))) {
-        rows.addAll(_buildDesktopCuttingRows(item, plan, isDark));
+      for (final item in items) {
+        rows.add(_buildDesktopRequiredGoodsRow(item, item.category, isDark));
+        final kitName = item.kitGroupName;
+        if (kitName != null &&
+            kitName.isNotEmpty &&
+            _expandedKits.contains(item.name)) {
+          for (final child in item.kitSubItems) {
+            if (!child.originalName.startsWith('${kitName}_')) continue;
+            rows.add(_buildDesktopKitChildRow(child, isDark));
+          }
+        }
+
+        final plan = item.cuttingPlan;
+        if (plan != null &&
+            _expandedCuttingPlans.contains(_cuttingKeyForItem(item))) {
+          rows.addAll(_buildDesktopCuttingRows(item, plan, isDark));
+        }
       }
     }
 
@@ -2865,6 +3353,88 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
   }
 
+  ResizableTableRow _buildDesktopCategoryHeaderRow(
+    String category,
+    List<AggregatedGoodItem> items,
+    bool isDark,
+  ) {
+    final color = _categoryColor(category);
+    final totalCatCost = items.fold<double>(0, (sum, it) => sum + it.totalCost);
+    final isGlass = category == 'glass';
+    final totalGlassPieces = isGlass
+        ? items.fold<int>(
+            0,
+            (sum, it) => sum + (it.pieceCount > 0 ? it.pieceCount : 1),
+          )
+        : 0;
+    final totalGlassArea = isGlass
+        ? items.fold<double>(0, (sum, it) => sum + it.totalQuantity)
+        : 0.0;
+
+    return ResizableTableRow(
+      reorderId: 'category-header:$category',
+      color: isDark
+          ? color.withValues(alpha: 0.22)
+          : color.withValues(alpha: 0.12),
+      cells: [
+        Center(
+          child: Icon(_categoryIcon(category), color: color, size: 20),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
+          ),
+          child: Text(
+            _categoryLabel(category),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Text(
+          isGlass
+              ? '${items.length} ${_t('مقاسات زجاج')} • $totalGlassPieces ${_t('قطع')}'
+              : '${items.length} ${_t('أصناف مسجلة')}',
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+        Text(
+          isGlass
+              ? '${_t('المساحة الإجمالية')}: ${totalGlassArea.toStringAsFixed(2)} m²'
+              : '-',
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w600,
+            fontSize: 11,
+          ),
+        ),
+        const SizedBox.shrink(),
+        const SizedBox.shrink(),
+        const SizedBox.shrink(),
+        const SizedBox.shrink(),
+        Text(
+          '${totalCatCost.toStringAsFixed(2)} دج',
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox.shrink(),
+      ],
+    );
+  }
+
   ResizableTableRow _buildDesktopRequiredGoodsRow(
     AggregatedGoodItem item,
     String category,
@@ -2880,6 +3450,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ? () => _toggleKitExpansion(item.name)
         : category == 'profile'
         ? () => _showSectionSelectionDialog(item, category)
+        : category == 'glass'
+        ? () => _showGlassPreviewDialog(item)
         : null;
 
     return ResizableTableRow(
@@ -2888,16 +3460,49 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       onTap: onTap,
       cells: [
         Center(
-          child: isKit
-              ? Icon(Icons.inventory, color: color)
-              : SectionImageWidget(
-                  code: item.profileCode,
-                  name: item.name,
-                  imagePath: item.imagePath,
-                  size: _isPlintheItem(item.name, item.originalName) ? 40 : 34,
-                  fallbackIcon: _categoryIcon(category),
-                  fallbackColor: color,
+          child: item.category == 'glass' && item.sourceModel != null
+              ? Tooltip(
+                  message: _t('عرض رسم النافذة ومقاسات الزجاج والديكور'),
+                  child: InkWell(
+                    onTap: () => _showGlassPreviewDialog(item),
+                    child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.cyan.shade400, width: 1.5),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(2),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: CustomPaint(
+                        painter: WindowPainter(
+                          model: item.sourceModel!,
+                          showDrawingDimensions: false,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
+              )
+            : (isKit
+                  ? Icon(Icons.inventory, color: color)
+                  : SectionImageWidget(
+                      code: item.profileCode,
+                      name: item.name,
+                      imagePath: item.imagePath,
+                      size: _isPlintheItem(item.name, item.originalName) ? 40 : 34,
+                      fallbackIcon: _categoryIcon(category),
+                      fallbackColor: color,
+                    )),
         ),
         _desktopCategoryCell(category, color, isDark),
         _desktopNameCell(
@@ -3158,6 +3763,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           isExpanded ? Icons.expand_less : Icons.expand_more,
           color: color,
         ),
+      );
+    }
+    if (category == 'glass') {
+      return IconButton(
+        tooltip: _t('معاينة تفاصيل الزجاج والديكور'),
+        onPressed: () => _showGlassPreviewDialog(item),
+        icon: Icon(Icons.visibility_outlined, color: color),
       );
     }
     if (category == 'profile' || plan != null) {
@@ -4229,6 +4841,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           borderRadius: BorderRadius.circular(10),
           onTap: category == 'profile'
               ? () => _showSectionSelectionDialog(item, category)
+              : category == 'glass'
+              ? () => _showGlassPreviewDialog(item)
               : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -4254,14 +4868,21 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: SectionImageWidget(
-                      code: item.profileCode,
-                      name: item.name,
-                      imagePath: item.imagePath,
-                      size: 32.0,
-                      fallbackIcon: _categoryIcon(category),
-                      fallbackColor: color,
-                    ),
+                    child: item.category == 'glass' && item.sourceModel != null
+                        ? CustomPaint(
+                            painter: WindowPainter(
+                              model: item.sourceModel!,
+                              showDrawingDimensions: false,
+                            ),
+                          )
+                        : SectionImageWidget(
+                            code: item.profileCode,
+                            name: item.name,
+                            imagePath: item.imagePath,
+                            size: 32.0,
+                            fallbackIcon: _categoryIcon(category),
+                            fallbackColor: color,
+                          ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -4563,6 +5184,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   String _purchaseQuantityLabel(AggregatedGoodItem item) {
+    if (item.category == 'glass' &&
+        (item.stockLength ?? 0) > 0 &&
+        (item.glassHeight ?? 0) > 0) {
+      final pieces =
+          item.pieceCount > 0 ? '${item.pieceCount} ${_t('قطعة')}' : '';
+      final dims =
+          '${item.stockLength!.round()} × ${item.glassHeight!.round()} mm';
+      final sqm = '${_roundQuantity(item.totalQuantity, 'm²')} m²';
+      if (pieces.isNotEmpty) {
+        return '$pieces ($dims)\n$sqm';
+      }
+      return '$dims ($sqm)';
+    }
     final formatted = _roundQuantity(item.totalQuantity, item.unit);
     final unit = item.unit.toLowerCase().trim();
     if (unit == 'قطاع' ||
@@ -4588,6 +5222,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       return '${_roundQuantity(actualMeters, 'م')} ${_t('م')}';
     }
     if (item.category == 'glass' || item.unit.trim().toLowerCase() == 'm²') {
+      if ((item.stockLength ?? 0) > 0 && (item.glassHeight ?? 0) > 0) {
+        final pieces =
+            item.pieceCount > 0 ? '${item.pieceCount} ${_t('قطعة')} ' : '';
+        final dims =
+            '${item.stockLength!.round()} × ${item.glassHeight!.round()} mm';
+        final sqm = '${_roundQuantity(item.totalQuantity, 'm²')} m²';
+        return '$pieces($dims)\n$sqm';
+      }
       return '${_roundQuantity(item.totalQuantity, 'm²')} m²';
     }
     return _purchaseQuantityLabel(item);
@@ -4610,9 +5252,23 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       parts.add(
         '${_t('القياس')}: ${item.stockLength!.round()} × ${item.glassHeight!.round()} mm',
       );
+      if (item.pieceCount > 0) {
+        parts.add('${_t('العدد')}: ${item.pieceCount} ${_t('قطعة')}');
+      }
       parts.add(
         '${_t('المساحة المطلوبة')}: ${_roundQuantity(item.totalQuantity, 'm²')} m²',
       );
+      if (item.sourceModel != null) {
+        final hasDecor = item.sourceModel!.zones.any((z) =>
+            z.glass.decorH > 0 ||
+            z.glass.decorV > 0 ||
+            z.glass.hasRosettes ||
+            z.glass.decorBaguetteId != null ||
+            z.glass.decorRosetteId != null);
+        if (hasDecor) {
+          parts.add('🎨 ${_t('ديكور باجيت / وردات')}');
+        }
+      }
     } else if (item.stockLength != null && item.stockLength! > 0) {
       final unit = item.category == 'profile' ? 'م' : '';
       final value = item.category == 'profile'
@@ -4638,6 +5294,253 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       parts.add('القصات: $visiblePieces مم$suffix');
     }
     return parts.join(' • ');
+  }
+
+  void _showGlassPreviewDialog(AggregatedGoodItem item) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final model = item.sourceModel;
+    final cutW = item.stockLength?.round() ?? 0;
+    final cutH = item.glassHeight?.round() ?? 0;
+    final pieces = item.pieceCount > 0 ? item.pieceCount : 1;
+    final totalArea = item.totalQuantity;
+
+    // Check decor
+    String? decorInfo;
+    if (model != null) {
+      final decorZones = model.zones.where((z) =>
+          z.glass.decorH > 0 ||
+          z.glass.decorV > 0 ||
+          z.glass.hasRosettes ||
+          z.glass.decorBaguetteId != null ||
+          z.glass.decorRosetteId != null).toList();
+      if (decorZones.isNotEmpty) {
+        final dz = decorZones.first;
+        final h = dz.glass.decorH;
+        final v = dz.glass.decorV;
+        final hasRos = dz.glass.hasRosettes || dz.glass.decorRosetteId != null;
+        final parts = <String>[];
+        if (h > 0 || v > 0) {
+          parts.add('${_t('تقسيمات باجيت')}: $h ${_t('أفقي')} × $v ${_t('عمودي')} (${dz.glass.decorThickness} ${_t('مم')} - ${_t(dz.glass.decorColor)})');
+        }
+        if (hasRos) {
+          parts.add(_t('وردات ديكور مدمجة'));
+        }
+        decorInfo = parts.join(' • ');
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 580,
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.cyan.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.grid_view_rounded,
+                        color: Colors.cyan,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _t('تفاصيل الزجاج والقياسات الحقيقية والديكور'),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            _t('بيانات جاهزة للتحويل لمورد الزجاج'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (model != null) ...[
+                  Container(
+                    height: 280,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.cyan.shade200, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CustomPaint(
+                        painter: WindowPainter(
+                          model: model,
+                          showDrawingDimensions: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                // Info badges
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF242424) : Colors.cyan.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.cyan.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _dialogStatItem(
+                            _t('مقاس القص الحقيقي'),
+                            '$cutW × $cutH mm',
+                            Icons.straighten,
+                            Colors.cyan.shade800,
+                          ),
+                          _dialogStatItem(
+                            _t('عدد الألواح'),
+                            '$pieces ${_t('قطعة')}',
+                            Icons.format_list_numbered,
+                            Colors.indigo,
+                          ),
+                          _dialogStatItem(
+                            _t('المساحة الإجمالية'),
+                            '${totalArea.toStringAsFixed(2)} m²',
+                            Icons.crop_square,
+                            Colors.teal,
+                          ),
+                        ],
+                      ),
+                      if (decorInfo != null) ...[
+                        const Divider(height: 16),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.palette_outlined,
+                              size: 18,
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                decorInfo,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _t('المواصفات والتركيب:'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF1E1E1E)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    item.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.cyan.shade800,
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.check, size: 18),
+                    label: Text(_t('إغلاق')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+        ),
+      ],
+    );
   }
 
   void _showProductBreakdownDialog() {

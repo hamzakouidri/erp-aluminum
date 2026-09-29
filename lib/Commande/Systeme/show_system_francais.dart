@@ -8472,11 +8472,11 @@ class _WindowViewState extends State<WindowView> {
               if (widget.model.hasFrameRole('seuil'))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Seuil (بروفيل C)'),
+                  title: Text(Localization.translate('Seuil (بروفيل C)', lang)),
                   subtitle: Text(
                     widget.model.frameRoleRequiredInAllScopes('seuil')
-                        ? 'مفعل حتميًا حسب قواعد السلسلة'
-                        : 'يستبدل الإطار السفلي',
+                        ? Localization.translate('مفعل حتميًا حسب قواعد السلسلة', lang)
+                        : Localization.translate('يستبدل الإطار السفلي', lang),
                   ),
                   value: widget.model.frameRoleEnabledInAnyScope('seuil'),
                   activeThumbColor: Colors.blue,
@@ -8488,11 +8488,11 @@ class _WindowViewState extends State<WindowView> {
               if (widget.model.hasCaniveauSupport)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('تفعيل الكانيفو (Système C zéro)'),
+                  title: Text(Localization.translate('تفعيل الكانيفو (Système C zéro)', lang)),
                   subtitle: Text(
                     widget.model.frameRoleEnabledInAnyScope('seuil')
-                        ? 'غير متاح مع بروفيل C / Seuil'
-                        : 'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً',
+                        ? Localization.translate('غير متاح مع بروفيل C / Seuil', lang)
+                        : Localization.translate('يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً', lang),
                   ),
                   value: widget.model.useOptionalCaniveau,
                   activeThumbColor: Colors.blue,
@@ -8509,7 +8509,7 @@ class _WindowViewState extends State<WindowView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('البافيت (Bavette)'),
+                      Text(Localization.translate('البافيت (Bavette)', lang)),
                       const SizedBox(height: 4),
                       ToggleButtons(
                         isSelected: [0, 1, 2]
@@ -8519,18 +8519,18 @@ class _WindowViewState extends State<WindowView> {
                             )
                             .toList(),
                         onPressed: widget.model.setOptionalBavetteMode,
-                        children: const [
+                        children: [
                           Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 10),
-                            child: Text('إيقاف'),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(Localization.translate('إيقاف', lang)),
                           ),
                           Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 10),
-                            child: Text('أسفل فقط'),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(Localization.translate('أسفل فقط', lang)),
                           ),
                           Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 10),
-                            child: Text('الجهات الأربع'),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(Localization.translate('الجهات الأربع', lang)),
                           ),
                         ],
                       ),
@@ -8541,11 +8541,11 @@ class _WindowViewState extends State<WindowView> {
               if (widget.model.hasFrameRole('cache_dormant'))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('كاش الإطار (Cache dormant)'),
+                  title: Text(Localization.translate('كاش الإطار (Cache dormant)', lang)),
                   subtitle: Text(
                     widget.model.frameRoleRequiredInAllScopes('cache_dormant')
-                        ? 'مفعل حتميًا حسب قواعد السلسلة'
-                        : 'يتبع فقط جهات الإطار الموجودة',
+                        ? Localization.translate('مفعل حتميًا حسب قواعد السلسلة', lang)
+                        : Localization.translate('يتبع فقط جهات الإطار الموجودة', lang),
                   ),
                   value: widget.model.frameRoleEnabledInAnyScope(
                     'cache_dormant',
@@ -8567,8 +8567,8 @@ class _WindowViewState extends State<WindowView> {
                           null))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('تراينغل (Triangle)'),
-                  subtitle: const Text('استعمال اختياري حسب ربط الأكسيسوار'),
+                  title: Text(Localization.translate('تراينغل (Triangle)', lang)),
+                  subtitle: Text(Localization.translate('استعمال اختياري حسب ربط الأكسيسوار', lang)),
                   value: widget.model.useOptionalTriangle,
                   activeThumbColor: Colors.blue,
                   onChanged: widget.model.toggleOptionalTriangle,
@@ -8628,7 +8628,7 @@ class _WindowViewState extends State<WindowView> {
                                   final isSel = active.contains(j.index);
                                   return FilterChip(
                                     label: Text(
-                                      j.label,
+                                      j.localizedLabel(lang),
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: isSel
@@ -8855,7 +8855,7 @@ class _WindowViewState extends State<WindowView> {
                 // 🟢 2. قسم تدعيم المونطو (يظهر دائماً في الأسفل)
                 // 🟢 هذا الجزء يحل مشكلة تدعيم المونطو (Renfort)
                 Text(
-                  Localization.translate('تدعيم المونطو (Renfort)', lang),
+                  Localization.translate('تدعيم المونطو والأعمدة (Renfort)', lang),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
@@ -8863,6 +8863,88 @@ class _WindowViewState extends State<WindowView> {
                   ),
                 ),
                 const SizedBox(height: 10),
+
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Localization.translate('قاعدة التدعيم (Règle de Renfort):', lang),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<ReinforcementMode>(
+                        value: widget.model.reinforcementMode,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                          filled: true,
+                          fillColor: Theme.of(context).cardColor,
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: ReinforcementMode.fullSubstitution,
+                            child: Text(
+                              switch (lang) {
+                                AppLanguage.french =>
+                                  '1. Substitution complète (Profilé renforcé)',
+                                AppLanguage.english =>
+                                  '1. Full substitution (Reinforced profile)',
+                                AppLanguage.arabic =>
+                                  'القسم 1: تبديل كامل للقطاع (عمود مدعم)',
+                              },
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: ReinforcementMode.chicaneCombination,
+                            child: Text(
+                              switch (lang) {
+                                AppLanguage.french =>
+                                  '2. Chicane combinée (1 Renforcée + 1 Standard)',
+                                AppLanguage.english =>
+                                  '2. Combined chicane (1 Reinforced + 1 Standard)',
+                                AppLanguage.arabic =>
+                                  'القسم 2: شيكان مدعمة + شيكان عادية',
+                              },
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: ReinforcementMode.independentScrewed,
+                            child: Text(
+                              switch (lang) {
+                                AppLanguage.french =>
+                                  '3. Renfort rapporté vissé (+ vis et caches)',
+                                AppLanguage.english =>
+                                  '3. Screwed independent renfort (+ screws & caps)',
+                                AppLanguage.arabic =>
+                                  'القسم 3: عمود مستقل ببراغي وأغطية',
+                              },
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ],
+                        onChanged: (mode) {
+                          if (mode != null) {
+                            setState(() {
+                              widget.model.reinforcementMode = mode;
+                            });
+                            widget.model.refreshUI();
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
 
                 Builder(
                   builder: (context) {
@@ -8878,8 +8960,11 @@ class _WindowViewState extends State<WindowView> {
                           _isSlidingMontantCandidate(item, central: true),
                     );
 
-                    // 2. إذا كانت السلسلة فيها مونطو منزلق ويوجد نظام منزلق
-                    if (isSupported && firstSlidingZone != null) {
+                    // 2. إذا كانت السلسلة فيها مونطو منزلق أو تم اختيار عمود مستقل ببراغي
+                    if ((isSupported ||
+                            widget.model.reinforcementMode ==
+                                ReinforcementMode.independentScrewed) &&
+                        firstSlidingZone != null) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -12069,7 +12154,7 @@ class _WindowViewState extends State<WindowView> {
                             margin: const EdgeInsets.symmetric(vertical: 4),
                             child: CheckboxListTile(
                               title: Text(
-                                Localization.translate(j.label, lang),
+                                j.localizedLabel(lang),
                                 style: TextStyle(
                                   fontWeight: isSelected
                                       ? FontWeight.bold

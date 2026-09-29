@@ -630,6 +630,7 @@ extension WindowModelSerialization on WindowModel {
       'seriesId': savedPrimarySeries?.id ?? loadedSeriesId,
       'slidingSeriesName': activeSlidingSeries?.name ?? loadedSlidingSeriesName,
       'slidingSeriesId': activeSlidingSeries?.id ?? loadedSlidingSeriesId,
+      'reinforcementMode': reinforcementMode.name,
       'profileName': () {
         if (savedPrimarySeries == null || availableSystems.isEmpty) return null;
         for (var s in availableSystems) {
@@ -862,6 +863,13 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       savedSeriesId(map['activeSlidingSeriesId']) ??
       savedSeriesId(legacySlidingProfile?['series_id']) ??
       savedSeriesId(legacySlidingProfile?['source_series_id']);
+
+  if (map['reinforcementMode'] != null) {
+    model.reinforcementMode = ReinforcementMode.values.firstWhere(
+      (e) => e.name == map['reinforcementMode']?.toString(),
+      orElse: () => ReinforcementMode.fullSubstitution,
+    );
+  }
 
   model.frameOverride = map['frameOverride'] != null
       ? Map<String, dynamic>.from(map['frameOverride'])

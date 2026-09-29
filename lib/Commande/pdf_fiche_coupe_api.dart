@@ -32,6 +32,7 @@ class PdfFicheCoupeApi {
     required List<Map<String, dynamic>> items,
     required String workshopName,
     required SqlDatabase db,
+    AppLanguage? language,
   }) async {
     final fonts = await PdfFontCache.load();
     final font = fonts.regular;
@@ -40,14 +41,22 @@ class PdfFicheCoupeApi {
     final logoBase64 = prefs.getString('workshop_logo_base64') ?? '';
     final address = prefs.getString('workshop_address') ?? '';
     final phone = prefs.getString('workshop_phone') ?? '';
-    final savedLanguage = prefs.getString('app_language') ?? 'arabic';
-    final language = savedLanguage == 'french'
-        ? AppLanguage.french
-        : savedLanguage == 'english'
-            ? AppLanguage.english
-            : AppLanguage.arabic;
 
-    final tr = _Tr(language);
+    final resolvedLanguage = language ?? () {
+      final langIndex = prefs.getInt('app_language');
+      if (langIndex != null &&
+          langIndex >= 0 &&
+          langIndex < AppLanguage.values.length) {
+        return AppLanguage.values[langIndex];
+      }
+      final savedLanguage = prefs.getString('app_language');
+      if (savedLanguage == 'french') return AppLanguage.french;
+      if (savedLanguage == 'english') return AppLanguage.english;
+      if (savedLanguage == 'arabic') return AppLanguage.arabic;
+      return AppLanguage.french;
+    }();
+
+    final tr = _Tr(resolvedLanguage);
 
     // تصفية المنتجات غير المحذوفة
     final activeItems = items.where((item) {
@@ -75,7 +84,7 @@ class PdfFicheCoupeApi {
     // تحميل بيانات كل منتج مع دمج القطع وصور المقاطع
     final articles = <_ArticleData>[];
     for (final item in activeItems) {
-      articles.add(await _loadArticle(db, item, language, imageCache));
+      articles.add(await _loadArticle(db, item, resolvedLanguage, imageCache));
     }
 
     // شعار الورشة
@@ -93,7 +102,7 @@ class PdfFicheCoupeApi {
     final orderDate = formatOrderDate(
       order['created_at'],
       fallback: order['updated_at'],
-      emptyLabel: Localization.translate('غير محدد', language),
+      emptyLabel: Localization.translate('غير محدد', resolvedLanguage),
     );
     final clientName =
         '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}'.trim();
@@ -566,6 +575,9 @@ class PdfFicheCoupeApi {
     pw.Font fontBold,
     _Tr tr,
   ) {
+    final langCode = tr.lang == AppLanguage.french
+        ? 'fr'
+        : (tr.lang == AppLanguage.english ? 'en' : 'ar');
     final tableRows = <pw.TableRow>[
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
@@ -579,6 +591,7 @@ class PdfFicheCoupeApi {
     ];
     for (var i = 0; i < items.length; i++) {
       final b = items[i];
+      final localizedName = b.getLocalizedName(langCode);
       tableRows.add(
         pw.TableRow(
           decoration: pw.BoxDecoration(
@@ -586,7 +599,7 @@ class PdfFicheCoupeApi {
           ),
           children: [
             _cell(b.profileCode ?? '-', font),
-            _cell(_shortName(b.name, tr.lang), font),
+            _cell(_shortName(localizedName, tr.lang), font),
             _cell(
               _qty(b.purchaseQuantity),
               font,
@@ -594,7 +607,7 @@ class PdfFicheCoupeApi {
               bold: true,
               boldFont: fontBold,
             ),
-            _cell(b.unit, font, align: pw.TextAlign.center),
+            _cell(_unit(b.unit, tr.lang), font, align: pw.TextAlign.center),
           ],
         ),
       );
@@ -620,6 +633,9 @@ class PdfFicheCoupeApi {
     pw.Font fontBold,
     _Tr tr,
   ) {
+    final langCode = tr.lang == AppLanguage.french
+        ? 'fr'
+        : (tr.lang == AppLanguage.english ? 'en' : 'ar');
     final tableRows = <pw.TableRow>[
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
@@ -632,6 +648,7 @@ class PdfFicheCoupeApi {
     ];
     for (var i = 0; i < items.length; i++) {
       final b = items[i];
+      final localizedName = b.getLocalizedName(langCode);
       tableRows.add(
         pw.TableRow(
           decoration: pw.BoxDecoration(
@@ -639,7 +656,7 @@ class PdfFicheCoupeApi {
           ),
           children: [
             _cell(b.profileCode ?? '-', font),
-            _cell(_shortName(b.name, tr.lang), font),
+            _cell(_shortName(localizedName, tr.lang), font),
             _cell(
               '${b.purchaseQuantity.toStringAsFixed(2)} m',
               font,
@@ -905,22 +922,25 @@ class PdfFicheCoupeApi {
         model: model,
         lang: lang,
       );
-      final gamme = model.activeSeries?.name ??
+      final rawGamme = model.activeSeries?.name ??
           model.activeSlidingSeries?.name ??
           item['game']?.toString() ??
           '';
+      final gamme = Localization.translate(rawGamme, lang);
       final modelColor = model.selectedDbColor != null
           ? (model.selectedDbColor!['name']?.toString() ?? '')
           : model.frameColor.toString().split('.').last;
-      final color = item['color']?.toString().trim().isNotEmpty == true
+      final rawColor = item['color']?.toString().trim().isNotEmpty == true
           ? item['color'].toString().trim()
           : modelColor;
+      final color = Localization.translate(rawColor, lang);
 
       // تجميع القطاعات بدون تكرار السطر
       final profileRows = await _buildGroupedProfileRows(
         active,
         db,
         imageCache,
+        lang,
       );
 
       return _ArticleData(
@@ -960,7 +980,12 @@ class PdfFicheCoupeApi {
     List<BomItem> bomItems,
     SqlDatabase db,
     Map<String, pw.Widget?> imageCache,
+    AppLanguage lang,
   ) async {
+    final langCode = lang == AppLanguage.french
+        ? 'fr'
+        : (lang == AppLanguage.english ? 'en' : 'ar');
+
     // تجميع القطع حسب القطاع: (المرجع + الاسم)
     final profileMap = <String, ({
       String reference,
@@ -975,7 +1000,8 @@ class PdfFicheCoupeApi {
       if (!bom.isActive || pieces == null || pieces.isEmpty) continue;
 
       final ref = bom.profileCode ?? '';
-      final desc = _shortName(bom.name);
+      final localizedName = bom.getLocalizedName(langCode);
+      final desc = _shortName(localizedName, lang);
       final key = '${ref.trim()}|${desc.trim()}';
 
       final existing = profileMap.putIfAbsent(
@@ -1073,9 +1099,7 @@ class PdfFicheCoupeApi {
       return (
         type: lang == AppLanguage.french
             ? 'Volet roulant'
-            : lang == AppLanguage.english
-                ? 'Roller shutter'
-                : 'ستار دوار (Volet)',
+            : (lang == AppLanguage.english ? 'Roller shutter' : 'ستار دوار'),
         config: '',
         shutterInfo: shutterInfo,
       );
@@ -1098,40 +1122,28 @@ class PdfFicheCoupeApi {
     if (hasSlidingSash) {
       typeStr = lang == AppLanguage.french
           ? 'Coulissant'
-          : lang == AppLanguage.english
-              ? 'Sliding'
-              : 'منزلق (Coulissant)';
+          : (lang == AppLanguage.english ? 'Sliding' : 'منزلق');
       configStr = lang == AppLanguage.french
           ? '2 vantaux'
-          : lang == AppLanguage.english
-              ? '2 sashes'
-              : 'ضلفتين (2 vantaux)';
+          : (lang == AppLanguage.english ? '2 sashes' : 'ضلفتين');
     } else if (hasDoubleSash) {
       typeStr = lang == AppLanguage.french
           ? 'Battant'
-          : lang == AppLanguage.english
-              ? 'Casement'
-              : 'مفصلي (Battant)';
+          : (lang == AppLanguage.english ? 'Casement' : 'مفصلي');
       configStr = lang == AppLanguage.french
-          ? 'Double sashes'
-          : lang == AppLanguage.english
-              ? 'Double sashes'
-              : 'ضلفتين (Double sashes)';
+          ? '2 vantaux'
+          : (lang == AppLanguage.english ? 'Double sashes' : 'ضلفتين');
     } else if (hasSingleSash) {
       typeStr = lang == AppLanguage.french
           ? 'Battant'
-          : lang == AppLanguage.english
-              ? 'Casement'
-              : 'مفصلي (Battant)';
+          : (lang == AppLanguage.english ? 'Casement' : 'مفصلي');
       configStr = lang == AppLanguage.french
           ? '1 vantail'
-          : lang == AppLanguage.english
-              ? 'Single sash'
-              : 'ضلفة واحدة (1 vantail)';
+          : (lang == AppLanguage.english ? 'Single sash' : 'ضلفة واحدة');
     } else {
       typeStr = rawType.isNotEmpty
-          ? rawType
-          : (lang == AppLanguage.french ? 'Fenêtre' : 'نافذة');
+          ? (lang != AppLanguage.arabic ? Localization.translate(rawType, lang) : rawType)
+          : (lang == AppLanguage.french ? 'Fenêtre' : (lang == AppLanguage.english ? 'Window' : 'نافذة'));
     }
 
     return (type: typeStr, config: configStr, shutterInfo: shutterInfo);
@@ -1244,21 +1256,75 @@ class PdfFicheCoupeApi {
     };
   }
 
+  static String _unit(String unit, AppLanguage lang) {
+    final u = unit.trim().toLowerCase();
+    if (lang == AppLanguage.french) {
+      if (u == 'قطعة' || u == 'piece' || u == 'pièce') return 'U';
+      if (u == 'قطاع' || u == 'بارة' || u == 'barre') return 'Barre';
+      if (u == 'متر' || u == 'mètre' || u == 'metre' || u == 'm') return 'm';
+      if (u == 'متر مربع' || u == 'm²') return 'm²';
+      if (u == 'طقم' || u == 'jeu' || u == 'kit') return 'Jeu';
+      return unit;
+    } else if (lang == AppLanguage.english) {
+      if (u == 'قطعة' || u == 'piece' || u == 'pièce') return 'Pcs';
+      if (u == 'قطاع' || u == 'بارة' || u == 'bar') return 'Bar';
+      if (u == 'متر' || u == 'mètre' || u == 'metre' || u == 'm') return 'm';
+      if (u == 'متر مربع' || u == 'm²') return 'sqm';
+      if (u == 'طقم' || u == 'jeu' || u == 'kit') return 'Set';
+      return unit;
+    }
+    return unit;
+  }
+
   static String _shortName(String name, [AppLanguage? lang]) {
     final lines = name
         .split('\n')
-        .where((l) => l.isNotEmpty && !l.contains('المطلوب الفعلي'))
+        .where((l) =>
+            l.isNotEmpty &&
+            !l.contains('المطلوب الفعلي') &&
+            !l.contains('Besoin réel') &&
+            !l.contains('Actual required'))
         .toList();
-    var clean = lines.length >= 2 ? lines[1].trim() : (lines.isNotEmpty ? lines[0].trim() : name.trim());
-    if (clean.contains('براغي الباتمو') || clean.contains('Vis Meneau') || clean.contains('Batmo Screws')) {
-      if (!clean.contains('3.9')) {
-        if (lang == AppLanguage.french) {
-          return 'Vis Meneau 3.9×50';
-        } else if (lang == AppLanguage.english) {
-          return 'Batmo Screws 3.9×50';
-        } else {
-          return 'براغي الباتمو 3.9*50';
-        }
+    var clean = lines.length >= 2
+        ? lines[1].trim()
+        : (lines.isNotEmpty ? lines[0].trim() : name.trim());
+
+    if (clean.contains('براغي الباتمو') ||
+        clean.contains('Vis Meneau') ||
+        clean.contains('Batmo Screws')) {
+      if (lang == AppLanguage.french) {
+        return clean.contains('3.9')
+            ? clean
+                .replaceAll('براغي الباتمو', 'Vis Meneau')
+                .replaceAll('Batmo Screws', 'Vis Meneau')
+            : 'Vis Meneau 3.9×50';
+      } else if (lang == AppLanguage.english) {
+        return clean.contains('3.9')
+            ? clean
+                .replaceAll('براغي الباتمو', 'Batmo Screws')
+                .replaceAll('Vis Meneau', 'Batmo Screws')
+            : 'Batmo Screws 3.9×50';
+      } else {
+        return clean.contains('3.9') ? clean : 'براغي الباتمو 3.9*50';
+      }
+    }
+
+    if (clean.contains('براغي التجميع') ||
+        clean.contains("vis d'assemblage") ||
+        clean.contains('Assembly screws')) {
+      if (lang == AppLanguage.french) {
+        return "Vis d'assemblage";
+      } else if (lang == AppLanguage.english) {
+        return 'Assembly screws';
+      } else {
+        return 'براغي التجميع';
+      }
+    }
+
+    if (lang != null) {
+      final translated = Localization.translate(clean, lang);
+      if (translated.isNotEmpty && translated != clean) {
+        return translated;
       }
     }
     return clean;
@@ -1283,12 +1349,14 @@ class PdfFicheCoupeApi {
     required List<Map<String, dynamic>> items,
     required String workshopName,
     required SqlDatabase db,
+    AppLanguage? language,
   }) async {
     final bytes = await generateFicheCoupe(
       order: order,
       items: items,
       workshopName: workshopName,
       db: db,
+      language: language,
     );
     await Printing.layoutPdf(
       onLayout: (_) async => bytes,
@@ -1338,7 +1406,7 @@ class _Tr {
   String article(int n) => switch (lang) {
         AppLanguage.french => 'ARTICLE $n',
         AppLanguage.english => 'ITEM $n',
-        AppLanguage.arabic => 'عنصر $n (ARTICLE $n)',
+        AppLanguage.arabic => 'عنصر $n',
       };
 
   String get gamme => switch (lang) {
@@ -1362,19 +1430,19 @@ class _Tr {
   String get profils => switch (lang) {
         AppLanguage.french => 'PROFILS',
         AppLanguage.english => 'PROFILES',
-        AppLanguage.arabic => 'القطاعات (PROFILS)',
+        AppLanguage.arabic => 'القطاعات',
       };
 
   String get accessoires => switch (lang) {
         AppLanguage.french => 'ACCESSOIRES',
         AppLanguage.english => 'ACCESSORIES',
-        AppLanguage.arabic => 'الإكسسوارات (ACCESSOIRES)',
+        AppLanguage.arabic => 'الإكسسوارات',
       };
 
   String get joints => switch (lang) {
         AppLanguage.french => 'JOINTS',
         AppLanguage.english => 'GASKETS',
-        AppLanguage.arabic => 'المفاصل (JOINTS)',
+        AppLanguage.arabic => 'المفاصل',
       };
 
   String get image => switch (lang) {

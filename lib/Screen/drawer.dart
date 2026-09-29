@@ -14,6 +14,7 @@ import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../sql_database.dart';
 import 'achat_screen.dart';
+import 'suppliers_screen.dart';
 import 'settings_screen.dart';
 import 'selected_systems_screen.dart';
 import 'price_management_screen.dart';
@@ -829,6 +830,26 @@ class _AppDrawerState extends State<AppDrawer> {
             Icons.shopping_bag_rounded,
             AchatScreen(db: SqlDatabase()),
             titleKey: 'achat',
+          ),
+        ),
+      );
+    }
+
+    if (settings.canViewSuppliers()) {
+      purchaseItems.add(
+        _desktopMenuItem(
+          title: _desktopLabel(
+            lang,
+            arabic: 'الموردون',
+            french: 'Fournisseurs',
+            english: 'Suppliers',
+          ),
+          icon: Icons.local_shipping_rounded,
+          onTap: () => _openScreen(
+            'الموردين',
+            Icons.local_shipping_rounded,
+            SuppliersScreen(db: db),
+            titleKey: 'الموردين',
           ),
         ),
       );

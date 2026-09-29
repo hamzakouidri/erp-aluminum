@@ -29,6 +29,18 @@ enum ZoneContent { empty, fixedGlass, singleSash, doubleSash, slidingSash }
 
 enum GlassStructure { simple, double, closed }
 
+/// أوضاع الأعمدة المدعمة (Renfort des montants)
+enum ReinforcementMode {
+  /// القسم الأول: تتغير القطاعات كلياً من العمود العادي إلى المدعم
+  fullSubstitution,
+
+  /// القسم الثاني: شيكان مدعمة + شيكان عادية في نقطة الالتقاء المركزية
+  chicaneCombination,
+
+  /// القسم الثالث: أعمدة مدعمة مستقلة تركب ببراغي فوق القطاعات ولها أغطية
+  independentScrewed,
+}
+
 const double kDefaultGlassPaneThickness = 5.0;
 
 /// Resolves the catalogue unit price of a shutter component.
@@ -430,6 +442,17 @@ class FrameAngleJunction {
 
   String get label =>
       'بين الإطار ${firstFrameIndex + 1} و ${secondFrameIndex + 1}';
+
+  String localizedLabel(AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.french:
+        return 'Entre cadre ${firstFrameIndex + 1} et ${secondFrameIndex + 1}';
+      case AppLanguage.english:
+        return 'Between frame ${firstFrameIndex + 1} and ${secondFrameIndex + 1}';
+      case AppLanguage.arabic:
+        return 'بين الإطار ${firstFrameIndex + 1} و ${secondFrameIndex + 1}';
+    }
+  }
 }
 
 class AluminumSection {
@@ -3101,6 +3124,7 @@ class WindowModel extends ChangeNotifier {
   String? loadedSlidingSeriesName;
   int? loadedSeriesId;
   int? loadedSlidingSeriesId;
+  ReinforcementMode reinforcementMode = ReinforcementMode.fullSubstitution;
   Map<String, dynamic>? seriesDesignConfig;
   final Map<int, Set<String>> _seriesDesignRoleKeys = {};
   final Map<int, Map<String, Set<int>>> _seriesDesignRoleSectionIds = {};
@@ -7475,6 +7499,11 @@ class WindowModel extends ChangeNotifier {
           }
         }
 
+        final int? savedSlidingIdBeforeActive =
+            loadedSlidingSeriesId ?? activeSlidingSeries?.id;
+        final String? savedSlidingNameBeforeActive =
+            loadedSlidingSeriesName ?? activeSlidingSeries?.name;
+
         if (resolvedActive != null) {
           await setActiveSeries(resolvedActive);
           foundValidSeries = true;
@@ -7495,6 +7524,14 @@ class WindowModel extends ChangeNotifier {
           foundValidSeries = firstFrench != null;
         }
 
+        if (savedSlidingIdBeforeActive != null) {
+          loadedSlidingSeriesId = savedSlidingIdBeforeActive;
+        }
+        if (savedSlidingNameBeforeActive != null &&
+            savedSlidingNameBeforeActive.trim().isNotEmpty) {
+          loadedSlidingSeriesName = savedSlidingNameBeforeActive;
+        }
+
         final pairedSystem = systemMode == 'mixed'
             ? profileSystemForSeries(availableSystems, activeSeries)
             : null;
@@ -7509,9 +7546,9 @@ class WindowModel extends ChangeNotifier {
           slidingNameToResolve = activeSlidingSeries?.name;
         }
 
-        // A saved sliding-series id is an explicit product choice.  It may
+        // A saved sliding-series id is an explicit product choice. It may
         // legitimately belong to a different catalogue system than the
-        // opening series (for example Bennia 40000 + BS 90).  Resolving it
+        // opening series (for example Bennia 40000 + BS 90). Resolving it
         // only inside the paired system made the restore fail and then
         // silently replace it with that system's first sliding series.
         if (loadedSlidingSeriesId != null) {
@@ -7523,6 +7560,43 @@ class WindowModel extends ChangeNotifier {
               }
             }
             if (resolvedSliding != null) break;
+          }
+        }
+
+        // If not found in availableSystems, search all profiles/series in DB
+        if (resolvedSliding == null && loadedSlidingSeriesId != null) {
+          final allProfilesDataSliding = await db.readProfile();
+          outerSliding:
+          for (var pData in allProfilesDataSliding) {
+            final sourceSystem = AluminumProfileSystem.fromMap(pData);
+            final seriesData = await db.readSeriesByProfile(pData['id']);
+            for (var sData in seriesData) {
+              final s = AluminumSeries.fromMap(sData);
+              if (s.id == loadedSlidingSeriesId) {
+                final sectionsData = await db.readAvailableSectionsBySeries(
+                  s.id,
+                );
+                s.sections = sectionsData
+                    .map((e) => AluminumSection.fromMap(e))
+                    .toList();
+                resolvedSliding = s;
+                final targetSystem = availableSystems.where(
+                  (sys) => sys.id == sourceSystem.id,
+                );
+                final alreadyIn = targetSystem.any(
+                  (sys) => sys.series.any((sr) => sr.id == s.id),
+                );
+                if (!alreadyIn) {
+                  if (targetSystem.isNotEmpty) {
+                    targetSystem.first.series.add(s);
+                  } else {
+                    sourceSystem.series.add(s);
+                    availableSystems.add(sourceSystem);
+                  }
+                }
+                break outerSliding;
+              }
+            }
           }
         }
 
@@ -8788,10 +8862,15 @@ class WindowModel extends ChangeNotifier {
       }
 
       // Initialize the counterpart from the same system, but never replace
-      // the series already used by existing sliding geometry.
+      // an explicitly chosen or saved sliding series.
+      final hasPreservedSlidingChoice =
+          activeSlidingSeries != null ||
+          loadedSlidingSeriesId != null ||
+          (loadedSlidingSeriesName != null &&
+              loadedSlidingSeriesName!.trim().isNotEmpty);
       if (systemMode == 'mixed' &&
-          !(activeSlidingSeries != null &&
-              zones.any((zone) => zone.content == ZoneContent.slidingSash))) {
+          !hasPreservedSlidingChoice &&
+          !zones.any((zone) => zone.content == ZoneContent.slidingSash)) {
         final currentSystem = profileSystemForSeries(availableSystems, series);
         if (currentSystem != null) {
           AluminumSeries? newSliding;
@@ -15874,6 +15953,33 @@ class WindowModel extends ChangeNotifier {
         getSlidingSectionByType('tube_carre') != null;
   }
 
+  double get profileAngleTubeWidth {
+    final sliding = systemMode == 'sliding';
+    final angleSection = getConfiguredSectionForRole(
+          'profile_angle',
+          useSlidingSeries: sliding,
+        ) ??
+        getConfiguredSectionForRole(
+          'profile_angle',
+          useSlidingSeries: !sliding,
+        ) ??
+        getSectionByType('profile_angle') ??
+        getSlidingSectionByType('profile_angle') ??
+        getSectionByType('tube_carre') ??
+        getSlidingSectionByType('tube_carre');
+    return (angleSection != null && angleSection.visibleWidth > 0)
+        ? angleSection.visibleWidth.clamp(30.0, 100.0)
+        : 50.0;
+  }
+
+  bool isProfileAngleJunctionActive(int index) {
+    if (profileAngleJunctionsDisabled) return false;
+    if (profileAngleJunctions.isNotEmpty) {
+      return profileAngleJunctions.contains(index);
+    }
+    return frameRoleRequiredInAllScopes('profile_angle');
+  }
+
   /// Finds all touching/adjacent vertical seams between independent frames.
   /// Frames are ordered horizontally from left to right.
   List<FrameAngleJunction> getAdjacentFrameJunctions() {
@@ -22322,6 +22428,13 @@ class WindowModel extends ChangeNotifier {
 
     if (coupleFrames && rects.length > 1) {
       // إزالة أي فراغ بين الكوادر المقترنة بجعلها ملتصقة تماماً
+      // أو ترك فاصل يعادل عرض بروفيل الزاوية (تيبيكاري) إن كانت هناك وصلة زاوية مفعّلة
+      rects.sort((a, b) {
+        final cmp = a.left.compareTo(b.left);
+        return cmp != 0 ? cmp : a.top.compareTo(b.top);
+      });
+      final double tubeW = profileAngleTubeWidth;
+      int junctionCounter = 0;
       for (int i = 0; i < rects.length; i++) {
         for (int j = i + 1; j < rects.length; j++) {
           final r1 = rects[i];
@@ -22330,14 +22443,35 @@ class WindowModel extends ChangeNotifier {
               math.min(r1.bottom, r2.bottom) - math.max(r1.top, r2.top);
           final maxGap = math.max(80.0, profileThickness * 2 + 10.0);
           if (vOverlap > 10.0) {
-            if ((r2.left - r1.right).abs() <= maxGap) {
+            final hasIntermediate = rects.asMap().entries.any((entry) {
+              final idx = entry.key;
+              if (idx == i || idx == j) return false;
+              final r = entry.value;
+              final minRight = math.min(r1.right, r2.right);
+              final maxLeft = math.max(r1.left, r2.left);
+              return r.left >= minRight - 5.0 &&
+                  r.right <= maxLeft + 5.0 &&
+                  math.min(r.bottom, math.min(r1.bottom, r2.bottom)) >
+                      math.max(r.top, math.max(r1.top, r2.top)) + 10.0;
+            });
+            if (!hasIntermediate && (r2.left - r1.right).abs() <= maxGap) {
+              final currentJunctionIndex = junctionCounter++;
+              final hasActiveTube =
+                  isProfileAngleJunctionActive(currentJunctionIndex);
+              final halfGap = hasActiveTube ? (tubeW / 2.0) : 0.0;
               final commonX = (r1.right + r2.left) / 2.0;
-              rects[i] = Rect.fromLTRB(r1.left, r1.top, commonX, r1.bottom);
-              rects[j] = Rect.fromLTRB(commonX, r2.top, r2.right, r2.bottom);
-            } else if ((r1.left - r2.right).abs() <= maxGap) {
-              final commonX = (r2.right + r1.left) / 2.0;
-              rects[j] = Rect.fromLTRB(r2.left, r2.top, commonX, r2.bottom);
-              rects[i] = Rect.fromLTRB(commonX, r1.top, r1.right, r1.bottom);
+              rects[i] = Rect.fromLTRB(
+                r1.left,
+                r1.top,
+                commonX - halfGap,
+                r1.bottom,
+              );
+              rects[j] = Rect.fromLTRB(
+                commonX + halfGap,
+                r2.top,
+                r2.right,
+                r2.bottom,
+              );
             }
           }
           final hOverlap =

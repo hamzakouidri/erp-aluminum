@@ -220,9 +220,36 @@ class BomItem {
     if (lowerOriginal.contains('chicane') ||
         original.contains('شيكان') ||
         original.contains('الشيكان')) {
+      final isReinforced =
+          lowerOriginal.contains('renforc') || original.contains('معزز');
+      if (isReinforced) {
+        if (lang == 'fr') return 'Chicane Renforcée';
+        if (lang == 'ar') return 'شيكان معزز';
+        return 'Reinforced Chicane';
+      }
       if (lang == 'fr') return 'Chicane';
       if (lang == 'ar') return 'شيكان';
       return 'Chicane';
+    }
+    if (lowerOriginal.contains('renfort rapport') ||
+        original.contains('عمود تدعيم مستقل') ||
+        original.contains('عمود مدعم مستقل')) {
+      if (lang == 'fr') return 'Profilé Renfort Rapporté';
+      if (lang == 'ar') return 'عمود تدعيم مستقل';
+      return 'Independent Reinforcement Profile';
+    }
+    if (original.contains('براغي تثبيت العمود المدعم') ||
+        lowerOriginal.contains('vis de renfort')) {
+      if (lang == 'fr') return 'Vis Renfort 3.9×38';
+      if (lang == 'ar') return 'براغي تدعيم 3.9×38';
+      return 'Reinforcement Screws 3.9×38';
+    }
+    if (original.contains('أغطية العمود المدعم') ||
+        lowerOriginal.contains('caches / bouchons de renfort') ||
+        lowerOriginal.contains('caches renfort')) {
+      if (lang == 'fr') return 'Caches Renfort';
+      if (lang == 'ar') return 'أغطية العمود المدعم';
+      return 'Reinforcement End Caps';
     }
     if (lowerOriginal.contains('sliding frame extension') ||
         lowerOriginal.contains('frame extension') ||
@@ -1027,7 +1054,7 @@ class ComponentCalculator {
       return 'is_lock_clef';
     }
     if (_textHasAny(originalName, const ['serrure'])) return 'is_lock_clef';
-    if (_textHasAny(originalName, const ['اسبانيوليت', 'إسبانيوليت'])) {
+    if (_textHasAny(originalName, const ['اسبانيوليت', 'إسبانيوليت', 'espagnolette'])) {
       return 'اسبانيوليت';
     }
     if (_textHasAny(originalName, const ['مفاصل', 'hinges'])) return 'مفاصل';
@@ -2739,6 +2766,8 @@ class ComponentCalculator {
     }
 
     List<double> slidingChicanePieces = [];
+    List<double> slidingChicaneRenforceePieces = [];
+    List<double> slidingIndependentRenfortPieces = [];
     List<double> slidingRailPieces = [];
     List<double> slidingMonorailPieces = [];
     // Keep the extension cuts with the sliding zone that requested them.
@@ -2945,7 +2974,11 @@ class ComponentCalculator {
       if (triangleDrawingRuns.length > cremoneQty) {
         triangleDrawingRuns.removeRange(cremoneQty, triangleDrawingRuns.length);
       }
-      totalHandles = 0;
+      if (!window.componentOverrides.containsKey('مقبض نافذة (Poignée)') &&
+          !window.componentOverrides.containsKey('المقبض (Handle)') &&
+          !window.componentOverrides.containsKey('مقبض نافذة (Poignée Fenêtre)')) {
+        totalHandles = 0;
+      }
     }
 
     int configuredGacheCount(Iterable<String> keys) {
@@ -4313,10 +4346,18 @@ class ComponentCalculator {
                   zone.slidingMontantReinforced['lateral_$i'] ??
                   zone.slidingMontantReinforced[legacyKey] ??
                   false;
-              (reinforced
-                      ? slidingSashLateralReinforcedPieces
-                      : slidingSashLateralNormalPieces)
-                  .add(sashH / 1000.0);
+              if (reinforced &&
+                  window.reinforcementMode ==
+                      ReinforcementMode.independentScrewed) {
+                // القسم الثالث: القطاع العادي يبقى كما هو + يركب عمود تدعيم مستقل ببراغي
+                slidingSashLateralNormalPieces.add(sashH / 1000.0);
+                slidingIndependentRenfortPieces.add(sashH / 1000.0);
+              } else {
+                (reinforced
+                        ? slidingSashLateralReinforcedPieces
+                        : slidingSashLateralNormalPieces)
+                    .add(sashH / 1000.0);
+              }
             }
 
             // Central / chicane pieces
@@ -4331,7 +4372,23 @@ class ComponentCalculator {
                 slidingSashCentralSlimPieces.add(sashH / 1000.0);
                 slidingSlimCleatPieces.addAll([0.10, 0.10]);
               } else if (reinforced) {
-                slidingSashCentralReinforcedPieces.add(sashH / 1000.0);
+                if (window.reinforcementMode ==
+                    ReinforcementMode.independentScrewed) {
+                  // القسم الثالث: القطاع العادي يبقى + عمود تدعيم مستقل
+                  slidingSashCentralPieces.add(sashH / 1000.0);
+                  slidingIndependentRenfortPieces.add(sashH / 1000.0);
+                } else if (window.reinforcementMode ==
+                    ReinforcementMode.chicaneCombination) {
+                  // القسم الثاني: شيكان مدعمة + شيكان عادية (قطعة مدعمة وقطعة عادية)
+                  if (s.isEven) {
+                    slidingSashCentralReinforcedPieces.add(sashH / 1000.0);
+                  } else {
+                    slidingSashCentralPieces.add(sashH / 1000.0);
+                  }
+                } else {
+                  // القسم الأول: تبديل كامل للقطاع إلى مدعم
+                  slidingSashCentralReinforcedPieces.add(sashH / 1000.0);
+                }
               } else {
                 slidingSashCentralPieces.add(sashH / 1000.0);
               }
@@ -4419,24 +4476,46 @@ class ComponentCalculator {
               ((window.system?.name.toLowerCase().contains('tpr') ?? false) ||
                   (window.system?.name.toLowerCase().contains('hps') ?? false));
           if (!excludeChicane) {
-            int activeChicaneJunctions = 0;
+            final int piecesPerJunction = window.isSlidingPVC
+                ? pvcChicanePiecesPerJunction
+                : 2;
+            final double chicaneLength = sashH;
             for (int j = 0; j < sashes - 1; j++) {
               final isSlim =
                   (zone.slidingMontantSlim['central_${j * 2}'] ?? false) ||
                   (zone.slidingMontantSlim['central_${j * 2 + 1}'] ?? false);
-              if (!isSlim) {
-                activeChicaneJunctions++;
-              }
-            }
-            if (activeChicaneJunctions > 0) {
-              final int piecesPerJunction = window.isSlidingPVC
-                  ? pvcChicanePiecesPerJunction
-                  : 2;
-              final int chicaneCount =
-                  activeChicaneJunctions * piecesPerJunction;
-              final double chicaneLength = sashH;
-              for (int c = 0; c < chicaneCount; c++) {
+              if (isSlim) continue;
+
+              final isJunctionReinforced =
+                  (zone.slidingMontantReinforced['central_${j * 2}'] ?? false) ||
+                  (zone.slidingMontantReinforced['central_${j * 2 + 1}'] ?? false);
+
+              if (isJunctionReinforced &&
+                  window.reinforcementMode ==
+                      ReinforcementMode.chicaneCombination) {
+                // القسم الثاني: شيكان مدعمة + شيكان عادية (قطعة مدعمة وقطعة عادية لكل وصلة)
+                slidingChicaneRenforceePieces.add(chicaneLength / 1000.0);
                 slidingChicanePieces.add(chicaneLength / 1000.0);
+              } else if (isJunctionReinforced &&
+                  window.reinforcementMode ==
+                      ReinforcementMode.fullSubstitution) {
+                // القسم الأول: القطاعات تتغير كلياً إلى شيكان مدعمة
+                for (int c = 0; c < piecesPerJunction; c++) {
+                  slidingChicaneRenforceePieces.add(chicaneLength / 1000.0);
+                }
+              } else if (isJunctionReinforced &&
+                  window.reinforcementMode ==
+                      ReinforcementMode.independentScrewed) {
+                // القسم الثالث: الشيكان يبقى عادياً + يضاف عمود تدعيم مستقل
+                for (int c = 0; c < piecesPerJunction; c++) {
+                  slidingChicanePieces.add(chicaneLength / 1000.0);
+                }
+                slidingIndependentRenfortPieces.add(chicaneLength / 1000.0);
+              } else {
+                // شيكان عادي
+                for (int c = 0; c < piecesPerJunction; c++) {
+                  slidingChicanePieces.add(chicaneLength / 1000.0);
+                }
               }
             }
           }
@@ -4867,6 +4946,73 @@ class ComponentCalculator {
         );
       }
 
+      if (slidingChicaneRenforceePieces.isNotEmpty) {
+        final reinforcedChicane =
+            slidingOverrideFor([
+              'شيكان معزز (Chicane Renforcée)',
+              'قائم وسطي معزز (Sash Central Renforcé)',
+            ]) ??
+            window.getSlidingSectionByType('chicane_renforcee')?.toMap() ??
+            window.getSlidingSectionByType('sash_central_reinforced')?.toMap();
+        items.add(
+          createProfile(
+            'شيكان معزز (Chicane Renforcée)',
+            colorName,
+            pieces: slidingChicaneRenforceePieces,
+            unit: 'قطاع',
+            overrideMap: reinforcedChicane,
+            preferOverrideMap: true,
+            selectorType: 'chicane_renforcee',
+            roleKey: 'chicane_renforcee',
+          ),
+        );
+      }
+
+      if (slidingIndependentRenfortPieces.isNotEmpty) {
+        final renfortOverride = slidingOverrideFor([
+              'عمود تدعيم مستقل (Profilé de Renfort Rapporté)',
+              'عمود مدعم مستقل (Profilé de Renfort Rapporté)',
+              'حديد تدعيم (Renfort)',
+              'renfort',
+            ]) ??
+            window.getSlidingSectionByType('independent_renfort')?.toMap() ??
+            window.getSlidingSectionByType('renfort')?.toMap() ??
+            window.getSectionByType('independent_renfort')?.toMap() ??
+            window.getSectionByType('renfort')?.toMap();
+        items.add(
+          createProfile(
+            'عمود تدعيم مستقل (Profilé de Renfort Rapporté)',
+            colorName,
+            pieces: slidingIndependentRenfortPieces,
+            unit: 'قطاع',
+            overrideMap: renfortOverride,
+            preferOverrideMap: true,
+            selectorType: 'independent_renfort',
+            roleKey: 'independent_renfort',
+          ),
+        );
+
+        // Screws: ((length_mm / 300).ceil() + 1) screws per piece
+        int renfortScrewsCount = 0;
+        for (final p in slidingIndependentRenfortPieces) {
+          renfortScrewsCount += ((p * 1000.0 / 300.0).ceil() + 1);
+        }
+        items.add(
+          createAccessory(
+            'براغي تثبيت العمود المدعم 3.9×38 (Vis de Renfort 3.9×38)',
+            qty: renfortScrewsCount * window.quantity,
+          ),
+        );
+
+        // Caps: 2 per piece
+        items.add(
+          createAccessory(
+            'أغطية العمود المدعم (Caches / Bouchons de Renfort)',
+            qty: slidingIndependentRenfortPieces.length * 2 * window.quantity,
+          ),
+        );
+      }
+
       if (slidingRailPieces.isNotEmpty) {
         final railOverride =
             slidingOverrideFor(['الري (Rail)']) ??
@@ -5233,17 +5379,6 @@ class ComponentCalculator {
           ),
         );
       }
-      if (!usesMultiAccessoryLinks && windowDoubleSashCount > 0) {
-        items.add(
-          createRelatedAccessory(
-            'إسبانيوليت (Espagnolette)',
-            'قاش دوبل (Gache Double Ouvrant)',
-            isActive: !isVerrouCentralActive,
-            qty: windowDoubleSashCount * gacheQtyPerDoubleSash,
-          ),
-        );
-      }
-
       // System OB — إما تفجير Kit أو عنصر واحد
       final systemObKey = getKitKey('System OB');
       if (systemObKey != null &&
@@ -5322,7 +5457,8 @@ class ComponentCalculator {
 
       final bool isCremoneActive = !isSystemObActive && !isDemiObActive;
       if (useCremone && cremoneQty > 0) {
-        final cremoneOverride = window.componentOverrides['كريمون (Cremone)'];
+        final cremoneOverride = window.componentOverrides['كريمون (Cremone)'] ??
+            window.componentOverrides['إسبانيوليت (Espagnolette)'];
         final triangleRule = cremoneOverride is Map
             ? Map<String, dynamic>.from(cremoneOverride)
             : const <String, dynamic>{};
@@ -5336,14 +5472,18 @@ class ComponentCalculator {
         // the drawing supplies the real handle position.
         final useTriangle = triangleProfile != null;
 
-        // The accessory remains visible whether or not its optional Triangle
-        // link is selected.
+        final isEspagnoletteOverride =
+            window.componentOverrides.containsKey('إسبانيوليت (Espagnolette)');
+        final cremoneName = isEspagnoletteOverride
+            ? 'إسبانيوليت (Espagnolette)'
+            : 'كريمون (Cremone)';
         items.add(
           createAccessory(
-            'كريمون (Cremone)',
+            cremoneName,
             color: accessoryColorName,
             qty: cremoneQty,
             isActive: isCremoneActive,
+            roleKeyOverride: isEspagnoletteOverride ? 'espagnolette' : 'cremone',
           ),
         );
         if (useTriangle && isCremoneActive) {
@@ -5405,6 +5545,16 @@ class ComponentCalculator {
           );
         }
       }
+      if (!usesMultiAccessoryLinks && windowDoubleSashCount > 0) {
+        items.add(
+          createRelatedAccessory(
+            'إسبانيوليت (Espagnolette)',
+            'قاش دوبل (Gache Double Ouvrant)',
+            isActive: !isVerrouCentralActive,
+            qty: windowDoubleSashCount * gacheQtyPerDoubleSash,
+          ),
+        );
+      }
       if (octoHandles > 0 && window.systemMode != 'sliding') {
         items.add(
           createAccessory(
@@ -5424,8 +5574,14 @@ class ComponentCalculator {
         );
       }
       // Cremone is the complete locking/handle assembly for this aluminium
-      // opening. It must never be shown together with the standalone handle.
-      if (totalHandles > 0 && !useCremone && window.systemMode != 'sliding') {
+      // opening. It must never be shown together with the standalone handle,
+      // unless an explicit handle override was configured.
+      final hasExplicitHandleOverride =
+          window.componentOverrides.containsKey('مقبض نافذة (Poignée)') ||
+          window.componentOverrides.containsKey('المقبض (Handle)') ||
+          window.componentOverrides.containsKey('مقبض نافذة (Poignée Fenêtre)');
+      final effectiveHandles = hasExplicitHandleOverride ? math.max(1, totalHandles) : totalHandles;
+      if (effectiveHandles > 0 && (!useCremone || hasExplicitHandleOverride) && window.systemMode != 'sliding') {
         if (window.isPVC) {
           items.add(
             createAccessory(
@@ -5435,11 +5591,14 @@ class ComponentCalculator {
             ),
           );
         } else {
+          final handleName = window.componentOverrides.containsKey('مقبض نافذة (Poignée)')
+              ? 'مقبض نافذة (Poignée)'
+              : 'المقبض (Handle)';
           items.add(
             createAccessory(
-              'المقبض (Handle)',
+              handleName,
               color: accessoryColorName,
-              qty: totalHandles,
+              qty: effectiveHandles,
             ),
           );
         }
@@ -7531,9 +7690,12 @@ class ComponentCalculator {
           // are enabled for quantities but not loaded for drawing.
           // Reducer eligibility is controlled exclusively by the configured
           // series role; drawing mode or product name must not enable it.
-          final bool reducerAllowed = window.seriesUsesReducer(
-            window.activeSlidingSeries ?? window.activeSeries,
-          );
+          final reductionSeriesForGlass =
+              window.activeSlidingSeries ?? window.activeSeries;
+          final bool reducerAllowed =
+              reductionSeriesForGlass == null ||
+              window.seriesUsesReducer(reductionSeriesForGlass) ||
+              !window.seriesHasConfiguredRoles(reductionSeriesForGlass);
 
           void addReducteurPieces(int multiplier) {
             hasSimpleGlassReducerPieces = true;
@@ -7671,6 +7833,9 @@ class ComponentCalculator {
             }
             if (usesOpeningSashProfile && openingSashSkipsGlazingBead) {
               // This sash profile is explicitly configured without parclose.
+              if (reducerAllowed && cellGlass.structure == GlassStructure.simple) {
+                addReducteurPieces(pieceMultiplier);
+              }
             } else if (needsDoubleParclose) {
               maxOpeningDoubleGlassPackThickness = math.max(
                 maxOpeningDoubleGlassPackThickness,
@@ -7696,6 +7861,9 @@ class ComponentCalculator {
                 parcloseSimplePieces.add(cellGw / 1000.0);
                 parcloseSimplePieces.add(cellGh / 1000.0);
                 parcloseSimplePieces.add(cellGh / 1000.0);
+              }
+              if (reducerAllowed && cellGlass.structure == GlassStructure.simple) {
+                addReducteurPieces(pieceMultiplier);
               }
             }
           }
@@ -8626,7 +8794,9 @@ class ComponentCalculator {
       // be resolved against the selected sliding series.
       final reductionSeries = window.activeSlidingSeries ?? window.activeSeries;
       final bool reducerAllowedForSeries =
-          reductionSeries != null && window.seriesUsesReducer(reductionSeries);
+          reductionSeries == null ||
+          window.seriesUsesReducer(reductionSeries) ||
+          !window.seriesHasConfiguredRoles(reductionSeries);
       if (reducerAllowedForSeries && reducteurOverride == null) {
         bool isReducteurSection(dynamic s) {
           final n = s.name.toLowerCase();
@@ -8647,12 +8817,14 @@ class ComponentCalculator {
         }
 
         // البحث عن قطاع reducteur صريح (كود 67114 أو reducteur) واستبعاد الباركلوز والسكة
-        try {
-          final redSec = reductionSeries.sections.firstWhere(
-            isReducteurSection,
-          );
-          reducteurOverride = redSec.toMap();
-        } catch (_) {}
+        if (reductionSeries != null) {
+          try {
+            final redSec = reductionSeries.sections.firstWhere(
+              isReducteurSection,
+            );
+            reducteurOverride = redSec.toMap();
+          } catch (_) {}
+        }
       }
 
       // A manually selected reducer is already a valid catalogue selection;

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
@@ -25,13 +26,30 @@ class PdfFontCache {
   static Future<PdfFontBundle> _load() async {
     // Cairo-Regular.ttf في هذا المشروع لا يحتوي على حروف عربية (Latin-only).
     // نستخدم Amiri الذي يدعم العربية والفرنسية بشكل كامل.
-    final data = await Future.wait<ByteData>([
-      rootBundle.load('assets/fonts/Amiri-Regular.ttf'),
-      rootBundle.load('assets/fonts/Amiri-Bold.ttf'),
-    ]);
-    return PdfFontBundle(
-      regular: pw.Font.ttf(data[0]),
-      bold: pw.Font.ttf(data[1]),
-    );
+    try {
+      final data = await Future.wait<ByteData>([
+        rootBundle.load('assets/fonts/Amiri-Regular.ttf'),
+        rootBundle.load('assets/fonts/Amiri-Bold.ttf'),
+      ]);
+      return PdfFontBundle(
+        regular: pw.Font.ttf(data[0]),
+        bold: pw.Font.ttf(data[1]),
+      );
+    } catch (_) {
+      try {
+        final fReg = File('assets/fonts/Amiri-Regular.ttf');
+        final fBold = File('assets/fonts/Amiri-Bold.ttf');
+        if (fReg.existsSync() && fBold.existsSync()) {
+          return PdfFontBundle(
+            regular: pw.Font.ttf(ByteData.sublistView(fReg.readAsBytesSync())),
+            bold: pw.Font.ttf(ByteData.sublistView(fBold.readAsBytesSync())),
+          );
+        }
+      } catch (_) {}
+      return PdfFontBundle(
+        regular: pw.Font.helvetica(),
+        bold: pw.Font.helveticaBold(),
+      );
+    }
   }
 }

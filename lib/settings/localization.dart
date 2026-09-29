@@ -70,6 +70,41 @@ class Localization {
       }
     }
 
+    // Intercept dynamic frame junctions: "بين الإطار X و Y" / "Entre cadre X et Y" / "Between frame X and Y"
+    final junctionMatch = RegExp(
+      r'^(?:بين الإطار|Entre cadre|Between frame)\s+(\d+)\s+(?:و|et|and)\s+(\d+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmedKey);
+    if (junctionMatch != null) {
+      final f1 = junctionMatch.group(1)!;
+      final f2 = junctionMatch.group(2)!;
+      switch (lang) {
+        case AppLanguage.french:
+          return 'Entre cadre $f1 et $f2';
+        case AppLanguage.english:
+          return 'Between frame $f1 and $f2';
+        case AppLanguage.arabic:
+          return 'بين الإطار $f1 و $f2';
+      }
+    }
+
+    // Intercept dynamic profile lengths: "طول القطاع: X مم" / "Longueur : X mm" / "Length: X mm"
+    final lengthMatch = RegExp(
+      r'^(?:طول القطاع|Longueur|Length)\s*:\s*([\d.,]+)\s*(?:مم|mm)$',
+      caseSensitive: false,
+    ).firstMatch(trimmedKey);
+    if (lengthMatch != null) {
+      final val = lengthMatch.group(1)!;
+      switch (lang) {
+        case AppLanguage.french:
+          return 'Longueur : $val mm';
+        case AppLanguage.english:
+          return 'Length: $val mm';
+        case AppLanguage.arabic:
+          return 'طول القطاع: $val مم';
+      }
+    }
+
     if (_dictionary.containsKey(trimmedKey) &&
         _dictionary[trimmedKey]!.containsKey(lang)) {
       final translated = _dictionary[trimmedKey]![lang]!;

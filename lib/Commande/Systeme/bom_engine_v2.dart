@@ -126,24 +126,7 @@ class BomEngineV2 {
         if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
           return item;
         }
-        // Every generated accessory is rule-driven. A saved product or a
-        // legacy name must not publish an accessory in a series where no
-        // active quantity rule authorizes its role.
-        if (const {
-              'accessory',
-              'other',
-            }.contains(item.selectorCategory ?? item.category) &&
-            !await _itemHasRuleCandidate(window, item)) {
-          return null;
-        }
-        // Gaskets are never inferred from a label or from a stale manual
-        // selection. The active catalogue role is the sole authority: for a
-        // sliding system this means an enabled `joint_bourrage` can publish
-        // Bourrage, while opening-only joints cannot leak into its BOM.
-        if ((item.selectorCategory ?? item.category) == 'joint' &&
-            !await _itemHasRuleCandidate(window, item)) {
-          return null;
-        }
+
         // A real catalogue product already selected for this BOM is not a
         // placeholder.  It may be selected through a section/default rule
         // whose child role is intentionally not offered in the replacement
@@ -184,7 +167,10 @@ class BomEngineV2 {
           'batmo_screw',
           'bouchon_batmo_screw',
         }.contains(role)) {
-          return calculatedRoles.contains(role) ? item : null;
+          if (await _calculatedMaterialRoleExplicitlyDisabled(window, role)) {
+            return null;
+          }
+          return item.isActive && (item.requiredQuantity > 0 || item.quantity > 0 || (item.pieces != null && item.pieces!.isNotEmpty)) ? item : null;
         }
         if (await _itemHasRuleCandidate(window, item)) {
           return item;
@@ -199,32 +185,86 @@ class BomEngineV2 {
       }),
     );
     final kept = resolved.whereType<BomItem>().toList();
-    kept.addAll(await _assemblyItems(window, kept));
+    final assemblyResult = await _assemblyItems(window, kept);
+    kept.addAll(assemblyResult);
+    if (!assemblyResult.any((i) =>
+        i.roleKey == 'assembly_screw' || i.originalName == 'براغي التجميع')) {
+      final rawAssemblyScrews = items.where((i) =>
+          (i.originalName == 'براغي التجميع' ||
+              (i.roleKey ?? '').trim().toLowerCase() == 'assembly_screw') &&
+          i.isActive &&
+          i.quantity > 0);
+      kept.addAll(rawAssemblyScrews);
+    }
     kept.addAll(await _linkedAccessoryItems(window, kept));
     final existingIds = kept
         .map((item) => item.catalogItemId)
         .whereType<int>()
         .toSet();
-    kept.addAll(
-      (await _seriesKitItems(window, kept)).where(
-        (item) =>
-            item.catalogItemId == null ||
-            !existingIds.contains(item.catalogItemId),
-      ),
-    );
+    final seriesKits = await _seriesKitItems(window, kept);
+    if (seriesKits.isNotEmpty) {
+      kept.addAll(
+        seriesKits.where(
+          (item) =>
+              item.catalogItemId == null ||
+              !existingIds.contains(item.catalogItemId),
+        ),
+      );
+    } else {
+      final rawKits = items.where((i) =>
+          const {
+            'kit',
+            'sliding_kit',
+            'sliding_kit_40000',
+            'sliding_kit_67000',
+          }.contains((i.roleKey ?? i.selectorType ?? '').trim().toLowerCase()) &&
+          i.isActive &&
+          i.quantity > 0);
+      kept.addAll(rawKits);
+    }
     kept.addAll(await _frameRoleJoints(kept));
     final visibleItems = _deduplicateRoleAccessories(kept);
     // Rebuild accessory screws only after every rule, Kit and linked
     // accessory has been resolved and duplicate visible rows have been
     // removed. The screw calculation must use exactly the quantities shown
     // to the user, otherwise a hidden duplicate is counted twice.
+    final existingAccScrews = visibleItems.where(_isAccessoryScrewRow).toList();
     visibleItems.removeWhere(_isAccessoryScrewRow);
-    visibleItems.addAll(await _accessoryScrewItems(window, visibleItems));
+    final calculatedAccScrews = await _accessoryScrewItems(window, visibleItems);
+    if (calculatedAccScrews.isNotEmpty) {
+      visibleItems.addAll(calculatedAccScrews);
+    } else if (existingAccScrews.isNotEmpty &&
+        !await _calculatedMaterialRoleExplicitlyDisabled(window, 'accessory_screw')) {
+      visibleItems.addAll(existingAccScrews);
+    }
     // Do not suppress active unlinked placeholders here. They are real
     // quantities produced by the drawing and are deliberately kept visible
     // (with their warning state) instead of disappearing from a specific
     // series merely because a second rule lookup found no exact match.
     return visibleItems;
+  }
+
+  Future<bool> _calculatedMaterialRoleExplicitlyDisabled(
+    WindowModel window,
+    String role,
+  ) async {
+    final seriesIds = <int>{
+      if (window.activeSeries?.id != null) window.activeSeries!.id,
+      if (window.activeSlidingSeries?.id != null)
+        window.activeSlidingSeries!.id,
+    };
+    for (final seriesId in seriesIds) {
+      final rules = await _db.getCatalogItemRules(
+        itemTable: 'Accessories',
+        seriesId: seriesId,
+        roleKeys: [role],
+      );
+      if (rules.isNotEmpty &&
+          rules.every((rule) => _catalogInt(rule['show_in_quantity']) == 0)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<bool> _calculatedMaterialRoleEnabled(

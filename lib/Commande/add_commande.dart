@@ -4368,6 +4368,42 @@ class _CommandePageState extends State<CommandePage> {
                                     p.availableSystems,
                                   );
                                   cloned.activeSeries = p.activeSeries;
+                cloned.activeSlidingSeries = p.activeSlidingSeries;
+                cloned.loadedSlidingSeriesId =
+                    p.loadedSlidingSeriesId ?? p.activeSlidingSeries?.id;
+                cloned.loadedSlidingSeriesName =
+                    p.loadedSlidingSeriesName ?? p.activeSlidingSeries?.name;
+                cloned.slidingFrameOverride = p.slidingFrameOverride != null
+                    ? Map<String, dynamic>.from(p.slidingFrameOverride!)
+                    : null;
+                cloned.slidingSashOverride = p.slidingSashOverride != null
+                    ? Map<String, dynamic>.from(p.slidingSashOverride!)
+                    : null;
+                cloned.frameOverride = p.frameOverride != null
+                    ? Map<String, dynamic>.from(p.frameOverride!)
+                    : null;
+                cloned.sashOverride = p.sashOverride != null
+                    ? Map<String, dynamic>.from(p.sashOverride!)
+                    : null;
+                cloned.reinforcementMode = p.reinforcementMode;
+                                  cloned.activeSlidingSeries = p.activeSlidingSeries;
+                                  cloned.loadedSlidingSeriesId =
+                                      p.loadedSlidingSeriesId ?? p.activeSlidingSeries?.id;
+                                  cloned.loadedSlidingSeriesName =
+                                      p.loadedSlidingSeriesName ?? p.activeSlidingSeries?.name;
+                                  cloned.slidingFrameOverride = p.slidingFrameOverride != null
+                                      ? Map<String, dynamic>.from(p.slidingFrameOverride!)
+                                      : null;
+                                  cloned.slidingSashOverride = p.slidingSashOverride != null
+                                      ? Map<String, dynamic>.from(p.slidingSashOverride!)
+                                      : null;
+                                  cloned.frameOverride = p.frameOverride != null
+                                      ? Map<String, dynamic>.from(p.frameOverride!)
+                                      : null;
+                                  cloned.sashOverride = p.sashOverride != null
+                                      ? Map<String, dynamic>.from(p.sashOverride!)
+                                      : null;
+                                  cloned.reinforcementMode = p.reinforcementMode;
                                   cloned.availableColors = List.from(
                                     p.availableColors,
                                   );
