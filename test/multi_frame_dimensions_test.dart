@@ -1,0 +1,150 @@
+import 'package:database_data/sql_database.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:database_data/Commande/Systeme/model.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Multi-Frame Physical Frame Dimensions Tests', () {
+    test('Single frame returns 1 PhysicalFrameInfo with correct bounds', () {
+      final model = WindowModel(
+        db: SqlDatabase(),
+        width: 1200,
+        height: 1500,
+        profileThickness: 45,
+      );
+      final pt = model.profileThickness;
+      model.zones = [
+        WindowZone(
+          id: 'main_zone',
+          boundary: Rect.fromLTWH(pt, pt, 1200 - 2 * pt, 1500 - 2 * pt),
+        ),
+      ];
+      final frames = model.getPhysicalFrameInfos();
+      expect(frames.length, equals(1));
+      expect(frames.first.index, equals(0));
+      expect(frames.first.rect.width, closeTo(1200, 1.0));
+      expect(frames.first.rect.height, closeTo(1500, 1.0));
+      expect(frames.first.primaryZoneId, equals('main_zone'));
+    });
+
+    test('Two coupled frames with different heights are distinctly identified', () {
+      final model = WindowModel(
+        db: SqlDatabase(),
+        width: 2500,
+        height: 2000,
+        profileThickness: 45,
+      );
+      final pt = model.profileThickness;
+      final zone1 = WindowZone(
+        id: 'z_left',
+        boundary: Rect.fromLTRB(pt, pt, 1000 - pt, 1200 - pt),
+      );
+      final zone2 = WindowZone(
+        id: 'z_right',
+        boundary: Rect.fromLTRB(1000 + pt, pt, 2500 - pt, 2000 - pt),
+      );
+      model.zones = [zone1, zone2];
+      model.coupleFrames = true;
+
+      final frames = model.getPhysicalFrameInfos();
+      expect(frames.length, equals(2));
+
+      final sorted = List<PhysicalFrameInfo>.from(frames)
+        ..sort((a, b) => a.rect.left.compareTo(b.rect.left));
+
+      final leftFrame = sorted.first;
+      final rightFrame = sorted.last;
+
+      expect(leftFrame.primaryZoneId, equals('z_left'));
+      expect(rightFrame.primaryZoneId, equals('z_right'));
+
+      expect(leftFrame.rect.height, closeTo(1200, 2.0));
+      expect(rightFrame.rect.height, closeTo(2000, 2.0));
+
+      final hasVaryingHeights =
+          (leftFrame.rect.height - rightFrame.rect.height).abs() > 1.0;
+      expect(hasVaryingHeights, isTrue);
+    });
+
+    test('Three frames configuration detects leftmost, intermediate, and rightmost', () {
+      final model = WindowModel(
+        db: SqlDatabase(),
+        width: 3000,
+        height: 1800,
+        profileThickness: 45,
+      );
+      final pt = model.profileThickness;
+      final z1 = WindowZone(
+        id: 'z1',
+        boundary: Rect.fromLTRB(pt, pt, 800 - pt, 1200 - pt),
+      );
+      final z2 = WindowZone(
+        id: 'z2',
+        boundary: Rect.fromLTRB(800 + pt, pt, 2200 - pt, 1800 - pt),
+      );
+      final z3 = WindowZone(
+        id: 'z3',
+        boundary: Rect.fromLTRB(2200 + pt, pt, 3000 - pt, 1200 - pt),
+      );
+      model.zones = [z1, z2, z3];
+      model.coupleFrames = true;
+
+      final frames = model.getPhysicalFrameInfos();
+      expect(frames.length, equals(3));
+
+      final sorted = List<PhysicalFrameInfo>.from(frames)
+        ..sort((a, b) => a.rect.left.compareTo(b.rect.left));
+
+      expect(sorted[0].primaryZoneId, equals('z1'));
+      expect(sorted[1].primaryZoneId, equals('z2'));
+      expect(sorted[2].primaryZoneId, equals('z3'));
+
+      // Check intermediate frame height
+      expect(sorted[1].rect.height, closeTo(1800, 2.0));
+      // Left and right frame heights
+      expect(sorted[0].rect.height, closeTo(1200, 2.0));
+      expect(sorted[2].rect.height, closeTo(1200, 2.0));
+
+      final hasVaryingHeights = sorted.any(
+        (f) => (f.rect.height - sorted.first.rect.height).abs() > 1.0,
+      );
+      expect(hasVaryingHeights, isTrue);
+
+      // Intermediate dimX formula test
+      final intermediateX =
+          sorted[1].rect.left + (sorted[1].rect.width * 0.28).clamp(0.0, 65.0);
+      expect(intermediateX, greaterThan(sorted[1].rect.left));
+      expect(intermediateX, lessThan(sorted[1].rect.right));
+    });
+
+    test('Frame with internal mullions stays grouped as 1 physical frame', () {
+      final model = WindowModel(
+        db: SqlDatabase(),
+        width: 1400,
+        height: 1600,
+        profileThickness: 45,
+      );
+      final pt = model.profileThickness;
+      final mt = model.mullionThickness;
+
+      // 1 frame divided into top and bottom panes by a mullion
+      final topZone = WindowZone(
+        id: 'pane_top',
+        boundary: Rect.fromLTRB(pt, pt, 1400 - pt, 600 - mt / 2),
+      );
+      final bottomZone = WindowZone(
+        id: 'pane_bottom',
+        boundary: Rect.fromLTRB(pt, 600 + mt / 2, 1400 - pt, 1600 - pt),
+      );
+      model.zones = [topZone, bottomZone];
+
+      final frames = model.getPhysicalFrameInfos();
+      expect(frames.length, equals(1));
+      expect(frames.first.zones.length, equals(2));
+      expect(frames.first.rect.width, closeTo(1400, 2.0));
+      expect(frames.first.rect.height, closeTo(1600, 2.0));
+    });
+  });
+}

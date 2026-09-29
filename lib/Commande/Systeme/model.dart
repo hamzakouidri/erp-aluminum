@@ -7325,12 +7325,28 @@ class WindowModel extends ChangeNotifier {
       }
 
       if (availableSystems.isNotEmpty) {
+        final bool hasSlidingZones = usesSlidingPrimaryProfiles ||
+            zones.any((z) => z.content == ZoneContent.slidingSash) ||
+            loadedSlidingSeriesId != null ||
+            (loadedSlidingSeriesName != null &&
+                loadedSlidingSeriesName!.trim().isNotEmpty);
+
+        final bool hasOpeningZones = zones.any(
+              (z) =>
+                  z.content == ZoneContent.singleSash ||
+                  z.content == ZoneContent.doubleSash ||
+                  z.content == ZoneContent.fixedGlass ||
+                  z.content == ZoneContent.empty,
+            ) ||
+            loadedSeriesId != null ||
+            (loadedSeriesName != null && loadedSeriesName!.trim().isNotEmpty);
+
         bool isOpeningCandidate(
           AluminumSeries series,
           AluminumProfileSystem profile,
         ) {
-          if (systemMode == 'sliding') return false;
-          if (systemMode == 'mixed' || systemMode == 'french') {
+          if (systemMode == 'sliding' && !hasOpeningZones) return false;
+          if (systemMode == 'mixed' || systemMode == 'french' || hasOpeningZones) {
             return seriesSupportsDrawingScopeInSystem(
               series,
               'opening',
@@ -7344,8 +7360,8 @@ class WindowModel extends ChangeNotifier {
           AluminumSeries series,
           AluminumProfileSystem profile,
         ) {
-          if (systemMode == 'french') return false;
-          if (systemMode == 'mixed' || systemMode == 'sliding') {
+          if (systemMode == 'french' && !hasSlidingZones) return false;
+          if (systemMode == 'mixed' || systemMode == 'sliding' || hasSlidingZones) {
             return seriesSupportsDrawingScopeInSystem(
               series,
               'sliding',
@@ -7658,8 +7674,8 @@ class WindowModel extends ChangeNotifier {
               final matchesActiveId =
                   activeSlidingSeries != null &&
                   s.id == activeSlidingSeries!.id;
-              if ((matchesSavedId || matchesActiveId) &&
-                  isSlidingCandidate(s, sys)) {
+              if (matchesSavedId ||
+                  (matchesActiveId && isSlidingCandidate(s, sys))) {
                 resolvedSliding = s;
                 break;
               }
@@ -22494,6 +22510,30 @@ class WindowModel extends ChangeNotifier {
     return rects;
   }
 
+  /// Returns structured information about each physical outer frame,
+  /// including its bounding Rect, its constituent WindowZones, and its primary zone ID.
+  List<PhysicalFrameInfo> getPhysicalFrameInfos() {
+    final groups = _frameZoneGroups();
+    final rects = getFrameRects();
+    final count = math.min(groups.length, rects.length);
+    if (count == 0 && width > 0 && height > 0) {
+      return [
+        PhysicalFrameInfo(
+          index: 0,
+          rect: Rect.fromLTWH(0, 0, width, height),
+          zones: const [],
+        ),
+      ];
+    }
+    return List.generate(count, (i) {
+      return PhysicalFrameInfo(
+        index: i,
+        rect: rects[i],
+        zones: groups[i],
+      );
+    });
+  }
+
   /// Returns only the outside perimeter of the physical frames.
   ///
   /// A single global rectangle is incorrect when one frame is above only
@@ -22652,6 +22692,20 @@ class PlacedFrame {
   Offset position;
 
   PlacedFrame({required this.model, required this.position});
+}
+
+class PhysicalFrameInfo {
+  final int index;
+  final Rect rect;
+  final List<WindowZone> zones;
+
+  const PhysicalFrameInfo({
+    required this.index,
+    required this.rect,
+    required this.zones,
+  });
+
+  String get primaryZoneId => zones.isNotEmpty ? zones.first.id : '';
 }
 
 String? extractSizeDigits(String name) {

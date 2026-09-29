@@ -189,51 +189,103 @@ void _paintCaptureExteriorDimensions(
   final rightX = model.width + margin * 0.62 + sideCoverOffset;
   final bottomY = model.height + margin * 0.42 + sideCoverOffset;
 
-  _drawCaptureDimension(
-    canvas,
-    '${model.width.toInt()} mm',
-    Offset(0, topY),
-    Offset(model.width, topY),
-    scale: scale,
-  );
-  _drawCaptureDimension(
-    canvas,
-    '${model.height.toInt()} mm',
-    Offset(leftX, 0),
-    Offset(leftX, model.height),
-    vertical: true,
-    scale: scale,
-  );
+  final physicalFrames = model.getPhysicalFrameInfos();
+  if (physicalFrames.length > 1) {
+    final sorted = List<PhysicalFrameInfo>.from(physicalFrames)
+      ..sort((a, b) => a.rect.left != b.rect.left
+          ? a.rect.left.compareTo(b.rect.left)
+          : a.rect.top.compareTo(b.rect.top));
+    final hasVaryingHeights = sorted.any(
+      (f) => (f.rect.height - sorted.first.rect.height).abs() > 1.0,
+    );
 
-  final verticalJoints = model.getVerticalFrameJoints();
-  if (verticalJoints.isNotEmpty) {
-    final xs = [0.0, ...verticalJoints, model.width];
-    for (var i = 0; i < xs.length - 1; i++) {
+    // Total width at top
+    _drawCaptureDimension(
+      canvas,
+      '${model.width.toInt()} mm',
+      Offset(0, topY),
+      Offset(model.width, topY),
+      scale: scale,
+    );
+
+    // Individual frame widths at bottom
+    for (final f in sorted) {
       _drawCaptureDimension(
         canvas,
-        '${(xs[i + 1] - xs[i]).toInt()} mm',
-        Offset(xs[i], bottomY),
-        Offset(xs[i + 1], bottomY),
+        '${f.rect.width.toInt()} mm',
+        Offset(f.rect.left, bottomY),
+        Offset(f.rect.right, bottomY),
         small: true,
         scale: scale,
       );
     }
-  }
 
-  final horizontalJoints = model.getHorizontalFrameJoints();
-  if (horizontalJoints.isNotEmpty) {
-    final ys = [0.0, ...horizontalJoints, model.height];
-    for (var i = 0; i < ys.length - 1; i++) {
+    // Leftmost frame height on the left
+    final leftmost = sorted.first;
+    _drawCaptureDimension(
+      canvas,
+      '${leftmost.rect.height.toInt()} mm',
+      Offset(leftX, leftmost.rect.top),
+      Offset(leftX, leftmost.rect.bottom),
+      vertical: true,
+      scale: scale,
+    );
+
+    // If leftmost is shorter than total window height, show total height on outer left
+    if (hasVaryingHeights && model.height > leftmost.rect.height + 1.0) {
       _drawCaptureDimension(
         canvas,
-        '${(ys[i + 1] - ys[i]).toInt()} mm',
-        Offset(rightX, ys[i]),
-        Offset(rightX, ys[i + 1]),
+        '${model.height.toInt()} mm',
+        Offset(leftX - margin * 0.45, 0),
+        Offset(leftX - margin * 0.45, model.height),
         vertical: true,
-        small: true,
         scale: scale,
       );
     }
+
+    // Rightmost frame height on the right
+    final rightmost = sorted.last;
+    _drawCaptureDimension(
+      canvas,
+      '${rightmost.rect.height.toInt()} mm',
+      Offset(rightX, rightmost.rect.top),
+      Offset(rightX, rightmost.rect.bottom),
+      vertical: true,
+      scale: scale,
+    );
+
+    // Intermediate frames heights
+    if (sorted.length >= 3 && hasVaryingHeights) {
+      for (int i = 1; i < sorted.length - 1; i++) {
+        final f = sorted[i];
+        final dimX = f.rect.left + math.min(f.rect.width * 0.28, 65.0);
+        _drawCaptureDimension(
+          canvas,
+          '${f.rect.height.toInt()} mm',
+          Offset(dimX, f.rect.top),
+          Offset(dimX, f.rect.bottom),
+          vertical: true,
+          small: true,
+          scale: scale,
+        );
+      }
+    }
+  } else {
+    _drawCaptureDimension(
+      canvas,
+      '${model.width.toInt()} mm',
+      Offset(0, topY),
+      Offset(model.width, topY),
+      scale: scale,
+    );
+    _drawCaptureDimension(
+      canvas,
+      '${model.height.toInt()} mm',
+      Offset(leftX, 0),
+      Offset(leftX, model.height),
+      vertical: true,
+      scale: scale,
+    );
   }
 }
 

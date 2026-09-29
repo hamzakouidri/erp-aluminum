@@ -36,7 +36,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   String _chequeNumber = '';
   Timer? _debounceTimer;
   bool _isLoaded = false;
-  bool _imageUnderPrices = false;
+  int _imageMode = 0; // 0=Latérale, 1=Sous-prix, 2=Pleine largeur
   static const _blue = Color(0xFF1565C0);
   static const _headerBlue = Color(0xFF1976D2);
 
@@ -194,7 +194,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       return await PdfInvoiceApi.buildPdfBytes(
         _currentDevisData,
         overrideLang: _invoiceLanguage,
-        imageUnderPrices: _imageUnderPrices,
+        imageMode: _imageMode,
       ).timeout(const Duration(seconds: 30));
     } catch (e) {
       debugPrint('PDF generation error: $e');
@@ -257,7 +257,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       final bytes = await PdfInvoiceApi.buildPdfBytes(
         rebuiltData,
         overrideLang: newLang,
-        imageUnderPrices: _imageUnderPrices,
+        imageMode: _imageMode,
       ).timeout(const Duration(seconds: 45));
 
       if (mounted) {
@@ -315,7 +315,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       final bytes = await PdfInvoiceApi.buildPdfBytes(
         rebuiltData,
         overrideLang: _invoiceLanguage,
-        imageUnderPrices: _imageUnderPrices,
+        imageMode: _imageMode,
       );
 
       if (mounted) {
@@ -478,76 +478,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        GestureDetector(
-                          onTap: () {
-                            if (_imageUnderPrices && !_isLoading) {
-                              setState(() {
-                                _imageUnderPrices = false;
-                                _pdfBytes = null;
-                              });
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: !_imageUnderPrices
-                                  ? _blue
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Text(
-                              _invoiceLanguage == AppLanguage.french
-                                  ? 'A (Latérale)'
-                                  : 'A (جانبية)',
-                              style: TextStyle(
-                                color: !_imageUnderPrices
-                                    ? Colors.white
-                                    : Colors.black87,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                fontFamily: 'Cairo',
-                              ),
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            if (!_imageUnderPrices && !_isLoading) {
-                              setState(() {
-                                _imageUnderPrices = true;
-                                _pdfBytes = null;
-                              });
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _imageUnderPrices
-                                  ? _blue
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Text(
-                              _invoiceLanguage == AppLanguage.french
-                                  ? 'B (Sous prix)'
-                                  : 'B (تحت الأسعار)',
-                              style: TextStyle(
-                                color: _imageUnderPrices
-                                    ? Colors.white
-                                    : Colors.black87,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                fontFamily: 'Cairo',
-                              ),
-                            ),
-                          ),
-                        ),
+                        // ── وضع A: صورة جانبية ──
+                        _modeButton(0, 'A (Latérale)', 'A (جانبية)'),
+                        // ── وضع B: صورة تحت التفاصيل ──
+                        _modeButton(1, 'B (Sous prix)', 'B (تحت الأسعار)'),
+                        // ── وضع C: صورة تحت كامل الصف ──
+                        _modeButton(2, 'C (Pleine)', 'C (تحت الصف)'),
                       ],
                     ),
                   ),
@@ -1341,7 +1277,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildTableHeader() {
     final hidePrices = data.hidePrices;
-    final bool showLeftImage = !_isOfficial && !_imageUnderPrices;
+    final bool showLeftImage = !_isOfficial && _imageMode == 0;
 
     return Container(
       color: _headerBlue,
@@ -1391,6 +1327,38 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     fontSize: 12,
   );
 
+  /// زر تبديل وضع الصورة (A=0 / B=1 / C=2)
+  Widget _modeButton(int mode, String labelFr, String labelAr) {
+    final bool active = _imageMode == mode;
+    final String label = _invoiceLanguage == AppLanguage.french ? labelFr : labelAr;
+    return GestureDetector(
+      onTap: () {
+        if (!active && !_isLoading) {
+          setState(() {
+            _imageMode = mode;
+            _pdfBytes = null;
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? _blue : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            fontFamily: 'Cairo',
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildItemRow(int index, DevisLineItem item) {
     final bg = index.isEven ? Colors.white : const Color(0xFFF8FAFC);
     final textColor = item.isReplaced ? Colors.grey.shade500 : Colors.black87;
@@ -1399,7 +1367,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         : Colors.grey.shade800;
     final priceColor = item.isReplaced ? Colors.grey.shade500 : _blue;
     final hidePrices = data.hidePrices;
-    final bool showLeftImage = !_isOfficial && !_imageUnderPrices;
+    final bool showLeftImage = !_isOfficial && _imageMode == 0;
     final List<String> displayDetails = _isOfficial
         ? [
             if (_invoiceLanguage == AppLanguage.french)
@@ -1457,7 +1425,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                         detailColor,
                         twoColumns: hidePrices,
                       ),
-                      if (_imageUnderPrices && !_isOfficial) ...[
+                      // وضع B: صورة تحت التفاصيل داخل عمود التسمية
+                      if (_imageMode == 1 && !_isOfficial) ...[
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
@@ -1510,6 +1479,35 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               ],
             ),
           ),
+          // وضع C: صورة تحت كامل صف السعر/الكمية
+          if (_imageMode == 2 && !_isOfficial) ...[
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final double ratio = (item.width > 0 && item.height > 0)
+                    ? item.width / item.height
+                    : 4 / 3;
+                final double imgW = constraints.maxWidth;
+                final double imgH = (imgW / ratio).clamp(0, 280);
+                return Center(
+                  child: Opacity(
+                    opacity: item.isReplaced ? 0.6 : 1.0,
+                    child: Container(
+                      width: imgW,
+                      height: imgH,
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: _buildItemImage(item),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 4),
+          ],
           if (item.isReplaced && item.replacementReason.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(

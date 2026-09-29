@@ -1,5 +1,7 @@
 // Force compile sync trigger
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' show Rect;
 import '../utils/shutter_selection.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -749,68 +751,64 @@ class DevisBuilder {
     if (isShutterOnly) {
       systemType = 'Volet roulant';
     } else if (map['zones'] != null && (map['zones'] as List).isNotEmpty) {
-      final zonesList = map['zones'] as List;
-      final isDoor = zonesList.any(
-        (z) =>
-            z is Map &&
-            (z['lockType']?.toString() == 'clef' ||
-                z['lockType']?.toString() == 'condamnation' ||
-                z['lockType']?.toString() == 'LockType.clef' ||
-                z['lockType']?.toString() == 'LockType.condamnation'),
-      );
-      final hasDoubleSash = zonesList.any(
-        (z) => z is Map && z['content']?.toString() == 'doubleSash',
-      );
-      if (hasDoubleSash) {
-        if (isDoor) {
-          if (_currentLang == AppLanguage.french) {
-            systemType = 'Porte double sash';
-          } else if (_currentLang == AppLanguage.english) {
-            systemType = 'Double sash door';
-          } else {
-            systemType = 'باب بضلفتين';
-          }
-        } else {
-          if (_currentLang == AppLanguage.french) {
-            systemType = 'Fenêtre double ouvrant';
-          } else if (_currentLang == AppLanguage.english) {
-            systemType = 'Double sash window';
-          } else {
-            systemType = 'نافذة بضلفتين';
-          }
-        }
+      final smartComposition =
+          generateSmartCompositionDescription(map, _currentLang);
+      if (smartComposition.isNotEmpty) {
+        systemType = smartComposition;
       } else {
-        final hasSlidingSash = zonesList.any(
-          (z) => z is Map && z['content']?.toString() == 'slidingSash',
+        final zonesList = map['zones'] as List;
+        final isDoor = zonesList.any(
+          (z) =>
+              z is Map &&
+              (z['lockType']?.toString() == 'clef' ||
+                  z['lockType']?.toString() == 'condamnation' ||
+                  z['lockType']?.toString() == 'LockType.clef' ||
+                  z['lockType']?.toString() == 'LockType.condamnation'),
         );
-        if (hasSlidingSash) {
-          if (_currentLang == AppLanguage.french) {
-            systemType = 'Fenêtre coulissante';
-          } else if (_currentLang == AppLanguage.english) {
-            systemType = 'Sliding window';
+        final hasDoubleSash = zonesList.any(
+          (z) => z is Map && z['content']?.toString() == 'doubleSash',
+        );
+        if (hasDoubleSash) {
+          if (isDoor) {
+            systemType = switch (_currentLang) {
+              AppLanguage.french => 'Porte double sash',
+              AppLanguage.english => 'Double sash door',
+              AppLanguage.arabic => 'باب بضلفتين',
+            };
           } else {
-            systemType = 'نافذة منزلقة';
+            systemType = switch (_currentLang) {
+              AppLanguage.french => 'Fenêtre double ouvrant',
+              AppLanguage.english => 'Double sash window',
+              AppLanguage.arabic => 'نافذة بضلفتين',
+            };
           }
         } else {
-          final hasSingleSash = zonesList.any(
-            (z) => z is Map && z['content']?.toString() == 'singleSash',
+          final hasSlidingSash = zonesList.any(
+            (z) => z is Map && z['content']?.toString() == 'slidingSash',
           );
-          if (hasSingleSash) {
-            if (isDoor) {
-              if (_currentLang == AppLanguage.french) {
-                systemType = 'Porte simple sash';
-              } else if (_currentLang == AppLanguage.english) {
-                systemType = 'Single sash door';
+          if (hasSlidingSash) {
+            systemType = switch (_currentLang) {
+              AppLanguage.french => 'Fenêtre coulissante',
+              AppLanguage.english => 'Sliding window',
+              AppLanguage.arabic => 'نافذة منزلقة',
+            };
+          } else {
+            final hasSingleSash = zonesList.any(
+              (z) => z is Map && z['content']?.toString() == 'singleSash',
+            );
+            if (hasSingleSash) {
+              if (isDoor) {
+                systemType = switch (_currentLang) {
+                  AppLanguage.french => 'Porte simple sash',
+                  AppLanguage.english => 'Single sash door',
+                  AppLanguage.arabic => 'باب بضلفة واحدة',
+                };
               } else {
-                systemType = 'باب بضلفة واحدة';
-              }
-            } else {
-              if (_currentLang == AppLanguage.french) {
-                systemType = 'Fenêtre simple ouvrant';
-              } else if (_currentLang == AppLanguage.english) {
-                systemType = 'Single sash window';
-              } else {
-                systemType = 'نافذة بضلفة واحدة';
+                systemType = switch (_currentLang) {
+                  AppLanguage.french => 'Fenêtre simple ouvrant',
+                  AppLanguage.english => 'Single sash window',
+                  AppLanguage.arabic => 'نافذة بضلفة واحدة',
+                };
               }
             }
           }
@@ -2054,17 +2052,365 @@ class DevisBuilder {
         .toList(growable: false);
   }
 
+  static Rect _zoneBoundary(Map<String, dynamic> z) {
+    final b = z['boundary'];
+    if (b is Rect) return b;
+    if (b is Map) {
+      final l = (b['left'] as num?)?.toDouble() ?? 0.0;
+      final t = (b['top'] as num?)?.toDouble() ?? 0.0;
+      final w = (b['width'] as num?)?.toDouble() ?? 0.0;
+      final h = (b['height'] as num?)?.toDouble() ?? 0.0;
+      return Rect.fromLTWH(l, t, w, h);
+    }
+    final l = (z['left'] as num?)?.toDouble() ?? 0.0;
+    final t = (z['top'] as num?)?.toDouble() ?? 0.0;
+    final w = (z['width'] as num?)?.toDouble() ?? 0.0;
+    final h = (z['height'] as num?)?.toDouble() ?? 0.0;
+    return Rect.fromLTWH(l, t, w, h);
+  }
+
+  static bool _areZonesAdjacent(Rect first, Rect second, [double intraFrameGap = 65.0]) {
+    final verticalTouch =
+        (first.right - second.left).abs() <= intraFrameGap ||
+        (second.right - first.left).abs() <= intraFrameGap;
+    if (verticalTouch) {
+      final overlapTop = math.max(first.top, second.top);
+      final overlapBottom = math.min(first.bottom, second.bottom);
+      if (overlapTop < overlapBottom - 5.0) return true;
+    }
+
+    final horizontalTouch =
+        (first.bottom - second.top).abs() <= intraFrameGap ||
+        (second.bottom - first.top).abs() <= intraFrameGap;
+    if (horizontalTouch) {
+      final overlapLeft = math.max(first.left, second.left);
+      final overlapRight = math.min(first.right, second.right);
+      if (overlapLeft < overlapRight - 5.0) return true;
+    }
+    return false;
+  }
+
+  static List<List<Map<String, dynamic>>> _clusterZonesIntoFrames(List<Map<String, dynamic>> zones) {
+    if (zones.isEmpty) return const [];
+    if (zones.length == 1) return [zones];
+
+    final hasValidBoundaries = zones.any((z) {
+      final r = _zoneBoundary(z);
+      return r.width > 0 && r.height > 0;
+    });
+    if (!hasValidBoundaries) {
+      return [zones];
+    }
+
+    final groups = <List<Map<String, dynamic>>>[];
+
+    for (final zone in zones) {
+      final zoneRect = _zoneBoundary(zone);
+      final connectedIndices = <int>[];
+
+      for (int i = 0; i < groups.length; i++) {
+        bool isConnected = false;
+        for (final other in groups[i]) {
+          if (_areZonesAdjacent(zoneRect, _zoneBoundary(other))) {
+            isConnected = true;
+            break;
+          }
+        }
+        if (isConnected) {
+          connectedIndices.add(i);
+        }
+      }
+
+      if (connectedIndices.isEmpty) {
+        groups.add([zone]);
+      } else {
+        final merged = <Map<String, dynamic>>[zone];
+        connectedIndices.sort((a, b) => b.compareTo(a));
+        for (final idx in connectedIndices) {
+          merged.addAll(groups[idx]);
+          groups.removeAt(idx);
+        }
+        groups.add(merged);
+      }
+    }
+
+    // Sort groups spatially (left to right, then top to bottom)
+    groups.sort((a, b) {
+      final rectA = a.map(_zoneBoundary).reduce((v, e) => Rect.fromLTRB(
+        math.min(v.left, e.left),
+        math.min(v.top, e.top),
+        math.max(v.right, e.right),
+        math.max(v.bottom, e.bottom),
+      ));
+      final rectB = b.map(_zoneBoundary).reduce((v, e) => Rect.fromLTRB(
+        math.min(v.left, e.left),
+        math.min(v.top, e.top),
+        math.max(v.right, e.right),
+        math.max(v.bottom, e.bottom),
+      ));
+      if ((rectA.left - rectB.left).abs() > 20) {
+        return rectA.left.compareTo(rectB.left);
+      }
+      return rectA.top.compareTo(rectB.top);
+    });
+
+    return groups;
+  }
+
+  static String _slidingFrameTitle({
+    required int sashes,
+    required bool isDoor,
+    required AppLanguage lang,
+  }) {
+    return switch (lang) {
+      AppLanguage.french =>
+        isDoor
+            ? (sashes == 1 ? 'Porte coulissante 1 vantail' : 'Porte coulissante $sashes vantaux')
+            : (sashes == 1 ? 'Fenêtre coulissante 1 vantail' : 'Fenêtre coulissante $sashes vantaux'),
+      AppLanguage.arabic =>
+        isDoor
+            ? (sashes == 1
+                ? 'باب منزلق ضلفة واحدة'
+                : sashes == 2
+                    ? 'باب منزلق بضلفتين'
+                    : 'باب منزلق $sashes درفات')
+            : (sashes == 1
+                ? 'نافذة منزلقة ضلفة واحدة'
+                : sashes == 2
+                    ? 'نافذة منزلقة بضلفتين'
+                    : 'نافذة منزلقة $sashes درفات'),
+      AppLanguage.english =>
+        isDoor
+            ? (sashes == 1 ? '1-sash sliding door' : '$sashes-sash sliding door')
+            : (sashes == 1 ? '1-sash sliding window' : '$sashes-sash sliding window'),
+    };
+  }
+
+  static String _openingFrameTitle({
+    required int sashes,
+    required bool isDoor,
+    required AppLanguage lang,
+  }) {
+    return switch (lang) {
+      AppLanguage.french =>
+        isDoor
+            ? (sashes == 1
+                ? 'Porte simple ouvrant'
+                : sashes == 2
+                    ? 'Porte double ouvrant'
+                    : 'Porte $sashes vantaux')
+            : (sashes == 1
+                ? 'Fenêtre simple ouvrant'
+                : sashes == 2
+                    ? 'Fenêtre double vantaux'
+                    : 'Fenêtre $sashes vantaux'),
+      AppLanguage.arabic =>
+        isDoor
+            ? (sashes == 1
+                ? 'باب بضلفة واحدة'
+                : sashes == 2
+                    ? 'باب بضلفتين'
+                    : 'باب بـ $sashes درفات')
+            : (sashes == 1
+                ? 'نافذة بضلفة واحدة'
+                : sashes == 2
+                    ? 'نافذة بضلفتين'
+                    : 'نافذة بـ $sashes درفات'),
+      AppLanguage.english =>
+        isDoor
+            ? (sashes == 1
+                ? 'Single sash door'
+                : sashes == 2
+                    ? 'Double sash door'
+                    : '$sashes-sash door')
+            : (sashes == 1
+                ? 'Single sash window'
+                : sashes == 2
+                    ? 'Double sash window'
+                    : '$sashes-sash window'),
+    };
+  }
+
+  static String _fixedSuffixForFrame(int count, AppLanguage lang) {
+    if (count <= 0) return '';
+    return switch (lang) {
+      AppLanguage.french =>
+        count == 1
+            ? ' avec partie fixe'
+            : count == 2
+                ? ' avec 2 parties fixes'
+                : ' avec $count parties fixes',
+      AppLanguage.arabic =>
+        count == 1
+            ? ' مع جزء ثابت'
+            : count == 2
+                ? ' مع جزئين ثابتين'
+                : (count >= 3 && count <= 10)
+                    ? ' مع $count أجزاء ثابتة'
+                    : ' مع $count جزء ثابت',
+      AppLanguage.english =>
+        count == 1
+            ? ' with fixed pane'
+            : ' with $count fixed panes',
+    };
+  }
+
+  static String _pureFixedFrameTitle(int count, AppLanguage lang) {
+    return switch (lang) {
+      AppLanguage.french =>
+        count <= 1
+            ? 'Fixe'
+            : count == 2
+                ? 'Fixe (2 parties fixes)'
+                : 'Fixe ($count parties fixes)',
+      AppLanguage.arabic =>
+        count <= 1
+            ? 'إطار ثابت'
+            : count == 2
+                ? 'إطار ثابت (جزئين ثابتين)'
+                : (count >= 3 && count <= 10)
+                    ? 'إطار ثابت ($count أجزاء ثابتة)'
+                    : 'إطار ثابت ($count جزء ثابت)',
+      AppLanguage.english =>
+        count <= 1
+            ? 'Fixed frame'
+            : 'Fixed frame ($count fixed panes)',
+    };
+  }
+
+  static String _describePhysicalFrame({
+    required List<Map<String, dynamic>> frameZones,
+    required AppLanguage lang,
+  }) {
+    int slidingSashes = 0;
+    int openingSashes = 0;
+    bool isDoor = false;
+    int fixedCount = 0;
+
+    for (final z in frameZones) {
+      final content = z['content']?.toString() ?? '';
+      final contentLower = content.toLowerCase();
+
+      final lockType = z['lockType']?.toString().toLowerCase() ?? '';
+      if (lockType.contains('clef') ||
+          lockType.contains('condamnation') ||
+          z['hasSashPlintheBottom'] == true ||
+          z['isSash105'] == true) {
+        isDoor = true;
+      }
+
+      if (contentLower.contains('slidingsash') || contentLower == 'sliding') {
+        final count = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
+        slidingSashes += count > 0 ? count : 2;
+      } else if (contentLower == 'doublesash') {
+        openingSashes += 2;
+      } else if (contentLower == 'singlesash') {
+        openingSashes += 1;
+      } else {
+        // Subcells check
+        int subcellSashes = 0;
+        if (z['cellIsDoubleSash'] is Map) {
+          final doubleMap = z['cellIsDoubleSash'] as Map;
+          final dCount = doubleMap.values.where((v) => v == true || v == 1 || v?.toString() == 'true').length;
+          openingSashes += dCount * 2;
+          subcellSashes += dCount * 2;
+        }
+        if (z['cellIsSash'] is Map) {
+          final sashMap = z['cellIsSash'] as Map;
+          final sCount = sashMap.values.where((v) => v == true || v == 1 || v?.toString() == 'true').length;
+          openingSashes += sCount;
+          subcellSashes += sCount;
+        }
+
+        final innerH = (z['innerH'] as num?)?.toInt() ?? 0;
+        final innerV = (z['innerV'] as num?)?.toInt() ?? 0;
+        final isSubdivided = z['isSubdivided'] == true || innerH > 0 || innerV > 0;
+        if (isSubdivided) {
+          final totalCells = (innerH + 1) * (innerV + 1);
+          final fixedCells = totalCells - subcellSashes;
+          if (fixedCells > 0) {
+            fixedCount += fixedCells;
+          }
+        } else {
+          fixedCount += 1;
+        }
+      }
+    }
+
+    if (slidingSashes > 0 && openingSashes == 0) {
+      return '${_slidingFrameTitle(sashes: slidingSashes, isDoor: isDoor, lang: lang)}${_fixedSuffixForFrame(fixedCount, lang)}';
+    } else if (openingSashes > 0 && slidingSashes == 0) {
+      return '${_openingFrameTitle(sashes: openingSashes, isDoor: isDoor, lang: lang)}${_fixedSuffixForFrame(fixedCount, lang)}';
+    } else if (slidingSashes > 0 && openingSashes > 0) {
+      final conj = switch (lang) {
+        AppLanguage.french => ' et ',
+        AppLanguage.arabic => ' و ',
+        AppLanguage.english => ' and ',
+      };
+      return '${_slidingFrameTitle(sashes: slidingSashes, isDoor: isDoor, lang: lang)}$conj${_openingFrameTitle(sashes: openingSashes, isDoor: isDoor, lang: lang)}${_fixedSuffixForFrame(fixedCount, lang)}';
+    } else {
+      return _pureFixedFrameTitle(fixedCount, lang);
+    }
+  }
+
+  static String generateSmartCompositionDescription(
+    Map<String, dynamic> map,
+    AppLanguage lang,
+  ) {
+    final zones = _zonesFromMap(map);
+    if (zones.isEmpty) return '';
+
+    final frameGroups = _clusterZonesIntoFrames(zones);
+    if (frameGroups.isEmpty) return '';
+
+    final conj = switch (lang) {
+      AppLanguage.french => ' et ',
+      AppLanguage.arabic => ' و ',
+      AppLanguage.english => ' and ',
+    };
+
+    final frameDescriptions = frameGroups
+        .map((g) => _describePhysicalFrame(frameZones: g, lang: lang))
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+
+    if (frameDescriptions.isEmpty) return '';
+    return frameDescriptions.join(conj);
+  }
+
   static String _compactInvoiceTitle({
     required Map<String, dynamic> map,
     required String systemType,
     required bool isShutterOnly,
   }) {
+    if (map['invoiceTableEdited'] == true ||
+        map['invoiceTableEdited']?.toString().toLowerCase() == 'true') {
+      final editedTitle = map['manualNameOverride']?.toString().trim() ?? '';
+      if (editedTitle.isNotEmpty) {
+        return _localizeWindowTitle(editedTitle, systemType);
+      }
+    }
+
     if (isShutterOnly) {
       return switch (_currentLang) {
         AppLanguage.french => 'Volet roulant',
         AppLanguage.english => 'Rolling shutter',
         AppLanguage.arabic => 'ستار رولان',
       };
+    }
+
+    final isDouble = _hasDoubleGlass(map);
+    final hasGas = _hasGas(map);
+    final gasStr = hasGas ? _gasSuffix() : '';
+
+    final smartComposition = generateSmartCompositionDescription(map, _currentLang);
+    if (smartComposition.isNotEmpty) {
+      final glassStr = switch (_currentLang) {
+        AppLanguage.french => isDouble ? 'double vitrage' : 'simple vitrage',
+        AppLanguage.english => isDouble ? 'double glazing' : 'single glazing',
+        AppLanguage.arabic => isDouble ? 'بزجاج مزدوج' : 'بزجاج مفرد',
+      };
+      return '$smartComposition $glassStr$gasStr'.trim();
     }
 
     final zones = _zonesFromMap(map);
@@ -2078,15 +2424,14 @@ class DevisBuilder {
         systemLower.contains('coulissant') ||
         systemLower.contains('sliding') ||
         systemType.contains('منزلق');
-    final isDouble = _hasDoubleGlass(map);
     if (fixedOnlyWindow) {
       return switch (_currentLang) {
         AppLanguage.french =>
-          'Fixe ${isDouble ? "double vitrage" : "simple vitrage"}',
+          'Fixe ${isDouble ? "double vitrage" : "simple vitrage"}$gasStr',
         AppLanguage.english =>
-          'Fixed frame ${isDouble ? "double glazing" : "single glazing"}',
+          'Fixed frame ${isDouble ? "double glazing" : "single glazing"}$gasStr',
         AppLanguage.arabic =>
-          'إطار ثابت ${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}',
+          'إطار ثابت ${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}$gasStr',
       };
     }
     final fixedCount = zones
@@ -2097,16 +2442,30 @@ class DevisBuilder {
       AppLanguage.french =>
         '${isDoor ? "Porte" : (isSliding ? "Fenêtre coulissante" : "Fenêtre")} '
             '${isDouble ? "double vitrage" : "simple vitrage"}'
-            '${_fixedSuffix(fixedCount)}',
+            '${_fixedSuffix(fixedCount)}$gasStr',
       AppLanguage.english =>
         '${isDoor ? "Door" : (isSliding ? "Sliding window" : "Window")} '
             '${isDouble ? "double glazing" : "single glazing"}'
-            '${_fixedSuffix(fixedCount)}',
+            '${_fixedSuffix(fixedCount)}$gasStr',
       AppLanguage.arabic =>
         '${isDoor ? "باب" : (isSliding ? "نافذة منزلقة" : "نافذة")} '
             '${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}'
-            '${_fixedSuffix(fixedCount)}',
+            '${_fixedSuffix(fixedCount)}$gasStr',
     };
+  }
+
+  static bool _hasGas(Map<String, dynamic> map) {
+    if (map['hasGas'] == true) return true;
+    for (final z in _zonesFromMap(map)) {
+      if (z['glass'] is Map && (z['glass'] as Map)['hasGas'] == true) return true;
+      final cellGlass = z['cellGlassSpec'];
+      if (cellGlass is Map) {
+        for (final v in cellGlass.values) {
+          if (v is Map && v['hasGas'] == true) return true;
+        }
+      }
+    }
+    return false;
   }
 
   static String _fixedSuffix(int count) {

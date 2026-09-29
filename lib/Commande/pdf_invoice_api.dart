@@ -65,7 +65,7 @@ class PdfInvoiceApi {
   static Future<Uint8List> buildPdfBytes(
     DevisData data, {
     AppLanguage? overrideLang,
-    bool imageUnderPrices = false,
+    int imageMode = 0, // 0=Latérale, 1=Sous-prix, 2=Sous-ligne complète
   }) async {
     if (overrideLang != null) {
       _currentLang = overrideLang;
@@ -206,7 +206,7 @@ class PdfInvoiceApi {
           ] else ...[
             pw.SizedBox(height: 14),
           ],
-          _buildTable(data, imageWidgets, imageUnderPrices: imageUnderPrices),
+          ..._buildTable(data, imageWidgets, imageMode: imageMode),
           if (!data.hidePrices) ...[
             pw.SizedBox(height: 16),
             pw.Text(
@@ -591,8 +591,9 @@ class PdfInvoiceApi {
     bool hidePrices,
     bool isProForma, {
     bool hasBorder = true,
-    bool imageUnderPrices = false,
+    int imageMode = 0,
   }) {
+    final bool noLeftCol = imageMode != 0; // وضع B أو C: لا عمود صورة يسار
     pw.Widget hCell(
       double w,
       String text, {
@@ -620,9 +621,9 @@ class PdfInvoiceApi {
     );
     return pw.Row(
       children: [
-        if (!isProForma && !imageUnderPrices) hCell(_col0w, t('Image')),
+        if (!isProForma && !noLeftCol) hCell(_col0w, t('Image')),
         hCell(
-          imageUnderPrices
+          noLeftCol
               ? (_tableW - _col3w - (hidePrices ? 0 : _col2w + _col4w))
               : isProForma
               ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
@@ -646,18 +647,19 @@ class PdfInvoiceApi {
     );
   }
 
-  /// بناء صف بيانات — إذا كان مشطوباً يُلف بـ Stack لرسم X على كامل الصف
+  /// بناء صف بيانات — imageMode: 0=Latérale, 1=Sous-prix, 2=Sous-ligne
   static pw.Widget _dataRow({
     required DevisLineItem item,
     required int index,
     required pw.MemoryImage? image,
     required bool hidePrices,
     required bool isProForma,
-    bool imageUnderPrices = false,
+    int imageMode = 0,
     bool hasBorder = true,
   }) {
     final PdfColor bg = index.isEven ? PdfColors.white : PdfColors.grey100;
     final PdfColor? txtColor = item.isReplaced ? PdfColors.red : null;
+    final bool noLeftCol = imageMode != 0;
 
     final List<String> displayDetails;
     if (isProForma) {
@@ -681,8 +683,8 @@ class PdfInvoiceApi {
     final pw.Widget rowContent = pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // عمود 0: الصورة
-        if (!isProForma && !imageUnderPrices)
+        // عمود 0: الصورة (وضع A فقط)
+        if (!isProForma && !noLeftCol)
           _cell(
             _col0w,
             image != null
@@ -698,7 +700,7 @@ class PdfInvoiceApi {
           ),
         // عمود 1: الاسم والتفاصيل
         _cell(
-          imageUnderPrices
+          noLeftCol
               ? (_tableW - _col3w - (hidePrices ? 0 : _col2w + _col4w))
               : isProForma
               ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
@@ -717,7 +719,8 @@ class PdfInvoiceApi {
               ),
               pw.SizedBox(height: 2),
               _detailsBlock(displayDetails, twoColumns: hidePrices),
-              if (imageUnderPrices && image != null) ...[
+              // وضع B: صورة تحت التفاصيل داخل عمود التسمية
+              if (imageMode == 1 && image != null) ...[
                 pw.SizedBox(height: 6),
                 pw.Container(
                   width: double.infinity,
@@ -777,26 +780,57 @@ class PdfInvoiceApi {
       ],
     );
 
-    if (!item.isReplaced) return rowContent;
+    // الصف (مع علامة X إذا كان مشطوباً)
+    final pw.Widget rowWidget = !item.isReplaced
+        ? rowContent
+        : pw.Stack(
+            children: [
+              rowContent,
+              pw.Positioned.fill(
+                child: pw.CustomPaint(
+                  painter: (PdfGraphics canvas, PdfPoint size) {
+                    canvas
+                      ..setColor(PdfColors.red)
+                      ..setLineWidth(1.5)
+                      ..drawLine(0, 0, size.x, size.y)
+                      ..drawLine(0, size.y, size.x, 0)
+                      ..strokePath();
+                  },
+                ),
+              ),
+            ],
+          );
 
-    // ── صف مشطوب: Stack يضع علامة X فوق كامل الصف ──────────────────────
-    return pw.Stack(
-      children: [
-        rowContent,
-        pw.Positioned.fill(
-          child: pw.CustomPaint(
-            painter: (PdfGraphics canvas, PdfPoint size) {
-              canvas
-                ..setColor(PdfColors.red)
-                ..setLineWidth(1.5)
-                ..drawLine(0, 0, size.x, size.y)
-                ..drawLine(0, size.y, size.x, 0)
-                ..strokePath();
-            },
+    // وضع C: صورة تحت كامل الصف (بعرض كبير)
+    if (imageMode == 2 && image != null) {
+      final double aspect = (item.width > 0 && item.height > 0)
+          ? item.width / item.height
+          : 4 / 3;
+      final double imgH = 190.0;
+      final double imgW = (imgH * aspect).clamp(0.0, _tableW);
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          rowWidget,
+          pw.SizedBox(height: 6),
+          pw.Center(
+            child: pw.Container(
+              width: imgW,
+              height: imgH,
+              padding: const pw.EdgeInsets.all(4),
+              decoration: pw.BoxDecoration(
+                color: bg,
+                border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+              ),
+              child: pw.Image(image, fit: pw.BoxFit.contain),
+            ),
           ),
-        ),
-      ],
-    );
+          pw.SizedBox(height: 4),
+        ],
+      );
+    }
+
+    return rowWidget;
   }
 
   static bool _isCaissonOnly(DevisData data) {
@@ -816,10 +850,10 @@ class PdfInvoiceApi {
         );
   }
 
-  static pw.Widget _buildTable(
+  static List<pw.Widget> _buildTable(
     DevisData data,
     Map<int, pw.MemoryImage> imageWidgets, {
-    bool imageUnderPrices = false,
+    int imageMode = 0,
   }) {
     final bool hidePrices = data.hidePrices;
     final bool isOfficial =
@@ -829,9 +863,10 @@ class PdfInvoiceApi {
     final bool hasBorder = data.documentTitleKey != 'BON_ROUTE';
     final bool isCaissonOnly = _isCaissonOnly(data);
 
-    imageUnderPrices = imageUnderPrices && !isOfficial;
+    // أوضاع الصورة لا تنطبق على الوثائق الرسمية
+    final int effectiveMode = isOfficial ? 0 : imageMode;
 
-    if (isCaissonOnly && !imageUnderPrices) {
+    if (isCaissonOnly && effectiveMode == 0) {
       return _buildCaissonTunnelTable(
         data,
         imageWidgets,
@@ -845,7 +880,7 @@ class PdfInvoiceApi {
         hidePrices,
         isOfficial,
         hasBorder: hasBorder,
-        imageUnderPrices: imageUnderPrices,
+        imageMode: effectiveMode,
       ),
     ];
 
@@ -860,7 +895,7 @@ class PdfInvoiceApi {
           image: imageWidgets[index],
           hidePrices: hidePrices,
           isProForma: isOfficial,
-          imageUnderPrices: imageUnderPrices,
+          imageMode: effectiveMode,
           hasBorder: hasBorder,
         ),
       );
@@ -978,11 +1013,11 @@ class PdfInvoiceApi {
       ),
     );
 
-    return pw.Column(children: rows);
+    return rows;
   }
 
   // ── جدول خاص بالـ Caisson Tunnel المستقل (6 أعمدة) ──────────────────────
-  static pw.Widget _buildCaissonTunnelTable(
+  static List<pw.Widget> _buildCaissonTunnelTable(
     DevisData data,
     Map<int, pw.MemoryImage> imageWidgets,
     bool hidePrices,
@@ -1244,7 +1279,7 @@ class PdfInvoiceApi {
       );
     }
 
-    return pw.Column(children: rows);
+    return rows;
   }
 
   static pw.Widget _buildTotalQtyBlock(DevisData data) {

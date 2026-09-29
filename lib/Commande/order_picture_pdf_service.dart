@@ -110,8 +110,13 @@ class OrderPicturePdfService {
             theme: pw.ThemeData.withFont(base: _font!, bold: _fontBold!),
             build: (context) => pw.Column(
               children: [
-                _buildHeader(data, lang, isArabic),
-                pw.SizedBox(height: 8),
+                if (index == 0) ...[
+                  _buildHeader(data, lang, isArabic),
+                  pw.SizedBox(height: 8),
+                ] else ...[
+                  _buildSubsequentHeader(data, lang, isArabic),
+                  pw.SizedBox(height: 6),
+                ],
                 pw.Expanded(
                   child: _buildPicturePage(
                     data,
@@ -121,6 +126,7 @@ class OrderPicturePdfService {
                     lang,
                     baseStyle,
                     boldStyle,
+                    isFirstPage: index == 0,
                   ),
                 ),
                 pw.SizedBox(height: 4),
@@ -328,23 +334,33 @@ class OrderPicturePdfService {
   ) {
     final titleStyle = pw.TextStyle(
       font: _fontBold,
-      fontSize: 20,
+      fontSize: 18,
       color: PdfColors.blue800,
     );
     final metaStyle = pw.TextStyle(
       font: _font,
-      fontSize: 10,
+      fontSize: 9.5,
       color: PdfColors.grey700,
     );
 
     final rows = [
       '${Localization.translate('Commande', lang)} #${data.sequenceNumber > 0 ? data.sequenceNumber : data.orderId}',
       '${Localization.translate('Customer', lang)}: ${data.clientName}',
+      if (data.clientPhone.trim().isNotEmpty)
+        '${Localization.translate('Phone', lang)}: ${data.clientPhone.trim()}',
       '${Localization.translate('تاريخ الإنشاء', lang)}: ${data.orderDate}',
     ];
 
+    final workshopDetails = <String>[
+      if (data.workshop.name.trim().isNotEmpty) data.workshop.name.trim(),
+      if (data.workshop.address.trim().isNotEmpty)
+        '${Localization.translate('العنوان', lang)}: ${data.workshop.address.trim()}',
+      if (data.workshop.phone.trim().isNotEmpty)
+        '${Localization.translate('Phone', lang)}: ${data.workshop.phone.trim()}',
+    ];
+
     return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 12),
+      padding: const pw.EdgeInsets.only(bottom: 8),
       decoration: const pw.BoxDecoration(
         border: pw.Border(
           bottom: pw.BorderSide(color: PdfColors.blue200, width: 1),
@@ -365,12 +381,12 @@ class OrderPicturePdfService {
                   lang,
                   style: titleStyle,
                 ),
-                pw.SizedBox(height: 4),
+                pw.SizedBox(height: 3),
                 ...rows.map((row) => _text(row, lang, style: metaStyle)),
               ],
             ),
           ),
-          if (data.workshop.name.trim().isNotEmpty) ...[
+          if (workshopDetails.isNotEmpty) ...[
             pw.SizedBox(width: 16),
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(
@@ -380,14 +396,78 @@ class OrderPicturePdfService {
               decoration: pw.BoxDecoration(
                 color: PdfColors.blue50,
                 borderRadius: pw.BorderRadius.circular(6),
+                border: pw.Border.all(color: PdfColors.blue100, width: 0.8),
               ),
-              child: _text(
-                data.workshop.name,
-                lang,
-                style: pw.TextStyle(font: _fontBold, fontSize: 11),
+              child: pw.Column(
+                crossAxisAlignment: isArabic
+                    ? pw.CrossAxisAlignment.end
+                    : pw.CrossAxisAlignment.start,
+                children: [
+                  _text(
+                    workshopDetails.first,
+                    lang,
+                    style: pw.TextStyle(
+                      font: _fontBold,
+                      fontSize: 11,
+                      color: PdfColors.blue900,
+                    ),
+                  ),
+                  ...workshopDetails.skip(1).map(
+                    (detail) => pw.Padding(
+                      padding: const pw.EdgeInsets.only(top: 2),
+                      child: _text(
+                        detail,
+                        lang,
+                        style: pw.TextStyle(
+                          font: _font,
+                          fontSize: 8.5,
+                          color: PdfColors.grey800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildSubsequentHeader(
+    DevisData data,
+    AppLanguage lang,
+    bool isArabic,
+  ) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.6),
+        ),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          _text(
+            '${Localization.translate('Commande', lang)} #${data.sequenceNumber > 0 ? data.sequenceNumber : data.orderId}',
+            lang,
+            style: pw.TextStyle(
+              font: _fontBold,
+              fontSize: 9.5,
+              color: PdfColors.blue800,
+            ),
+          ),
+          _text(
+            Localization.translate('Picture', lang),
+            lang,
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 8.5,
+              color: PdfColors.grey600,
+            ),
+          ),
         ],
       ),
     );
@@ -400,12 +480,15 @@ class OrderPicturePdfService {
     int index,
     AppLanguage lang,
     pw.TextStyle baseStyle,
-    pw.TextStyle boldStyle,
-  ) {
+    pw.TextStyle boldStyle, {
+    bool isFirstPage = true,
+  }) {
     final orderMeta = <String>[
-      '${Localization.translate('Customer', lang)}: ${data.clientName}',
-      if (data.clientPhone.trim().isNotEmpty)
-        '${Localization.translate('Phone', lang)}: ${data.clientPhone}',
+      if (isFirstPage) ...[
+        '${Localization.translate('Customer', lang)}: ${data.clientName}',
+        if (data.clientPhone.trim().isNotEmpty)
+          '${Localization.translate('Phone', lang)}: ${data.clientPhone}',
+      ],
       if (_projectName(data).isNotEmpty)
         '${Localization.translate('المشروع', lang)}: ${_projectName(data)}',
       if (_siteLocation(data).isNotEmpty)

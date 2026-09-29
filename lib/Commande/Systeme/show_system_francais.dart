@@ -2487,9 +2487,27 @@ class _WindowViewState extends State<WindowView> {
                               // narrower than the surrounding profile.
                               InnerDimensionHit? individualTap =
                                   _frameProfileDimensionHit(modelPos);
-                              if (widget.model.zones.length > 1) {
-                                final double scW = widget.model.sideCoverWidth;
-                                double offsetDistTop = 60.0;
+                              final physicalFrames =
+                                  widget.model.getPhysicalFrameInfos();
+                              if (physicalFrames.length > 1) {
+                                final sorted = List<PhysicalFrameInfo>.from(
+                                  physicalFrames,
+                                )..sort(
+                                    (a, b) => a.rect.left != b.rect.left
+                                        ? a.rect.left.compareTo(b.rect.left)
+                                        : a.rect.top.compareTo(b.rect.top),
+                                  );
+                                final hasVaryingHeights = sorted.any(
+                                  (f) =>
+                                      (f.rect.height -
+                                              sorted.first.rect.height)
+                                          .abs() >
+                                      1.0,
+                                );
+
+                                final double scW =
+                                    widget.model.sideCoverWidth;
+                                double offsetDistTop = 105.0;
                                 if (widget.model.hasShutter) {
                                   offsetDistTop += 20.0;
                                 }
@@ -2506,6 +2524,13 @@ class _WindowViewState extends State<WindowView> {
                                     )) {
                                   offsetDistRight += scW + 15.0;
                                 }
+                                double offsetDistLeft = 50.0;
+                                if (widget.model.hasSideCovers &&
+                                    !widget.model.removedShutterSides.contains(
+                                      'left',
+                                    )) {
+                                  offsetDistLeft += scW + 15.0;
+                                }
                                 double offsetDistBottom = 50.0;
                                 if (widget.model.hasSideCovers &&
                                     widget.model.hasBottomFrame &&
@@ -2521,112 +2546,114 @@ class _WindowViewState extends State<WindowView> {
                                     widget.model.bottomSlantLeftY != 0 ||
                                     widget.model.bottomSlantRightY != 0;
 
-                                // Layer-1 width tap
-                                final vJoints = widget.model
-                                    .getVerticalFrameJoints();
-                                if (individualTap == null &&
-                                    vJoints.isNotEmpty) {
-                                  final xCoords = [
-                                    0.0,
-                                    ...vJoints,
-                                    widget.model.width,
-                                  ];
-                                  for (int i = 0; i < xCoords.length - 1; i++) {
-                                    double xCenter =
-                                        (xCoords[i] + xCoords[i + 1]) / 2;
-                                    double wY;
-                                    if (isSlantedOrArched) {
-                                      double maxBottomY = math.max(
-                                        widget.model.bottomSlantLeftY,
-                                        widget.model.bottomSlantRightY,
-                                      );
-                                      wY =
-                                          widget.model.height +
-                                          maxBottomY +
-                                          offsetDistBottom;
-                                    } else {
-                                      wY = -offsetDistTop;
-                                      if (widget.model.hasShutter &&
-                                          widget.model.isCaissonTunnel) {
-                                        wY -= widget.model.shutterBoxHeight;
-                                      }
+                                // 1. Check individual frame widths (Layer 1)
+                                if (individualTap == null) {
+                                  double layer1Y;
+                                  if (isSlantedOrArched) {
+                                    double maxBottomY = math.max(
+                                      widget.model.bottomSlantLeftY,
+                                      widget.model.bottomSlantRightY,
+                                    );
+                                    layer1Y =
+                                        widget.model.height +
+                                        maxBottomY +
+                                        offsetDistBottom;
+                                  } else {
+                                    double wY = -offsetDistTop;
+                                    if (widget.model.hasShutter &&
+                                        widget.model.isCaissonTunnel) {
+                                      wY -= widget.model.shutterBoxHeight;
                                     }
-                                    // Individual width labels are drawn one
-                                    // layer below the total width label.
-                                    if ((modelPos.dx - xCenter).abs() < 85.0 &&
-                                        (modelPos.dy - (wY + 50.0)).abs() <
-                                            28.0) {
-                                      final targetZone = widget.model.zones
-                                          .reduce(
-                                            (a, b) =>
-                                                (a.boundary.center.dx - xCenter)
-                                                        .abs() <
-                                                    (b.boundary.center.dx -
-                                                            xCenter)
-                                                        .abs()
-                                                ? a
-                                                : b,
-                                          );
+                                    layer1Y = wY + 45.0;
+                                  }
+                                  for (final f in sorted) {
+                                    final xCenter =
+                                        (f.rect.left + f.rect.right) / 2;
+                                    if ((modelPos.dx - xCenter).abs() <
+                                            (f.rect.width / 2).clamp(
+                                              30.0,
+                                              90.0,
+                                            ) &&
+                                        (modelPos.dy - layer1Y).abs() < 28.0) {
                                       individualTap = InnerDimensionHit(
-                                        targetZone.id,
+                                        f.primaryZoneId,
                                         true,
                                       );
                                       break;
                                     }
                                   }
                                 }
-                                // Layer-1 height tap
+
+                                // 2. Check leftmost frame height
                                 if (individualTap == null) {
-                                  final hJoints = widget.model
-                                      .getHorizontalFrameJoints();
-                                  if (hJoints.isNotEmpty) {
-                                    final yCoords = [
-                                      0.0,
-                                      ...hJoints,
-                                      widget.model.height,
-                                    ];
-                                    for (
-                                      int j = 0;
-                                      j < yCoords.length - 1;
-                                      j++
-                                    ) {
-                                      double yCenter =
-                                          (yCoords[j] + yCoords[j + 1]) / 2;
-                                      final individualX =
-                                          widget.model.width +
-                                          offsetDistRight +
-                                          50.0;
-                                      if ((modelPos.dy - yCenter).abs() <
-                                          85.0) {
-                                        if ((modelPos.dx - individualX).abs() <
-                                            28.0) {
-                                          final rowZones = widget.model.zones
-                                              .where(
-                                                (z) =>
-                                                    z.boundary.top <=
-                                                        yCenter + 5 &&
-                                                    z.boundary.bottom >=
-                                                        yCenter - 5,
-                                              )
-                                              .toList();
-                                          final targetZone =
-                                              (rowZones.isEmpty
-                                                      ? widget.model.zones
-                                                      : rowZones)
-                                                  .reduce(
-                                                    (a, b) =>
-                                                        a.boundary.right >
-                                                            b.boundary.right
-                                                        ? a
-                                                        : b,
-                                                  );
-                                          individualTap = InnerDimensionHit(
-                                            targetZone.id,
-                                            false,
-                                          );
-                                          break;
-                                        }
-                                      }
+                                  final leftmost = sorted.first;
+                                  final leftYCenter =
+                                      (leftmost.rect.top +
+                                          leftmost.rect.bottom) /
+                                      2;
+                                  final leftDimX = -offsetDistLeft;
+                                  if ((modelPos.dx - leftDimX).abs() < 28.0 &&
+                                      (modelPos.dy - leftYCenter).abs() <
+                                          (leftmost.rect.height / 2).clamp(
+                                            30.0,
+                                            90.0,
+                                          )) {
+                                    individualTap = InnerDimensionHit(
+                                      leftmost.primaryZoneId,
+                                      false,
+                                    );
+                                  }
+                                }
+
+                                // 3. Check rightmost frame height
+                                if (individualTap == null &&
+                                    sorted.length >= 2) {
+                                  final rightmost = sorted.last;
+                                  final rightYCenter =
+                                      (rightmost.rect.top +
+                                          rightmost.rect.bottom) /
+                                      2;
+                                  final rightDimX =
+                                      widget.model.width + offsetDistRight;
+                                  if ((modelPos.dx - rightDimX).abs() < 28.0 &&
+                                      (modelPos.dy - rightYCenter).abs() <
+                                          (rightmost.rect.height / 2).clamp(
+                                            30.0,
+                                            90.0,
+                                          )) {
+                                    individualTap = InnerDimensionHit(
+                                      rightmost.primaryZoneId,
+                                      false,
+                                    );
+                                  }
+                                }
+
+                                // 4. Check intermediate frame heights
+                                if (individualTap == null &&
+                                    sorted.length >= 3 &&
+                                    hasVaryingHeights) {
+                                  for (
+                                    int i = 1;
+                                    i < sorted.length - 1;
+                                    i++
+                                  ) {
+                                    final f = sorted[i];
+                                    final dimX =
+                                        f.rect.left +
+                                        math.min(f.rect.width * 0.28, 65.0);
+                                    final yCenter =
+                                        (f.rect.top + f.rect.bottom) / 2;
+                                    if ((modelPos.dx - dimX).abs() < 28.0 &&
+                                        (modelPos.dy - yCenter).abs() <
+                                            (f.rect.height / 2).clamp(
+                                              30.0,
+                                              90.0,
+                                            )) {
+                                      individualTap = InnerDimensionHit(
+                                        f.primaryZoneId,
+                                        false,
+                                      );
+                                      break;
                                     }
                                   }
                                 }
@@ -18518,7 +18545,17 @@ class AppWorkspacePainter extends CustomPainter {
 
   void _paintDimensions(Canvas canvas, WindowModel model, Offset pos) {
     final double scW = model.sideCoverWidth;
-    double offsetDistTop = 60.0;
+    final physicalFrames = model.getPhysicalFrameInfos();
+    final bool isMultiFrame = physicalFrames.length > 1;
+    final sortedFrames = List<PhysicalFrameInfo>.from(physicalFrames)
+      ..sort((a, b) => a.rect.left != b.rect.left
+          ? a.rect.left.compareTo(b.rect.left)
+          : a.rect.top.compareTo(b.rect.top));
+
+    final bool hasVaryingHeights = isMultiFrame &&
+        sortedFrames.any((f) => (f.rect.height - sortedFrames.first.rect.height).abs() > 1.0);
+
+    double offsetDistTop = isMultiFrame ? 105.0 : 60.0;
     if (model.hasShutter) {
       offsetDistTop += 20.0;
     }
@@ -18528,6 +18565,10 @@ class AppWorkspacePainter extends CustomPainter {
     double offsetDistLeft = 50.0;
     if (model.hasSideCovers && !model.removedShutterSides.contains('left')) {
       offsetDistLeft += scW + 15.0;
+    }
+    double offsetDistRight = 50.0;
+    if (model.hasSideCovers && !model.removedShutterSides.contains('right')) {
+      offsetDistRight += scW + 15.0;
     }
 
     final bool isSlantedOrArched =
@@ -18557,6 +18598,8 @@ class AppWorkspacePainter extends CustomPainter {
       }
     }
 
+    // --- Width Dimensions ---
+    // Outer/Total width
     _drawDimension(
       canvas,
       '${model.width.toInt()} mm',
@@ -18564,131 +18607,236 @@ class AppWorkspacePainter extends CustomPainter {
       Offset(pos.dx + model.width, widthY),
       isVerticalLine: false,
     );
+    // Witness lines for total width
+    _drawWitnessLine(
+      canvas,
+      Offset(pos.dx, pos.dy),
+      Offset(pos.dx, widthY - 8.0),
+    );
+    _drawWitnessLine(
+      canvas,
+      Offset(pos.dx + model.width, pos.dy),
+      Offset(pos.dx + model.width, widthY - 8.0),
+    );
 
-    // --- Layer 1: individual frame widths (coupled windows) ---
-    if (model.zones.length > 1) {
-      final vJoints = model.getVerticalFrameJoints();
-      if (vJoints.isNotEmpty) {
-        final xCoords = [0.0, ...vJoints, model.width];
-        double layer1Y = widthY + 50.0;
-        for (int i = 0; i < xCoords.length - 1; i++) {
-          double x0 = xCoords[i];
-          double x1 = xCoords[i + 1];
-          double segW = x1 - x0;
-          _drawDimension(
-            canvas,
-            '${segW.toInt()} mm',
-            Offset(pos.dx + x0, layer1Y),
-            Offset(pos.dx + x1, layer1Y),
-            isVerticalLine: false,
-            isSmall: true,
-          );
-        }
+    // If multi-frame, draw individual frame widths on Layer 1
+    if (isMultiFrame) {
+      double layer1Y = isSlantedOrArched ? widthY : widthY + 45.0;
+      for (final f in sortedFrames) {
+        final double x0 = pos.dx + f.rect.left;
+        final double x1 = pos.dx + f.rect.right;
+        _drawDimension(
+          canvas,
+          '${f.rect.width.toInt()} mm',
+          Offset(x0, layer1Y),
+          Offset(x1, layer1Y),
+          isVerticalLine: false,
+          isSmall: true,
+        );
+        // Vertical witness ticks connecting to frame
+        _drawWitnessLine(
+          canvas,
+          Offset(x0, pos.dy + f.rect.top),
+          Offset(x0, layer1Y - 6.0),
+        );
+        _drawWitnessLine(
+          canvas,
+          Offset(x1, pos.dy + f.rect.top),
+          Offset(x1, layer1Y - 6.0),
+        );
       }
-      final hJoints = model.getHorizontalFrameJoints();
-      if (hJoints.isNotEmpty) {
-        final yCoords = [0.0, ...hJoints, model.height];
-        double offsetDistRight = 50.0;
-        if (model.hasSideCovers &&
-            !model.removedShutterSides.contains('right')) {
-          offsetDistRight += scW + 15.0;
-        }
-        double layer1X = pos.dx + model.width + offsetDistRight + 50.0;
-        for (int j = 0; j < yCoords.length - 1; j++) {
-          double y0 = yCoords[j];
-          double y1 = yCoords[j + 1];
-          double segH = y1 - y0;
+    }
+
+    // --- Height Dimensions ---
+    if (isMultiFrame) {
+      if (model.hasShutter) {
+        double boxSize = model.shutterBoxHeight;
+        _drawDimension(
+          canvas,
+          '${boxSize.toInt()} mm',
+          Offset(pos.dx - offsetDistLeft, pos.dy),
+          Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
+          isVerticalLine: true,
+          isSmall: true,
+        );
+      }
+
+      // Leftmost frame height on the left
+      final leftmost = sortedFrames.first;
+      final double leftStartY = pos.dy + leftmost.rect.top;
+      final double leftEndY = pos.dy + leftmost.rect.bottom;
+      final double leftDimX = pos.dx - offsetDistLeft;
+      _drawDimension(
+        canvas,
+        '${leftmost.rect.height.toInt()} mm',
+        Offset(leftDimX, leftStartY),
+        Offset(leftDimX, leftEndY),
+        isVerticalLine: true,
+      );
+      // Witness lines for leftmost frame
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + leftmost.rect.left, leftStartY),
+        Offset(leftDimX - 10.0, leftStartY),
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + leftmost.rect.left, leftEndY),
+        Offset(leftDimX - 10.0, leftEndY),
+      );
+
+      // If leftmost frame is shorter than overall window height, show overall height on outer tier
+      if (hasVaryingHeights && model.height > leftmost.rect.height + 1.0) {
+        final double totalDimX = leftDimX - 50.0;
+        _drawDimension(
+          canvas,
+          '${model.height.toInt()} mm',
+          Offset(totalDimX, pos.dy),
+          Offset(totalDimX, pos.dy + model.height),
+          isVerticalLine: true,
+        );
+        _drawWitnessLine(
+          canvas,
+          Offset(pos.dx, pos.dy),
+          Offset(totalDimX - 10.0, pos.dy),
+        );
+        _drawWitnessLine(
+          canvas,
+          Offset(pos.dx, pos.dy + model.height),
+          Offset(totalDimX - 10.0, pos.dy + model.height),
+        );
+      }
+
+      // Rightmost frame height on the right
+      final rightmost = sortedFrames.last;
+      final double rightStartY = pos.dy + rightmost.rect.top;
+      final double rightEndY = pos.dy + rightmost.rect.bottom;
+      final double rightDimX = pos.dx + model.width + offsetDistRight;
+      _drawDimension(
+        canvas,
+        '${rightmost.rect.height.toInt()} mm',
+        Offset(rightDimX, rightStartY),
+        Offset(rightDimX, rightEndY),
+        isVerticalLine: true,
+      );
+      // Witness lines for rightmost frame
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + rightmost.rect.right, rightStartY),
+        Offset(rightDimX + 10.0, rightStartY),
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + rightmost.rect.right, rightEndY),
+        Offset(rightDimX + 10.0, rightEndY),
+      );
+
+      // Intermediate frames (index 1 to length - 2):
+      // Draw vertical dimension line with start-to-end arrows inside the frame, off-center
+      if (sortedFrames.length >= 3 && hasVaryingHeights) {
+        for (int i = 1; i < sortedFrames.length - 1; i++) {
+          final fInfo = sortedFrames[i];
+          final double dimX = pos.dx + fInfo.rect.left + math.min(fInfo.rect.width * 0.28, 65.0);
+          final double startY = pos.dy + fInfo.rect.top;
+          final double endY = pos.dy + fInfo.rect.bottom;
           _drawDimension(
             canvas,
-            '${segH.toInt()} mm',
-            Offset(layer1X, pos.dy + y0),
-            Offset(layer1X, pos.dy + y1),
+            '${fInfo.rect.height.toInt()} mm',
+            Offset(dimX, startY),
+            Offset(dimX, endY),
             isVerticalLine: true,
             isSmall: true,
           );
         }
       }
-    }
-    // --- end Layer 1 ---
-
-    if (model.hasShutter) {
-      double boxSize = model.shutterBoxHeight;
-      if (model.isCaissonTunnel) {
-        _drawDimension(
-          canvas,
-          '${boxSize.toInt()} mm',
-          Offset(pos.dx - offsetDistLeft, pos.dy - boxSize),
-          Offset(pos.dx - offsetDistLeft, pos.dy),
-          isVerticalLine: true,
-          isSmall: true,
-        );
-
-        double windowHeight = model.height;
-        _drawDimension(
-          canvas,
-          '${windowHeight.toInt()} mm',
-          Offset(pos.dx - offsetDistLeft, pos.dy),
-          Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
-          isVerticalLine: true,
-        );
-      } else {
-        _drawDimension(
-          canvas,
-          '${boxSize.toInt()} mm',
-          Offset(pos.dx - offsetDistLeft, pos.dy),
-          Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
-          isVerticalLine: true,
-          isSmall: true,
-        );
-
-        double windowHeight = model.height - boxSize;
-        _drawDimension(
-          canvas,
-          '${windowHeight.toInt()} mm',
-          Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
-          Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
-          isVerticalLine: true,
-        );
-      }
     } else {
-      final bool isSlanted =
-          model.topSlantLeftY != 0 ||
-          model.topSlantRightY != 0 ||
-          model.bottomSlantLeftY != 0 ||
-          model.bottomSlantRightY != 0;
+      // --- Single Frame Height (Existing behavior) ---
+      if (model.hasShutter) {
+        double boxSize = model.shutterBoxHeight;
+        if (model.isCaissonTunnel) {
+          _drawDimension(
+            canvas,
+            '${boxSize.toInt()} mm',
+            Offset(pos.dx - offsetDistLeft, pos.dy - boxSize),
+            Offset(pos.dx - offsetDistLeft, pos.dy),
+            isVerticalLine: true,
+            isSmall: true,
+          );
 
-      double leftH =
-          model.height - model.topSlantLeftY - model.bottomSlantLeftY;
-      double rightH =
-          model.height - model.topSlantRightY - model.bottomSlantRightY;
+          double windowHeight = model.height;
+          _drawDimension(
+            canvas,
+            '${windowHeight.toInt()} mm',
+            Offset(pos.dx - offsetDistLeft, pos.dy),
+            Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
+            isVerticalLine: true,
+          );
+        } else {
+          _drawDimension(
+            canvas,
+            '${boxSize.toInt()} mm',
+            Offset(pos.dx - offsetDistLeft, pos.dy),
+            Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
+            isVerticalLine: true,
+            isSmall: true,
+          );
 
-      double startY = pos.dy + model.topSlantLeftY;
-      double endY = pos.dy + model.height - model.bottomSlantLeftY;
-      _drawDimension(
-        canvas,
-        '${leftH.toInt()} mm',
-        Offset(pos.dx - offsetDistLeft, startY),
-        Offset(pos.dx - offsetDistLeft, endY),
-        isVerticalLine: true,
-      );
-
-      if (isSlanted) {
-        double offsetDistRight = 50.0;
-        if (model.hasSideCovers &&
-            !model.removedShutterSides.contains('right')) {
-          offsetDistRight += scW + 15.0;
+          double windowHeight = model.height - boxSize;
+          _drawDimension(
+            canvas,
+            '${windowHeight.toInt()} mm',
+            Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
+            Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
+            isVerticalLine: true,
+          );
         }
-        double startYRight = pos.dy + model.topSlantRightY;
-        double endYRight = pos.dy + model.height - model.bottomSlantRightY;
+      } else {
+        final bool isSlanted =
+            model.topSlantLeftY != 0 ||
+            model.topSlantRightY != 0 ||
+            model.bottomSlantLeftY != 0 ||
+            model.bottomSlantRightY != 0;
+
+        double leftH =
+            model.height - model.topSlantLeftY - model.bottomSlantLeftY;
+        double rightH =
+            model.height - model.topSlantRightY - model.bottomSlantRightY;
+
+        double startY = pos.dy + model.topSlantLeftY;
+        double endY = pos.dy + model.height - model.bottomSlantLeftY;
         _drawDimension(
           canvas,
-          '${rightH.toInt()} mm',
-          Offset(pos.dx + model.width + offsetDistRight, startYRight),
-          Offset(pos.dx + model.width + offsetDistRight, endYRight),
+          '${leftH.toInt()} mm',
+          Offset(pos.dx - offsetDistLeft, startY),
+          Offset(pos.dx - offsetDistLeft, endY),
           isVerticalLine: true,
         );
+
+        if (isSlanted) {
+          double offsetDistRight = 50.0;
+          if (model.hasSideCovers &&
+              !model.removedShutterSides.contains('right')) {
+            offsetDistRight += scW + 15.0;
+          }
+          double startYRight = pos.dy + model.topSlantRightY;
+          double endYRight = pos.dy + model.height - model.bottomSlantRightY;
+          _drawDimension(
+            canvas,
+            '${rightH.toInt()} mm',
+            Offset(pos.dx + model.width + offsetDistRight, startYRight),
+            Offset(pos.dx + model.width + offsetDistRight, endYRight),
+            isVerticalLine: true,
+          );
+        }
       }
     }
+  }
+
+  void _drawWitnessLine(Canvas canvas, Offset p1, Offset p2) {
+    final p = Paint()
+      ..color = Colors.blueGrey.shade400.withOpacity(0.55)
+      ..strokeWidth = 1.2;
+    canvas.drawLine(p1, p2, p);
   }
 
   void _drawDimension(
@@ -18793,6 +18941,25 @@ class AppWorkspacePainter extends CustomPainter {
         Offset(p2.dx + tickSize, maxY),
         p,
       );
+
+      // Arrowheads pointing to ends
+      const double arrowLen = 12.0;
+      const double arrowW = 4.5;
+      final arrowPaint = Paint()
+        ..color = p.color
+        ..style = PaintingStyle.fill;
+      final topArrow = Path()
+        ..moveTo(p1.dx, minY)
+        ..lineTo(p1.dx - arrowW, minY + arrowLen)
+        ..lineTo(p1.dx + arrowW, minY + arrowLen)
+        ..close();
+      canvas.drawPath(topArrow, arrowPaint);
+      final bottomArrow = Path()
+        ..moveTo(p2.dx, maxY)
+        ..lineTo(p2.dx - arrowW, maxY - arrowLen)
+        ..lineTo(p2.dx + arrowW, maxY - arrowLen)
+        ..close();
+      canvas.drawPath(bottomArrow, arrowPaint);
     } else {
       final double minX = math.min(p1.dx, p2.dx);
       final double maxX = math.max(p1.dx, p2.dx);
@@ -18819,6 +18986,25 @@ class AppWorkspacePainter extends CustomPainter {
         Offset(maxX, p2.dy + tickSize),
         p,
       );
+
+      // Arrowheads pointing to ends
+      const double arrowLen = 12.0;
+      const double arrowW = 4.5;
+      final arrowPaint = Paint()
+        ..color = p.color
+        ..style = PaintingStyle.fill;
+      final leftArrow = Path()
+        ..moveTo(minX, p1.dy)
+        ..lineTo(minX + arrowLen, p1.dy - arrowW)
+        ..lineTo(minX + arrowLen, p1.dy + arrowW)
+        ..close();
+      canvas.drawPath(leftArrow, arrowPaint);
+      final rightArrow = Path()
+        ..moveTo(maxX, p2.dy)
+        ..lineTo(maxX - arrowLen, p2.dy - arrowW)
+        ..lineTo(maxX - arrowLen, p2.dy + arrowW)
+        ..close();
+      canvas.drawPath(rightArrow, arrowPaint);
     }
   }
 

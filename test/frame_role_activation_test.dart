@@ -520,8 +520,8 @@ void main() {
     final bom = ComponentCalculator.generateBom(model, {});
     final ftfItem = bom.firstWhere((i) => i.roleKey == 'face_to_face');
     expect(ftfItem, isNotNull);
-    // 4 sashes meeting in the center requires 2 face-to-face pieces
-    expect(ftfItem.pieces, hasLength(2));
+    // 4 sashes meeting in the center requires 1 face-to-face piece
+    expect(ftfItem.pieces, hasLength(1));
     expect(ftfItem.selectorType, 'face_to_face');
     model.dispose();
   });

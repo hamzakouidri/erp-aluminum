@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
@@ -331,53 +332,11 @@ class PdfFicheCoupeApi {
         ),
       ),
     );
-    widgets.add(pw.SizedBox(height: 6));
-
-    // ── 3. الرسم الكبير — عرض كامل الصفحة ──────────────────────────────
-    if (data.drawing != null) {
-      widgets.add(
-        pw.Center(
-          child: pw.Image(
-            pw.MemoryImage(data.drawing!),
-            fit: pw.BoxFit.contain,
-            width: PdfPageFormat.a4.availableWidth - 30,
-            height: 230,
-          ),
-        ),
-      );
-    } else {
-      widgets.add(
-        pw.Container(
-          width: PdfPageFormat.a4.availableWidth - 30,
-          height: 110,
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: _kBorder),
-            color: _kRowAlt,
-          ),
-          child: pw.Center(
-            child: pw.Text(
-              '${data.width.toStringAsFixed(0)} × ${data.height.toStringAsFixed(0)} mm',
-              style: pw.TextStyle(
-                font: fontBold,
-                fontSize: 13,
-                color: PdfColors.grey600,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
     widgets.add(pw.SizedBox(height: 8));
 
-    // ── 4. جدول الـ Profils — مدمج بدون تكرار السطر ─────────────────────
-    if (data.profiles.isNotEmpty) {
-      widgets.add(_blueBar(tr.profils, fontBold, color: _kBlueSub, fontSize: 9));
-      widgets.add(pw.SizedBox(height: 2));
-      widgets.add(_buildProfilesTable(data.profiles, font, fontBold, tr));
-      widgets.add(pw.SizedBox(height: 8));
-    }
-
-    // ── 5. جدول الإكسسوارات — مستقل بدون قياسات قطع ────────────────────
+    // ── 3+4+5+6. رسم العنصر جنباً إلى جنب مع جداول التفاصيل ──────────────
+    // العمود الأيسر : الرسم (≈42% من العرض)
+    // العمود الأيمن : جداول الـ Profils والإكسسوارات والـ Joints (≈58%)
     final accessories = data.bomItems
         .where(
           (b) =>
@@ -387,14 +346,6 @@ class PdfFicheCoupeApi {
               b.category.toLowerCase() != 'joint',
         )
         .toList();
-    if (accessories.isNotEmpty) {
-      widgets.add(_blueBar(tr.accessoires, fontBold, color: _kBlueSub, fontSize: 9));
-      widgets.add(pw.SizedBox(height: 2));
-      widgets.add(_buildAccessoriesTable(accessories, font, fontBold, tr));
-      widgets.add(pw.SizedBox(height: 8));
-    }
-
-    // ── 6. جدول الـ Joints ──────────────────────────────────────────────
     final joints = data.bomItems
         .where(
           (b) =>
@@ -403,10 +354,107 @@ class PdfFicheCoupeApi {
               b.category.toLowerCase() == 'joint',
         )
         .toList();
+
+    final hasDetails =
+        data.profiles.isNotEmpty || accessories.isNotEmpty || joints.isNotEmpty;
+
+    // عمود الرسم
+    final pw.Widget drawingWidget = data.drawing != null
+        ? pw.Image(
+            pw.MemoryImage(data.drawing!),
+            fit: pw.BoxFit.contain,
+          )
+        : pw.Container(
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: _kBorder),
+              color: _kRowAlt,
+            ),
+            child: pw.Center(
+              child: pw.Text(
+                '${data.width.toStringAsFixed(0)} × ${data.height.toStringAsFixed(0)} mm',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 11,
+                  color: PdfColors.grey600,
+                ),
+              ),
+            ),
+          );
+
+    // عمود الجداول (Profils + Accessories + Joints)
+    final detailColumn = <pw.Widget>[];
+    if (data.profiles.isNotEmpty) {
+      detailColumn.add(
+        _blueBar(tr.profils, fontBold, color: _kBlueSub, fontSize: 9),
+      );
+      detailColumn.add(pw.SizedBox(height: 2));
+      detailColumn.add(
+        _buildProfilesTable(data.profiles, font, fontBold, tr),
+      );
+      detailColumn.add(pw.SizedBox(height: 6));
+    }
+    if (accessories.isNotEmpty) {
+      detailColumn.add(
+        _blueBar(tr.accessoires, fontBold, color: _kBlueSub, fontSize: 9),
+      );
+      detailColumn.add(pw.SizedBox(height: 2));
+      detailColumn.add(
+        _buildAccessoriesTable(accessories, font, fontBold, tr),
+      );
+      detailColumn.add(pw.SizedBox(height: 6));
+    }
     if (joints.isNotEmpty) {
-      widgets.add(_blueBar(tr.joints, fontBold, color: _kBlueSub, fontSize: 9));
-      widgets.add(pw.SizedBox(height: 2));
-      widgets.add(_buildJointsTable(joints, font, fontBold, tr));
+      detailColumn.add(
+        _blueBar(tr.joints, fontBold, color: _kBlueSub, fontSize: 9),
+      );
+      detailColumn.add(pw.SizedBox(height: 2));
+      detailColumn.add(_buildJointsTable(joints, font, fontBold, tr));
+    }
+
+    if (hasDetails) {
+      // تخطيط عمودين: رسم (42%) | فراغ فاصل | جداول (58%)
+      widgets.add(
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // عمود الرسم
+            pw.Expanded(
+              flex: 42,
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(4),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: _kBorder, width: 0.5),
+                ),
+                child: drawingWidget,
+              ),
+            ),
+            pw.SizedBox(width: 10),
+            // عمود الجداول
+            pw.Expanded(
+              flex: 58,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: detailColumn,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // لا توجد تفاصيل: يظهر الرسم بعرض كامل
+      widgets.add(
+        pw.Center(
+          child: pw.Container(
+            width: PdfPageFormat.a4.availableWidth - 10,
+            height: 310,
+            padding: const pw.EdgeInsets.all(4),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: _kBorder, width: 0.5),
+            ),
+            child: drawingWidget,
+          ),
+        ),
+      );
     }
 
     return widgets;
@@ -912,7 +960,11 @@ class PdfFicheCoupeApi {
 
       Uint8List? drawing;
       try {
-        drawing = await captureWindowImage(model, showDrawingDimensions: true);
+        drawing = await captureWindowImage(
+          model,
+          maxSide: 2400,
+          showDrawingDimensions: true,
+        );
       } catch (_) {}
 
       // استخراج معلومات النظام والفتح والشكل واللون ومركب الستار
@@ -1119,13 +1171,33 @@ class PdfFicheCoupeApi {
     String typeStr = '';
     String configStr = '';
 
-    if (hasSlidingSash) {
+    final smartComp =
+        DevisBuilder.generateSmartCompositionDescription(decodedMap, lang);
+    if (smartComp.isNotEmpty) {
+      typeStr = smartComp;
+      configStr = '';
+    } else if (hasSlidingSash) {
       typeStr = lang == AppLanguage.french
           ? 'Coulissant'
           : (lang == AppLanguage.english ? 'Sliding' : 'منزلق');
-      configStr = lang == AppLanguage.french
-          ? '2 vantaux'
-          : (lang == AppLanguage.english ? '2 sashes' : 'ضلفتين');
+      final sashesCount = zonesList
+          .where((z) => z is Map && z['content']?.toString() == 'slidingSash')
+          .map((z) => (z as Map)['slidingSashesCount'] as num?)
+          .whereType<num>()
+          .fold<int>(0, (max, count) => count.toInt() > max ? count.toInt() : max);
+      final effectiveSlidingSashes = sashesCount > 0 ? sashesCount : 2;
+      configStr = switch (lang) {
+        AppLanguage.french =>
+          effectiveSlidingSashes == 1 ? '1 vantail' : '$effectiveSlidingSashes vantaux',
+        AppLanguage.english =>
+          effectiveSlidingSashes == 1 ? '1 sash' : '$effectiveSlidingSashes sashes',
+        AppLanguage.arabic =>
+          effectiveSlidingSashes == 1
+              ? 'ضلفة واحدة'
+              : effectiveSlidingSashes == 2
+                  ? 'ضلفتين'
+                  : '$effectiveSlidingSashes درفات',
+      };
     } else if (hasDoubleSash) {
       typeStr = lang == AppLanguage.french
           ? 'Battant'

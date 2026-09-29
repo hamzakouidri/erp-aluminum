@@ -287,10 +287,55 @@ String _extractCodeFromName(String text) {
   return '';
 }
 
+String _normalizeHardwareKey(String name) {
+  final lower = name.toLowerCase();
+  if (lower.contains('تركيب') || lower.contains('pose')) {
+    return 'vis_pose';
+  }
+  if (lower.contains('باتمو') || lower.contains('meneau') || lower.contains('batmo')) {
+    return 'vis_batmo';
+  }
+  if (lower.contains('إكسسوارات') || lower.contains('accessoire')) {
+    return 'vis_accessoires';
+  }
+  if (lower.contains('حديد الدعم') || lower.contains('renfort')) {
+    return 'vis_renfort';
+  }
+  return '';
+}
+
 String _normalizeColorKey(BomItem item) {
   final name = (item.colorName ?? '').trim().toLowerCase();
   if (name.isNotEmpty) {
     return 'COLOR:$name';
+  }
+  final role = (item.roleKey ?? item.selectorType ?? '').toLowerCase();
+  if (role.contains('screw') ||
+      role.contains('vis') ||
+      item.originalName.contains('براغي') ||
+      item.name.contains('براغي') ||
+      item.originalName.toLowerCase().contains('vis') ||
+      item.name.toLowerCase().contains('vis')) {
+    return 'COLOR:DEFAULT';
+  }
+  if (item.colorId != null && item.colorId! > 0) {
+    return 'COLOR_ID:${item.colorId}';
+  }
+  return 'COLOR:DEFAULT';
+}
+
+String _normalizeColorKeyForAggregate(AggregatedGoodItem item) {
+  final name = (item.colorName ?? '').trim().toLowerCase();
+  if (name.isNotEmpty) {
+    return 'COLOR:$name';
+  }
+  final orig = item.originalName.toLowerCase();
+  final itemName = item.name.toLowerCase();
+  if (orig.contains('براغي') ||
+      orig.contains('vis') ||
+      itemName.contains('براغي') ||
+      itemName.contains('vis')) {
+    return 'COLOR:DEFAULT';
   }
   if (item.colorId != null && item.colorId! > 0) {
     return 'COLOR_ID:${item.colorId}';
@@ -341,10 +386,15 @@ String requiredGoodsAggregationKey(BomItem item, String category) {
   }
 
   // Non-profile items: Accessories, Joints, Glass, Shutters, etc.
+  final hwKey = _normalizeHardwareKey(item.originalName).isNotEmpty
+      ? _normalizeHardwareKey(item.originalName)
+      : _normalizeHardwareKey(item.name);
   final itemIdentifier = (item.catalogItemId != null && item.catalogItemId! > 0)
       ? '${item.inventoryItemType ?? normCategory}:${item.catalogItemId}'
       : (item.profileCode != null && item.profileCode!.trim().isNotEmpty)
       ? 'CODE:${item.profileCode!.trim().toUpperCase()}'
+      : hwKey.isNotEmpty
+      ? 'HW:$hwKey'
       : 'NAME:${requiredGoodsDisplayName(item).toLowerCase()}';
 
   final colorKey = _normalizeColorKey(item);
@@ -680,7 +730,7 @@ class AggregatedGoodItem {
   double totalCost;
   String? profileCode;
   final String? colorName;
-  final double? stockLength;
+  double? stockLength;
   final double? glassHeight;
   int pieceCount;
   WindowModel? sourceModel;
@@ -754,6 +804,10 @@ class AggregatedGoodItem {
     }
     if (usesOrderCutting && bom.pieces != null && bom.pieces!.isNotEmpty) {
       cuttingPieces.addAll(bom.pieces!);
+    }
+    if ((stockLength == null || stockLength! <= 0) &&
+        (bom.length != null && bom.length! > 0)) {
+      stockLength = bom.length;
     }
     if (catalogItemId == null && bom.catalogItemId != null) {
       catalogItemId = bom.catalogItemId;
@@ -1975,8 +2029,50 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             } else {
               final aggregationKey = requiredGoodsAggregationKey(bom, category);
 
+              String? matchingKey;
               if (aggregationMap.containsKey(aggregationKey)) {
-                final aggregate = aggregationMap[aggregationKey]!;
+                matchingKey = aggregationKey;
+              } else {
+                for (final entry in aggregationMap.entries) {
+                  final existing = entry.value;
+                  if (existing.kitGroupName != null) continue;
+                  if (existing.category != category) continue;
+
+                  final isProfile = category == 'profile' ||
+                      category == 'frame' ||
+                      category == 'mullion' ||
+                      category == 'sash' ||
+                      usesOrderCutting;
+                  if (isProfile) {
+                    final code = (bom.profileCode != null && bom.profileCode!.trim().isNotEmpty)
+                        ? bom.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
+                        : _extractCodeFromName(_cleanProfileName(bom));
+                    final existingCode = (existing.profileCode != null && existing.profileCode!.trim().isNotEmpty)
+                        ? existing.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
+                        : _extractCodeFromName(existing.name);
+                    final colorMatch = _normalizeColorKey(bom) == _normalizeColorKeyForAggregate(existing);
+                    if (code.isNotEmpty && code == existingCode && colorMatch) {
+                      matchingKey = entry.key;
+                      break;
+                    }
+                  } else {
+                    final hwBom = _normalizeHardwareKey(bom.originalName).isNotEmpty
+                        ? _normalizeHardwareKey(bom.originalName)
+                        : _normalizeHardwareKey(bom.name);
+                    final hwEx = _normalizeHardwareKey(existing.originalName).isNotEmpty
+                        ? _normalizeHardwareKey(existing.originalName)
+                        : _normalizeHardwareKey(existing.name);
+                    final colorMatch = _normalizeColorKey(bom) == _normalizeColorKeyForAggregate(existing);
+                    if (colorMatch && hwBom.isNotEmpty && hwBom == hwEx) {
+                      matchingKey = entry.key;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              if (matchingKey != null) {
+                final aggregate = aggregationMap[matchingKey]!;
                 aggregate.mergeWith(
                   bom,
                   purchaseQty,
