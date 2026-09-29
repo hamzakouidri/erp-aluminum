@@ -1016,6 +1016,10 @@ class _SyncGatewayState extends State<SyncGateway> {
         context,
         listen: false,
       ).reloadPermissions();
+      await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {},
+      );
     } catch (error) {
       // Login must remain usable during a temporary cloud failure; the
       // background listener will retry without rebuilding the page tree.

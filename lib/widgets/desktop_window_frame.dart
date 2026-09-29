@@ -20,15 +20,43 @@ class DesktopWindowFrame extends StatefulWidget {
   State<DesktopWindowFrame> createState() => _DesktopWindowFrameState();
 }
 
-class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
+class _DesktopWindowFrameState extends State<DesktopWindowFrame>
+    with WindowListener {
   bool _isMaximized = false;
   ImageProvider? _workshopLogo;
 
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _readWindowState());
     _loadWorkshopLogo();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowMaximize() {
+    if (mounted) setState(() => _isMaximized = true);
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    if (mounted) setState(() => _isMaximized = false);
+  }
+
+  @override
+  void onWindowRestore() {
+    _readWindowState();
+  }
+
+  @override
+  void onWindowResize() {
+    _readWindowState();
   }
 
   Future<void> _loadWorkshopLogo() async {
@@ -56,17 +84,27 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
   }
 
   Future<void> _readWindowState() async {
-    final isMaximized = await windowManager.isMaximized();
-    if (mounted) setState(() => _isMaximized = isMaximized);
+    try {
+      final isMax = await windowManager.isMaximized();
+      if (mounted && _isMaximized != isMax) {
+        setState(() => _isMaximized = isMax);
+      }
+    } catch (_) {}
   }
 
   Future<void> _toggleMaximize() async {
-    if (_isMaximized) {
-      await windowManager.unmaximize();
-    } else {
-      await windowManager.maximize();
+    try {
+      final isMax = await windowManager.isMaximized();
+      if (isMax) {
+        await windowManager.unmaximize();
+        if (mounted) setState(() => _isMaximized = false);
+      } else {
+        await windowManager.maximize();
+        if (mounted) setState(() => _isMaximized = true);
+      }
+    } catch (e) {
+      debugPrint('Error toggling maximize: $e');
     }
-    await _readWindowState();
   }
 
   @override
@@ -151,8 +189,11 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
               ),
               _CaptionButton(
                 tooltip: Localization.translate('تصغير', lang),
-                icon: Icons.remove_rounded,
-                foreground: foreground,
+                iconBuilder: (_) => Container(
+                  width: 10,
+                  height: 1.2,
+                  color: foreground,
+                ),
                 onPressed: () => windowManager.minimize(),
               ),
               _CaptionButton(
@@ -160,17 +201,19 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
                   _isMaximized ? 'استعادة الحجم' : 'تكبير',
                   lang,
                 ),
-                icon: _isMaximized
-                    ? Icons.filter_none_rounded
-                    : Icons.crop_square_rounded,
-                foreground: foreground,
+                iconBuilder: (_) => _isMaximized
+                    ? _buildRestoreIcon(foreground, isDark)
+                    : _buildMaximizeIcon(foreground),
                 onPressed: _toggleMaximize,
               ),
               _CaptionButton(
                 tooltip: Localization.translate('إغلاق', lang),
-                icon: Icons.close_rounded,
-                foreground: const Color(0xFFDC2626),
                 closeButton: true,
+                iconBuilder: (hovered) => Icon(
+                  Icons.close_rounded,
+                  size: 17,
+                  color: hovered ? Colors.white : const Color(0xFFDC2626),
+                ),
                 onPressed: () => windowManager.close(),
               ),
             ],
@@ -186,42 +229,96 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame> {
       ],
     );
   }
+
+  Widget _buildMaximizeIcon(Color color) {
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1.2),
+      ),
+    );
+  }
+
+  Widget _buildRestoreIcon(Color color, bool isDark) {
+    return SizedBox(
+      width: 11,
+      height: 11,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                border: Border.all(color: color, width: 1.2),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF111827) : Colors.white,
+                border: Border.all(color: color, width: 1.2),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _CaptionButton extends StatelessWidget {
+class _CaptionButton extends StatefulWidget {
   final String tooltip;
-  final IconData icon;
-  final Color foreground;
+  final Widget Function(bool isHovered) iconBuilder;
   final VoidCallback onPressed;
   final bool closeButton;
 
   const _CaptionButton({
     required this.tooltip,
-    required this.icon,
-    required this.foreground,
+    required this.iconBuilder,
     required this.onPressed,
     this.closeButton = false,
   });
 
   @override
+  State<_CaptionButton> createState() => _CaptionButtonState();
+}
+
+class _CaptionButtonState extends State<_CaptionButton> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    // This frame wraps MaterialApp's navigator, so it is intentionally above
-    // Flutter's Overlay.  Semantics keeps the buttons accessible without a
-    // Tooltip, which would otherwise throw "No Overlay widget found".
     return Semantics(
-      label: tooltip,
+      label: widget.tooltip,
       button: true,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          hoverColor: closeButton
-              ? const Color(0xFFFEE2E2)
-              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-          child: SizedBox(
-            width: 46,
-            height: double.infinity,
-            child: Icon(icon, color: foreground, size: 20),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: Material(
+          color: widget.closeButton && _isHovered
+              ? const Color(0xFFE81123)
+              : Colors.transparent,
+          child: InkWell(
+            onTap: widget.onPressed,
+            hoverColor: widget.closeButton
+                ? const Color(0xFFE81123)
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+            child: SizedBox(
+              width: 46,
+              height: double.infinity,
+              child: Center(
+                child: widget.iconBuilder(_isHovered),
+              ),
+            ),
           ),
         ),
       ),

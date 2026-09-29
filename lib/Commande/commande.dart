@@ -4372,13 +4372,28 @@ class _CommandeState extends State<Commande> {
           controller: _orderColumnControllers['stock_reserved'],
           lang: lang,
           options: [
-            Localization.translate('الكل', lang),
-            lang == AppLanguage.french
-                ? 'Réservé'
-                : Localization.translate('تم الحجز', lang),
-            lang == AppLanguage.french
-                ? 'Non réservé'
-                : Localization.translate('لم يُحجز بعد', lang),
+            TableFilterOption(
+              value: '',
+              label: Localization.translate('الكل', lang),
+              icon: Icons.clear_all_rounded,
+              color: Colors.grey,
+            ),
+            TableFilterOption(
+              value: lang == AppLanguage.french ? 'réservé' : 'محجوز',
+              label: lang == AppLanguage.french
+                  ? 'Réservé'
+                  : Localization.translate('تم الحجز', lang),
+              icon: Icons.check_circle,
+              color: Colors.green,
+            ),
+            TableFilterOption(
+              value: lang == AppLanguage.french ? 'non réservé' : 'غير محجوز',
+              label: lang == AppLanguage.french
+                  ? 'Non réservé'
+                  : Localization.translate('لم يُحجز بعد', lang),
+              icon: Icons.inventory_2_outlined,
+              color: Colors.grey,
+            ),
           ],
           optionsTooltip: Localization.translate('تصفية حسب حجز السلع', lang),
           onTextChanged: (_) => setState(() {}),

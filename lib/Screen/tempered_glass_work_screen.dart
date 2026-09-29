@@ -78,7 +78,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   bool _sablageRangeMode = false;
   bool _sablageFromBottom = false;
   double _glassThicknessMm = 10.0;
-  String _glassType = 'normal';
+  String _glassType = 'شفاف';
   bool _glassTempered = true;
   String _edgeFinish = 'smooth';
   bool _doorOnLeft = true;
@@ -97,6 +97,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   String _glassTypeLabel(String value) {
     return switch (value) {
+      'شفاف' => _tr('شفاف', 'Transparent', 'Clear'),
+      'ملون' => _tr('ملون', 'Teinté', 'Tinted'),
+      'عاكس' => _tr('عاكس', 'Réfléchissant', 'Reflective'),
+      'مصفح' => _tr('مصفح', 'Feuilleté', 'Laminated'),
+      'معتّم' => _tr('معتّم', 'Opaque', 'Opaque'),
       'mirror' => _tr('زجاج مرآة', 'Verre miroir', 'Mirror glass'),
       _ => _tr('زجاج عادي', 'Verre normal', 'Standard glass'),
     };
@@ -2431,7 +2436,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                   .map(
                     (type) => DropdownMenuItem<String>(
                       value: type,
-                      child: Text(type),
+                      child: Text(_glassTypeLabel(type)),
                     ),
                   )
                   .toList(),

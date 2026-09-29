@@ -502,6 +502,8 @@ class SupabaseWorkshopSyncService {
   Future<void> saveWorkshopSystems({
     required Map<String, bool> systemModes,
     required List<int> activeProfileIds,
+    List<String> activeProfileCodes = const [],
+    List<String> activeProfileNames = const [],
   }) async {
     await _ensureReady();
     final currentProfile = await readWorkshopProfile();
@@ -510,6 +512,8 @@ class SupabaseWorkshopSyncService {
       'workshop_systems': {
         'modes': <String, bool>{...systemModes},
         'active_profile_ids': activeProfileIds.toList(growable: false),
+        'active_profile_codes': activeProfileCodes.toList(growable: false),
+        'active_profile_names': activeProfileNames.toList(growable: false),
       },
     });
   }
@@ -1373,7 +1377,7 @@ class SupabaseWorkshopSyncService {
         }
       }
       if (lastError != null) {
-        Error.throwWithStackTrace(lastError!, StackTrace.current);
+        Error.throwWithStackTrace(lastError, StackTrace.current);
       }
     }
   }
@@ -1670,15 +1674,39 @@ class SupabaseWorkshopSyncService {
     }
 
     final rawActiveProfiles = systems['active_profile_ids'];
-    if (rawActiveProfiles is! List) return;
+    final rawActiveCodes = systems['active_profile_codes'];
+    final rawActiveNames = systems['active_profile_names'];
 
-    final activeIds = rawActiveProfiles
-        .map(
-          (value) =>
-      value is num ? value.toInt() : int.tryParse(value.toString()),
-    )
-        .whereType<int>()
-        .toSet();
+    if (rawActiveProfiles is! List &&
+        rawActiveCodes is! List &&
+        rawActiveNames is! List) {
+      return;
+    }
+
+    final activeIds = (rawActiveProfiles is List)
+        ? rawActiveProfiles
+            .map(
+              (value) =>
+                  value is num ? value.toInt() : int.tryParse(value.toString()),
+            )
+            .whereType<int>()
+            .toSet()
+        : <int>{};
+
+    final activeCodes = (rawActiveCodes is List)
+        ? rawActiveCodes
+            .map((value) => value?.toString().trim() ?? '')
+            .where((c) => c.isNotEmpty)
+            .toSet()
+        : <String>{};
+
+    final activeNames = (rawActiveNames is List)
+        ? rawActiveNames
+            .map((value) => value?.toString().trim().toLowerCase() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toSet()
+        : <String>{};
+
     final dbInstance = await _db.db;
     if (dbInstance == null) return;
 
@@ -1689,18 +1717,67 @@ class SupabaseWorkshopSyncService {
     await dbInstance.transaction((txn) async {
       await txn.update('Profile', {'is_active': 0});
       await txn.update('Series', {'is_active': 0});
+
+      final allProfiles = await txn.query(
+        'Profile',
+        columns: ['id', 'code', 'name'],
+      );
+      final matchedProfileIds = <int>{};
+
+      for (final p in allProfiles) {
+        final pId = p['id'] is int
+            ? p['id'] as int
+            : int.tryParse(p['id'].toString());
+        final pCode = (p['code'] ?? '').toString().trim();
+        final pName = (p['name'] ?? '').toString().trim().toLowerCase();
+
+        bool isMatch = false;
+        if (pId != null && activeIds.contains(pId)) isMatch = true;
+        if (pCode.isNotEmpty && activeCodes.contains(pCode)) isMatch = true;
+        if (pName.isNotEmpty && activeNames.contains(pName)) isMatch = true;
+
+        if (isMatch && pId != null) {
+          matchedProfileIds.add(pId);
+          await txn.update(
+            'Profile',
+            {'is_active': 1},
+            where: 'id = ?',
+            whereArgs: [pId],
+          );
+          await txn.update(
+            'Series',
+            {'is_active': 1},
+            where: 'profile_id = ? OR id = ?',
+            whereArgs: [pId, pId],
+          );
+        }
+      }
+
+      // Also activate any profile whose id was explicitly sent even if not matched in query
       for (final id in activeIds) {
-        await txn.update(
-          'Profile',
-          {'is_active': 1},
-          where: 'id = ?',
-          whereArgs: [id],
-        );
+        if (!matchedProfileIds.contains(id)) {
+          await txn.update(
+            'Profile',
+            {'is_active': 1},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          await txn.update(
+            'Series',
+            {'is_active': 1},
+            where: 'profile_id = ? OR id = ?',
+            whereArgs: [id, id],
+          );
+        }
+      }
+
+      // Activate series by name matching
+      for (final name in activeNames) {
         await txn.update(
           'Series',
           {'is_active': 1},
-          where: 'profile_id = ? OR id = ?',
-          whereArgs: [id, id],
+          where: 'LOWER(TRIM(name)) = ?',
+          whereArgs: [name],
         );
       }
     });

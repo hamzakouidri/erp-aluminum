@@ -10,6 +10,7 @@ import 'package:database_data/Screen/selected_systems_screen.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
 import 'package:database_data/Screen/tempered_glass_work_screen.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChooseSysteme extends StatefulWidget {
@@ -43,7 +44,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     _loadActiveModes();
   }
 
-  Future<void> _loadActiveModes() async {
+  Future<void> _readLocalModes() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
@@ -60,6 +61,19 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         'verre': prefs.getBool('system_active_verre') ?? true,
       };
     });
+  }
+
+  Future<void> _loadActiveModes() async {
+    await _readLocalModes();
+    try {
+      await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {},
+      );
+      if (mounted) {
+        await _readLocalModes();
+      }
+    } catch (_) {}
   }
 
   Future<List<Map<String, dynamic>>> _loadActiveSeriesList() async {

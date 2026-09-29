@@ -4326,13 +4326,6 @@ class WindowModel extends ChangeNotifier {
     Map<String, dynamic> profile, {
     required bool central,
   }) {
-    final role = (profile['design_role_key'] ?? '').toString();
-    if (role == 'sash_central_reinforced' ||
-        role == 'sash_lateral_reinforced' ||
-        role == 'chicane_renforcee') {
-      return true;
-    }
-    if (role == 'sash_central' || role == 'sash_lateral') return false;
     final code = (profile['code'] ?? '').toString().trim().toLowerCase();
     final name = (profile['name'] ?? '').toString().toLowerCase();
     final type = (profile['type'] ?? '').toString().toLowerCase();
@@ -4345,11 +4338,19 @@ class WindowModel extends ChangeNotifier {
       return false;
     }
     if (code.endsWith(central ? '107' : '108') ||
+        code.replaceAll(' ', '').endsWith(central ? '107' : '108') ||
         name.contains('معزز') ||
         name.contains('renforc') ||
         type.contains('renforc')) {
       return true;
     }
+    final role = (profile['design_role_key'] ?? '').toString();
+    if (role == 'sash_central_reinforced' ||
+        role == 'sash_lateral_reinforced' ||
+        role == 'chicane_renforcee') {
+      return true;
+    }
+    if (role == 'sash_central' || role == 'sash_lateral') return false;
     // In series where the chicane itself acts as the central montant reinforcement
     if (central &&
         (role == 'chicane' ||
@@ -4387,17 +4388,23 @@ class WindowModel extends ChangeNotifier {
       zone.slidingMontantReinforced = Map<String, bool>.from(
         zone.slidingMontantReinforced,
       );
+      final sashes = zone.slidingSashesCount > 0
+          ? zone.slidingSashesCount
+          : 2;
+      final bool hasMeetingInCenter =
+          zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
       if (central) {
-        final sashes = zone.slidingSashesCount > 0
-            ? zone.slidingSashesCount
-            : 2;
-        final centralCount = math.max(0, (sashes * 2) - 2);
+        final centralCount = hasMeetingInCenter
+            ? (sashes == 4 ? 4 : 8)
+            : math.max(0, (sashes * 2) - 2);
         for (var index = 0; index < centralCount; index++) {
           zone.slidingMontantReinforced['central_$index'] = isReinforced;
         }
       } else {
-        zone.slidingMontantReinforced['lateral_0'] = isReinforced;
-        zone.slidingMontantReinforced['lateral_1'] = isReinforced;
+        final lateralCount = hasMeetingInCenter ? 4 : 2;
+        for (var index = 0; index < lateralCount; index++) {
+          zone.slidingMontantReinforced['lateral_$index'] = isReinforced;
+        }
       }
     }
 
@@ -4423,6 +4430,104 @@ class WindowModel extends ChangeNotifier {
           mutable;
     }
     notifyListeners();
+  }
+
+  bool isSlidingMontantCandidate(
+    Map<String, dynamic> item, {
+    required bool central,
+  }) {
+    if (isSlidingMontantSlimCandidate(item)) {
+      return false;
+    }
+    final role = (item['design_role_key'] ?? '').toString();
+    final name = (item['name'] ?? '').toString().toLowerCase();
+    final type = (item['type'] ?? '').toString().toLowerCase();
+    if (role == 'face_to_face' ||
+        type == 'face_to_face' ||
+        name.contains('face to face') ||
+        name.contains('face-to-face')) {
+      return false;
+    }
+    if (role.isNotEmpty) {
+      return central
+          ? const [
+              'sash_central',
+              'sash_central_reinforced',
+              'central',
+              'chicane',
+              'chicane_renforcee',
+            ].contains(role)
+          : const [
+              'sash_lateral',
+              'sash_lateral_reinforced',
+              'lateral',
+            ].contains(role);
+    }
+    final isOpeningSash =
+        type.contains('ouvrant') ||
+        type.contains('opening') ||
+        name.contains('ouvrant') ||
+        name.contains('opening');
+    if (isOpeningSash &&
+        !type.contains('sliding') &&
+        !name.contains('coulissant') &&
+        !name.contains('منزلق')) {
+      return false;
+    }
+
+    final series = effectiveSlidingSeries;
+    if (series != null) {
+      final rawId = item['id'];
+      final id = rawId is num
+          ? rawId.toInt()
+          : int.tryParse(rawId?.toString() ?? '');
+      if (id != null) {
+        final centralRoles = [
+          'sash_central',
+          'sash_central_reinforced',
+          'central',
+          'chicane',
+          'chicane_renforcee',
+        ];
+        final lateralRoles = [
+          'sash_lateral',
+          'sash_lateral_reinforced',
+          'lateral',
+        ];
+        final inCentralRole = centralRoles.any(
+          (r) => (_seriesDesignRoleSectionIds[series.id]?[r] ?? const <int>{})
+              .contains(id),
+        );
+        final inLateralRole = lateralRoles.any(
+          (r) => (_seriesDesignRoleSectionIds[series.id]?[r] ?? const <int>{})
+              .contains(id),
+        );
+        if (central && inCentralRole) return true;
+        if (!central && inLateralRole) return true;
+        if (central && inLateralRole) return false;
+        if (!central && inCentralRole) return false;
+      }
+    }
+
+    final code = (item['code'] ?? '').toString().trim().toLowerCase();
+    if (central) {
+      return type.contains('central') ||
+          type.contains('وسطي') ||
+          name.contains('central') ||
+          name.contains('وسطي') ||
+          type.contains('chicane') ||
+          name.contains('chicane') ||
+          name.contains('شيكان') ||
+          type.contains('شيكان') ||
+          code.endsWith('105') ||
+          code.endsWith('107');
+    }
+    return type.contains('lateral') ||
+        type.contains('جانبي') ||
+        name.contains('lateral') ||
+        name.contains('جانبي') ||
+        code.endsWith('104') ||
+        code.endsWith('108');
   }
 
   bool isSlidingMontantSlimCandidate(Map<String, dynamic> profile) {
@@ -8561,6 +8666,129 @@ class WindowModel extends ChangeNotifier {
       if (_hasLoadedRoleMetadata(series)) return null;
     }
 
+    if (normalizedType == 'sash_lateral_reinforced') {
+      final override =
+          componentOverrides['قائم جانبي معزز (Sash Lateral Renforcé)'];
+      if (override is Map) {
+        return AluminumSection.fromMap(Map<String, dynamic>.from(override));
+      }
+      final configured = getConfiguredSectionForRole(
+        'sash_lateral_reinforced',
+        useSlidingSeries: true,
+      );
+      if (configured != null) return configured;
+      for (final section in series.sections) {
+        final map = section.toMap();
+        if (isSlidingMontantCandidate(map, central: false) &&
+            isSlidingMontantReinforced(map, central: false)) {
+          return section;
+        }
+      }
+      return null;
+    }
+
+    if (normalizedType == 'sash_central_reinforced' ||
+        normalizedType == 'chicane_renforcee') {
+      final override =
+          componentOverrides['قائم وسطي معزز (Sash Central Renforcé)'] ??
+          componentOverrides['شيكان معزز (Chicane Renforcée)'];
+      if (override is Map) {
+        return AluminumSection.fromMap(Map<String, dynamic>.from(override));
+      }
+      final configured =
+          getConfiguredSectionForRole(
+            'sash_central_reinforced',
+            useSlidingSeries: true,
+          ) ??
+          getConfiguredSectionForRole(
+            'chicane_renforcee',
+            useSlidingSeries: true,
+          );
+      if (configured != null) return configured;
+      for (final section in series.sections) {
+        final map = section.toMap();
+        if (isSlidingMontantCandidate(map, central: true) &&
+            isSlidingMontantReinforced(map, central: true)) {
+          return section;
+        }
+      }
+      return null;
+    }
+
+    if (normalizedType == 'sash_lateral' || normalizedType == 'lateral') {
+      final override =
+          componentOverrides['قائم جانبي (Sash Lateral)'] ??
+          componentOverrides['قائم جانبي (Lateral)'];
+      if (override is Map) {
+        return AluminumSection.fromMap(Map<String, dynamic>.from(override));
+      }
+      final configured =
+          getConfiguredSectionForRole('sash_lateral', useSlidingSeries: true) ??
+          getConfiguredSectionForRole('lateral', useSlidingSeries: true);
+      if (configured != null &&
+          !isSlidingMontantReinforced(configured.toMap(), central: false)) {
+        return configured;
+      }
+      for (final section in series.sections) {
+        final map = section.toMap();
+        if (isSlidingMontantCandidate(map, central: false) &&
+            !isSlidingMontantReinforced(map, central: false)) {
+          return section;
+        }
+      }
+      if (configured != null) return configured;
+      for (final section in series.sections) {
+        final map = section.toMap();
+        if (isSlidingMontantCandidate(map, central: false)) {
+          return section;
+        }
+      }
+      return null;
+    }
+
+    if (normalizedType == 'sash_central' ||
+        normalizedType == 'central' ||
+        normalizedType == 'chicane') {
+      final override =
+          componentOverrides['قائم وسطي (Sash Central)'] ??
+          componentOverrides['قائم وسطي (Central)'] ??
+          componentOverrides['الشيكان (Chicane)'];
+      if (override is Map) {
+        return AluminumSection.fromMap(Map<String, dynamic>.from(override));
+      }
+      final configured =
+          getConfiguredSectionForRole(normalizedType, useSlidingSeries: true) ??
+          getConfiguredSectionForRole('sash_central', useSlidingSeries: true) ??
+          getConfiguredSectionForRole('chicane', useSlidingSeries: true);
+      if (configured != null &&
+          !isSlidingMontantReinforced(configured.toMap(), central: true)) {
+        return configured;
+      }
+      for (final section in series.sections) {
+        final map = section.toMap();
+        if (isSlidingMontantCandidate(map, central: true) &&
+            !isSlidingMontantReinforced(map, central: true)) {
+          return section;
+        }
+      }
+      if (configured != null) return configured;
+      for (final section in series.sections) {
+        final map = section.toMap();
+        if (isSlidingMontantCandidate(map, central: true)) {
+          return section;
+        }
+      }
+      return null;
+    }
+
+    if (normalizedType == 'face_to_face') {
+      final configured = getConfiguredSectionForRole(
+        'face_to_face',
+        useSlidingSeries: true,
+      );
+      if (configured != null) return configured;
+    }
+
     for (final section in series.sections) {
       if (section.type.toLowerCase() == normalizedType ||
           (normalizedType == 'frame' && section.isFrame)) {
@@ -11870,7 +12098,7 @@ class WindowModel extends ChangeNotifier {
         zone.lockType = LockType.none;
         zone.useOctoHandle = false;
         zone.usePvcHandleOnAlu = false;
-        if (zone.slidingSashesCount != 4 || zone.slidingTrackCount != 2) {
+        if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
           zone.slidingFaceToFace = false;
           zone.slidingCentralHandle = false;
           zone.slidingSecondCentralHandle = false;
@@ -14406,23 +14634,28 @@ class WindowModel extends ChangeNotifier {
       // 2. Standard clicks
       bool isFullWidth = (r.width >= width - profileThickness * 2 - 2);
       bool isFullHeight = (r.height >= height - profileThickness * 2 - 2);
-      final bottomInset = math.min(28.0, math.max(16.0, r.height * 0.18));
-      final rightInset = math.min(28.0, math.max(16.0, r.width * 0.18));
-      if (!isFullWidth &&
-          Rect.fromCenter(
-            center: Offset(r.center.dx, r.bottom - bottomInset),
-            width: math.min(190.0, math.max(120.0, r.width * 0.6)),
-            height: 70,
-          ).contains(pos)) {
-        return InnerDimensionHit(z.id, true);
-      }
-      if (!isFullHeight &&
-          Rect.fromCenter(
-            center: Offset(r.right - rightInset, r.center.dy),
-            width: 70,
-            height: math.min(190.0, math.max(120.0, r.height * 0.6)),
-          ).contains(pos)) {
-        return InnerDimensionHit(z.id, false);
+      final canTapZoneDimensions =
+          z.content == ZoneContent.empty ||
+          z.content == ZoneContent.fixedGlass;
+      if (canTapZoneDimensions) {
+        final bottomInset = math.min(28.0, math.max(16.0, r.height * 0.18));
+        final rightInset = math.min(28.0, math.max(16.0, r.width * 0.18));
+        if (!isFullWidth &&
+            Rect.fromCenter(
+              center: Offset(r.center.dx, r.bottom - bottomInset),
+              width: math.min(190.0, math.max(120.0, r.width * 0.6)),
+              height: 70,
+            ).contains(pos)) {
+          return InnerDimensionHit(z.id, true);
+        }
+        if (!isFullHeight &&
+            Rect.fromCenter(
+              center: Offset(r.right - rightInset, r.center.dy),
+              width: 70,
+              height: math.min(190.0, math.max(120.0, r.height * 0.6)),
+            ).contains(pos)) {
+          return InnerDimensionHit(z.id, false);
+        }
       }
       if (z.content == ZoneContent.doubleSash) {
         // Match the mirrored ratio used by WindowPainter when viewing the
@@ -16127,8 +16360,11 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get canDisableBottomFrame {
-    if (usesSeuil) return true;
     if (systemMode == 'sliding') return false;
+    if (usesSeuil) return true;
+    if (hasFramePlintheBottom || zones.any((z) => z.hasSashPlintheBottom)) {
+      return true;
+    }
     return true;
   }
 
@@ -16898,19 +17134,34 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get effectiveHasBottomFrame =>
-      (hasBottomFrame && !usesSeuil) || !canDisableBottomFrame;
+  bool get effectiveHasBottomFrame {
+    if (systemMode == 'sliding') {
+      if (usesSeuil) return false;
+      return hasBottomFrame;
+    }
+    if (hasFramePlintheBottom || zones.any((z) => z.hasSashPlintheBottom)) {
+      return false;
+    }
+    if (usesSeuil) return false;
+    if (!hasBottomFrame) return false;
+    return (hasBottomFrame && !usesSeuil) || !canDisableBottomFrame;
+  }
 
   /// Plinthe belongs to its opening frame, not neighbouring sliding frames.
   bool hasBottomFrameForRect(Rect frameRect) {
     final sliding = frameUsesSlidingSeries(frameRect);
     if (usesFrameRole('seuil', sliding: sliding)) return false;
-    if (sliding) return true;
-    for (final zone in zones) {
-      if (!frameRect.contains(zone.boundary.center)) continue;
+    if (sliding) return hasBottomFrame;
+    if (hasFramePlintheBottom) return false;
+    final frameZones = zones
+        .where((z) => frameRect.contains(z.boundary.center))
+        .toList();
+    if (frameZones.any((z) => z.hasSashPlintheBottom)) return false;
+    for (final zone in frameZones) {
       final local = componentOverrides['frame-bottom:${zone.id}'];
       if (local is bool) return local;
     }
+    if (!hasBottomFrame) return false;
     return hasBottomFrame;
   }
 
@@ -16991,6 +17242,9 @@ class WindowModel extends ChangeNotifier {
   );
 
   bool _normalizeBottomFrameForCurrentContent() {
+    if (hasFramePlintheBottom || zones.any((z) => z.hasSashPlintheBottom)) {
+      return false;
+    }
     if (canDisableBottomFrame && systemMode != 'sliding') return false;
 
     var changed = false;
@@ -17058,7 +17312,10 @@ class WindowModel extends ChangeNotifier {
       (key, value) => key.startsWith('frame-bottom:'),
     );
     if (!value && !canEditSelectedBottomFrame) return;
-    if (systemMode == 'sliding' || (!value && !canDisableBottomFrame)) {
+    if ((systemMode == 'sliding' &&
+            !hasFramePlintheBottom &&
+            !zones.any((z) => z.hasSashPlintheBottom)) ||
+        (!value && !canDisableBottomFrame)) {
       final wasBottomFrame = hasBottomFrame;
       hasBottomFrame = true;
       if (!wasBottomFrame) _restoreBottomSideCoverWhenFrameReturns();
@@ -17121,7 +17378,9 @@ class WindowModel extends ChangeNotifier {
 
     final canUsePlinthe =
         hasOpeningSashZones ||
-        zones.any((z) => z.content == ZoneContent.fixedGlass);
+        zones.any(
+          (z) => z.content == ZoneContent.fixedGlass,
+        );
     if (value && !canUsePlinthe) {
       final wasBottomFrame = hasBottomFrame;
       hasFramePlintheBottom = false;
@@ -17149,9 +17408,6 @@ class WindowModel extends ChangeNotifier {
       hasFramePlintheBottom = true;
       hasBottomFrame = false;
       showBottomWall = false;
-      // The frame plinthe is a bottom profile for every opening/fixed zone.
-      // Sliding zones use a different bottom-profile system and must not be
-      // pulled into this opening-frame option.
       for (final z in zones) {
         z.hasSashPlintheBottom = isPlintheEligible(z);
       }
@@ -17221,7 +17477,10 @@ class WindowModel extends ChangeNotifier {
         continue;
       }
       final hasPlintheBottom = !hasBottomFrame && z.hasSashPlintheBottom;
-      final targetBottom = hasPlintheBottom
+      final isOpeningSash =
+          z.content == ZoneContent.singleSash ||
+          z.content == ZoneContent.doubleSash;
+      final targetBottom = (!hasBottomFrame && (hasPlintheBottom || isOpeningSash))
           ? height
           : height - profileThickness;
       if ((z.boundary.bottom - height).abs() < 5.0 ||
@@ -18009,7 +18268,8 @@ class WindowModel extends ChangeNotifier {
     if (selectedZone == null) return;
     _saveSnapshot();
     selectedZone!.slidingSashesCount = count.clamp(2, 7).toInt();
-    if (selectedZone!.slidingSashesCount != 4) {
+    if (selectedZone!.slidingSashesCount < 4 ||
+        selectedZone!.slidingSashesCount % 2 != 0) {
       selectedZone!.slidingFaceToFace = false;
       selectedZone!.slidingCentralHandle = false;
       selectedZone!.slidingSecondCentralHandle = false;
@@ -18036,11 +18296,17 @@ class WindowModel extends ChangeNotifier {
           (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
           hasFaceToFaceRule) {
         zone.slidingFaceToFace = true;
+        zone.slidingCentralHandle = true;
+        zone.slidingSecondCentralHandle = true;
       } else if (zone.slidingTrackCount >= 4) {
         zone.slidingFaceToFace = false;
+        zone.slidingCentralHandle = false;
+        zone.slidingSecondCentralHandle = false;
       }
     } else {
       zone.slidingFaceToFace = false;
+      zone.slidingCentralHandle = false;
+      zone.slidingSecondCentralHandle = false;
     }
     // A series may provide a ready-made 4/5/6-rail frame in addition to the
     // composable two-rail base. Select that exact complete frame as soon as
@@ -18095,8 +18361,12 @@ class WindowModel extends ChangeNotifier {
           (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
           hasFaceToFaceRule) {
         zone.slidingFaceToFace = true;
+        zone.slidingCentralHandle = true;
+        zone.slidingSecondCentralHandle = true;
       } else if (zone.slidingTrackCount >= 4) {
         zone.slidingFaceToFace = false;
+        zone.slidingCentralHandle = false;
+        zone.slidingSecondCentralHandle = false;
       }
     } else {
       zone.slidingFaceToFace = false;
@@ -18228,6 +18498,13 @@ class WindowModel extends ChangeNotifier {
     if (zone.slidingFaceToFace == value) return;
     _saveSnapshot();
     zone.slidingFaceToFace = value;
+    if (value) {
+      zone.slidingCentralHandle = true;
+      zone.slidingSecondCentralHandle = true;
+    } else {
+      zone.slidingCentralHandle = false;
+      zone.slidingSecondCentralHandle = false;
+    }
     notifyListeners();
   }
 

@@ -326,7 +326,17 @@ class _ShowClientState extends State<ShowClient> {
       where: "entity_type = 'Client' AND entity_id = ?",
       whereArgs: [widget.clientId],
     );
-    return [cData, orders, treasury];
+    List<Map<String, dynamic>> deliveries = [];
+    try {
+      deliveries = await myDb.rawQuery('''
+        SELECT d.*, c.order_code, c.display_number, c.project_name
+        FROM Commandes_deliveries d
+        LEFT JOIN Commandes c ON d.id_commandes = c.id
+        WHERE d.client_id = ? OR c.client_id = ?
+        ORDER BY d.id DESC
+      ''', [widget.clientId, widget.clientId]);
+    } catch (_) {}
+    return [cData, orders, treasury, deliveries];
   }
 
   @override
@@ -432,6 +442,8 @@ class _ShowClientState extends State<ShowClient> {
           final client = clientData[0];
           final orders = rawData[1] as List<Map<String, dynamic>>;
           final treasury = rawData[2] as List<Map<String, dynamic>>;
+          final deliveries = (rawData.length > 3 ? rawData[3] : [])
+              as List<Map<String, dynamic>>;
 
           double totalOrders = 0.0;
           for (var order in orders) {
@@ -899,62 +911,121 @@ class _ShowClientState extends State<ShowClient> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  if (!isPaid)
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                            Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Theme.of(
-                                                context,
-                                              ).appBarTheme.backgroundColor
-                                            : Colors.blue,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 8,
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (!isPaid)
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Theme.of(context).brightness ==
+                                                        Brightness.dark
+                                                    ? Theme.of(
+                                                        context,
+                                                      ).appBarTheme.backgroundColor
+                                                    : Colors.blue,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 6,
+                                            ),
+                                            textStyle: const TextStyle(
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(
+                                                8,
+                                              ),
+                                            ),
+                                          ),
+                                          onPressed: () {
+                                            final clientName =
+                                                '${client['firstname'] ?? ''} ${client['lastname'] ?? ''}'
+                                                    .trim();
+                                            _showAddPaymentDialog(
+                                              context,
+                                              order['id'] as int,
+                                              orderRemaining,
+                                              clientName,
+                                              (order['order_code'] as num?)?.toInt() ??
+                                                  (order['display_number'] as num?)?.toInt(),
+                                            );
+                                          },
+                                          child: Text(
+                                            Localization.translate(
+                                              'Add payment',
+                                              lang,
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        Icon(
+                                          Icons.check_circle,
+                                          color: Colors.green.shade400,
                                         ),
-                                        textStyle: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
+                                      const SizedBox(height: 6),
+                                      OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.teal.shade700,
+                                          side: BorderSide(
+                                            color: Colors.teal.shade400,
+                                            width: 1.0,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 5,
+                                          ),
+                                          textStyle: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      onPressed: () {
-                                        final clientName =
-                                            '${client['firstname'] ?? ''} ${client['lastname'] ?? ''}'
-                                                .trim();
-                                        _showAddPaymentDialog(
-                                          context,
-                                          order['id'] as int,
-                                          orderRemaining,
-                                          clientName,
-                                          (order['order_code'] as num?)?.toInt() ??
-                                              (order['display_number'] as num?)?.toInt(),
-                                        );
-                                      },
-                                      child: Text(
-                                        Localization.translate(
-                                          'Add payment',
-                                          lang,
+                                        icon: const Icon(
+                                          Icons.local_shipping_outlined,
+                                          size: 14,
                                         ),
+                                        label: Text(
+                                          lang == AppLanguage.french
+                                              ? 'Livrer (BL)'
+                                              : Localization.translate(
+                                                  'تسليم سلع',
+                                                  lang,
+                                                ),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  PartialProformaScreen(
+                                                order: order,
+                                                documentTitleKey:
+                                                    'doc_bon_livraison_partiel',
+                                              ),
+                                            ),
+                                          ).then((_) => _refreshClientData());
+                                        },
                                       ),
-                                    )
-                                  else
-                                    Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green.shade400,
-                                    ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             );
                           },
                         ),
                 ),
+
+                const SizedBox(height: 16),
+
+                // ─── Deliveries Section (بونات التوصيل والتسليم) ───────────
+                _buildDeliveriesSection(deliveries, orders, lang),
 
                 const SizedBox(height: 20),
               ],
@@ -963,6 +1034,317 @@ class _ShowClientState extends State<ShowClient> {
         },
       ),
     );
+  }
+
+  Widget _buildDeliveriesSection(
+    List<Map<String, dynamic>> deliveries,
+    List<Map<String, dynamic>> orders,
+    AppLanguage lang,
+  ) {
+    String tr(String ar, String fr) {
+      if (lang == AppLanguage.french) return fr;
+      return Localization.translate(ar, lang);
+    }
+
+    return _SectionCard(
+      title: tr('وصلات التسليم والشحن', 'Bons de Livraison & Expéditions'),
+      icon: Icons.local_shipping_outlined,
+      child: deliveries.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  tr('لا توجد تسليمات مسجلة بعد', 'Aucune livraison enregistrée'),
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          : ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: deliveries.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final d = deliveries[index];
+                final deliveryId = d['id'];
+                final dateStr = (d['delivery_date'] ?? '').toString();
+                final orderId = (d['id_commandes'] as num?)?.toInt() ?? 0;
+                final orderCode = (d['order_code'] as num?)?.toInt() ??
+                    (d['display_number'] as num?)?.toInt() ??
+                    orderId;
+                final projectName = (d['project_name'] ?? '').toString();
+                final totalAmount =
+                    (d['total_amount'] as num?)?.toDouble() ?? 0.0;
+                final isLoaded = (d['is_loaded'] as num?)?.toInt() == 1;
+
+                List<Map<String, dynamic>> items = [];
+                try {
+                  final raw = jsonDecode(d['items_json']?.toString() ?? '[]');
+                  if (raw is List) {
+                    items = raw
+                        .map((e) => Map<String, dynamic>.from(e as Map))
+                        .toList();
+                  }
+                } catch (_) {}
+
+                final totalUnits = items.fold<int>(
+                  0,
+                  (sum, it) =>
+                      sum + ((it['quantity'] as num?)?.toInt() ?? 1),
+                );
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isLoaded
+                              ? Colors.green.shade50
+                              : Colors.teal.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isLoaded
+                                ? Colors.green.shade200
+                                : Colors.teal.shade200,
+                          ),
+                        ),
+                        child: Icon(
+                          isLoaded
+                              ? Icons.check_circle_outline
+                              : Icons.local_shipping,
+                          color:
+                              isLoaded ? Colors.green.shade700 : Colors.teal,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  'BL #$deliveryId',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isLoaded
+                                        ? Colors.green.shade50
+                                        : Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isLoaded
+                                          ? Colors.green.shade200
+                                          : Colors.blue.shade200,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    isLoaded
+                                        ? tr('تم الشحن', 'Chargé')
+                                        : tr('مسجل', 'Enregistré'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isLoaded
+                                          ? Colors.green.shade700
+                                          : Colors.blue.shade700,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${tr('الطلبية', 'Commande')} #$orderCode${projectName.isNotEmpty ? ' ($projectName)' : ''} · $dateStr',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            if (items.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  items
+                                      .map((it) =>
+                                          '${it['name'] ?? it['type_name'] ?? 'نافذة'} (×${it['quantity'] ?? 1})')
+                                      .join('، '),
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: Colors.blueGrey.shade800,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                Text(
+                                  '${tr('الكمية', 'Quantité')}: $totalUnits ${tr('عنصر', 'unités')}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                if (totalAmount > 0)
+                                  Text(
+                                    '${tr('القيمة', 'Montant')}: ${totalAmount.toStringAsFixed(2)} دج',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.teal.shade800,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      PopupMenuButton<String>(
+                        tooltip: tr('خيارات الوصل', 'Options du bon'),
+                        icon: const Icon(Icons.more_vert, size: 20),
+                        onSelected: (val) {
+                          if (val == 'BL') {
+                            _previewDeliveryDoc(
+                              context,
+                              d,
+                              orders,
+                              lang,
+                              isBonDeCharge: false,
+                            );
+                          } else if (val == 'CHARGE') {
+                            _previewDeliveryDoc(
+                              context,
+                              d,
+                              orders,
+                              lang,
+                              isBonDeCharge: true,
+                            );
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          PopupMenuItem(
+                            value: 'BL',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.print,
+                                  color: Colors.blue,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  tr('وصل تسليم (BL)', 'Bon de livraison'),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'CHARGE',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.local_shipping,
+                                  color: Colors.teal,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  tr(
+                                    'وصل شحن (Bon de charge)',
+                                    'Bon de charge',
+                                  ),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Future<void> _previewDeliveryDoc(
+    BuildContext context,
+    Map<String, dynamic> delivery,
+    List<Map<String, dynamic>> orders,
+    AppLanguage lang, {
+    required bool isBonDeCharge,
+  }) async {
+    final orderId = (delivery['id_commandes'] as num?)?.toInt() ?? 0;
+    final order = orders.firstWhere(
+      (o) => (o['id'] as num?)?.toInt() == orderId,
+      orElse: () => <String, dynamic>{},
+    );
+    if (order.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate('الطلبية غير موجودة', lang),
+          ),
+        ),
+      );
+      return;
+    }
+
+    List<Map<String, dynamic>> items = [];
+    try {
+      final raw = jsonDecode(delivery['items_json']?.toString() ?? '[]');
+      if (raw is List) {
+        items = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (_) {}
+
+    final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => DevisWorkshopInfo.empty,
+    );
+
+    final devis = await DevisBuilder.build(
+      order: order,
+      items: items,
+      workshop: workshop,
+      isPartial: true,
+      documentTitleKey:
+          isBonDeCharge ? 'BON_CHARGE' : 'doc_bon_livraison_partiel',
+    );
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DevisPreviewScreen(
+          data: devis,
+          deliveryId: delivery['id'] as int?,
+          initialIsLoaded: (delivery['is_loaded'] as num?)?.toInt() == 1,
+        ),
+      ),
+    ).then((_) => _refreshClientData());
   }
 }
 

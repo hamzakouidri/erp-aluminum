@@ -5030,11 +5030,15 @@ class CloudSyncService {
   Future<void> saveWorkshopSystems({
     required Map<String, bool> systemModes,
     required List<int> activeProfileIds,
+    List<String> activeProfileCodes = const [],
+    List<String> activeProfileNames = const [],
   }) async {
     try {
       await SupabaseWorkshopSyncService().saveWorkshopSystems(
         systemModes: systemModes,
         activeProfileIds: activeProfileIds,
+        activeProfileCodes: activeProfileCodes,
+        activeProfileNames: activeProfileNames,
       );
       print('--- CloudSyncService: Workshop systems saved to Supabase ---');
     } catch (e) {

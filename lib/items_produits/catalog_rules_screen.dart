@@ -301,6 +301,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             'براغي بوشون باتمو',
             'Vis bouchon batmo',
           ),
+          _RuleRole(
+            'bouchon_montant_central_renforce',
+            'غطاء قائم وسطي معزز',
+            'Bouchon montant central renforcé',
+          ),
+          _RuleRole(
+            'bouchon_montant_lateral_renforce',
+            'غطاء قائم جانبي معزز',
+            'Bouchon montant latéral renforcé',
+          ),
+          _RuleRole(
+            'bouchon_renfort_rapporte',
+            'غطاء عمود تدعيم مستقل',
+            'Bouchon renfort rapporté',
+          ),
           _RuleRole('renfort_screw', 'براغي حديد الدعم', 'Vis renfort'),
           _RuleRole('manivelle_screw', 'براغي المانيفال', 'Vis manivelle'),
           _RuleRole('assembly_screw', 'براغي التجميع', 'Vis assemblage'),
@@ -726,6 +741,17 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         roleKeys: {'bouchon_batmo'},
       ),
       _CatalogGroup(
+        key: 'bouchons_montants_renforces',
+        ar: 'أغطية أعمدة الدعم',
+        fr: 'Bouchons montants renforcés',
+        icon: Icons.shield_outlined,
+        roleKeys: {
+          'bouchon_montant_central_renforce',
+          'bouchon_montant_lateral_renforce',
+          'bouchon_renfort_rapporte',
+        },
+      ),
+      _CatalogGroup(
         key: 'other',
         ar: 'أكسسوارات أخرى',
         fr: 'Autres accessoires',
@@ -932,6 +958,30 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       }
       if (isBouchonBatmo && isScrew) return 'bouchon_batmo_screw';
       if (isBouchonBatmo) return 'bouchon_batmo';
+      final isBouchonRenforce =
+          (text.contains('bouchon') ||
+              text.contains('bochon') ||
+              text.contains('غطاء') ||
+              text.contains('أغطية') ||
+              text.contains('بوشون')) &&
+          (text.contains('renforce') ||
+              text.contains('renforcé') ||
+              text.contains('معزز') ||
+              text.contains('renfort') ||
+              text.contains('تدعيم'));
+      if (isBouchonRenforce) {
+        if (text.contains('lateral') ||
+            text.contains('latéral') ||
+            text.contains('جانبي')) {
+          return 'bouchon_montant_lateral_renforce';
+        }
+        if (text.contains('rapporte') ||
+            text.contains('rapporté') ||
+            text.contains('مستقل')) {
+          return 'bouchon_renfort_rapporte';
+        }
+        return 'bouchon_montant_central_renforce';
+      }
       if ((text.contains('caisson') || text.contains('صندوق')) && isScrew) {
         return 'box_screw';
       }

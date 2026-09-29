@@ -3,7 +3,6 @@ import 'package:database_data/services/auth_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../sql_database.dart';
@@ -287,6 +286,12 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
 
   Future<void> _loadData({bool showLoading = true}) async {
     if (showLoading && mounted) setState(() => _isLoading = true);
+    try {
+      await _cloudSync.loadAndApplyWorkshopSystems().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {},
+      );
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await _loadSubscriptionLimits();
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
@@ -521,14 +526,25 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
         systemModes[mode.id] = false;
       }
     }
-    final activeProfileIds = _profileSystems
+    final activeProfiles = _profileSystems
         .where((p) => p.isActive)
-        .map((p) => p.id)
         .take(_maxProfiles ?? _profileSystems.length)
         .toList();
+    final activeProfileIds = activeProfiles.map((p) => p.id).toList();
+    final activeProfileCodes = activeProfiles
+        .map((p) => p.code.trim())
+        .where((c) => c.isNotEmpty)
+        .toList();
+    final activeProfileNames = activeProfiles
+        .map((p) => p.name.trim())
+        .where((n) => n.isNotEmpty)
+        .toList();
+
     await _cloudSync.saveWorkshopSystems(
       systemModes: systemModes,
       activeProfileIds: activeProfileIds,
+      activeProfileCodes: activeProfileCodes,
+      activeProfileNames: activeProfileNames,
     );
   }
 

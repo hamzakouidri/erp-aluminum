@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
@@ -36,6 +37,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   String _chequeNumber = '';
   Timer? _debounceTimer;
   bool _isLoaded = false;
+  int? _activeDeliveryId;
   int _imageMode = 0; // 0=Latérale, 1=Sous-prix, 2=Pleine largeur
   static const _blue = Color(0xFF1565C0);
   static const _headerBlue = Color(0xFF1976D2);
@@ -62,6 +64,15 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       data.isProForma ||
       data.documentTitleKey == 'FACTURE_VENTE' ||
       data.documentTitleKey == 'BON_ROUTE';
+
+  bool get _isBonLivraison {
+    final key = data.documentTitleKey ?? '';
+    return key == 'doc_bon_livraison' ||
+        key == 'doc_bon_livraison_sans_prix' ||
+        key == 'doc_bon_livraison_partiel' ||
+        key == 'doc_bon_livraison_partiel_sans_prix' ||
+        key == 'BON_CHARGE';
+  }
 
   String get _documentTitle {
     if (data.isProForma) {
@@ -108,6 +119,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     super.initState();
     _currentDevisData = widget.data;
     _chequeNumber = widget.data.chequeNumber;
+    _activeDeliveryId = widget.deliveryId;
     _isLoaded = widget.initialIsLoaded;
     _invoiceLanguage = Provider.of<AppSettingsProvider>(
       context,
@@ -117,11 +129,150 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     // usable while PDF bytes are being prepared; putting a full-screen loader
     // here made partial delivery previews look stuck indefinitely.
     _isLoading = true;
-    // Start PDF generation immediately. Previously this was delayed until
-    // _initializePreviewLanguage finished, so the first Share/Print tap had
-    // to pay the full PDF-build cost and appeared to hang.
+    unawaited(_checkExistingDelivery());
     unawaited(_initPdfGeneration());
     unawaited(_initializePreviewLanguage());
+  }
+
+  Future<void> _checkExistingDelivery() async {
+    if (_activeDeliveryId != null || !_isBonLivraison || data.orderId <= 0) return;
+    try {
+      final deliveries = await SqlDatabase().readCommandeDeliveries(data.orderId);
+      if (deliveries.isNotEmpty) {
+        if (!data.isPartial) {
+          final loadedRecord = deliveries.firstWhere(
+            (d) => (d['is_loaded'] as num?)?.toInt() == 1,
+            orElse: () => deliveries.first,
+          );
+          if (mounted) {
+            setState(() {
+              _activeDeliveryId = (loadedRecord['id'] as num?)?.toInt();
+              _isLoaded = (loadedRecord['is_loaded'] as num?)?.toInt() == 1;
+            });
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _validateDelivery(BuildContext context) async {
+    final isFr = _invoiceLanguage == AppLanguage.french;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green),
+            const SizedBox(width: 8),
+            Text(isFr ? 'Valider la livraison' : 'تأكيد التسليم'),
+          ],
+        ),
+        content: Text(
+          isFr
+              ? 'Confirmez-vous que le client a bien reçu cette marchandise ? Le bon de livraison sera validé et enregistré dans le dossier du client.'
+              : 'هل تؤكد استلام الزبون لهذه السلع فعلياً؟ سيتم تأكيد وصل التسليم وتسجيله في سجل تفاصيل الزبون.',
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(isFr ? 'Annuler' : 'إلغاء'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.check, size: 18),
+            label: Text(
+              isFr ? 'Confirmer (Validé)' : 'تأكيد (Validé)',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Cairo',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final db = SqlDatabase();
+      if (_activeDeliveryId != null) {
+        await db.updateCommandeDeliveryIsLoaded(_activeDeliveryId!, 1);
+      } else {
+        int orderId = data.orderId;
+        int clientId = data.clientId;
+        if (clientId <= 0 && orderId > 0) {
+          final order = await db.readCommandeWithClientById(orderId);
+          if (order != null && order['client_id'] != null) {
+            clientId = (order['client_id'] as num).toInt();
+          }
+        }
+
+        final now = DateTime.now();
+        final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(now);
+
+        List<Map<String, dynamic>> itemsList = [];
+        if (data.rawItems != null && data.rawItems!.isNotEmpty) {
+          itemsList = data.rawItems!;
+        } else {
+          itemsList = data.items.map((it) => {
+            'id': it.detailId,
+            'name': it.title,
+            'quantity': it.quantity,
+            'price': it.unitPrice,
+            'width': it.width,
+            'height': it.height,
+            'description': it.details.join('\n'),
+            'drawing_image_path': it.imagePath,
+          }).toList();
+        }
+
+        final newDeliveryId = await db.insertCommandeDelivery(
+          orderId,
+          clientId,
+          dateStr,
+          jsonEncode(itemsList),
+          data.totalTTC,
+          isLoaded: 1,
+        );
+        _activeDeliveryId = newDeliveryId;
+      }
+
+      setState(() {
+        _isLoaded = true;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isFr
+                  ? 'Livraison validée avec succès et enregistrée dans le dossier client !'
+                  : 'تم تأكيد التسليم بنجاح وتسجيل وصل التسليم في ملف الزبون!',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'خطأ أثناء تأكيد التسليم: $e',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _initializePreviewLanguage() async {
@@ -565,7 +716,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.deliveryId != null) ...[
+        if (_activeDeliveryId != null || _isBonLivraison) ...[
           Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -597,11 +748,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   child: Text(
                     _isLoaded
                         ? (isFr
-                              ? 'Statut: Chargement confirmé ✓'
-                              : 'الحالة: تم تأكيد التحميل بنجاح ✓')
+                              ? 'Statut: Livraison validée ✓'
+                              : 'الحالة: تم تأكيد التسليم بنجاح ✓')
                         : (isFr
-                              ? 'Statut: Non encore chargé'
-                              : 'الحالة: معلق - لم يتم تأكيد التحميل بعد'),
+                              ? 'Statut: En attente de livraison'
+                              : 'الحالة: معلق - لم يتم تأكيد التسليم بعد'),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -620,42 +771,24 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 6,
                       ),
                     ),
-                    onPressed: () async {
-                      await SqlDatabase().updateCommandeDeliveryIsLoaded(
-                        widget.deliveryId!,
-                        1,
-                      );
-                      setState(() {
-                        _isLoaded = true;
-                      });
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isFr
-                                  ? 'Chargement confirmé avec succès!'
-                                  : 'تم تأكيد التحميل وتحديث السجل بنجاح!',
-                            ),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-                    },
+                    onPressed: () => _validateDelivery(context),
                     icon: const Icon(
                       Icons.check,
                       size: 16,
                       color: Colors.white,
                     ),
                     label: Text(
-                      isFr ? 'Confirmer le chargement' : 'تأكيد التحميل',
+                      isFr ? 'Valider (Validé)' : 'تأكيد التسليم (Validé)',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
+                        fontWeight: FontWeight.bold,
                         fontFamily: 'Cairo',
                       ),
                     ),
@@ -1933,6 +2066,36 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         top: false,
         child: Row(
           children: [
+            if (_isBonLivraison) ...[
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isLoaded ? Colors.grey.shade600 : Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _isLoaded ? null : () => _validateDelivery(context),
+                  icon: Icon(
+                    _isLoaded ? Icons.check_circle : Icons.verified_outlined,
+                    size: 16,
+                  ),
+                  label: Text(
+                    _isLoaded
+                        ? (_invoiceLanguage == AppLanguage.french ? 'Livré ✓' : 'مُسلَّم ✓')
+                        : 'Validé',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      fontFamily: 'Cairo',
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             Expanded(
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(

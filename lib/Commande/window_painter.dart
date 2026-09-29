@@ -311,7 +311,13 @@ class WindowPainter extends CustomPainter {
         ? [Rect.fromLTRB(0, topOffset, w, h)]
         : physicalFrames;
     for (final frame in pocketFrames) {
-      final pocket = frame.deflate(t);
+      final hasBottom = model.hasBottomFrameForRect(frame);
+      final pocket = Rect.fromLTRB(
+        frame.left + t,
+        frame.top + t,
+        frame.right - t,
+        frame.bottom - (hasBottom ? t : 0.0),
+      );
       if (pocket.width > 0 && pocket.height > 0) {
         canvas.drawRect(pocket, _buildPaint(pocket));
       }
@@ -1518,7 +1524,9 @@ class WindowPainter extends CustomPainter {
       bool isFixed =
           matchingZone.content == ZoneContent.fixedGlass ||
           matchingZone.content == ZoneContent.empty;
-      if (isFixed) {
+      if (isFixed &&
+          !model.hasFramePlintheBottom &&
+          !matchingZone.hasSashPlintheBottom) {
         return result; // الثابت يستقر على الإطار السفلي عند (h - t)
       }
       final frameRect = Rect.fromLTRB(0, _topOffset, model.width, h);
@@ -1664,6 +1672,7 @@ class WindowPainter extends CustomPainter {
       final frame = Rect.fromLTRB(0, topOffset, w, h);
       final sliding = model.frameUsesSlidingSeries(frame);
       final previousBottomFrame = _localBottomFrame;
+      _localBottomFrame = model.hasBottomFrameForRect(frame);
       if (model.usesFrameRole('seuil', sliding: sliding)) {
         _localBottomFrame = false;
       }
@@ -2365,6 +2374,7 @@ class WindowPainter extends CustomPainter {
       final frame = sourceFrame ?? Rect.fromLTRB(0, topY, w, h);
       for (final zone in model.zones) {
         if (!frame.contains(zone.boundary.center)) continue;
+        if (model.hasFramePlintheBottom || zone.hasSashPlintheBottom) continue;
         final isBottomBound =
             (zone.boundary.bottom - (frame.bottom - t)).abs() < 5.0 ||
             zone.boundary.bottom >= frame.bottom - t;
@@ -4296,7 +4306,7 @@ class WindowPainter extends CustomPainter {
           break;
         }
         final hasBottomPlinthe =
-            model.hasFramePlintheBottom && zone.hasSashPlintheBottom;
+            model.hasFramePlintheBottom || zone.hasSashPlintheBottom;
         final contentRect = hasBottomPlinthe ? _rectWithoutBottomPlinthe(r) : r;
         final cellSpec = zone.getGlassForCell('main_cell_0_0');
 
@@ -5236,10 +5246,16 @@ class WindowPainter extends CustomPainter {
 
         final bool leftReinforced = (i == 0)
             ? leftLateralReinforced
-            : (zone.slidingMontantReinforced['lateral_${i * 2}'] ?? false);
+            : (isMeetingJunctionLeft
+                ? (zone.slidingMontantReinforced['lateral_3'] ??
+                    zone.slidingMontantReinforced['lateral_2'] ??
+                    false)
+                : (zone.slidingMontantReinforced['lateral_${i * 2}'] ?? false));
         final bool rightReinforced = (i == count - 1)
             ? rightLateralReinforced
-            : (zone.slidingMontantReinforced['lateral_${i * 2 + 1}'] ?? false);
+            : (isMeetingJunctionRight
+                ? (zone.slidingMontantReinforced['lateral_2'] ?? false)
+                : (zone.slidingMontantReinforced['lateral_${i * 2 + 1}'] ?? false));
 
         final double leftProfileW = isLateralLeft
             ? (leftReinforced ? reinforcedLateralT : normalLateralT)
@@ -5425,28 +5441,32 @@ class WindowPainter extends CustomPainter {
       final centralRightSash = getSashRect(meetingRightIndex);
 
       // Handle on left middle leaf (faces right towards meeting center)
-      _drawWindowDrawHandle(
-        canvas,
-        centralLeftSash,
-        OpenDirection.right,
-        zone.handlePositionRatio ?? 0.5,
-        t: t,
-        topOffset: topOffset,
-        isTopBound: isTopBound,
-        zone: zone,
-      );
+      if (zone.slidingCentralHandle) {
+        _drawWindowDrawHandle(
+          canvas,
+          centralLeftSash,
+          OpenDirection.right,
+          zone.handlePositionRatio ?? 0.5,
+          t: t,
+          topOffset: topOffset,
+          isTopBound: isTopBound,
+          zone: zone,
+        );
+      }
 
       // Handle on right middle leaf (faces left towards meeting center)
-      _drawWindowDrawHandle(
-        canvas,
-        centralRightSash,
-        OpenDirection.left,
-        zone.handlePositionRatio ?? 0.5,
-        t: t,
-        topOffset: topOffset,
-        isTopBound: isTopBound,
-        zone: zone,
-      );
+      if (zone.slidingSecondCentralHandle) {
+        _drawWindowDrawHandle(
+          canvas,
+          centralRightSash,
+          OpenDirection.left,
+          zone.handlePositionRatio ?? 0.5,
+          t: t,
+          topOffset: topOffset,
+          isTopBound: isTopBound,
+          zone: zone,
+        );
+      }
     }
   }
 

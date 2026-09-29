@@ -433,7 +433,7 @@ class SqlDatabase {
         // FFI/web require their own options implementation. SQLCipher's
         // similarly named options fail the factory's runtime type cast.
         options: sqflite_common.OpenDatabaseOptions(
-          version: 67,
+          version: 68,
           onConfigure: (db) async {
             // This PRAGMA returns a row, including when setting its value.
             // Android SQLCipher rejects it through execute/executeSql.
@@ -449,7 +449,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 67,
+      version: 68,
       password: password,
       onConfigure: (db) async {
         // Android SQLCipher requires the query API for row-returning PRAGMAs.
@@ -513,6 +513,7 @@ class SqlDatabase {
     try {
       await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
     } catch (_) {}
+    await _ensureDeliveriesLoadedColumn(db);
     try {
       // A purchase invoice can contain several glass rows with the same
       // catalogue id when their measurements or glazing composition differ.
@@ -3170,6 +3171,13 @@ class SqlDatabase {
         } catch (_) {}
       }
     }
+    if (oldVersion < 68) {
+      try {
+        await db.execute(
+          "ALTER TABLE Commandes_deliveries ADD COLUMN is_loaded INTEGER DEFAULT 0;",
+        );
+      } catch (_) {}
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -3361,6 +3369,7 @@ class SqlDatabase {
         delivery_date TEXT NOT NULL,
         items_json TEXT NOT NULL,
         total_amount REAL NOT NULL DEFAULT 0.0,
+        is_loaded INTEGER DEFAULT 0,
         FOREIGN KEY (id_commandes) REFERENCES Commandes(id) ON DELETE CASCADE
       )
     ''');
@@ -9162,15 +9171,39 @@ class SqlDatabase {
     return res;
   }
 
+  Future<void> _ensureDeliveriesLoadedColumn(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS Commandes_deliveries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_commandes INTEGER NOT NULL,
+          client_id INTEGER NOT NULL,
+          delivery_date TEXT NOT NULL,
+          items_json TEXT NOT NULL,
+          total_amount REAL NOT NULL DEFAULT 0.0,
+          is_loaded INTEGER DEFAULT 0,
+          FOREIGN KEY (id_commandes) REFERENCES Commandes(id) ON DELETE CASCADE
+        )
+      ''');
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_deliveries ADD COLUMN is_loaded INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+  }
+
   Future<int> insertCommandeDelivery(
     int idCommande,
     int clientId,
     String date,
     String itemsJson,
-    double totalAmount,
-  ) async {
+    double totalAmount, {
+    int isLoaded = 0,
+  }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert(
+    await _ensureDeliveriesLoadedColumn(myDb!);
+    var res = await myDb.insert(
       'Commandes_deliveries',
       _withDistributedId({
         'id_commandes': idCommande,
@@ -9178,6 +9211,7 @@ class SqlDatabase {
         'delivery_date': date,
         'items_json': itemsJson,
         'total_amount': totalAmount,
+        'is_loaded': isLoaded,
       }),
     );
     CloudSyncService().notifyChange();
@@ -9201,7 +9235,8 @@ class SqlDatabase {
     int isLoaded,
   ) async {
     Database? myDb = await db;
-    var res = await myDb!.update(
+    await _ensureDeliveriesLoadedColumn(myDb!);
+    var res = await myDb.update(
       'Commandes_deliveries',
       {'is_loaded': isLoaded},
       where: 'id = ?',
@@ -13015,6 +13050,7 @@ class SqlDatabase {
         delivery_date TEXT NOT NULL,
         items_json TEXT NOT NULL,
         total_amount REAL NOT NULL DEFAULT 0.0,
+        is_loaded INTEGER DEFAULT 0,
         FOREIGN KEY (id_commandes) REFERENCES Commandes(id) ON DELETE CASCADE
       )
     ''');

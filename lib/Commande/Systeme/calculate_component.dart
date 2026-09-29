@@ -892,6 +892,31 @@ class ComponentCalculator {
     ])) {
       return 'bouchon_batmo';
     }
+    if (_textHasAny(originalName, const [
+      'bouchon montant central renforce',
+      'bouchon central renforce',
+      'غطاء قائم وسطي معزز',
+      'أغطية القائم الوسطي المعزز',
+    ])) {
+      return 'bouchon_montant_central_renforce';
+    }
+    if (_textHasAny(originalName, const [
+      'bouchon montant lateral renforce',
+      'bouchon lateral renforce',
+      'غطاء قائم جانبي معزز',
+      'أغطية القائم الجانبي المعزز',
+    ])) {
+      return 'bouchon_montant_lateral_renforce';
+    }
+    if (_textHasAny(originalName, const [
+      'bouchon renfort rapporte',
+      'bouchon renfort',
+      'غطاء عمود تدعيم مستقل',
+      'أغطية عمود التدعيم المستقل',
+      'أغطية العمود المدعم',
+    ])) {
+      return 'bouchon_renfort_rapporte';
+    }
     if (_textHasAny(originalName, const ['batmo', 'باتمو'])) {
       return 'batmo';
     }
@@ -1288,6 +1313,12 @@ class ComponentCalculator {
       case 'bouchon_batmo':
       case 'bouchon batmo':
         return 'bouchon_batmo';
+      case 'bouchon_montant_central_renforce':
+        return 'bouchon_montant_central_renforce';
+      case 'bouchon_montant_lateral_renforce':
+        return 'bouchon_montant_lateral_renforce';
+      case 'bouchon_renfort_rapporte':
+        return 'bouchon_renfort_rapporte';
       case 'is_renfort_screw':
         return 'renfort_screw';
       case 'is_manivelle_screw':
@@ -3484,7 +3515,7 @@ class ComponentCalculator {
         final length = math.max(0.0, segRight - segLeft);
         if (length > 0) {
           final usesPlinthe =
-              window.hasFramePlintheBottom && zone.hasSashPlintheBottom;
+              window.hasFramePlintheBottom || zone.hasSashPlintheBottom;
           if (usesPlinthe) {
             fixedPlinthePieces.add(length / 1000.0);
           } else {
@@ -4341,7 +4372,9 @@ class ComponentCalculator {
             for (int i = 0; i < lateralCount; i++) {
               final legacyKey = i == 0
                   ? 'lateral_left'
-                  : (i == lateralCount - 1 ? 'lateral_right' : 'lateral_$i');
+                  : (i == (lateralCount == 4 ? 1 : lateralCount - 1)
+                      ? 'lateral_right'
+                      : 'lateral_$i');
               final reinforced =
                   zone.slidingMontantReinforced['lateral_$i'] ??
                   zone.slidingMontantReinforced[legacyKey] ??
@@ -4454,10 +4487,16 @@ class ComponentCalculator {
           // Outer handles always carry their lock hardware.  The first
           // central handle is functional and carries one more set; the
           // optional mirrored central handle is visual-only.
-          final functionalCentralHandle = hasMeetingInCenter;
+          final bool hasCentralMain =
+              hasMeetingInCenter && zone.slidingCentralHandle;
+          final bool hasCentralSecond =
+              hasCentralMain && zone.slidingSecondCentralHandle;
+          final functionalCentralHandle = hasCentralMain;
           slidingTotalEspagnolettes += 2 + (functionalCentralHandle ? 1 : 0);
-          // Two outer leaves always have handles. When meeting in center, both middle leaves have handles.
-          slidingTotalHandles += 2 + (hasMeetingInCenter ? 2 : 0);
+          // Two outer leaves always have handles. When meeting in center,
+          // central handles are added based on main functional handle and secondary decorative handle.
+          slidingTotalHandles +=
+              2 + (hasCentralMain ? 1 : 0) + (hasCentralSecond ? 1 : 0);
           // One sliding-series kit serves one independent pair of leaves.
           // Count every sliding zone/frame separately and keep an additional
           // kit for an unpaired leaf in odd 3/5-leaf configurations.
@@ -4753,8 +4792,13 @@ class ComponentCalculator {
       ];
       if (slidingSashLateralNormalPieces.isNotEmpty) {
         const lateralName = 'قائم جانبي (Sash Lateral)';
-        final baseLateral =
-            slidingOverrideFor([lateralName, 'قائم جانبي (Lateral)']) ??
+        var baseLateral =
+            slidingOverrideFor([lateralName, 'قائم جانبي (Lateral)']);
+        if (baseLateral != null &&
+            window.isSlidingMontantReinforced(baseLateral, central: false)) {
+          baseLateral = null;
+        }
+        baseLateral ??=
             window.getSlidingSectionByType('sash_lateral')?.toMap() ??
             window.getSlidingSectionByType('lateral')?.toMap();
 
@@ -4772,27 +4816,49 @@ class ComponentCalculator {
         );
       }
       if (slidingSashLateralReinforcedPieces.isNotEmpty) {
+        var reinforcedLateral =
+            slidingOverrideFor([
+              'قائم جانبي معزز (Sash Lateral Renforcé)',
+            ]);
+        if (reinforcedLateral != null &&
+            !window.isSlidingMontantReinforced(reinforcedLateral, central: false)) {
+          reinforcedLateral = null;
+        }
+        reinforcedLateral ??=
+            window.getSlidingSectionByType('sash_lateral_reinforced')?.toMap();
+
         items.add(
           createProfile(
             'قائم جانبي معزز (Sash Lateral Renforcé)',
             colorName,
             pieces: slidingSashLateralReinforcedPieces,
             unit: 'قطاع',
-            overrideMap: slidingOverrideFor([
-              'قائم جانبي معزز (Sash Lateral Renforcé)',
-            ]) ??
-            window.getSlidingSectionByType('sash_lateral_reinforced')?.toMap(),
+            overrideMap: reinforcedLateral,
             preferOverrideMap: true,
             selectorType: 'sash_lateral_reinforced',
             roleKey: 'sash_lateral_reinforced',
+          ),
+        );
+        items.add(
+          createAccessory(
+            'أغطية القائم الجانبي المعزز (Bouchons Montant Latéral Renforcé)',
+            qty: slidingSashLateralReinforcedPieces.length * 2,
+            roleKeyOverride: 'bouchon_montant_lateral_renforce',
+            selectorTypeOverride: 'bouchon_montant_lateral_renforce',
+            sliding: true,
           ),
         );
       }
 
       if (slidingSashCentralPieces.isNotEmpty) {
         const centralName = 'قائم وسطي (Sash Central)';
-        final baseCentral =
-            slidingOverrideFor([centralName, 'قائم وسطي (Central)']) ??
+        var baseCentral =
+            slidingOverrideFor([centralName, 'قائم وسطي (Central)', 'الشيكان (Chicane)']);
+        if (baseCentral != null &&
+            window.isSlidingMontantReinforced(baseCentral, central: true)) {
+          baseCentral = null;
+        }
+        baseCentral ??=
             window.getSlidingSectionByType('sash_central')?.toMap() ??
             window.getSlidingSectionByType('central')?.toMap() ??
             window.getSlidingSectionByType('chicane')?.toMap();
@@ -4812,16 +4878,19 @@ class ComponentCalculator {
       }
 
       if (slidingSashCentralReinforcedPieces.isNotEmpty) {
-        final reinforcedCentral =
+        var reinforcedCentral =
             slidingOverrideFor([
               'قائم وسطي معزز (Sash Central Renforcé)',
               'شيكان معزز (Chicane Renforcée)',
-              'الشيكان (Chicane)',
-            ]) ??
+            ]);
+        if (reinforcedCentral != null &&
+            !window.isSlidingMontantReinforced(reinforcedCentral, central: true)) {
+          reinforcedCentral = null;
+        }
+        reinforcedCentral ??=
             window.getSlidingSectionByType('sash_central_reinforced')?.toMap() ??
-            window.getSlidingSectionByType('chicane_renforcee')?.toMap() ??
-            window.getSlidingSectionByType('chicane')?.toMap() ??
-            window.getSlidingSectionByType('sash_central')?.toMap();
+            window.getSlidingSectionByType('chicane_renforcee')?.toMap();
+
         items.add(
           createProfile(
             'قائم وسطي معزز (Sash Central Renforcé)',
@@ -4831,6 +4900,15 @@ class ComponentCalculator {
             preferOverrideMap: true,
             selectorType: 'sash_central_reinforced',
             roleKey: 'sash_central_reinforced',
+          ),
+        );
+        items.add(
+          createAccessory(
+            'أغطية القائم الوسطي المعزز (Bouchons Montant Central Renforcé)',
+            qty: slidingSashCentralReinforcedPieces.length * 2,
+            roleKeyOverride: 'bouchon_montant_central_renforce',
+            selectorTypeOverride: 'bouchon_montant_central_renforce',
+            sliding: true,
           ),
         );
       }
@@ -5013,15 +5091,18 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'براغي تثبيت العمود المدعم 3.9×38 (Vis de Renfort 3.9×38)',
-            qty: renfortScrewsCount * window.quantity,
+            qty: renfortScrewsCount,
           ),
         );
 
-        // Caps: 2 per piece
+        // Caps: 2 per piece (top and bottom)
         items.add(
           createAccessory(
-            'أغطية العمود المدعم (Caches / Bouchons de Renfort)',
-            qty: slidingIndependentRenfortPieces.length * 2 * window.quantity,
+            'أغطية عمود التدعيم المستقل (Bouchons Renfort Rapporté)',
+            qty: slidingIndependentRenfortPieces.length * 2,
+            roleKeyOverride: 'bouchon_renfort_rapporte',
+            selectorTypeOverride: 'bouchon_renfort_rapporte',
+            sliding: true,
           ),
         );
       }

@@ -815,12 +815,18 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           if (z['useClassicHandle'] != true) useEntrematique = true;
           final reinforcedMap = z['slidingMontantReinforced'] as Map?;
           final sashes = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
-          final currentCentralCount = sashes > 1 ? (sashes - 1) * 2 : 0;
-          for (var i = 0; i < 2; i++) {
+          final bool hasMeetingInCenter =
+              (z['slidingFaceToFace'] == true) && sashes >= 4 && sashes % 2 == 0;
+          final int lateralCount = hasMeetingInCenter ? 4 : 2;
+          final int currentCentralCount = hasMeetingInCenter
+              ? (sashes == 4 ? 4 : 8)
+              : (sashes > 1 ? (sashes - 1) * 2 : 0);
+          for (var i = 0; i < lateralCount; i++) {
             final isReinforced = reinforcedMap != null &&
                 (reinforcedMap['lateral_$i'] == true ||
                     (i == 0 && reinforcedMap['lateral_left'] == true) ||
-                    (i == 1 && reinforcedMap['lateral_right'] == true));
+                    (i == (lateralCount == 4 ? 1 : lateralCount - 1) &&
+                        reinforcedMap['lateral_right'] == true));
             if (isReinforced) {
               lateralReinforcedCount++;
             } else {
