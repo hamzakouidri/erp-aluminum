@@ -8950,9 +8950,11 @@ class _WindowViewState extends State<WindowView> {
                   builder: (context) {
                     final montantProfiles = <Map<String, dynamic>>[
                       ..._sashProfiles,
-                      ...?widget.model.activeSlidingSeries?.sections.map(
-                        (section) => section.toMap(),
-                      ),
+                      ..._slidingSashProfiles,
+                      ...?(widget.model.effectiveSlidingSeries ??
+                              widget.model.activeSlidingSeries)
+                          ?.sections
+                          .map((section) => section.toMap()),
                     ];
                     final bool isSupported = montantProfiles.any(
                       (item) =>
@@ -12924,8 +12926,10 @@ class _WindowViewState extends State<WindowView> {
     String seriesName = activeSeriesForSystem != null
         ? activeSeriesForSystem!.name.toLowerCase()
         : '';
-    String slidingSeriesName = widget.model.activeSlidingSeries != null
-        ? widget.model.activeSlidingSeries!.name.toLowerCase()
+    final effSliding = widget.model.effectiveSlidingSeries ??
+        widget.model.activeSlidingSeries;
+    String slidingSeriesName = effSliding != null
+        ? effSliding.name.toLowerCase()
         : seriesName;
     final useSlidingFrame =
         widget.model.usesSlidingPrimaryProfiles ||
@@ -12981,7 +12985,8 @@ class _WindowViewState extends State<WindowView> {
                         builder: (context) => ProfileSelectorDialog(
                           profileType: 'Frame',
                           seriesId: useSlidingProfiles
-                              ? widget.model.activeSlidingSeries?.id
+                              ? (widget.model.effectiveSlidingSeries?.id ??
+                                  widget.model.activeSlidingSeries?.id)
                               : widget.model.activeSeries?.id,
                           materialType: useSlidingProfiles
                               ? (widget.model.isSlidingPVC
@@ -13052,7 +13057,8 @@ class _WindowViewState extends State<WindowView> {
                           builder: (context) => ProfileSelectorDialog(
                             profileType: 'sash',
                             seriesId: useSlidingProfiles
-                                ? widget.model.activeSlidingSeries?.id
+                                ? (widget.model.effectiveSlidingSeries?.id ??
+                                    widget.model.activeSlidingSeries?.id)
                                 : widget.model.activeSeries?.id,
                             materialType: useSlidingProfiles
                                 ? (widget.model.isSlidingPVC
@@ -13959,9 +13965,11 @@ class _WindowViewState extends State<WindowView> {
     final allCandidates =
         <Map<String, dynamic>>[
               ..._sashProfiles,
-              ...?widget.model.activeSlidingSeries?.sections.map(
-                (s) => s.toMap(),
-              ),
+              ..._slidingSashProfiles,
+              ...?(widget.model.effectiveSlidingSeries ??
+                      widget.model.activeSlidingSeries)
+                  ?.sections
+                  .map((s) => s.toMap()),
             ]
             .where((item) => _isSlidingMontantCandidate(item, central: central))
             .toList();
@@ -15519,7 +15527,8 @@ class _WindowViewState extends State<WindowView> {
         final slidingProfiles =
             _filterFrameProfilesForDrawingRules(
                   rawSlidingProfiles,
-                  series: widget.model.activeSlidingSeries,
+                  series: widget.model.effectiveSlidingSeries ??
+                      widget.model.activeSlidingSeries,
                   drawingMode: AccessoryDrawingMode.sliding,
                 )
                 // The one-track profile is an automatic extension selected from
@@ -15808,7 +15817,8 @@ class _WindowViewState extends State<WindowView> {
             (widget.systemMode == 'mixed' &&
                 zone.content == ZoneContent.slidingSash);
         final expectedSashSeriesId = isSliding
-            ? widget.model.activeSlidingSeries?.id
+            ? (widget.model.effectiveSlidingSeries?.id ??
+                widget.model.activeSlidingSeries?.id)
             : widget.model.activeSeries?.id;
         final sashProfiles = isSliding
             ? (_slidingSashProfiles.isNotEmpty

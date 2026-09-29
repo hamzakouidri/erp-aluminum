@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
+import 'package:database_data/services/order_notification_service.dart';
 
 class WorkshopDataDiagnostics {
   const WorkshopDataDiagnostics({
@@ -93,7 +94,13 @@ class SupabaseWorkshopSyncService {
   Stream<Map<String, dynamic>> get permissionsStream =>
       _permissionsController.stream;
 
-  bool get isSignedIn => _client.auth.currentUser != null;
+  bool get isSignedIn {
+    try {
+      return _client.auth.currentUser != null;
+    } catch (_) {
+      return false;
+    }
+  }
 
   bool get isReady => isSignedIn && _workshopUuid != null;
 
@@ -632,6 +639,8 @@ class SupabaseWorkshopSyncService {
       await refreshWorkshopIdentity();
       _subscribeToWorkshopDataChanges();
       _subscribeToPermissionChanges();
+      // Subscribe to order-event notifications for this workshop.
+      _subscribeToOrderNotifications();
       _startBackgroundSync();
       // A temporary permission/RLS read failure must not abort the workshop
       // data download. The permission listener and the next sync cycle will
@@ -873,6 +882,18 @@ class SupabaseWorkshopSyncService {
         );
       }
     });
+  }
+
+  void _subscribeToOrderNotifications() {
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null || workshopUuid.isEmpty) return;
+    unawaited(
+      OrderNotificationService()
+          .subscribeToWorkshop(workshopUuid)
+          .catchError((e) {
+        debugPrint('OrderNotif subscription skipped: $e');
+      }),
+    );
   }
 
   Future<void> updateMemberPermissionsByEmail({

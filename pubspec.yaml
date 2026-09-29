@@ -50,6 +50,7 @@ dependencies:
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   geolocator: ^14.0.2
+  flutter_local_notifications: ^18.0.1
 
 dependency_overrides:
   # SQLCipher 3.4.x options are incompatible with the new concrete-options
@@ -81,6 +82,7 @@ flutter:
     # web build.
     - web/sqlite3.wasm
     - Icon/
+    - assets/Icon/
 
   fonts:
     - family: Arial

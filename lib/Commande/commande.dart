@@ -7,6 +7,7 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/order_workspace_screen.dart';
+import 'package:database_data/Screen/trash_screen.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -37,6 +38,8 @@ import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:printing/printing.dart';
 
 import '../services/auth_service.dart';
+import 'order_export_service.dart';
+import 'order_import_dialog.dart';
 
 class Commande extends StatefulWidget {
   /// Opens the normal new-order form after the orders page has appeared.
@@ -60,6 +63,7 @@ class _CommandeState extends State<Commande> {
   Timer? _syncRefreshDebounce;
   bool _permissionRedirectScheduled = false;
   String _workshopNameForIdentity = '';
+  bool _isImportPicking = false;
 
   @override
   void didChangeDependencies() {
@@ -665,6 +669,37 @@ class _CommandeState extends State<Commande> {
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
         actions: [
+          IconButton(
+            icon: _isImportPicking
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.file_upload_outlined, color: Colors.white),
+            tooltip: Localization.translate('import_order', lang),
+            onPressed: _isImportPicking ? null : _importOrder,
+          ),
+          IconButton(
+            icon: const Icon(Icons.auto_delete_rounded, color: Colors.white),
+            tooltip: Localization.translate('orders_trash', lang),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TrashScreen(
+                    db: db,
+                    onOrderRestored: _fetchCommandes,
+                  ),
+                ),
+              ).then((_) {
+                if (mounted) _fetchCommandes();
+              });
+            },
+          ),
           if (isDesktop && settings.canCreateOrders())
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2512,7 +2547,7 @@ class _CommandeState extends State<Commande> {
                         _openInWorkspaceTab(
                           entryId: 'fiche_coupe_$orderId2',
                           title:
-                              '${Localization.translate('ورقة التقطيع', lang)} #$orderId2',
+                              '${Localization.translate('ورقة التقطيع', lang)} — ${_orderClientName(orderData)}',
                           icon: Icons.cut_outlined,
                           content: PdfPreview(
                             build: (_) async => pdfBytes,
@@ -3088,6 +3123,16 @@ class _CommandeState extends State<Commande> {
               Localization.translate('تكرار الطلبية (Duplicate)', lang),
             ),
           ),
+        PopupMenuItem(
+          value: 'export',
+          child: Row(
+            children: [
+              const Icon(Icons.ios_share, size: 20, color: Colors.blueAccent),
+              const SizedBox(width: 8),
+              Text(Localization.translate('export_order', lang)),
+            ],
+          ),
+        ),
         if (settings.canDeleteOrders())
           PopupMenuItem(
             value: 'delete',
@@ -3128,8 +3173,49 @@ class _CommandeState extends State<Commande> {
       case 'duplicate':
         await _duplicateOrder(order);
         if (mounted) _fetchCommandes();
+      case 'export':
+        await OrderExportService.shareOrder(
+          context,
+          db,
+          (order['id'] as num?)?.toInt() ?? 0,
+          lang,
+        );
       case 'delete':
         _showDeleteConfirmDialog(order['id']);
+    }
+  }
+
+  Future<void> _importOrder() async {
+    if (_isImportPicking) return;
+    setState(() => _isImportPicking = true);
+    final lang = context.read<AppSettingsProvider>().language;
+    try {
+      final payload = await OrderExportService.pickOrderFile();
+      if (payload == null || !mounted) return;
+      final result = await showDialog<dynamic>(
+        context: context,
+        builder: (_) => OrderImportDialog(
+          payload: payload,
+          db: db,
+          onImported: _fetchCommandes,
+        ),
+      );
+      if (result != null && mounted) {
+        _fetchCommandes();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(Localization.translate('invalid_order_file', lang)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isImportPicking = false);
+      }
     }
   }
 
@@ -3260,24 +3346,30 @@ class _CommandeState extends State<Commande> {
       return;
     }
 
-    // 3. تأكيد الحذف النهائي
+    // 3. تأكيد النقل إلى سلة المهملات
     bool? confirm = await showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(_t('تأكيد الحذف')),
-        content: Text(
-          _t(
-            'هل أنت متأكد من حذف هذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء.',
-          ),
+        title: Row(
+          children: [
+            const Icon(Icons.delete_outline_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(_t('move_to_trash')),
+          ],
         ),
+        content: Text(_t('confirm_move_to_trash')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(_t('إلغاء')),
           ),
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_t('حذف'), style: const TextStyle(color: Colors.red)),
+            child: Text(_t('move_to_trash')),
           ),
         ],
       ),
@@ -3307,8 +3399,17 @@ class _CommandeState extends State<Commande> {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
-              content: Text(_t('تم حذف الطلبية بنجاح.')),
-              backgroundColor: Colors.green,
+              content: Text(_t('order_moved_to_trash')),
+              backgroundColor: Colors.blueGrey[800],
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: _t('undo'),
+                textColor: Colors.amber,
+                onPressed: () async {
+                  await db.restoreCommande(id);
+                  if (mounted) _fetchCommandes();
+                },
+              ),
             ),
           );
       } catch (error) {

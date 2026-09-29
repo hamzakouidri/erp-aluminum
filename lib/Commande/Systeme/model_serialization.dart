@@ -856,11 +856,15 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.loadedSlidingSeriesName =
       map['slidingSeriesName']?.toString() ??
       map['loadedSlidingSeriesName']?.toString() ??
+      (model.systemMode == 'sliding'
+          ? (map['seriesName']?.toString() ?? map['profileName']?.toString())
+          : null) ??
       legacySlidingProfile?['series_name']?.toString();
   model.loadedSlidingSeriesId =
       savedSeriesId(map['slidingSeriesId']) ??
       savedSeriesId(map['loadedSlidingSeriesId']) ??
       savedSeriesId(map['activeSlidingSeriesId']) ??
+      (model.systemMode == 'sliding' ? savedSeriesId(map['seriesId']) : null) ??
       savedSeriesId(legacySlidingProfile?['series_id']) ??
       savedSeriesId(legacySlidingProfile?['source_series_id']);
 

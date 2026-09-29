@@ -4314,7 +4314,7 @@ class ComponentCalculator {
               zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
           final faceEnabled = hasMeetingInCenter && faceSection != null;
           if (faceEnabled && sashes >= 4) {
-            final faceCount = 2;
+            final faceCount = 1;
             slidingFaceToFacePieces.addAll(
               List<double>.filled(faceCount, sashH / 1000.0),
             );
@@ -4538,7 +4538,20 @@ class ComponentCalculator {
                               horizontal: true,
                             ),
                       ))
-              : window.width.toDouble();
+              : (() {
+                  if (frameRects.isNotEmpty) {
+                    for (final r in frameRects) {
+                      if (r.contains(zone.boundary.center) ||
+                          (r.left <= zone.boundary.left + 5.0 &&
+                              r.right >= zone.boundary.right - 5.0 &&
+                              r.top <= zone.boundary.top + 5.0 &&
+                              r.bottom >= zone.boundary.bottom - 5.0)) {
+                        return r.width;
+                      }
+                    }
+                  }
+                  return window.width.toDouble();
+                })();
           // Rail length is the clear internal frame width. Apply the explicit
           // catalogue-rule correction last, so it has priority over inferred
           // geometry. The rule also controls whether one physical piece

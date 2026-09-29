@@ -927,19 +927,45 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
-                    child: Image.asset(
-                      item.iconPath,
-                      width: 32,
-                      height: 32,
-                      errorBuilder: (context, error, stackTrace) => Icon(
-                        item.defaultIcon,
-                        color: item.isActive
-                            ? (isDark
-                                  ? Colors.blue.shade300
-                                  : Colors.blue.shade700)
-                            : Colors.grey,
-                        size: 26,
-                      ),
+                    child: Builder(
+                      builder: (context) {
+                        final filename =
+                            item.iconPath.replaceAll('\\', '/').split('/').last;
+                        final candidates = <String>[
+                          item.iconPath,
+                          if (!item.iconPath.startsWith('assets/'))
+                            'assets/${item.iconPath}',
+                          if (item.iconPath.startsWith('assets/'))
+                            item.iconPath.replaceFirst('assets/', ''),
+                          'Icon/$filename',
+                          'assets/Icon/$filename',
+                          'assets/images/$filename',
+                          'assets/sections/$filename',
+                        ].toSet().toList();
+
+                        Widget buildCandidate(int index) {
+                          if (index >= candidates.length) {
+                            return Icon(
+                              item.defaultIcon,
+                              color: item.isActive
+                                  ? (isDark
+                                      ? Colors.blue.shade300
+                                      : Colors.blue.shade700)
+                                  : Colors.grey,
+                              size: 26,
+                            );
+                          }
+                          return Image.asset(
+                            candidates[index],
+                            width: 32,
+                            height: 32,
+                            errorBuilder: (context, error, stackTrace) =>
+                                buildCandidate(index + 1),
+                          );
+                        }
+
+                        return buildCandidate(0);
+                      },
                     ),
                   ),
                 ),

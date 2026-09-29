@@ -19,6 +19,7 @@ import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/order_notification_service.dart';
 
 class CloudChangeAcknowledgement {
   const CloudChangeAcknowledgement({
@@ -621,6 +622,7 @@ class SqlDatabase {
     await _ensureProfileCalculationRulesTable(db);
     await _ensureClientCodeInfrastructure(db);
     await _ensureOrderCodeInfrastructure(db);
+    await _ensureOrderTrashInfrastructure(db);
     await _ensureRemnantInventorySchema(db);
     await _ensureAdvancedKitCompatibilitySchema(db);
     await _ensureDecorPanelDesignSchema(db);
@@ -3138,6 +3140,7 @@ class SqlDatabase {
       await _ensureOrderCodeInfrastructure(db);
       await _backfillOrderCodes(db);
     }
+    await _ensureOrderTrashInfrastructure(db);
     if (oldVersion < 65) {
       for (final sql in const [
         'ALTER TABLE Accessories ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0',
@@ -3314,12 +3317,14 @@ class SqlDatabase {
     payment_status TEXT NOT NULL DEFAULT 'Unpaid',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_by TEXT
-    project_id INTEGER
-
+    updated_by TEXT,
+    project_id INTEGER,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
   )
 ''');
     await _ensureOrderCodeInfrastructure(db);
+    await _ensureOrderTrashInfrastructure(db);
 
     await db.execute('''
   CREATE TABLE Commandes_details (
@@ -4455,6 +4460,28 @@ class SqlDatabase {
   }
 
   static bool _orderCodeInfrastructureReady = false;
+  static bool _orderTrashInfrastructureReady = false;
+
+  /// Ensures soft-delete columns (is_deleted, deleted_at) exist on Commandes
+  /// to support the recycle bin (سلة المهملات).
+  Future<void> _ensureOrderTrashInfrastructure(DatabaseExecutor executor) async {
+    if (_orderTrashInfrastructureReady) return;
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {
+      // Column already exists
+    }
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN deleted_at TEXT;',
+      );
+    } catch (_) {
+      // Column already exists
+    }
+    _orderTrashInfrastructureReady = true;
+  }
 
   /// Adds the immutable, user-facing order number infrastructure.  [id] can be
   /// a large distributed sync key; [order_code] is the short number people see.
@@ -4975,7 +5002,7 @@ class SqlDatabase {
         cl.firstname, cl.lastname 
       FROM Commandes co
       INNER JOIN Client cl ON co.client_id = cl.id
-      WHERE co.project_id = ?
+      WHERE co.project_id = ? AND (co.is_deleted IS NULL OR co.is_deleted = 0)
       ORDER BY co.created_at DESC
     ''',
       [projectId],
@@ -4993,12 +5020,15 @@ class SqlDatabase {
   ///////////////////////////////// Commande ////////////////////////////////
   Future<List<Map<String, dynamic>>> readCommande() async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('SELECT * FROM Commandes');
+    if (myDb == null) return [];
+    await _ensureOrderTrashInfrastructure(myDb);
+    return await myDb.rawQuery('SELECT * FROM Commandes WHERE (is_deleted IS NULL OR is_deleted = 0)');
   }
 
   Future<List<Map<String, dynamic>>> readCommandesWithClients() async {
     final myDb = await db;
     if (myDb == null) return [];
+    await _ensureOrderTrashInfrastructure(myDb);
     await _backfillOrderCodes(myDb);
     return await myDb.rawQuery('''
           SELECT c.*,
@@ -5013,8 +5043,44 @@ class SqlDatabase {
       FROM Commandes c
       LEFT JOIN Client cl ON (c.client_id = cl.id OR CAST(c.client_id AS TEXT) = CAST(cl.id AS TEXT))
       LEFT JOIN Projects p ON c.project_id = p.id
+      WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
       ORDER BY COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), ''), c.id) DESC
     ''');
+  }
+
+  Future<List<Map<String, dynamic>>> readTrashCommandesWithClients() async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureOrderTrashInfrastructure(myDb);
+    await _backfillOrderCodes(myDb);
+    return await myDb.rawQuery('''
+      SELECT c.*,
+        c.order_code AS display_number,
+        COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), '')) as created_at,
+        c.deleted_at,
+        cl.firstname, cl.lastname, cl.phone1 as phone,
+        cl.address as client_address,
+        cl.latitude as client_latitude,
+        cl.longitude as client_longitude,
+        p.name as project_name,
+        p.description as project_description
+      FROM Commandes c
+      LEFT JOIN Client cl ON (c.client_id = cl.id OR CAST(c.client_id AS TEXT) = CAST(cl.id AS TEXT))
+      LEFT JOIN Projects p ON c.project_id = p.id
+      WHERE c.is_deleted = 1
+      ORDER BY COALESCE(NULLIF(TRIM(c.deleted_at), ''), NULLIF(TRIM(c.updated_at), ''), c.id) DESC
+    ''');
+  }
+
+  Future<int> countTrashCommandes() async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureOrderTrashInfrastructure(myDb);
+    final res = await myDb.rawQuery('SELECT COUNT(*) as count FROM Commandes WHERE is_deleted = 1');
+    if (res.isNotEmpty) {
+      return (res.first['count'] as num?)?.toInt() ?? 0;
+    }
+    return 0;
   }
 
   Future<int> updateCommandeStatus(
@@ -8074,6 +8140,11 @@ class SqlDatabase {
     });
 
     CloudSyncService().notifyChangeImmediate();
+    _notifyOrderEventSafe(
+      orderId: savedId,
+      isNew: idCommande == null,
+      author: editor,
+    );
     return savedId;
   }
 
@@ -8136,6 +8207,11 @@ class SqlDatabase {
       );
     }
     CloudSyncService().notifyChange();
+    _notifyOrderEventSafe(
+      orderId: distributedId,
+      isNew: true,
+      author: editor,
+    );
     return res;
   }
 
@@ -8180,9 +8256,46 @@ class SqlDatabase {
         whereArgs: [idCommande],
       );
       CloudSyncService().notifyChange();
+      _notifyOrderEventSafe(
+        orderId: idCommande,
+        isNew: false,
+        author: data['updated_by']?.toString() ?? '',
+      );
       return res;
     }
     return 0;
+  }
+
+  void _notifyOrderEventSafe({
+    required int orderId,
+    required bool isNew,
+    required String author,
+  }) {
+    unawaited(() async {
+      try {
+        final workshopUuid = await OrderNotificationService.readWorkshopUuid();
+        if (workshopUuid.isEmpty) return;
+
+        final row = await readCommandeWithClientById(orderId);
+        if (row == null) return;
+
+        final clientName =
+            '${row['firstname'] ?? ''} ${row['lastname'] ?? ''}'.trim();
+        final orderCode = row['order_code']?.toString() ??
+            row['display_number']?.toString() ??
+            orderId.toString();
+
+        await OrderNotificationService().broadcastOrderEvent(
+          workshopUuid: workshopUuid,
+          isNew: isNew,
+          clientName: clientName.isNotEmpty ? clientName : 'عميل',
+          orderCode: orderCode,
+          authorName: author,
+        );
+      } catch (_) {
+        // Ignored safely in test environments or offline
+      }
+    }());
   }
 
   /// Returns true if any item from this commande has been consumed (used in inventory)
@@ -8204,8 +8317,82 @@ class SqlDatabase {
     }
   }
 
-  Future<int> deleteCommande(int id) {
+  Future<int> deleteCommande(int id, {bool permanent = false}) {
+    if (permanent) {
+      return deleteCommandePermanently(id);
+    }
+    return _retryAfterDatabaseMove(() => _softDeleteCommandeOnce(id));
+  }
+
+  Future<int> deleteCommandePermanently(int id) {
     return _retryAfterDatabaseMove(() => _deleteCommandeOnce(id));
+  }
+
+  Future<int> _softDeleteCommandeOnce(int id) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureOrderTrashInfrastructure(myDb);
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final res = await myDb.update(
+      'Commandes',
+      {
+        'is_deleted': 1,
+        'deleted_at': nowIso,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (res > 0) {
+      try {
+        CloudSyncService().notifyChangeImmediate();
+      } catch (_) {}
+    }
+    return res;
+  }
+
+  Future<int> restoreCommande(int id) {
+    return _retryAfterDatabaseMove(() => _restoreCommandeOnce(id));
+  }
+
+  Future<int> _restoreCommandeOnce(int id) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureOrderTrashInfrastructure(myDb);
+    final res = await myDb.update(
+      'Commandes',
+      {
+        'is_deleted': 0,
+        'deleted_at': null,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (res > 0) {
+      try {
+        CloudSyncService().notifyChangeImmediate();
+      } catch (_) {}
+    }
+    return res;
+  }
+
+  Future<int> emptyTrash() async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureOrderTrashInfrastructure(myDb);
+    final rows = await myDb.query(
+      'Commandes',
+      columns: ['id'],
+      where: 'is_deleted = 1',
+    );
+    int total = 0;
+    for (final r in rows) {
+      final id = _positiveInt(r['id']);
+      if (id > 0) {
+        final deleted = await deleteCommandePermanently(id);
+        if (deleted > 0) total++;
+      }
+    }
+    return total;
   }
 
   Future<int> _deleteCommandeOnce(int id) async {
@@ -8255,7 +8442,9 @@ class SqlDatabase {
     });
     if (res > 0) {
       await _writeDeletedOrderTombstoneToCloud(id);
-      CloudSyncService().notifyChangeImmediate();
+      try {
+        CloudSyncService().notifyChangeImmediate();
+      } catch (_) {}
     }
     return res;
   }
@@ -8683,7 +8872,7 @@ class SqlDatabase {
         );
         final recordedAdvance = await myDb.rawQuery(
           'SELECT COALESCE(SUM(advance_payment), 0) AS paid '
-          'FROM Commandes WHERE client_id = ?',
+          'FROM Commandes WHERE client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
           [clientId],
         );
         if ((_paymentNumber(existingAllocations.first['allocated']) -
@@ -11813,7 +12002,7 @@ class SqlDatabase {
         COALESCE(SUM(
           CASE WHEN net_payable > 0 THEN net_payable ELSE total END
         ), 0) as invoices
-      FROM Commandes WHERE client_id = ?
+      FROM Commandes WHERE client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)
       ''',
       [clientId],
     );
@@ -12581,10 +12770,13 @@ class SqlDatabase {
         payment_status TEXT NOT NULL DEFAULT 'Unpaid',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_by TEXT
+        updated_by TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        deleted_at TEXT
       )
     ''');
     await _ensureOrderCodeInfrastructure(db);
+    await _ensureOrderTrashInfrastructure(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Commandes_details (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

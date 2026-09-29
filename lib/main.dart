@@ -23,6 +23,7 @@ import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/order_notification_service.dart';
 
 import 'package:window_manager/window_manager.dart';
 
@@ -80,6 +81,18 @@ class _AppBootstrapState extends State<AppBootstrap> {
       await supabase.Supabase.initialize(
         url: SupabaseConfig.url,
         publishableKey: SupabaseConfig.publishableKey,
+      );
+
+      // Initialize notification service (non-blocking — errors are swallowed).
+      unawaited(
+        OrderNotificationService().initialize().then((_) async {
+          final uuid = await OrderNotificationService.readWorkshopUuid();
+          if (uuid.isNotEmpty) {
+            await OrderNotificationService().subscribeToWorkshop(uuid);
+          }
+        }).catchError((e) {
+          debugPrint('OrderNotificationService init warning: $e');
+        }),
       );
 
       // This is a small local read. It is needed before calculations can run,

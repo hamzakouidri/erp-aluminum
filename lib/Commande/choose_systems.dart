@@ -1079,6 +1079,40 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 }
 
 //==========================================ItemBuildSystem================================
+Widget _buildSystemIcon({
+  required String iconPath,
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.contain,
+  IconData fallbackIcon = Icons.window_rounded,
+}) {
+  final filename = iconPath.replaceAll('\\', '/').split('/').last;
+  final candidates = <String>[
+    iconPath,
+    if (!iconPath.startsWith('assets/')) 'assets/$iconPath',
+    if (iconPath.startsWith('assets/')) iconPath.replaceFirst('assets/', ''),
+    'Icon/$filename',
+    'assets/Icon/$filename',
+    'assets/images/$filename',
+    'assets/sections/$filename',
+  ].toSet().toList();
+
+  Widget buildCandidate(int index) {
+    if (index >= candidates.length) {
+      return Icon(fallbackIcon, size: (width ?? height ?? 24) * 0.7, color: Colors.blue);
+    }
+    return Image.asset(
+      candidates[index],
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) => buildCandidate(index + 1),
+    );
+  }
+
+  return buildCandidate(0);
+}
+
 class ItemBuildSystem extends StatefulWidget {
   final String title;
   final String iconPath;
@@ -1129,15 +1163,9 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                         top: 0,
                         bottom: 0,
                         width: (widget.width ?? 60) * 0.65,
-                        child: Image.asset(
-                          'Icon/french.png',
+                        child: _buildSystemIcon(
+                          iconPath: 'Icon/french.png',
                           fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(
-                                Icons.image_not_supported,
-                                color: Colors.grey,
-                                size: 24,
-                              ),
                         ),
                       ),
                       Positioned(
@@ -1145,27 +1173,20 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                         top: 0,
                         bottom: 0,
                         width: (widget.width ?? 60) * 0.65,
-                        child: Image.asset(
-                          'Icon/sli.png',
+                        child: _buildSystemIcon(
+                          iconPath: 'Icon/sli.png',
                           fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(
-                                Icons.image_not_supported,
-                                color: Colors.grey,
-                                size: 24,
-                              ),
                         ),
                       ),
                     ],
                   ),
                 )
               else
-                Image.asset(
-                  widget.iconPath,
+                _buildSystemIcon(
+                  iconPath: widget.iconPath,
                   width: widget.width,
                   height: widget.height,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.image_not_supported, color: Colors.grey),
+                  fit: BoxFit.contain,
                 ),
               const SizedBox(width: 20),
               Text(

@@ -696,4 +696,154 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Erreur lors de la génération du fichier photos : ',
     AppLanguage.english: 'Error generating picture file: ',
   },
+  'trash': {
+    AppLanguage.arabic: 'سلة المهملات',
+    AppLanguage.french: 'Corbeille',
+    AppLanguage.english: 'Trash',
+  },
+  'orders_trash': {
+    AppLanguage.arabic: 'سلة مهملات الطلبيات',
+    AppLanguage.french: 'Corbeille des commandes',
+    AppLanguage.english: 'Orders Trash',
+  },
+  'empty_trash': {
+    AppLanguage.arabic: 'إفراغ سلة المهملات',
+    AppLanguage.french: 'Vider la corbeille',
+    AppLanguage.english: 'Empty Trash',
+  },
+  'restore_order': {
+    AppLanguage.arabic: 'استرجاع الطلبية',
+    AppLanguage.french: 'Restaurer la commande',
+    AppLanguage.english: 'Restore Order',
+  },
+  'delete_permanently': {
+    AppLanguage.arabic: 'حذف نهائي',
+    AppLanguage.french: 'Supprimer définitivement',
+    AppLanguage.english: 'Delete Permanently',
+  },
+  'trash_empty_message': {
+    AppLanguage.arabic: 'سلة المهملات فارغة',
+    AppLanguage.french: 'La corbeille est vide',
+    AppLanguage.english: 'Trash is empty',
+  },
+  'no_deleted_orders': {
+    AppLanguage.arabic: 'لا توجد أي طلبيات محذوفة في سلة المهملات.',
+    AppLanguage.french: 'Aucune commande supprimée dans la corbeille.',
+    AppLanguage.english: 'No deleted orders in trash.',
+  },
+  'confirm_restore': {
+    AppLanguage.arabic: 'هل أنت متأكد من استرجاع هذه الطلبية إلى قائمة الطلبيات النشطة؟',
+    AppLanguage.french: 'Voulez-vous restaurer cette commande vers les commandes actives ?',
+    AppLanguage.english: 'Are you sure you want to restore this order to active orders?',
+  },
+  'confirm_permanent_delete': {
+    AppLanguage.arabic: 'هل أنت متأكد من الحذف النهائي لهذه الطلبية؟\nلا يمكن التراجع عن هذا الإجراء وسيتم حذف جميع بياناتها بشكل كامل.',
+    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer définitivement cette commande ?\nCette action est irréversible et toutes ses données seront effacées.',
+    AppLanguage.english: 'Are you sure you want to permanently delete this order?\nThis action cannot be undone and all its data will be completely deleted.',
+  },
+  'confirm_empty_trash': {
+    AppLanguage.arabic: 'هل أنت متأكد من حذف جميع الطلبيات في سلة المهملات نهائياً؟\nهذا الإجراء لا يمكن التراجع عنه.',
+    AppLanguage.french: 'Êtes-vous sûr de vouloir vider définitivement toute la corbeille ?\nCette action est irréversible.',
+    AppLanguage.english: 'Are you sure you want to permanently empty the entire trash?\nThis action cannot be undone.',
+  },
+  'order_moved_to_trash': {
+    AppLanguage.arabic: 'تم نقل الطلبية إلى سلة المهملات.',
+    AppLanguage.french: 'Commande déplacée vers la corbeille.',
+    AppLanguage.english: 'Order moved to trash.',
+  },
+  'order_restored_successfully': {
+    AppLanguage.arabic: 'تم استرجاع الطلبية بنجاح.',
+    AppLanguage.french: 'Commande restaurée avec succès.',
+    AppLanguage.english: 'Order restored successfully.',
+  },
+  'order_deleted_permanently': {
+    AppLanguage.arabic: 'تم حذف الطلبية نهائياً.',
+    AppLanguage.french: 'Commande supprimée définitivement.',
+    AppLanguage.english: 'Order permanently deleted.',
+  },
+  'trash_emptied_successfully': {
+    AppLanguage.arabic: 'تم إفراغ سلة المهملات بنجاح.',
+    AppLanguage.french: 'Corbeille vidée avec succès.',
+    AppLanguage.english: 'Trash emptied successfully.',
+  },
+  'undo': {
+    AppLanguage.arabic: 'تراجع',
+    AppLanguage.french: 'Annuler',
+    AppLanguage.english: 'Undo',
+  },
+  'deleted_date': {
+    AppLanguage.arabic: 'تاريخ الحذف',
+    AppLanguage.french: 'Date de suppression',
+    AppLanguage.english: 'Deletion Date',
+  },
+  'order_items_count': {
+    AppLanguage.arabic: 'عدد العناصر',
+    AppLanguage.french: 'Nombre d\'éléments',
+    AppLanguage.english: 'Items Count',
+  },
+  'move_to_trash': {
+    AppLanguage.arabic: 'نقل إلى سلة المهملات',
+    AppLanguage.french: 'Mettre à la corbeille',
+    AppLanguage.english: 'Move to Trash',
+  },
+  'confirm_move_to_trash': {
+    AppLanguage.arabic: 'هل أنت متأكد من نقل هذه الطلبية إلى سلة المهملات؟\nيمكنك استرجاعها في أي وقت من سلة المهملات.',
+    AppLanguage.french: 'Êtes-vous sûr de vouloir déplacer cette commande vers la corbeille ?\nVous pourrez la restaurer à tout moment.',
+    AppLanguage.english: 'Are you sure you want to move this order to trash?\nYou can restore it at any time.',
+  },
+  'export_order': {
+    AppLanguage.arabic: 'تصدير الطلبية كملف',
+    AppLanguage.french: 'Exporter la commande',
+    AppLanguage.english: 'Export Order',
+  },
+  'export_order_desc': {
+    AppLanguage.arabic: 'مشاركة ملف الطلبية لإرساله إلى ورشة أخرى',
+    AppLanguage.french: 'Partager le fichier de la commande pour un autre atelier',
+    AppLanguage.english: 'Share order file to send to another workshop',
+  },
+  'import_order': {
+    AppLanguage.arabic: 'استيراد طلبية',
+    AppLanguage.french: 'Importer une commande',
+    AppLanguage.english: 'Import Order',
+  },
+  'import_order_preview': {
+    AppLanguage.arabic: 'معاينة الطلبية المستوردة',
+    AppLanguage.french: 'Aperçu de la commande importée',
+    AppLanguage.english: 'Imported Order Preview',
+  },
+  'source_workshop': {
+    AppLanguage.arabic: 'الورشة المصدر',
+    AppLanguage.french: 'Atelier source',
+    AppLanguage.english: 'Source Workshop',
+  },
+  'order_imported_successfully': {
+    AppLanguage.arabic: 'تم استيراد الطلبية بنجاح وإضافتها إلى طلبياتك.',
+    AppLanguage.french: 'Commande importée avec succès et ajoutée à vos commandes.',
+    AppLanguage.english: 'Order imported successfully and added to your orders.',
+  },
+  'invalid_order_file': {
+    AppLanguage.arabic: 'الملف المحدد غير صالح أو تالف.',
+    AppLanguage.french: 'Le fichier sélectionné est invalide ou corrompu.',
+    AppLanguage.english: 'The selected file is invalid or corrupted.',
+  },
+  'select_or_create_client': {
+    AppLanguage.arabic: 'الزبون المرتبط بالطلبية',
+    AppLanguage.french: 'Client associé à la commande',
+    AppLanguage.english: 'Client linked to order',
+  },
+  'client_match_found': {
+    AppLanguage.arabic: 'تم التعرف على الزبون في قاعدة البيانات',
+    AppLanguage.french: 'Client existant trouvé dans la base de données',
+    AppLanguage.english: 'Existing client found in database',
+  },
+  'new_client_will_be_created': {
+    AppLanguage.arabic: 'سيتم إنشاء سجل زبون جديد تلقائياً',
+    AppLanguage.french: 'Un nouveau client sera créé automatiquement',
+    AppLanguage.english: 'A new client will be created automatically',
+  },
+  'confirm_import': {
+    AppLanguage.arabic: 'تأكيد الاستيراد',
+    AppLanguage.french: 'Confirmer l\'importation',
+    AppLanguage.english: 'Confirm Import',
+  },
 };

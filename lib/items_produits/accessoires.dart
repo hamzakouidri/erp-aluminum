@@ -2128,6 +2128,17 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     );
   }
 
+  double? _parseRuleNumber(String text) {
+    var value = text.trim().replaceAll(',', '.').replaceAll('٫', '.');
+    const arabic = '٠١٢٣٤٥٦٧٨٩';
+    const persian = '۰۱۲۳۴۵۶۷۸۹';
+    for (var i = 0; i < 10; i++) {
+      value = value.replaceAll(arabic[i], '$i').replaceAll(persian[i], '$i');
+    }
+    final number = double.tryParse(value);
+    return number != null && number.isFinite && number >= 0 ? number : null;
+  }
+
   void _showAccessoryRulesDialog(Map<String, dynamic> item, {bool readOnly = false}) {
     final gacheItems = _items.where((candidate) {
       final text = '${candidate['name'] ?? ''} ${candidate['type'] ?? ''}'
@@ -2181,6 +2192,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
         accessoryRuleText.contains('crémone');
     var isDefault = _databaseFlag(item['is_default']);
     var saving = false;
+    String? deductionError;
 
     showDialog(
       context: context,
@@ -2380,6 +2392,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                     ),
                     decoration: InputDecoration(
                       labelText: _t('الخصم من طول الظلفة (مم)'),
+                      errorText: deductionError,
                       border: const OutlineInputBorder(),
                     ),
                   ),
@@ -2399,9 +2412,15 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                   : () async {
                       final id = asId(item['id']);
                       if (id == null) return;
-                      setDialogState(() => saving = true);
-                      final deduction =
-                          double.tryParse(deductionCtrl.text.trim()) ?? 0.0;
+                      final deduction = _parseRuleNumber(deductionCtrl.text);
+                      if (deduction == null) {
+                        setDialogState(() => deductionError = _t('أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا'));
+                        return;
+                      }
+                      setDialogState(() {
+                        deductionError = null;
+                        saving = true;
+                      });
                       await widget.db.updateAccessory(id, {
                         'gache_accessory_id': gacheId,
                         'gache_count': int.tryParse(gacheCountCtrl.text) ?? 0,
@@ -2414,7 +2433,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                             : trianglePositionMode,
                         'triangle_position_mm': isCremoneRule
                             ? 0.0
-                            : double.tryParse(trianglePositionCtrl.text) ?? 0.0,
+                            : _parseRuleNumber(trianglePositionCtrl.text) ?? 0.0,
                         'triangle_link_mode': isCremoneRule
                             ? 'required'
                             : triangleLinkMode,

@@ -14,6 +14,7 @@ import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../sql_database.dart';
 import 'achat_screen.dart';
+import 'trash_screen.dart';
 import 'suppliers_screen.dart';
 import 'settings_screen.dart';
 import 'selected_systems_screen.dart';
@@ -775,6 +776,19 @@ class _AppDrawerState extends State<AppDrawer> {
             Commande(),
             titleKey: 'commandes',
           ),
+        ),
+      );
+      orderItems.add(
+        _desktopMenuItem(
+          title: Localization.translate('orders_trash', lang),
+          icon: Icons.auto_delete_rounded,
+          onTap: () => _openScreen(
+            'orders_trash',
+            Icons.auto_delete_rounded,
+            TrashScreen(db: db),
+            titleKey: 'orders_trash',
+          ),
+          color: Colors.redAccent,
         ),
       );
     }
@@ -1715,6 +1729,19 @@ class _AppDrawerState extends State<AppDrawer> {
                   Icons.list,
                   Commande(),
                   titleKey: 'commandes',
+                );
+              },
+            ),
+          if (settings.canViewOrders())
+            ListTile(
+              leading: const Icon(Icons.auto_delete_rounded, color: Colors.redAccent),
+              title: Text(Localization.translate('orders_trash', lang)),
+              onTap: () {
+                _openScreen(
+                  'orders_trash',
+                  Icons.auto_delete_rounded,
+                  TrashScreen(db: db),
+                  titleKey: 'orders_trash',
                 );
               },
             ),

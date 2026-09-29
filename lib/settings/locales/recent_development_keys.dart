@@ -3,6 +3,132 @@ import '../app_settings.dart';
 /// User-facing text introduced by the recent kit, decorated-panel, cutting
 /// and required-goods developments.
 const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
+  'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا': {
+    AppLanguage.arabic: 'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا',
+    AppLanguage.french: 'Saisissez un nombre valide supérieur ou égal à zéro',
+    AppLanguage.english: 'Enter a valid number greater than or equal to zero',
+  },
+  'ورقة التقطيع': {
+    AppLanguage.arabic: 'ورقة التقطيع',
+    AppLanguage.french: 'Fiche de coupe',
+    AppLanguage.english: 'Cutting sheet',
+  },
+  'المساحة الإجمالية': {
+    AppLanguage.arabic: 'المساحة الإجمالية',
+    AppLanguage.french: 'Surface totale',
+    AppLanguage.english: 'Total area',
+  },
+  'المواصفات والتركيب:': {
+    AppLanguage.arabic: 'المواصفات والتركيب:',
+    AppLanguage.french: 'Spécifications et composition :',
+    AppLanguage.english: 'Specifications and composition:',
+  },
+  'بيانات جاهزة للتحويل لمورد الزجاج': {
+    AppLanguage.arabic: 'بيانات جاهزة للتحويل لمورد الزجاج',
+    AppLanguage.french: 'Données prêtes à transmettre au fournisseur de vitrage',
+    AppLanguage.english: 'Data ready to send to the glass supplier',
+  },
+  'تفاصيل الزجاج والقياسات الحقيقية والديكور': {
+    AppLanguage.arabic: 'تفاصيل الزجاج والقياسات الحقيقية والديكور',
+    AppLanguage.french: 'Détails du vitrage, dimensions réelles et décoration',
+    AppLanguage.english: 'Glass details, actual dimensions and decoration',
+  },
+  'تقسيمات باجيت': {
+    AppLanguage.arabic: 'تقسيمات باجيت',
+    AppLanguage.french: 'Divisions par baguettes',
+    AppLanguage.english: 'Glazing bar divisions',
+  },
+  'ديكور باجيت / وردات': {
+    AppLanguage.arabic: 'ديكور باجيت / وردات',
+    AppLanguage.french: 'Décoration : baguettes / rosaces',
+    AppLanguage.english: 'Decoration: glazing bars / rosettes',
+  },
+  'عدد الألواح': {
+    AppLanguage.arabic: 'عدد الألواح',
+    AppLanguage.french: 'Nombre de panneaux',
+    AppLanguage.english: 'Panel count',
+  },
+  'عرض رسم النافذة ومقاسات الزجاج والديكور': {
+    AppLanguage.arabic: 'عرض رسم النافذة ومقاسات الزجاج والديكور',
+    AppLanguage.french: 'Afficher le dessin, les dimensions du vitrage et la décoration',
+    AppLanguage.english: 'Show window drawing, glass dimensions and decoration',
+  },
+  'معاينة تفاصيل الزجاج والديكور': {
+    AppLanguage.arabic: 'معاينة تفاصيل الزجاج والديكور',
+    AppLanguage.french: 'Aperçu du vitrage et de la décoration',
+    AppLanguage.english: 'Preview glass and decoration details',
+  },
+  'مقاس القص الحقيقي': {
+    AppLanguage.arabic: 'مقاس القص الحقيقي',
+    AppLanguage.french: 'Dimensions réelles de coupe',
+    AppLanguage.english: 'Actual cutting dimensions',
+  },
+  'وردات ديكور مدمجة': {
+    AppLanguage.arabic: 'وردات ديكور مدمجة',
+    AppLanguage.french: 'Rosaces décoratives intégrées',
+    AppLanguage.english: 'Integrated decorative rosettes',
+  },
+
+  'توجد {count} قطعة قص أطول من القطاع {length} مم وتحتاج طول مخزون أكبر.': {
+    AppLanguage.arabic: 'توجد {count} قطعة قص أطول من القطاع {length} مم وتحتاج طول مخزون أكبر.',
+    AppLanguage.french: '{count} pièce(s) à couper dépassent la barre de {length} mm et nécessitent une barre plus longue.',
+    AppLanguage.english: '{count} cut piece(s) exceed the {length} mm bar and require longer stock.',
+  },
+
+  'تم استبعاد {count} منتج مشطوب أو مستبدل من الطلبية.': {
+    AppLanguage.arabic: 'تم استبعاد {count} منتج مشطوب أو مستبدل من الطلبية.',
+    AppLanguage.french: '{count} produit(s) annulé(s) ou remplacé(s) ont été exclus de la commande.',
+    AppLanguage.english: '{count} cancelled or replaced product(s) were excluded from the order.',
+  },
+
+  'الطول أو العرض غير صالح.': {
+    AppLanguage.arabic: 'الطول أو العرض غير صالح.',
+    AppLanguage.french: 'La hauteur ou la largeur est invalide.',
+    AppLanguage.english: 'The height or width is invalid.',
+  },
+
+  'لم ينتج عنه أي مقدار مطلوب.': {
+    AppLanguage.arabic: 'لم ينتج عنه أي مقدار مطلوب.',
+    AppLanguage.french: 'Aucune quantité requise calculée.',
+    AppLanguage.english: 'No required quantity was calculated.',
+  },
+
+  'الرسم المحفوظ لا يحتوي على مناطق نافذة قابلة للحساب.': {
+    AppLanguage.arabic: 'الرسم المحفوظ لا يحتوي على مناطق نافذة قابلة للحساب.',
+    AppLanguage.french: 'Le dessin enregistré ne contient aucune zone de fenêtre calculable.',
+    AppLanguage.english: 'The saved drawing contains no calculable window sections.',
+  },
+
+  'مقاسات زجاج': {
+    AppLanguage.arabic: 'مقاسات زجاج',
+    AppLanguage.french: 'dimensions de vitrage',
+    AppLanguage.english: 'glass sizes',
+  },
+
+  'أصناف مسجلة': {
+    AppLanguage.arabic: 'أصناف مسجلة',
+    AppLanguage.french: 'articles répertoriés',
+    AppLanguage.english: 'listed items',
+  },
+
+  'مكونات الستار': {
+    AppLanguage.arabic: 'مكونات الستار',
+    AppLanguage.french: 'Composants du volet roulant',
+    AppLanguage.english: 'Roller shutter components',
+  },
+
+  'المنتج رقم': {
+    AppLanguage.arabic: 'المنتج رقم',
+    AppLanguage.french: 'Produit n°',
+    AppLanguage.english: 'Product no.',
+  },
+
+  'تفاصيل حساب كل منتج': {
+    AppLanguage.arabic: 'تفاصيل حساب كل منتج',
+    AppLanguage.french: 'Détail du calcul de chaque produit',
+    AppLanguage.english: 'Calculation details for each product',
+  },
+
   // Quantity/cost table catalogue labels and units. These keys are displayed
   // directly in the required-goods table, so they must never leave Arabic in
   // a French or English interface.

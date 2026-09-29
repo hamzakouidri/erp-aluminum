@@ -53,7 +53,9 @@ class SectionImageWidget extends StatelessWidget {
             .replaceAll(RegExp(r'[\s_-]+'), '') ==
         'n245';
     final bool isAssetReference =
-        lowerPath.startsWith('assets/') || lowerPath.startsWith('asset/');
+        lowerPath.startsWith('assets/') ||
+        lowerPath.startsWith('asset/') ||
+        lowerPath.startsWith('icon/');
     final String semanticLabel = '$rawCode ${name ?? ''} $path'.toLowerCase();
     final bool isFrappeJoint =
         (semanticLabel.contains('frappe') ||
@@ -311,11 +313,88 @@ class SectionImageWidget extends StatelessWidget {
           'تدعيم': 'renfort_u.svg',
           'n245': 'N245.svg',
           'n52034': 'N52034.svg',
+          'cremone': 'cremone.png',
+          'crémone': 'cremone.png',
+          'كريمون': 'cremone.png',
+          'كرمون': 'cremone.png',
+          'مقبض': 'cremone.png',
+          'مقبض كريمون': 'cremone.png',
+          'poignee': 'cremone.png',
+          'poignée': 'cremone.png',
+          'espagnolette': 'cremone.png',
+          'loqueteau': 'logteau.png',
+          'locteau': 'logteau.png',
+          'لوكتو': 'logteau.png',
+          'لقطو': 'logteau.png',
+          'قفل لطاش': 'logteau.png',
+          'قفل_لطاش': 'logteau.png',
+          'logteau': 'logteau.png',
+          'verrou': 'logteau.png',
+          'serrure': 'serrure.png',
+          'قفل': 'serrure.png',
+          'كالون': 'serrure.png',
+          'roulette': 'roulette.png',
+          'عجلات': 'roulette.png',
+          'عجلة': 'roulette.png',
+          'رولمان': 'roulette.png',
+          'galet': 'roulette.png',
+          'gache': 'gache_colissante_tpr.png',
+          'gâche': 'gache_colissante_tpr.png',
+          'لاش': 'gache_colissante_tpr.png',
+          'قاش': 'gache_colissante_tpr.png',
+          'gache_coulissant': 'gache_colissante_tpr.png',
+          'kit 67000': 'kit 67000.png',
+          'kit_67000': 'kit 67000.png',
+          'kit67000': 'kit 67000.png',
+          'كيت 67000': 'kit 67000.png',
+          'kit 67107': 'kit 67107.png',
+          'kit_67107': 'kit 67107.png',
+          'kit67107': 'kit 67107.png',
+          'كيت 67107': 'kit 67107.png',
+          'kit 67108': 'kit 67108.png',
+          'kit_67108': 'kit 67108.png',
+          'kit67108': 'kit 67108.png',
+          'كيت 67108': 'kit 67108.png',
+          'clam 67000': 'Clam 67000.png',
+          'clam_67000': 'Clam 67000.png',
+          'clam67000': 'Clam 67000.png',
+          'كلام 67000': 'Clam 67000.png',
+          'intramatique avec cle': 'intramatique avec cle.png',
+          'intramatique_avec_cle': 'intramatique avec cle.png',
+          'انتروماتيك بمفتاح': 'intramatique avec cle.png',
+          'انتروماتيك بالمفتاح': 'intramatique avec cle.png',
+          'coulisse pvc': 'coulisse pvc.png',
+          'coulisse_pvc': 'coulisse pvc.png',
+          'كوليس pvc': 'coulisse pvc.png',
+          'sli': 'sli.png',
+          'sliding': 'sli.png',
+          'جرار': 'sli.png',
+          'منزلق': 'sli.png',
+          'french': 'french.png',
+          'frappe': 'french.png',
+          'beating': 'french.png',
+          'فرنسي': 'french.png',
+          'فتح': 'french.png',
+          'roling': 'roling.png',
+          'rolling': 'roling.png',
+          'ستار': 'roling.png',
+          'volet': 'roling.png',
+          'caisson_tunnel': 'caisson_tunnel.jpg',
+          'tunnel': 'caisson_tunnel.jpg',
+          'تونيل': 'caisson_tunnel.jpg',
+          'moustiquaire': 'media.webp',
+          'media': 'media.webp',
+          'ناموسية': 'media.webp',
+          'موستيكير': 'media.webp',
+          'verre': 'verre.png',
+          'زجاج': 'verre.png',
         };
         final canonicalFilename = imageAliases[stem];
         if (canonicalFilename != null) {
           addUnique('assets/sections/$canonicalFilename');
           addUnique('assets/images/$canonicalFilename');
+          addUnique('Icon/$canonicalFilename');
+          addUnique('assets/Icon/$canonicalFilename');
           return;
         }
 
@@ -380,6 +459,8 @@ class SectionImageWidget extends StatelessWidget {
         for (final file in allFilenames) {
           addUnique('assets/sections/$file');
           addUnique('assets/images/$file');
+          addUnique('Icon/$file');
+          addUnique('assets/Icon/$file');
         }
       }
 
@@ -448,8 +529,16 @@ class SectionImageWidget extends StatelessWidget {
             File(assetPath),
             File('assets/sections/$filename'),
             File('assets/images/$filename'),
+            File('Icon/$filename'),
+            File('assets/Icon/$filename'),
             File(
               'C:/Users/hp/Desktop/erp-alum/erp-aluminum-main/assets/sections/$filename',
+            ),
+            File(
+              'C:/Users/hp/Desktop/erp-alum/erp-aluminum-main/Icon/$filename',
+            ),
+            File(
+              'C:/Users/hp/Desktop/erp-alum/erp-aluminum-main/assets/Icon/$filename',
             ),
             File('C:/Users/hp/Desktop/LISTE DE PRIX BS90/$filename'),
           ];

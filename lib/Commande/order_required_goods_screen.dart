@@ -347,16 +347,13 @@ String requiredGoodsAggregationKey(BomItem item, String category) {
       ? 'CODE:${item.profileCode!.trim().toUpperCase()}'
       : 'NAME:${requiredGoodsDisplayName(item).toLowerCase()}';
 
-  final accessoryName = normCategory == 'accessory'
-      ? requiredGoodsDisplayName(item).toLowerCase()
-      : '';
   final colorKey = _normalizeColorKey(item);
   final lengthKey = (item.length ?? 0) > 0 ? (item.length!).toStringAsFixed(2) : '';
   final heightKey = (item.glassHeight ?? 0) > 0 ? (item.glassHeight!).toStringAsFixed(2) : '';
 
   return '${normCategory}___${itemIdentifier}___'
       '${colorKey}___${item.unit.trim().toLowerCase()}___'
-      '${lengthKey}___${heightKey}___$accessoryName';
+      '${lengthKey}___${heightKey}';
 }
 
 /// A Kit is one configured bundle. Its contents can carry different colours,
@@ -673,7 +670,7 @@ class ProductBreakdown {
 enum _PurchaseDocumentKind { purchaseOrder, purchaseInvoice }
 
 class AggregatedGoodItem {
-  final String name;
+  String name;
   String originalName;
   final String category;
   final String unit;
@@ -777,6 +774,11 @@ class AggregatedGoodItem {
     }
     if (isMissing && !bom.isMissing) {
       isMissing = false;
+    }
+    if (bom.catalogItemId != null && (catalogItemId == null || catalogItemId == bom.catalogItemId)) {
+      if (bom.name.isNotEmpty && !bom.isMissing) {
+        name = requiredGoodsDisplayName(bom);
+      }
     }
     final role = _extractRoleLabel(bom.originalName);
     if (role.isNotEmpty && !originalName.contains(role)) {
@@ -1353,7 +1355,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     _currentLang = Provider.of<AppSettingsProvider>(context).language;
   }
 
-  String _t(String key) => Localization.translate(key, _currentLang);
+  String _t(String key) {
+    var result = Localization.translate(key, _currentLang);
+    if (result != key || _currentLang == AppLanguage.arabic) return result;
+    // Generated material descriptions combine catalogue names and UI labels.
+    for (final label in ['الوجه الخارجي', 'الوجه الداخلي', 'شفاف/عادي', 'شفاف', 'المنتج رقم']) {
+      result = result.replaceAll(label, Localization.translate(label, _currentLang));
+    }
+    return result;
+  }
 
   // ─────────────────────────────────────────────────────────────────
   // الدالة الرئيسية: تقرأ كل منتجات الطلبية وتحسب وتجمع السلع
@@ -1381,12 +1391,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       Map<String, List<Map<String, dynamic>>> data,
       Map<String, bool> perLeaf,
       Map<String, Map<String, dynamic>> metadata,
+      Map<String, double> prices,
     })
   >
   _loadKitBundleCache() async {
     final kitBundleData = <String, List<Map<String, dynamic>>>{};
     final kitPerLeafMap = <String, bool>{};
     final kitBundleMetadata = <String, Map<String, dynamic>>{};
+    final kitBundlePrices = <String, double>{};
 
     try {
       final kits = await widget.db.readKitBundles();
@@ -1405,6 +1417,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               .toList();
           kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
           kitBundleMetadata[kitName] = Map<String, dynamic>.from(kit);
+          final rawPrice = kit['price'];
+          if (rawPrice is num && rawPrice > 0) {
+            kitBundlePrices[kitName] = rawPrice.toDouble();
+          }
         }),
       );
     } catch (e) {
@@ -1415,6 +1431,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       data: kitBundleData,
       perLeaf: kitPerLeafMap,
       metadata: kitBundleMetadata,
+      prices: kitBundlePrices,
     );
   }
 
@@ -1498,17 +1515,46 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     Map<String, WindowModel> catalogCache,
   ) async {
     applyWindowModelFromMap(model, modelMap);
+    final savedOverrides = Map<String, dynamic>.from(model.componentOverrides);
+    final savedFrameOverride = model.frameOverride != null
+        ? Map<String, dynamic>.from(model.frameOverride!)
+        : null;
+    final savedSlidingFrameOverride = model.slidingFrameOverride != null
+        ? Map<String, dynamic>.from(model.slidingFrameOverride!)
+        : null;
+    final savedSashOverride = model.sashOverride != null
+        ? Map<String, dynamic>.from(model.sashOverride!)
+        : null;
+    final savedSlidingSashOverride = model.slidingSashOverride != null
+        ? Map<String, dynamic>.from(model.slidingSashOverride!)
+        : null;
+
     final cacheKey = _catalogCacheKey(model);
     final cached = catalogCache[cacheKey];
     if (cached != null) {
       model.copyCatalogRuntimeFrom(cached);
-      return;
+    } else {
+      await model.loadCatalogData(model.systemMode ?? '');
+      final snapshot = WindowModel(db: widget.db);
+      snapshot.copyCatalogRuntimeFrom(model, preserveCurrentSelections: false);
+      catalogCache[cacheKey] = snapshot;
     }
 
-    await model.loadCatalogData(model.systemMode ?? '');
-    final snapshot = WindowModel(db: widget.db);
-    snapshot.copyCatalogRuntimeFrom(model, preserveCurrentSelections: false);
-    catalogCache[cacheKey] = snapshot;
+    if (savedOverrides.isNotEmpty) {
+      model.componentOverrides.addAll(savedOverrides);
+    }
+    if (savedFrameOverride != null) {
+      model.frameOverride = savedFrameOverride;
+    }
+    if (savedSlidingFrameOverride != null) {
+      model.slidingFrameOverride = savedSlidingFrameOverride;
+    }
+    if (savedSashOverride != null) {
+      model.sashOverride = savedSashOverride;
+    }
+    if (savedSlidingSashOverride != null) {
+      model.slidingSashOverride = savedSlidingSashOverride;
+    }
   }
 
   List<BomItem> _standaloneProductBom(WindowModel model) {
@@ -1561,6 +1607,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     Map<String, List<Map<String, dynamic>>> kitBundleData,
     Map<String, bool> kitPerLeafMap,
     Map<String, Map<String, dynamic>> kitBundleMetadata,
+    Map<String, double> kitBundlePrices,
   ) async {
     // Products created outside the window drawing (mosquito screens, tempered
     // glass work and manual products) intentionally have no zones. Preserve
@@ -1580,28 +1627,25 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       kitBundleData: kitBundleData,
       kitPerLeafMap: kitPerLeafMap,
       kitBundleMetadata: kitBundleMetadata,
+      kitBundlePrices: kitBundlePrices,
     );
     await engine.stabilizeSelections(window: model, items: generate());
     await engine.stabilizeSelections(window: model, items: generate());
     final raw = generate();
     final strict = await engine.filterItemsByAvailableCandidates(
-      window: model, items: raw,
+      window: model,
+      items: raw,
     );
-    final coveredNames = strict.map((i) => i.originalName).toSet();
-    final coveredRoles = strict
-        .map((i) => (i.roleKey ?? i.selectorType ?? '').trim().toLowerCase())
-        .where((r) => r.isNotEmpty)
-        .toSet();
-    final result = List<BomItem>.from(strict);
-    for (final item in raw) {
-      if (!item.isActive || (item.requiredQuantity <= 0 && item.quantity <= 0 && (item.pieces == null || item.pieces!.isEmpty))) continue;
-      final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
-      if (!coveredNames.contains(item.originalName) &&
-          (role.isEmpty || !coveredRoles.contains(role))) {
-        result.add(item);
-      }
+    if (strict.isNotEmpty) {
+      return strict;
     }
-    return result;
+    return raw
+        .where((i) =>
+            i.isActive &&
+            (i.requiredQuantity > 0 ||
+                i.quantity > 0 ||
+                (i.pieces != null && i.pieces!.isNotEmpty)))
+        .toList();
   }
 
   Future<void> _loadAndAggregate() async {
@@ -1634,6 +1678,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 Map<String, List<Map<String, dynamic>>> data,
                 Map<String, bool> perLeaf,
                 Map<String, Map<String, dynamic>> metadata,
+                Map<String, double> prices,
               });
       final sawKerfMm = loaded[2] as double?;
       if (sawKerfMm != null) CuttingSettings.setSawKerfMm(sawKerfMm);
@@ -1655,7 +1700,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             .toString()
             .trim();
         final productLabel = fallbackName.isEmpty
-            ? 'المنتج رقم $itemNumber'
+            ? '${_t('المنتج رقم')} $itemNumber'
             : fallbackName;
         if (jsonRaw == null || jsonRaw.toString().trim().isEmpty) {
           warnings.add('$productLabel: ${_t('بيانات الرسم غير محفوظة.')}');
@@ -1730,7 +1775,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               );
               if ((w <= 0 || h <= 0) && !model.isCustomProduct) {
                 warnings.add(
-                  '$productName (القياس $instIdx): الطول أو العرض غير صالح.',
+                  '$productName (${_t('القياس')} $instIdx): ${_t('الطول أو العرض غير صالح.')}',
                 );
                 instIdx++;
                 continue;
@@ -1747,6 +1792,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 kitCache.data,
                 kitCache.perLeaf,
                 kitCache.metadata,
+                kitCache.prices,
               );
               bomItems.addAll(instBom);
 
@@ -1786,6 +1832,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               kitCache.data,
               kitCache.perLeaf,
               kitCache.metadata,
+              kitCache.prices,
             );
             bomItems.addAll(instBom);
 
@@ -1821,10 +1868,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 !model.isMoustiquaire &&
                 !model.isGlassWork) {
               warnings.add(
-                '$productName: الرسم المحفوظ لا يحتوي على مناطق نافذة قابلة للحساب.',
+                '$productName: ${_t('الرسم المحفوظ لا يحتوي على مناطق نافذة قابلة للحساب.')}',
               );
             } else {
-              warnings.add('$productName: لم ينتج عنه أي مقدار مطلوب.');
+              warnings.add('$productName: ${_t('لم ينتج عنه أي مقدار مطلوب.')}');
             }
             continue;
           }
@@ -1992,7 +2039,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
       if (skippedReplacedCount > 0) {
         warnings.add(
-          'تم استبعاد $skippedReplacedCount منتج مشطوب أو مستبدل من الطلبية.',
+          _t('تم استبعاد {count} منتج مشطوب أو مستبدل من الطلبية.').replaceAll('{count}', '$skippedReplacedCount'),
         );
       }
 
@@ -2013,8 +2060,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         item.totalCost = item.totalQuantity * item.unitPrice;
         if (plan.oversizedPieces.isNotEmpty) {
           warnings.add(
-            '${item.originalName}: توجد ${plan.oversizedPieces.length} قطعة قص أطول من القطاع '
-            '${(stockLength * 1000).round()} مم وتحتاج طول مخزون أكبر.',
+            '${_t(item.originalName)}: ${_t('توجد {count} قطعة قص أطول من القطاع {length} مم وتحتاج طول مخزون أكبر.').replaceAll('{count}', '${plan.oversizedPieces.length}').replaceAll('{length}', '${(stockLength * 1000).round()}')}',
           );
         }
       }
@@ -2851,9 +2897,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ],
       ),
       body: _buildBody(),
-      bottomNavigationBar: _isLoading || _errorMessage != null
-          ? null
-          : _buildBottomSummary(),
     );
   }
 
@@ -2943,7 +2986,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         // شريط معلومات الملخص
         _buildInfoBanner(),
         if (_processingWarnings.isNotEmpty) _buildWarningsBanner(),
-        _buildCategoryFilters(),
         // القائمة
         Expanded(child: _buildGroupedList()),
       ],
@@ -2960,9 +3002,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       ('joint', 'الجوانات', Icons.horizontal_rule_rounded),
     ];
     return SizedBox(
-      height: 58,
+      height: 40,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.zero,
         scrollDirection: Axis.horizontal,
         itemCount: filters.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
@@ -2986,7 +3028,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               fontWeight: FontWeight.w700,
             ),
             selectedColor: color,
-            backgroundColor: color.withValues(alpha: 0.08),
+            backgroundColor: Colors.white,
             side: BorderSide(color: color.withValues(alpha: 0.35)),
             onSelected: (_) => setState(() => _selectedCategory = filter.$1),
           );
@@ -3029,67 +3071,76 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   Widget _buildInfoBanner() {
+    final summary = Tooltip(
+      message: _t('مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة'),
+      child: Text(
+        '${_t('إجمالي')} ${_aggregatedItems.length} ${_t('نوع سلعة من')} $_productCount ${_t('منتج')}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
+      ),
+    );
+    final cost = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          _t('التكلفة الإجمالية'),
+          style: const TextStyle(color: Colors.white70, fontSize: 10),
+        ),
+        Text(
+          '${_grandTotal.toStringAsFixed(2)} دج',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF1A237E), Color(0xFF3949AB)],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.indigo.withValues(alpha: 0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.inventory_2, color: Colors.white, size: 28),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 1000) {
+            return Row(
               children: [
-                Text(
-                  '${_t('إجمالي')} ${_aggregatedItems.length} ${_t('نوع سلعة من')} $_productCount ${_t('منتج')}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _t('مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة'),
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
-                ),
+                SizedBox(width: 200, child: summary),
+                const SizedBox(width: 12),
+                Expanded(child: _buildCategoryFilters()),
+                const SizedBox(width: 12),
+                cost,
               ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                _t('التكلفة الإجمالية'),
-                style: const TextStyle(color: Colors.white70, fontSize: 10),
+              Row(
+                children: [
+                  Expanded(child: summary),
+                  const SizedBox(width: 12),
+                  Flexible(child: cost),
+                ],
               ),
-              Text(
-                '${_grandTotal.toStringAsFixed(2)} دج',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-              ),
+              const SizedBox(height: 4),
+              _buildCategoryFilters(),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -3506,7 +3557,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ),
         _desktopCategoryCell(category, color, isDark),
         _desktopNameCell(
-          title: item.name,
+          title: _t(item.name),
           subtitle: item.name != item.originalName
               ? '${_t('المكوّن المطلوب')}: ${_t(item.originalName)}'
               : null,
@@ -3645,7 +3696,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           _desktopTextCell(_t('خطة القص'), isDark: isDark),
           _desktopNameCell(
             title: '${_t('قطاع')} $barNumber',
-            subtitle: item.name,
+            subtitle: _t(item.name),
             isDark: isDark,
           ),
           _desktopTextCell(
@@ -5089,77 +5140,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
   }
 
-  Widget _buildBottomSummary() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_aggregatedItems.length} ${_t('صنف من السلع')}',
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.grey.shade600,
-                      fontSize: 12,
-                    ),
-                  ),
-                  Text(
-                    '${_grandTotal.toStringAsFixed(2)} دج',
-                    style: TextStyle(
-                      color: isDark ? Colors.white : const Color(0xFF1A237E),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: _loadAndAggregate,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: Text(_t('تحديث')),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isDark
-                    ? Colors.black
-                    : const Color(0xFF1A237E),
-                foregroundColor: Colors.white,
-                side: isDark
-                    ? const BorderSide(color: Colors.white, width: 1.5)
-                    : BorderSide.none,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                shape: isDark
-                    ? RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      )
-                    : RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────
   // دوال مساعدة
   // ─────────────────────────────────────────────────────────────────
@@ -5553,14 +5533,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               ? const Color(0xFF121212)
               : const Color(0xFFF0F4FF),
           appBar: AppBar(
-            title: const Text(
-              'تفاصيل حساب كل منتج',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            title: Text(
+              _t('تفاصيل حساب كل منتج'),
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
             ),
-            backgroundColor: isDark
-                ? Theme.of(context).appBarTheme.backgroundColor
-                : const Color(0xFF1A237E),
-            foregroundColor: Colors.white,
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: const Color(0xFF1A237E),
+            iconTheme: const IconThemeData(color: Color(0xFF1A237E)),
           ),
           body: ListView.builder(
             padding: const EdgeInsets.all(16.0),
@@ -5614,7 +5594,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  pb.name,
+                                  _t(pb.name),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -5775,7 +5755,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      bom.name,
+                      _t(bom.name),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 12, color: bodyColor),
                     ),
@@ -5852,7 +5832,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        bom.name,
+                        _t(bom.name),
                         style: TextStyle(fontSize: 12, color: bodyColor),
                       ),
                     ),
