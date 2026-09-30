@@ -1325,8 +1325,8 @@ class WindowZone {
     this.doubleSashRatio = 0.5,
     this.doubleSashHasTwoHandles = false,
     bool? slidingFaceToFace,
-    this.slidingCentralHandle = false,
-    this.slidingSecondCentralHandle = false,
+    bool? slidingCentralHandle,
+    bool? slidingSecondCentralHandle,
     this.disabledVerticalDivisions = const {},
     this.disabledHorizontalDivisions = const {},
     this.primaryDivisionAxis,
@@ -1337,8 +1337,18 @@ class WindowZone {
   }) : slidingFaceToFace =
            slidingFaceToFace ??
            (slidingSashesCount >= 4 &&
-               slidingTrackCount == 2 &&
+               (slidingTrackCount == 2 || slidingTrackCount == 0) &&
                slidingSashesCount % 2 == 0),
+       slidingCentralHandle = slidingCentralHandle ??
+           (slidingFaceToFace ??
+               (slidingSashesCount >= 4 &&
+                   (slidingTrackCount == 2 || slidingTrackCount == 0) &&
+                   slidingSashesCount % 2 == 0)),
+       slidingSecondCentralHandle = slidingSecondCentralHandle ??
+           (slidingFaceToFace ??
+               (slidingSashesCount >= 4 &&
+                   (slidingTrackCount == 2 || slidingTrackCount == 0) &&
+                   slidingSashesCount % 2 == 0)),
        glass = glass ?? globalDefaultGlass,
        cellGlassSpec = cellGlassSpec ?? const {},
        slidingMontantReinforced = Map<String, bool>.from(

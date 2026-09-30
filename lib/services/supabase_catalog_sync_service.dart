@@ -276,9 +276,11 @@ class SupabaseCatalogSyncService {
     final task = _performDownload(allowMissing: allowMissing);
     _activeDownload = task;
     unawaited(
-      task.whenComplete(() {
-        if (identical(_activeDownload, task)) _activeDownload = null;
-      }),
+      task
+          .whenComplete(() {
+            if (identical(_activeDownload, task)) _activeDownload = null;
+          })
+          .catchError((_) {}),
     );
     return task;
   }

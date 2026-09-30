@@ -2412,7 +2412,10 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                   : () async {
                       final id = asId(item['id']);
                       if (id == null) return;
-                      final deduction = _parseRuleNumber(deductionCtrl.text);
+                      final rawDeduction = deductionCtrl.text.trim();
+                      final deduction = rawDeduction.isEmpty
+                          ? 0.0
+                          : _parseRuleNumber(rawDeduction);
                       if (deduction == null) {
                         setDialogState(() => deductionError = _t('أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا'));
                         return;
@@ -2421,45 +2424,50 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         deductionError = null;
                         saving = true;
                       });
-                      await widget.db.updateAccessory(id, {
-                        'gache_accessory_id': gacheId,
-                        'gache_count': int.tryParse(gacheCountCtrl.text) ?? 0,
-                        'screw_accessory_id': screwId,
-                        'triangle_deduction_mm': deduction < 0
-                            ? 0.0
-                            : deduction,
-                        'triangle_position_mode': isCremoneRule
-                            ? 'center'
-                            : trianglePositionMode,
-                        'triangle_position_mm': isCremoneRule
-                            ? 0.0
-                            : _parseRuleNumber(trianglePositionCtrl.text) ?? 0.0,
-                        'triangle_link_mode': isCremoneRule
-                            ? 'required'
-                            : triangleLinkMode,
-                        'triangle_quantity': isCremoneRule
-                            ? 1
-                            : (int.tryParse(triangleQtyCtrl.text) ?? 1).clamp(
-                                1,
-                                20,
-                              ),
-                      });
-                      await widget.db.setAccessoryDefault(id, isDefault);
-                      unawaited(() async {
-                        try {
-                          final sync = SupabaseWorkshopSyncService();
-                          if (sync.isReady || await sync.ensureStarted()) {
-                            final config = await widget.db.exportWorkshopCatalogConfiguration();
-                            if (config.isNotEmpty) {
-                              await sync.saveWorkshopCatalogConfiguration(config);
+                      try {
+                        await widget.db.updateAccessory(id, {
+                          'gache_accessory_id': gacheId,
+                          'gache_count': int.tryParse(gacheCountCtrl.text) ?? 0,
+                          'screw_accessory_id': screwId,
+                          'triangle_deduction_mm': deduction < 0 ? 0.0 : deduction,
+                          'triangle_position_mode': trianglePositionMode,
+                          'triangle_position_mm': _parseRuleNumber(trianglePositionCtrl.text) ?? 0.0,
+                          'triangle_link_mode': triangleLinkMode,
+                          'triangle_quantity': (int.tryParse(triangleQtyCtrl.text) ?? 1).clamp(
+                            1,
+                            20,
+                          ),
+                        });
+                        await widget.db.setAccessoryDefault(id, isDefault);
+                        unawaited(() async {
+                          try {
+                            final sync = SupabaseWorkshopSyncService();
+                            if (sync.isReady || await sync.ensureStarted()) {
+                              final config = await widget.db.exportWorkshopCatalogConfiguration();
+                              if (config.isNotEmpty) {
+                                await sync.saveWorkshopCatalogConfiguration(config);
+                              }
                             }
+                          } catch (e) {
+                            debugPrint('Error uploading workshop catalog configuration: $e');
                           }
-                        } catch (e) {
-                          debugPrint('Error uploading workshop catalog configuration: ');
+                        }());
+                        await _loadItems();
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_t('تم حفظ قواعد الأكسسوار بنجاح')),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
                         }
-                      }());
-                      await _loadItems();
-                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      } catch (e) {
+                        setDialogState(() {
+                          saving = false;
+                          deductionError = '${_t('خطأ أثناء الحفظ')}: $e';
+                        });
+                      }
                     },
               child: Text(_t('حفظ')),
             ),

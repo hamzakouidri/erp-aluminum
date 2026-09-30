@@ -894,5 +894,77 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'Un dormant avec couvre-joint intégré ne peut être monté sur un angle 90° ; le système adapte automatiquement un dormant sans couvre-joint de même largeur apparente.',
     AppLanguage.english: 'Frames with integrated cover cannot join at a 90° corner; the system automatically switches to a matching frame without cover and equal visible width.',
   },
+
+  // ── 7. ترجمات أسئلة المحذوفات ومونتو سليم ومدى الحياة وتخصيص البروفيل ──
+  'استعادة الفاتورة': {
+    AppLanguage.arabic: 'استعادة الفاتورة',
+    AppLanguage.french: 'Restaurer la facture',
+    AppLanguage.english: 'Restore invoice',
+  },
+  'هل ترغب في استعادة فاتورة الشراء هذه؟': {
+    AppLanguage.arabic: 'هل ترغب في استعادة فاتورة الشراء هذه؟',
+    AppLanguage.french: 'Voulez-vous restaurer cette facture d\'achat ?',
+    AppLanguage.english: 'Do you want to restore this purchase invoice?',
+  },
+  'هل أنت متأكد من الحذف النهائي لفاتورة الشراء؟ لا يمكن التراجع عن هذا الإجراء.': {
+    AppLanguage.arabic: 'هل أنت متأكد من الحذف النهائي لفاتورة الشراء؟ لا يمكن التراجع عن هذا الإجراء.',
+    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer définitivement cette facture d\'achat ? Cette action est irréversible.',
+    AppLanguage.english: 'Are you sure you want to permanently delete this purchase invoice? This action cannot be undone.',
+  },
+  'هل أنت متأكد من تفريغ سلة فواتير الشراء نهائياً؟': {
+    AppLanguage.arabic: 'هل أنت متأكد من تفريغ سلة فواتير الشراء نهائياً؟',
+    AppLanguage.french: 'Êtes-vous sûr de vider définitivement la corbeille des achats ?',
+    AppLanguage.english: 'Are you sure you want to permanently empty the purchase trash?',
+  },
+  'مونتو سليم': {
+    AppLanguage.arabic: 'مونتو سليم',
+    AppLanguage.french: 'Montant Slim',
+    AppLanguage.english: 'Slim Montant',
+  },
+  'مونتوسليم (Montant Slim)': {
+    AppLanguage.arabic: 'مونتو سليم (Montant Slim)',
+    AppLanguage.french: 'Montant Slim',
+    AppLanguage.english: 'Slim Montant',
+  },
+  'المونتوسليم (Montant Slim):': {
+    AppLanguage.arabic: 'المونتو سليم (Montant Slim):',
+    AppLanguage.french: 'Montant Slim :',
+    AppLanguage.english: 'Slim Montant:',
+  },
+  'قائم وسطي سليم (Montant Slim)': {
+    AppLanguage.arabic: 'قائم وسطي سليم (Montant Slim)',
+    AppLanguage.french: 'Montant central slim',
+    AppLanguage.english: 'Slim central montant',
+  },
+  'مدى الحياة': {
+    AppLanguage.arabic: 'مدى الحياة',
+    AppLanguage.french: 'À vie',
+    AppLanguage.english: 'Lifetime',
+  },
+  'اشتراك مدى الحياة': {
+    AppLanguage.arabic: 'اشتراك مدى الحياة',
+    AppLanguage.french: 'Abonnement à vie',
+    AppLanguage.english: 'Lifetime subscription',
+  },
+  'غير محدود (مدى الحياة)': {
+    AppLanguage.arabic: 'غير محدود (مدى الحياة)',
+    AppLanguage.french: 'Illimité (À vie)',
+    AppLanguage.english: 'Unlimited (Lifetime)',
+  },
+  'تخصيص البروفيل': {
+    AppLanguage.arabic: 'تخصيص البروفيل',
+    AppLanguage.french: 'Personnalisation du profil',
+    AppLanguage.english: 'Profile customization',
+  },
+  'تم حفظ قواعد الأكسسوار بنجاح': {
+    AppLanguage.arabic: 'تم حفظ قواعد الأكسسوار بنجاح',
+    AppLanguage.french: 'Règles d\'accessoire enregistrées avec succès',
+    AppLanguage.english: 'Accessory rules saved successfully',
+  },
+  'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا': {
+    AppLanguage.arabic: 'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا',
+    AppLanguage.french: 'Entrez un nombre valide supérieur ou égal à zéro',
+    AppLanguage.english: 'Enter a valid number greater than or equal to zero',
+  },
 };
 

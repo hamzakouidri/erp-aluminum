@@ -12,11 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 enum AuthBackend { supabase, firebase }
 
 class AppAuthUser {
-  const AppAuthUser({
-    required this.uid,
-    required this.email,
-    this.displayName,
-  });
+  const AppAuthUser({required this.uid, required this.email, this.displayName});
 
   final String uid;
   final String? email;
@@ -38,6 +34,7 @@ class AppAuthService {
 
   static final AppAuthService _instance = AppAuthService._();
   Stream<AppAuthUser?>? _cachedAuthStateChanges;
+  AppAuthUser? _lastKnownUser;
 
   factory AppAuthService() => _instance;
 
@@ -53,7 +50,12 @@ class AppAuthService {
 
   AppAuthUser? get currentUser {
     if (usesSupabase) {
-      return _fromSupabaseUser(_supabaseAuth.currentUser);
+      final user = _fromSupabaseUser(_supabaseAuth.currentUser);
+      if (user != null) {
+        _lastKnownUser = user;
+        return user;
+      }
+      return _lastKnownUser;
     }
     return _fromFirebaseUser(_firebaseAuth.currentUser);
   }
@@ -63,9 +65,18 @@ class AppAuthService {
     // MyApp rebuild can make StreamBuilder unsubscribe during a Windows
     // sign-out and miss the signed-out event, leaving the desktop frame stuck.
     return _cachedAuthStateChanges ??= usesSupabase
-        ? _supabaseAuth.onAuthStateChange.map(
-            (state) => _fromSupabaseUser(state.session?.user),
-          )
+        ? _supabaseAuth.onAuthStateChange.map((state) {
+            if (state.event == supabase.AuthChangeEvent.signedOut) {
+              _lastKnownUser = null;
+              return null;
+            }
+            final user = _fromSupabaseUser(state.session?.user);
+            if (user != null) {
+              _lastKnownUser = user;
+              return user;
+            }
+            return _lastKnownUser;
+          })
         : _firebaseAuth.authStateChanges().map(_fromFirebaseUser);
   }
 
@@ -268,6 +279,7 @@ class AppAuthService {
   }
 
   Future<void> signOut() async {
+    _lastKnownUser = null;
     if (usesSupabase) {
       // A global sign-out may wait on the network on Windows. The local
       // session is the one that controls this app's auth gate, so clear it

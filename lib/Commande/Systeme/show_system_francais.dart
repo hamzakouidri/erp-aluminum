@@ -2784,6 +2784,19 @@ class _WindowViewState extends State<WindowView> {
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
+                                    onChanged: (val) {
+                                      final entered = double.tryParse(val.replaceAll(',', '.').trim());
+                                      if (entered != null && entered > 0) {
+                                        final remaining = widget.model.width - entered;
+                                        final otherIndices = List.generate(divisionCount, (idx) => idx)..remove(i);
+                                        if (otherIndices.isNotEmpty && remaining > 0) {
+                                          final share = (remaining / otherIndices.length).toStringAsFixed(1);
+                                          for (final otherIdx in otherIndices) {
+                                            divisionControllers[otherIdx].text = share;
+                                          }
+                                        }
+                                      }
+                                    },
                                     decoration: InputDecoration(
                                       labelText: Localization.translate(
                                         'العرض',

@@ -5441,7 +5441,7 @@ class WindowPainter extends CustomPainter {
       final centralRightSash = getSashRect(meetingRightIndex);
 
       // Handle on left middle leaf (faces right towards meeting center)
-      if (zone.slidingCentralHandle) {
+      if (zone.slidingCentralHandle || zone.slidingFaceToFace) {
         _drawWindowDrawHandle(
           canvas,
           centralLeftSash,
@@ -6345,6 +6345,13 @@ class WindowPainter extends CustomPainter {
     );
 
     for (var cell in mergedCells) {
+      final isCellSash = (zone.cellIsSash[cell.key] ?? false) ||
+          (zone.cellIsDoubleSash[cell.key] ?? false) ||
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash ||
+          zone.content == ZoneContent.slidingSash;
+      if (isCellSash) continue;
+
       if (cols > 1 || cell.wSpan > 1) {
         final cellW = cell.rect.width;
         final widthText = TextPainter(
@@ -7832,7 +7839,7 @@ class WindowPainter extends CustomPainter {
       final splitLeft = split.leftOffset;
       final splitW = split.width;
       final splitRight = splitLeft + splitW;
-      final effectiveH = split.customHeight != null ? math.min(h, split.customHeight!) : h;
+      final effectiveH = split.customHeight ?? h;
       final double coulisseHeight = effectiveH - boxSize;
       if (coulisseHeight <= 0) continue;
 

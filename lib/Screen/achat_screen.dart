@@ -1321,20 +1321,31 @@ class _AchatScreenState extends State<AchatScreen>
                         content: Text(
                           Localization.translate(
                             'تم نقل الفاتورة إلى سلة المهملات',
-                            Provider.of<AppSettingsProvider>(context, listen: false).language,
+                            Provider.of<AppSettingsProvider>(
+                              context,
+                              listen: false,
+                            ).language,
                           ),
                           style: const TextStyle(fontFamily: 'Cairo'),
                         ),
+                        duration: const Duration(milliseconds: 2500),
+                        showCloseIcon: true,
+                        closeIconColor: Colors.white70,
+                        dismissDirection: DismissDirection.horizontal,
                         action: SnackBarAction(
                           label: Localization.translate('استرجاع', lang),
                           textColor: Colors.amberAccent,
                           onPressed: () async {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
                             await widget.db.restoreAchat(id);
                             _refreshList();
                           },
                         ),
                         backgroundColor: Colors.black87,
                         behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     );
                   }
@@ -1344,7 +1355,10 @@ class _AchatScreenState extends State<AchatScreen>
                     'نقل إلى السلة',
                     Provider.of<AppSettingsProvider>(context).language,
                   ),
-                  style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],

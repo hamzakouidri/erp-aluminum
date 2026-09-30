@@ -4342,7 +4342,12 @@ class ComponentCalculator {
                 ) ?? window.getSlidingSectionByType('face_to_face'))
               : null;
           final bool hasMeetingInCenter =
-              zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
+              (zone.slidingFaceToFace ||
+                  (sashes >= 4 &&
+                      (zone.slidingTrackCount == 2 || zone.slidingTrackCount == 0) &&
+                      sashes % 2 == 0)) &&
+              sashes >= 4 &&
+              sashes % 2 == 0;
           final faceEnabled = hasMeetingInCenter && faceSection != null;
           if (faceEnabled && sashes >= 4) {
             final faceCount = 1;

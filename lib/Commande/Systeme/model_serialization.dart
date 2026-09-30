@@ -410,12 +410,18 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
         map['doubleSashHasTwoHandles'] == true ||
         map['doubleSashHasTwoHandles'] == 1,
     slidingFaceToFace:
-        map['slidingFaceToFace'] == true || map['slidingFaceToFace'] == 1,
+        map.containsKey('slidingFaceToFace')
+            ? (map['slidingFaceToFace'] == true || map['slidingFaceToFace'] == 1)
+            : null,
     slidingCentralHandle:
-        map['slidingCentralHandle'] == true || map['slidingCentralHandle'] == 1,
+        map.containsKey('slidingCentralHandle')
+            ? (map['slidingCentralHandle'] == true || map['slidingCentralHandle'] == 1)
+            : null,
     slidingSecondCentralHandle:
-        map['slidingSecondCentralHandle'] == true ||
-        map['slidingSecondCentralHandle'] == 1,
+        map.containsKey('slidingSecondCentralHandle')
+            ? (map['slidingSecondCentralHandle'] == true ||
+                map['slidingSecondCentralHandle'] == 1)
+            : null,
     innerH: map['innerH'] ?? 0,
     innerV: map['innerV'] ?? 0,
     slidingSashesCount: map['slidingSashesCount'] ?? 2,

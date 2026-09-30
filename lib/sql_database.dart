@@ -433,7 +433,7 @@ class SqlDatabase {
         // FFI/web require their own options implementation. SQLCipher's
         // similarly named options fail the factory's runtime type cast.
         options: sqflite_common.OpenDatabaseOptions(
-          version: 68,
+          version: 69,
           onConfigure: (db) async {
             // This PRAGMA returns a row, including when setting its value.
             // Android SQLCipher rejects it through execute/executeSql.
@@ -449,7 +449,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 68,
+      version: 69,
       password: password,
       onConfigure: (db) async {
         // Android SQLCipher requires the query API for row-returning PRAGMAs.
@@ -514,6 +514,7 @@ class SqlDatabase {
       await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
     } catch (_) {}
     await _ensureDeliveriesLoadedColumn(db);
+    await _ensureAccessoryRulesColumns(db);
     try {
       // A purchase invoice can contain several glass rows with the same
       // catalogue id when their measurements or glazing composition differ.
@@ -3178,6 +3179,9 @@ class SqlDatabase {
         );
       } catch (_) {}
     }
+    if (oldVersion < 69) {
+      await _ensureAccessoryRulesColumns(db);
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -5432,6 +5436,7 @@ class SqlDatabase {
       {
         'instances_json': instancesJson,
         'confirmed_mesures_json': confirmedJson,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [detailId],
@@ -9193,6 +9198,27 @@ class SqlDatabase {
     } catch (_) {}
   }
 
+  Future<void> _ensureAccessoryRulesColumns(Database db) async {
+    for (final statement in const [
+      'ALTER TABLE Accessories ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE Accessories ADD COLUMN screw_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE Accessories ADD COLUMN screw_accessory_id INTEGER',
+      'ALTER TABLE Accessories ADD COLUMN gache_accessory_id INTEGER',
+      'ALTER TABLE Accessories ADD COLUMN gache_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE Accessories ADD COLUMN linked_accessory_id INTEGER',
+      'ALTER TABLE Accessories ADD COLUMN linked_accessory_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE Accessories ADD COLUMN triangle_deduction_mm REAL NOT NULL DEFAULT 0.0',
+      "ALTER TABLE Accessories ADD COLUMN triangle_position_mode TEXT NOT NULL DEFAULT 'center'",
+      'ALTER TABLE Accessories ADD COLUMN triangle_position_mm REAL NOT NULL DEFAULT 0.0',
+      "ALTER TABLE Accessories ADD COLUMN triangle_link_mode TEXT NOT NULL DEFAULT 'none'",
+      'ALTER TABLE Accessories ADD COLUMN triangle_quantity INTEGER NOT NULL DEFAULT 1',
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
+  }
+
   Future<int> insertCommandeDelivery(
     int idCommande,
     int clientId,
@@ -10793,40 +10819,28 @@ class SqlDatabase {
     bool includeInactive = false,
   }) async {
     Database? myDb = await db;
-    // Some installations skipped the historical version that introduced
-    // accessory-to-accessory relations. The rules screen writes these fields
-    // directly, so guarantee the schema before it can render an editor.
-    for (final statement in const [
-      'ALTER TABLE Accessories ADD COLUMN screw_count INTEGER NOT NULL DEFAULT 0',
-      'ALTER TABLE Accessories ADD COLUMN screw_accessory_id INTEGER',
-      'ALTER TABLE Accessories ADD COLUMN gache_accessory_id INTEGER',
-      'ALTER TABLE Accessories ADD COLUMN gache_count INTEGER NOT NULL DEFAULT 0',
-      'ALTER TABLE Accessories ADD COLUMN linked_accessory_id INTEGER',
-      'ALTER TABLE Accessories ADD COLUMN linked_accessory_count INTEGER NOT NULL DEFAULT 0',
-    ]) {
+    if (myDb != null) {
+      await _ensureAccessoryRulesColumns(myDb);
+      await _ensureAccessoryLinksSchema(myDb);
       try {
-        await myDb!.execute(statement);
+        await myDb.execute(
+          "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
+        );
+      } catch (_) {}
+      try {
+        await myDb.execute(
+          "UPDATE Accessories SET is_active = 1 WHERE is_active IS NULL;",
+        );
       } catch (_) {}
     }
-    await _ensureAccessoryLinksSchema(myDb!);
     try {
-      await myDb.execute(
-        "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
-      );
-    } catch (_) {}
-    try {
-      await myDb.execute(
-        "UPDATE Accessories SET is_active = 1 WHERE is_active IS NULL;",
-      );
-    } catch (_) {}
-    try {
-      return await myDb.query(
+      return await myDb!.query(
         'Accessories',
         where: includeInactive ? null : 'is_active = 1 OR is_active IS NULL',
       );
     } catch (_) {
       try {
-        return await myDb.query('Accessories');
+        return await myDb!.query('Accessories');
       } catch (e) {
         return [];
       }
@@ -10835,6 +10849,9 @@ class SqlDatabase {
 
   Future<int> insertAccessory(Map<String, dynamic> data) async {
     Database? myDb = await db;
+    if (myDb != null) {
+      await _ensureAccessoryRulesColumns(myDb);
+    }
     if (!data.containsKey('screw_count')) data['screw_count'] = 0;
     var res = await myDb!.insert('Accessories', data);
     CloudSyncService().notifyCatalogChange();
@@ -10843,6 +10860,9 @@ class SqlDatabase {
 
   Future<int> updateAccessory(int id, Map<String, dynamic> data) async {
     Database? myDb = await db;
+    if (myDb != null) {
+      await _ensureAccessoryRulesColumns(myDb);
+    }
     var res = await myDb!.update(
       'Accessories',
       data,

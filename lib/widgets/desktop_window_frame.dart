@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
@@ -85,17 +86,21 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
   Future<void> _readWindowState() async {
     try {
+      final bounds = await windowManager.getBounds();
       final isMax = await windowManager.isMaximized();
-      if (mounted && _isMaximized != isMax) {
-        setState(() => _isMaximized = isMax);
+      final effectivelyMax = isMax && (bounds.width >= 1400 || bounds.height >= 900);
+      if (mounted && _isMaximized != effectivelyMax) {
+        setState(() => _isMaximized = effectivelyMax);
       }
     } catch (_) {}
   }
 
   Future<void> _toggleMaximize() async {
     try {
+      final bounds = await windowManager.getBounds();
       final isMax = await windowManager.isMaximized();
-      if (isMax) {
+      final effectivelyMax = isMax && (bounds.width >= 1400 || bounds.height >= 900);
+      if (effectivelyMax) {
         await windowManager.unmaximize();
         if (mounted) setState(() => _isMaximized = false);
       } else {
@@ -105,6 +110,13 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     } catch (e) {
       debugPrint('Error toggling maximize: $e');
     }
+  }
+
+  Future<void> _closeApp() async {
+    try {
+      await windowManager.close();
+    } catch (_) {}
+    exit(0);
   }
 
   @override
@@ -214,7 +226,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                   size: 17,
                   color: hovered ? Colors.white : const Color(0xFFDC2626),
                 ),
-                onPressed: () => windowManager.close(),
+                onPressed: _closeApp,
               ),
             ],
           ),

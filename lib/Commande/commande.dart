@@ -350,8 +350,10 @@ class _CommandeState extends State<Commande> {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final usesWorkspace = isWindows || settings.viewMode != AppViewMode.classic;
     if (usesWorkspace) {
-      final workspace =
-          Provider.of<WorkspaceController>(context, listen: false);
+      final workspace = Provider.of<WorkspaceController>(
+        context,
+        listen: false,
+      );
       workspace.open(
         entryId: entryId,
         title: title,
@@ -359,9 +361,10 @@ class _CommandeState extends State<Commande> {
         content: content,
       );
     } else {
-      Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(builder: (_) => content),
-      );
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).push(MaterialPageRoute(builder: (_) => content));
     }
   }
 
@@ -708,10 +711,8 @@ class _CommandeState extends State<Commande> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => TrashScreen(
-                    db: db,
-                    onOrderRestored: _fetchCommandes,
-                  ),
+                  builder: (_) =>
+                      TrashScreen(db: db, onOrderRestored: _fetchCommandes),
                 ),
               ).then((_) {
                 if (mounted) _fetchCommandes();
@@ -1245,11 +1246,15 @@ class _CommandeState extends State<Commande> {
                                       Builder(
                                         builder: (ctx) {
                                           final isStockReserved =
-                                              (data[index]['is_stock_reserved'] as num?)?.toInt() == 1;
-                                          final lang = Provider.of<AppSettingsProvider>(
-                                            ctx,
-                                            listen: false,
-                                          ).language;
+                                              (data[index]['is_stock_reserved']
+                                                      as num?)
+                                                  ?.toInt() ==
+                                              1;
+                                          final lang =
+                                              Provider.of<AppSettingsProvider>(
+                                                ctx,
+                                                listen: false,
+                                              ).language;
                                           return Container(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 7,
@@ -1257,9 +1262,14 @@ class _CommandeState extends State<Commande> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: isStockReserved
-                                                  ? Colors.green.withValues(alpha: 0.15)
-                                                  : Colors.grey.withValues(alpha: 0.12),
-                                              borderRadius: BorderRadius.circular(12),
+                                                  ? Colors.green.withValues(
+                                                      alpha: 0.15,
+                                                    )
+                                                  : Colors.grey.withValues(
+                                                      alpha: 0.12,
+                                                    ),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                               border: Border.all(
                                                 color: isStockReserved
                                                     ? Colors.green.shade600
@@ -1273,7 +1283,8 @@ class _CommandeState extends State<Commande> {
                                                 Icon(
                                                   isStockReserved
                                                       ? Icons.check_circle
-                                                      : Icons.inventory_2_outlined,
+                                                      : Icons
+                                                            .inventory_2_outlined,
                                                   size: 11,
                                                   color: isStockReserved
                                                       ? Colors.green.shade800
@@ -1282,8 +1293,14 @@ class _CommandeState extends State<Commande> {
                                                 const SizedBox(width: 3),
                                                 Text(
                                                   isStockReserved
-                                                      ? Localization.translate('تم الحجز', lang)
-                                                      : Localization.translate('لم يُحجز بعد', lang),
+                                                      ? Localization.translate(
+                                                          'تم الحجز',
+                                                          lang,
+                                                        )
+                                                      : Localization.translate(
+                                                          'لم يُحجز بعد',
+                                                          lang,
+                                                        ),
                                                   style: TextStyle(
                                                     color: isStockReserved
                                                         ? Colors.green.shade900
@@ -1329,17 +1346,16 @@ class _CommandeState extends State<Commande> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: _getStatusColor(status),
-                                              borderRadius: BorderRadius.circular(
-                                                20,
-                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
                                             ),
                                             child: Text(
                                               _translateStatus(
                                                 status,
-                                                Provider.of<AppSettingsProvider>(
-                                                  context,
-                                                  listen: false,
-                                                ).language,
+                                                Provider.of<
+                                                      AppSettingsProvider
+                                                    >(context, listen: false)
+                                                    .language,
                                               ),
                                               style: const TextStyle(
                                                 color: Colors.white,
@@ -1351,21 +1367,31 @@ class _CommandeState extends State<Commande> {
                                           Builder(
                                             builder: (ctx) {
                                               final isStockReserved =
-                                                  (data[index]['is_stock_reserved'] as num?)?.toInt() == 1;
-                                              final lang = Provider.of<AppSettingsProvider>(
-                                                ctx,
-                                                listen: false,
-                                              ).language;
+                                                  (data[index]['is_stock_reserved']
+                                                          as num?)
+                                                      ?.toInt() ==
+                                                  1;
+                                              final lang =
+                                                  Provider.of<
+                                                        AppSettingsProvider
+                                                      >(ctx, listen: false)
+                                                      .language;
                                               return Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 6,
-                                                  vertical: 2.5,
-                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2.5,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: isStockReserved
-                                                      ? Colors.green.withValues(alpha: 0.15)
-                                                      : Colors.grey.withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(12),
+                                                      ? Colors.green.withValues(
+                                                          alpha: 0.15,
+                                                        )
+                                                      : Colors.grey.withValues(
+                                                          alpha: 0.12,
+                                                        ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
                                                   border: Border.all(
                                                     color: isStockReserved
                                                         ? Colors.green.shade600
@@ -1374,28 +1400,45 @@ class _CommandeState extends State<Commande> {
                                                   ),
                                                 ),
                                                 child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
                                                   children: [
                                                     Icon(
                                                       isStockReserved
                                                           ? Icons.check_circle
-                                                          : Icons.inventory_2_outlined,
+                                                          : Icons
+                                                                .inventory_2_outlined,
                                                       size: 11,
                                                       color: isStockReserved
-                                                          ? Colors.green.shade800
-                                                          : Colors.grey.shade600,
+                                                          ? Colors
+                                                                .green
+                                                                .shade800
+                                                          : Colors
+                                                                .grey
+                                                                .shade600,
                                                     ),
                                                     const SizedBox(width: 3),
                                                     Text(
                                                       isStockReserved
-                                                          ? Localization.translate('تم الحجز', lang)
-                                                          : Localization.translate('لم يُحجز بعد', lang),
+                                                          ? Localization.translate(
+                                                              'تم الحجز',
+                                                              lang,
+                                                            )
+                                                          : Localization.translate(
+                                                              'لم يُحجز بعد',
+                                                              lang,
+                                                            ),
                                                       style: TextStyle(
                                                         color: isStockReserved
-                                                            ? Colors.green.shade900
-                                                            : Colors.grey.shade700,
+                                                            ? Colors
+                                                                  .green
+                                                                  .shade900
+                                                            : Colors
+                                                                  .grey
+                                                                  .shade700,
                                                         fontSize: 10,
-                                                        fontWeight: FontWeight.bold,
+                                                        fontWeight:
+                                                            FontWeight.bold,
                                                       ),
                                                     ),
                                                   ],
@@ -1644,12 +1687,13 @@ class _CommandeState extends State<Commande> {
                         documentTitleKey: 'doc_devis',
                       ).timeout(const Duration(seconds: 10));
                       _dismissHeavyLoadingDialog();
-                      if (!mounted) return;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DevisPreviewScreen(data: devis),
-                        ),
+                      final orderId = orderData['id']?.toString() ?? '';
+                      _openInWorkspaceTab(
+                        entryId: 'devis_$orderId',
+                        title:
+                            '${Localization.translate('Devis', lang)} #$orderId',
+                        icon: Icons.description_outlined,
+                        content: DevisPreviewScreen(data: devis),
                       );
                     } catch (e) {
                       _dismissHeavyLoadingDialog();
@@ -1734,13 +1778,13 @@ class _CommandeState extends State<Commande> {
                           isProForma: true,
                         );
                         _dismissHeavyLoadingDialog();
-                        if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DevisPreviewScreen(data: devis),
-                          ),
+                        final orderId = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'proforma_$orderId',
+                          title:
+                              '${Localization.translate('Facture Proforma', lang)} #$orderId',
+                          icon: Icons.receipt_long_outlined,
+                          content: DevisPreviewScreen(data: devis),
                         );
                       } catch (e) {
                         _dismissHeavyLoadingDialog();
@@ -1789,13 +1833,13 @@ class _CommandeState extends State<Commande> {
                           documentTitleKey: 'FACTURE_VENTE',
                         );
                         _dismissHeavyLoadingDialog();
-                        if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DevisPreviewScreen(data: devis),
-                          ),
+                        final orderId = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'facture_$orderId',
+                          title:
+                              '${lang == AppLanguage.french ? 'Facture de Vente' : 'فاتورة بيع'} #$orderId',
+                          icon: Icons.receipt_rounded,
+                          content: DevisPreviewScreen(data: devis),
                         );
                       } catch (e) {
                         _dismissHeavyLoadingDialog();
@@ -1844,13 +1888,13 @@ class _CommandeState extends State<Commande> {
                           documentTitleKey: 'BON_ROUTE',
                         );
                         _dismissHeavyLoadingDialog();
-                        if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DevisPreviewScreen(data: devis),
-                          ),
+                        final orderId = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'bon_route_$orderId',
+                          title:
+                              '${lang == AppLanguage.french ? 'Bon de Route' : 'بون دو روت'} #$orderId',
+                          icon: Icons.directions_car_outlined,
+                          content: DevisPreviewScreen(data: devis),
                         );
                       } catch (e) {
                         _dismissHeavyLoadingDialog();
@@ -1949,13 +1993,13 @@ class _CommandeState extends State<Commande> {
                           documentTitleKey: 'doc_bon_livraison',
                         );
                         _dismissHeavyLoadingDialog();
-                        if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DevisPreviewScreen(data: devis),
-                          ),
+                        final orderId = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'bon_livraison_$orderId',
+                          title:
+                              '${Localization.translate('doc_bon_livraison', lang)} #$orderId',
+                          icon: Icons.local_shipping_outlined,
+                          content: DevisPreviewScreen(data: devis),
                         );
                       } catch (e) {
                         _dismissHeavyLoadingDialog();
@@ -2060,13 +2104,13 @@ class _CommandeState extends State<Commande> {
                           documentTitleKey: 'doc_bon_livraison_sans_prix',
                         );
                         _dismissHeavyLoadingDialog();
-                        if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DevisPreviewScreen(data: devis),
-                          ),
+                        final orderId = orderData['id']?.toString() ?? '';
+                        _openInWorkspaceTab(
+                          entryId: 'bon_livraison_sans_prix_$orderId',
+                          title:
+                              '${Localization.translate('doc_bon_livraison_sans_prix', lang)} #$orderId',
+                          icon: Icons.print_disabled,
+                          content: DevisPreviewScreen(data: devis),
                         );
                       } catch (e) {
                         _dismissHeavyLoadingDialog();
@@ -2512,16 +2556,19 @@ class _CommandeState extends State<Commande> {
                               documentTitleKey: 'BON_CHARGE',
                             );
                             _dismissHeavyLoadingDialog();
-                            if (!mounted) return;
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => DevisPreviewScreen(
-                                  data: devis,
-                                  deliveryId: selectedResult['id'] as int?,
-                                  initialIsLoaded:
-                                      (selectedResult['is_loaded'] == 1),
-                                ),
+                            final orderId = orderData['id']?.toString() ?? '';
+                            final delId =
+                                selectedResult['id']?.toString() ?? '';
+                            _openInWorkspaceTab(
+                              entryId: 'delivery_${orderId}_$delId',
+                              title:
+                                  '${Localization.translate('BON_CHARGE', lang)} #$orderId',
+                              icon: Icons.local_shipping_outlined,
+                              content: DevisPreviewScreen(
+                                data: devis,
+                                deliveryId: selectedResult['id'] as int?,
+                                initialIsLoaded:
+                                    (selectedResult['is_loaded'] == 1),
                               ),
                             );
                           } catch (e) {
@@ -2642,7 +2689,10 @@ class _CommandeState extends State<Commande> {
 
                 // 2. Fiche de Coupe
                 ListTile(
-                  leading: const Icon(Icons.architecture_rounded, color: Colors.indigo),
+                  leading: const Icon(
+                    Icons.architecture_rounded,
+                    color: Colors.indigo,
+                  ),
                   title: Text(
                     Localization.translate(
                       'تحسين القص (Optimisation de Coupe)',
@@ -3555,13 +3605,24 @@ class _CommandeState extends State<Commande> {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
-              content: Text(_t('order_moved_to_trash')),
-              backgroundColor: Colors.blueGrey[800],
-              duration: const Duration(seconds: 5),
+              content: Text(
+                _t('order_moved_to_trash'),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              backgroundColor: Colors.blueGrey[900],
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              duration: const Duration(milliseconds: 2500),
+              dismissDirection: DismissDirection.horizontal,
+              showCloseIcon: true,
+              closeIconColor: Colors.white70,
               action: SnackBarAction(
                 label: _t('undo'),
                 textColor: Colors.amber,
                 onPressed: () async {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   await db.restoreCommande(id);
                   if (mounted) _fetchCommandes();
                 },
@@ -4634,11 +4695,11 @@ class _CommandeState extends State<Commande> {
                     Text(
                       isStockReserved
                           ? (lang == AppLanguage.french
-                              ? 'Réservé'
-                              : Localization.translate('تم الحجز', lang))
+                                ? 'Réservé'
+                                : Localization.translate('تم الحجز', lang))
                           : (lang == AppLanguage.french
-                              ? 'Non réservé'
-                              : Localization.translate('لم يُحجز بعد', lang)),
+                                ? 'Non réservé'
+                                : Localization.translate('لم يُحجز بعد', lang)),
                       style: TextStyle(
                         color: isStockReserved
                             ? Colors.green.shade900

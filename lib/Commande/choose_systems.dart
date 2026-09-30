@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
@@ -37,11 +38,21 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 
   int? _defaultOpeningSeriesId;
   int? _defaultSlidingSeriesId;
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _loadActiveModes();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) _loadActiveModes();
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _readLocalModes() async {
@@ -67,7 +78,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     await _readLocalModes();
     try {
       await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
-        const Duration(seconds: 4),
+        const Duration(seconds: 12),
         onTimeout: () {},
       );
       if (mounted) {

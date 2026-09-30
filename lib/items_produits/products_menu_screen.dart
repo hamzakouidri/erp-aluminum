@@ -54,7 +54,6 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
       _hasLoadedCloudCatalog = true;
     } catch (e) {
       debugPrint('Products menu cloud sync failed: $e');
-      rethrow;
     } finally {
       _catalogSyncFuture = null;
       if (mounted) {

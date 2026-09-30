@@ -567,19 +567,45 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
     if (userId == null || userId.isEmpty) return null;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('$_accountCachePrefix$userId');
+      final raw = prefs.getString('');
       if (raw != null && raw.isNotEmpty) {
         final map = jsonDecode(raw);
         if (map is Map && map['userId']?.toString() == userId) {
           return _accountFromMap(Map<String, dynamic>.from(map));
         }
       }
+
+      // Offline fallback: allow local access if the workshop code is cached
+      final workshopCode = prefs.getString('workshop_code') ?? '';
+      final role = prefs.getString('user_role') ?? 'worker';
+      final workshopName = prefs.getString('workshop_name') ?? '';
+      if (workshopCode.isNotEmpty) {
+        return SupabaseAccountSnapshot(
+          userId: userId,
+          email: AppAuthService().currentUser?.email ?? '',
+          role: role,
+          workshopId:
+              prefs.getString('cached_workshop_uuid') ??
+              prefs.getString('selected_supabase_workshop_id') ??
+              workshopCode,
+          workshopCode: workshopCode,
+          workshopName: workshopName,
+          permissions: const <String, dynamic>{},
+          blocked: false,
+          subscription: const <String, dynamic>{'status': 'active'},
+        );
+      }
     } catch (error) {
-      debugPrint('Cached Supabase account could not be read: $error');
+      debugPrint('Cached Supabase account could not be read: ');
     }
-    final account = await SupabaseAccountService().loadCurrentAccount();
-    if (account != null) await _cacheAccount(account);
-    return account;
+    try {
+      final account = await SupabaseAccountService().loadCurrentAccount();
+      if (account != null) await _cacheAccount(account);
+      return account;
+    } catch (e) {
+      debugPrint('SupabaseAccountService loadCurrentAccount offline error: ');
+      return null;
+    }
   }
 
   SupabaseAccountSnapshot _accountFromMap(Map<String, dynamic> map) {
@@ -664,28 +690,30 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
       _subscriptionChannel = Supabase.instance.client
           .channel('subscription_gate_$workshopId')
           .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'workshop_subscriptions',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'workshop_id',
-          value: workshopId,
-        ),
-        callback: (_) {
-          if (!mounted) return;
-          unawaited(
-            _refreshAccountInBackground().catchError((e) {
-              debugPrint('Realtime subscription refresh skipped: $e');
-            }),
-          );
-        },
-      )
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'workshop_subscriptions',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'workshop_id',
+              value: workshopId,
+            ),
+            callback: (_) {
+              if (!mounted) return;
+              unawaited(
+                _refreshAccountInBackground().catchError((e) {
+                  debugPrint('Realtime subscription refresh skipped: $e');
+                }),
+              );
+            },
+          )
           .subscribe((status, [error]) {
-        if (error != null) {
-          debugPrint('Subscription realtime status: $status, error: $error');
-        }
-      });
+            if (error != null) {
+              debugPrint(
+                'Subscription realtime status: $status, error: $error',
+              );
+            }
+          });
     } catch (error) {
       debugPrint('Subscription realtime setup skipped: $error');
     }
@@ -925,10 +953,14 @@ class _SyncGatewayState extends State<SyncGateway> {
       }
 
       final hasLocalBusinessData = await _hasLocalBusinessData(myDb);
-      final sameUser = currentUid.isNotEmpty && (activeUid.isEmpty || activeUid == currentUid);
-      final sameWorkshop = activeWorkshop.isEmpty ||
+      final sameUser =
+          currentUid.isNotEmpty &&
+          (activeUid.isEmpty || activeUid == currentUid);
+      final sameWorkshop =
+          activeWorkshop.isEmpty ||
           requestedWorkshop.isEmpty ||
-          activeWorkshop.trim().toLowerCase() == requestedWorkshop.trim().toLowerCase();
+          activeWorkshop.trim().toLowerCase() ==
+              requestedWorkshop.trim().toLowerCase();
 
       if (hasLocalBusinessData && sameUser && sameWorkshop) {
         await _preparePermissionsBeforeEnter();
