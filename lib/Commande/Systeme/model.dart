@@ -124,6 +124,8 @@ class ShutterSplitSection {
   final double? customHeight;
   final String label;
   final int? frameIndex;
+  final String? mechanism;
+  final String? driveSide;
 
   const ShutterSplitSection({
     required this.width,
@@ -131,6 +133,8 @@ class ShutterSplitSection {
     this.customHeight,
     this.label = '',
     this.frameIndex,
+    this.mechanism,
+    this.driveSide,
   });
 
   Map<String, dynamic> toMap() => {
@@ -139,15 +143,20 @@ class ShutterSplitSection {
     'customHeight': customHeight,
     'label': label,
     'frameIndex': frameIndex,
+    'mechanism': mechanism,
+    'driveSide': driveSide,
   };
 
-  factory ShutterSplitSection.fromMap(Map<String, dynamic> map) => ShutterSplitSection(
-    width: (map['width'] as num?)?.toDouble() ?? 0.0,
-    leftOffset: (map['leftOffset'] as num?)?.toDouble() ?? 0.0,
-    customHeight: (map['customHeight'] as num?)?.toDouble(),
-    label: map['label']?.toString() ?? '',
-    frameIndex: (map['frameIndex'] as num?)?.toInt(),
-  );
+  factory ShutterSplitSection.fromMap(Map<String, dynamic> map) =>
+      ShutterSplitSection(
+        width: (map['width'] as num?)?.toDouble() ?? 0.0,
+        leftOffset: (map['leftOffset'] as num?)?.toDouble() ?? 0.0,
+        customHeight: (map['customHeight'] as num?)?.toDouble(),
+        label: map['label']?.toString() ?? '',
+        frameIndex: (map['frameIndex'] as num?)?.toInt(),
+        mechanism: map['mechanism']?.toString(),
+        driveSide: map['driveSide']?.toString(),
+      );
 }
 
 /// Short codes saved in `KitBundles.description`. They are the stable source
@@ -1339,12 +1348,14 @@ class WindowZone {
            (slidingSashesCount >= 4 &&
                (slidingTrackCount == 2 || slidingTrackCount == 0) &&
                slidingSashesCount % 2 == 0),
-       slidingCentralHandle = slidingCentralHandle ??
+       slidingCentralHandle =
+           slidingCentralHandle ??
            (slidingFaceToFace ??
                (slidingSashesCount >= 4 &&
                    (slidingTrackCount == 2 || slidingTrackCount == 0) &&
                    slidingSashesCount % 2 == 0)),
-       slidingSecondCentralHandle = slidingSecondCentralHandle ??
+       slidingSecondCentralHandle =
+           slidingSecondCentralHandle ??
            (slidingFaceToFace ??
                (slidingSashesCount >= 4 &&
                    (slidingTrackCount == 2 || slidingTrackCount == 0) &&
@@ -3216,8 +3227,12 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    if (componentOverrides.containsKey('عمود تدعيم مستقل (Profilé de Renfort Rapporté)') ||
-        componentOverrides.containsKey('عمود مدعم مستقل (Profilé de Renfort Rapporté)')) {
+    if (componentOverrides.containsKey(
+          'عمود تدعيم مستقل (Profilé de Renfort Rapporté)',
+        ) ||
+        componentOverrides.containsKey(
+          'عمود مدعم مستقل (Profilé de Renfort Rapporté)',
+        )) {
       return ReinforcementMode.independentScrewed;
     }
     if (componentOverrides.containsKey('شيكان معزز (Chicane Renforcée)')) {
@@ -4398,9 +4413,7 @@ class WindowModel extends ChangeNotifier {
       zone.slidingMontantReinforced = Map<String, bool>.from(
         zone.slidingMontantReinforced,
       );
-      final sashes = zone.slidingSashesCount > 0
-          ? zone.slidingSashesCount
-          : 2;
+      final sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
       final bool hasMeetingInCenter =
           zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
       if (central) {
@@ -5201,8 +5214,10 @@ class WindowModel extends ChangeNotifier {
         ShutterSplitSection(
           width: width.toDouble(),
           leftOffset: 0.0,
-          customHeight: customShutterBoxHeight,
+          customHeight: null,
           label: 'صندوق موحد',
+          mechanism: shutterMechanism,
+          driveSide: shutterDriveSide,
         ),
       ];
     }
@@ -5225,6 +5240,8 @@ class WindowModel extends ChangeNotifier {
     final newSplits = <ShutterSplitSection>[];
     for (int i = 0; i < sortedFrames.length; i++) {
       final f = sortedFrames[i];
+      final previous = shutterSplits.where((split) => split.frameIndex == i);
+      final previousSplit = previous.isEmpty ? null : previous.first;
       final frameTotalH = (hasShutter && !isCaissonTunnel)
           ? (f.height + shutterBoxHeight)
           : f.height;
@@ -5238,6 +5255,8 @@ class WindowModel extends ChangeNotifier {
           customHeight: effectiveDefaultH,
           label: 'صندوق إطار ${i + 1}',
           frameIndex: i,
+          mechanism: previousSplit?.mechanism ?? shutterMechanism,
+          driveSide: previousSplit?.driveSide ?? shutterDriveSide,
         ),
       );
     }
@@ -5250,7 +5269,10 @@ class WindowModel extends ChangeNotifier {
   }
 
   /// تقسيم الصندوق لإطار واحد بعدة عروض (البداية من اليمين كقاعدة أساسية)
-  void splitShutterCustomDivisions(List<double> widths, {bool startFromRight = true}) {
+  void splitShutterCustomDivisions(
+    List<double> widths, {
+    bool startFromRight = true,
+  }) {
     if (widths.isEmpty) return;
     final totalW = width.toDouble();
     final newSplits = <ShutterSplitSection>[];
@@ -5266,6 +5288,8 @@ class WindowModel extends ChangeNotifier {
             width: w,
             leftOffset: left,
             label: 'صندوق ${i + 1}',
+            mechanism: shutterMechanism,
+            driveSide: shutterDriveSide,
           ),
         );
         currentRight = left;
@@ -5281,6 +5305,8 @@ class WindowModel extends ChangeNotifier {
             width: w,
             leftOffset: currentLeft,
             label: 'صندوق ${i + 1}',
+            mechanism: shutterMechanism,
+            driveSide: shutterDriveSide,
           ),
         );
         currentLeft += w;
@@ -5304,6 +5330,29 @@ class WindowModel extends ChangeNotifier {
       customHeight: newHeight,
       label: old.label,
       frameIndex: old.frameIndex,
+      mechanism: old.mechanism,
+      driveSide: old.driveSide,
+    );
+    isShutterSplit = true;
+    _saveSnapshot();
+    notifyListeners();
+  }
+
+  void setShutterSplitDrive(
+    int index, {
+    required String mechanism,
+    required String driveSide,
+  }) {
+    if (index < 0 || index >= shutterSplits.length) return;
+    final old = shutterSplits[index];
+    shutterSplits[index] = ShutterSplitSection(
+      width: old.width,
+      leftOffset: old.leftOffset,
+      customHeight: old.customHeight,
+      label: old.label,
+      frameIndex: old.frameIndex,
+      mechanism: mechanism,
+      driveSide: driveSide == 'right' ? 'right' : 'left',
     );
     isShutterSplit = true;
     _saveSnapshot();
@@ -5338,19 +5387,20 @@ class WindowModel extends ChangeNotifier {
     final limit = _shutterBladeEffectiveMaxWidthMm(blade);
     if (width <= limit) return null;
 
-    final candidates = _shutterBladeWarningCatalogue
-        .where(
-          (candidate) =>
-              _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
-        )
-        .toList()
-      ..sort((a, b) {
-        final result = _shutterBladeEffectiveMaxWidthMm(
-          a,
-        ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
-        if (result != 0) return result;
-        return (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
-      });
+    final candidates =
+        _shutterBladeWarningCatalogue
+            .where(
+              (candidate) =>
+                  _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
+            )
+            .toList()
+          ..sort((a, b) {
+            final result = _shutterBladeEffectiveMaxWidthMm(
+              a,
+            ).compareTo(_shutterBladeEffectiveMaxWidthMm(b));
+            if (result != 0) return result;
+            return (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
+          });
 
     if (candidates.isNotEmpty) {
       return candidates.first;
@@ -5367,20 +5417,23 @@ class WindowModel extends ChangeNotifier {
       ..['automatic_selection'] = true;
     componentOverrides['الشرائح (Lames)'] = automaticSelection;
     shutterLame = automaticSelection['name']?.toString() ?? shutterLame;
-    final subtype =
-        (automaticSelection['shutter_subtype']?.toString() ?? '').toLowerCase();
+    final subtype = (automaticSelection['shutter_subtype']?.toString() ?? '')
+        .toLowerCase();
     final name = (automaticSelection['name']?.toString() ?? '').toLowerCase();
     if (subtype == 'extruded' ||
         name.contains('extruded') ||
         name.contains('إكسترودي')) {
       shutterMechanism = 'محرك';
     }
-    shutterMaximumWidthMm =
-        _shutterBladeConfiguredMaxWidthMm(automaticSelection);
+    shutterMaximumWidthMm = _shutterBladeConfiguredMaxWidthMm(
+      automaticSelection,
+    );
     notifyListeners();
   }
 
-  String? localizedShutterWidthWarning([AppLanguage lang = AppLanguage.arabic]) {
+  String? localizedShutterWidthWarning([
+    AppLanguage lang = AppLanguage.arabic,
+  ]) {
     if (!hasShutter) return null;
     final raw = componentOverrides['الشرائح (Lames)'];
     if (raw is! Map) return null;
@@ -5398,8 +5451,9 @@ class WindowModel extends ChangeNotifier {
           'La largeur du volet ($wStr mm) dépasse la limite maximale de la lame «$bladeName» ($limitStr mm).';
       if (recommended != null) {
         final recName = recommended['name']?.toString() ?? '';
-        final recLimit =
-            _shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0);
+        final recLimit = _shutterBladeEffectiveMaxWidthMm(
+          recommended,
+        ).toStringAsFixed(0);
         return '$base Il est recommandé de choisir «$recName» (max $recLimit mm), sélectionnée automatiquement par le système.';
       }
       return _shutterBladeWarningCatalogue.isEmpty
@@ -5410,8 +5464,9 @@ class WindowModel extends ChangeNotifier {
           'Shutter width ($wStr mm) exceeds the maximum limit for blade «$bladeName» ($limitStr mm).';
       if (recommended != null) {
         final recName = recommended['name']?.toString() ?? '';
-        final recLimit =
-            _shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0);
+        final recLimit = _shutterBladeEffectiveMaxWidthMm(
+          recommended,
+        ).toStringAsFixed(0);
         return '$base It is recommended to choose «$recName» (max $recLimit mm), automatically selected by the system.';
       }
       return _shutterBladeWarningCatalogue.isEmpty
@@ -5422,8 +5477,9 @@ class WindowModel extends ChangeNotifier {
           'عرض الستار $wStr مم يتجاوز الحد الأقصى للشفرة «$bladeName»: $limitStr مم.';
       if (recommended != null) {
         final recName = recommended['name']?.toString() ?? '';
-        final recLimit =
-            _shutterBladeEffectiveMaxWidthMm(recommended).toStringAsFixed(0);
+        final recLimit = _shutterBladeEffectiveMaxWidthMm(
+          recommended,
+        ).toStringAsFixed(0);
         return '$base يُنصح بتغيير الشفرة إلى «$recName» (الحد الأقصى $recLimit مم)، وهي التي سيختارها النظام في الوضع التلقائي.';
       }
       return _shutterBladeWarningCatalogue.isEmpty
@@ -5553,10 +5609,12 @@ class WindowModel extends ChangeNotifier {
 
   bool hasSideCovers = true;
   bool _multiFrameSideCoverManuallyEnabled = false;
-  bool get multiFrameSideCoverManuallyEnabled => _multiFrameSideCoverManuallyEnabled;
+  bool get multiFrameSideCoverManuallyEnabled =>
+      _multiFrameSideCoverManuallyEnabled;
   set multiFrameSideCoverManuallyEnabled(bool value) {
     _multiFrameSideCoverManuallyEnabled = value;
   }
+
   int _sideCoverSelectionRevision = 0;
   bool sideCoverUseSecondWidth = false;
 
@@ -5579,6 +5637,19 @@ class WindowModel extends ChangeNotifier {
 
   double caissonTunnelHeight = 300.0; // default 30 cm (300 mm)
   double? customShutterBoxHeight;
+
+  double get shutterDrawingHeight {
+    if (!hasShutter || !isShutterSplit || shutterSplits.isEmpty) {
+      return height.toDouble();
+    }
+    return shutterSplits.fold<double>(height.toDouble(), (maximum, split) {
+      final splitHeight = split.customHeight ?? height.toDouble();
+      return math.max(maximum, splitHeight);
+    });
+  }
+
+  bool get shutterIsLongerThanWindow =>
+      hasShutter && shutterDrawingHeight > height + 0.5;
 
   double get shutterBoxHeight {
     if (!(hasShutter && !hasArchOrSlant)) return 0.0;
@@ -7674,13 +7745,15 @@ class WindowModel extends ChangeNotifier {
       }
 
       if (availableSystems.isNotEmpty) {
-        final bool hasSlidingZones = usesSlidingPrimaryProfiles ||
+        final bool hasSlidingZones =
+            usesSlidingPrimaryProfiles ||
             zones.any((z) => z.content == ZoneContent.slidingSash) ||
             loadedSlidingSeriesId != null ||
             (loadedSlidingSeriesName != null &&
                 loadedSlidingSeriesName!.trim().isNotEmpty);
 
-        final bool hasOpeningZones = zones.any(
+        final bool hasOpeningZones =
+            zones.any(
               (z) =>
                   z.content == ZoneContent.singleSash ||
                   z.content == ZoneContent.doubleSash ||
@@ -7695,7 +7768,9 @@ class WindowModel extends ChangeNotifier {
           AluminumProfileSystem profile,
         ) {
           if (systemMode == 'sliding' && !hasOpeningZones) return false;
-          if (systemMode == 'mixed' || systemMode == 'french' || hasOpeningZones) {
+          if (systemMode == 'mixed' ||
+              systemMode == 'french' ||
+              hasOpeningZones) {
             return seriesSupportsDrawingScopeInSystem(
               series,
               'opening',
@@ -7710,7 +7785,9 @@ class WindowModel extends ChangeNotifier {
           AluminumProfileSystem profile,
         ) {
           if (systemMode == 'french' && !hasSlidingZones) return false;
-          if (systemMode == 'mixed' || systemMode == 'sliding' || hasSlidingZones) {
+          if (systemMode == 'mixed' ||
+              systemMode == 'sliding' ||
+              hasSlidingZones) {
             return seriesSupportsDrawingScopeInSystem(
               series,
               'sliding',
@@ -10388,6 +10465,12 @@ class WindowModel extends ChangeNotifier {
             zone.slidingSashesCount >= 4 &&
             zone.slidingSashesCount % 2 == 0) {
           zone.slidingFaceToFace = true;
+          // A Face-to-Face opening starts with its functional and decorative
+          // middle handles visible. Older saved drawings could carry the
+          // meeting flag without either handle, leaving the decorative
+          // button apparently unable to activate.
+          zone.slidingCentralHandle = true;
+          zone.slidingSecondCentralHandle = true;
         }
       }
     }
@@ -12683,7 +12766,8 @@ class WindowModel extends ChangeNotifier {
     drawNextShapeAsShutterOnly = snap.drawNextShapeAsShutterOnly;
     isDrawingMode = snap.isDrawingMode;
     hasSideCovers = snap.hasSideCovers;
-    _multiFrameSideCoverManuallyEnabled = snap.multiFrameSideCoverManuallyEnabled;
+    _multiFrameSideCoverManuallyEnabled =
+        snap.multiFrameSideCoverManuallyEnabled;
     enforceBottomSideCoverConstraint();
     if (snap.mullionCreationOrder != null) {
       mullionCreationOrder = Map.from(snap.mullionCreationOrder!);
@@ -12801,7 +12885,8 @@ class WindowModel extends ChangeNotifier {
     drawNextShapeAsShutterOnly = snap.drawNextShapeAsShutterOnly;
     isDrawingMode = snap.isDrawingMode;
     hasSideCovers = snap.hasSideCovers;
-    _multiFrameSideCoverManuallyEnabled = snap.multiFrameSideCoverManuallyEnabled;
+    _multiFrameSideCoverManuallyEnabled =
+        snap.multiFrameSideCoverManuallyEnabled;
     enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
@@ -12839,11 +12924,15 @@ class WindowModel extends ChangeNotifier {
         (widgetSize.width - lastLayoutSize!.width).abs() > 10.0) {
       _maxObservedLayoutHeight = widgetSize.height;
     } else {
-      _maxObservedLayoutHeight =
-          math.max(_maxObservedLayoutHeight, widgetSize.height);
+      _maxObservedLayoutHeight = math.max(
+        _maxObservedLayoutHeight,
+        widgetSize.height,
+      );
     }
-    final double effectiveHeight =
-        math.max(widgetSize.height, _maxObservedLayoutHeight);
+    final double effectiveHeight = math.max(
+      widgetSize.height,
+      _maxObservedLayoutHeight,
+    );
 
     lastLayoutSize = widgetSize;
     _lastIsEmpty = zones.isEmpty;
@@ -12986,7 +13075,8 @@ class WindowModel extends ChangeNotifier {
 
   Rect? frameRectForSelection(String? key) {
     final index =
-        _frameIndexForSelection(key) ?? (getFrameRects().length == 1 ? 0 : null);
+        _frameIndexForSelection(key) ??
+        (getFrameRects().length == 1 ? 0 : null);
     if (index == null) return null;
     final rects = getFrameRects();
     return index < rects.length ? rects[index] : null;
@@ -14671,8 +14761,7 @@ class WindowModel extends ChangeNotifier {
       bool isFullWidth = (r.width >= width - profileThickness * 2 - 2);
       bool isFullHeight = (r.height >= height - profileThickness * 2 - 2);
       final canTapZoneDimensions =
-          z.content == ZoneContent.empty ||
-          z.content == ZoneContent.fixedGlass;
+          z.content == ZoneContent.empty || z.content == ZoneContent.fixedGlass;
       if (canTapZoneDimensions) {
         final bottomInset = math.min(28.0, math.max(16.0, r.height * 0.18));
         final rightInset = math.min(28.0, math.max(16.0, r.width * 0.18));
@@ -14917,7 +15006,8 @@ class WindowModel extends ChangeNotifier {
     required double deltaY,
     bool saveHistory = true,
   }) {
-    final frameIndex = _frameIndexForSelection(frameSelectionId) ??
+    final frameIndex =
+        _frameIndexForSelection(frameSelectionId) ??
         (getFrameRects().length == 1 ? 0 : null);
     if (frameIndex != null) {
       _resizePhysicalFrameFromHandles(
@@ -15312,8 +15402,8 @@ class WindowModel extends ChangeNotifier {
       final glassScaleX = (totalGlassOldW > 1.0 && totalGlassNewW > 1.0)
           ? totalGlassNewW / totalGlassOldW
           : (currentInner.width > 1.0
-              ? nextInner.width / currentInner.width
-              : 1.0);
+                ? nextInner.width / currentInner.width
+                : 1.0);
 
       double mapX(double x) {
         if (totalGlassOldW <= 1.0 || totalGlassNewW <= 1.0) {
@@ -15344,8 +15434,8 @@ class WindowModel extends ChangeNotifier {
       final glassScaleY = (totalGlassOldH > 1.0 && totalGlassNewH > 1.0)
           ? totalGlassNewH / totalGlassOldH
           : (currentInner.height > 1.0
-              ? nextInner.height / currentInner.height
-              : 1.0);
+                ? nextInner.height / currentInner.height
+                : 1.0);
 
       double mapY(double y) {
         if (totalGlassOldH <= 1.0 || totalGlassNewH <= 1.0) {
@@ -16470,7 +16560,8 @@ class WindowModel extends ChangeNotifier {
 
   double get profileAngleTubeWidth {
     final sliding = systemMode == 'sliding';
-    final angleSection = getConfiguredSectionForRole(
+    final angleSection =
+        getConfiguredSectionForRole(
           'profile_angle',
           useSlidingSeries: sliding,
         ) ??
@@ -16688,18 +16779,22 @@ class WindowModel extends ChangeNotifier {
     }
 
     // If currentFrame is already in compatible_frame_ids, no switch needed!
-    if (compatibleIdSet.isNotEmpty && compatibleIdSet.contains(currentFrame.id)) {
+    if (compatibleIdSet.isNotEmpty &&
+        compatibleIdSet.contains(currentFrame.id)) {
       return null;
     }
 
     final targetVisibleWidth = currentFrame.visibleWidth > 0
         ? currentFrame.visibleWidth
-        : (currentFrame.thickness > 0 ? currentFrame.thickness : profileThickness);
+        : (currentFrame.thickness > 0
+              ? currentFrame.thickness
+              : profileThickness);
 
     final candidateSections = series.sections.where((section) {
       if (section.id == currentFrame.id) return false;
       final type = section.type.toLowerCase();
-      final isCadre = section.isFrame || type == 'frame' || type.contains('cadre');
+      final isCadre =
+          section.isFrame || type == 'frame' || type.contains('cadre');
       if (!isCadre) return false;
 
       // Must NOT have integrated side cover
@@ -16720,8 +16815,12 @@ class WindowModel extends ChangeNotifier {
       if (aInCompatible && !bInCompatible) return -1;
       if (!aInCompatible && bInCompatible) return 1;
 
-      final aW = a.visibleWidth > 0 ? a.visibleWidth : (a.thickness > 0 ? a.thickness : 0.0);
-      final bW = b.visibleWidth > 0 ? b.visibleWidth : (b.thickness > 0 ? b.thickness : 0.0);
+      final aW = a.visibleWidth > 0
+          ? a.visibleWidth
+          : (a.thickness > 0 ? a.thickness : 0.0);
+      final bW = b.visibleWidth > 0
+          ? b.visibleWidth
+          : (b.thickness > 0 ? b.thickness : 0.0);
       final diffA = (aW - targetVisibleWidth).abs();
       final diffB = (bW - targetVisibleWidth).abs();
       if ((diffA - diffB).abs() > 0.01) {
@@ -16733,6 +16832,20 @@ class WindowModel extends ChangeNotifier {
     return candidateSections.first;
   }
 
+  void _restoreFramesBeforeProfileAngleFullSwitch() {
+    if (!_frameSwitchedForProfileAngle) return;
+    if (_preProfileAngleFrameOverride != null) {
+      applyFrameOverride(_preProfileAngleFrameOverride!, sliding: false);
+      _preProfileAngleFrameOverride = null;
+    }
+    if (_preProfileAngleSlidingOverride != null) {
+      applyFrameOverride(_preProfileAngleSlidingOverride!, sliding: true);
+      _preProfileAngleSlidingOverride = null;
+    }
+    _frameSwitchedForProfileAngle = false;
+    _profileAngleFrameSwitchNotice = null;
+  }
+
   /// Automatically adapts frames touching corner profile by switching them
   /// to a compatible frame without integrated cover and with matching visible width.
   void adaptFramesForProfileAngle() {
@@ -16741,21 +16854,35 @@ class WindowModel extends ChangeNotifier {
       // we do not need to switch the entire frame. Only the junction-side vertical
       // jamb will be cut with the compatible frame in the BOM!
       if (hasSideCovers && !isIntegratedFrame) {
+        // The drawing may previously have had no side covers, which causes a
+        // complete compatible-frame switch. Restore its original frame now;
+        // BOM generation will retain only the touching jamb on the compatible
+        // profile (three original pieces + one junction piece per frame).
+        _restoreFramesBeforeProfileAngleFullSwitch();
+        hasSideCovers = true;
         return;
       }
 
       // Opening series frame check
-      final currentOpening = activeFrameOverride ?? getSectionByType('frame')?.toMap();
-      final bool openingHasCover = _overrideHasIntegratedSideCover(currentOpening) ||
-          (currentOpening != null && ((currentOpening['couvre_joint_width'] as num?)?.toDouble() ?? 0) > 0);
+      final currentOpening =
+          activeFrameOverride ?? getSectionByType('frame')?.toMap();
+      final bool openingHasCover =
+          _overrideHasIntegratedSideCover(currentOpening) ||
+          (currentOpening != null &&
+              ((currentOpening['couvre_joint_width'] as num?)?.toDouble() ??
+                      0) >
+                  0);
 
-      if (openingHasCover && currentOpening != null && activeFrameSeries != null) {
+      if (currentOpening != null && activeFrameSeries != null) {
         final currentSec = AluminumSection.fromMap(currentOpening);
         final compatible = findCompatibleNoCoverFrame(
           currentFrame: currentSec,
           sliding: false,
         );
-        if (compatible != null) {
+        // With separate side covers, only the two jambs touching the tube
+        // carré are substituted in the BOM. When the whole drawing has no
+        // side cover, the compatible frame may replace the complete frame.
+        if (compatible != null && (!hasSideCovers || openingHasCover)) {
           if (!_frameSwitchedForProfileAngle) {
             _preProfileAngleFrameOverride = currentOpening;
           }
@@ -16768,17 +16895,22 @@ class WindowModel extends ChangeNotifier {
       }
 
       // Sliding series frame check
-      final currentSliding = slidingFrameOverride ?? getSlidingBaseFrameSection()?.toMap();
-      final bool slidingHasCover = _overrideHasIntegratedSideCover(currentSliding) ||
-          (currentSliding != null && ((currentSliding['couvre_joint_width'] as num?)?.toDouble() ?? 0) > 0);
+      final currentSliding =
+          slidingFrameOverride ?? getSlidingBaseFrameSection()?.toMap();
+      final bool slidingHasCover =
+          _overrideHasIntegratedSideCover(currentSliding) ||
+          (currentSliding != null &&
+              ((currentSliding['couvre_joint_width'] as num?)?.toDouble() ??
+                      0) >
+                  0);
 
-      if (slidingHasCover && currentSliding != null && activeSlidingSeries != null) {
+      if (currentSliding != null && activeSlidingSeries != null) {
         final currentSec = AluminumSection.fromMap(currentSliding);
         final compatible = findCompatibleNoCoverFrame(
           currentFrame: currentSec,
           sliding: true,
         );
-        if (compatible != null) {
+        if (compatible != null && (!hasSideCovers || slidingHasCover)) {
           if (!_frameSwitchedForProfileAngle) {
             _preProfileAngleSlidingOverride = currentSliding;
           }
@@ -16790,18 +16922,7 @@ class WindowModel extends ChangeNotifier {
         }
       }
     } else {
-      if (_frameSwitchedForProfileAngle) {
-        if (_preProfileAngleFrameOverride != null) {
-          applyFrameOverride(_preProfileAngleFrameOverride!, sliding: false);
-          _preProfileAngleFrameOverride = null;
-        }
-        if (_preProfileAngleSlidingOverride != null) {
-          applyFrameOverride(_preProfileAngleSlidingOverride!, sliding: true);
-          _preProfileAngleSlidingOverride = null;
-        }
-        _frameSwitchedForProfileAngle = false;
-        _profileAngleFrameSwitchNotice = null;
-      }
+      _restoreFramesBeforeProfileAngleFullSwitch();
     }
   }
 
@@ -16966,10 +17087,12 @@ class WindowModel extends ChangeNotifier {
         final activeAngles = activeProfileAngleJunctions;
         if (activeAngles.isNotEmpty) {
           final allJunctions = getAdjacentFrameJunctions();
-          final hasAngleJunction = allJunctions.any((j) =>
-              activeAngles.contains(j.index) &&
-              ((j.firstFrame == first && j.secondFrame == second) ||
-                  (j.firstFrame == second && j.secondFrame == first)));
+          final hasAngleJunction = allJunctions.any(
+            (j) =>
+                activeAngles.contains(j.index) &&
+                ((j.firstFrame == first && j.secondFrame == second) ||
+                    (j.firstFrame == second && j.secondFrame == first)),
+          );
           if (hasAngleJunction) continue;
         }
 
@@ -17447,9 +17570,7 @@ class WindowModel extends ChangeNotifier {
 
     final canUsePlinthe =
         hasOpeningSashZones ||
-        zones.any(
-          (z) => z.content == ZoneContent.fixedGlass,
-        );
+        zones.any((z) => z.content == ZoneContent.fixedGlass);
     if (value && !canUsePlinthe) {
       final wasBottomFrame = hasBottomFrame;
       hasFramePlintheBottom = false;
@@ -17549,7 +17670,8 @@ class WindowModel extends ChangeNotifier {
       final isOpeningSash =
           z.content == ZoneContent.singleSash ||
           z.content == ZoneContent.doubleSash;
-      final targetBottom = (!hasBottomFrame && (hasPlintheBottom || isOpeningSash))
+      final targetBottom =
+          (!hasBottomFrame && (hasPlintheBottom || isOpeningSash))
           ? height
           : height - profileThickness;
       if ((z.boundary.bottom - height).abs() < 5.0 ||
@@ -17813,6 +17935,12 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     _multiFrameSideCoverManuallyEnabled = isMultiFrame && value;
     hasSideCovers = value;
+    if (value && usesProfileAngle && _frameSwitchedForProfileAngle) {
+      _restoreFramesBeforeProfileAngleFullSwitch();
+      // Applying the saved frame can update cover state as part of normal
+      // manual frame selection. The user's current toggle remains authoritative.
+      hasSideCovers = true;
+    }
     if (value) {
       final covers = availableSideCovers;
       if (covers.isNotEmpty &&
@@ -18355,24 +18483,7 @@ class WindowModel extends ChangeNotifier {
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
       zone.slidingSashesCount = zone.slidingTrackCount;
     }
-    final faceSection =
-        getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
-        getSlidingSectionByType('face_to_face');
-    final hasFaceToFaceRule =
-        faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
-    if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
-      if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
-          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
-          hasFaceToFaceRule) {
-        zone.slidingFaceToFace = true;
-        zone.slidingCentralHandle = true;
-        zone.slidingSecondCentralHandle = true;
-      } else if (zone.slidingTrackCount >= 4) {
-        zone.slidingFaceToFace = false;
-        zone.slidingCentralHandle = false;
-        zone.slidingSecondCentralHandle = false;
-      }
-    } else {
+    if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
       zone.slidingFaceToFace = false;
       zone.slidingCentralHandle = false;
       zone.slidingSecondCentralHandle = false;
@@ -18420,24 +18531,7 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     zone.slidingSashesCount = count.clamp(2, 7).toInt();
-    final faceSection =
-        getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
-        getSlidingSectionByType('face_to_face');
-    final hasFaceToFaceRule =
-        faceSection != null || (effectiveSlidingSeries?.hasFaceToFace ?? false);
-    if (zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0) {
-      if ((zone.slidingSashesCount == 4 && zone.slidingTrackCount == 2) ||
-          (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3) ||
-          hasFaceToFaceRule) {
-        zone.slidingFaceToFace = true;
-        zone.slidingCentralHandle = true;
-        zone.slidingSecondCentralHandle = true;
-      } else if (zone.slidingTrackCount >= 4) {
-        zone.slidingFaceToFace = false;
-        zone.slidingCentralHandle = false;
-        zone.slidingSecondCentralHandle = false;
-      }
-    } else {
+    if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
       zone.slidingFaceToFace = false;
       zone.slidingCentralHandle = false;
       zone.slidingSecondCentralHandle = false;
@@ -18590,6 +18684,7 @@ class WindowModel extends ChangeNotifier {
         (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
       return;
     }
+    if (value && !zone.slidingFaceToFace) return;
     if (zone.slidingCentralHandle == value) return;
     _saveSnapshot();
     zone.slidingCentralHandle = value;
@@ -18611,11 +18706,19 @@ class WindowModel extends ChangeNotifier {
     if (value &&
         (zone.slidingSashesCount < 4 ||
             zone.slidingSashesCount % 2 != 0 ||
-            !zone.slidingCentralHandle)) {
+            !zone.slidingFaceToFace)) {
       return;
     }
-    if (zone.slidingSecondCentralHandle == value) return;
+    if (zone.slidingSecondCentralHandle == value &&
+        (!value || zone.slidingCentralHandle)) {
+      return;
+    }
     _saveSnapshot();
+    if (value) {
+      // The decorative handle mirrors the functional middle handle. Repair
+      // old drawings that saved Face-to-Face with the functional handle off.
+      zone.slidingCentralHandle = true;
+    }
     zone.slidingSecondCentralHandle = value;
     notifyListeners();
   }
@@ -23169,8 +23272,9 @@ class WindowModel extends ChangeNotifier {
             });
             if (!hasIntermediate && (r2.left - r1.right).abs() <= maxGap) {
               final currentJunctionIndex = junctionCounter++;
-              final hasActiveTube =
-                  isProfileAngleJunctionActive(currentJunctionIndex);
+              final hasActiveTube = isProfileAngleJunctionActive(
+                currentJunctionIndex,
+              );
               final halfGap = hasActiveTube ? (tubeW / 2.0) : 0.0;
               final commonX = (r1.right + r2.left) / 2.0;
               rects[i] = Rect.fromLTRB(
@@ -23223,11 +23327,7 @@ class WindowModel extends ChangeNotifier {
       ];
     }
     return List.generate(count, (i) {
-      return PhysicalFrameInfo(
-        index: i,
-        rect: rects[i],
-        zones: groups[i],
-      );
+      return PhysicalFrameInfo(index: i, rect: rects[i], zones: groups[i]);
     });
   }
 

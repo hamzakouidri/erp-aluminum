@@ -43,4 +43,26 @@ void main() {
 
     expect(orders.map((order) => order['id']), [2, 3, 1]);
   });
+
+  test('equivalent new-order labels share one status filter group', () {
+    expect(orderStatusGroupKey('Nouveau'), 'new');
+    expect(orderStatusGroupKey('New'), 'new');
+    expect(orderStatusGroupKey('جديدة'), 'new');
+    expect(orderStatusCanonicalLabel('New'), 'Nouveau');
+  });
+
+  test('canonical stages include measurements and installation in order', () {
+    expect(
+      canonicalOrderStatuses.indexOf('In Progress'),
+      lessThan(canonicalOrderStatuses.indexOf('Partial Manufacturing')),
+    );
+    expect(
+      canonicalOrderStatuses.indexOf('Partial Manufacturing'),
+      lessThan(canonicalOrderStatuses.indexOf('Full Manufacturing')),
+    );
+    expect(
+      canonicalOrderStatuses.indexOf('Full Distribution'),
+      lessThan(canonicalOrderStatuses.indexOf('Installation')),
+    );
+  });
 }

@@ -58,6 +58,17 @@ class _DecorPlacementResult {
 }
 
 class _WindowViewState extends State<WindowView> {
+  static const _showAllFramesPreferenceKey =
+      'drawing_frame_picker_show_all_profiles';
+  bool _showAllFrameProfiles = false;
+
+  Future<void> _setShowAllFrameProfiles(bool value) async {
+    if (_showAllFrameProfiles == value) return;
+    setState(() => _showAllFrameProfiles = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showAllFramesPreferenceKey, value);
+  }
+
   bool _drawingShortcut(KeyEvent event) {
     if (!mounted ||
         !_isWindowsDesktop ||
@@ -219,21 +230,18 @@ class _WindowViewState extends State<WindowView> {
                       setState(() {});
                     },
                   ),
-                if (zone.slidingFaceToFace ||
-                    (zone.slidingSashesCount == 6 &&
-                        zone.slidingTrackCount == 3))
-                  _ContentButton(
-                    label: zone.slidingSecondCentralHandle
-                        ? 'مقبض الوسط الشكلي: مفعّل'
-                        : 'مقبض الوسط الشكلي: ملغي',
-                    icon: Icons.more_horiz_rounded,
-                    selected: zone.slidingSecondCentralHandle,
-                    onPressed: () {
-                      widget.model
-                          .toggleSelectedZoneSlidingSecondCentralHandle();
-                      setState(() {});
-                    },
-                  ),
+                _ContentButton(
+                  label: zone.slidingSecondCentralHandle
+                      ? 'مقبض الوسط الشكلي: مفعّل'
+                      : 'مقبض الوسط الشكلي: ملغي',
+                  icon: Icons.more_horiz_rounded,
+                  selected: zone.slidingSecondCentralHandle,
+                  enabled: zone.slidingFaceToFace,
+                  onPressed: () {
+                    widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
+                    setState(() {});
+                  },
+                ),
               ],
             ),
           ],
@@ -719,12 +727,117 @@ class _WindowViewState extends State<WindowView> {
     int seriesId, {
     required bool sliding,
   }) async {
-    // SeriesDesignRoles is the only source for profiles on the drawing page.
-    return db.getDesignSectionsForDrawingRoles(
+    final configured = await db.getDesignSectionsForDrawingRoles(
       seriesId,
-      sliding ? const ['frame', 'frame_extension'] : const ['frame'],
+      const ['frame'],
       usageScope: sliding ? 'sliding' : 'opening',
     );
+
+    // A series may contain several usable dormant/cadre sections while only
+    // its default one is assigned to the `frame` role. The role still owns
+    // the default and its drawing options, but the frame picker must also
+    // expose the other active frame sections of that same series (including
+    // explicitly shared sections).
+    final available = await db.readAvailableSectionsBySeries(
+      seriesId,
+      usageScope: sliding ? 'sliding' : 'opening',
+    );
+
+    bool isFrameCandidate(Map<String, dynamic> row) {
+      final flag = row['is_frame'];
+      final isFrame =
+          flag == true ||
+          (flag is num && flag != 0) ||
+          flag?.toString().trim() == '1';
+      final type = (row['type'] ?? '').toString().trim().toLowerCase();
+      final name = (row['name'] ?? '').toString().trim().toLowerCase();
+      final code = (row['code'] ?? '').toString().trim().toLowerCase();
+      final designRole = (row['design_role_key'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final sharedRole = (row['sharing_role_key'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final normalizedType = type.replaceAll(RegExp(r'[\s-]+'), '_');
+      final normalizedName = name.replaceAll(RegExp(r'[\s-]+'), '_');
+      final normalizedCode = code.replaceAll(RegExp(r'[\s-]+'), '_');
+      final label = '$normalizedType $normalizedName $normalizedCode';
+      final role = designRole.isNotEmpty ? designRole : sharedRole;
+
+      // Old catalogues sometimes mark accessory profiles as `is_frame`.
+      // Couvre-joint and porte-joint remain separate components and must not
+      // leak into the frame picker because of that stale flag. Keep a real
+      // dormant explicitly assigned to the frame role, even when its name
+      // says that its couvre-joint is integrated.
+      final isFrameRole = role == 'frame';
+      final isNonFrameRole = role == 'side_cover' || role == 'porte_joint';
+      final isSideCoverType =
+          normalizedType == 'side_cover' ||
+          normalizedType == 'sidecover' ||
+          normalizedType == 'couvre_joint' ||
+          normalizedType == 'couvrejoint';
+      final isPorteJointType =
+          normalizedType == 'porte_joint' || normalizedType == 'portejoint';
+      final hasPorteJointLabel =
+          label.contains('porte_joint') ||
+          label.contains('portejoint') ||
+          label.contains('حامل_الجوان');
+      final hasSideCoverLabel =
+          label.contains('couvre_joint') ||
+          label.contains('couvrejoint') ||
+          label.contains('side_cover') ||
+          label.contains('sidecover') ||
+          label.contains('كوفرجوا') ||
+          label.contains('كوفر_جوا') ||
+          label.contains('غطاء_جانبي');
+      final typeClearlyNamesFrame =
+          normalizedType == 'frame' ||
+          normalizedType.contains('cadre') ||
+          normalizedType.contains('dormant');
+
+      if (isNonFrameRole ||
+          isSideCoverType ||
+          isPorteJointType ||
+          hasPorteJointLabel ||
+          (!isFrameRole && !typeClearlyNamesFrame && hasSideCoverLabel)) {
+        return false;
+      }
+      if (sharedRole == 'frame_extension' || type == 'frame_extension') {
+        return false;
+      }
+      return isFrame ||
+          isFrameRole ||
+          type == 'frame' ||
+          type.contains('cadre') ||
+          type.contains('dormant');
+    }
+
+    final merged = <Map<String, dynamic>>[];
+    final seen = <int>{};
+    void append(Map<String, dynamic> row, {required bool configuredFrame}) {
+      final rawId = row['id'];
+      final id = rawId is num
+          ? rawId.toInt()
+          : int.tryParse(rawId?.toString() ?? '');
+      if (id == null || seen.add(id)) {
+        merged.add({
+          ...row,
+          'frame_picker_configured': configuredFrame ? 1 : 0,
+        });
+      }
+    }
+
+    // Keep configured rows first so the catalogue default remains first and
+    // role-specific properties such as integrated_side_cover are preserved.
+    for (final row in configured.where(isFrameCandidate)) {
+      append(row, configuredFrame: true);
+    }
+    for (final row in available.where(isFrameCandidate)) {
+      append(row, configuredFrame: false);
+    }
+    return merged;
   }
 
   Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
@@ -768,31 +881,6 @@ class _WindowViewState extends State<WindowView> {
       widget.model.isPVC ||
       widget.model.isSlidingPVC ||
       _seriesIsPvc(widget.model.activeSlidingSeries);
-
-  List<Map<String, dynamic>> _filterFrameProfilesForDrawingRules(
-    List<Map<String, dynamic>> profiles, {
-    required AluminumSeries? series,
-    AccessoryDrawingMode? drawingMode,
-  }) {
-    // The rows have already been resolved from the exact series role. Do not
-    // classify them again from commercial names such as TPR/HPS: that old
-    // heuristic was able to put opening frames in the sliding picker.
-    var filtered = profiles.toList();
-    final isMultiFrame = widget.model.getFrameRects().length > 1;
-    if (isMultiFrame) {
-      return filtered
-          .where((profile) => !profileHasIntegratedSideCover(profile))
-          .toList();
-    }
-    if (!widget.model.hasShutter ||
-        widget.model.isCaissonTunnel ||
-        _seriesIsPvc(series)) {
-      return filtered;
-    }
-    return filtered
-        .where((profile) => !profileHasIntegratedSideCover(profile))
-        .toList();
-  }
 
   DecorationImage? _getWoodTextureImage(Map<String, dynamic> dbColor) {
     final name = dbColor['name'].toString().toLowerCase();
@@ -1326,7 +1414,19 @@ class _WindowViewState extends State<WindowView> {
         final wasExpanded = _isBottomPanelExpanded;
         _isShutterSelected = false;
         _isBottomPanelExpanded = true;
-        if (!wasExpanded) _activeBottomTab = 0;
+        if (!wasExpanded) {
+          if (selection.type == SelectionType.frame) {
+            _activeBottomTab = 1;
+          } else if (selection.type == SelectionType.mullion) {
+            _activeBottomTab = 3;
+          } else {
+            _activeBottomTab = 0;
+          }
+        } else if (selection.type == SelectionType.frame) {
+          _activeBottomTab = 1;
+        } else if (selection.type == SelectionType.mullion) {
+          _activeBottomTab = 3;
+        }
       }
       _previousSelectionKey = currentSelectionKey;
     }
@@ -2006,6 +2106,10 @@ class _WindowViewState extends State<WindowView> {
         widget.model.workshopName = name;
         widget.model.refreshUI();
       }
+      final showAllFrames = prefs.getBool(_showAllFramesPreferenceKey) ?? false;
+      if (mounted && showAllFrames != _showAllFrameProfiles) {
+        setState(() => _showAllFrameProfiles = showAllFrames);
+      }
     });
     // Activate drawing mode for 10 seconds when entering the screen
     widget.model.setDrawingMode(false);
@@ -2310,16 +2414,24 @@ class _WindowViewState extends State<WindowView> {
 
     final defaultDrawingHeight = widget.model.height.toDouble();
     final Map<int, TextEditingController> frameHeightControllers = {};
+    final Map<int, String> frameMechanisms = {};
+    final Map<int, String> frameDriveSides = {};
     for (int i = 0; i < frames.length; i++) {
       double? existingH;
+      ShutterSplitSection? existingSplit;
       if (widget.model.isShutterSplit) {
         final match = widget.model.shutterSplits.where(
           (s) => s.frameIndex == i,
         );
         if (match.isNotEmpty) {
-          existingH = match.first.customHeight;
+          existingSplit = match.first;
+          existingH = existingSplit.customHeight;
         }
       }
+      frameMechanisms[i] =
+          existingSplit?.mechanism ?? widget.model.shutterMechanism;
+      frameDriveSides[i] =
+          existingSplit?.driveSide ?? widget.model.shutterDriveSide;
       final frameTotalH =
           (widget.model.hasShutter && !widget.model.isCaissonTunnel)
           ? (frames[i].height + widget.model.shutterBoxHeight)
@@ -2548,81 +2660,159 @@ class _WindowViewState extends State<WindowView> {
                                     : Colors.grey.shade300,
                               ),
                             ),
-                            child: Row(
+                            child: Column(
                               children: [
-                                CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: Colors.teal.withOpacity(0.2),
-                                  child: Text(
-                                    '${idx + 1}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.teal,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '${Localization.translate('إطار', lang)} ${idx + 1}',
-                                        style: TextStyle(
-                                          fontSize: 12.5,
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: Colors.teal.withOpacity(
+                                        0.2,
+                                      ),
+                                      child: Text(
+                                        '${idx + 1}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
                                           fontWeight: FontWeight.bold,
-                                          color: isDark
-                                              ? Colors.white
-                                              : Colors.black87,
+                                          color: Colors.teal,
                                         ),
                                       ),
-                                      Text(
-                                        '${Localization.translate('العرض', lang)}: ${frame.width.toStringAsFixed(0)} mm',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark
-                                              ? Colors.white60
-                                              : Colors.black54,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 120,
-                                  child: TextField(
-                                    controller: hCtrl,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                        ),
-                                    decoration: InputDecoration(
-                                      labelText: Localization.translate(
-                                        'ارتفاع الستار',
-                                        lang,
-                                      ),
-                                      labelStyle: const TextStyle(fontSize: 10),
-                                      suffixText: 'mm',
-                                      suffixStyle: const TextStyle(
-                                        fontSize: 10,
-                                      ),
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 8,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${Localization.translate('إطار', lang)} ${idx + 1}',
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : Colors.black87,
+                                            ),
                                           ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(6),
+                                          Text(
+                                            '${Localization.translate('العرض', lang)}: ${frame.width.toStringAsFixed(0)} mm',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isDark
+                                                  ? Colors.white60
+                                                  : Colors.black54,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
+                                    SizedBox(
+                                      width: 120,
+                                      child: TextField(
+                                        controller: hCtrl,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: InputDecoration(
+                                          labelText: Localization.translate(
+                                            'ارتفاع الستار',
+                                            lang,
+                                          ),
+                                          labelStyle: const TextStyle(
+                                            fontSize: 10,
+                                          ),
+                                          suffixText: 'mm',
+                                          suffixStyle: const TextStyle(
+                                            fontSize: 10,
+                                          ),
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 8,
+                                              ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                          ),
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        value: frameMechanisms[idx],
+                                        isDense: true,
+                                        decoration: InputDecoration(
+                                          labelText: Localization.translate(
+                                            'نوع الستار (Mechanism):',
+                                            lang,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                        items: const [
+                                          DropdownMenuItem(
+                                            value: 'حزام',
+                                            child: Text('حزام (Sangle)'),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'منايفال',
+                                            child: Text('مانيفيل (Manivelle)'),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'محرك',
+                                            child: Text('محرك (Moteur)'),
+                                          ),
+                                        ],
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setDialogState(() {
+                                            frameMechanisms[idx] = value;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        value: frameDriveSides[idx],
+                                        isDense: true,
+                                        decoration: InputDecoration(
+                                          labelText: Localization.translate(
+                                            'جهة الستار (Drive Side):',
+                                            lang,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                        items: const [
+                                          DropdownMenuItem(
+                                            value: 'left',
+                                            child: Text('يسار (Gauche)'),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'right',
+                                            child: Text('يمين (Droite)'),
+                                          ),
+                                        ],
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setDialogState(() {
+                                            frameDriveSides[idx] = value;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -2916,6 +3106,15 @@ class _WindowViewState extends State<WindowView> {
                           if (hVal != null && hVal > 0) {
                             widget.model.setShutterSplitHeight(i, hVal);
                           }
+                          widget.model.setShutterSplitDrive(
+                            i,
+                            mechanism:
+                                frameMechanisms[i] ??
+                                widget.model.shutterMechanism,
+                            driveSide:
+                                frameDriveSides[i] ??
+                                widget.model.shutterDriveSide,
+                          );
                         }
                       } else {
                         final widths = divisionControllers
@@ -3214,6 +3413,9 @@ class _WindowViewState extends State<WindowView> {
                                     )) {
                                   offsetDistRight += scW + 15.0;
                                 }
+                                if (widget.model.shutterIsLongerThanWindow) {
+                                  offsetDistRight += 125.0;
+                                }
                                 double offsetDistLeft = 50.0;
                                 if (widget.model.hasSideCovers &&
                                     !widget.model.removedShutterSides.contains(
@@ -3254,7 +3456,7 @@ class _WindowViewState extends State<WindowView> {
                                         widget.model.isCaissonTunnel) {
                                       wY -= widget.model.shutterBoxHeight;
                                     }
-                                    layer1Y = wY + 45.0;
+                                    layer1Y = wY + 70.0;
                                   }
                                   for (final f in sorted) {
                                     final xCenter =
@@ -4585,12 +4787,68 @@ class _WindowViewState extends State<WindowView> {
                                       Offset(hXRight, hYRight),
                                     );
 
-                                    if ((touchScreen - handleScreenPosLeft)
+                                    var touchesSlidingHandle =
+                                        (touchScreen - handleScreenPosLeft)
                                                 .distance <
                                             45.0 ||
                                         (touchScreen - handleScreenPosRight)
                                                 .distance <
-                                            45.0) {
+                                            45.0;
+
+                                    final hasCentralMeeting =
+                                        zone.slidingFaceToFace &&
+                                        count >= 4 &&
+                                        count.isEven;
+                                    if (!touchesSlidingHandle &&
+                                        hasCentralMeeting) {
+                                      final centerX = bounds.center.dx;
+                                      final mainHandleOnRight =
+                                          zone.openDirection !=
+                                          OpenDirection.left;
+
+                                      Offset centralHandlePosition(
+                                        bool onRight,
+                                      ) {
+                                        final x = onRight
+                                            ? centerX + 20.0
+                                            : centerX - 20.0;
+                                        final topY = getSashTopY(
+                                          x,
+                                          bounds.top,
+                                          widget.model.profileThickness,
+                                          topOffset,
+                                          isTopBound,
+                                        );
+                                        final y =
+                                            topY +
+                                            ((bounds.bottom - topY) *
+                                                (1.0 - hRatio));
+                                        return modelToScreen(Offset(x, y));
+                                      }
+
+                                      if (zone.slidingCentralHandle ||
+                                          zone.slidingFaceToFace) {
+                                        touchesSlidingHandle =
+                                            (touchScreen -
+                                                    centralHandlePosition(
+                                                      mainHandleOnRight,
+                                                    ))
+                                                .distance <
+                                            45.0;
+                                      }
+                                      if (!touchesSlidingHandle &&
+                                          zone.slidingSecondCentralHandle) {
+                                        touchesSlidingHandle =
+                                            (touchScreen -
+                                                    centralHandlePosition(
+                                                      !mainHandleOnRight,
+                                                    ))
+                                                .distance <
+                                            45.0;
+                                      }
+                                    }
+
+                                    if (touchesSlidingHandle) {
                                       _isDraggingHandle = true;
                                       hitHandle = true;
                                     }
@@ -8370,6 +8628,37 @@ class _WindowViewState extends State<WindowView> {
               ),
               const Divider(height: 20),
 
+              DropdownButtonFormField<bool>(
+                key: ValueKey(_showAllFrameProfiles),
+                initialValue: _showAllFrameProfiles,
+                isDense: true,
+                decoration: InputDecoration(
+                  labelText: Localization.translate('عرض الإطارات', lang),
+                  prefixIcon: const Icon(Icons.view_carousel_outlined),
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem<bool>(
+                    value: false,
+                    child: Text(
+                      Localization.translate('الإطارات الصالحة فقط', lang),
+                    ),
+                  ),
+                  DropdownMenuItem<bool>(
+                    value: true,
+                    child: Text(
+                      Localization.translate('كل إطارات السلسلة', lang),
+                    ),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    unawaited(_setShowAllFrameProfiles(value));
+                  }
+                },
+              ),
+              const SizedBox(height: 15),
+
               TextField(
                 controller: _positionCtrl,
                 decoration: InputDecoration(
@@ -11042,6 +11331,12 @@ class _WindowViewState extends State<WindowView> {
     }
 
     for (final frame in _frameProfiles) {
+      addFrame(frame);
+    }
+    for (final frame in _openingFrameProfiles) {
+      addFrame(frame);
+    }
+    for (final frame in _slidingFrameProfiles) {
       addFrame(frame);
     }
 
@@ -13941,14 +14236,13 @@ class _WindowViewState extends State<WindowView> {
                             },
                           ),
                         ],
-                        if (zone.slidingFaceToFace ||
-                            (zone.slidingSashesCount == 6 &&
-                                zone.slidingTrackCount == 3)) ...[
+                        ...[
                           const SizedBox(width: 8),
                           _ContentButton(
                             label: 'مقبض وسط الضلفتين',
                             icon: Icons.more_horiz_rounded,
                             selected: zone.slidingCentralHandle,
+                            enabled: zone.slidingFaceToFace,
                             onPressed: () {
                               setState(() {
                                 widget.model
@@ -13961,6 +14255,9 @@ class _WindowViewState extends State<WindowView> {
                             label: 'مقبض الوسط الثاني (شكلي)',
                             icon: Icons.more_horiz_outlined,
                             selected: zone.slidingSecondCentralHandle,
+                            enabled:
+                                zone.slidingFaceToFace &&
+                                zone.slidingCentralHandle,
                             onPressed: () {
                               if (!zone.slidingCentralHandle) return;
                               setState(() {
@@ -14865,7 +15162,11 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildInteractiveBottomPanel(BuildContext context) {
-    final hasSelection = widget.model.selectedZone != null;
+    final hasSelection =
+        widget.model.selectedZone != null ||
+        widget.model.selection.type == SelectionType.frame ||
+        widget.model.selection.type == SelectionType.mullion ||
+        widget.model.zones.isNotEmpty;
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
 
@@ -15816,13 +16117,9 @@ class _WindowViewState extends State<WindowView> {
                     _isShutterSelected = false;
                     _activeBottomTab = id;
                     _handleCandidates = null;
-                    if (id == 1) {
-                      if (widget.model.selection.type != SelectionType.frame &&
-                          widget.model.getFrameRects().isNotEmpty) {
-                        widget.model.selectFrameByIndex(0);
-                      }
-                    } else if (widget.model.selectedZone == null &&
-                        widget.model.zones.isNotEmpty) {
+                    if (widget.model.selectedZone == null &&
+                        widget.model.zones.isNotEmpty &&
+                        id != 3) {
                       widget.model.selection = SelectionInfo.zone(
                         widget.model.zones.first.id,
                       );
@@ -15889,8 +16186,25 @@ class _WindowViewState extends State<WindowView> {
       context,
       listen: false,
     ).language;
-    final zone = widget.model.selectedZone;
-    if (zone == null) return [];
+    final WindowZone? currentZone =
+        widget.model.selectedZone ??
+        (widget.model.zones.isNotEmpty ? widget.model.zones.first : null);
+    if (currentZone == null && !isMullionSelected && _activeBottomTab != 1)
+      return [];
+    final WindowZone zone =
+        currentZone ??
+        (widget.model.zones.isNotEmpty
+            ? widget.model.zones.first
+            : WindowZone(
+                id: '_fallback',
+                boundary: Rect.fromLTWH(
+                  0,
+                  0,
+                  widget.model.width,
+                  widget.model.height,
+                ),
+                content: ZoneContent.empty,
+              ));
 
     final supportedSlidingCounts = widget.model.supportedSlidingSashCounts;
     final supportedTrackCounts = widget.model.supportedSlidingTrackCounts;
@@ -16291,29 +16605,68 @@ class _WindowViewState extends State<WindowView> {
                 zone.content == ZoneContent.doubleSash ||
                 zone.content == ZoneContent.fixedGlass ||
                 zone.content == ZoneContent.empty);
-        final rawOpeningProfiles = selectedZoneUsesOpeningFrame
-            ? (widget.systemMode == 'mixed'
-                  ? _openingFrameProfiles
+
+        List<Map<String, dynamic>> profilesForPickerMode(
+          List<Map<String, dynamic>> profiles, {
+          required bool sliding,
+        }) {
+          if (_showAllFrameProfiles) return profiles.toList();
+
+          final validIds = profiles
+              .where((profile) => profile['frame_picker_configured'] == 1)
+              .map((profile) => _catalogRowId(profile))
+              .whereType<int>()
+              .toSet();
+          final currentMap = sliding
+              ? (widget.model.slidingFrameOverride ??
+                    widget.model.getSlidingBaseFrameSection()?.toMap())
+              : (widget.model.frameOverride ??
+                    widget.model.getSectionByType('frame')?.toMap());
+          final currentId = currentMap == null
+              ? null
+              : _catalogRowId(currentMap);
+          if (currentId != null) validIds.add(currentId);
+
+          // The no-cover frame selected by the corner-profile rule is valid
+          // for this exact drawing even when it is not the catalogue default.
+          if (widget.model.usesProfileAngle && currentMap != null) {
+            try {
+              final compatible = widget.model.findCompatibleNoCoverFrame(
+                currentFrame: AluminumSection.fromMap(currentMap),
+                sliding: sliding,
+              );
+              if (compatible != null) validIds.add(compatible.id);
+            } catch (_) {
+              // A malformed legacy row remains available in "all frames";
+              // it must not broaden the strict compatible-only mode.
+            }
+          }
+          return profiles
+              .where((profile) => validIds.contains(_catalogRowId(profile)))
+              .toList();
+        }
+
+        final rawOpeningProfiles = (widget.systemMode == 'sliding')
+            ? <Map<String, dynamic>>[]
+            : (widget.systemMode == 'mixed'
+                  ? (_openingFrameProfiles.isNotEmpty
+                        ? _openingFrameProfiles
+                        : _frameProfiles)
                   : (_openingFrameProfiles.isNotEmpty
                         ? _openingFrameProfiles
-                        : _frameProfiles))
-            : <Map<String, dynamic>>[];
-        final openingProfiles = _filterFrameProfilesForDrawingRules(
+                        : _frameProfiles));
+        final openingProfiles = profilesForPickerMode(
           rawOpeningProfiles,
-          series: widget.model.activeSeries,
-          drawingMode: AccessoryDrawingMode.opening,
+          sliding: false,
         );
-        final rawSlidingProfiles = selectedZoneUsesSlidingFrame
+        final rawSlidingProfiles =
+            (widget.systemMode == 'mixed' ||
+                widget.systemMode == 'sliding' ||
+                selectedZoneUsesSlidingFrame)
             ? _slidingFrameProfiles
             : <Map<String, dynamic>>[];
         final slidingProfiles =
-            _filterFrameProfilesForDrawingRules(
-                  rawSlidingProfiles,
-                  series:
-                      widget.model.effectiveSlidingSeries ??
-                      widget.model.activeSlidingSeries,
-                  drawingMode: AccessoryDrawingMode.sliding,
-                )
+            profilesForPickerMode(rawSlidingProfiles, sliding: true)
                 // The one-track profile is an automatic extension selected from
                 // the series rules; it is not a replacement for the two-track
                 // base frame and therefore must not be shown in this picker.
@@ -16326,15 +16679,129 @@ class _WindowViewState extends State<WindowView> {
           Map<String, dynamic> item, {
           required bool sliding,
         }) async {
+          final selectedMap = sliding
+              ? widget.model.slidingFrameOverride
+              : widget.model.frameOverride;
+          if (selectedMap?['id'] == item['id']) return;
+
+          bool readBool(Object? value, {required bool fallback}) {
+            if (value is bool) return value;
+            if (value is num) return value != 0;
+            final normalized = value?.toString().trim().toLowerCase();
+            if (normalized == '1' ||
+                normalized == 'true' ||
+                normalized == 'yes') {
+              return true;
+            }
+            if (normalized == '0' ||
+                normalized == 'false' ||
+                normalized == 'no') {
+              return false;
+            }
+            return fallback;
+          }
+
+          final integratedCover = profileHasIntegratedSideCover(item);
+          final allowsStandaloneCover = readBool(
+            item['design_allows_side_cover'] ?? item['allows_side_cover'],
+            fallback: true,
+          );
+          final allowedWithShutter = readBool(
+            item['design_allowed_with_shutter'] ?? item['allowed_with_shutter'],
+            fallback: true,
+          );
+          final removesSideCover =
+              widget.model.hasSideCovers &&
+              !integratedCover &&
+              !allowsStandaloneCover;
+          final selectedSeriesIsPvc = _seriesIsPvc(
+            sliding
+                ? (widget.model.effectiveSlidingSeries ??
+                      widget.model.activeSlidingSeries)
+                : widget.model.activeSeries,
+          );
+          final removesShutter =
+              widget.model.hasShutter &&
+              (!allowedWithShutter ||
+                  (!widget.model.isCaissonTunnel &&
+                      !selectedSeriesIsPvc &&
+                      (integratedCover || !allowsStandaloneCover)));
+
+          var removesProfileAngle = false;
+          if (widget.model.usesProfileAngle && integratedCover) {
+            try {
+              removesProfileAngle =
+                  widget.model.findCompatibleNoCoverFrame(
+                    currentFrame: AluminumSection.fromMap(item),
+                    sliding: sliding,
+                  ) ==
+                  null;
+            } catch (_) {
+              removesProfileAngle = true;
+            }
+          }
+
+          final impacts = <String>[
+            if (removesSideCover)
+              Localization.translate('سيتم إلغاء الغطاء الجانبي', lang),
+            if (removesShutter)
+              Localization.translate('سيتم إلغاء الستار', lang),
+            if (removesProfileAngle)
+              Localization.translate('سيتم إلغاء بروفيل الزاوية', lang),
+          ];
+          if (impacts.isNotEmpty) {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(Localization.translate('تأكيد تغيير الإطار', lang)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Localization.translate(
+                        'هذا الإطار غير متوافق مع بعض تجهيزات الرسم. إذا تابعت:',
+                        lang,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    for (final impact in impacts)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text('• $impact'),
+                      ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: Text(Localization.translate('إلغاء', lang)),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: Text(Localization.translate('متابعة', lang)),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true || !mounted) return;
+          }
+
           final mutableSelected = Map<String, dynamic>.from(item);
           mutableSelected['calculated_price'] =
               await _sectionPriceForSelectedColor(mutableSelected);
+          if (!mounted) return;
+          if (removesShutter) widget.model.toggleShutter(false);
+          if (removesProfileAngle) widget.model.clearProfileAngle();
           setState(() {
             widget.model.applyFrameOverride(
               mutableSelected,
               sliding: sliding,
               manualSelection: true,
             );
+            if (widget.model.usesProfileAngle) {
+              widget.model.adaptFramesForProfileAngle();
+            }
             widget.model.updateProfileThickness();
             widget.model.refreshUI();
           });
@@ -16342,79 +16809,29 @@ class _WindowViewState extends State<WindowView> {
           if (mounted) setState(() {});
         }
 
-        if (widget.model.getFrameRects().length > 1) {
-          if (openingProfiles.isNotEmpty) {
-            final current = widget.model.frameOverride;
-            final hasIntegrated =
-                current != null && profileHasIntegratedSideCover(current);
-            final inProfiles =
-                current != null &&
-                openingProfiles.any((p) => p['id'] == current['id']);
-            if (current == null || hasIntegrated || !inProfiles) {
-              final plain = openingProfiles.firstWhere(
-                (p) => !profileHasIntegratedSideCover(p),
-                orElse: () => openingProfiles.first,
-              );
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && widget.model.getFrameRects().length > 1) {
-                  selectFrameProfile(plain, sliding: false);
-                }
-              });
-            }
-          }
-          if (slidingProfiles.isNotEmpty) {
-            final current = widget.model.slidingFrameOverride;
-            final hasIntegrated =
-                current != null && profileHasIntegratedSideCover(current);
-            final inProfiles =
-                current != null &&
-                slidingProfiles.any((p) => p['id'] == current['id']);
-            if (current == null || hasIntegrated || !inProfiles) {
-              final plain = slidingProfiles.firstWhere(
-                (p) => !profileHasIntegratedSideCover(p),
-                orElse: () => slidingProfiles.first,
-              );
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && widget.model.getFrameRects().length > 1) {
-                  selectFrameProfile(plain, sliding: true);
-                }
-              });
-            }
-          }
-        }
-
         final Map<String, dynamic>? activeOpeningFrameMap =
             widget.model.getFrameRects().length > 1 &&
                 (widget.model.frameOverride == null ||
-                    profileHasIntegratedSideCover(
-                      widget.model.frameOverride!,
-                    ) ||
                     !openingProfiles.any(
                       (p) => p['id'] == widget.model.frameOverride?['id'],
                     )) &&
                 openingProfiles.isNotEmpty
-            ? openingProfiles.firstWhere(
-                (p) => !profileHasIntegratedSideCover(p),
-                orElse: () => openingProfiles.first,
-              )
+            ? openingProfiles.first
             : widget.model.frameOverride;
 
         final Map<String, dynamic>? activeSlidingFrameMap =
             widget.model.getFrameRects().length > 1 &&
                 (widget.model.slidingFrameOverride == null ||
-                    profileHasIntegratedSideCover(
-                      widget.model.slidingFrameOverride!,
-                    ) ||
                     !slidingProfiles.any(
                       (p) =>
                           p['id'] == widget.model.slidingFrameOverride?['id'],
                     )) &&
                 slidingProfiles.isNotEmpty
-            ? slidingProfiles.firstWhere(
-                (p) => !profileHasIntegratedSideCover(p),
-                orElse: () => slidingProfiles.first,
-              )
+            ? slidingProfiles.first
             : widget.model.getSlidingBaseFrameSection()?.toMap();
+
+        final hasBothFrameFamilies =
+            openingProfiles.isNotEmpty && slidingProfiles.isNotEmpty;
 
         void addFrameProfileButtons(
           List<Map<String, dynamic>> profiles, {
@@ -16447,7 +16864,7 @@ class _WindowViewState extends State<WindowView> {
               ),
             );
             children.add(
-              widget.systemMode == 'mixed'
+              hasBothFrameFamilies
                   ? _Tier2RowItem(rowIndex: sliding ? 1 : 0, child: button)
                   : button,
             );
@@ -16466,11 +16883,7 @@ class _WindowViewState extends State<WindowView> {
           );
         } else {
           if (openingProfiles.isNotEmpty) {
-            addFrameProfileButtons(
-              openingProfiles,
-              sliding: false,
-              prefix: widget.systemMode == 'mixed' ? 'فتح' : '',
-            );
+            addFrameProfileButtons(openingProfiles, sliding: false, prefix: '');
           }
           if (slidingProfiles.isNotEmpty) {
             if (openingProfiles.isNotEmpty) {
@@ -16482,8 +16895,8 @@ class _WindowViewState extends State<WindowView> {
 
         // زر الغطاء الجانبي (Side Cover toggle)
         children.add(const SizedBox(width: 8));
-        final bool isNestedSlidingFrame = widget.model
-            .isSlidingZoneNestedInSingleFrame(zone);
+        final bool isNestedSlidingFrame =
+            zone != null && widget.model.isSlidingZoneNestedInSingleFrame(zone);
         if (isNestedSlidingFrame) {
           children.add(
             _ContentButton(
@@ -17336,25 +17749,22 @@ class _WindowViewState extends State<WindowView> {
                 ),
               );
             }
-            if (zone.slidingFaceToFace ||
-                (zone.slidingSashesCount == 6 && zone.slidingTrackCount == 3)) {
-              children.add(const SizedBox(width: 8));
-              children.add(
-                _ContentButton(
-                  label: zone.slidingSecondCentralHandle
-                      ? 'مقبض الوسط الشكلي: مفعّل'
-                      : 'مقبض الوسط الشكلي: ملغي',
-                  icon: Icons.more_horiz_rounded,
-                  selected: zone.slidingSecondCentralHandle,
-                  onPressed: () {
-                    setState(() {
-                      widget.model
-                          .toggleSelectedZoneSlidingSecondCentralHandle();
-                    });
-                  },
-                ),
-              );
-            }
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: zone.slidingSecondCentralHandle
+                    ? 'مقبض الوسط الشكلي: مفعّل'
+                    : 'مقبض الوسط الشكلي: ملغي',
+                icon: Icons.more_horiz_rounded,
+                selected: zone.slidingSecondCentralHandle,
+                enabled: zone.slidingFaceToFace,
+                onPressed: () {
+                  setState(() {
+                    widget.model.toggleSelectedZoneSlidingSecondCentralHandle();
+                  });
+                },
+              ),
+            );
           }
         }
 
@@ -18214,6 +18624,33 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         }
+        children.add(const SizedBox(width: 12));
+        children.add(
+          SizedBox(
+            width: 250,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  Localization.translate('ارتفاع المقبض', lang),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Slider(
+                  value: (zone.handlePositionRatio ?? 0.5).clamp(0.1, 0.9),
+                  min: 0.1,
+                  max: 0.9,
+                  divisions: 80,
+                  onChanged: (value) =>
+                      widget.model.updateHandlePosition(zone.id, value),
+                ),
+              ],
+            ),
+          ),
+        );
         break;
     }
 
@@ -18778,6 +19215,7 @@ class _ContentButton extends StatelessWidget {
   final VoidCallback onPressed;
   final bool showWarning;
   final bool showSubmenuIndicator;
+  final bool enabled;
 
   const _ContentButton({
     required this.label,
@@ -18786,76 +19224,85 @@ class _ContentButton extends StatelessWidget {
     required this.onPressed,
     this.showWarning = false,
     this.showSubmenuIndicator = false,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
-      onTap: onPressed,
-      child: AnimatedContainer(
+      onTap: enabled ? onPressed : null,
+      child: AnimatedOpacity(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected
-              ? (isDark
-                    ? Colors.blue.shade900.withValues(alpha: 0.3)
-                    : Colors.blue.shade50)
-              : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
+        opacity: enabled ? 1 : 0.45,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
             color: selected
-                ? Colors.blue
-                : (isDark ? Colors.white24 : Colors.grey.shade300),
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isDark
-                  ? Colors.white
-                  : (selected ? Colors.blue : Colors.grey.shade600),
+                ? (isDark
+                      ? Colors.blue.shade900.withValues(alpha: 0.3)
+                      : Colors.blue.shade50)
+                : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected
+                  ? Colors.blue
+                  : (isDark ? Colors.white24 : Colors.grey.shade300),
+              width: 1.5,
             ),
-            const SizedBox(width: 5),
-            Text(
-              Localization.translate(
-                label,
-                Provider.of<AppSettingsProvider>(
-                  context,
-                  listen: false,
-                ).language,
-              ),
-              style: TextStyle(
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
                 color: isDark
                     ? Colors.white
-                    : (selected ? Colors.blue.shade900 : Colors.grey.shade800),
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    : (selected ? Colors.blue : Colors.grey.shade600),
               ),
-            ),
-            if (showSubmenuIndicator) ...[
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 16,
-                color: isDark
-                    ? Colors.white70
-                    : (selected ? Colors.blue.shade900 : Colors.grey.shade600),
-              ),
-            ],
-            if (showWarning) ...[
               const SizedBox(width: 5),
-              const Icon(
-                Icons.warning_amber_rounded,
-                color: Colors.orange,
-                size: 16,
+              Text(
+                Localization.translate(
+                  label,
+                  Provider.of<AppSettingsProvider>(
+                    context,
+                    listen: false,
+                  ).language,
+                ),
+                style: TextStyle(
+                  color: isDark
+                      ? Colors.white
+                      : (selected
+                            ? Colors.blue.shade900
+                            : Colors.grey.shade800),
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
+              if (showSubmenuIndicator) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: isDark
+                      ? Colors.white70
+                      : (selected
+                            ? Colors.blue.shade900
+                            : Colors.grey.shade600),
+                ),
+              ],
+              if (showWarning) ...[
+                const SizedBox(width: 5),
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                  size: 16,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -19391,6 +19838,28 @@ class AppWorkspacePainter extends CustomPainter {
     if (model.hasSideCovers && !model.removedShutterSides.contains('right')) {
       offsetDistRight += scW + 15.0;
     }
+    if (model.shutterIsLongerThanWindow) {
+      final shutterDimX = pos.dx + model.width + offsetDistRight + 75.0;
+      _drawDimension(
+        canvas,
+        'V ${model.shutterDrawingHeight.toInt()} mm',
+        Offset(shutterDimX, pos.dy),
+        Offset(shutterDimX, pos.dy + model.shutterDrawingHeight),
+        isVerticalLine: true,
+        isSmall: true,
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + model.width, pos.dy),
+        Offset(shutterDimX + 6.0, pos.dy),
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + model.width, pos.dy + model.shutterDrawingHeight),
+        Offset(shutterDimX + 6.0, pos.dy + model.shutterDrawingHeight),
+      );
+      offsetDistRight += 125.0;
+    }
 
     final bool isSlantedOrArched =
         model.archHeight > 0 ||
@@ -19442,7 +19911,7 @@ class AppWorkspacePainter extends CustomPainter {
 
     // If multi-frame, draw individual frame widths on Layer 1
     if (isMultiFrame) {
-      double layer1Y = isSlantedOrArched ? widthY : widthY + 45.0;
+      double layer1Y = isSlantedOrArched ? widthY : widthY + 70.0;
       for (final f in sortedFrames) {
         final double x0 = pos.dx + f.rect.left;
         final double x1 = pos.dx + f.rect.right;

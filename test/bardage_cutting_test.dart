@@ -56,6 +56,37 @@ void main() {
     expect(model.shutterDriveSide, 'right');
   });
 
+  test('each split shutter box preserves its own mechanism and drive side', () {
+    final model = WindowModel(db: FakeSqlDatabase())
+      ..hasShutter = true
+      ..isShutterSplit = true
+      ..shutterSplits = const [
+        ShutterSplitSection(
+          width: 900,
+          leftOffset: 0,
+          frameIndex: 0,
+          mechanism: 'محرك',
+          driveSide: 'right',
+        ),
+        ShutterSplitSection(
+          width: 1100,
+          leftOffset: 900,
+          frameIndex: 1,
+          mechanism: 'منايفال',
+          driveSide: 'left',
+        ),
+      ];
+
+    final restored = WindowModel(db: FakeSqlDatabase());
+    applyWindowModelFromMap(restored, model.toMap());
+
+    expect(restored.shutterSplits, hasLength(2));
+    expect(restored.shutterSplits[0].mechanism, 'محرك');
+    expect(restored.shutterSplits[0].driveSide, 'right');
+    expect(restored.shutterSplits[1].mechanism, 'منايفال');
+    expect(restored.shutterSplits[1].driveSide, 'left');
+  });
+
   test('shutter curtain weight follows the actual blade cuts', () {
     final weight = ComponentCalculator.shutterCurtainWeightKg(
       windowWidthMm: 1200,

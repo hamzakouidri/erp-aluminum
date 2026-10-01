@@ -1077,6 +1077,54 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Cadre :',
     AppLanguage.english: 'Frame:',
   },
+  'تأكيد تغيير الإطار': {
+    AppLanguage.arabic: 'تأكيد تغيير الإطار',
+    AppLanguage.french: 'Confirmer le changement de cadre',
+    AppLanguage.english: 'Confirm frame change',
+  },
+  'عرض الإطارات': {
+    AppLanguage.arabic: 'عرض الإطارات',
+    AppLanguage.french: 'Affichage des cadres',
+    AppLanguage.english: 'Frame display',
+  },
+  'الإطارات الصالحة فقط': {
+    AppLanguage.arabic: 'الإطارات الصالحة فقط',
+    AppLanguage.french: 'Cadres compatibles uniquement',
+    AppLanguage.english: 'Compatible frames only',
+  },
+  'كل إطارات السلسلة': {
+    AppLanguage.arabic: 'كل إطارات السلسلة',
+    AppLanguage.french: 'Tous les cadres de la série',
+    AppLanguage.english: 'All series frames',
+  },
+  'ارتفاع المقبض': {
+    AppLanguage.arabic: 'ارتفاع المقبض',
+    AppLanguage.french: 'Hauteur de la poignée',
+    AppLanguage.english: 'Handle height',
+  },
+  'هذا الإطار غير متوافق مع بعض تجهيزات الرسم. إذا تابعت:': {
+    AppLanguage.arabic:
+        'هذا الإطار غير متوافق مع بعض تجهيزات الرسم. إذا تابعت:',
+    AppLanguage.french:
+        'Ce cadre est incompatible avec certains équipements du dessin. Si vous continuez :',
+    AppLanguage.english:
+        'This frame is incompatible with some drawing options. If you continue:',
+  },
+  'سيتم إلغاء الغطاء الجانبي': {
+    AppLanguage.arabic: 'سيتم إلغاء الغطاء الجانبي',
+    AppLanguage.french: 'Le couvre-joint latéral sera désactivé',
+    AppLanguage.english: 'The side cover will be disabled',
+  },
+  'سيتم إلغاء الستار': {
+    AppLanguage.arabic: 'سيتم إلغاء الستار',
+    AppLanguage.french: 'Le volet roulant sera désactivé',
+    AppLanguage.english: 'The roller shutter will be disabled',
+  },
+  'سيتم إلغاء بروفيل الزاوية': {
+    AppLanguage.arabic: 'سيتم إلغاء بروفيل الزاوية',
+    AppLanguage.french: "Le profil d’angle sera désactivé",
+    AppLanguage.english: 'The corner profile will be disabled',
+  },
   'إعدادات الإطار والظلفة:': {
     AppLanguage.arabic: 'إعدادات الإطار والظلفة:',
     AppLanguage.french: 'Paramètres du cadre et de l’ouvrant :',

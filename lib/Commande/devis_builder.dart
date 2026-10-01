@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
 import 'order_date_utils.dart';
+import 'Systeme/sliding_montant_counts.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:flutter/foundation.dart';
@@ -158,12 +159,11 @@ class DevisData {
 
   /// Human-facing small sequential order number. The database ID can be a distributed
   /// large timestamp/hash and must never be printed as the order number.
-  int get orderDisplayNumber =>
-      sequenceNumber > 0
-          ? sequenceNumber
-          : (orderId > 0 && orderId < 100000
-              ? orderId
-              : ((orderId % 1000).abs() + 1));
+  int get orderDisplayNumber => sequenceNumber > 0
+      ? sequenceNumber
+      : (orderId > 0 && orderId < 100000
+            ? orderId
+            : ((orderId % 1000).abs() + 1));
 
   String get orderDisplayLabel => '#$orderDisplayNumber';
 }
@@ -786,8 +786,10 @@ class DevisBuilder {
     if (isShutterOnly) {
       systemType = 'Volet roulant';
     } else if (map['zones'] != null && (map['zones'] as List).isNotEmpty) {
-      final smartComposition =
-          generateSmartCompositionDescription(map, _currentLang);
+      final smartComposition = generateSmartCompositionDescription(
+        map,
+        _currentLang,
+      );
       if (smartComposition.isNotEmpty) {
         systemType = smartComposition;
       } else {
@@ -895,11 +897,13 @@ class DevisBuilder {
     } else if (isMoustiquaire) {
       title = 'Moustiquaire (موستيكير)';
     } else if (isGlassWork) {
-      final overrideName = map['manualNameOverride']?.toString().trim() ??
+      final overrideName =
+          map['manualNameOverride']?.toString().trim() ??
           item['window_type']?.toString().trim() ??
           '';
       if (overrideName.isNotEmpty) {
-        title = overrideName.startsWith('فير ترومبي') ||
+        title =
+            overrideName.startsWith('فير ترومبي') ||
                 overrideName.startsWith('Verre Trempé')
             ? overrideName
             : 'فير ترومبي - $overrideName';
@@ -1112,7 +1116,10 @@ class DevisBuilder {
           payload['glassFinishLabel']?.toString() ??
           item['glass']?.toString() ??
           'شفاف';
-      final thickness = (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)?.toDouble() ?? 10;
+      final thickness =
+          (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)
+              ?.toDouble() ??
+          10;
       final sablageMode = payload['sablageMode']?.toString() ?? 'none';
       final sablageLabel = sablageMode == 'none'
           ? 'بدون سابلاج'
@@ -1121,7 +1128,9 @@ class DevisBuilder {
 
       details.clear();
       details.add('الخاصية: $workType');
-      details.add('الزجاج: $finish ${thickness.toStringAsFixed(0)} مم | $sablageLabel');
+      details.add(
+        'الزجاج: $finish ${thickness.toStringAsFixed(0)} مم | $sablageLabel',
+      );
       details.add('القياس الإجمالي: $width × $height مم');
 
       final rawItems = payload['items'] as List?;
@@ -1140,7 +1149,9 @@ class DevisBuilder {
               'vitrine_right' => 'الدرفة اليمنى',
               _ => 'اللوح ${i + 1}',
             };
-            panelStrs.add('$roleArabic: ${pw.toStringAsFixed(0)} × ${ph.toStringAsFixed(0)} مم');
+            panelStrs.add(
+              '$roleArabic: ${pw.toStringAsFixed(0)} × ${ph.toStringAsFixed(0)} مم',
+            );
           }
         }
         if (panelStrs.isNotEmpty) {
@@ -1717,14 +1728,16 @@ class DevisBuilder {
 
           final reinforcedMap = z['slidingMontantReinforced'] as Map?;
           final sashes = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
-          final bool hasMeetingInCenter =
-              (z['slidingFaceToFace'] == true) && sashes >= 4 && sashes % 2 == 0;
-          final int lateralCount = hasMeetingInCenter ? 4 : 2;
-          final int currentCentralCount = hasMeetingInCenter
-              ? (sashes == 4 ? 4 : 8)
-              : (sashes > 1 ? (sashes - 1) * 2 : 0);
+          final counts = slidingMontantCounts(
+            sashes: sashes,
+            tracks: (z['slidingTrackCount'] as num?)?.toInt() ?? sashes,
+            faceToFace: z['slidingFaceToFace'] == true,
+          );
+          final lateralCount = counts.lateral;
+          final currentCentralCount = counts.central;
           for (var i = 0; i < lateralCount; i++) {
-            final isReinforced = reinforcedMap != null &&
+            final isReinforced =
+                reinforcedMap != null &&
                 (reinforcedMap['lateral_$i'] == true ||
                     (i == 0 && reinforcedMap['lateral_left'] == true) ||
                     (i == (lateralCount == 4 ? 1 : lateralCount - 1) &&
@@ -1736,7 +1749,8 @@ class DevisBuilder {
             }
           }
           for (var i = 0; i < currentCentralCount; i++) {
-            final isReinforced = reinforcedMap != null &&
+            final isReinforced =
+                reinforcedMap != null &&
                 (reinforcedMap['central_$i'] == true ||
                     (i.isEven && reinforcedMap['central_left'] == true) ||
                     (i.isOdd && reinforcedMap['central_right'] == true));
@@ -1767,7 +1781,8 @@ class DevisBuilder {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      final bool hasThreePiece = !isPVC &&
+      final bool hasThreePiece =
+          !isPVC &&
           (map['hasThreePieceSash'] == true ||
               map['has_three_piece_sash'] == 1 ||
               map['has_three_piece_sash'] == true ||
@@ -2157,7 +2172,11 @@ class DevisBuilder {
     return Rect.fromLTWH(l, t, w, h);
   }
 
-  static bool _areZonesAdjacent(Rect first, Rect second, [double intraFrameGap = 65.0]) {
+  static bool _areZonesAdjacent(
+    Rect first,
+    Rect second, [
+    double intraFrameGap = 65.0,
+  ]) {
     final verticalTouch =
         (first.right - second.left).abs() <= intraFrameGap ||
         (second.right - first.left).abs() <= intraFrameGap;
@@ -2178,7 +2197,9 @@ class DevisBuilder {
     return false;
   }
 
-  static List<List<Map<String, dynamic>>> _clusterZonesIntoFrames(List<Map<String, dynamic>> zones) {
+  static List<List<Map<String, dynamic>>> _clusterZonesIntoFrames(
+    List<Map<String, dynamic>> zones,
+  ) {
     if (zones.isEmpty) return const [];
     if (zones.length == 1) return [zones];
 
@@ -2224,18 +2245,26 @@ class DevisBuilder {
 
     // Sort groups spatially (left to right, then top to bottom)
     groups.sort((a, b) {
-      final rectA = a.map(_zoneBoundary).reduce((v, e) => Rect.fromLTRB(
-        math.min(v.left, e.left),
-        math.min(v.top, e.top),
-        math.max(v.right, e.right),
-        math.max(v.bottom, e.bottom),
-      ));
-      final rectB = b.map(_zoneBoundary).reduce((v, e) => Rect.fromLTRB(
-        math.min(v.left, e.left),
-        math.min(v.top, e.top),
-        math.max(v.right, e.right),
-        math.max(v.bottom, e.bottom),
-      ));
+      final rectA = a
+          .map(_zoneBoundary)
+          .reduce(
+            (v, e) => Rect.fromLTRB(
+              math.min(v.left, e.left),
+              math.min(v.top, e.top),
+              math.max(v.right, e.right),
+              math.max(v.bottom, e.bottom),
+            ),
+          );
+      final rectB = b
+          .map(_zoneBoundary)
+          .reduce(
+            (v, e) => Rect.fromLTRB(
+              math.min(v.left, e.left),
+              math.min(v.top, e.top),
+              math.max(v.right, e.right),
+              math.max(v.bottom, e.bottom),
+            ),
+          );
       if ((rectA.left - rectB.left).abs() > 20) {
         return rectA.left.compareTo(rectB.left);
       }
@@ -2253,24 +2282,32 @@ class DevisBuilder {
     return switch (lang) {
       AppLanguage.french =>
         isDoor
-            ? (sashes == 1 ? 'Porte coulissante 1 vantail' : 'Porte coulissante $sashes vantaux')
-            : (sashes == 1 ? 'Fenêtre coulissante 1 vantail' : 'Fenêtre coulissante $sashes vantaux'),
+            ? (sashes == 1
+                  ? 'Porte coulissante 1 vantail'
+                  : 'Porte coulissante $sashes vantaux')
+            : (sashes == 1
+                  ? 'Fenêtre coulissante 1 vantail'
+                  : 'Fenêtre coulissante $sashes vantaux'),
       AppLanguage.arabic =>
         isDoor
             ? (sashes == 1
-                ? 'باب منزلق ضلفة واحدة'
-                : sashes == 2
-                    ? 'باب منزلق بضلفتين'
-                    : 'باب منزلق $sashes درفات')
+                  ? 'باب منزلق ضلفة واحدة'
+                  : sashes == 2
+                  ? 'باب منزلق بضلفتين'
+                  : 'باب منزلق $sashes درفات')
             : (sashes == 1
-                ? 'نافذة منزلقة ضلفة واحدة'
-                : sashes == 2
-                    ? 'نافذة منزلقة بضلفتين'
-                    : 'نافذة منزلقة $sashes درفات'),
+                  ? 'نافذة منزلقة ضلفة واحدة'
+                  : sashes == 2
+                  ? 'نافذة منزلقة بضلفتين'
+                  : 'نافذة منزلقة $sashes درفات'),
       AppLanguage.english =>
         isDoor
-            ? (sashes == 1 ? '1-sash sliding door' : '$sashes-sash sliding door')
-            : (sashes == 1 ? '1-sash sliding window' : '$sashes-sash sliding window'),
+            ? (sashes == 1
+                  ? '1-sash sliding door'
+                  : '$sashes-sash sliding door')
+            : (sashes == 1
+                  ? '1-sash sliding window'
+                  : '$sashes-sash sliding window'),
     };
   }
 
@@ -2283,39 +2320,39 @@ class DevisBuilder {
       AppLanguage.french =>
         isDoor
             ? (sashes == 1
-                ? 'Porte simple ouvrant'
-                : sashes == 2
-                    ? 'Porte double ouvrant'
-                    : 'Porte $sashes vantaux')
+                  ? 'Porte simple ouvrant'
+                  : sashes == 2
+                  ? 'Porte double ouvrant'
+                  : 'Porte $sashes vantaux')
             : (sashes == 1
-                ? 'Fenêtre simple ouvrant'
-                : sashes == 2
-                    ? 'Fenêtre double vantaux'
-                    : 'Fenêtre $sashes vantaux'),
+                  ? 'Fenêtre simple ouvrant'
+                  : sashes == 2
+                  ? 'Fenêtre double vantaux'
+                  : 'Fenêtre $sashes vantaux'),
       AppLanguage.arabic =>
         isDoor
             ? (sashes == 1
-                ? 'باب بضلفة واحدة'
-                : sashes == 2
-                    ? 'باب بضلفتين'
-                    : 'باب بـ $sashes درفات')
+                  ? 'باب بضلفة واحدة'
+                  : sashes == 2
+                  ? 'باب بضلفتين'
+                  : 'باب بـ $sashes درفات')
             : (sashes == 1
-                ? 'نافذة بضلفة واحدة'
-                : sashes == 2
-                    ? 'نافذة بضلفتين'
-                    : 'نافذة بـ $sashes درفات'),
+                  ? 'نافذة بضلفة واحدة'
+                  : sashes == 2
+                  ? 'نافذة بضلفتين'
+                  : 'نافذة بـ $sashes درفات'),
       AppLanguage.english =>
         isDoor
             ? (sashes == 1
-                ? 'Single sash door'
-                : sashes == 2
-                    ? 'Double sash door'
-                    : '$sashes-sash door')
+                  ? 'Single sash door'
+                  : sashes == 2
+                  ? 'Double sash door'
+                  : '$sashes-sash door')
             : (sashes == 1
-                ? 'Single sash window'
-                : sashes == 2
-                    ? 'Double sash window'
-                    : '$sashes-sash window'),
+                  ? 'Single sash window'
+                  : sashes == 2
+                  ? 'Double sash window'
+                  : '$sashes-sash window'),
     };
   }
 
@@ -2326,20 +2363,18 @@ class DevisBuilder {
         count == 1
             ? ' avec partie fixe'
             : count == 2
-                ? ' avec 2 parties fixes'
-                : ' avec $count parties fixes',
+            ? ' avec 2 parties fixes'
+            : ' avec $count parties fixes',
       AppLanguage.arabic =>
         count == 1
             ? ' مع جزء ثابت'
             : count == 2
-                ? ' مع جزئين ثابتين'
-                : (count >= 3 && count <= 10)
-                    ? ' مع $count أجزاء ثابتة'
-                    : ' مع $count جزء ثابت',
+            ? ' مع جزئين ثابتين'
+            : (count >= 3 && count <= 10)
+            ? ' مع $count أجزاء ثابتة'
+            : ' مع $count جزء ثابت',
       AppLanguage.english =>
-        count == 1
-            ? ' with fixed pane'
-            : ' with $count fixed panes',
+        count == 1 ? ' with fixed pane' : ' with $count fixed panes',
     };
   }
 
@@ -2349,20 +2384,18 @@ class DevisBuilder {
         count <= 1
             ? 'Fixe'
             : count == 2
-                ? 'Fixe (2 parties fixes)'
-                : 'Fixe ($count parties fixes)',
+            ? 'Fixe (2 parties fixes)'
+            : 'Fixe ($count parties fixes)',
       AppLanguage.arabic =>
         count <= 1
             ? 'إطار ثابت'
             : count == 2
-                ? 'إطار ثابت (جزئين ثابتين)'
-                : (count >= 3 && count <= 10)
-                    ? 'إطار ثابت ($count أجزاء ثابتة)'
-                    : 'إطار ثابت ($count جزء ثابت)',
+            ? 'إطار ثابت (جزئين ثابتين)'
+            : (count >= 3 && count <= 10)
+            ? 'إطار ثابت ($count أجزاء ثابتة)'
+            : 'إطار ثابت ($count جزء ثابت)',
       AppLanguage.english =>
-        count <= 1
-            ? 'Fixed frame'
-            : 'Fixed frame ($count fixed panes)',
+        count <= 1 ? 'Fixed frame' : 'Fixed frame ($count fixed panes)',
     };
   }
 
@@ -2399,20 +2432,25 @@ class DevisBuilder {
         int subcellSashes = 0;
         if (z['cellIsDoubleSash'] is Map) {
           final doubleMap = z['cellIsDoubleSash'] as Map;
-          final dCount = doubleMap.values.where((v) => v == true || v == 1 || v?.toString() == 'true').length;
+          final dCount = doubleMap.values
+              .where((v) => v == true || v == 1 || v?.toString() == 'true')
+              .length;
           openingSashes += dCount * 2;
           subcellSashes += dCount * 2;
         }
         if (z['cellIsSash'] is Map) {
           final sashMap = z['cellIsSash'] as Map;
-          final sCount = sashMap.values.where((v) => v == true || v == 1 || v?.toString() == 'true').length;
+          final sCount = sashMap.values
+              .where((v) => v == true || v == 1 || v?.toString() == 'true')
+              .length;
           openingSashes += sCount;
           subcellSashes += sCount;
         }
 
         final innerH = (z['innerH'] as num?)?.toInt() ?? 0;
         final innerV = (z['innerV'] as num?)?.toInt() ?? 0;
-        final isSubdivided = z['isSubdivided'] == true || innerH > 0 || innerV > 0;
+        final isSubdivided =
+            z['isSubdivided'] == true || innerH > 0 || innerV > 0;
         if (isSubdivided) {
           final totalCells = (innerH + 1) * (innerV + 1);
           final fixedCells = totalCells - subcellSashes;
@@ -2491,7 +2529,10 @@ class DevisBuilder {
     final hasGas = _hasGas(map);
     final gasStr = hasGas ? _gasSuffix() : '';
 
-    final smartComposition = generateSmartCompositionDescription(map, _currentLang);
+    final smartComposition = generateSmartCompositionDescription(
+      map,
+      _currentLang,
+    );
     if (smartComposition.isNotEmpty) {
       final glassStr = switch (_currentLang) {
         AppLanguage.french => isDouble ? 'double vitrage' : 'simple vitrage',
@@ -2545,7 +2586,8 @@ class DevisBuilder {
   static bool _hasGas(Map<String, dynamic> map) {
     if (map['hasGas'] == true) return true;
     for (final z in _zonesFromMap(map)) {
-      if (z['glass'] is Map && (z['glass'] as Map)['hasGas'] == true) return true;
+      if (z['glass'] is Map && (z['glass'] as Map)['hasGas'] == true)
+        return true;
       final cellGlass = z['cellGlassSpec'];
       if (cellGlass is Map) {
         for (final v in cellGlass.values) {
@@ -3089,7 +3131,8 @@ class DevisBuilder {
   }) {
     if (isPvc) return const [];
 
-    final bool hasThreePiece = !isPvc &&
+    final bool hasThreePiece =
+        !isPvc &&
         (map?['hasThreePieceSash'] == true ||
             map?['has_three_piece_sash'] == 1 ||
             map?['has_three_piece_sash'] == true ||
@@ -3109,9 +3152,14 @@ class DevisBuilder {
     var lateralReinforced = 0;
     for (final zone in slidingZones) {
       final sashes = (zone['slidingSashesCount'] as num?)?.toInt() ?? 2;
-      final count = sashes > 1 ? (sashes - 1) * 2 : 0;
+      final counts = slidingMontantCounts(
+        sashes: sashes,
+        tracks: (zone['slidingTrackCount'] as num?)?.toInt() ?? sashes,
+        faceToFace: zone['slidingFaceToFace'] == true,
+      );
+      final count = counts.central;
       centralCount += count;
-      lateralCount += 2;
+      lateralCount += counts.lateral;
       final flags = zone['slidingMontantReinforced'];
       bool reinforced(String kind, int index) {
         if (flags is! Map) return false;
@@ -3123,7 +3171,7 @@ class DevisBuilder {
       for (var i = 0; i < count; i++) {
         if (reinforced('central', i)) centralReinforced++;
       }
-      for (var i = 0; i < 2; i++) {
+      for (var i = 0; i < counts.lateral; i++) {
         if (reinforced('lateral', i)) lateralReinforced++;
       }
     }
@@ -3146,17 +3194,13 @@ class DevisBuilder {
             'Montant central: $centralReinforced renforcé(s)',
           AppLanguage.english =>
             'Central montant: $centralReinforced reinforced',
-          AppLanguage.arabic =>
-            'القائم الوسطي: $centralReinforced مدعم',
+          AppLanguage.arabic => 'القائم الوسطي: $centralReinforced مدعم',
         });
       } else {
         lines.add(switch (_currentLang) {
-          AppLanguage.french =>
-            'Montant central: $regular simple(s)',
-          AppLanguage.english =>
-            'Central montant: $regular standard',
-          AppLanguage.arabic =>
-            'القائم الوسطي: $regular غير مدعم',
+          AppLanguage.french => 'Montant central: $regular simple(s)',
+          AppLanguage.english => 'Central montant: $regular standard',
+          AppLanguage.arabic => 'القائم الوسطي: $regular غير مدعم',
         });
       }
     }
@@ -3178,17 +3222,13 @@ class DevisBuilder {
             'Montant latéral: $lateralReinforced renforcé(s)',
           AppLanguage.english =>
             'Lateral montant: $lateralReinforced reinforced',
-          AppLanguage.arabic =>
-            'القائم الجانبي: $lateralReinforced مدعم',
+          AppLanguage.arabic => 'القائم الجانبي: $lateralReinforced مدعم',
         });
       } else {
         lines.add(switch (_currentLang) {
-          AppLanguage.french =>
-            'Montant latéral: $regular simple(s)',
-          AppLanguage.english =>
-            'Lateral montant: $regular standard',
-          AppLanguage.arabic =>
-            'القائم الجانبي: $regular غير مدعم',
+          AppLanguage.french => 'Montant latéral: $regular simple(s)',
+          AppLanguage.english => 'Lateral montant: $regular standard',
+          AppLanguage.arabic => 'القائم الجانبي: $regular غير مدعم',
         });
       }
     }

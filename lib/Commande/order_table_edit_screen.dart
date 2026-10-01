@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
+import 'package:database_data/Commande/Systeme/sliding_montant_counts.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
@@ -28,20 +29,31 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     final draft = WindowModel(db: original.db);
     applyWindowModelFromMap(draft, original.toMap());
     draft.copyCatalogRuntimeFrom(original, preserveCurrentSelections: true);
-    final result = await Navigator.push<WindowModel>(context, MaterialPageRoute(
-      builder: (_) => WindowView(model: draft, systemMode: original.systemMode ?? 'mixed'),
-    ));
+    final result = await Navigator.push<WindowModel>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WindowView(
+          model: draft,
+          systemMode: original.systemMode ?? 'mixed',
+        ),
+      ),
+    );
     if (!mounted || result == null) return;
     widget.products[index] = result;
     _widthControllers[index]?.text = result.width.toStringAsFixed(0);
     _heightControllers[index]?.text = result.height.toStringAsFixed(0);
     _quantityControllers[index]?.text = result.quantity.toString();
-    _priceControllers[index]?.text = (result.manualPriceOverride ?? result.totalCost).toStringAsFixed(2);
-    _descControllers[index]?.text = _buildInvoiceLineForProduct(result,
-        description: '', forceGeneratedDetails: true).details.join('\n');
+    _priceControllers[index]?.text =
+        (result.manualPriceOverride ?? result.totalCost).toStringAsFixed(2);
+    _descControllers[index]?.text = _buildInvoiceLineForProduct(
+      result,
+      description: '',
+      forceGeneratedDetails: true,
+    ).details.join('\n');
     await _loadProductPreviewImage(index, result);
     if (mounted) setState(() {});
   }
+
   String t(String key) {
     try {
       final lang = Provider.of<AppSettingsProvider>(
@@ -815,14 +827,16 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           if (z['useClassicHandle'] != true) useEntrematique = true;
           final reinforcedMap = z['slidingMontantReinforced'] as Map?;
           final sashes = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
-          final bool hasMeetingInCenter =
-              (z['slidingFaceToFace'] == true) && sashes >= 4 && sashes % 2 == 0;
-          final int lateralCount = hasMeetingInCenter ? 4 : 2;
-          final int currentCentralCount = hasMeetingInCenter
-              ? (sashes == 4 ? 4 : 8)
-              : (sashes > 1 ? (sashes - 1) * 2 : 0);
+          final counts = slidingMontantCounts(
+            sashes: sashes,
+            tracks: (z['slidingTrackCount'] as num?)?.toInt() ?? sashes,
+            faceToFace: z['slidingFaceToFace'] == true,
+          );
+          final lateralCount = counts.lateral;
+          final currentCentralCount = counts.central;
           for (var i = 0; i < lateralCount; i++) {
-            final isReinforced = reinforcedMap != null &&
+            final isReinforced =
+                reinforcedMap != null &&
                 (reinforcedMap['lateral_$i'] == true ||
                     (i == 0 && reinforcedMap['lateral_left'] == true) ||
                     (i == (lateralCount == 4 ? 1 : lateralCount - 1) &&
@@ -834,7 +848,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
             }
           }
           for (var i = 0; i < currentCentralCount; i++) {
-            final isReinforced = reinforcedMap != null &&
+            final isReinforced =
+                reinforcedMap != null &&
                 (reinforcedMap['central_$i'] == true ||
                     (i.isEven && reinforcedMap['central_left'] == true) ||
                     (i.isOdd && reinforcedMap['central_right'] == true));
@@ -881,7 +896,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
         details.add('الإغلاق (Fermeture): $fermetureVal');
       }
 
-      final bool hasThreePiece = !isPVC &&
+      final bool hasThreePiece =
+          !isPVC &&
           ((p.activeSlidingSeries?.hasThreePieceSash ?? false) ||
               (p.activeSeries?.hasThreePieceSash ?? false) ||
               pMap['hasThreePieceSash'] == true ||
@@ -1400,7 +1416,12 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           'كوفرو جوان:',
         ];
       case 'base':
-        return const ['Cadre de base:', 'De base:', 'Base frame:', 'الإطار السفلي:'];
+        return const [
+          'Cadre de base:',
+          'De base:',
+          'Base frame:',
+          'الإطار السفلي:',
+        ];
       case 'closure':
         return const ['Fermeture:', 'Closure:', 'الإغلاق', 'نوعية الغلق:'];
       case 'shutter':
@@ -1882,7 +1903,9 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                                 ),
                               TextButton.icon(
                                 icon: const Icon(Icons.design_services),
-                                label: const Text('تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة'),
+                                label: const Text(
+                                  'تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة',
+                                ),
                                 onPressed: () => _editActualDrawing(itemIndex),
                               ),
                               if (_images[itemIndex] != null)

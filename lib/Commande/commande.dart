@@ -55,6 +55,23 @@ class Commande extends StatefulWidget {
 }
 
 class _CommandeState extends State<Commande> {
+  static const String _orderSortColumnPreferenceKey =
+      'orders_sort_column_device';
+  static const String _orderSortAscendingPreferenceKey =
+      'orders_sort_ascending_device';
+  static const Set<String> _persistableOrderSortColumns = {
+    'id',
+    'client_project',
+    'date',
+    'updated_at',
+    'updated_by',
+    'total',
+    'advance',
+    'remaining',
+    'status',
+    'stock_reserved',
+    'creator',
+  };
   final SqlDatabase db = SqlDatabase();
   final ScrollController _scrollController = ScrollController();
   late Future<List<Map<String, dynamic>>> _data;
@@ -470,6 +487,7 @@ class _CommandeState extends State<Commande> {
   @override
   void initState() {
     super.initState();
+    unawaited(_loadOrderSortPreference());
     _loadWorkshopNameForIdentity();
     _fetchCommandes();
     _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
@@ -571,6 +589,31 @@ class _CommandeState extends State<Commande> {
   String? _orderSortColumn;
   bool _orderSortAscending = true;
 
+  Future<void> _loadOrderSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedColumn = prefs.getString(_orderSortColumnPreferenceKey);
+    final savedAscending =
+        prefs.getBool(_orderSortAscendingPreferenceKey) ?? true;
+    if (!mounted) return;
+    setState(() {
+      _orderSortColumn = _persistableOrderSortColumns.contains(savedColumn)
+          ? savedColumn
+          : null;
+      _orderSortAscending = savedAscending;
+    });
+  }
+
+  Future<void> _saveOrderSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final column = _orderSortColumn;
+    if (column == null) {
+      await prefs.remove(_orderSortColumnPreferenceKey);
+    } else {
+      await prefs.setString(_orderSortColumnPreferenceKey, column);
+    }
+    await prefs.setBool(_orderSortAscendingPreferenceKey, _orderSortAscending);
+  }
+
   @override
   void dispose() {
     _syncRefreshDebounce?.cancel();
@@ -590,6 +633,7 @@ class _CommandeState extends State<Commande> {
       _orderSortColumn = null;
       _orderSortAscending = true;
     });
+    unawaited(_saveOrderSortPreference());
   }
 
   bool get _hasActiveOrderColumnFilters {
@@ -597,6 +641,204 @@ class _CommandeState extends State<Commande> {
         _orderDateRange.isActive ||
         _orderNumericFilters.values.any((f) => f.isActive) ||
         _orderColumnControllers.values.any((c) => c.text.trim().isNotEmpty);
+  }
+
+  String _orderSortText(String key, AppLanguage lang) {
+    const labels = <String, List<String>>{
+      'title': ['ترتيب الطلبيات', 'Trier les commandes', 'Sort orders'],
+      'date': ['تاريخ الطلبية', 'Date de commande', 'Order date'],
+      'client_project': ['اسم الزبون', 'Nom du client', 'Client name'],
+      'updated_at': ['تاريخ التعديل', 'Date de modification', 'Modified date'],
+      'status': ['الحالة', 'Statut', 'Status'],
+      'updated_by': ['اسم المعدّل', 'Modifié par', 'Modified by'],
+      'creator': ['اسم المُدخل', 'Créé par', 'Created by'],
+      'ascending': ['تصاعدي', 'Croissant', 'Ascending'],
+      'descending': ['تنازلي', 'Décroissant', 'Descending'],
+      'clear': ['إلغاء الترتيب', 'Annuler le tri', 'Clear sorting'],
+    };
+    final languageIndex = switch (lang) {
+      AppLanguage.arabic => 0,
+      AppLanguage.french => 1,
+      _ => 2,
+    };
+    return labels[key]?[languageIndex] ?? key;
+  }
+
+  Widget _buildOrderSortButton(AppLanguage lang) {
+    final activeSort = _orderSortColumn;
+    final tooltip = activeSort == null
+        ? _orderSortText('title', lang)
+        : '${_orderSortText('title', lang)}: '
+              '${_orderSortText(activeSort, lang)} · '
+              '${_orderSortText(_orderSortAscending ? 'ascending' : 'descending', lang)}';
+
+    return PopupMenuButton<String>(
+      tooltip: tooltip,
+      onSelected: (value) {
+        setState(() {
+          if (value == 'direction:ascending') {
+            _orderSortAscending = true;
+            return;
+          }
+          if (value == 'direction:descending') {
+            _orderSortAscending = false;
+            return;
+          }
+          if (value == 'clear') {
+            _orderSortColumn = null;
+            _orderSortAscending = true;
+            return;
+          }
+
+          final selectedColumn = value.substring('column:'.length);
+          if (_orderSortColumn != selectedColumn) {
+            _orderSortColumn = selectedColumn;
+            _orderSortAscending =
+                selectedColumn != 'date' && selectedColumn != 'updated_at';
+          }
+        });
+        unawaited(_saveOrderSortPreference());
+      },
+      itemBuilder: (context) {
+        const columns = <String>[
+          'date',
+          'client_project',
+          'updated_at',
+          'status',
+          'updated_by',
+          'creator',
+        ];
+        return <PopupMenuEntry<String>>[
+          PopupMenuItem<String>(
+            enabled: false,
+            height: 36,
+            child: Text(
+              _orderSortText('title', lang),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          ...columns.map(
+            (column) => PopupMenuItem<String>(
+              value: 'column:$column',
+              child: Row(
+                children: [
+                  Icon(
+                    _orderSortColumn == column
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18,
+                    color: _orderSortColumn == column
+                        ? const Color(0xFF2563EB)
+                        : Colors.grey,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _orderSortText(column, lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'direction:ascending',
+            enabled: activeSort != null,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.arrow_upward_rounded,
+                  size: 18,
+                  color: activeSort != null && _orderSortAscending
+                      ? const Color(0xFF2563EB)
+                      : Colors.grey,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _orderSortText('ascending', lang),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ],
+            ),
+          ),
+          PopupMenuItem<String>(
+            value: 'direction:descending',
+            enabled: activeSort != null,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.arrow_downward_rounded,
+                  size: 18,
+                  color: activeSort != null && !_orderSortAscending
+                      ? const Color(0xFF2563EB)
+                      : Colors.grey,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _orderSortText('descending', lang),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ],
+            ),
+          ),
+          if (activeSort != null) ...[
+            const PopupMenuDivider(),
+            PopupMenuItem<String>(
+              value: 'clear',
+              child: Row(
+                children: [
+                  const Icon(Icons.sort_by_alpha_rounded, size: 18),
+                  const SizedBox(width: 10),
+                  Text(
+                    _orderSortText('clear', lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ];
+      },
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: activeSort == null
+              ? Theme.of(context).colorScheme.surface
+              : const Color(0xFF2563EB).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: activeSort == null
+                ? Theme.of(context).dividerColor
+                : const Color(0xFF2563EB),
+          ),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(
+              Icons.sort_rounded,
+              color: activeSort == null ? Colors.grey : const Color(0xFF2563EB),
+            ),
+            if (activeSort != null)
+              Positioned(
+                right: 4,
+                bottom: 4,
+                child: Icon(
+                  _orderSortAscending
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 12,
+                  color: const Color(0xFF2563EB),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   List<Map<String, dynamic>> _applyOrderFiltersAndSort(
@@ -715,6 +957,13 @@ class _CommandeState extends State<Commande> {
               if (weight < 50 || weight >= 999) return false;
             } else if (lower == 'filter_dist_above') {
               if (weight < 70 || weight >= 999) return false;
+            } else if (lower.startsWith('filter_status_group:')) {
+              final selectedGroup = lower.substring(
+                'filter_status_group:'.length,
+              );
+              if (orderStatusGroupKey(rawStatus) != selectedGroup) {
+                return false;
+              }
             } else if (!statusStr.contains(lower) &&
                 !rawStatus.toLowerCase().contains(lower)) {
               return false;
@@ -2985,8 +3234,8 @@ class _CommandeState extends State<Commande> {
                       const stagesSequence = [
                         'Nouveau',
                         'Confirmed',
-                        'In Progress',
                         'Pending',
+                        'In Progress',
                         'Partial Manufacturing',
                         'Full Manufacturing',
                         'Partial Distribution',
@@ -3025,7 +3274,7 @@ class _CommandeState extends State<Commande> {
                               'attente',
                             ) ||
                             normalizedStatus.toLowerCase().contains('انتظار')) {
-                          currentIndex = 3;
+                          currentIndex = 2;
                         } else if (normalizedStatus.toLowerCase().contains(
                           'confirm',
                         )) {
@@ -4462,8 +4711,8 @@ class _CommandeState extends State<Commande> {
         const stagesSequence = [
           'Nouveau',
           'Confirmed',
-          'In Progress',
           'Pending',
+          'In Progress',
           'Partial Manufacturing',
           'Full Manufacturing',
           'Partial Distribution',
@@ -4495,7 +4744,7 @@ class _CommandeState extends State<Commande> {
         if (currentIndex == -1) {
           if (normalizedStatus.toLowerCase().contains('attente') ||
               normalizedStatus.toLowerCase().contains('انتظار')) {
-            currentIndex = 3;
+            currentIndex = 2;
           } else if (normalizedStatus.toLowerCase().contains('confirm')) {
             currentIndex = 1;
           } else {
@@ -5094,8 +5343,8 @@ class _CommandeState extends State<Commande> {
     final statuses = [
       'Nouveau',
       'Confirmed',
-      'In Progress',
       'Pending',
+      'In Progress',
       'Partial Manufacturing',
       'Full Manufacturing',
       'Partial Distribution',
@@ -5467,6 +5716,7 @@ class _CommandeState extends State<Commande> {
             _orderSortAscending = true;
           }
         });
+        unawaited(_saveOrderSortPreference());
       },
       borderRadius: BorderRadius.circular(4),
       child: Padding(
@@ -6156,13 +6406,22 @@ class _CommandeState extends State<Commande> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Date Range Filter Bar for Desktop ──
-          TableDateRangeFilterBar(
-            initialRange: _orderDateRange,
-            lang: lang,
-            compact: true,
-            onRangeChanged: (range) {
-              setState(() => _orderDateRange = range);
-            },
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TableDateRangeFilterBar(
+                  initialRange: _orderDateRange,
+                  lang: lang,
+                  compact: true,
+                  onRangeChanged: (range) {
+                    setState(() => _orderDateRange = range);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildOrderSortButton(lang),
+            ],
           ),
           const SizedBox(height: 8),
 
@@ -6283,19 +6542,29 @@ class _CommandeState extends State<Commande> {
     List<Map<String, dynamic>> rawData,
     AppLanguage lang,
   ) {
-    final statuses = <String>{};
+    final statusesByGroup = <String, String>{};
+    for (final status in canonicalOrderStatuses) {
+      statusesByGroup[orderStatusGroupKey(status)] = status;
+    }
     for (final order in rawData) {
-      statuses.add((order['status'] ?? 'Pending').toString());
+      final status = (order['status'] ?? 'Pending').toString();
+      statusesByGroup.putIfAbsent(orderStatusGroupKey(status), () => status);
     }
 
-    final sortedStatuses = statuses.toList()
+    final sortedStatuses = statusesByGroup.entries.toList()
       ..sort((a, b) {
-        final wA = _getOrderStatusWeight(a);
-        final wB = _getOrderStatusWeight(b);
+        final wA = _getOrderStatusWeight(a.value);
+        final wB = _getOrderStatusWeight(b.value);
         final comp = wA.compareTo(wB);
         if (comp != 0) return comp;
-        final translatedA = _translateStatus(a, lang);
-        final translatedB = _translateStatus(b, lang);
+        final translatedA = _translateStatus(
+          orderStatusCanonicalLabel(a.value),
+          lang,
+        );
+        final translatedB = _translateStatus(
+          orderStatusCanonicalLabel(b.value),
+          lang,
+        );
         return translatedA.compareTo(translatedB);
       });
 
@@ -6326,10 +6595,13 @@ class _CommandeState extends State<Commande> {
       ),
       for (final status in sortedStatuses)
         TableFilterOption(
-          value: status,
-          label: _translateStatus(status, lang),
+          value: 'filter_status_group:${status.key}',
+          label: _translateStatus(
+            orderStatusCanonicalLabel(status.value),
+            lang,
+          ),
           icon: Icons.circle,
-          color: _getStatusColor(status),
+          color: _getStatusColor(status.value),
         ),
     ];
   }

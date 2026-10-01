@@ -1197,6 +1197,12 @@ class CloudSyncService {
   Future<void> clearCachedWorkshopContext() async {
     reset();
     final prefs = await SharedPreferences.getInstance();
+    final oldCode = (prefs.getString('workshop_code') ?? '').trim();
+    if (oldCode.isNotEmpty) {
+      await prefs.remove('supabase_workshop_uuid_$oldCode');
+    }
+    await prefs.remove('selected_supabase_workshop_id');
+    await prefs.remove('cached_workshop_uuid');
     await prefs.remove('workshop_code');
     await prefs.remove('workshop_name');
   }

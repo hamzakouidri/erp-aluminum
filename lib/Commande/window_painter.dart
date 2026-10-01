@@ -1690,7 +1690,8 @@ class WindowPainter extends CustomPainter {
       final activeJunctions = model.activeProfileAngleJunctions;
 
       // angleSection lookup (same as _drawProfileAngle)
-      final angleSection = model.getConfiguredSectionForRole(
+      final angleSection =
+          model.getConfiguredSectionForRole(
             'profile_angle',
             useSlidingSeries: model.systemMode == 'sliding',
           ) ??
@@ -1702,7 +1703,8 @@ class WindowPainter extends CustomPainter {
           model.getSlidingSectionByType('profile_angle') ??
           model.getSectionByType('tube_carre') ??
           model.getSlidingSectionByType('tube_carre');
-      final double tubeW = (angleSection != null && angleSection.visibleWidth > 0)
+      final double tubeW =
+          (angleSection != null && angleSection.visibleWidth > 0)
           ? angleSection.visibleWidth.clamp(30.0, 100.0)
           : 50.0;
 
@@ -1840,14 +1842,16 @@ class WindowPainter extends CustomPainter {
     // two outer frames. It is intentionally independent from the perimeter
     // side-cover drawing: only shared frame seams receive it.
     for (final contact in model.getCacheRainureContacts()) {
-      final insideSection = model.getConfiguredSectionForRole(
+      final insideSection =
+          model.getConfiguredSectionForRole(
             'cache_rainure',
             useSlidingSeries: contact.insideUsesSlidingSeries,
           ) ??
           (contact.insideUsesSlidingSeries
               ? model.getSlidingSectionByType('cache_rainure')
               : model.getSectionByType('cache_rainure'));
-      final outsideSection = model.getConfiguredSectionForRole(
+      final outsideSection =
+          model.getConfiguredSectionForRole(
             'cache_rainure',
             useSlidingSeries: contact.outsideUsesSlidingSeries,
           ) ??
@@ -2003,7 +2007,8 @@ class WindowPainter extends CustomPainter {
 
   void _drawProfileAngle(Canvas canvas, double w, double h, double top) {
     if (!model.usesProfileAngle) return;
-    final angleSection = model.getConfiguredSectionForRole(
+    final angleSection =
+        model.getConfiguredSectionForRole(
           'profile_angle',
           useSlidingSeries: model.systemMode == 'sliding',
         ) ??
@@ -2050,8 +2055,18 @@ class WindowPainter extends CustomPainter {
       if (!isJunction) {
         final facetW = tubeW * 0.35;
         final returnRect = isRight
-            ? Rect.fromLTRB(rect.right - facetW, rect.top, rect.right, rect.bottom)
-            : Rect.fromLTRB(rect.left, rect.top, rect.left + facetW, rect.bottom);
+            ? Rect.fromLTRB(
+                rect.right - facetW,
+                rect.top,
+                rect.right,
+                rect.bottom,
+              )
+            : Rect.fromLTRB(
+                rect.left,
+                rect.top,
+                rect.left + facetW,
+                rect.bottom,
+              );
 
         final facetShading = Paint()
           ..color = Colors.black.withOpacity(0.12)
@@ -2063,8 +2078,14 @@ class WindowPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0;
         canvas.drawLine(
-          Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.top),
-          Offset(isRight ? (rect.right - facetW) : (rect.left + facetW), rect.bottom),
+          Offset(
+            isRight ? (rect.right - facetW) : (rect.left + facetW),
+            rect.top,
+          ),
+          Offset(
+            isRight ? (rect.right - facetW) : (rect.left + facetW),
+            rect.bottom,
+          ),
           facetBorder,
         );
 
@@ -2117,8 +2138,10 @@ class WindowPainter extends CustomPainter {
     // B. Draw single frame / outer edges
     if (model.profileAngleMode > 0) {
       final sides = <String>[];
-      if (model.profileAngleMode == 1 || model.profileAngleMode == 3) sides.add('right');
-      if (model.profileAngleMode == 2 || model.profileAngleMode == 3) sides.add('left');
+      if (model.profileAngleMode == 1 || model.profileAngleMode == 3)
+        sides.add('right');
+      if (model.profileAngleMode == 2 || model.profileAngleMode == 3)
+        sides.add('left');
 
       for (final side in sides) {
         final bool isRight = side == 'right';
@@ -5117,12 +5140,15 @@ class WindowPainter extends CustomPainter {
         ? (model.selectedSlimMontantProfile!['visible_width'] as num).toDouble()
         : 18.0;
 
-    final int trackCount = zone.slidingTrackCount > 0 ? zone.slidingTrackCount : 2;
+    final int trackCount = zone.slidingTrackCount > 0
+        ? zone.slidingTrackCount
+        : 2;
     final faceSection = count >= 3
         ? (model.getConfiguredSectionForRole(
-            'face_to_face',
-            useSlidingSeries: true,
-          ) ?? model.getSlidingSectionByType('face_to_face'))
+                'face_to_face',
+                useSlidingSeries: true,
+              ) ??
+              model.getSlidingSectionByType('face_to_face'))
         : null;
     // Central meeting is driven by zone.slidingFaceToFace for even sashes (4 or 6).
     // When disabled by user, sashes become normal telescopic overlapping sashes.
@@ -5151,7 +5177,12 @@ class WindowPainter extends CustomPainter {
       if (i < halfCount) {
         // Left half: central leaf ends precisely at meetingCenterX
         if (i == halfCount - 1) {
-          return Rect.fromLTRB(meetingCenterX - sashWidth, r.top, meetingCenterX, r.bottom);
+          return Rect.fromLTRB(
+            meetingCenterX - sashWidth,
+            r.top,
+            meetingCenterX,
+            r.bottom,
+          );
         } else if (i == 0) {
           return Rect.fromLTRB(r.left, r.top, r.left + sashWidth, r.bottom);
         } else {
@@ -5162,7 +5193,12 @@ class WindowPainter extends CustomPainter {
         // Right half: central leaf starts precisely at meetingCenterX side-by-side
         final int rightIndex = i - halfCount;
         if (rightIndex == 0) {
-          return Rect.fromLTRB(meetingCenterX, r.top, meetingCenterX + sashWidth, r.bottom);
+          return Rect.fromLTRB(
+            meetingCenterX,
+            r.top,
+            meetingCenterX + sashWidth,
+            r.bottom,
+          );
         } else if (i == count - 1) {
           return Rect.fromLTRB(r.right - sashWidth, r.top, r.right, r.bottom);
         } else {
@@ -5217,93 +5253,130 @@ class WindowPainter extends CustomPainter {
       final int tg = tracks[i];
       Rect sashRect = getSashRect(i);
 
-        // Calculate left and right profile widths for this specific sash
-        final leftLateralReinforced =
-            zone.slidingMontantReinforced['lateral_0'] ??
-            zone.slidingMontantReinforced['lateral_left'] ??
-            false;
-        final rightLateralReinforced =
-            zone.slidingMontantReinforced['lateral_1'] ??
-            zone.slidingMontantReinforced['lateral_right'] ??
-            false;
-        // Determine whether this side of the sash is an outer or central meeting lateral montant:
-        // - 4 sashes: sash 0 left (outer), sash 1 right (meeting), sash 2 left (meeting), sash 3 right (outer)
-        // - 6 sashes with 3 tracks: sash 0 left (outer), sash 2 right (meeting), sash 3 left (meeting), sash 5 right (outer)
-        final bool isMeetingJunctionRight = hasCentralMeeting && ((count == 4 && i == 1) || (count == 6 && i == 2));
-        final bool isMeetingJunctionLeft = hasCentralMeeting && ((count == 4 && i == 2) || (count == 6 && i == 3));
+      // Calculate left and right profile widths for this specific sash
+      final leftLateralReinforced =
+          zone.slidingMontantReinforced['lateral_0'] ??
+          zone.slidingMontantReinforced['lateral_left'] ??
+          false;
+      final rightLateralReinforced =
+          zone.slidingMontantReinforced['lateral_1'] ??
+          zone.slidingMontantReinforced['lateral_right'] ??
+          false;
+      // Determine whether this side of the sash is an outer or central meeting lateral montant:
+      // - 4 sashes: sash 0 left (outer), sash 1 right (meeting), sash 2 left (meeting), sash 3 right (outer)
+      // - 6 sashes with 3 tracks: sash 0 left (outer), sash 2 right (meeting), sash 3 left (meeting), sash 5 right (outer)
+      final bool isMeetingJunctionRight =
+          hasCentralMeeting &&
+          ((count == 4 && i == 1) || (count == 6 && i == 2));
+      final bool isMeetingJunctionLeft =
+          hasCentralMeeting &&
+          ((count == 4 && i == 2) || (count == 6 && i == 3));
 
-        final bool isLateralLeft = (i == 0) || isMeetingJunctionLeft;
-        final bool isLateralRight = (i == count - 1) || isMeetingJunctionRight;
+      final bool isLateralLeft = (i == 0) || isMeetingJunctionLeft;
+      final bool isLateralRight = (i == count - 1) || isMeetingJunctionRight;
 
-        final bool isLeftSlim =
-            !isLateralLeft &&
-            (i > 0) &&
-            (zone.slidingMontantSlim['central_${(i - 1) * 2 + 1}'] ?? false);
-        final bool isRightSlim =
-            !isLateralRight &&
-            (i < count - 1) &&
-            (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
+      final bool isLeftSlim =
+          !isLateralLeft &&
+          (i > 0) &&
+          (zone.slidingMontantSlim['central_${(i - 1) * 2 + 1}'] ?? false);
+      final bool isRightSlim =
+          !isLateralRight &&
+          (i < count - 1) &&
+          (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
 
-        final bool leftReinforced = (i == 0)
-            ? leftLateralReinforced
-            : (isMeetingJunctionLeft
+      final bool leftReinforced = (i == 0)
+          ? leftLateralReinforced
+          : (isMeetingJunctionLeft
                 ? (zone.slidingMontantReinforced['lateral_3'] ??
-                    zone.slidingMontantReinforced['lateral_2'] ??
-                    false)
+                      zone.slidingMontantReinforced['lateral_2'] ??
+                      false)
                 : (zone.slidingMontantReinforced['lateral_${i * 2}'] ?? false));
-        final bool rightReinforced = (i == count - 1)
-            ? rightLateralReinforced
-            : (isMeetingJunctionRight
+      final bool rightReinforced = (i == count - 1)
+          ? rightLateralReinforced
+          : (isMeetingJunctionRight
                 ? (zone.slidingMontantReinforced['lateral_2'] ?? false)
-                : (zone.slidingMontantReinforced['lateral_${i * 2 + 1}'] ?? false));
+                : (zone.slidingMontantReinforced['lateral_${i * 2 + 1}'] ??
+                      false));
 
-        final double leftProfileW = isLateralLeft
-            ? (leftReinforced ? reinforcedLateralT : normalLateralT)
-            : (isLeftSlim ? slimProfileW : chicaneT);
-        final double rightProfileW = isLateralRight
-            ? (rightReinforced ? reinforcedLateralT : normalLateralT)
-            : (isRightSlim ? slimProfileW : chicaneT);
-        final double topProfileW = traverseT;
-        final double bottomProfileW = zone.hasSashPlintheBottom
-            ? model.plintheHeight
-            : traverseT;
+      final double leftProfileW = isLateralLeft
+          ? (leftReinforced ? reinforcedLateralT : normalLateralT)
+          : (isLeftSlim ? slimProfileW : chicaneT);
+      final double rightProfileW = isLateralRight
+          ? (rightReinforced ? reinforcedLateralT : normalLateralT)
+          : (isRightSlim ? slimProfileW : chicaneT);
+      final double topProfileW = traverseT;
+      final double bottomProfileW = zone.hasSashPlintheBottom
+          ? model.plintheHeight
+          : traverseT;
 
-        double finalLeftW = leftProfileW;
-        double finalRightW = rightProfileW;
-        double finalTopW = topProfileW;
-        double finalBottomW = bottomProfileW;
+      double finalLeftW = leftProfileW;
+      double finalRightW = rightProfileW;
+      double finalTopW = topProfileW;
+      double finalBottomW = bottomProfileW;
 
-        if (sashRect.width <= finalLeftW + finalRightW + 10) {
-          finalLeftW = math.max(1.0, (sashRect.width - 10) / 2);
-          finalRightW = finalLeftW;
-        }
-        if (sashRect.height <= finalTopW + finalBottomW + 10) {
-          finalTopW = math.max(1.0, (sashRect.height - 10) / 2);
-          finalBottomW = finalTopW;
-        }
+      if (sashRect.width <= finalLeftW + finalRightW + 10) {
+        finalLeftW = math.max(1.0, (sashRect.width - 10) / 2);
+        finalRightW = finalLeftW;
+      }
+      if (sashRect.height <= finalTopW + finalBottomW + 10) {
+        finalTopW = math.max(1.0, (sashRect.height - 10) / 2);
+        finalBottomW = finalTopW;
+      }
 
-        final glassR = Rect.fromLTRB(
-          sashRect.left + finalLeftW,
-          sashRect.top + finalTopW,
-          sashRect.right - finalRightW,
-          sashRect.bottom - finalBottomW,
+      final glassR = Rect.fromLTRB(
+        sashRect.left + finalLeftW,
+        sashRect.top + finalTopW,
+        sashRect.right - finalRightW,
+        sashRect.bottom - finalBottomW,
+      );
+
+      final String cellKey = 'main_cell_0_$i';
+      final cellSpec = zone.getGlassForCell(cellKey);
+
+      final bool isDecorPanel =
+          (cellSpec.structure == GlassStructure.closed &&
+          ((overrideIsInternalView ?? model.isInternalView)
+              ? cellSpec.finishInner == GlassFinish.paneauSandwitchDecore
+              : cellSpec.finishOuter == GlassFinish.paneauSandwitchDecore));
+
+      if (isDecorPanel) {
+        _drawPanelTexture(
+          canvas,
+          sashRect,
+          model.frameColor,
+          finish: GlassFinish.paneauSandwitchDecore,
+          zone: zone,
+          spec: cellSpec,
+          t: t,
+          topOffset: topOffset,
+          isTopBound: isTopBound,
+          isInsideSash: true,
+          sashTop: sashRect.top,
+          topW: 0.0,
         );
-
-        final String cellKey = 'main_cell_0_$i';
-        final cellSpec = zone.getGlassForCell(cellKey);
-
-        final bool isDecorPanel =
-            (cellSpec.structure == GlassStructure.closed &&
-            ((overrideIsInternalView ?? model.isInternalView)
-                ? cellSpec.finishInner == GlassFinish.paneauSandwitchDecore
-                : cellSpec.finishOuter == GlassFinish.paneauSandwitchDecore));
-
-        if (isDecorPanel) {
+      } else {
+        _drawSashFrameRect(
+          canvas,
+          sashRect,
+          glassR,
+          zone.sashColor,
+          zone.selectedDbColor,
+          dimmed: (tg < maxTrack),
+          isSlidingSash: true,
+          squareLeft: isLeftSlim,
+          squareRight: isRightSlim,
+          t: t,
+          topOffset: topOffset,
+          isTopBound: isTopBound,
+        );
+        if (cellSpec.structure == GlassStructure.closed) {
           _drawPanelTexture(
             canvas,
-            sashRect,
+            glassR,
             model.frameColor,
-            finish: GlassFinish.paneauSandwitchDecore,
+            finish: (overrideIsInternalView ?? model.isInternalView)
+                ? cellSpec.finishInner
+                : cellSpec.finishOuter,
             zone: zone,
             spec: cellSpec,
             t: t,
@@ -5311,69 +5384,37 @@ class WindowPainter extends CustomPainter {
             isTopBound: isTopBound,
             isInsideSash: true,
             sashTop: sashRect.top,
-            topW: 0.0,
+            topW: glassR.top - sashRect.top,
           );
         } else {
-          _drawSashFrameRect(
+          _drawFixedGlass(
             canvas,
-            sashRect,
             glassR,
-            zone.sashColor,
-            zone.selectedDbColor,
-            dimmed: (tg < maxTrack),
-            isSlidingSash: true,
-            squareLeft: isLeftSlim,
-            squareRight: isRightSlim,
-            t: t,
-            topOffset: topOffset,
-            isTopBound: isTopBound,
-          );
-          if (cellSpec.structure == GlassStructure.closed) {
-            _drawPanelTexture(
-              canvas,
-              glassR,
-              model.frameColor,
-              finish: (overrideIsInternalView ?? model.isInternalView)
-                  ? cellSpec.finishInner
-                  : cellSpec.finishOuter,
-              zone: zone,
-              spec: cellSpec,
-              t: t,
-              topOffset: topOffset,
-              isTopBound: isTopBound,
-              isInsideSash: true,
-              sashTop: sashRect.top,
-              topW: glassR.top - sashRect.top,
-            );
-          } else {
-            _drawFixedGlass(
-              canvas,
-              glassR,
-              cellSpec,
-              t,
-              topOffset,
-              isTopBound,
-              isInsideSash: true,
-              sashTop: sashRect.top,
-              topW: glassR.top - sashRect.top,
-            );
-          }
-        }
-
-        final bool drawHandle = (i == 0 || i == count - 1);
-        if (drawHandle && _shouldDrawWindowHardware) {
-          _drawWindowDrawHandle(
-            canvas,
-            sashRect,
-            (i == 0) ? OpenDirection.left : OpenDirection.right,
-            zone.handlePositionRatio ?? 0.5,
-            t: t,
-            topOffset: topOffset,
-            isTopBound: isTopBound,
-            zone: zone,
+            cellSpec,
+            t,
+            topOffset,
+            isTopBound,
+            isInsideSash: true,
+            sashTop: sashRect.top,
+            topW: glassR.top - sashRect.top,
           );
         }
       }
+
+      final bool drawHandle = (i == 0 || i == count - 1);
+      if (drawHandle && _shouldDrawWindowHardware) {
+        _drawWindowDrawHandle(
+          canvas,
+          sashRect,
+          (i == 0) ? OpenDirection.left : OpenDirection.right,
+          zone.handlePositionRatio ?? 0.5,
+          t: t,
+          topOffset: topOffset,
+          isTopBound: isTopBound,
+          zone: zone,
+        );
+      }
+    }
 
     // Face-to-Face is a catalogue role, not a name-based fallback.  It is
     // drawn only when the active sliding series has assigned that role and
@@ -5387,9 +5428,16 @@ class WindowPainter extends CustomPainter {
         final rawWidth = configuredFaceSection.visibleWidth > 0
             ? configuredFaceSection.visibleWidth
             : configuredFaceSection.thickness;
-        final faceWidth = rawWidth > 0 ? rawWidth : (chicaneT > 0 ? chicaneT : 35.0);
+        final faceWidth = rawWidth > 0
+            ? rawWidth
+            : (chicaneT > 0 ? chicaneT : 35.0);
         if (faceWidth > 0) {
-          final centerX = hasCentralMeeting ? meetingCenterX : (r.left + ((count - 1) ~/ 2) * (sashWidth - chicaneT) + sashWidth - (chicaneT / 2.0));
+          final centerX = hasCentralMeeting
+              ? meetingCenterX
+              : (r.left +
+                    ((count - 1) ~/ 2) * (sashWidth - chicaneT) +
+                    sashWidth -
+                    (chicaneT / 2.0));
           final faceCount = (count == 4 || count == 6) ? 2 : 1;
           for (var faceIndex = 0; faceIndex < faceCount; faceIndex++) {
             final offset = faceCount == 2
@@ -5440,12 +5488,14 @@ class WindowPainter extends CustomPainter {
       final centralLeftSash = getSashRect(meetingLeftIndex);
       final centralRightSash = getSashRect(meetingRightIndex);
 
-      // Handle on left middle leaf (faces right towards meeting center)
+      // Gauche/Droite chooses which middle leaf owns the functional handle.
+      // New sliding zones default to Droite through WindowZone.openDirection.
+      final mainHandleOnRight = zone.openDirection != OpenDirection.left;
       if (zone.slidingCentralHandle || zone.slidingFaceToFace) {
         _drawWindowDrawHandle(
           canvas,
-          centralLeftSash,
-          OpenDirection.right,
+          mainHandleOnRight ? centralRightSash : centralLeftSash,
+          mainHandleOnRight ? OpenDirection.left : OpenDirection.right,
           zone.handlePositionRatio ?? 0.5,
           t: t,
           topOffset: topOffset,
@@ -5454,12 +5504,13 @@ class WindowPainter extends CustomPainter {
         );
       }
 
-      // Handle on right middle leaf (faces left towards meeting center)
+      // The decorative handle mirrors the functional handle on the opposite
+      // middle leaf.
       if (zone.slidingSecondCentralHandle) {
         _drawWindowDrawHandle(
           canvas,
-          centralRightSash,
-          OpenDirection.left,
+          mainHandleOnRight ? centralLeftSash : centralRightSash,
+          mainHandleOnRight ? OpenDirection.right : OpenDirection.left,
           zone.handlePositionRatio ?? 0.5,
           t: t,
           topOffset: topOffset,
@@ -6345,7 +6396,8 @@ class WindowPainter extends CustomPainter {
     );
 
     for (var cell in mergedCells) {
-      final isCellSash = (zone.cellIsSash[cell.key] ?? false) ||
+      final isCellSash =
+          (zone.cellIsSash[cell.key] ?? false) ||
           (zone.cellIsDoubleSash[cell.key] ?? false) ||
           zone.content == ZoneContent.singleSash ||
           zone.content == ZoneContent.doubleSash ||
@@ -7900,9 +7952,16 @@ class WindowPainter extends CustomPainter {
       final visibleSlatsHeight = coulisseHeight * position;
       canvas.save();
       final leftClip = drawLeftTrack ? splitLeft + coulisseWidth : splitLeft;
-      final rightClip = drawRightTrack ? splitRight - coulisseWidth : splitRight;
+      final rightClip = drawRightTrack
+          ? splitRight - coulisseWidth
+          : splitRight;
       canvas.clipRect(
-        Rect.fromLTRB(leftClip, boxSize, rightClip, boxSize + visibleSlatsHeight),
+        Rect.fromLTRB(
+          leftClip,
+          boxSize,
+          rightClip,
+          boxSize + visibleSlatsHeight,
+        ),
       );
 
       final slatsPaint = Paint();
@@ -7922,7 +7981,8 @@ class WindowPainter extends CustomPainter {
       slatsPaint.style = PaintingStyle.fill;
 
       for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
-        if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= effectiveH) {
+        if (model.removedShutterSides.contains('bottom') &&
+            (y + 20.0) >= effectiveH) {
           break;
         }
         canvas.drawRect(
@@ -7937,7 +7997,8 @@ class WindowPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
 
       for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
-        if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= effectiveH) {
+        if (model.removedShutterSides.contains('bottom') &&
+            (y + 20.0) >= effectiveH) {
           break;
         }
         canvas.drawLine(
@@ -8088,7 +8149,8 @@ class WindowPainter extends CustomPainter {
       double startX = split.leftOffset;
       double boxWidth = split.width;
       double endX = startX + boxWidth;
-      double effectiveBoxSize = split.customHeight != null && split.customHeight! < boxSize
+      double effectiveBoxSize =
+          split.customHeight != null && split.customHeight! < boxSize
           ? split.customHeight!
           : boxSize;
 
@@ -8238,7 +8300,10 @@ class WindowPainter extends CustomPainter {
             paint,
           );
 
-          final boxCenter = Offset(frontX, effectiveBoxSize + strapLength + 37.5);
+          final boxCenter = Offset(
+            frontX,
+            effectiveBoxSize + strapLength + 37.5,
+          );
           canvas.drawRect(
             Rect.fromCenter(center: boxCenter, width: 32, height: 75),
             Paint()
@@ -8284,8 +8349,14 @@ class WindowPainter extends CustomPainter {
 
           Path crankPath = Path();
           crankPath.moveTo(frontX, effectiveBoxSize + rodLength);
-          crankPath.lineTo(frontX + zigzagWidth, effectiveBoxSize + rodLength + 15);
-          crankPath.lineTo(frontX + zigzagWidth, effectiveBoxSize + rodLength + 105);
+          crankPath.lineTo(
+            frontX + zigzagWidth,
+            effectiveBoxSize + rodLength + 15,
+          );
+          crankPath.lineTo(
+            frontX + zigzagWidth,
+            effectiveBoxSize + rodLength + 105,
+          );
           crankPath.lineTo(frontX, effectiveBoxSize + rodLength + 120);
           canvas.drawPath(crankPath, paint);
 

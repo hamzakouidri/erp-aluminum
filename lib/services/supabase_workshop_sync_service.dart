@@ -1207,9 +1207,20 @@ class SupabaseWorkshopSyncService {
     final code = storedCode.isNotEmpty ? storedCode : user.id;
     if (_workshopUuid != null && _workshopCode == code) return;
 
-    final cachedUuid =
-        prefs.getString('supabase_workshop_uuid_') ??
-        prefs.getString('cached_workshop_uuid');
+    final selectedWorkshopUuid =
+        (prefs.getString('selected_supabase_workshop_id') ?? '').trim();
+    final codeScopedUuid = code.isEmpty
+        ? ''
+        : (prefs.getString('supabase_workshop_uuid_$code') ?? '').trim();
+    final legacyCachedUuid = (prefs.getString('cached_workshop_uuid') ?? '')
+        .trim();
+    final cachedUuid = selectedWorkshopUuid.isNotEmpty
+        ? selectedWorkshopUuid
+        : codeScopedUuid.isNotEmpty
+        ? codeScopedUuid
+        : legacyCachedUuid.isNotEmpty
+        ? legacyCachedUuid
+        : null;
     if (cachedUuid != null && cachedUuid.isNotEmpty) {
       // A UUID cached on this device is valid only when Supabase confirms
       // that the current user is still a member of that workshop.
@@ -1235,7 +1246,10 @@ class SupabaseWorkshopSyncService {
         _subscribeToOrderNotifications();
         return;
       }
-      await prefs.remove('supabase_workshop_uuid_');
+      if (code.isNotEmpty) {
+        await prefs.remove('supabase_workshop_uuid_$code');
+      }
+      await prefs.remove('selected_supabase_workshop_id');
       await prefs.remove('cached_workshop_uuid');
     }
 
@@ -1244,6 +1258,7 @@ class SupabaseWorkshopSyncService {
     _workshopUuid = workshopUuid;
     _workshopCode = code;
     await prefs.setString('supabase_workshop_uuid_$code', workshopUuid);
+    await prefs.setString('selected_supabase_workshop_id', workshopUuid);
     await _cacheWorkshopIdentity(workshopUuid, prefs);
   }
 

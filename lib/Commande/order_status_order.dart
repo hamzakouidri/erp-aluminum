@@ -1,4 +1,19 @@
 /// The canonical order lifecycle used by order lists, filters and charts.
+const canonicalOrderStatuses = <String>[
+  'Nouveau',
+  'Confirmed',
+  'En attente',
+  'In Progress',
+  'Partial Manufacturing',
+  'Full Manufacturing',
+  'Partial Distribution',
+  'Full Distribution',
+  'Installation',
+  'Reserve',
+  'Done',
+  'Cancelled',
+];
+
 int orderStatusWeight(String status) {
   final value = status.trim().toLowerCase();
 
@@ -69,6 +84,43 @@ int orderStatusWeight(String status) {
     return 999;
   }
   return 45;
+}
+
+String orderStatusGroupKey(String status) {
+  final weight = orderStatusWeight(status);
+  return switch (weight) {
+    10 => 'new',
+    20 => 'confirmed',
+    30 => 'pending',
+    40 => 'in_progress',
+    50 => 'partial_manufacturing',
+    60 => 'full_manufacturing',
+    70 => 'partial_distribution',
+    80 => 'full_distribution',
+    90 => 'installation',
+    95 => 'reserve',
+    100 => 'done',
+    999 => 'cancelled',
+    _ => 'other:${status.trim().toLowerCase()}',
+  };
+}
+
+String orderStatusCanonicalLabel(String status) {
+  return switch (orderStatusGroupKey(status)) {
+    'new' => 'Nouveau',
+    'confirmed' => 'Confirmed',
+    'pending' => 'En attente',
+    'in_progress' => 'In Progress',
+    'partial_manufacturing' => 'Partial Manufacturing',
+    'full_manufacturing' => 'Full Manufacturing',
+    'partial_distribution' => 'Partial Distribution',
+    'full_distribution' => 'Full Distribution',
+    'installation' => 'Installation',
+    'reserve' => 'Reserve',
+    'done' => 'Done',
+    'cancelled' => 'Cancelled',
+    _ => status,
+  };
 }
 
 int compareOrdersByLifecycle(

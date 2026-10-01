@@ -347,6 +347,11 @@ class _LoginScreenState extends State<LoginScreen>
       await prefs.setString('user_display_name', accountDisplayName);
     }
     await prefs.setString('workshop_code', account.workshopCode);
+    await prefs.setString('selected_supabase_workshop_id', account.workshopId);
+    await prefs.setString(
+      'supabase_workshop_uuid_${account.workshopCode}',
+      account.workshopId,
+    );
     final accountName = account.workshopName.trim();
     final accountCode = account.workshopCode.trim();
     if (accountName.isNotEmpty && accountName != accountCode) {
@@ -357,7 +362,15 @@ class _LoginScreenState extends State<LoginScreen>
     await prefs.setString('user_role', account.role);
     await prefs.setString('permissions_json', jsonEncode(account.permissions));
     await CloudSyncService().init();
-    SupabaseWorkshopSyncService().start();
+    final workshopSyncReady = await SupabaseWorkshopSyncService().ensureStarted(
+      timeout: const Duration(seconds: 30),
+    );
+    if (!workshopSyncReady) {
+      throw const AppAuthException(
+        'workshop-sync-not-ready',
+        'تم تسجيل الدخول، لكن تعذر بدء مزامنة بيانات الورشة.',
+      );
+    }
   }
 
   /// Completes the one-time bridge after the old Firebase identity has been

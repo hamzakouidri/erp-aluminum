@@ -1079,7 +1079,11 @@ class ComponentCalculator {
       return 'is_lock_clef';
     }
     if (_textHasAny(originalName, const ['serrure'])) return 'is_lock_clef';
-    if (_textHasAny(originalName, const ['اسبانيوليت', 'إسبانيوليت', 'espagnolette'])) {
+    if (_textHasAny(originalName, const [
+      'اسبانيوليت',
+      'إسبانيوليت',
+      'espagnolette',
+    ])) {
       return 'اسبانيوليت';
     }
     if (_textHasAny(originalName, const ['مفاصل', 'hinges'])) return 'مفاصل';
@@ -2986,9 +2990,7 @@ class ComponentCalculator {
       }
     }
 
-    final bool useCremone =
-        !window.isPVC &&
-        window.systemMode != 'sliding';
+    final bool useCremone = !window.isPVC && window.systemMode != 'sliding';
     int cremoneQty = 0;
     if (useCremone) {
       cremoneQty = totalHandles;
@@ -3007,7 +3009,9 @@ class ComponentCalculator {
       }
       if (!window.componentOverrides.containsKey('مقبض نافذة (Poignée)') &&
           !window.componentOverrides.containsKey('المقبض (Handle)') &&
-          !window.componentOverrides.containsKey('مقبض نافذة (Poignée Fenêtre)')) {
+          !window.componentOverrides.containsKey(
+            'مقبض نافذة (Poignée Fenêtre)',
+          )) {
         totalHandles = 0;
       }
     }
@@ -3408,34 +3412,15 @@ class ComponentCalculator {
     }
 
     for (final r in frameRects) {
-      bool frameRectIsSlidingOnly() {
-        // A single-frame sliding drawing is the normal sliding-window case.
-        // The old frame-count guard classified it as an opening frame because
-        // it only inspected nested zones for multi-frame drawings.
-        if (window.usesSlidingPrimaryProfiles) return true;
-        if (frameRects.length <= 1) return false;
-        final innerLeft = r.left + window.profileThickness - 2.0;
-        final innerTop = r.top + window.profileThickness - 2.0;
-        final innerRight = r.right - window.profileThickness + 2.0;
-        final innerBottom = r.bottom - window.profileThickness + 2.0;
-        final frameZones = window.zones
-            .where(
-              (zone) =>
-                  zone.boundary.left >= innerLeft &&
-                  zone.boundary.top >= innerTop &&
-                  zone.boundary.right <= innerRight &&
-                  zone.boundary.bottom <= innerBottom,
-            )
-            .toList();
-        return frameZones.isNotEmpty &&
-            frameZones.every((zone) => zone.content == ZoneContent.slidingSash);
-      }
-
       // A complete window is cut from the real drawing dimensions.  For a
       // multi-frame drawing, retain each group's own dimensions while using
       // the same cover formula.
       final isCompleteFrame = frameRects.length == 1;
-      final useSlidingOuterFrame = frameRectIsSlidingOnly();
+      // Use the model's physical-frame classifier. The former inset-boundary
+      // test rejected zones whose stored boundary includes the outer frame,
+      // so a mixed drawing could put the Coulissant cuts into the opening
+      // Dormant item and make its own frame disappear from the BOM.
+      final useSlidingOuterFrame = window.frameUsesSlidingSeries(r);
       double fWidth = isCompleteFrame
           ? frameWidth
           : r.width +
@@ -3525,34 +3510,58 @@ class ComponentCalculator {
       }
     }
 
-    final angleJunctionFramePieces = <double>[];
-    AluminumSection? angleJunctionFrame;
+    final angleJunctionFramePieces = <String, List<double>>{};
+    final angleJunctionFrames = <String, AluminumSection>{};
+    final angleJunctionSliding = <String, bool>{};
     if (window.usesProfileAngle &&
         window.hasSideCovers &&
         !window.isIntegratedFrame) {
-      final curOpening = window.activeFrameOverride ??
-          window.getSectionByType('frame')?.toMap();
-      if (curOpening != null) {
-        angleJunctionFrame = window.findCompatibleNoCoverFrame(
-          currentFrame: AluminumSection.fromMap(curOpening),
-          sliding: window.systemMode == 'sliding',
+      void substituteJunctionSide(Rect frame) {
+        final currentFrame = window.frameSectionForRect(frame);
+        if (currentFrame == null) return;
+        final sliding = window.frameUsesSlidingSeries(frame);
+        final compatible = window.findCompatibleNoCoverFrame(
+          currentFrame: currentFrame,
+          sliding: sliding,
         );
-      }
-      if (angleJunctionFrame != null) {
-        int piecesNeeded = 0;
-        if (window.profileAngleMode == 3) {
-          piecesNeeded += 2;
-        } else if (window.profileAngleMode > 0) {
-          piecesNeeded += 1;
-        }
-        piecesNeeded += window.activeProfileAngleJunctions.length * 2;
+        // A null result means that the selected frame is already explicitly
+        // compatible with the tube carré; it must remain unchanged.
+        if (compatible == null) return;
 
-        final targetPieces = window.systemMode == 'sliding'
-            ? slidingOuterFramePieces
-            : framePieces;
-        // Take up to piecesNeeded from the end (which are height cuts)
-        for (int i = 0; i < piecesNeeded && targetPieces.isNotEmpty; i++) {
-          angleJunctionFramePieces.add(targetPieces.removeLast());
+        final cuts = frameCutsByRect[frame];
+        if (cuts == null || cuts.length < 3) return;
+        final verticalCut = cuts.last;
+        final sourcePieces = sliding ? slidingOuterFramePieces : framePieces;
+        final sourceIndex = sourcePieces.indexOf(verticalCut);
+        if (sourceIndex < 0) return;
+        sourcePieces.removeAt(sourceIndex);
+        final itemKey = '${sliding ? 'sliding' : 'opening'}:${compatible.id}';
+        angleJunctionFrames[itemKey] = compatible;
+        angleJunctionSliding[itemKey] = sliding;
+        angleJunctionFramePieces
+            .putIfAbsent(itemKey, () => <double>[])
+            .add(verticalCut);
+      }
+
+      final junctions = window.getAdjacentFrameJunctions();
+      for (final junction in junctions) {
+        if (!window.activeProfileAngleJunctions.contains(junction.index)) {
+          continue;
+        }
+        // Only the two faces that touch the tube carré are changed: the
+        // right jamb of the first frame and the left jamb of the second.
+        substituteJunctionSide(junction.firstFrame);
+        substituteJunctionSide(junction.secondFrame);
+      }
+
+      // The legacy outer-edge mode has no frame-to-frame junction. Apply it
+      // to the corresponding outer jambs only.
+      if (junctions.isEmpty && frameRects.isNotEmpty) {
+        if (window.profileAngleMode == 2 || window.profileAngleMode == 3) {
+          substituteJunctionSide(frameRects.first);
+        }
+        if (window.profileAngleMode == 1 || window.profileAngleMode == 3) {
+          substituteJunctionSide(frameRects.last);
         }
       }
     }
@@ -3572,12 +3581,17 @@ class ComponentCalculator {
       );
     }
 
-    if (angleJunctionFramePieces.isNotEmpty && angleJunctionFrame != null) {
+    for (final entry in angleJunctionFramePieces.entries) {
+      final angleJunctionFrame = angleJunctionFrames[entry.key];
+      if (angleJunctionFrame == null || entry.value.isEmpty) continue;
+      final sliding = angleJunctionSliding[entry.key] == true;
       items.add(
         createProfile(
-          "إطار لجهة بروفيل الزاوية (Dormant côté angle)",
+          sliding
+              ? 'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)'
+              : 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)',
           colorName,
-          pieces: angleJunctionFramePieces,
+          pieces: entry.value,
           unit: 'قطاع',
           overrideMap: angleJunctionFrame.toMap(),
           preferOverrideMap: true,
@@ -3684,7 +3698,8 @@ class ComponentCalculator {
     for (final sliding in [false, true]) {
       final pieces = cacheRainurePieces[sliding]!;
       if (pieces.isEmpty) continue;
-      final section = window.getConfiguredSectionForRole(
+      final section =
+          window.getConfiguredSectionForRole(
             'cache_rainure',
             useSlidingSeries: sliding,
           ) ??
@@ -3702,7 +3717,8 @@ class ComponentCalculator {
         selectorType: 'cache_rainure',
         roleKey: 'cache_rainure',
       );
-      final cutPiecesText = baseItem.cuttingList ??
+      final cutPiecesText =
+          baseItem.cuttingList ??
           'قطع القص: ${pieces.map((p) => '${(p * 1000).round()} مم').join(' ، ')}';
       items.add(
         baseItem.copyWith(
@@ -3769,13 +3785,21 @@ class ComponentCalculator {
 
     if (window.usesProfileAngle) {
       final sliding = window.systemMode == 'sliding';
-      final section = window.getConfiguredSectionForRole('profile_angle', useSlidingSeries: sliding) ??
-          window.getConfiguredSectionForRole('profile_angle', useSlidingSeries: !sliding) ??
+      final section =
+          window.getConfiguredSectionForRole(
+            'profile_angle',
+            useSlidingSeries: sliding,
+          ) ??
+          window.getConfiguredSectionForRole(
+            'profile_angle',
+            useSlidingSeries: !sliding,
+          ) ??
           window.getSectionByType('profile_angle') ??
           window.getSlidingSectionByType('profile_angle') ??
           window.getSectionByType('tube_carre') ??
           window.getSlidingSectionByType('tube_carre');
-      final override = slidingOverrideFor([
+      final override =
+          slidingOverrideFor([
             "بروفيل الزاوية 90° (Profil d'angle)",
             "بروفيل الزاوية (Profil d'angle)",
             'profile_angle',
@@ -3823,9 +3847,11 @@ class ComponentCalculator {
             roleKey: 'profile_angle',
           ).copyWith(
             sourceSeriesId:
-                (sliding ? window.activeSlidingSeries : window.activeSeries)?.id,
-            materialType:
-                (sliding ? window.isSlidingPVC : window.isPVC) ? 'pvc' : 'aluminium',
+                (sliding ? window.activeSlidingSeries : window.activeSeries)
+                    ?.id,
+            materialType: (sliding ? window.isSlidingPVC : window.isPVC)
+                ? 'pvc'
+                : 'aluminium',
             cuttingList: cuttingListLabel,
           ),
         );
@@ -4382,14 +4408,16 @@ class ComponentCalculator {
           // manufacture a fallback row when the series has no such rule.
           final faceSection = sashes >= 3
               ? (window.getConfiguredSectionForRole(
-                  'face_to_face',
-                  useSlidingSeries: true,
-                ) ?? window.getSlidingSectionByType('face_to_face'))
+                      'face_to_face',
+                      useSlidingSeries: true,
+                    ) ??
+                    window.getSlidingSectionByType('face_to_face'))
               : null;
           final bool hasMeetingInCenter =
               (zone.slidingFaceToFace ||
                   (sashes >= 4 &&
-                      (zone.slidingTrackCount == 2 || zone.slidingTrackCount == 0) &&
+                      (zone.slidingTrackCount == 2 ||
+                          zone.slidingTrackCount == 0) &&
                       sashes % 2 == 0)) &&
               sashes >= 4 &&
               sashes % 2 == 0;
@@ -4423,8 +4451,8 @@ class ComponentCalculator {
               final legacyKey = i == 0
                   ? 'lateral_left'
                   : (i == (lateralCount == 4 ? 1 : lateralCount - 1)
-                      ? 'lateral_right'
-                      : 'lateral_$i');
+                        ? 'lateral_right'
+                        : 'lateral_$i');
               final reinforced =
                   zone.slidingMontantReinforced['lateral_$i'] ??
                   zone.slidingMontantReinforced[legacyKey] ??
@@ -4576,8 +4604,10 @@ class ComponentCalculator {
               if (isSlim) continue;
 
               final isJunctionReinforced =
-                  (zone.slidingMontantReinforced['central_${j * 2}'] ?? false) ||
-                  (zone.slidingMontantReinforced['central_${j * 2 + 1}'] ?? false);
+                  (zone.slidingMontantReinforced['central_${j * 2}'] ??
+                      false) ||
+                  (zone.slidingMontantReinforced['central_${j * 2 + 1}'] ??
+                      false);
 
               if (isJunctionReinforced &&
                   window.reinforcementMode ==
@@ -4842,8 +4872,10 @@ class ComponentCalculator {
       ];
       if (slidingSashLateralNormalPieces.isNotEmpty) {
         const lateralName = 'قائم جانبي (Sash Lateral)';
-        var baseLateral =
-            slidingOverrideFor([lateralName, 'قائم جانبي (Lateral)']);
+        var baseLateral = slidingOverrideFor([
+          lateralName,
+          'قائم جانبي (Lateral)',
+        ]);
         if (baseLateral != null &&
             window.isSlidingMontantReinforced(baseLateral, central: false)) {
           baseLateral = null;
@@ -4866,16 +4898,19 @@ class ComponentCalculator {
         );
       }
       if (slidingSashLateralReinforcedPieces.isNotEmpty) {
-        var reinforcedLateral =
-            slidingOverrideFor([
-              'قائم جانبي معزز (Sash Lateral Renforcé)',
-            ]);
+        var reinforcedLateral = slidingOverrideFor([
+          'قائم جانبي معزز (Sash Lateral Renforcé)',
+        ]);
         if (reinforcedLateral != null &&
-            !window.isSlidingMontantReinforced(reinforcedLateral, central: false)) {
+            !window.isSlidingMontantReinforced(
+              reinforcedLateral,
+              central: false,
+            )) {
           reinforcedLateral = null;
         }
-        reinforcedLateral ??=
-            window.getSlidingSectionByType('sash_lateral_reinforced')?.toMap();
+        reinforcedLateral ??= window
+            .getSlidingSectionByType('sash_lateral_reinforced')
+            ?.toMap();
 
         items.add(
           createProfile(
@@ -4902,8 +4937,11 @@ class ComponentCalculator {
 
       if (slidingSashCentralPieces.isNotEmpty) {
         const centralName = 'قائم وسطي (Sash Central)';
-        var baseCentral =
-            slidingOverrideFor([centralName, 'قائم وسطي (Central)', 'الشيكان (Chicane)']);
+        var baseCentral = slidingOverrideFor([
+          centralName,
+          'قائم وسطي (Central)',
+          'الشيكان (Chicane)',
+        ]);
         if (baseCentral != null &&
             window.isSlidingMontantReinforced(baseCentral, central: true)) {
           baseCentral = null;
@@ -4928,17 +4966,21 @@ class ComponentCalculator {
       }
 
       if (slidingSashCentralReinforcedPieces.isNotEmpty) {
-        var reinforcedCentral =
-            slidingOverrideFor([
-              'قائم وسطي معزز (Sash Central Renforcé)',
-              'شيكان معزز (Chicane Renforcée)',
-            ]);
+        var reinforcedCentral = slidingOverrideFor([
+          'قائم وسطي معزز (Sash Central Renforcé)',
+          'شيكان معزز (Chicane Renforcée)',
+        ]);
         if (reinforcedCentral != null &&
-            !window.isSlidingMontantReinforced(reinforcedCentral, central: true)) {
+            !window.isSlidingMontantReinforced(
+              reinforcedCentral,
+              central: true,
+            )) {
           reinforcedCentral = null;
         }
         reinforcedCentral ??=
-            window.getSlidingSectionByType('sash_central_reinforced')?.toMap() ??
+            window
+                .getSlidingSectionByType('sash_central_reinforced')
+                ?.toMap() ??
             window.getSlidingSectionByType('chicane_renforcee')?.toMap();
 
         items.add(
@@ -4986,10 +5028,13 @@ class ComponentCalculator {
       }
 
       if (slidingFaceToFacePieces.isNotEmpty) {
-        final faceOverride = (window
-            .getConfiguredSectionForRole('face_to_face', useSlidingSeries: true) ??
-            window.getSlidingSectionByType('face_to_face'))
-            ?.toMap();
+        final faceOverride =
+            (window.getConfiguredSectionForRole(
+                      'face_to_face',
+                      useSlidingSeries: true,
+                    ) ??
+                    window.getSlidingSectionByType('face_to_face'))
+                ?.toMap();
         if (faceOverride != null) {
           items.add(
             createProfile(
@@ -5110,7 +5155,8 @@ class ComponentCalculator {
       }
 
       if (slidingIndependentRenfortPieces.isNotEmpty) {
-        final renfortOverride = slidingOverrideFor([
+        final renfortOverride =
+            slidingOverrideFor([
               'عمود تدعيم مستقل (Profilé de Renfort Rapporté)',
               'عمود مدعم مستقل (Profilé de Renfort Rapporté)',
               'حديد تدعيم (Renfort)',
@@ -5368,14 +5414,18 @@ class ComponentCalculator {
         batmoScrews = 4;
       }
       items.add(
-        createAccessory('براغي الباتمو 3.9*50', qty: batmoScrews * doubleSashCount),
+        createAccessory(
+          'براغي الباتمو 3.9*50',
+          qty: batmoScrews * doubleSashCount,
+        ),
       );
       final bouchonOverride =
           window.componentOverrides['بوشون باتمو (Bouchon Batmo)'];
       final bouchonSection =
           window.getConfiguredSectionForRole('bouchon_batmo') ??
           window.getSectionByType('bouchon_batmo');
-      final hasBouchonBatmo = bouchonSection != null ||
+      final hasBouchonBatmo =
+          bouchonSection != null ||
           (bouchonOverride is Map && bouchonOverride.isNotEmpty);
 
       if (hasBouchonBatmo) {
@@ -5601,14 +5651,14 @@ class ComponentCalculator {
 
       final bool isCremoneActive = !isSystemObActive && !isDemiObActive;
       if (useCremone && cremoneQty > 0) {
-        final cremoneOverride = window.componentOverrides['كريمون (Cremone)'] ??
+        final cremoneOverride =
+            window.componentOverrides['كريمون (Cremone)'] ??
             window.componentOverrides['إسبانيوليت (Espagnolette)'];
         final triangleRule = cremoneOverride is Map
             ? Map<String, dynamic>.from(cremoneOverride)
             : const <String, dynamic>{};
-        final triangleProfile = window
-                .getConfiguredSectionForRole('triangle')
-                ?.toMap() ??
+        final triangleProfile =
+            window.getConfiguredSectionForRole('triangle')?.toMap() ??
             window.getSectionByType('triangle')?.toMap() ??
             window.getSlidingSectionByType('triangle')?.toMap();
         // A Cremone always drives two Tringle cuts when the series has a
@@ -5616,8 +5666,9 @@ class ComponentCalculator {
         // the drawing supplies the real handle position.
         final useTriangle = triangleProfile != null;
 
-        final isEspagnoletteOverride =
-            window.componentOverrides.containsKey('إسبانيوليت (Espagnolette)');
+        final isEspagnoletteOverride = window.componentOverrides.containsKey(
+          'إسبانيوليت (Espagnolette)',
+        );
         final cremoneName = isEspagnoletteOverride
             ? 'إسبانيوليت (Espagnolette)'
             : 'كريمون (Cremone)';
@@ -5627,7 +5678,9 @@ class ComponentCalculator {
             color: accessoryColorName,
             qty: cremoneQty,
             isActive: isCremoneActive,
-            roleKeyOverride: isEspagnoletteOverride ? 'espagnolette' : 'cremone',
+            roleKeyOverride: isEspagnoletteOverride
+                ? 'espagnolette'
+                : 'cremone',
           ),
         );
         if (useTriangle && isCremoneActive) {
@@ -5724,8 +5777,12 @@ class ComponentCalculator {
           window.componentOverrides.containsKey('مقبض نافذة (Poignée)') ||
           window.componentOverrides.containsKey('المقبض (Handle)') ||
           window.componentOverrides.containsKey('مقبض نافذة (Poignée Fenêtre)');
-      final effectiveHandles = hasExplicitHandleOverride ? math.max(1, totalHandles) : totalHandles;
-      if (effectiveHandles > 0 && (!useCremone || hasExplicitHandleOverride) && window.systemMode != 'sliding') {
+      final effectiveHandles = hasExplicitHandleOverride
+          ? math.max(1, totalHandles)
+          : totalHandles;
+      if (effectiveHandles > 0 &&
+          (!useCremone || hasExplicitHandleOverride) &&
+          window.systemMode != 'sliding') {
         if (window.isPVC) {
           items.add(
             createAccessory(
@@ -5735,7 +5792,8 @@ class ComponentCalculator {
             ),
           );
         } else {
-          final handleName = window.componentOverrides.containsKey('مقبض نافذة (Poignée)')
+          final handleName =
+              window.componentOverrides.containsKey('مقبض نافذة (Poignée)')
               ? 'مقبض نافذة (Poignée)'
               : 'المقبض (Handle)';
           items.add(
@@ -6183,8 +6241,8 @@ class ComponentCalculator {
 
       final int shutterSplitCount =
           (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty)
-              ? window.effectiveShutterSplits.length
-              : 1;
+          ? window.effectiveShutterSplits.length
+          : 1;
 
       // ===== 1. الكيت (Kit) - أول مركب، فقط لغير النفق =====
       bool hasTunnelManoeuvreKit = false;
@@ -6304,9 +6362,11 @@ class ComponentCalculator {
           hasTunnelManoeuvreKit = true;
         }
         final bool perLeaf = kitPerLeafMap[groupName] ?? false;
-        final double kitQty = (perLeaf
-            ? ((doubleSashCount * 2) + singleSashCount).toDouble()
-            : 1.0) * shutterSplitCount;
+        final double kitQty =
+            (perLeaf
+                ? ((doubleSashCount * 2) + singleSashCount).toDouble()
+                : 1.0) *
+            shutterSplitCount;
 
         // `isMotorized` describes the mechanism, but every kit uses the
         // same source: its KitBundles record and exact stored French name.
@@ -6324,9 +6384,9 @@ class ComponentCalculator {
 
         if (hasConfiguredKitItems) {
           final String shutterVariant = isExtrudedBlade ? 'extruded' : 'normal';
-          final int leafCount = (perLeaf
-              ? ((doubleSashCount * 2) + singleSashCount)
-              : 1) * shutterSplitCount;
+          final int leafCount =
+              (perLeaf ? ((doubleSashCount * 2) + singleSashCount) : 1) *
+              shutterSplitCount;
           var expandedItems = expandKitBundle(
             groupName,
             matchedKitItems!,
@@ -6446,7 +6506,9 @@ class ComponentCalculator {
             unit: 'بارة',
           ),
         );
-        items.add(createShutter('براغي الصندوق', qty: 10.0 * shutterSplitCount));
+        items.add(
+          createShutter('براغي الصندوق', qty: 10.0 * shutterSplitCount),
+        );
       }
 
       // ===== 3. المحور (Axe) =====
@@ -6474,22 +6536,46 @@ class ComponentCalculator {
             qty: shutterSplitCount.toDouble(),
           ),
         );
-        items.add(createShutter('براغي المانيفال', qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount));
+        items.add(
+          createShutter(
+            'براغي المانيفال',
+            qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount,
+          ),
+        );
       } else if (window.shutterMechanism == 'محرك') {
         // This is the selected shutter motor, not a KitBundle child.  Keep it
         // in the shutter section as an independent row.  Only rows emitted by
         // expandKitBundle are allowed to carry the tunnel kitGroupName.
         items.add(
-          createShutter('المحرك (Moteur)', color: shutterColorName, qty: shutterSplitCount.toDouble()),
+          createShutter(
+            'المحرك (Moteur)',
+            color: shutterColorName,
+            qty: shutterSplitCount.toDouble(),
+          ),
         );
-        items.add(createShutter('براغي المحرك', qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount));
+        items.add(
+          createShutter(
+            'براغي المحرك',
+            qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount,
+          ),
+        );
       }
       if (window.shutterMechanism == 'محرك') {
         if (window.motorHasInterrupteur) {
-          items.add(createShutter('قاطعة (Interrupteur)', qty: shutterSplitCount.toDouble()));
+          items.add(
+            createShutter(
+              'قاطعة (Interrupteur)',
+              qty: shutterSplitCount.toDouble(),
+            ),
+          );
         }
         if (window.motorHasTelecommande) {
-          items.add(createShutter('جهاز تحكم (Télécommande)', qty: shutterSplitCount.toDouble()));
+          items.add(
+            createShutter(
+              'جهاز تحكم (Télécommande)',
+              qty: shutterSplitCount.toDouble(),
+            ),
+          );
         }
       }
 
@@ -6527,21 +6613,28 @@ class ComponentCalculator {
         for (final split in window.effectiveShutterSplits) {
           final sWidth = split.width;
           final sHeight = split.customHeight ?? window.height;
-          final sNumBlades = ((sHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
-              .ceil()
-              .clamp(0, 100000)
-              .toInt();
+          final sNumBlades =
+              ((sHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
+                  .ceil()
+                  .clamp(0, 100000)
+                  .toInt();
           totalBladesCount += sNumBlades;
 
           double sBladeLengthM = math.max(0.0, (sWidth - 65.0)) / 1000.0;
           if (capThick > 0) {
-            sBladeLengthM = math.max(0.0, sBladeLengthM - (2 * capThick) / 1000.0);
+            sBladeLengthM = math.max(
+              0.0,
+              sBladeLengthM - (2 * capThick) / 1000.0,
+            );
           }
           bladePieces.addAll(List<double>.filled(sNumBlades, sBladeLengthM));
 
           double sLameFinaleM = math.max(0.0, (sWidth - 65.0)) / 1000.0;
           if (capThick > 0) {
-            sLameFinaleM = math.max(0.0, sLameFinaleM - (2 * capThick) / 1000.0);
+            sLameFinaleM = math.max(
+              0.0,
+              sLameFinaleM - (2 * capThick) / 1000.0,
+            );
           }
           lameFinalePieces.add(sLameFinaleM);
         }
@@ -6549,21 +6642,28 @@ class ComponentCalculator {
         for (final rect in frameRects) {
           final fWidth = rect.width;
           final fHeight = rect.height;
-          final fNumBlades = ((fHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
-              .ceil()
-              .clamp(0, 100000)
-              .toInt();
+          final fNumBlades =
+              ((fHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
+                  .ceil()
+                  .clamp(0, 100000)
+                  .toInt();
           totalBladesCount += fNumBlades;
 
           double fBladeLengthM = math.max(0.0, (fWidth - 65.0)) / 1000.0;
           if (capThick > 0) {
-            fBladeLengthM = math.max(0.0, fBladeLengthM - (2 * capThick) / 1000.0);
+            fBladeLengthM = math.max(
+              0.0,
+              fBladeLengthM - (2 * capThick) / 1000.0,
+            );
           }
           bladePieces.addAll(List<double>.filled(fNumBlades, fBladeLengthM));
 
           double fLameFinaleM = math.max(0.0, (fWidth - 65.0)) / 1000.0;
           if (capThick > 0) {
-            fLameFinaleM = math.max(0.0, fLameFinaleM - (2 * capThick) / 1000.0);
+            fLameFinaleM = math.max(
+              0.0,
+              fLameFinaleM - (2 * capThick) / 1000.0,
+            );
           }
           lameFinalePieces.add(fLameFinaleM);
         }
@@ -6580,9 +6680,13 @@ class ComponentCalculator {
         }
         bladePieces.addAll(List<double>.filled(numBladesShutter, bladeLengthM));
 
-        double lameFinaleLengthM = math.max(0.0, (window.width - 65.0)) / 1000.0;
+        double lameFinaleLengthM =
+            math.max(0.0, (window.width - 65.0)) / 1000.0;
         if (capThick > 0) {
-          lameFinaleLengthM = math.max(0.0, lameFinaleLengthM - (2 * capThick) / 1000.0);
+          lameFinaleLengthM = math.max(
+            0.0,
+            lameFinaleLengthM - (2 * capThick) / 1000.0,
+          );
         }
         lameFinalePieces.add(lameFinaleLengthM);
       }
@@ -6626,14 +6730,18 @@ class ComponentCalculator {
         coulissePieces = [];
         for (final split in window.effectiveShutterSplits) {
           final sH = split.customHeight ?? window.height;
-          final sLengthM = (window.isCaissonTunnel ? (sH + 20.0) : (sH - caissonSize)) / 1000.0;
+          final sLengthM =
+              (window.isCaissonTunnel ? (sH + 20.0) : (sH - caissonSize)) /
+              1000.0;
           final validLen = math.max(0.0, sLengthM);
           coulissePieces.add(validLen);
           coulissePieces.add(validLen);
         }
       }
-      final double totalCoulisseLengthM =
-          coulissePieces.fold(0.0, (sum, len) => sum + len);
+      final double totalCoulisseLengthM = coulissePieces.fold(
+        0.0,
+        (sum, len) => sum + len,
+      );
 
       items.add(
         createShutter(
@@ -6670,7 +6778,9 @@ class ComponentCalculator {
             ? 5
             : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
       }
-      final int attachesIncludedByKit = isKitActive ? (2 * shutterSplitCount) : 0;
+      final int attachesIncludedByKit = isKitActive
+          ? (2 * shutterSplitCount)
+          : 0;
       final int attachesToAdd = (totalAttaches - attachesIncludedByKit)
           .clamp(0, totalAttaches)
           .toInt();
@@ -7845,7 +7955,8 @@ class ComponentCalculator {
           );
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
-          final bool isSlidingSystem = zone.content == ZoneContent.slidingSash ||
+          final bool isSlidingSystem =
+              zone.content == ZoneContent.slidingSash ||
               ((window.systemMode == 'sliding' ||
                       window.systemMode == 'coulissant' ||
                       window.systemMode == 'منزلق') &&
@@ -8059,7 +8170,8 @@ class ComponentCalculator {
             }
             if (usesOpeningSashProfile && openingSashSkipsGlazingBead) {
               // This sash profile is explicitly configured without parclose.
-              if (reducerAllowed && cellGlass.structure == GlassStructure.simple) {
+              if (reducerAllowed &&
+                  cellGlass.structure == GlassStructure.simple) {
                 addReducteurPieces(pieceMultiplier);
               }
             } else if (needsDoubleParclose) {
@@ -8088,7 +8200,8 @@ class ComponentCalculator {
                 parcloseSimplePieces.add(cellGh / 1000.0);
                 parcloseSimplePieces.add(cellGh / 1000.0);
               }
-              if (reducerAllowed && cellGlass.structure == GlassStructure.simple) {
+              if (reducerAllowed &&
+                  cellGlass.structure == GlassStructure.simple) {
                 addReducteurPieces(pieceMultiplier);
               }
             }
@@ -9272,14 +9385,18 @@ class ComponentCalculator {
       final bool sliding =
           slidingSeriesId != null &&
           accessory.sourceSeriesId == slidingSeriesId;
-      final triangleProfile = window
-              .getConfiguredSectionForRole('triangle', useSlidingSeries: sliding)
+      final triangleProfile =
+          window
+              .getConfiguredSectionForRole(
+                'triangle',
+                useSlidingSeries: sliding,
+              )
               ?.toMap() ??
           (sliding
-              ? (window.getSlidingSectionByType('triangle') ??
-                  window.getSectionByType('triangle'))
-              : (window.getSectionByType('triangle') ??
-                  window.getSlidingSectionByType('triangle')))
+                  ? (window.getSlidingSectionByType('triangle') ??
+                        window.getSectionByType('triangle'))
+                  : (window.getSectionByType('triangle') ??
+                        window.getSlidingSectionByType('triangle')))
               ?.toMap();
       if (triangleProfile == null) continue;
 
@@ -9304,14 +9421,18 @@ class ComponentCalculator {
 
       final bool isObAccessory =
           key.contains('OB') || accessory.originalName.contains('OB');
-      final bool isVerrouAccessory =
-          _textHasAny(key, const ['فيلرو', 'فيرو', 'verrou', 'Verrou']);
-      final double rawUpperVerrou =
-          triangleRuleNumber(rule, 'verrou_upper_mm');
-      final double rawLowerVerrou =
-          triangleRuleNumber(rule, 'verrou_lower_mm');
-      final double rawWidthDeduction =
-          triangleRuleNumber(rule, 'triangle_width_deduction_mm');
+      final bool isVerrouAccessory = _textHasAny(key, const [
+        'فيلرو',
+        'فيرو',
+        'verrou',
+        'Verrou',
+      ]);
+      final double rawUpperVerrou = triangleRuleNumber(rule, 'verrou_upper_mm');
+      final double rawLowerVerrou = triangleRuleNumber(rule, 'verrou_lower_mm');
+      final double rawWidthDeduction = triangleRuleNumber(
+        rule,
+        'triangle_width_deduction_mm',
+      );
 
       for (var index = 0; index < baseAccessoryCount * multiplier; index++) {
         final run = sourceRuns[index % sourceRuns.length];
@@ -9343,7 +9464,8 @@ class ComponentCalculator {
         pieces.addAll([first / 1000.0, second / 1000.0]);
 
         if (isObAccessory) {
-          final sashW = run['width_mm'] ??
+          final sashW =
+              run['width_mm'] ??
               (window.width.toDouble() / math.max(1, baseAccessoryCount));
           final double autoObWidthDeduction = sashW <= 650.0
               ? 180.0
@@ -9351,22 +9473,17 @@ class ComponentCalculator {
           final double effectiveWidthDeduction = rawWidthDeduction > 0
               ? rawWidthDeduction
               : (deduction > 0 ? deduction : autoObWidthDeduction);
-          final double third =
-              math.max(0.0, sashW - effectiveWidthDeduction).toDouble();
+          final double third = math
+              .max(0.0, sashW - effectiveWidthDeduction)
+              .toDouble();
           if (third > 0) {
             pieces.add(third / 1000.0);
-            cutPairs.add(
-              ' +  +  (أفقي)',
-            );
+            cutPairs.add(' +  +  (أفقي)');
           } else {
-            cutPairs.add(
-              ' + ',
-            );
+            cutPairs.add(' + ');
           }
         } else {
-          cutPairs.add(
-            ' + ',
-          );
+          cutPairs.add(' + ');
         }
       }
       if (pieces.isEmpty) continue;

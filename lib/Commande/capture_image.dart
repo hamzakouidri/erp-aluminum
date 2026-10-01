@@ -127,7 +127,10 @@ Future<Uint8List> captureWindowImage(
 
   final boxSize = model.shutterBoxHeight;
 
-  final totalH = windowH + boxSize;
+  final drawingH = model.hasShutter
+      ? math.max(windowH, model.shutterDrawingHeight)
+      : windowH;
+  final totalH = drawingH + boxSize;
   final scale = (maxSide - padding * 2) / math.max(windowW, totalH);
   final canvasW = (windowW * scale + padding * 2).round();
   final canvasH = (totalH * scale + padding * 2).round();
@@ -200,12 +203,27 @@ void _paintCaptureExteriorDimensions(
   final rightX = model.width + margin * 0.62 + sideCoverOffset;
   final bottomY = model.height + margin * 0.42 + sideCoverOffset;
 
+  if (model.shutterIsLongerThanWindow) {
+    final shutterX = rightX + margin * 0.42;
+    _drawCaptureDimension(
+      canvas,
+      'V ${model.shutterDrawingHeight.toInt()} mm',
+      Offset(shutterX, 0),
+      Offset(shutterX, model.shutterDrawingHeight),
+      vertical: true,
+      small: true,
+      scale: scale,
+    );
+  }
+
   final physicalFrames = model.getPhysicalFrameInfos();
   if (physicalFrames.length > 1) {
     final sorted = List<PhysicalFrameInfo>.from(physicalFrames)
-      ..sort((a, b) => a.rect.left != b.rect.left
-          ? a.rect.left.compareTo(b.rect.left)
-          : a.rect.top.compareTo(b.rect.top));
+      ..sort(
+        (a, b) => a.rect.left != b.rect.left
+            ? a.rect.left.compareTo(b.rect.left)
+            : a.rect.top.compareTo(b.rect.top),
+      );
     final hasVaryingHeights = sorted.any(
       (f) => (f.rect.height - sorted.first.rect.height).abs() > 1.0,
     );

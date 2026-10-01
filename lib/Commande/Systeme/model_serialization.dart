@@ -409,19 +409,17 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     doubleSashHasTwoHandles:
         map['doubleSashHasTwoHandles'] == true ||
         map['doubleSashHasTwoHandles'] == 1,
-    slidingFaceToFace:
-        map.containsKey('slidingFaceToFace')
-            ? (map['slidingFaceToFace'] == true || map['slidingFaceToFace'] == 1)
-            : null,
-    slidingCentralHandle:
-        map.containsKey('slidingCentralHandle')
-            ? (map['slidingCentralHandle'] == true || map['slidingCentralHandle'] == 1)
-            : null,
-    slidingSecondCentralHandle:
-        map.containsKey('slidingSecondCentralHandle')
-            ? (map['slidingSecondCentralHandle'] == true ||
-                map['slidingSecondCentralHandle'] == 1)
-            : null,
+    slidingFaceToFace: map.containsKey('slidingFaceToFace')
+        ? (map['slidingFaceToFace'] == true || map['slidingFaceToFace'] == 1)
+        : null,
+    slidingCentralHandle: map.containsKey('slidingCentralHandle')
+        ? (map['slidingCentralHandle'] == true ||
+              map['slidingCentralHandle'] == 1)
+        : null,
+    slidingSecondCentralHandle: map.containsKey('slidingSecondCentralHandle')
+        ? (map['slidingSecondCentralHandle'] == true ||
+              map['slidingSecondCentralHandle'] == 1)
+        : null,
     innerH: map['innerH'] ?? 0,
     innerV: map['innerV'] ?? 0,
     slidingSashesCount: map['slidingSashesCount'] ?? 2,
@@ -639,7 +637,8 @@ extension WindowModelSerialization on WindowModel {
       'seriesId': savedPrimarySeries?.id ?? loadedSeriesId,
       'slidingSeriesName': activeSlidingSeries?.name ?? loadedSlidingSeriesName,
       'slidingSeriesId': activeSlidingSeries?.id ?? loadedSlidingSeriesId,
-      'hasThreePieceSash': (activeSlidingSeries?.hasThreePieceSash ?? false) ||
+      'hasThreePieceSash':
+          (activeSlidingSeries?.hasThreePieceSash ?? false) ||
           (savedPrimarySeries?.hasThreePieceSash ?? false) ||
           (activeSeries?.hasThreePieceSash ?? false),
       'reinforcementMode': reinforcementMode.name,
@@ -690,7 +689,8 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       (map['optionalBavetteMode'] as num?)?.toInt() ??
       (map['useOptionalBavette'] == true ? 1 : 0);
   model.profileAngleMode = (map['profileAngleMode'] as num?)?.toInt() ?? 0;
-  model.profileAngleJunctions = (map['profileAngleJunctions'] as List<dynamic>?)
+  model.profileAngleJunctions =
+      (map['profileAngleJunctions'] as List<dynamic>?)
           ?.map((e) => (e as num).toInt())
           .toSet() ??
       <int>{};
@@ -755,7 +755,8 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       (model.shutterMechanism == 'حزام' ? 'left' : model.shutterDriveSide);
   model.customShutterBoxHeight = (map['customShutterBoxHeight'] as num?)
       ?.toDouble();
-  model.isShutterSplit = map['isShutterSplit'] == true ||
+  model.isShutterSplit =
+      map['isShutterSplit'] == true ||
       map['isShutterSplit']?.toString().toLowerCase() == 'true';
   model.shutterSplitMode = map['shutterSplitMode']?.toString() ?? 'per_frame';
   if (map['shutterSplits'] is List) {

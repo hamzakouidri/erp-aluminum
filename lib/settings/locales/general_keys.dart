@@ -6501,9 +6501,9 @@ This action cannot be undone!''',
     AppLanguage.english: 'Pending',
   },
   'In Progress': {
-    AppLanguage.arabic: 'تأكيد القياسات',
-    AppLanguage.french: 'Confirmation des mesures',
-    AppLanguage.english: 'Confirm Measurements',
+    AppLanguage.arabic: 'القياسات مؤكدة',
+    AppLanguage.french: 'Mesures confirmées',
+    AppLanguage.english: 'Measurements Confirmed',
   },
   'Installation': {
     AppLanguage.arabic: 'تركيب',
@@ -7083,5 +7083,30 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'غير مسند',
     AppLanguage.french: 'Non assigné',
     AppLanguage.english: 'Unassigned',
+  },
+  'التقاء الوسط (Face-to-Face)': {
+    AppLanguage.arabic: 'التقاء الضلفتين وجهاً لوجه',
+    AppLanguage.french: 'Rencontre centrale face à face',
+    AppLanguage.english: 'Face-to-face center meeting',
+  },
+  'مقبض الوسط الشكلي: مفعّل': {
+    AppLanguage.arabic: 'مقبض الوسط الشكلي: مفعّل',
+    AppLanguage.french: 'Poignée centrale décorative : activée',
+    AppLanguage.english: 'Decorative center handle: enabled',
+  },
+  'مقبض الوسط الشكلي: ملغي': {
+    AppLanguage.arabic: 'مقبض الوسط الشكلي: ملغى',
+    AppLanguage.french: 'Poignée centrale décorative : désactivée',
+    AppLanguage.english: 'Decorative center handle: disabled',
+  },
+  'مقبض وسط الضلفتين': {
+    AppLanguage.arabic: 'مقبض وسط الضلفتين',
+    AppLanguage.french: 'Poignée centrale des deux vantaux',
+    AppLanguage.english: 'Center handle between the two sashes',
+  },
+  'مقبض الوسط الثاني (شكلي)': {
+    AppLanguage.arabic: 'مقبض الوسط الثاني (شكلي)',
+    AppLanguage.french: 'Deuxième poignée centrale (décorative)',
+    AppLanguage.english: 'Second center handle (decorative)',
   },
 };
