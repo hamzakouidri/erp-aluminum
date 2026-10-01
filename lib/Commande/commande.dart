@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'order_measurements_details_screen.dart';
+import 'order_status_order.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:typed_data';
@@ -97,19 +98,33 @@ class _CommandeState extends State<Commande> {
   String _translateStatus(String status, AppLanguage lang) {
     final s = status.trim();
     final sLow = s.toLowerCase();
-    if (sLow == 'تصنيع كامل' || sLow == 'تصنيع كلي' || sLow == 'full manufacturing' || sLow == 'fabrication totale' || sLow == 'fabrication complète') {
+    if (sLow == 'تصنيع كامل' ||
+        sLow == 'تصنيع كلي' ||
+        sLow == 'full manufacturing' ||
+        sLow == 'fabrication totale' ||
+        sLow == 'fabrication complète') {
       return Localization.translate('Full Manufacturing', lang);
     }
-    if (sLow == 'تصنيع جزئي' || sLow == 'partial manufacturing' || sLow == 'fabrication partielle') {
+    if (sLow == 'تصنيع جزئي' ||
+        sLow == 'partial manufacturing' ||
+        sLow == 'fabrication partielle') {
       return Localization.translate('Partial Manufacturing', lang);
     }
-    if (sLow == 'توزيع كامل' || sLow == 'توزيع كلي' || sLow == 'full distribution' || sLow == 'livraison totale') {
+    if (sLow == 'توزيع كامل' ||
+        sLow == 'توزيع كلي' ||
+        sLow == 'full distribution' ||
+        sLow == 'livraison totale') {
       return Localization.translate('Full Distribution', lang);
     }
-    if (sLow == 'توزيع جزئي' || sLow == 'partial distribution' || sLow == 'livraison partielle') {
+    if (sLow == 'توزيع جزئي' ||
+        sLow == 'partial distribution' ||
+        sLow == 'livraison partielle') {
       return Localization.translate('Partial Distribution', lang);
     }
-    if (sLow == 'تحت التحفظ' || sLow == 'reserve' || sLow == 'sous réserve' || sLow == 'réserve') {
+    if (sLow == 'تحت التحفظ' ||
+        sLow == 'reserve' ||
+        sLow == 'sous réserve' ||
+        sLow == 'réserve') {
       return Localization.translate('تحت التحفظ', lang);
     }
     return Localization.translate(s, lang);
@@ -167,16 +182,26 @@ class _CommandeState extends State<Commande> {
     if (s.contains('attente') || s.contains('انتظار') || s == 'pending') {
       return const Color(0xFFE65100);
     }
-    if (s == 'partial manufacturing' || s.contains('تصنيع جزئي') || s.contains('fabrication partielle')) {
+    if (s == 'partial manufacturing' ||
+        s.contains('تصنيع جزئي') ||
+        s.contains('fabrication partielle')) {
       return const Color(0xFF0288D1);
     }
-    if (s == 'full manufacturing' || s.contains('تصنيع كامل') || s.contains('تصنيع كلي') || s.contains('fabrication')) {
+    if (s == 'full manufacturing' ||
+        s.contains('تصنيع كامل') ||
+        s.contains('تصنيع كلي') ||
+        s.contains('fabrication')) {
       return const Color(0xFF00796B);
     }
-    if (s == 'partial distribution' || s.contains('توزيع جزئي') || s.contains('livraison partielle')) {
+    if (s == 'partial distribution' ||
+        s.contains('توزيع جزئي') ||
+        s.contains('livraison partielle')) {
       return const Color(0xFFF57C00);
     }
-    if (s == 'full distribution' || s.contains('توزيع كامل') || s.contains('توزيع كلي') || s.contains('livraison totale')) {
+    if (s == 'full distribution' ||
+        s.contains('توزيع كامل') ||
+        s.contains('توزيع كلي') ||
+        s.contains('livraison totale')) {
       return const Color(0xFF388E3C);
     }
     if (s.contains('تركيب') || s.contains('installation')) {
@@ -185,27 +210,17 @@ class _CommandeState extends State<Commande> {
     if (s.contains('تحفظ') || s.contains('reserve') || s.contains('réserve')) {
       return const Color(0xFFD84315);
     }
-    if (s.contains('منتهي') || s.contains('مكتمل') || s.contains('done') || s.contains('livr')) {
+    if (s.contains('منتهي') ||
+        s.contains('مكتمل') ||
+        s.contains('done') ||
+        s.contains('livr')) {
       return const Color(0xFF00695C);
     }
     return const Color(0xFF546E7A);
   }
 
   int _getOrderStatusWeight(String status) {
-    final s = status.trim().toLowerCase();
-    if (s == 'nouveau' || s == 'new' || s == 'جديدة' || s == 'جديد' || s == 'draft') return 10;
-    if (s == 'confirmed' || s.contains('مؤكد') || s.contains('confirme')) return 20;
-    if (s == 'in progress' || s.contains('قياسات') || s.contains('جارية') || s.contains('cours')) return 30;
-    if (s == 'pending' || s == 'en attente' || s == 'en_attente' || s.contains('انتظار')) return 40;
-    if (s == 'partial manufacturing' || s.contains('تصنيع جزئي') || s.contains('fabrication partielle')) return 50;
-    if (s == 'full manufacturing' || s.contains('تصنيع كامل') || s.contains('تصنيع كلي') || s.contains('fabrication totale') || s.contains('fabrication complète')) return 60;
-    if (s == 'partial distribution' || s.contains('توزيع جزئي') || s.contains('livraison partielle')) return 70;
-    if (s == 'full distribution' || s.contains('توزيع كامل') || s.contains('توزيع كلي') || s.contains('livraison totale') || s.contains('livraison complète')) return 80;
-    if (s == 'installation' || s.contains('تركيب')) return 90;
-    if (s == 'reserve' || s.contains('تحفظ') || s.contains('réserve')) return 95;
-    if (s == 'done' || s == 'livré' || s == 'livre' || s.contains('منتهي') || s.contains('مكتمل')) return 100;
-    if (s == 'cancelled' || s.contains('ملغاة') || s.contains('annulé')) return 999;
-    return 45;
+    return orderStatusWeight(status);
   }
 
   int _displayOrderNumber(Map<String, dynamic> order) {
@@ -737,7 +752,9 @@ class _CommandeState extends State<Commande> {
       return true;
     }).toList();
 
-    if (_orderSortColumn != null) {
+    if (_orderSortColumn == null) {
+      filtered.sort(compareOrdersByLifecycle);
+    } else {
       filtered.sort((a, b) {
         int comp = 0;
         switch (_orderSortColumn) {
@@ -1353,125 +1370,127 @@ class _CommandeState extends State<Commande> {
                                   ),
                                 ],
                                 const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 10,
-                                    runSpacing: 6,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      Text(
-                                        '${total.toStringAsFixed(2)} دج',
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${total.toStringAsFixed(2)} دج',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _getStatusColor(status),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        _translateStatus(
+                                          status,
+                                          Provider.of<AppSettingsProvider>(
+                                            context,
+                                            listen: false,
+                                          ).language,
+                                        ),
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green,
-                                          fontSize: 16,
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _getStatusColor(status),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          _translateStatus(
-                                            status,
+                                    ),
+                                    Builder(
+                                      builder: (ctx) {
+                                        final currentStatus =
+                                            (data[index]['status'] ?? '')
+                                                .toString();
+                                        if (_hasPassedFullManufacturing(
+                                          currentStatus,
+                                        )) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        final isStockReserved =
+                                            (data[index]['is_stock_reserved']
+                                                    as num?)
+                                                ?.toInt() ==
+                                            1;
+                                        final lang =
                                             Provider.of<AppSettingsProvider>(
-                                              context,
+                                              ctx,
                                               listen: false,
-                                            ).language,
+                                            ).language;
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 2.5,
                                           ),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      Builder(
-                                        builder: (ctx) {
-                                          final currentStatus = (data[index]['status'] ?? '').toString();
-                                          if (_hasPassedFullManufacturing(currentStatus)) {
-                                            return const SizedBox.shrink();
-                                          }
-                                          final isStockReserved =
-                                              (data[index]['is_stock_reserved']
-                                                      as num?)
-                                                  ?.toInt() ==
-                                              1;
-                                          final lang =
-                                              Provider.of<AppSettingsProvider>(
-                                                ctx,
-                                                listen: false,
-                                              ).language;
-                                          return Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 7,
-                                              vertical: 2.5,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: isStockReserved
-                                                  ? Colors.green.withValues(
-                                                      alpha: 0.15,
-                                                    )
-                                                  : Colors.grey.withValues(
-                                                      alpha: 0.12,
-                                                    ),
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: isStockReserved
-                                                    ? Colors.green.shade600
-                                                    : Colors.grey.shade400,
-                                                width: 0.8,
-                                              ),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  isStockReserved
-                                                      ? Icons.check_circle
-                                                      : Icons
-                                                            .inventory_2_outlined,
-                                                  size: 11,
-                                                  color: isStockReserved
-                                                      ? Colors.green.shade800
-                                                      : Colors.grey.shade600,
-                                                ),
-                                                const SizedBox(width: 3),
-                                                Text(
-                                                  isStockReserved
-                                                      ? Localization.translate(
-                                                          'تم الحجز',
-                                                          lang,
-                                                        )
-                                                      : Localization.translate(
-                                                          'لم يُحجز بعد',
-                                                          lang,
-                                                        ),
-                                                  style: TextStyle(
-                                                    color: isStockReserved
-                                                        ? Colors.green.shade900
-                                                        : Colors.grey.shade700,
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
+                                          decoration: BoxDecoration(
+                                            color: isStockReserved
+                                                ? Colors.green.withValues(
+                                                    alpha: 0.15,
+                                                  )
+                                                : Colors.grey.withValues(
+                                                    alpha: 0.12,
                                                   ),
-                                                ),
-                                              ],
+                                            borderRadius: BorderRadius.circular(
+                                              12,
                                             ),
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                            border: Border.all(
+                                              color: isStockReserved
+                                                  ? Colors.green.shade600
+                                                  : Colors.grey.shade400,
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                isStockReserved
+                                                    ? Icons.check_circle
+                                                    : Icons
+                                                          .inventory_2_outlined,
+                                                size: 11,
+                                                color: isStockReserved
+                                                    ? Colors.green.shade800
+                                                    : Colors.grey.shade600,
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                isStockReserved
+                                                    ? Localization.translate(
+                                                        'تم الحجز',
+                                                        lang,
+                                                      )
+                                                    : Localization.translate(
+                                                        'لم يُحجز بعد',
+                                                        lang,
+                                                      ),
+                                                style: TextStyle(
+                                                  color: isStockReserved
+                                                      ? Colors.green.shade900
+                                                      : Colors.grey.shade700,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                             trailing: const Icon(
                               Icons.arrow_forward_ios_rounded,
                               size: 14,
@@ -2810,8 +2829,8 @@ class _CommandeState extends State<Commande> {
                           title: lang == AppLanguage.french
                               ? 'Fiche de coupe pour commande #$num — ${_orderClientName(orderData)}'
                               : (lang == AppLanguage.english
-                                  ? 'Cutting sheet for order #$num — ${_orderClientName(orderData)}'
-                                  : 'ورقة التقطيع للطلبية رقم $num — ${_orderClientName(orderData)}'),
+                                    ? 'Cutting sheet for order #$num — ${_orderClientName(orderData)}'
+                                    : 'ورقة التقطيع للطلبية رقم $num — ${_orderClientName(orderData)}'),
                           icon: Icons.cut_outlined,
                           content: PdfPreview(
                             build: (_) async => pdfBytes,
@@ -2979,13 +2998,22 @@ class _CommandeState extends State<Commande> {
 
                       final sLow = currentStatus.trim().toLowerCase();
                       String normalizedStatus = currentStatus;
-                      if (sLow == 'nouveau' || sLow == 'new' || sLow == 'draft' || sLow == 'جديد' || sLow == 'جديدة') {
+                      if (sLow == 'nouveau' ||
+                          sLow == 'new' ||
+                          sLow == 'draft' ||
+                          sLow == 'جديد' ||
+                          sLow == 'جديدة') {
                         normalizedStatus = 'Nouveau';
-                      } else if (sLow.contains('confirm') || sLow.contains('مؤكد')) {
+                      } else if (sLow.contains('confirm') ||
+                          sLow.contains('مؤكد')) {
                         normalizedStatus = 'Confirmed';
-                      } else if (sLow.contains('قياسات') || sLow == 'in progress' || sLow.contains('cours')) {
+                      } else if (sLow.contains('قياسات') ||
+                          sLow == 'in progress' ||
+                          sLow.contains('cours')) {
                         normalizedStatus = 'In Progress';
-                      } else if (sLow.contains('attente') || sLow.contains('انتظار') || sLow == 'pending') {
+                      } else if (sLow.contains('attente') ||
+                          sLow.contains('انتظار') ||
+                          sLow == 'pending') {
                         normalizedStatus = 'Pending';
                       }
 
@@ -3351,106 +3379,1353 @@ class _CommandeState extends State<Commande> {
     AppLanguage lang,
   ) async {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final orderId = (order['id'] as num?)?.toInt() ?? 0;
+    Map<String, dynamic> orderData = Map<String, dynamic>.from(order);
+    if (orderId > 0) {
+      final freshOrder = await db.readCommandeWithClientById(orderId);
+      if (freshOrder != null) {
+        orderData = {...orderData, ...freshOrder};
+      }
+    }
+    final isFullyManufactured = await db.isOrderFullyManufactured(orderId);
+    if (!mounted) return;
+
+    final currentStatus = orderData['status']?.toString() ?? 'Pending';
+    final statusRaw = (orderData['status']?.toString() ?? '')
+        .trim()
+        .toLowerCase();
+    final isPending =
+        statusRaw == 'nouveau' ||
+        statusRaw == 'جديد' ||
+        statusRaw == 'جديدة' ||
+        statusRaw == 'en attente' ||
+        statusRaw == 'في الانتظار' ||
+        statusRaw == 'pending' ||
+        statusRaw == 'draft' ||
+        statusRaw == 'new' ||
+        statusRaw == 'en_attente';
+    final isConfirmedOrBeyond = !isPending;
+    final isManufacturingOrBeyond =
+        isConfirmedOrBeyond &&
+        statusRaw != 'confirmed' &&
+        statusRaw != 'مؤكدة' &&
+        statusRaw != 'مؤكد';
+    final isDistributedOrBeyond =
+        isFullyManufactured ||
+        statusRaw.contains('full manufacturing') ||
+        statusRaw.contains('تصنيع كلي') ||
+        statusRaw.contains('distribution') ||
+        statusRaw.contains('توزيع') ||
+        statusRaw.contains('installation') ||
+        statusRaw.contains('تركيب') ||
+        statusRaw.contains('reserve') ||
+        statusRaw.contains('تحفظ') ||
+        statusRaw.contains('done') ||
+        statusRaw.contains('انتهاء') ||
+        statusRaw.contains('منتهية');
+
+    PopupMenuItem<String> _menuItem(
+      String value,
+      IconData icon,
+      Color color,
+      String title, {
+      Color? textColor,
+    }) {
+      return PopupMenuItem<String>(
+        value: value,
+        height: 38,
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: textColor,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final items = <PopupMenuEntry<String>>[
+      // تفاصيل الطلبية
+      _menuItem(
+        'details',
+        Icons.list_alt_outlined,
+        Colors.blueGrey,
+        lang == AppLanguage.arabic
+            ? 'تفاصيل الطلبية والقياسات'
+            : (lang == AppLanguage.french
+                  ? 'Détails de la commande'
+                  : 'Order Details'),
+      ),
+      const PopupMenuDivider(height: 8),
+
+      // 1. تسعيرة (Devis)
+      _menuItem(
+        'devis',
+        Icons.picture_as_pdf,
+        Colors.red,
+        Localization.translate('doc_devis_menu', lang),
+      ),
+
+      // 1.1 صور النوافذ (Picture)
+      if (settings.canViewOrderDocuments())
+        _menuItem(
+          'picture',
+          Icons.photo_library_outlined,
+          Colors.deepPurple,
+          Localization.translate('Picture', lang),
+        ),
+
+      // 1.2 إضافة دفعة (Paiement)
+      if (isConfirmedOrBeyond &&
+          (settings.canEditPayments() || settings.canAccessTreasury()))
+        _menuItem(
+          'payment',
+          Icons.payments_outlined,
+          Colors.green,
+          Localization.translate('Add payment', lang),
+        ),
+
+      // 1.3 فاتورة رسمية / أولية (Proforma)
+      if (settings.canViewOrderDocuments())
+        _menuItem(
+          'proforma',
+          Icons.description,
+          Colors.indigo,
+          Localization.translate('فاتورة رسمية / أولية', lang),
+        ),
+
+      // 1.4 فاتورة بيع (Facture de Vente)
+      if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+        _menuItem(
+          'facture',
+          Icons.receipt_rounded,
+          Colors.green,
+          lang == AppLanguage.french
+              ? 'Facture de Vente'
+              : 'فاتورة بيع / Facture de Vente',
+        ),
+
+      // 1.5 بون دو روت (Bon de Route)
+      if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+        _menuItem(
+          'bon_route',
+          Icons.directions_car_outlined,
+          Colors.blueAccent,
+          lang == AppLanguage.french
+              ? 'Bon de Route'
+              : 'بون دو روت / Bon de Route',
+        ),
+
+      // 1.6 وصل التسليم (Bon de livraison)
+      if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+        _menuItem(
+          'bon_livraison',
+          Icons.assignment,
+          Colors.blue,
+          Localization.translate('doc_bon_livraison_menu', lang),
+        ),
+
+      // 1.7 وصل التسليم بدون أسعار
+      if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+        _menuItem(
+          'bon_livraison_sans_prix',
+          Icons.print_disabled,
+          Colors.blueGrey,
+          Localization.translate('doc_bon_livraison_sans_prix_menu', lang),
+        ),
+
+      // 1.8 وصل التسليم الجزئي
+      if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+        _menuItem(
+          'bon_livraison_partiel',
+          Icons.picture_as_pdf_outlined,
+          Colors.blue,
+          Localization.translate('doc_bon_livraison_partiel_menu', lang),
+        ),
+
+      // 1.9 وصل التسليم الجزئي بدون أسعار
+      if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+        _menuItem(
+          'bon_livraison_partiel_sans_prix',
+          Icons.print_disabled_outlined,
+          Colors.blueGrey,
+          Localization.translate(
+            'doc_bon_livraison_partiel_sans_prix_menu',
+            lang,
+          ),
+        ),
+
+      // 1.10 وصل الشحن (Bon de charge)
+      if (settings.canViewOrderDocuments() && isManufacturingOrBeyond)
+        _menuItem(
+          'bon_charge',
+          Icons.local_shipping,
+          Colors.teal,
+          Localization.translate('doc_bon_charge_menu', lang),
+        ),
+
+      const PopupMenuDivider(height: 8),
+
+      // 2. تحسين القص (Optimisation de Coupe)
+      _menuItem(
+        'optimisation',
+        Icons.architecture_rounded,
+        Colors.indigo,
+        Localization.translate('تحسين القص (Optimisation de Coupe)', lang),
+      ),
+
+      // 2.1 ورقة التقطيع (Fiche de Coupe)
+      if (settings.canViewFicheDeCoupe())
+        _menuItem(
+          'fiche_coupe',
+          Icons.cut,
+          Colors.orange,
+          Localization.translate('ورقة التقطيع (Fiche de Coupe)', lang),
+        ),
+
+      // 3. كمية السلع والمواد المطلوبة (Fiche de Consommation)
+      if (settings.canViewOrderMaterials())
+        _menuItem(
+          'required_goods',
+          Icons.inventory_2,
+          Colors.indigo,
+          Localization.translate('كمية السلع المطلوبة', lang),
+        ),
+
+      // 3.8 تأكيد القياسات والملصقات (Stickers)
+      if (settings.canConfirmMeasurements())
+        _menuItem(
+          'measurements',
+          Icons.line_weight_rounded,
+          Colors.indigoAccent,
+          Localization.translate('تأكيد القياسات والملصقات (Stickers)', lang),
+        ),
+
+      // 3.9 توزيع المهام على العمال (إسناد الورشة)
+      if (settings.canAllocateTasks() && !isDistributedOrBeyond)
+        _menuItem(
+          'allocate',
+          Icons.engineering_rounded,
+          Colors.purple,
+          Localization.translate(
+            'توزيع المهام على العمال (إسناد الورشة)',
+            lang,
+          ),
+        ),
+
+      // 4. نقل إلى المرحلة التالية (Passer à l'étape suivante)
+      if (settings.canPassNextStage())
+        _menuItem(
+          'next_stage',
+          Icons.forward_rounded,
+          Colors.green,
+          lang == AppLanguage.french
+              ? 'Passer à l\'étape suivante'
+              : 'نقل إلى المرحلة التالية',
+        ),
+
+      // 5. تغيير الحالة المخصص يدوياً
+      if (settings.canChangeOrderStatus())
+        _menuItem(
+          'status',
+          Icons.swap_horiz,
+          Colors.blue,
+          Localization.translate('تغيير الحالة المخصص', lang),
+        ),
+
+      // 6. تعديل الطلبية (Modification)
+      if (settings.canEditOrders())
+        _menuItem(
+          'edit',
+          Icons.edit,
+          Colors.blue,
+          Localization.translate('Edit Order', lang),
+        ),
+
+      // 6.5 تكرار الطلبية (Duplicate)
+      if (settings.canDuplicateOrders())
+        _menuItem(
+          'duplicate',
+          Icons.copy,
+          Colors.blueGrey,
+          Localization.translate('تكرار الطلبية (Duplicate)', lang),
+        ),
+
+      // تصدير الطلبية (Export)
+      _menuItem(
+        'export',
+        Icons.ios_share,
+        Colors.blueAccent,
+        Localization.translate('export_order', lang),
+      ),
+
+      // 7. مسح الطلبية (Supprimer)
+      if (settings.canDeleteOrders()) ...[
+        const PopupMenuDivider(height: 8),
+        _menuItem(
+          'delete',
+          Icons.delete,
+          Colors.redAccent,
+          Localization.translate('مسح الطلبية (Supprimer)', lang),
+          textColor: Colors.red,
+        ),
+      ],
+    ];
+
     final selected = await showDesktopContextMenu<String>(
       context: context,
       globalPosition: position,
-      items: [
-        if (settings.canEditOrders())
-          PopupMenuItem(
-            value: 'edit',
-            child: Text(Localization.translate('Edit Order', lang)),
-          ),
-        if (settings.canConfirmMeasurements())
-          PopupMenuItem(
-            value: 'measurements',
-            child: Text(
-              Localization.translate(
-                'تأكيد القياسات والملصقات (Stickers)',
-                lang,
-              ),
-            ),
-          ),
-        if (settings.canAllocateTasks())
-          PopupMenuItem(
-            value: 'allocate',
-            child: Text(
-              Localization.translate(
-                'توزيع المهام على العمال (إسناد الورشة)',
-                lang,
-              ),
-            ),
-          ),
-        if (settings.canChangeOrderStatus())
-          PopupMenuItem(
-            value: 'status',
-            child: Text(Localization.translate('تغيير الحالة المخصص', lang)),
-          ),
-        if (settings.canDuplicateOrders())
-          PopupMenuItem(
-            value: 'duplicate',
-            child: Text(
-              Localization.translate('تكرار الطلبية (Duplicate)', lang),
-            ),
-          ),
-        PopupMenuItem(
-          value: 'export',
-          child: Row(
-            children: [
-              const Icon(Icons.ios_share, size: 20, color: Colors.blueAccent),
-              const SizedBox(width: 8),
-              Text(Localization.translate('export_order', lang)),
-            ],
-          ),
-        ),
-        if (settings.canDeleteOrders())
-          PopupMenuItem(
-            value: 'delete',
-            child: Text(
-              Localization.translate('مسح الطلبية (Supprimer)', lang),
-              style: const TextStyle(color: Colors.red),
-            ),
-          ),
-      ],
+      items: items,
     );
 
     if (!mounted || selected == null) return;
     switch (selected) {
-      case 'edit':
-        openOrderInWorkspaceTab(
-          context,
-          db: db,
-          editCommandeId: (order['id'] as num?)?.toInt(),
-          onSaved: _fetchCommandes,
-        );
-      case 'measurements':
+      case 'details':
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) =>
-                OrderMeasurementsConfirmScreen(orderData: order, db: db),
+                OrderMeasurementsDetailsScreen(orderData: orderData, db: db),
           ),
         );
-      case 'allocate':
+      case 'devis':
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db
+              .readCommandeDetails(orderData['id'])
+              .timeout(const Duration(seconds: 10));
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          await _restoreDocumentImagesFromStoredBytes(itemsList);
+          final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
+            const Duration(seconds: 6),
+          );
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            documentTitleKey: 'doc_devis',
+          ).timeout(const Duration(seconds: 10));
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'devis_$oId',
+            title: _documentTabTitle(
+              docType: 'devis',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.description_outlined,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'picture':
+        _exportOrderPicturePdf(context, orderData, lang);
+      case 'payment':
+        _showAddOrderPaymentDialog(orderData, lang);
+      case 'proforma':
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db.readCommandeDetails(orderData['id']);
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            isProForma: true,
+          );
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'proforma_$oId',
+            title: _documentTabTitle(
+              docType: 'proforma',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.description,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'facture':
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db.readCommandeDetails(orderData['id']);
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            isProForma: false,
+            documentTitleKey: 'FACTURE_VENTE',
+          );
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'facture_$oId',
+            title: _documentTabTitle(
+              docType: 'facture',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.receipt_rounded,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'bon_route':
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db.readCommandeDetails(orderData['id']);
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            isProForma: false,
+            documentTitleKey: 'BON_ROUTE',
+          );
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'bon_route_$oId',
+            title: _documentTabTitle(
+              docType: 'bon_route',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.directions_car_outlined,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد المستند')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'bon_livraison':
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db.readCommandeDetails(orderData['id']);
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          for (var item in itemsList) {
+            final path = item['drawing_image_path']?.toString() ?? '';
+            if (path.isEmpty ||
+                !File(path).existsSync() ||
+                storedOrderDetailColorDiffersFromModel(
+                  item,
+                  savedWindowModelMap(item['partitions_json']),
+                )) {
+              final jsonRaw = item['partitions_json'];
+              if (jsonRaw != null) {
+                try {
+                  Map<String, dynamic> modelMap = {};
+                  if (jsonRaw is Map<String, dynamic>) {
+                    modelMap = jsonRaw;
+                  } else if (jsonRaw is Map) {
+                    modelMap = Map<String, dynamic>.from(jsonRaw);
+                  } else {
+                    final str = jsonRaw.toString().trim();
+                    if (str.length >= 5) {
+                      modelMap = jsonDecode(str) as Map<String, dynamic>;
+                    }
+                  }
+                  if (modelMap.isNotEmpty) {
+                    final model = WindowModel(db: db);
+                    await applyWindowModelAndLoadCatalog(model, modelMap);
+                    applyStoredOrderDetailColorToWindowModel(model, item);
+                    final newPath = await saveWindowImageToDisk(model);
+                    if (newPath.isNotEmpty) {
+                      await db.updateCommandeDetailImagePath(
+                        item['id'] as int,
+                        newPath,
+                      );
+                      item['drawing_image_path'] = newPath;
+                    }
+                  }
+                } catch (err) {
+                  debugPrint('Error generating missing image: $err');
+                }
+              }
+            }
+          }
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            hidePrices: false,
+            documentTitleKey: 'doc_bon_livraison',
+          );
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'bon_livraison_$oId',
+            title: _documentTabTitle(
+              docType: 'bon_livraison',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.local_shipping_outlined,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'bon_livraison_sans_prix':
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db.readCommandeDetails(orderData['id']);
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          for (var item in itemsList) {
+            final path = item['drawing_image_path']?.toString() ?? '';
+            if (path.isEmpty ||
+                !File(path).existsSync() ||
+                storedOrderDetailColorDiffersFromModel(
+                  item,
+                  savedWindowModelMap(item['partitions_json']),
+                )) {
+              final jsonRaw = item['partitions_json'];
+              if (jsonRaw != null) {
+                try {
+                  Map<String, dynamic> modelMap = {};
+                  if (jsonRaw is Map<String, dynamic>) {
+                    modelMap = jsonRaw;
+                  } else if (jsonRaw is Map) {
+                    modelMap = Map<String, dynamic>.from(jsonRaw);
+                  } else {
+                    final str = jsonRaw.toString().trim();
+                    if (str.length >= 5) {
+                      modelMap = jsonDecode(str) as Map<String, dynamic>;
+                    }
+                  }
+                  if (modelMap.isNotEmpty) {
+                    final model = WindowModel(db: db);
+                    await applyWindowModelAndLoadCatalog(model, modelMap);
+                    applyStoredOrderDetailColorToWindowModel(model, item);
+                    final newPath = await saveWindowImageToDisk(model);
+                    if (newPath.isNotEmpty) {
+                      await db.updateCommandeDetailImagePath(
+                        item['id'] as int,
+                        newPath,
+                      );
+                      item['drawing_image_path'] = newPath;
+                    }
+                  }
+                } catch (err) {
+                  debugPrint('Error generating missing image: $err');
+                }
+              }
+            }
+          }
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            hidePrices: true,
+            documentTitleKey: 'doc_bon_livraison_sans_prix',
+          );
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'bon_livraison_sans_prix_$oId',
+            title: _documentTabTitle(
+              docType: 'bon_livraison',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.print_disabled,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'bon_livraison_partiel':
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => OrderAllocationScreen(orderData: order, db: db),
+            builder: (context) => PartialProformaScreen(
+              order: orderData,
+              documentTitleKey: 'doc_bon_livraison_partiel',
+            ),
           ),
         );
+      case 'bon_livraison_partiel_sans_prix':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PartialProformaScreen(
+              order: orderData,
+              hidePrices: true,
+              documentTitleKey: 'doc_bon_livraison_partiel_sans_prix',
+            ),
+          ),
+        );
+      case 'bon_charge':
+        final choice = await showDialog<String>(
+          context: context,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                const Icon(Icons.local_shipping, color: Colors.teal),
+                const SizedBox(width: 8),
+                Text(
+                  lang == AppLanguage.french
+                      ? 'Type de Bon d\'expédition'
+                      : 'نوع فاتورة الشحن',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  leading: const Icon(Icons.inventory_2, color: Colors.blue),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Expédition complète (Toutes les fenêtres)'
+                        : lang == AppLanguage.english
+                        ? 'Full Shipping (All windows)'
+                        : 'فاتورة شحن كلية (جميع النوافذ)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(dialogCtx, 'FULL'),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  leading: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.orange,
+                  ),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Expédition partielle (Par bon de livraison)'
+                        : lang == AppLanguage.english
+                        ? 'Partial Shipping (By delivery note)'
+                        : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(dialogCtx, 'PARTIAL'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (choice == null || !mounted) return;
+        if (choice == 'PARTIAL') {
+          final oId = orderData['id'] as int;
+          final deliveries = await db.readCommandeDeliveries(oId);
+          if (deliveries.isEmpty) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  lang == AppLanguage.french
+                      ? 'Aucun bon d\'expédition partiel trouvé. Redirection...'
+                      : 'لا توجد وصولات شحن جزئية مسبقة! سيتم التوجيه لتحديد العناصر المراد شحنها.',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PartialProformaScreen(
+                  order: orderData,
+                  hidePrices: true,
+                  documentTitleKey: 'doc_bon_livraison_partiel',
+                  autoOpenBonDeChargeOnSave: true,
+                ),
+              ),
+            );
+            return;
+          }
+          if (!mounted) return;
+          final selectedResult = await showModalBottomSheet<dynamic>(
+            context: context,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            builder: (bottomSheetCtx) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.7,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      lang == AppLanguage.french
+                          ? 'Sélectionner un Bon de livraison partiel'
+                          : 'اختر وصل تسليم جزئي للتحميل',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        fontFamily: 'Cairo',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: deliveries.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final del = deliveries[index];
+                          final isLoaded = (del['is_loaded'] == 1);
+                          List itemsList = [];
+                          try {
+                            itemsList = jsonDecode(del['items_json']);
+                          } catch (_) {}
+                          final itemCount = itemsList.length;
+                          return ListTile(
+                            leading: Icon(
+                              isLoaded
+                                  ? Icons.check_circle
+                                  : Icons.local_shipping,
+                              color: isLoaded ? Colors.green : Colors.orange,
+                            ),
+                            title: Text(
+                              'وصل بتاريخ: ${del['delivery_date']}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                            subtitle: Text(
+                              'عدد القطع: $itemCount نافذة',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isLoaded
+                                    ? Colors.green.shade100
+                                    : Colors.orange.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isLoaded
+                                    ? (lang == AppLanguage.french
+                                          ? 'Chargé'
+                                          : 'تم التحميل')
+                                    : (lang == AppLanguage.french
+                                          ? 'En attente'
+                                          : 'معلق'),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isLoaded
+                                      ? Colors.green.shade900
+                                      : Colors.orange.shade900,
+                                  fontFamily: 'Cairo',
+                                ),
+                              ),
+                            ),
+                            onTap: () => Navigator.pop(bottomSheetCtx, del),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () =>
+                          Navigator.pop(bottomSheetCtx, {'action': 'NEW'}),
+                      icon: const Icon(Icons.add, color: Colors.white),
+                      label: Text(
+                        lang == AppLanguage.french
+                            ? '+ Nouveau bon de livraison partiel'
+                            : '+ إنشاء توصيل جزئي جديد',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+          if (selectedResult == null) return;
+          if (selectedResult is Map && selectedResult['action'] == 'NEW') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PartialProformaScreen(
+                  order: orderData,
+                  hidePrices: true,
+                  documentTitleKey: 'doc_bon_livraison_partiel',
+                  autoOpenBonDeChargeOnSave: true,
+                ),
+              ),
+            );
+            return;
+          }
+          if (selectedResult is Map<String, dynamic>) {
+            await _showHeavyLoadingDialog(context, lang);
+            try {
+              final itemsJsonStr =
+                  selectedResult['items_json']?.toString() ?? '[]';
+              final List<dynamic> rawDecoded = jsonDecode(itemsJsonStr);
+              final List<Map<String, dynamic>> itemsList = rawDecoded
+                  .map((it) => Map<String, dynamic>.from(it))
+                  .toList();
+              final workshop = await DevisBuilder.loadWorkshopInfo();
+              final devis = await DevisBuilder.build(
+                order: orderData,
+                items: itemsList,
+                workshop: workshop,
+                hidePrices: true,
+                documentTitleKey: 'BON_CHARGE',
+              );
+              _dismissHeavyLoadingDialog();
+              final oId = orderData['id']?.toString() ?? '';
+              final delId = selectedResult['id']?.toString() ?? '';
+              _openInWorkspaceTab(
+                entryId: 'delivery_${oId}_$delId',
+                title: _documentTabTitle(
+                  docType: 'bon_charge',
+                  orderData: orderData,
+                  lang: lang,
+                ),
+                icon: Icons.local_shipping_outlined,
+                content: DevisPreviewScreen(
+                  data: devis,
+                  deliveryId: selectedResult['id'] as int?,
+                  initialIsLoaded: (selectedResult['is_loaded'] == 1),
+                ),
+              );
+            } catch (e) {
+              _dismissHeavyLoadingDialog();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          }
+          return;
+        }
+        // FULL shipping
+        await _showHeavyLoadingDialog(context, lang);
+        try {
+          final rawItems = await db.readCommandeDetails(orderData['id']);
+          final List<Map<String, dynamic>> itemsList = rawItems
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final devis = await DevisBuilder.build(
+            order: orderData,
+            items: itemsList,
+            workshop: workshop,
+            hidePrices: true,
+            documentTitleKey: 'BON_CHARGE',
+          );
+          _dismissHeavyLoadingDialog();
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          _openInWorkspaceTab(
+            entryId: 'bon_charge_$oId',
+            title: _documentTabTitle(
+              docType: 'bon_charge',
+              orderData: orderData,
+              lang: lang,
+            ),
+            icon: Icons.local_shipping_outlined,
+            content: DevisPreviewScreen(data: devis),
+          );
+        } catch (e) {
+          _dismissHeavyLoadingDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'optimisation':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                CuttingOptimizationScreen(db: db, initialOrderId: orderId),
+          ),
+        );
+      case 'fiche_coupe':
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                Localization.translate('جاري تجهيز جدول التقطيع...', lang),
+              ),
+            ),
+          );
+        }
+        try {
+          final itemsList = await db.readCommandeDetails(orderData['id']);
+          final workshop = await DevisBuilder.loadWorkshopInfo();
+          final pdfBytes = await PdfFicheCoupeApi.generateFicheCoupe(
+            order: orderData,
+            items: itemsList,
+            workshopName: workshop.name,
+            db: db,
+            language: lang,
+          );
+          if (!mounted) return;
+          final oId = orderData['id']?.toString() ?? '';
+          final numStr = _displayOrderNumber(orderData);
+          _openInWorkspaceTab(
+            entryId: 'fiche_coupe_$oId',
+            title: lang == AppLanguage.french
+                ? 'Fiche de coupe pour commande #$numStr — ${_orderClientName(orderData)}'
+                : (lang == AppLanguage.english
+                      ? 'Cutting sheet for order #$numStr — ${_orderClientName(orderData)}'
+                      : 'ورقة التقطيع للطلبية رقم $numStr — ${_orderClientName(orderData)}'),
+            icon: Icons.cut_outlined,
+            content: PdfPreview(
+              build: (_) async => pdfBytes,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+              pdfFileName: 'Fiche_Coupe_$numStr.pdf',
+            ),
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      case 'required_goods':
+        final ordId = orderData['id']?.toString() ?? '';
+        _openInWorkspaceTab(
+          entryId: 'required_goods_$ordId',
+          title:
+              '${Localization.translate('كمية السلع المطلوبة', lang)} #$ordId',
+          icon: Icons.inventory_2_outlined,
+          content: OrderRequiredGoodsScreen(orderData: orderData, db: db),
+        );
+      case 'measurements':
+        final ordId = orderData['id']?.toString() ?? '';
+        _openInWorkspaceTab(
+          entryId: 'measurements_$ordId',
+          title: '${Localization.translate('تأكيد القياسات', lang)} #$ordId',
+          icon: Icons.line_weight_rounded,
+          content: OrderMeasurementsConfirmScreen(orderData: orderData, db: db),
+        );
+      case 'allocate':
+        final ordId = orderData['id']?.toString() ?? '';
+        _openInWorkspaceTab(
+          entryId: 'allocation_$ordId',
+          title: '${Localization.translate('توزيع المهام', lang)} #$ordId',
+          icon: Icons.engineering_rounded,
+          content: OrderAllocationScreen(orderData: orderData, db: db),
+        );
+      case 'next_stage':
+        const stagesSequence = [
+          'Nouveau',
+          'Confirmed',
+          'In Progress',
+          'Pending',
+          'Partial Manufacturing',
+          'Full Manufacturing',
+          'Partial Distribution',
+          'Full Distribution',
+          'Installation',
+          'Reserve',
+          'Done',
+        ];
+        final sLow = currentStatus.trim().toLowerCase();
+        String normalizedStatus = currentStatus;
+        if (sLow == 'nouveau' ||
+            sLow == 'new' ||
+            sLow == 'draft' ||
+            sLow == 'جديد' ||
+            sLow == 'جديدة') {
+          normalizedStatus = 'Nouveau';
+        } else if (sLow.contains('confirm') || sLow.contains('مؤكد')) {
+          normalizedStatus = 'Confirmed';
+        } else if (sLow.contains('قياسات') ||
+            sLow == 'in progress' ||
+            sLow.contains('cours')) {
+          normalizedStatus = 'In Progress';
+        } else if (sLow.contains('attente') ||
+            sLow.contains('انتظار') ||
+            sLow == 'pending') {
+          normalizedStatus = 'Pending';
+        }
+        int currentIndex = stagesSequence.indexOf(normalizedStatus);
+        if (currentIndex == -1) {
+          if (normalizedStatus.toLowerCase().contains('attente') ||
+              normalizedStatus.toLowerCase().contains('انتظار')) {
+            currentIndex = 3;
+          } else if (normalizedStatus.toLowerCase().contains('confirm')) {
+            currentIndex = 1;
+          } else {
+            currentIndex = 0;
+          }
+        }
+        if (currentIndex < stagesSequence.length - 1) {
+          final nextStatus = stagesSequence[currentIndex + 1];
+          if (normalizedStatus == 'In Progress') {
+            if (!mounted) return;
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => PopScope(
+                canPop: false,
+                child: AlertDialog(
+                  content: Row(
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          lang == AppLanguage.french
+                              ? 'Vérification des mesures…'
+                              : 'جاري التحقق من القياسات…',
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+            await WidgetsBinding.instance.endOfFrame;
+            var allConfirmed = false;
+            Object? measurementCheckError;
+            try {
+              allConfirmed = await _areAllMeasurementsConfirmed(
+                orderData['id'],
+              ).timeout(const Duration(seconds: 15));
+            } catch (error) {
+              measurementCheckError = error;
+            } finally {
+              if (mounted) {
+                Navigator.of(context, rootNavigator: true).pop();
+              }
+            }
+            if (measurementCheckError != null) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      lang == AppLanguage.french
+                          ? 'Impossible de vérifier les mesures de cette commande.'
+                          : 'تعذر التحقق من قياسات هذه الطلبية. راجع بيانات القياسات ثم حاول مجددًا.',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+              return;
+            }
+            if (!allConfirmed) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      lang == AppLanguage.french
+                          ? 'Impossible de passer à la fabrication sans valider les mesures !'
+                          : 'لا يمكن الانتقال للتصنيع إن لم تقم بتأكيد القياسات!',
+                    ),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OrderMeasurementsConfirmScreen(
+                      orderData: orderData,
+                      db: db,
+                    ),
+                  ),
+                );
+              }
+              return;
+            }
+          }
+          if (nextStatus == 'Partial Manufacturing' ||
+              nextStatus == 'Full Manufacturing') {
+            final inventoryIssued = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OrderRequiredGoodsScreen(
+                  orderData: orderData,
+                  db: db,
+                  issueAtManufacturingStart: true,
+                ),
+              ),
+            );
+            if (inventoryIssued != true || !mounted) return;
+          }
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => PopScope(
+              canPop: false,
+              child: AlertDialog(
+                content: Row(
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        lang == AppLanguage.french
+                            ? 'Mise à jour de la commande…'
+                            : 'جاري تحديث حالة الطلبية…',
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+          await WidgetsBinding.instance.endOfFrame;
+          Object? statusUpdateError;
+          try {
+            await db
+                .updateCommandeStatus(orderData['id'], nextStatus)
+                .timeout(const Duration(seconds: 30));
+          } catch (error) {
+            statusUpdateError = error;
+          } finally {
+            if (mounted) {
+              Navigator.of(context, rootNavigator: true).pop();
+            }
+          }
+          if (statusUpdateError != null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    lang == AppLanguage.french
+                        ? 'Échec du passage à l’étape suivante. Veuillez réessayer.'
+                        : 'تعذر نقل الطلبية إلى المرحلة التالية. يرجى المحاولة مجددًا.',
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+            return;
+          }
+          if (!mounted) return;
+          setState(() {
+            _data = db.readCommandesWithClients();
+          });
+          if (nextStatus == 'In Progress') {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    lang == AppLanguage.french
+                        ? 'Commande passée à: Confirmation des mesures'
+                        : 'تم نقل الطلبية إلى مرحلة تأكيد القياسات. يرجى تأكيد المقاسات.',
+                  ),
+                  backgroundColor: Colors.indigo,
+                ),
+              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => OrderMeasurementsConfirmScreen(
+                    orderData: orderData,
+                    db: db,
+                  ),
+                ),
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    lang == AppLanguage.french
+                        ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
+                        : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
+                  ),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  lang == AppLanguage.french
+                      ? 'La commande est déjà dans la dernière étape (Done)!'
+                      : 'الطلبية وصلت بالفعل للمرحلة الأخيرة!',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
       case 'status':
-        _showChangeStatusDialog(order);
+        _showChangeStatusDialog(orderData);
+      case 'edit':
+        openOrderInWorkspaceTab(
+          context,
+          db: db,
+          editCommandeId: (orderData['id'] as num?)?.toInt(),
+          onSaved: _fetchCommandes,
+        );
       case 'duplicate':
-        await _duplicateOrder(order);
+        await _duplicateOrder(orderData);
         if (mounted) _fetchCommandes();
       case 'export':
         await OrderExportService.shareOrder(
           context,
           db,
-          (order['id'] as num?)?.toInt() ?? 0,
+          (orderData['id'] as num?)?.toInt() ?? 0,
           lang,
         );
       case 'delete':
-        _showDeleteConfirmDialog(order['id']);
+        _showDeleteConfirmDialog(orderData['id']);
     }
   }
 
@@ -4630,14 +5905,16 @@ class _CommandeState extends State<Commande> {
         if (focusContext != null &&
             (ModalRoute.of(focusContext) is PopupRoute ||
                 focusContext.widget is EditableText ||
-                focusContext.findAncestorWidgetOfExactType<EditableText>() != null)) {
+                focusContext.findAncestorWidgetOfExactType<EditableText>() !=
+                    null)) {
           return KeyEventResult.ignored;
         }
         final shortcuts = ShortcutBindings.instance;
         final settings = context.read<AppSettingsProvider>();
         final id = (order['id'] as num?)?.toInt();
         if (id == null) return KeyEventResult.ignored;
-        if (shortcuts.matches('edit_order', event) && settings.canEditOrders()) {
+        if (shortcuts.matches('edit_order', event) &&
+            settings.canEditOrders()) {
           openOrderInWorkspaceTab(
             context,
             db: db,
@@ -4646,7 +5923,8 @@ class _CommandeState extends State<Commande> {
           );
           return KeyEventResult.handled;
         }
-        if (shortcuts.matches('delete_order', event) && settings.canDeleteOrders()) {
+        if (shortcuts.matches('delete_order', event) &&
+            settings.canDeleteOrders()) {
           _showDeleteConfirmDialog(id);
           return KeyEventResult.handled;
         }

@@ -8470,7 +8470,7 @@ class _WindowViewState extends State<WindowView> {
 
               Text(
                 widget.model.selectedDbColor != null
-                    ? '${Localization.translate('اللون:', lang)} ${widget.model.selectedDbColor!['name']}'
+                    ? '${Localization.translate('اللون:', lang)} ${Localization.translate((widget.model.selectedDbColor!['name'] ?? '').toString(), lang)}'
                     : Localization.translate('لون الألمنيوم', lang),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
@@ -8530,7 +8530,7 @@ class _WindowViewState extends State<WindowView> {
 
               Text(
                 widget.model.selectedAccessoryColor != null
-                    ? '${Localization.translate('لون الإكسسوارات:', lang)} ${widget.model.selectedAccessoryColor!['name']}'
+                    ? '${Localization.translate('لون الإكسسوارات:', lang)} ${Localization.translate((widget.model.selectedAccessoryColor!['name'] ?? '').toString(), lang)}'
                     : Localization.translate('لون الإكسسوارات (افتراضي)', lang),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,

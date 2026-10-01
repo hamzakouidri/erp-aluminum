@@ -7,6 +7,7 @@ import 'package:database_data/services/auth_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import '../Commande/order_status_order.dart';
 import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../items_produits/products_menu_screen.dart';
@@ -597,60 +598,60 @@ class _WelcomScreenState extends State<WelcomScreen> {
             .doc(user.uid)
             .snapshots()
             .listen((doc) {
-            if (doc.exists && mounted) {
-              final data = doc.data() as Map<String, dynamic>;
-              SharedPreferences.getInstance().then((prefs) {
-                if (!mounted) return;
-                final savedName = prefs.getString('workshop_name');
-                final savedCode = (prefs.getString('workshop_code') ?? '')
-                    .trim();
-                final usableSavedName =
-                    savedName?.trim().isNotEmpty == true &&
-                    savedName!.trim() != savedCode &&
-                    savedName.trim() != 'ورشة النجارة' &&
-                    savedName.trim() != 'ورشة الألمنيوم';
-                final firebaseName =
-                    (data['workshopName'] as String?)?.trim() ?? '';
-                final usableFirebaseName =
-                    firebaseName.isNotEmpty &&
-                    firebaseName != 'ورشة النجارة' &&
-                    firebaseName != 'ورشة الألمنيوم';
-                final savedLogo = prefs.getString('workshop_logo_base64');
-                final newLogoUrl =
-                    (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
-                    ? data['workshopLogoUrl']
-                    : savedLogo;
-                final nextName = usableSavedName
-                    ? savedName!
-                    : (usableFirebaseName
-                          ? firebaseName
-                          : Localization.translate(
-                              'اسم الورشة',
-                              Provider.of<AppSettingsProvider>(
-                                context,
-                                listen: false,
-                              ).language,
-                            ));
-                final nextPhone = (data['phone'] ?? data['phoneNumber'] ?? '')
-                    .toString();
-                final nextEmail = data['email']?.toString() ?? _userEmail;
+              if (doc.exists && mounted) {
+                final data = doc.data() as Map<String, dynamic>;
+                SharedPreferences.getInstance().then((prefs) {
+                  if (!mounted) return;
+                  final savedName = prefs.getString('workshop_name');
+                  final savedCode = (prefs.getString('workshop_code') ?? '')
+                      .trim();
+                  final usableSavedName =
+                      savedName?.trim().isNotEmpty == true &&
+                      savedName!.trim() != savedCode &&
+                      savedName.trim() != 'ورشة النجارة' &&
+                      savedName.trim() != 'ورشة الألمنيوم';
+                  final firebaseName =
+                      (data['workshopName'] as String?)?.trim() ?? '';
+                  final usableFirebaseName =
+                      firebaseName.isNotEmpty &&
+                      firebaseName != 'ورشة النجارة' &&
+                      firebaseName != 'ورشة الألمنيوم';
+                  final savedLogo = prefs.getString('workshop_logo_base64');
+                  final newLogoUrl =
+                      (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+                      ? data['workshopLogoUrl']
+                      : savedLogo;
+                  final nextName = usableSavedName
+                      ? savedName!
+                      : (usableFirebaseName
+                            ? firebaseName
+                            : Localization.translate(
+                                'اسم الورشة',
+                                Provider.of<AppSettingsProvider>(
+                                  context,
+                                  listen: false,
+                                ).language,
+                              ));
+                  final nextPhone = (data['phone'] ?? data['phoneNumber'] ?? '')
+                      .toString();
+                  final nextEmail = data['email']?.toString() ?? _userEmail;
 
-                final hasChanged =
-                    _workshopName != nextName ||
-                    _workshopPhone != nextPhone ||
-                    _userEmail != nextEmail ||
-                    _logoUrl != newLogoUrl;
+                  final hasChanged =
+                      _workshopName != nextName ||
+                      _workshopPhone != nextPhone ||
+                      _userEmail != nextEmail ||
+                      _logoUrl != newLogoUrl;
 
-                if (hasChanged) {
-                  setState(() {
-                    _workshopName = nextName;
-                    _workshopPhone = nextPhone;
-                    _userEmail = nextEmail;
-                    _updateLogo(newLogoUrl);
-                  });
-                }
-              });
-            }
+                  if (hasChanged) {
+                    setState(() {
+                      _workshopName = nextName;
+                      _workshopPhone = nextPhone;
+                      _userEmail = nextEmail;
+                      _updateLogo(newLogoUrl);
+                    });
+                  }
+                });
+              }
             });
       }
     }
@@ -718,7 +719,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     try {
       try {
         await SupabaseWorkshopSyncService().downloadWorkshopData();
-        await SupabaseWorkshopSyncService().loadAndApplyWorkshopCatalogConfiguration();
+        await SupabaseWorkshopSyncService()
+            .loadAndApplyWorkshopCatalogConfiguration();
       } catch (_) {}
       await CloudSyncService().fullRecoverySync();
       if (mounted) {
@@ -2488,7 +2490,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final creator = _formatCreatorDisplay(
         order['creation_platform']?.toString(),
       );
-      final assignedWorkers = _assignedWorkersMap[orderId] ??
+      final assignedWorkers =
+          _assignedWorkersMap[orderId] ??
           _desktopText(lang, 'غير مُسند', 'Non assigné', 'Unassigned');
 
       return ResizableTableRow(
@@ -2668,7 +2671,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final creator = _formatCreatorDisplay(
       order['creation_platform']?.toString(),
     );
-    final assignedWorkers = _assignedWorkersMap[orderId] ??
+    final assignedWorkers =
+        _assignedWorkersMap[orderId] ??
         _desktopText(lang, 'غير مُسند', 'Non assigné', 'Unassigned');
 
     return Material(
@@ -3636,20 +3640,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   int _orderLifecycleWeight(String key) {
-    final s = key.trim().toLowerCase();
-    if (s == 'nouveau' || s == 'new' || s == 'جديدة' || s == 'جديد' || s == 'draft') return 10;
-    if (s == 'confirmed' || s.contains('مؤكد') || s.contains('confirme')) return 20;
-    if (s == 'in progress' || s.contains('قياسات') || s.contains('جارية') || s.contains('cours')) return 30;
-    if (s == 'pending' || s == 'en attente' || s == 'en_attente' || s.contains('انتظار')) return 40;
-    if (s == 'partial manufacturing' || s.contains('تصنيع جزئي') || s.contains('fabrication partielle')) return 50;
-    if (s == 'full manufacturing' || s.contains('تصنيع كلي') || s.contains('fabrication totale')) return 60;
-    if (s == 'partial distribution' || s.contains('توزيع جزئي') || s.contains('livraison partielle')) return 70;
-    if (s == 'full distribution' || s.contains('توزيع كلي') || s.contains('livraison totale')) return 80;
-    if (s == 'installation' || s.contains('تركيب')) return 90;
-    if (s == 'reserve' || s.contains('تحفظ') || s.contains('réserve')) return 95;
-    if (s == 'done' || s == 'livré' || s == 'livre' || s.contains('منتهي') || s.contains('مكتمل')) return 100;
-    if (s == 'cancelled' || s.contains('ملغاة') || s.contains('annulé')) return 999;
-    return 85;
+    return orderStatusWeight(key);
   }
 
   Widget _buildDesktopActivityPanel(
@@ -3679,7 +3670,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     };
     final sortedStatusMap = <String, int>{};
     final legendEntries = _ordersByStatus.entries.toList()
-      ..sort((a, b) => _orderLifecycleWeight(a.key).compareTo(_orderLifecycleWeight(b.key)));
+      ..sort(
+        (a, b) => _orderLifecycleWeight(
+          a.key,
+        ).compareTo(_orderLifecycleWeight(b.key)),
+      );
     for (final e in legendEntries) {
       sortedStatusMap[e.key] = e.value;
     }
@@ -5829,18 +5824,55 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
 
   static int _statusOrderWeight(String key) {
     final s = key.trim().toLowerCase();
-    if (s == 'nouveau' || s == 'new' || s == 'جديدة' || s == 'جديد' || s == 'draft') return 10;
-    if (s == 'confirmed' || s.contains('مؤكد') || s.contains('confirme')) return 20;
-    if (s == 'in progress' || s.contains('قياسات') || s.contains('جارية') || s.contains('cours')) return 30;
-    if (s == 'pending' || s == 'en attente' || s == 'en_attente' || s.contains('انتظار')) return 40;
-    if (s == 'partial manufacturing' || s.contains('تصنيع جزئي') || s.contains('fabrication partielle')) return 50;
-    if (s == 'full manufacturing' || s.contains('تصنيع كلي') || s.contains('تصنيع كامل') || s.contains('fabrication totale') || s.contains('fabrication complète')) return 60;
-    if (s == 'partial distribution' || s.contains('توزيع جزئي') || s.contains('livraison partielle')) return 70;
-    if (s == 'full distribution' || s.contains('توزيع كلي') || s.contains('توزيع كامل') || s.contains('livraison totale') || s.contains('livraison complète')) return 80;
+    if (s == 'nouveau' ||
+        s == 'new' ||
+        s == 'جديدة' ||
+        s == 'جديد' ||
+        s == 'draft')
+      return 10;
+    if (s == 'confirmed' || s.contains('مؤكد') || s.contains('confirme'))
+      return 20;
+    if (s == 'in progress' ||
+        s.contains('قياسات') ||
+        s.contains('جارية') ||
+        s.contains('cours'))
+      return 30;
+    if (s == 'pending' ||
+        s == 'en attente' ||
+        s == 'en_attente' ||
+        s.contains('انتظار'))
+      return 40;
+    if (s == 'partial manufacturing' ||
+        s.contains('تصنيع جزئي') ||
+        s.contains('fabrication partielle'))
+      return 50;
+    if (s == 'full manufacturing' ||
+        s.contains('تصنيع كلي') ||
+        s.contains('تصنيع كامل') ||
+        s.contains('fabrication totale') ||
+        s.contains('fabrication complète'))
+      return 60;
+    if (s == 'partial distribution' ||
+        s.contains('توزيع جزئي') ||
+        s.contains('livraison partielle'))
+      return 70;
+    if (s == 'full distribution' ||
+        s.contains('توزيع كلي') ||
+        s.contains('توزيع كامل') ||
+        s.contains('livraison totale') ||
+        s.contains('livraison complète'))
+      return 80;
     if (s == 'installation' || s.contains('تركيب')) return 90;
-    if (s == 'reserve' || s.contains('تحفظ') || s.contains('réserve')) return 95;
-    if (s == 'done' || s == 'livré' || s == 'livre' || s.contains('منتهي') || s.contains('مكتمل')) return 100;
-    if (s == 'cancelled' || s.contains('ملغاة') || s.contains('annulé')) return 999;
+    if (s == 'reserve' || s.contains('تحفظ') || s.contains('réserve'))
+      return 95;
+    if (s == 'done' ||
+        s == 'livré' ||
+        s == 'livre' ||
+        s.contains('منتهي') ||
+        s.contains('مكتمل'))
+      return 100;
+    if (s == 'cancelled' || s.contains('ملغاة') || s.contains('annulé'))
+      return 999;
     return 85;
   }
 
@@ -6047,7 +6079,8 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                       Expanded(
                         child: Text(
                           lang == AppLanguage.arabic
-                              ? (_statusAr[e.key] ?? Localization.translate(e.key, lang))
+                              ? (_statusAr[e.key] ??
+                                    Localization.translate(e.key, lang))
                               : Localization.translate(e.key, lang),
                           style: const TextStyle(
                             fontSize: 12,
@@ -6133,30 +6166,30 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                             child: AnimatedContainer(
                               duration: Duration.zero,
                               height: 110 * ratio,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors:
-                                  Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? [Color(0xFF111827), Color(0xFF070E1D)]
-                                  : [Color(0xFF2563EB), Color(0xFF0EA5E9)],
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                            ),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(6),
-                              topRight: Radius.circular(6),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(
-                                  0xFF2563EB,
-                                ).withValues(alpha: 0.25),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors:
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? [Color(0xFF111827), Color(0xFF070E1D)]
+                                      : [Color(0xFF2563EB), Color(0xFF0EA5E9)],
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                ),
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(6),
+                                  topRight: Radius.circular(6),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF2563EB,
+                                    ).withValues(alpha: 0.25),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
                             ),
                           ),
                         ),
