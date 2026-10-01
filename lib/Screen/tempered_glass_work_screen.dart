@@ -20,6 +20,11 @@ enum GlassWorkType {
 
 enum SablageMode { none, full, decorative }
 
+/// A measured horizontal glass zone.  It is deliberately stored separately
+/// from the legacy decorative bands so an order can mix clear, full-frosted
+/// and striped areas in one glass panel.
+enum _SablageRegionType { clear, full, bands }
+
 typedef _SablageMode = SablageMode;
 
 enum HoleDimensionMode { edge, center }
@@ -352,6 +357,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   final _sablageStartController = TextEditingController(text: '0');
   final _sablageEndController = TextEditingController(text: '400');
   final List<_SablageBand> _sablageBands = [];
+  final List<_SablageRegion> _sablageRegions = [];
   Rect? _overallDrawingRect;
   double? _overallWidthMmValue;
   double? _overallHeightMmValue;
@@ -745,6 +751,13 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             ),
           );
         }
+      }
+    }
+    _sablageRegions.clear();
+    final regionsRaw = payload['sablageRegions'] as List?;
+    if (regionsRaw != null) {
+      for (final region in regionsRaw) {
+        if (region is Map) _sablageRegions.add(_SablageRegion.fromMap(region));
       }
     }
 
@@ -1348,7 +1361,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     final res = await showDialog<double>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
+        builder: (dialogInnerContext, setDialogState) {
           void submit() {
             final val = _parseMillimeters(controller.text);
             if (val == null || val < min || val > max) {
@@ -1389,7 +1402,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     child: Text(
                       error!,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+                        color: Theme.of(dialogInnerContext).colorScheme.error,
                         fontSize: 12,
                       ),
                     ),
@@ -1410,7 +1423,12 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         },
       ),
     );
-    controller.dispose();
+    // showDialog completes as soon as Navigator.pop is called, while the
+    // dialog widgets remain mounted during the reverse route animation.
+    // Waiting 250ms prevents page rebuilds from touching deactivating InheritedElements
+    // (which triggers Failed assertion: '_dependents.isEmpty').
+    // Do not synchronously dispose controller here because the closing route might still paint it.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     return res;
   }
 
@@ -1493,6 +1511,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               setState(() {
                 if (group == 'handle') {
                   _handleSpacingMm = newSpacing;
+                  _holeOverrides.remove('handle_top');
+                  _holeOverrides.remove('handle_bottom');
                   _updatePanelsForHandles();
                 } else if (group == 'towel') {
                   _towelSpacingMm = newSpacing;
@@ -1574,7 +1594,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               _pushHistory();
               setState(() {
                 if (hole.purpose.startsWith('handle_')) {
-                  _handleEdgeOffsetMm = newVal;
+                  _handleEdgeOffsetMm = newVal + hole.diameterMm / 2;
+                  _holeOverrides.remove('handle_top');
+                  _holeOverrides.remove('handle_bottom');
                   _updatePanelsForHandles();
                 } else if (hole.purpose.startsWith('door_top_')) {
                   _doorTopHoleSideOffsetMm = newVal;
@@ -1659,6 +1681,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                             newVal -
                             _handleSpacingMm / 2 -
                             hole.diameterMm / 2;
+                  _holeOverrides.remove('handle_top');
+                  _holeOverrides.remove('handle_bottom');
                   _updatePanelsForHandles();
                 } else if (hole.purpose.startsWith('door_top_')) {
                   _doorTopHoleTopOffsetMm = newVal;
@@ -1811,6 +1835,14 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       (panel) => panel.rect.contains(position),
     );
     setState(() => _selectedPanelIndex = panelIndex < 0 ? null : panelIndex);
+  }
+
+  void _handleSablageDoubleTap() {
+    // Decorative frosting is edited as measured bands.  A double tap on the
+    // drawing is the fast entry point to the same precise editor used by the
+    // toolbar, so the user can draw first and enter exact dimensions after.
+    if (_sablageMode != _SablageMode.decorative) return;
+    _editSablageOptions();
   }
 
   bool get _sablageEnabled => _sablageMode == _SablageMode.decorative;
@@ -2242,14 +2274,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       }
     } else {
       for (final panel in _panels) {
-        if (!_showDoorHandle) {
-          panel.holes.removeWhere((h) => h.purpose.startsWith('handle_'));
-        }
-        if (!_showTowelHandle) {
-          panel.holes.removeWhere((h) => h.purpose.startsWith('towel_'));
-        }
-        if (_showDoorHandle &&
-            !panel.holes.any((h) => h.purpose.startsWith('handle_'))) {
+        panel.holes.removeWhere((h) => h.purpose.startsWith('handle_'));
+        panel.holes.removeWhere((h) => h.purpose.startsWith('towel_'));
+        if (_showDoorHandle) {
           panel.holes.addAll(
             _doorHoles(
               panel.widthMm,
@@ -2257,8 +2284,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             ).where((h) => h.purpose.startsWith('handle_')),
           );
         }
-        if (_showTowelHandle &&
-            !panel.holes.any((h) => h.purpose.startsWith('towel_'))) {
+        if (_showTowelHandle) {
           panel.holes.addAll(_fixedHoles(panel.widthMm, panel.heightMm));
         }
       }
@@ -2423,6 +2449,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       final x = _parseMillimeters(xController.text)!;
       final y = _parseMillimeters(yController.text)!;
       final diameter = _parseMillimeters(diameterController.text)!;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (!mounted) return;
       _pushHistory();
       setState(() {
         final updatedHole = _panels[target.panelIndex].holes[target.holeIndex];
@@ -2436,9 +2464,6 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         );
       });
     }
-    xController.dispose();
-    yController.dispose();
-    diameterController.dispose();
   }
 
   Future<void> _editHandleFromToolbar() async {
@@ -3044,6 +3069,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     );
 
     if (saved == true && mounted) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (!mounted) return;
       _pushHistory();
       setState(() {
         if (editOverall) {
@@ -3154,6 +3181,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       'sablageBands': _sablageBands
           .map((band) => {'offsetMm': band.offsetMm, 'widthMm': band.widthMm})
           .toList(),
+      'sablageRegions': _sablageRegions
+          .map((region) => region.toMap())
+          .toList(),
       'sablageMode': _sablageMode.name,
       'sablageOptions': {
         'transparentBandWidthMm': _number(
@@ -3256,6 +3286,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           panels: _panels.map((panel) => panel.copy()).toList(),
           drawingCanvasSize: _canvasSize,
           sablageBands: List.of(_sablageBands),
+          sablageRegions: List.of(_sablageRegions),
           sablageBandWidthMm: _sablageBandWidth(),
           overallHeightMm: _overallHeightMm,
           sablageMode: _sablageMode,
@@ -4025,6 +4056,177 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         );
       });
     }
+  }
+
+  Future<void> _addSablageRegion() async {
+    var type = _SablageRegionType.full;
+    final start = TextEditingController(text: '0');
+    final end = TextEditingController(
+      text: _overallHeightMm.toStringAsFixed(0),
+    );
+    final opaque = TextEditingController(
+      text: _sablageBandWidthController.text,
+    );
+    final clear = TextEditingController(
+      text: _sablageTransparentWidthController.text,
+    );
+    final region = await showDialog<_SablageRegion>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(
+            _tr(
+              'إضافة منطقة سابلاج',
+              'Ajouter une zone de sablage',
+              'Add frosting zone',
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<_SablageRegionType>(
+                  value: type,
+                  decoration: InputDecoration(
+                    labelText: _tr(
+                      'نمط المنطقة',
+                      'Motif de la zone',
+                      'Zone pattern',
+                    ),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: _SablageRegionType.clear,
+                      child: Text(_tr('شفاف', 'Transparent', 'Clear')),
+                    ),
+                    DropdownMenuItem(
+                      value: _SablageRegionType.full,
+                      child: Text(
+                        _tr('سابلاج كامل', 'Sablage complet', 'Full frosting'),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: _SablageRegionType.bands,
+                      child: Text(
+                        _tr(
+                          'سابلاج بخطوط',
+                          'Sablage par bandes',
+                          'Striped frosting',
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => type = value ?? type),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: start,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: _tr(
+                      'البداية من الأسفل',
+                      'Début depuis le bas',
+                      'Start from bottom',
+                    ),
+                    suffixText: 'mm',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: end,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: _tr(
+                      'النهاية من الأسفل',
+                      'Fin depuis le bas',
+                      'End from bottom',
+                    ),
+                    suffixText: 'mm',
+                  ),
+                ),
+                if (type == _SablageRegionType.bands) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: opaque,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'عرض الخط الصبغي',
+                        'Largeur de bande sablée',
+                        'Frosted band width',
+                      ),
+                      suffixText: 'mm',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: clear,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'عرض الفراغ الشفاف',
+                        'Largeur de bande transparente',
+                        'Clear gap width',
+                      ),
+                      suffixText: 'mm',
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () {
+                final from = _parseMillimeters(start.text);
+                final to = _parseMillimeters(end.text);
+                final band = _parseMillimeters(opaque.text) ?? 40;
+                final gap = _parseMillimeters(clear.text) ?? 40;
+                if (from == null ||
+                    to == null ||
+                    to <= from ||
+                    from < 0 ||
+                    to > _overallHeightMm ||
+                    band <= 0 ||
+                    gap < 0)
+                  return;
+                Navigator.pop(
+                  dialogContext,
+                  _SablageRegion(
+                    type: type,
+                    startMm: from,
+                    endMm: to,
+                    opaqueBandMm: band,
+                    clearBandMm: gap,
+                  ),
+                );
+              },
+              child: Text(_tr('إضافة', 'Ajouter', 'Add')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (region == null || !mounted) return;
+    _pushHistory();
+    setState(() {
+      _sablageMode = _SablageMode.decorative;
+      _sablageRegions.add(region);
+      _sablageRegions.sort((a, b) => a.startMm.compareTo(b.startMm));
+    });
   }
 
   Future<void> _confirmClearDrawing() async {
@@ -5478,9 +5680,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                       'Full frosting',
                     ),
                     _SablageMode.decorative => _tr(
-                      'تعتيم ديكور (${_sablageBands.length})',
-                      'Sablage décoratif (${_sablageBands.length})',
-                      'Decorative (${_sablageBands.length})',
+                      'تعتيم ديكور (${_sablageRegions.isNotEmpty ? _sablageRegions.length : _sablageBands.length})',
+                      'Sablage décoratif (${_sablageRegions.isNotEmpty ? _sablageRegions.length : _sablageBands.length})',
+                      'Decorative (${_sablageRegions.isNotEmpty ? _sablageRegions.length : _sablageBands.length})',
                     ),
                     _SablageMode.none => _tr(
                       'بدون سابلاج',
@@ -5495,7 +5697,30 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                   onTap: () => _showSablageMenu(btnCtx),
                 ),
               ),
-              if (_sablageBands.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(left: 4, right: 4),
+                height: 52,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: Colors.blueGrey.shade200),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  tooltip: _tr(
+                    'إضافة منطقة سابلاج',
+                    'Ajouter une zone de sablage',
+                    'Add frosting zone',
+                  ),
+                  onPressed: _addSablageRegion,
+                  icon: const Icon(
+                    Icons.add_box_outlined,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              if (_sablageBands.isNotEmpty || _sablageRegions.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(left: 4, right: 4),
                   height: 52,
@@ -5514,7 +5739,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     ),
                     onPressed: () {
                       _pushHistory();
-                      setState(_sablageBands.clear);
+                      setState(() {
+                        _sablageBands.clear();
+                        _sablageRegions.clear();
+                      });
                     },
                     icon: const Icon(Icons.clear_all, color: Colors.black87),
                   ),
@@ -5764,6 +5992,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                       return GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTapUp: _handleCanvasTap,
+                        onDoubleTap: _handleSablageDoubleTap,
                         onPanStart: _startPanel,
                         onPanUpdate: _resizePanel,
                         onPanEnd: _finishPanel,
@@ -5791,6 +6020,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                     _draftPanel!.height,
                                   ),
                             sablageBands: _sablageBands,
+                            sablageRegions: _sablageRegions,
                             draftSablageOffsetMm: _draftSablageOffsetMm,
                             sablageBandWidthMm: _sablageBandWidth(),
                             overallHeightMm: _overallHeightMm,
@@ -5824,6 +6054,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
     required this.panels,
     required this.drawingCanvasSize,
     required this.sablageBands,
+    this.sablageRegions = const [],
     required this.sablageBandWidthMm,
     required this.overallHeightMm,
     required this.sablageMode,
@@ -5834,6 +6065,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
   final List<_GlassPanel> panels;
   final Size drawingCanvasSize;
   final List<_SablageBand> sablageBands;
+  final List<_SablageRegion> sablageRegions;
   final double sablageBandWidthMm;
   final double overallHeightMm;
   final _SablageMode sablageMode;
@@ -5843,6 +6075,17 @@ class _GlassManufacturingSheet extends StatelessWidget {
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
+
+  String _tr3(BuildContext context, String ar, String fr, String en) {
+    switch (Provider.of<AppSettingsProvider>(context, listen: false).language) {
+      case AppLanguage.french:
+        return fr;
+      case AppLanguage.english:
+        return en;
+      case AppLanguage.arabic:
+        return ar;
+    }
+  }
 
   String _value(Object? value, [String fallback = '—']) {
     final text = value?.toString().trim() ?? '';
@@ -5855,14 +6098,14 @@ class _GlassManufacturingSheet extends StatelessWidget {
     return '${number.toStringAsFixed(0)} mm';
   }
 
-  String _role(String role) {
+  String _role(BuildContext context, String role) {
     switch (role) {
       case 'door':
-        return 'باب';
+        return _tr3(context, 'باب', 'Porte', 'Door');
       case 'fixed':
-        return 'ثابت';
+        return _tr3(context, 'ثابت', 'Fixe', 'Fixed');
       default:
-        return 'لوح زجاج';
+        return _tr3(context, 'لوح زجاج', 'Panneau de verre', 'Glass panel');
     }
   }
 
@@ -5896,7 +6139,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
     );
   }
 
-  Widget _panelDetails(_GlassPanel panel, int index) {
+  Widget _panelDetails(BuildContext context, _GlassPanel panel, int index) {
     final holes = panel.holes
         .map(
           (hole) =>
@@ -5924,12 +6167,14 @@ class _GlassManufacturingSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${_role(panel.role)} — ${_mm(panel.widthMm)} × ${_mm(panel.heightMm)}',
+                  '${_role(context, panel.role)} — ${_mm(panel.widthMm)} × ${_mm(panel.heightMm)}',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  panel.holes.isEmpty ? 'بدون ثقوب' : 'الثقوب: $holes',
+                  panel.holes.isEmpty
+                      ? _tr3(context, 'بدون ثقوب', 'Sans perçage', 'No holes')
+                      : '${_tr3(context, 'الثقوب', 'Perçages', 'Holes')}: $holes',
                   style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
                 ),
               ],
@@ -5976,14 +6221,19 @@ class _GlassManufacturingSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    _tr(context, 'طلب تصنيع الزجاج'),
+                    _tr3(
+                      context,
+                      'طلب تصنيع الزجاج',
+                      'Demande de fabrication du verre',
+                      'Glass manufacturing request',
+                    ),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
                 Text(
-                  '${panels.length} ${_tr(context, 'قطعة')}',
+                  '${panels.length} ${_tr3(context, 'قطعة', 'pièce(s)', 'piece(s)')}',
                   style: const TextStyle(color: Colors.blueGrey),
                 ),
               ],
@@ -6008,6 +6258,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
                         panels: panels,
                         draftPanel: null,
                         sablageBands: sablageBands,
+                        sablageRegions: sablageRegions,
                         draftSablageOffsetMm: null,
                         sablageBandWidthMm: sablageBandWidthMm,
                         overallHeightMm: overallHeightMm,
@@ -6033,23 +6284,45 @@ class _GlassManufacturingSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                _spec('نوع الزجاج', _value(payload['glassType'])),
-                _spec('السمك', _mm(payload['glassThicknessMm'])),
+                _spec(
+                  _tr3(context, 'نوع الزجاج', 'Type de verre', 'Glass type'),
+                  _value(payload['glassType']),
+                ),
+                _spec(
+                  _tr3(context, 'السمك', 'Épaisseur', 'Thickness'),
+                  _mm(payload['glassThicknessMm']),
+                ),
               ],
             ),
             Row(
               children: [
-                _spec('مقسّى', tempered),
+                _spec(_tr3(context, 'مقسّى', 'Trempé', 'Tempered'), tempered),
                 _spec(
-                  'نوع الحواف',
+                  _tr3(context, 'نوع الحواف', 'Type de chants', 'Edge finish'),
                   _value(payload['edgeFinishLabel'] ?? payload['edgeFinish']),
                 ),
               ],
             ),
             Row(
               children: [
-                _spec('العرض الإجمالي', _mm(payload['overallWidthMm'])),
-                _spec('الارتفاع الإجمالي', _mm(payload['overallHeightMm'])),
+                _spec(
+                  _tr3(
+                    context,
+                    'العرض الإجمالي',
+                    'Largeur totale',
+                    'Overall width',
+                  ),
+                  _mm(payload['overallWidthMm']),
+                ),
+                _spec(
+                  _tr3(
+                    context,
+                    'الارتفاع الإجمالي',
+                    'Hauteur totale',
+                    'Overall height',
+                  ),
+                  _mm(payload['overallHeightMm']),
+                ),
               ],
             ),
             if (isFrosted)
@@ -6057,19 +6330,34 @@ class _GlassManufacturingSheet extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4, bottom: 8),
                 child: Text(
                   sablageMode == _SablageMode.full
-                      ? 'الصابلاج: تعتيم كامل'
-                      : 'الصابلاج: ${sablageBands.length} باندات، عرض الباندة ${_mm(sablageBandWidthMm)}',
+                      ? _tr3(
+                          context,
+                          'الصابلاج: تعتيم كامل',
+                          'Sablage : complet',
+                          'Frosting: full',
+                        )
+                      : _tr3(
+                          context,
+                          'الصابلاج: ${sablageRegions.isNotEmpty ? sablageRegions.length : sablageBands.length} مناطق، عرض الشريط ${_mm(sablageBandWidthMm)}',
+                          'Sablage : ${sablageRegions.isNotEmpty ? sablageRegions.length : sablageBands.length} zones, largeur de bande ${_mm(sablageBandWidthMm)}',
+                          'Frosting: ${sablageRegions.isNotEmpty ? sablageRegions.length : sablageBands.length} zones, band width ${_mm(sablageBandWidthMm)}',
+                        ),
                   style: const TextStyle(color: Colors.blueGrey),
                 ),
               ),
             const SizedBox(height: 6),
             Text(
-              _tr(context, 'تفاصيل القطع والثقوب'),
+              _tr3(
+                context,
+                'تفاصيل القطع والثقوب',
+                'Détail des panneaux et perçages',
+                'Panels and holes details',
+              ),
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             for (var index = 0; index < panels.length; index++)
-              _panelDetails(panels[index], index),
+              _panelDetails(context, panels[index], index),
             const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: () => Navigator.pop(context, payload),
@@ -6090,6 +6378,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     this.draftWidthMm,
     this.draftHeightMm,
     required this.sablageBands,
+    this.sablageRegions = const [],
     required this.draftSablageOffsetMm,
     required this.sablageBandWidthMm,
     required this.overallHeightMm,
@@ -6106,6 +6395,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
   final double? draftWidthMm;
   final double? draftHeightMm;
   final List<_SablageBand> sablageBands;
+  final List<_SablageRegion> sablageRegions;
   final double? draftSablageOffsetMm;
   final double sablageBandWidthMm;
   final double overallHeightMm;
@@ -6394,7 +6684,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(glassEdgeX, topCenter.dy),
         Offset(holeEdgeX, topCenter.dy),
-        '${horizValMm.toStringAsFixed(0)} mm',
+        horizValMm.toStringAsFixed(0),
       );
 
       // Single vertical dimension from top to upper handle hole
@@ -6410,7 +6700,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(topCenter.dx, measurementTop),
         Offset(topCenter.dx, holeEdgeY),
-        '${topValMm.toStringAsFixed(0)} mm',
+        topValMm.toStringAsFixed(0),
       );
 
       // Vertical distance between handle holes
@@ -6429,17 +6719,17 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(topCenter.dx, startBetweenY),
         Offset(bottomCenter.dx, endBetweenY),
-        '${spacingMm.toStringAsFixed(0)} mm',
+        spacingMm.toStringAsFixed(0),
       );
 
       // Hole labels placed on inner side away from edge dimension line
       final labelSideOffset = fromLeft ? (topRadius + 28) : -(topRadius + 28);
       drawLabel(
-        '#${panel.holes.indexOf(topHole) + 1} Ø ${holeDiameter(topHole).toStringAsFixed(0)} mm',
+        '#${panel.holes.indexOf(topHole) + 1} Ø ${holeDiameter(topHole).toStringAsFixed(0)}',
         topCenter + Offset(labelSideOffset, 0),
       );
       drawLabel(
-        '#${panel.holes.indexOf(bottomHole) + 1} Ø ${holeDiameter(bottomHole).toStringAsFixed(0)} mm',
+        '#${panel.holes.indexOf(bottomHole) + 1} Ø ${holeDiameter(bottomHole).toStringAsFixed(0)}',
         bottomCenter + Offset(labelSideOffset, 0),
       );
     }
@@ -6482,7 +6772,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(glassEdgeX, refCenter.dy),
         Offset(holeEdgeX, refCenter.dy),
-        '${horizValMm.toStringAsFixed(0)} mm',
+        horizValMm.toStringAsFixed(0),
       );
 
       // Single vertical dimension from top edge (NOT two duplicate lines)
@@ -6497,7 +6787,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(refCenter.dx, panel.rect.top),
         Offset(refCenter.dx, topHoleEdgeY),
-        '${topValMm.toStringAsFixed(0)} mm',
+        topValMm.toStringAsFixed(0),
       );
 
       // Horizontal distance between towel holes
@@ -6516,16 +6806,16 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(startBetweenX, leftCenter.dy),
         Offset(endBetweenX, rightCenter.dy),
-        '${spacingMm.toStringAsFixed(0)} mm',
+        spacingMm.toStringAsFixed(0),
       );
 
       // Labels below each hole
       drawLabel(
-        '#${panel.holes.indexOf(leftHole) + 1} Ø ${holeDiameter(leftHole).toStringAsFixed(0)} mm',
+        '#${panel.holes.indexOf(leftHole) + 1} Ø ${holeDiameter(leftHole).toStringAsFixed(0)}',
         leftCenter + Offset(0, leftRadius + 11),
       );
       drawLabel(
-        '#${panel.holes.indexOf(rightHole) + 1} Ø ${holeDiameter(rightHole).toStringAsFixed(0)} mm',
+        '#${panel.holes.indexOf(rightHole) + 1} Ø ${holeDiameter(rightHole).toStringAsFixed(0)}',
         rightCenter + Offset(0, rightRadius + 11),
       );
     }
@@ -6557,7 +6847,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(panel.rect.left, leftCenter.dy),
         Offset(leftHoleEdgeX, leftCenter.dy),
-        '${leftValMm.toStringAsFixed(0)} mm',
+        leftValMm.toStringAsFixed(0),
       );
 
       // Right wheel horizontal offset
@@ -6573,7 +6863,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(panel.rect.right, rightCenter.dy),
         Offset(rightHoleEdgeX, rightCenter.dy),
-        '${rightValMm.toStringAsFixed(0)} mm',
+        rightValMm.toStringAsFixed(0),
       );
 
       // Single vertical offset from top of door
@@ -6589,16 +6879,16 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(leftCenter.dx, measurementTop),
         Offset(leftCenter.dx, topHoleEdgeY),
-        '${topValMm.toStringAsFixed(0)} mm',
+        topValMm.toStringAsFixed(0),
       );
 
       // Labels below holes
       drawLabel(
-        '#${panel.holes.indexOf(leftHole) + 1} Ø ${holeDiameter(leftHole).toStringAsFixed(0)} mm',
+        '#${panel.holes.indexOf(leftHole) + 1} Ø ${holeDiameter(leftHole).toStringAsFixed(0)}',
         leftCenter + Offset(0, leftRadius + 11),
       );
       drawLabel(
-        '#${panel.holes.indexOf(rightHole) + 1} Ø ${holeDiameter(rightHole).toStringAsFixed(0)} mm',
+        '#${panel.holes.indexOf(rightHole) + 1} Ø ${holeDiameter(rightHole).toStringAsFixed(0)}',
         rightCenter + Offset(0, rightRadius + 11),
       );
     }
@@ -6637,7 +6927,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(glassEdgeX, center.dy),
         Offset(holeEdgeX, center.dy),
-        '${horizValMm.toStringAsFixed(0)} mm',
+        horizValMm.toStringAsFixed(0),
       );
 
       final fromTop = topMm <= bottomMm;
@@ -6651,11 +6941,11 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       drawArrowDimension(
         Offset(center.dx, glassEdgeY),
         Offset(center.dx, holeEdgeY),
-        '${vertValMm.toStringAsFixed(0)} mm',
+        vertValMm.toStringAsFixed(0),
       );
 
       drawLabel(
-        '#${index + 1} Ø ${diameterMm.toStringAsFixed(0)} mm',
+        '#${index + 1} Ø ${diameterMm.toStringAsFixed(0)}',
         center + Offset(0, radius + 11),
       );
     }
@@ -6677,6 +6967,57 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       return;
     }
     if (sablageMode != _SablageMode.decorative || overallHeightMm <= 0) return;
+    if (sablageRegions.isNotEmpty) {
+      final sharedTop = _sharedSlidingTop();
+      for (final region in sablageRegions) {
+        if (region.type == _SablageRegionType.clear) continue;
+        for (final panel in panels) {
+          final panelHeightMm = panel.heightMm > 0
+              ? panel.heightMm
+              : overallHeightMm;
+          final scale = panel.rect.height / panelHeightMm;
+          final glassRect = _glassContentRect(panel.rect);
+          final top = (sharedTop ?? panel.rect.top) + region.startMm * scale;
+          final bottom = (sharedTop ?? panel.rect.top) + region.endMm * scale;
+          canvas.save();
+          canvas.clipRect(glassRect);
+          if (region.type == _SablageRegionType.full) {
+            canvas.drawRect(
+              Rect.fromLTRB(
+                glassRect.left,
+                top,
+                glassRect.right,
+                bottom,
+              ).intersect(glassRect),
+              paint,
+            );
+          } else {
+            final pitch = region.opaqueBandMm + region.clearBandMm;
+            for (
+              var offset = region.startMm;
+              offset < region.endMm;
+              offset += pitch
+            ) {
+              final bandEnd = math.min(
+                offset + region.opaqueBandMm,
+                region.endMm,
+              );
+              canvas.drawRect(
+                Rect.fromLTRB(
+                  glassRect.left,
+                  (sharedTop ?? panel.rect.top) + offset * scale,
+                  glassRect.right,
+                  (sharedTop ?? panel.rect.top) + bandEnd * scale,
+                ).intersect(glassRect),
+                paint,
+              );
+            }
+          }
+          canvas.restore();
+        }
+      }
+      return;
+    }
     final labelPaint = Paint()
       ..color = Colors.blueGrey.shade700
       ..style = PaintingStyle.stroke
@@ -7046,6 +7387,49 @@ class _SablageBand {
 
   final double offsetMm;
   final double widthMm;
+}
+
+class _SablageRegion {
+  const _SablageRegion({
+    required this.type,
+    required this.startMm,
+    required this.endMm,
+    this.opaqueBandMm = 40,
+    this.clearBandMm = 40,
+  });
+
+  final _SablageRegionType type;
+  final double startMm;
+  final double endMm;
+  final double opaqueBandMm;
+  final double clearBandMm;
+
+  Map<String, dynamic> toMap() => {
+    'type': type.name,
+    'startMm': startMm,
+    'endMm': endMm,
+    'opaqueBandMm': opaqueBandMm,
+    'clearBandMm': clearBandMm,
+  };
+
+  factory _SablageRegion.fromMap(Map map) {
+    final rawType = map['type']?.toString() ?? 'full';
+    final type = _SablageRegionType.values.firstWhere(
+      (value) => value.name == rawType,
+      orElse: () => _SablageRegionType.full,
+    );
+    double number(String key, double fallback) =>
+        (map[key] as num?)?.toDouble() ??
+        double.tryParse(map[key]?.toString() ?? '') ??
+        fallback;
+    return _SablageRegion(
+      type: type,
+      startMm: number('startMm', 0),
+      endMm: number('endMm', 0),
+      opaqueBandMm: number('opaqueBandMm', 40),
+      clearBandMm: number('clearBandMm', 40),
+    );
+  }
 }
 
 class _GlassDrawingSnapshot {

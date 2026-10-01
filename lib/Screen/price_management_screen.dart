@@ -1181,8 +1181,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       ),
                     );
                   },
-                  onSaveCompleted: () =>
-                      _removeQueuedShutterPrice(pendingKey),
+                  onSaveCompleted: () => _removeQueuedShutterPrice(pendingKey),
                 ),
                 const SizedBox(height: 4),
               ],
@@ -1385,9 +1384,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final lang = Provider.of<AppSettingsProvider>(context).language;
 
     final filtered = temperedGlassItemsList.where((item) {
-      final matchesCat = _temperedGlassCategoryFilter == 'all' || item['category'] == _temperedGlassCategoryFilter;
+      final matchesCat =
+          _temperedGlassCategoryFilter == 'all' ||
+          item['category'] == _temperedGlassCategoryFilter;
       final q = _temperedGlassSearchQuery.trim().toLowerCase();
-      final matchesQuery = q.isEmpty ||
+      final matchesQuery =
+          q.isEmpty ||
           (item['name'] ?? '').toString().toLowerCase().contains(q) ||
           (item['notes'] ?? '').toString().toLowerCase().contains(q) ||
           (item['category_name'] ?? '').toString().toLowerCase().contains(q);
@@ -1404,17 +1406,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 child: TextField(
                   decoration: InputDecoration(
                     hintText: switch (lang) {
-                      AppLanguage.french => 'Rechercher un accessoire / profilé verre trempé...',
-                      AppLanguage.english => 'Search tempered glass accessory / profile...',
+                      AppLanguage.french =>
+                        'Rechercher un accessoire / profilé verre trempé...',
+                      AppLanguage.english =>
+                        'Search tempered glass accessory / profile...',
                       _ => 'بحث في إكسسوارات وقطاعات الزجاج المقسى...',
                     },
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: Theme.of(context).cardColor,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 0,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
-                  onChanged: (val) => setState(() => _temperedGlassSearchQuery = val),
+                  onChanged: (val) =>
+                      setState(() => _temperedGlassSearchQuery = val),
                 ),
               ),
             ],
@@ -1424,37 +1435,63 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
-            children: [
-              'all',
-              'poignee',
-              'charniere',
-              'profile',
-              'fixation',
-              'joint',
-              'serrure',
-            ].map((cat) {
-              final isSel = _temperedGlassCategoryFilter == cat;
-              final catLabel = switch (cat) {
-                'all' => Localization.translate('الكل', lang),
-                'poignee' => switch (lang) { AppLanguage.french => 'Poignées', AppLanguage.english => 'Handles', _ => 'المقابض' },
-                'charniere' => switch (lang) { AppLanguage.french => 'Charnières', AppLanguage.english => 'Hinges', _ => 'المفصلات' },
-                'profile' => switch (lang) { AppLanguage.french => 'Profilés & Rails', AppLanguage.english => 'Profiles & Rails', _ => 'القطاعات والسكك' },
-                'fixation' => switch (lang) { AppLanguage.french => 'Fixations', AppLanguage.english => 'Clamps', _ => 'التثبيت والمشابك' },
-                'joint' => switch (lang) { AppLanguage.french => 'Joints', AppLanguage.english => 'Seals', _ => 'الجوانات والعوازل' },
-                'serrure' => switch (lang) { AppLanguage.french => 'Serrures', AppLanguage.english => 'Locks', _ => 'الأقفال' },
-                _ => cat,
-              };
-              return Padding(
-                padding: const EdgeInsets.only(right: 6, left: 6),
-                child: ChoiceChip(
-                  selected: isSel,
-                  label: Text(catLabel),
-                  selectedColor: Colors.teal.shade600,
-                  labelStyle: TextStyle(color: isSel ? Colors.white : null),
-                  onSelected: (_) => setState(() => _temperedGlassCategoryFilter = cat),
-                ),
-              );
-            }).toList(),
+            children:
+                [
+                  'all',
+                  'poignee',
+                  'charniere',
+                  'profile',
+                  'fixation',
+                  'joint',
+                  'serrure',
+                ].map((cat) {
+                  final isSel = _temperedGlassCategoryFilter == cat;
+                  final catLabel = switch (cat) {
+                    'all' => Localization.translate('الكل', lang),
+                    'poignee' => switch (lang) {
+                      AppLanguage.french => 'Poignées',
+                      AppLanguage.english => 'Handles',
+                      _ => 'المقابض',
+                    },
+                    'charniere' => switch (lang) {
+                      AppLanguage.french => 'Charnières',
+                      AppLanguage.english => 'Hinges',
+                      _ => 'المفصلات',
+                    },
+                    'profile' => switch (lang) {
+                      AppLanguage.french => 'Profilés & Rails',
+                      AppLanguage.english => 'Profiles & Rails',
+                      _ => 'القطاعات والسكك',
+                    },
+                    'fixation' => switch (lang) {
+                      AppLanguage.french => 'Fixations',
+                      AppLanguage.english => 'Clamps',
+                      _ => 'التثبيت والمشابك',
+                    },
+                    'joint' => switch (lang) {
+                      AppLanguage.french => 'Joints',
+                      AppLanguage.english => 'Seals',
+                      _ => 'الجوانات والعوازل',
+                    },
+                    'serrure' => switch (lang) {
+                      AppLanguage.french => 'Serrures',
+                      AppLanguage.english => 'Locks',
+                      _ => 'الأقفال',
+                    },
+                    _ => cat,
+                  };
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6, left: 6),
+                    child: ChoiceChip(
+                      selected: isSel,
+                      label: Text(catLabel),
+                      selectedColor: Colors.teal.shade600,
+                      labelStyle: TextStyle(color: isSel ? Colors.white : null),
+                      onSelected: (_) =>
+                          setState(() => _temperedGlassCategoryFilter = cat),
+                    ),
+                  );
+                }).toList(),
           ),
         ),
         Expanded(
@@ -1475,23 +1512,43 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     final price = (item['price'] as num?)?.toDouble() ?? 0.0;
                     final unit = item['unit']?.toString() ?? 'piece';
                     final unitLabel = unit == 'meter'
-                        ? (lang == AppLanguage.french ? '/m' : (lang == AppLanguage.english ? '/m' : 'للمتر'))
-                        : (lang == AppLanguage.french ? '/pièce' : (lang == AppLanguage.english ? '/pc' : 'للقطعة'));
+                        ? (lang == AppLanguage.french
+                              ? '/m'
+                              : (lang == AppLanguage.english ? '/m' : 'للمتر'))
+                        : (lang == AppLanguage.french
+                              ? '/pièce'
+                              : (lang == AppLanguage.english
+                                    ? '/pc'
+                                    : 'للقطعة'));
                     return Card(
                       elevation: 1,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.teal.shade200.withValues(alpha: 0.5)),
+                        side: BorderSide(
+                          color: Colors.teal.shade200.withValues(alpha: 0.5),
+                        ),
                       ),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: Colors.teal.shade50,
-                          child: Icon(Icons.hardware_outlined, color: Colors.teal.shade800),
+                          child: Icon(
+                            Icons.hardware_outlined,
+                            color: Colors.teal.shade800,
+                          ),
                         ),
-                        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
                         subtitle: Text(
                           '${item['category_name'] ?? item['category'] ?? ''} • $unitLabel',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
                         ),
                         trailing: SizedBox(
                           width: 170,
@@ -1508,8 +1565,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                               ),
                               IconButton(
                                 icon: const Icon(Icons.edit, size: 18),
-                                tooltip: Localization.translate('تعديل السعر', lang),
-                                onPressed: () => _showEditTemperedGlassPriceDialog(item),
+                                tooltip: Localization.translate(
+                                  'تعديل السعر',
+                                  lang,
+                                ),
+                                onPressed: () =>
+                                    _showEditTemperedGlassPriceDialog(item),
                               ),
                             ],
                           ),
@@ -1523,10 +1584,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-  Future<void> _showEditTemperedGlassPriceDialog(Map<String, dynamic> item) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    final priceCtrl = TextEditingController(text: (item['price'] as num?)?.toString() ?? '0');
-    final costCtrl = TextEditingController(text: (item['cost_price'] as num?)?.toString() ?? '0');
+  Future<void> _showEditTemperedGlassPriceDialog(
+    Map<String, dynamic> item,
+  ) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final priceCtrl = TextEditingController(
+      text: (item['price'] as num?)?.toString() ?? '0',
+    );
+    final costCtrl = TextEditingController(
+      text: (item['cost_price'] as num?)?.toString() ?? '0',
+    );
     final id = item['id'] as int;
 
     final saved = await showDialog<bool>(
@@ -1539,7 +1609,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           children: [
             TextField(
               controller: priceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: switch (lang) {
                   AppLanguage.french => 'Prix de vente (DZD)',
@@ -1552,7 +1624,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             const SizedBox(height: 12),
             TextField(
               controller: costCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: switch (lang) {
                   AppLanguage.french => 'Prix de revient / coût (DZD)',
@@ -1565,8 +1639,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(Localization.translate('إلغاء', lang))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(Localization.translate('حفظ', lang))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate('إلغاء', lang)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(Localization.translate('حفظ', lang)),
+          ),
         ],
       ),
     );
@@ -2622,8 +2702,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             child: Text(
               Localization.translate(
                 label,
-                Provider.of<AppSettingsProvider>(context, listen: false)
-                    .language,
+                Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language,
               ),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
@@ -3278,7 +3360,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             child: TabBar(
               tabs: [
                 Tab(text: Localization.translate('أسعار البروفيلات', lang)),
-                Tab(text: Localization.translate('قواعد حساب البروفيلات', lang)),
+                Tab(
+                  text: Localization.translate('قواعد حساب البروفيلات', lang),
+                ),
               ],
             ),
           ),
@@ -3469,7 +3553,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     int sectionId,
     double currentMultiplier,
   ) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     var inputValue = currentMultiplier.toStringAsFixed(
       currentMultiplier == currentMultiplier.roundToDouble() ? 0 : 2,
     );
@@ -3512,7 +3599,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       linearMeterMultiplier: value,
       excludeFromPricing:
           profileCalculationRules[sectionId]?['exclude_from_pricing'] == 1 ||
-              profileCalculationRules[sectionId]?['exclude_from_pricing'] == true,
+          profileCalculationRules[sectionId]?['exclude_from_pricing'] == true,
     );
     if (!mounted) return;
     setState(() {
@@ -3553,7 +3640,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   Widget _buildProfileCalculationRulesList(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
     if (seriesList.isEmpty) {
-      return Center(child: Text(Localization.translate('لا توجد سلاسل.', lang)));
+      return Center(
+        child: Text(Localization.translate('لا توجد سلاسل.', lang)),
+      );
     }
     final sections = sectionList
         .where((s) => s['series_id'] == selectedSeriesForSections)
@@ -3563,6 +3652,67 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         child: Text(Localization.translate('لا توجد بروفيلات.', lang)),
       );
     }
+    bool isRuleActive(Map<String, dynamic> section) {
+      final sectionId = (section['id'] as num).toInt();
+      final rule = profileCalculationRules[sectionId];
+      return rule?['exclude_from_pricing'] != 1 &&
+          rule?['exclude_from_pricing'] != true;
+    }
+
+    final activeSections = sections.where(isRuleActive).toList(growable: false);
+    final inactiveSections = sections
+        .where((section) => !isRuleActive(section))
+        .toList(growable: false);
+    final orderedSections = [...activeSections, ...inactiveSections];
+
+    String statusTitle(bool active) => switch (lang) {
+      AppLanguage.arabic => active ? 'القواعد النشطة' : 'القواعد غير النشطة',
+      AppLanguage.french => active ? 'Règles actives' : 'Règles inactives',
+      AppLanguage.english => active ? 'Active rules' : 'Inactive rules',
+    };
+
+    Widget statusDivider(bool active, int count) {
+      final colors = Theme.of(context).colorScheme;
+      final color = active ? colors.primary : colors.outline;
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10, top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: active
+              ? colors.primaryContainer
+              : colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              active ? Icons.check_circle_rounded : Icons.pause_circle_rounded,
+              color: color,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                statusTitle(active),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(color: color, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       children: [
         Padding(
@@ -3604,22 +3754,45 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: sections.length,
+            itemCount:
+                orderedSections.length +
+                (activeSections.isNotEmpty ? 1 : 0) +
+                (inactiveSections.isNotEmpty ? 1 : 0),
             itemBuilder: (context, index) {
-              final section = sections[index];
+              if (activeSections.isNotEmpty) {
+                if (index == 0) {
+                  return statusDivider(true, activeSections.length);
+                }
+                index--;
+              }
+              if (index < activeSections.length) {
+                // Continue below with the active section at this index.
+              } else {
+                index -= activeSections.length;
+                if (inactiveSections.isNotEmpty && index == 0) {
+                  return statusDivider(false, inactiveSections.length);
+                }
+                if (inactiveSections.isNotEmpty) index--;
+                index += activeSections.length;
+              }
+              final section = orderedSections[index];
               final sectionId = (section['id'] as num).toInt();
               final rule = profileCalculationRules[sectionId];
-              final storedMode = rule?['calculation_mode']?.toString() ?? 'auto';
-              final mode = (rule?['exclude_from_pricing'] == 1 ||
+              final storedMode =
+                  rule?['calculation_mode']?.toString() ?? 'auto';
+              final mode =
+                  (rule?['exclude_from_pricing'] == 1 ||
                       rule?['exclude_from_pricing'] == true)
                   ? 'excluded'
-                  : const {'auto', 'linear_meter', 'base_price'}
-                      .contains(storedMode)
+                  : const {
+                      'auto',
+                      'linear_meter',
+                      'base_price',
+                    }.contains(storedMode)
                   ? storedMode
                   : 'auto';
-      final multiplier =
-                  (rule?['linear_meter_multiplier'] as num?)?.toDouble() ??
-                  1.0;
+              final multiplier =
+                  (rule?['linear_meter_multiplier'] as num?)?.toDouble() ?? 1.0;
               return Card(
                 key: ValueKey<String>('profile-calculation-rule-$sectionId'),
                 margin: const EdgeInsets.only(bottom: 10),
@@ -3643,21 +3816,33 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                               isExpanded: true,
                               initialValue: mode == 'auto' ? null : mode,
                               decoration: InputDecoration(
-                                labelText: Localization.translate('طريقة الحساب', lang),
+                                labelText: Localization.translate(
+                                  'طريقة الحساب',
+                                  lang,
+                                ),
                                 border: OutlineInputBorder(),
                               ),
                               items: [
                                 DropdownMenuItem(
                                   value: 'excluded',
-                                  child: Text(Localization.translate('لا يُحتسب بدون سعر', lang)),
+                                  child: Text(
+                                    Localization.translate(
+                                      'لا يُحتسب بدون سعر',
+                                      lang,
+                                    ),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'linear_meter',
-                                  child: Text(Localization.translate('متر خطي', lang)),
+                                  child: Text(
+                                    Localization.translate('متر خطي', lang),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'base_price',
-                                  child: Text(Localization.translate('سعر أساسي', lang)),
+                                  child: Text(
+                                    Localization.translate('سعر أساسي', lang),
+                                  ),
                                 ),
                               ],
                               onChanged: canChangePrices
@@ -3830,8 +4015,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 '${Localization.translate('النوع: ', lang)}'
                 '${Localization.translate(glassType, lang)}';
             if (t == 'panneau' && subtype.isNotEmpty) {
-              displaySubtitle +=
-                  ' (${Localization.translate(subtype, lang)})';
+              displaySubtitle += ' (${Localization.translate(subtype, lang)})';
             }
           }
         }
@@ -4931,8 +5115,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                       _isShutterGreyBaseColor(color);
 
                                   return CheckboxListTile(
-                                      title: Text(
-                                        isGreyBaseColor
+                                    title: Text(
+                                      isGreyBaseColor
                                           ? Localization.translate(
                                               'رمادي (السعر الأساسي)',
                                               lang,

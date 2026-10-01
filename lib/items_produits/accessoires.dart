@@ -2313,18 +2313,18 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         labelText: _t('ربط هذا الأكسيسوار بالتراينغل'),
                         border: const OutlineInputBorder(),
                       ),
-                      items: const [
+                      items: [
                         DropdownMenuItem(
                           value: 'none',
-                          child: Text('بدون تراينغل'),
+                          child: Text(_t('بدون تراينغل')),
                         ),
                         DropdownMenuItem(
                           value: 'optional',
-                          child: Text('اختياري'),
+                          child: Text(_t('اختياري')),
                         ),
                         DropdownMenuItem(
                           value: 'required',
-                          child: Text('حتمي'),
+                          child: Text(_t('حتمي')),
                         ),
                       ],
                       onChanged: readOnly
@@ -2352,14 +2352,14 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                         labelText: _t('موضع التقسيم'),
                         border: const OutlineInputBorder(),
                       ),
-                      items: const [
+                      items: [
                         DropdownMenuItem(
                           value: 'center',
-                          child: Text('منتصف الضلفة'),
+                          child: Text(_t('منتصف الضلفة')),
                         ),
                         DropdownMenuItem(
                           value: 'offset',
-                          child: Text('مسافة من الأسفل'),
+                          child: Text(_t('مسافة من الأسفل')),
                         ),
                       ],
                       onChanged: readOnly

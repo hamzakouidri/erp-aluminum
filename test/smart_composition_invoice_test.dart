@@ -6,22 +6,39 @@ void main() {
   group('Smart Window Composition Title and Description Tests', () {
     test('Multi-frame: 4-sash sliding + 2-sash beating with 1 fixed pane', () {
       final drawing = {
+        'seriesName': 'TPR 40000',
+        'slidingSeriesName': 'TPR 67000',
         'zones': [
           // Frame 1: 4-sash sliding (left: 50, right: 1450)
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 1400.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 1400.0,
+              'height': 1200.0,
+            },
             'content': 'slidingSash',
             'slidingSashesCount': 4,
             'glass': {'structure': 'double'},
           },
           // Frame 2: 2-sash beating + 1 fixed pane (left: 1550, gap=100mm from frame 1)
           {
-            'boundary': {'left': 1550.0, 'top': 50.0, 'width': 800.0, 'height': 1200.0},
+            'boundary': {
+              'left': 1550.0,
+              'top': 50.0,
+              'width': 800.0,
+              'height': 1200.0,
+            },
             'content': 'doubleSash',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 2350.0, 'top': 50.0, 'width': 400.0, 'height': 1200.0},
+            'boundary': {
+              'left': 2350.0,
+              'top': 50.0,
+              'width': 400.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
@@ -29,24 +46,44 @@ void main() {
       };
 
       // French
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
-      expect(frComp, 'Fenêtre coulissante 4 vantaux et Fenêtre double vantaux avec partie fixe');
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
+      expect(
+        frComp,
+        'Fenêtre coulissante 4 vantaux et Fenêtre double vantaux avec partie fixe',
+      );
 
       final frLine = DevisBuilder.buildLineItemFromDetail({
         'id': 1,
         'partitions_json': drawing,
       }, overrideLang: AppLanguage.french);
-      expect(frLine.title, 'Fenêtre coulissante 4 vantaux et Fenêtre double vantaux avec partie fixe double vitrage');
+      expect(
+        frLine.title,
+        'Fenêtre coulissante 4 vantaux et Fenêtre double vantaux avec partie fixe double vitrage',
+      );
+      expect(frLine.details.first, 'Gamme: TPR 67000 / TPR 40000');
+      expect(
+        frLine.details.first,
+        isNot(contains('Fenêtre coulissante 4 vantaux')),
+      );
 
       // Arabic
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'نافذة منزلقة 4 درفات و نافذة بضلفتين مع جزء ثابت');
 
       final arLine = DevisBuilder.buildLineItemFromDetail({
         'id': 1,
         'partitions_json': drawing,
       }, overrideLang: AppLanguage.arabic);
-      expect(arLine.title, 'نافذة منزلقة 4 درفات و نافذة بضلفتين مع جزء ثابت بزجاج مزدوج');
+      expect(
+        arLine.title,
+        'نافذة منزلقة 4 درفات و نافذة بضلفتين مع جزء ثابت بزجاج مزدوج',
+      );
     });
 
     test('Fixed pane belongs to the sliding window instead', () {
@@ -54,29 +91,53 @@ void main() {
         'zones': [
           // Frame 1: 4-sash sliding + 1 fixed pane (left: 50 to 1850)
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 1400.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 1400.0,
+              'height': 1200.0,
+            },
             'content': 'slidingSash',
             'slidingSashesCount': 4,
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 1450.0, 'top': 50.0, 'width': 400.0, 'height': 1200.0},
+            'boundary': {
+              'left': 1450.0,
+              'top': 50.0,
+              'width': 400.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
           // Frame 2: 2-sash beating only (left: 1950, gap=100mm from frame 1)
           {
-            'boundary': {'left': 1950.0, 'top': 50.0, 'width': 800.0, 'height': 1200.0},
+            'boundary': {
+              'left': 1950.0,
+              'top': 50.0,
+              'width': 800.0,
+              'height': 1200.0,
+            },
             'content': 'doubleSash',
             'glass': {'structure': 'double'},
           },
         ],
       };
 
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
-      expect(frComp, 'Fenêtre coulissante 4 vantaux avec partie fixe et Fenêtre double vantaux');
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
+      expect(
+        frComp,
+        'Fenêtre coulissante 4 vantaux avec partie fixe et Fenêtre double vantaux',
+      );
 
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'نافذة منزلقة 4 درفات مع جزء ثابت و نافذة بضلفتين');
     });
 
@@ -84,27 +145,48 @@ void main() {
       final drawing = {
         'zones': [
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 400.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 400.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 450.0, 'top': 50.0, 'width': 800.0, 'height': 1200.0},
+            'boundary': {
+              'left': 450.0,
+              'top': 50.0,
+              'width': 800.0,
+              'height': 1200.0,
+            },
             'content': 'doubleSash',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 1250.0, 'top': 50.0, 'width': 400.0, 'height': 1200.0},
+            'boundary': {
+              'left': 1250.0,
+              'top': 50.0,
+              'width': 400.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
         ],
       };
 
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
       expect(frComp, 'Fenêtre double vantaux avec 2 parties fixes');
 
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'نافذة بضلفتين مع جزئين ثابتين');
 
       final arLine = DevisBuilder.buildLineItemFromDetail({
@@ -118,32 +200,58 @@ void main() {
       final drawing = {
         'zones': [
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 800.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 800.0,
+              'height': 1200.0,
+            },
             'content': 'doubleSash',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 850.0, 'top': 50.0, 'width': 400.0, 'height': 400.0},
+            'boundary': {
+              'left': 850.0,
+              'top': 50.0,
+              'width': 400.0,
+              'height': 400.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 850.0, 'top': 450.0, 'width': 400.0, 'height': 400.0},
+            'boundary': {
+              'left': 850.0,
+              'top': 450.0,
+              'width': 400.0,
+              'height': 400.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 850.0, 'top': 850.0, 'width': 400.0, 'height': 400.0},
+            'boundary': {
+              'left': 850.0,
+              'top': 850.0,
+              'width': 400.0,
+              'height': 400.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
         ],
       };
 
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
       expect(frComp, 'Fenêtre double vantaux avec 3 parties fixes');
 
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'نافذة بضلفتين مع 3 أجزاء ثابتة');
     });
 
@@ -151,14 +259,22 @@ void main() {
       final drawing = {
         'zones': [
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 1000.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 1000.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
         ],
       };
 
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
       expect(frComp, 'Fixe');
 
       final frLine = DevisBuilder.buildLineItemFromDetail({
@@ -167,7 +283,10 @@ void main() {
       }, overrideLang: AppLanguage.french);
       expect(frLine.title, 'Fixe double vitrage');
 
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'إطار ثابت');
 
       final arLine = DevisBuilder.buildLineItemFromDetail({
@@ -181,22 +300,38 @@ void main() {
       final drawing = {
         'zones': [
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 600.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 600.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
           {
-            'boundary': {'left': 650.0, 'top': 50.0, 'width': 600.0, 'height': 1200.0},
+            'boundary': {
+              'left': 650.0,
+              'top': 50.0,
+              'width': 600.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
         ],
       };
 
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
       expect(frComp, 'Fixe (2 parties fixes)');
 
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'إطار ثابت (جزئين ثابتين)');
     });
 
@@ -205,24 +340,40 @@ void main() {
         'zones': [
           // Frame 1: 4-sash sliding
           {
-            'boundary': {'left': 50.0, 'top': 50.0, 'width': 1600.0, 'height': 1200.0},
+            'boundary': {
+              'left': 50.0,
+              'top': 50.0,
+              'width': 1600.0,
+              'height': 1200.0,
+            },
             'content': 'slidingSash',
             'slidingSashesCount': 4,
             'glass': {'structure': 'double'},
           },
           // Frame 2: Fixed frame (gap=100mm)
           {
-            'boundary': {'left': 1750.0, 'top': 50.0, 'width': 800.0, 'height': 1200.0},
+            'boundary': {
+              'left': 1750.0,
+              'top': 50.0,
+              'width': 800.0,
+              'height': 1200.0,
+            },
             'content': 'fixedGlass',
             'glass': {'structure': 'double'},
           },
         ],
       };
 
-      final frComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.french);
+      final frComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.french,
+      );
       expect(frComp, 'Fenêtre coulissante 4 vantaux et Fixe');
 
-      final arComp = DevisBuilder.generateSmartCompositionDescription(drawing, AppLanguage.arabic);
+      final arComp = DevisBuilder.generateSmartCompositionDescription(
+        drawing,
+        AppLanguage.arabic,
+      );
       expect(arComp, 'نافذة منزلقة 4 درفات و إطار ثابت');
     });
   });

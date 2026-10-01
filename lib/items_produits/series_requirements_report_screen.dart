@@ -191,6 +191,7 @@ class _SeriesRequirementsReportScreenState
       FROM Commandes c
       INNER JOIN Commandes_details d ON d.id_commandes = c.id
       LEFT JOIN Client cl ON cl.id = c.client_id
+      WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
       ORDER BY c.id DESC
     ''');
     final matched = <int, Map<String, dynamic>>{};

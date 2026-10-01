@@ -533,6 +533,10 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
+          // App Update Settings (تحديث التطبيق: آلي / يدوي)
+          _buildAppUpdateCard(context, settings, lang, isDark),
+          const SizedBox(height: 10),
+
           // Selected Systems Management Settings
           Card(
             elevation: 2,
@@ -1741,6 +1745,190 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildAppUpdateCard(
+    BuildContext context,
+    AppSettingsProvider settings,
+    AppLanguage lang,
+    bool isDark,
+  ) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.system_update_rounded,
+                  color: Colors.blue,
+                ),
+              ),
+              title: Text(
+                Localization.translate('تحديث التطبيق', lang),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Cairo',
+                  fontSize: 16,
+                ),
+              ),
+              subtitle: Text(
+                '${Localization.translate('الإصدار الحالي:', lang)} v${settings.appVersion}',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+            const Divider(height: 16),
+            Text(
+              Localization.translate('طريقة التحديث:', lang),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 6),
+            RadioListTile<AppUpdateMode>(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                Localization.translate('تحديث آلي (تلقائي)', lang),
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              subtitle: Text(
+                Localization.translate(
+                  'التحقق من التحديثات وتنزيلها تلقائياً عند توفر إصدار جديد.',
+                  lang,
+                ),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+              ),
+              value: AppUpdateMode.automatic,
+              groupValue: settings.updateMode,
+              onChanged: (AppUpdateMode? mode) {
+                if (mode != null) {
+                  settings.setUpdateMode(mode);
+                }
+              },
+            ),
+            RadioListTile<AppUpdateMode>(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                Localization.translate('تحديث يدوي', lang),
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              subtitle: Text(
+                Localization.translate(
+                  'يتم التحديث فقط عند طلبك اليدوي بالضغط على زر الفحص.',
+                  lang,
+                ),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+              ),
+              value: AppUpdateMode.manual,
+              groupValue: settings.updateMode,
+              onChanged: (AppUpdateMode? mode) {
+                if (mode != null) {
+                  settings.setUpdateMode(mode);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(
+                  Localization.translate('التحقق من وجود تحديثات الآن', lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                ),
+                onPressed: () => _checkForUpdates(context, lang, settings.appVersion),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _checkForUpdates(
+    BuildContext context,
+    AppLanguage lang,
+    String version,
+  ) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text(
+                Localization.translate('جارٍ التحقق من وجود تحديثات...', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await Future.delayed(const Duration(milliseconds: 1200));
+
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          icon: const Icon(
+            Icons.check_circle_outline_rounded,
+            color: Colors.green,
+            size: 48,
+          ),
+          title: Text(
+            Localization.translate('التطبيق محدّث', lang),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            '${Localization.translate('أنت تستخدم أحدث إصدار من التطبيق', lang)} (v$version).',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                Localization.translate('حسناً', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 

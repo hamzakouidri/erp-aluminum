@@ -41,6 +41,33 @@ enum ReinforcementMode {
   independentScrewed,
 }
 
+/// الأنظمة الجاهزة للرسم السريع (Preset Window Templates)
+enum WindowPresetType {
+  /// نافذة بدون ستار (مفصلية، دلفة أو دلفتين حسب العرض)
+  windowNoShutter,
+
+  /// نافذة مع ستار (مفصلية مع صندوق الستار المتراكب)
+  windowWithShutter,
+
+  /// نافذة جرارة بدون ستار (منزلقة بضلفتين)
+  slidingNoShutter,
+
+  /// نافذة جرارة مع الستار (منزلقة بضلفتين مع صندوق الستار)
+  slidingWithShutter,
+
+  /// باب بضلفة واحدة وقفل بمفتاح (ضلفة 105، بدون إطار سفلي)
+  singleDoor,
+
+  /// باب بضلفتين وقفل بمفتاح (ضلفتين 105، بدون إطار سفلي)
+  doubleDoor,
+
+  /// ستار وحده (صندوق وشفرات الستار فقط)
+  shutterOnly,
+
+  /// نافذة صغيرة تفتح من الأعلى (قلاب / Soufflet)
+  topOpeningSmallWindow,
+}
+
 const double kDefaultGlassPaneThickness = 5.0;
 
 /// Resolves the catalogue unit price of a shutter component.
@@ -3836,6 +3863,15 @@ class WindowModel extends ChangeNotifier {
       final plain = frames
           .where((frame) => !_sectionHasIntegratedSideCover(frame))
           .toList();
+      if (plain.isNotEmpty && _frameJoinPartners.isNotEmpty) {
+        final otherFrame = _otherJoinedActiveFrame(series);
+        if (otherFrame != null) {
+          final joinFiltered = plain
+              .where((f) => framesCanJoin(f, otherFrame))
+              .toList();
+          if (joinFiltered.isNotEmpty) return joinFiltered;
+        }
+      }
       if (plain.isNotEmpty) return plain;
     }
 
@@ -3849,6 +3885,23 @@ class WindowModel extends ChangeNotifier {
     return frames
         .where((frame) => !_sectionHasIntegratedSideCover(frame))
         .toList();
+  }
+
+  AluminumSection? _otherJoinedActiveFrame(AluminumSeries thisSeries) {
+    final isThisSliding = thisSeries == effectiveSlidingSeries;
+    final otherOverride = isThisSliding
+        ? (frameOverride ?? getSectionByType('frame')?.toMap())
+        : (slidingFrameOverride ?? getSlidingSectionByType('frame')?.toMap());
+    if (otherOverride == null) return null;
+    final otherId = (otherOverride['id'] as num?)?.toInt();
+    if (otherId == null) return null;
+    final otherSeries = isThisSliding ? activeSeries : effectiveSlidingSeries;
+    if (otherSeries == null) return null;
+    try {
+      return otherSeries.sections.firstWhere((s) => s.id == otherId);
+    } catch (_) {
+      return null;
+    }
   }
 
   AluminumSection _preferredFrameForSeries(
@@ -4882,6 +4935,135 @@ class WindowModel extends ChangeNotifier {
   }
 
   double profileThickness;
+
+  /// Keyed by section_id → set of compatible partner section_ids.
+  /// Populated by [reloadFrameJoinRules] whenever series change.
+  Map<int, Set<int>> _frameJoinPartners = {};
+
+  bool get hasFrameJoinRules => _frameJoinPartners.isNotEmpty;
+
+  void loadFrameJoinPartners(Map<int, Set<int>> partners) {
+    _frameJoinPartners = partners;
+  }
+
+  /// Returns true when sections are declared join-compatible,
+  /// or when no join rules exist at all (open/permissive policy).
+  bool framesCanJoin(AluminumSection a, AluminumSection b) {
+    if (_frameJoinPartners.isEmpty) return true;
+    final partnersOfA = _frameJoinPartners[a.id];
+    if (partnersOfA == null) return false;
+    return partnersOfA.contains(b.id);
+  }
+
+  bool frameMapsCanJoin(
+    Map<String, dynamic> first,
+    Map<String, dynamic> second,
+  ) {
+    try {
+      return framesCanJoin(
+        AluminumSection.fromMap(first),
+        AluminumSection.fromMap(second),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String? _frameSideStoragePrefix(Rect frame) {
+    final owners =
+        zones
+            .where((zone) => frame.contains(zone.boundary.center))
+            .map((zone) => zone.id)
+            .toList()
+          ..sort();
+    if (owners.isEmpty) return null;
+    return 'frame-side:${owners.first}';
+  }
+
+  Map<String, dynamic>? frameSideOverrideForRect(Rect frame, String side) {
+    final prefix = _frameSideStoragePrefix(frame);
+    if (prefix == null) return null;
+    final raw = componentOverrides['$prefix:${side.toLowerCase()}'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  bool frameHasSideOverrides(Rect frame) => const [
+    'top',
+    'right',
+    'bottom',
+    'left',
+  ].any((side) => frameSideOverrideForRect(frame, side) != null);
+
+  double frameSideVisibleWidth(
+    Rect frame,
+    String side, {
+    required double fallback,
+  }) {
+    final override = frameSideOverrideForRect(frame, side);
+    if (override == null) return fallback;
+    final raw = override['visible_width'] ?? override['thickness'];
+    final width = raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '');
+    return width != null && width > 0 ? width : fallback;
+  }
+
+  bool frameSideHasIntegratedCover(Rect frame, String side) {
+    final override = frameSideOverrideForRect(frame, side);
+    final effective = override ?? frameSectionForRect(frame)?.toMap();
+    return _overrideHasIntegratedSideCover(effective);
+  }
+
+  void setFrameSideOverrides(
+    Rect frame,
+    Iterable<String> sides,
+    Map<String, dynamic>? section,
+  ) {
+    final prefix = _frameSideStoragePrefix(frame);
+    if (prefix == null) return;
+    _saveSnapshot();
+    for (final rawSide in sides) {
+      final side = rawSide.toLowerCase();
+      if (!const {'top', 'right', 'bottom', 'left'}.contains(side)) continue;
+      final key = '$prefix:$side';
+      if (section == null) {
+        componentOverrides.remove(key);
+      } else {
+        componentOverrides[key] = Map<String, dynamic>.from(section)
+          ..['manual_selection'] = true
+          ..['frame_side'] = side;
+      }
+
+      // For a single integrated frame, the visible couvre-joint belongs to
+      // the selected side profile. Keep the existing cover painter in sync:
+      // a plain replacement hides that side, while an integrated replacement
+      // (or restoring the integrated base frame) shows it again.
+      if (getFrameRects().length == 1) {
+        final effective = section ?? frameSectionForRect(frame)?.toMap();
+        if (_overrideHasIntegratedSideCover(effective)) {
+          removedShutterSides.remove(side);
+        } else if (_overrideHasIntegratedSideCover(
+          frameSectionForRect(frame)?.toMap(),
+        )) {
+          removedShutterSides.add(side);
+        }
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> reloadFrameJoinRules() async {
+    final partners = <int, Set<int>>{};
+    final frameSections = [
+      ...?activeSeries?.sections,
+      ...?effectiveSlidingSeries?.sections,
+    ].where((s) => s.isFrame || s.type.toLowerCase() == 'frame').toList();
+    for (final sec in frameSections) {
+      final ps = await db.readFrameJoinPartnerIds(sec.id);
+      if (ps.isNotEmpty) partners[sec.id] = ps;
+    }
+    _frameJoinPartners = partners;
+  }
 
   bool coupleFrames = true;
 
@@ -8651,9 +8833,18 @@ class WindowModel extends ChangeNotifier {
                   sectionName.contains('plinth') ||
                   sectionName.contains('plant') ||
                   sectionName.contains('بلانت'));
+          final isCremoneTringle =
+              normalizedType == 'triangle' &&
+              (sectionType == 'tringle' ||
+                  sectionType.contains('tringle') ||
+                  sectionName.contains('tringle') ||
+                  sectionName.contains('ترينجل') ||
+                  sectionName.contains('تراينغل') ||
+                  sectionName.contains('تريانغل'));
           if (sectionType == normalizedType ||
               isPlinthe ||
               isMullion ||
+              isCremoneTringle ||
               (normalizedType == 'frame' && sec.isFrame)) {
             result = sec;
             break;
@@ -8884,7 +9075,18 @@ class WindowModel extends ChangeNotifier {
     }
 
     for (final section in series.sections) {
-      if (section.type.toLowerCase() == normalizedType ||
+      final sectionType = section.type.toLowerCase();
+      final sectionName = section.name.toLowerCase();
+      final isCremoneTringle =
+          normalizedType == 'triangle' &&
+          (sectionType == 'tringle' ||
+              sectionType.contains('tringle') ||
+              sectionName.contains('tringle') ||
+              sectionName.contains('ترينجل') ||
+              sectionName.contains('تراينغل') ||
+              sectionName.contains('تريانغل'));
+      if (sectionType == normalizedType ||
+          isCremoneTringle ||
           (normalizedType == 'frame' && section.isFrame)) {
         return section;
       }
@@ -9295,6 +9497,7 @@ class WindowModel extends ChangeNotifier {
     seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
     seriesTableConfig = await db.getSeriesTableConfig(series.id);
     final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
+    await reloadFrameJoinRules();
     _rememberSeriesRoleKeys(series, configuredRoleRows);
     final bool isSliding =
         systemMode == 'sliding' ||
@@ -15621,6 +15824,26 @@ class WindowModel extends ChangeNotifier {
       );
     }
 
+    // The model coordinate system starts at the outside top-left corner of
+    // the complete drawing. Resizing from the left/top used to leave the
+    // drawing at a negative coordinate (when growing) or leave an empty
+    // offset (when shrinking). Width/height are derived from right/bottom,
+    // so that asymmetry distorted the drawing. Re-anchor the whole assembly
+    // and move coordinate-based mullion metadata by the same offset.
+    final resizedRects = getFrameRects();
+    if (resizedRects.isNotEmpty) {
+      final minLeft = resizedRects.map((rect) => rect.left).reduce(math.min);
+      final minTop = resizedRects.map((rect) => rect.top).reduce(math.min);
+      final shiftX = minLeft.abs() > 0.001 ? -minLeft : 0.0;
+      final shiftY = minTop.abs() > 0.001 ? -minTop : 0.0;
+      if (shiftX != 0.0 || shiftY != 0.0) {
+        for (final zone in zones) {
+          zone.boundary = zone.boundary.shift(Offset(shiftX, shiftY));
+        }
+        _shiftMullionMetadata(shiftX, shiftY);
+      }
+    }
+
     double nextWidth = 200.0;
     double nextHeight = 200.0;
     for (final zone in zones) {
@@ -16884,7 +17107,8 @@ class WindowModel extends ChangeNotifier {
 
   /// Returns the compatible frames chosen for 90° corner junctions/edges
   /// (without integrated cover) that appear in the BOM (Quantity & Cost table).
-  Map<String, ({AluminumSection section, bool sliding})> getProfileAngleJunctionFrames() {
+  Map<String, ({AluminumSection section, bool sliding})>
+  getProfileAngleJunctionFrames() {
     final result = <String, ({AluminumSection section, bool sliding})>{};
     if (!usesProfileAngle) return result;
 
@@ -21076,6 +21300,217 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _ensureActiveOpeningSeries() {
+    if (activeSeries != null && !isSlidingSeriesForDrawing(activeSeries!)) {
+      return;
+    }
+    for (final profileSystem in availableSystems) {
+      for (final candidate in profileSystem.series) {
+        if (!isSlidingSeriesForDrawing(candidate)) {
+          activeSeries = candidate;
+          return;
+        }
+      }
+    }
+  }
+
+  void _ensureActiveSlidingSeries() {
+    _activateSlidingProfilesForDrawing();
+    if (activeSlidingSeries != null && systemMode == 'sliding') {
+      activeSeries = activeSlidingSeries;
+    }
+  }
+
+  Future<void> _loadDoorKeyLockAccessories() async {
+    final d = await db.db;
+    if (d == null) return;
+    if (!componentOverrides.containsKey('مقبض الباب (Poignée Porte à Clé)')) {
+      try {
+        final res = await d.rawQuery('''
+          SELECT a.*, c.name as category_name FROM Accessory a
+          JOIN AccessoryCategories c ON a.category_id = c.id
+          WHERE a.name LIKE '%مقبض بمفتاح%' OR a.name LIKE '%مقبض باب%' OR a.name LIKE '%poignée porte%' OR a.name LIKE '%poignee porte%'
+          LIMIT 1
+        ''');
+        if (res.isNotEmpty) {
+          componentOverrides['مقبض الباب (Poignée Porte à Clé)'] = res.first;
+        }
+      } catch (_) {}
+    }
+    if (!componentOverrides.containsKey('قفل الباب (Serrure)')) {
+      try {
+        final res = await d.rawQuery('''
+          SELECT a.*, c.name as category_name FROM Accessory a
+          JOIN AccessoryCategories c ON a.category_id = c.id
+          WHERE a.name LIKE '%قفل%' OR a.name LIKE '%serrure%'
+          LIMIT 1
+        ''');
+        if (res.isNotEmpty) {
+          componentOverrides['قفل الباب (Serrure)'] = res.first;
+        }
+      } catch (_) {}
+    }
+    if (!componentOverrides.containsKey('الأسطوانة (Canon)')) {
+      try {
+        final res = await d.rawQuery('''
+          SELECT a.*, c.name as category_name FROM Accessory a
+          JOIN AccessoryCategories c ON a.category_id = c.id
+          WHERE a.name LIKE '%canon%' OR a.name LIKE '%الأسطوانة%' OR a.name LIKE '%الاسطوانة%' OR a.name LIKE '%barillet%'
+          LIMIT 1
+        ''');
+        if (res.isNotEmpty) {
+          componentOverrides['الأسطوانة (Canon)'] = res.first;
+        }
+      } catch (_) {}
+    }
+  }
+
+  /// يطبق نظاماً ونموذجاً جاهزاً للرسم السريع بالأبعاد المحددة
+  Future<void> applyPresetTemplate({
+    required WindowPresetType preset,
+    required double newWidth,
+    required double newHeight,
+  }) async {
+    _saveSnapshot();
+
+    // 1. ستار وحده (Volet seul)
+    if (preset == WindowPresetType.shutterOnly) {
+      prepareShutterOnlyDrawing();
+      width = newWidth.clamp(200.0, maximumShutterBarLengthMm).toDouble();
+      height = newHeight.clamp(100.0, 10000.0).toDouble();
+      isShutterOnly = true;
+      hasShutter = true;
+      drawNextShapeAsShutterOnly = false;
+      isDrawingMode = true;
+      drawingMode = 'shutter_only';
+      drawnLeft = null;
+      drawnTop = null;
+      lastLayoutSize = null;
+      await updateShutterDefaultsIfNeeded();
+      notifyListeners();
+      return;
+    }
+
+    // 2. أنظمة النوافذ والأبواب الأخرى
+    clearAll();
+    isShutterOnly = false;
+    drawNextShapeAsShutterOnly = false;
+    isDrawingMode = true;
+    drawingMode = 'new_frame';
+    drawnLeft = null;
+    drawnTop = null;
+    lastLayoutSize = null;
+
+    final isSliding =
+        preset == WindowPresetType.slidingNoShutter ||
+        preset == WindowPresetType.slidingWithShutter;
+    final withShutter =
+        preset == WindowPresetType.windowWithShutter ||
+        preset == WindowPresetType.slidingWithShutter;
+    final isDoor =
+        preset == WindowPresetType.singleDoor ||
+        preset == WindowPresetType.doubleDoor;
+
+    if (isSliding) {
+      _ensureActiveSlidingSeries();
+    } else {
+      _ensureActiveOpeningSeries();
+    }
+
+    hasShutter = withShutter;
+    isCaissonTunnel = false;
+
+    if (isDoor) {
+      hasBottomFrame = false;
+      showBottomWall = false;
+    } else {
+      hasBottomFrame = true;
+      showBottomWall = true;
+    }
+
+    width = _limitFrameDimension(newWidth);
+    height = _limitFrameDimension(newHeight);
+
+    if (withShutter) {
+      await updateShutterDefaultsIfNeeded();
+    }
+
+    final double topOffset = (withShutter && !hasArchOrSlant)
+        ? shutterBoxHeight
+        : 0.0;
+    final double bottomOffset = hasBottomFrame ? profileThickness : 0.0;
+
+    final initialRect = Rect.fromLTRB(
+      profileThickness,
+      topOffset + profileThickness,
+      width - profileThickness,
+      height - bottomOffset,
+    );
+
+    final zone = WindowZone(
+      id: UniqueKey().toString(),
+      boundary: initialRect,
+      sashThickness: _calculateSashThickness(isDoor),
+      sashColor: FrameColor.white,
+      selectedDbColor: _selectedDbColor,
+    );
+    zones.add(zone);
+
+    switch (preset) {
+      case WindowPresetType.windowNoShutter:
+      case WindowPresetType.windowWithShutter:
+        final ZoneContent content = width >= 900.0
+            ? ZoneContent.doubleSash
+            : ZoneContent.singleSash;
+        paintZoneContent(zone.id, content);
+        zone.useClassicHandle = isPVC;
+        break;
+
+      case WindowPresetType.slidingNoShutter:
+      case WindowPresetType.slidingWithShutter:
+        paintZoneContent(
+          zone.id,
+          ZoneContent.slidingSash,
+          slidingSashesCount: 2,
+        );
+        break;
+
+      case WindowPresetType.singleDoor:
+        paintZoneContent(zone.id, ZoneContent.singleSash);
+        zone.isSash105 = true;
+        zone.sashThickness = _calculateSashThickness(true);
+        zone.lockType = LockType.clef;
+        _hideBottomCoverWhenBottomFrameIsMissing();
+        updateBottomZoneBoundaries();
+        await _loadDoorKeyLockAccessories();
+        break;
+
+      case WindowPresetType.doubleDoor:
+        paintZoneContent(zone.id, ZoneContent.doubleSash);
+        zone.isSash105 = true;
+        zone.sashThickness = _calculateSashThickness(true);
+        zone.lockType = LockType.clef;
+        _hideBottomCoverWhenBottomFrameIsMissing();
+        updateBottomZoneBoundaries();
+        await _loadDoorKeyLockAccessories();
+        break;
+
+      case WindowPresetType.topOpeningSmallWindow:
+        paintZoneContent(zone.id, ZoneContent.singleSash);
+        zone.openDirection = OpenDirection.bottom;
+        zone.useClassicHandle = isPVC;
+        break;
+
+      case WindowPresetType.shutterOnly:
+        break;
+    }
+
+    selection = SelectionInfo(type: SelectionType.zone, zoneId: zone.id);
+    updatePrimaryMullionAxis();
+    updateProfileThickness();
+    notifyListeners();
+  }
+
   void startDrawing(Offset pos) {
     if (drawNextShapeAsShutterOnly || isShutterOnly) {
       drawingMode = 'shutter_only';
@@ -22459,6 +22894,52 @@ class WindowModel extends ChangeNotifier {
     final section = mullionSectionOverrides.remove(oldKey);
     if (section != null) {
       mullionSectionOverrides[newKey] = section;
+    }
+  }
+
+  void _shiftMullionMetadata(double dx, double dy) {
+    if (dx == 0.0 && dy == 0.0) return;
+
+    String shiftedKey(String key) {
+      if (key.length < 3 || key[1] != '_') return key;
+      final position = double.tryParse(key.substring(2));
+      if (position == null) return key;
+      final shifted = position + (key.startsWith('H_') ? dy : dx);
+      return '${key.substring(0, 2)}${shifted.toStringAsFixed(1)}';
+    }
+
+    final shiftedProfiles = <String, MullionProfileType>{};
+    for (final entry in mullionProfiles.entries) {
+      shiftedProfiles[shiftedKey(entry.key)] = entry.value;
+    }
+    mullionProfiles = shiftedProfiles;
+
+    final shiftedCavities = <String, bool>{};
+    for (final entry in groovedMullionCavityOnPositiveSide.entries) {
+      shiftedCavities[shiftedKey(entry.key)] = entry.value;
+    }
+    groovedMullionCavityOnPositiveSide = shiftedCavities;
+
+    final shiftedSections = <String, Map<String, dynamic>>{};
+    for (final entry in mullionSectionOverrides.entries) {
+      shiftedSections[shiftedKey(entry.key)] = entry.value;
+    }
+    mullionSectionOverrides = shiftedSections;
+
+    if (selection.type == SelectionType.mullion &&
+        selection.mullionPosition != null) {
+      final horizontal = selection.isHorizontalMullion == true;
+      selection = SelectionInfo(
+        type: SelectionType.mullion,
+        isHorizontalMullion: horizontal,
+        mullionPosition: selection.mullionPosition! + (horizontal ? dy : dx),
+        mullionStart: selection.mullionStart == null
+            ? null
+            : selection.mullionStart! + (horizontal ? dx : dy),
+        mullionEnd: selection.mullionEnd == null
+            ? null
+            : selection.mullionEnd! + (horizontal ? dx : dy),
+      );
     }
   }
 

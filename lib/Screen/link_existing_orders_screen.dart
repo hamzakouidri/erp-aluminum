@@ -55,7 +55,8 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
       final data = await myDb!.rawQuery('''
         SELECT co.*, c.firstname, c.lastname FROM Commandes co
         JOIN Client c ON co.client_id = c.id
-        WHERE co.project_id IS NULL OR co.project_id = 0
+        WHERE (co.is_deleted IS NULL OR co.is_deleted = 0)
+          AND (co.project_id IS NULL OR co.project_id = 0)
         ORDER BY co.created_at DESC
       ''');
       setState(() {

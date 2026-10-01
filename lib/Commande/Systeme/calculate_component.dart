@@ -3401,6 +3401,9 @@ class ComponentCalculator {
     List<double> framePieces = [];
     List<double> slidingOuterFramePieces = [];
     final frameCutsByRect = <Rect, List<double>>{};
+    final customFrameSidePieces = <String, List<double>>{};
+    final customFrameSideProfiles = <String, Map<String, dynamic>>{};
+    final customFrameSideNames = <String, Set<String>>{};
     List<double> renfortFramePieces = [];
     List<double> fixedPlinthePieces = [];
 
@@ -3454,8 +3457,40 @@ class ComponentCalculator {
       final frameCuts = window.hasBottomFrameForRect(r)
           ? <double>[wPiece, wPiece, hPiece, hPiece]
           : <double>[wPiece, hPiece, hPiece];
-      targetFramePieces.addAll(frameCuts);
       frameCutsByRect[r] = frameCuts;
+
+      void addFrameSide(String side, double length) {
+        final override = window.frameSideOverrideForRect(r, side);
+        final baseId = (window.frameSectionForRect(r)?.id)?.toString();
+        final overrideId = override?['id']?.toString();
+        if (override == null || overrideId == null || overrideId == baseId) {
+          targetFramePieces.add(length);
+          return;
+        }
+        final rawCustomCover = override['couvre_joint_width'];
+        final customCoverWidth = rawCustomCover is num
+            ? rawCustomCover.toDouble()
+            : double.tryParse(rawCustomCover?.toString() ?? '') ?? 0.0;
+        final adjustedLength = math.max(
+          0.0,
+          length +
+              ((customCoverWidth > 0 ? customCoverWidth * 2 : 0.0) -
+                      integratedCoverCutExtension) /
+                  1000.0,
+        );
+        final key =
+            '${useSlidingOuterFrame ? 'sliding' : 'opening'}:$overrideId';
+        customFrameSideProfiles[key] = override;
+        customFrameSidePieces
+            .putIfAbsent(key, () => <double>[])
+            .add(adjustedLength);
+        customFrameSideNames.putIfAbsent(key, () => <String>{}).add(side);
+      }
+
+      addFrameSide('top', wPiece);
+      if (window.hasBottomFrameForRect(r)) addFrameSide('bottom', wPiece);
+      addFrameSide('left', hPiece);
+      addFrameSide('right', hPiece);
 
       if (isOuterFramePvc) {
         double rw = r.width - renfortFrameDeduction;
@@ -3576,6 +3611,30 @@ class ComponentCalculator {
           overrideMap: outerFrameOverride,
           // The frame selected in the drawing is authoritative. A stale table
           // value from an earlier selection must not replace it.
+          preferOverrideMap: true,
+        ),
+      );
+    }
+
+    for (final entry in customFrameSidePieces.entries) {
+      final override = customFrameSideProfiles[entry.key];
+      if (override == null || entry.value.isEmpty) continue;
+      final sideLabels = customFrameSideNames[entry.key] ?? const <String>{};
+      String sideName(String side) => switch (side) {
+        'top' => 'علوي',
+        'right' => 'يمين',
+        'bottom' => 'سفلي',
+        'left' => 'يسار',
+        _ => side,
+      };
+      final label = sideLabels.map(sideName).join(' + ');
+      items.add(
+        createProfile(
+          'إطار جهة $label (Frame side)',
+          colorName,
+          pieces: entry.value,
+          unit: 'قطاع',
+          overrideMap: override,
           preferOverrideMap: true,
         ),
       );
@@ -6115,15 +6174,34 @@ class ComponentCalculator {
       if (coulisseLengthM < 0) coulisseLengthM = 0;
 
       bool isTunnel = window.isCaissonTunnel;
-      bool isMotor = window.shutterMechanism == 'محرك';
-      final bool isCrank =
-          window.shutterMechanism == 'منايفال' ||
-          window.shutterMechanism == 'مانيفال' ||
-          window.shutterMechanism == 'مانيفر';
-      final bool isBelt =
-          window.shutterMechanism == 'حزام' ||
-          window.shutterMechanism.toLowerCase().contains('sangle') ||
-          window.shutterMechanism.toLowerCase().contains('belt');
+      final shutterSplits = window.effectiveShutterSplits;
+      bool isMotorMechanism(String mechanism) =>
+          mechanism == 'محرك' || mechanism.toLowerCase().contains('moteur');
+      bool isCrankMechanism(String mechanism) =>
+          mechanism == 'منايفال' ||
+          mechanism == 'مانيفال' ||
+          mechanism == 'مانيفر' ||
+          mechanism.toLowerCase().contains('maniv');
+      bool isBeltMechanism(String mechanism) =>
+          mechanism == 'حزام' ||
+          mechanism.toLowerCase().contains('sangle') ||
+          mechanism.toLowerCase().contains('belt');
+      String splitMechanism(ShutterSplitSection split) =>
+          split.mechanism?.trim().isNotEmpty == true
+          ? split.mechanism!.trim()
+          : window.shutterMechanism;
+      final motorSplitCount = shutterSplits
+          .where((split) => isMotorMechanism(splitMechanism(split)))
+          .length;
+      final crankSplitCount = shutterSplits
+          .where((split) => isCrankMechanism(splitMechanism(split)))
+          .length;
+      final beltSplitCount = shutterSplits
+          .where((split) => isBeltMechanism(splitMechanism(split)))
+          .length;
+      final bool isMotor = motorSplitCount > 0;
+      final bool isCrank = crankSplitCount > 0;
+      final bool isBelt = beltSplitCount > 0;
 
       bool isExtrudedBlade = false;
       final selectedBlade = window.componentOverrides['الشرائح (Lames)'];
@@ -6239,16 +6317,15 @@ class ComponentCalculator {
         bladeEndCapThicknessMm: bladeCapThicknessMm,
       );
 
-      final int shutterSplitCount =
-          (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty)
-          ? window.effectiveShutterSplits.length
-          : 1;
+      final int shutterSplitCount = shutterSplits.length;
 
       // ===== 1. الكيت (Kit) - أول مركب، فقط لغير النفق =====
       bool hasTunnelManoeuvreKit = false;
       void addAndExpandKit(
         String uiKey,
         String descriptionCode, {
+        int? splitCount,
+        String? mechanism,
         bool filterAxeItems = true,
         bool sizeBound = true,
         bool showKitRow = true,
@@ -6362,11 +6439,13 @@ class ComponentCalculator {
           hasTunnelManoeuvreKit = true;
         }
         final bool perLeaf = kitPerLeafMap[groupName] ?? false;
+        final effectiveSplitCount = splitCount ?? shutterSplitCount;
+        final effectiveMechanism = mechanism ?? window.shutterMechanism;
         final double kitQty =
             (perLeaf
                 ? ((doubleSashCount * 2) + singleSashCount).toDouble()
                 : 1.0) *
-            shutterSplitCount;
+            effectiveSplitCount;
 
         // `isMotorized` describes the mechanism, but every kit uses the
         // same source: its KitBundles record and exact stored French name.
@@ -6386,16 +6465,16 @@ class ComponentCalculator {
           final String shutterVariant = isExtrudedBlade ? 'extruded' : 'normal';
           final int leafCount =
               (perLeaf ? ((doubleSashCount * 2) + singleSashCount) : 1) *
-              shutterSplitCount;
+              effectiveSplitCount;
           var expandedItems = expandKitBundle(
             groupName,
             matchedKitItems!,
             leafHeightMm: window.height.toDouble(),
             leafWidthMm: window.width.toDouble(),
             shutterWeightKg: shutterWeightKg,
-            mechanismScope: shutterMechanismScope(window.shutterMechanism),
+            mechanismScope: shutterMechanismScope(effectiveMechanism),
             mechanismScopes: shutterMechanismScopes(
-              window.shutterMechanism,
+              effectiveMechanism,
               motorHasEmergencyCrank: motorHasEmergencyCrank,
             ),
             bladeScope: isExtrudedBlade ? 'extruded' : 'normal',
@@ -6428,26 +6507,44 @@ class ComponentCalculator {
       }
 
       if (!isTunnel) {
-        // ── Determine exact mechanism ────────────────────────────────────────────
-        final mech = window.shutterMechanism;
-        final bool isCrank =
-            mech == 'منايفال' || mech == 'مانيفال' || mech == 'مانيفر';
-
-        if (isMotor) {
+        // Each split box can select a different mechanism. Expand the kit
+        // once per mechanism group so motor parts never leak into belt/crank
+        // boxes (and vice versa).
+        if (motorSplitCount > 0) {
           addAndExpandKit(
             'كيت فولي موتور (Kit Volet Moteur)',
             'MT',
+            splitCount: motorSplitCount,
+            mechanism: 'محرك',
             filterAxeItems: true,
           );
-        } else if (isCrank) {
+        }
+        if (crankSplitCount > 0) {
           // Belt and crank share one shutter kit. Each component declares
           // whether it is common, belt-only or crank-only.
-          addAndExpandKit('كيت فولي مانيفر (Kit Volet Manivelle)', 'V');
-          addAndExpandKit('كيت مانيفر (Kit Manivelle)', 'M', sizeBound: false);
-        } else {
+          addAndExpandKit(
+            'كيت فولي مانيفر (Kit Volet Manivelle)',
+            'V',
+            splitCount: crankSplitCount,
+            mechanism: 'مانيفال',
+          );
+          addAndExpandKit(
+            'كيت مانيفر (Kit Manivelle)',
+            'M',
+            splitCount: crankSplitCount,
+            mechanism: 'مانيفال',
+            sizeBound: false,
+          );
+        }
+        if (beltSplitCount > 0) {
           // حزام (Sangle): DB: "Kit volet 155", "Kit volet 185", "Kit volet 205"
           // الاسم الدقيق يؤخذ من componentOverrides تلقائياً، keywords هي فقط للاحتياط
-          addAndExpandKit('كيت فولي (Kit Volet)', 'V');
+          addAndExpandKit(
+            'كيت فولي (Kit Volet)',
+            'V',
+            splitCount: beltSplitCount,
+            mechanism: 'حزام',
+          );
         }
         // براغي الكيت
         items.add(createShutter('براغي الكيت', qty: 8.0 * shutterSplitCount));
@@ -6528,21 +6625,22 @@ class ComponentCalculator {
       }
 
       // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
-      if (isCrank && (!isTunnel || !hasTunnelManoeuvreKit)) {
+      if (crankSplitCount > 0 && (!isTunnel || !hasTunnelManoeuvreKit)) {
         items.add(
           createShutter(
             'المانيفال (Manivelle)',
             color: shutterColorName,
-            qty: shutterSplitCount.toDouble(),
+            qty: crankSplitCount.toDouble(),
           ),
         );
         items.add(
           createShutter(
             'براغي المانيفال',
-            qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount,
+            qty: (isTunnel ? 1.0 : 4.0) * crankSplitCount,
           ),
         );
-      } else if (window.shutterMechanism == 'محرك') {
+      }
+      if (motorSplitCount > 0) {
         // This is the selected shutter motor, not a KitBundle child.  Keep it
         // in the shutter section as an independent row.  Only rows emitted by
         // expandKitBundle are allowed to carry the tunnel kitGroupName.
@@ -6550,22 +6648,22 @@ class ComponentCalculator {
           createShutter(
             'المحرك (Moteur)',
             color: shutterColorName,
-            qty: shutterSplitCount.toDouble(),
+            qty: motorSplitCount.toDouble(),
           ),
         );
         items.add(
           createShutter(
             'براغي المحرك',
-            qty: (isTunnel ? 1.0 : 4.0) * shutterSplitCount,
+            qty: (isTunnel ? 1.0 : 4.0) * motorSplitCount,
           ),
         );
       }
-      if (window.shutterMechanism == 'محرك') {
+      if (motorSplitCount > 0) {
         if (window.motorHasInterrupteur) {
           items.add(
             createShutter(
               'قاطعة (Interrupteur)',
-              qty: shutterSplitCount.toDouble(),
+              qty: motorSplitCount.toDouble(),
             ),
           );
         }
@@ -6573,7 +6671,7 @@ class ComponentCalculator {
           items.add(
             createShutter(
               'جهاز تحكم (Télécommande)',
-              qty: shutterSplitCount.toDouble(),
+              qty: motorSplitCount.toDouble(),
             ),
           );
         }

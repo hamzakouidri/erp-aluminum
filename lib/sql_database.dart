@@ -255,6 +255,7 @@ class SqlDatabase {
     'SeriesDesignConfig',
     'SeriesDesignRoles',
     'SectionSharingRules',
+    'FrameJoinRules',
     'CatalogItemRules',
     'ProfileCalculationRules',
     'SectionJointLinks',
@@ -330,6 +331,7 @@ class SqlDatabase {
     'SeriesDesignConfig',
     'SeriesDesignRoles',
     'SectionSharingRules',
+    'FrameJoinRules',
     'CatalogItemRules',
     'ProfileCalculationRules',
     'SectionJointLinks',
@@ -1870,6 +1872,22 @@ class SqlDatabase {
         UNIQUE(item_table, item_id, series_id, role_key)
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS FrameJoinRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_a_id INTEGER NOT NULL,
+        section_b_id INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(section_a_id, section_b_id)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_frame_join_a ON FrameJoinRules(section_a_id);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_frame_join_b ON FrameJoinRules(section_b_id);',
+    );
     for (final statement in const [
       "ALTER TABLE SeriesDesignRoles ADD COLUMN usage_scope TEXT NOT NULL DEFAULT 'auto';",
       "ALTER TABLE SeriesDesignRoles ADD COLUMN show_when_glass TEXT NOT NULL DEFAULT 'any';",
@@ -4238,6 +4256,105 @@ class SqlDatabase {
     await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
+  // ─── FrameJoinRules ────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> readFrameJoinRules() async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    return myDb.rawQuery('''
+      SELECT r.id, r.section_a_id, r.section_b_id, r.is_active, r.updated_at,
+             sA.id AS a_id, sA.code AS a_code, sA.name AS a_name,
+             sA.thickness AS a_thickness, sA.visible_width AS a_visible_width,
+             serA.id AS a_series_id, serA.name AS a_series_name,
+             pA.name AS a_profile_name,
+             sB.id AS b_id, sB.code AS b_code, sB.name AS b_name,
+             sB.thickness AS b_thickness, sB.visible_width AS b_visible_width,
+             serB.id AS b_series_id, serB.name AS b_series_name,
+             pB.name AS b_profile_name
+      FROM FrameJoinRules r
+      JOIN Sections sA ON sA.id = r.section_a_id
+      JOIN Series serA ON serA.id = sA.series_id
+      JOIN Profile pA ON pA.id = serA.profile_id
+      JOIN Sections sB ON sB.id = r.section_b_id
+      JOIN Series serB ON serB.id = sB.series_id
+      JOIN Profile pB ON pB.id = serB.profile_id
+      WHERE r.is_active = 1
+      ORDER BY pA.name ASC, serA.name ASC, sA.name ASC
+    ''');
+  }
+
+  /// Returns all active partner section IDs for a given section.
+  /// Symmetric: returns partner regardless of whether section is stored as A or B.
+  Future<Set<int>> readFrameJoinPartnerIds(int sectionId) async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureSeriesDesignTables(myDb);
+    final rows = await myDb.rawQuery('''
+      SELECT section_a_id, section_b_id FROM FrameJoinRules
+      WHERE is_active = 1
+        AND (section_a_id = ? OR section_b_id = ?)
+    ''', [sectionId, sectionId]);
+    final result = <int>{};
+    for (final row in rows) {
+      final a = (row['section_a_id'] as num?)?.toInt();
+      final b = (row['section_b_id'] as num?)?.toInt();
+      if (a != null && a != sectionId) result.add(a);
+      if (b != null && b != sectionId) result.add(b);
+    }
+    return result;
+  }
+
+  Future<int> saveFrameJoinRule(int sectionAId, int sectionBId) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureSeriesDesignTables(myDb);
+    final lo = sectionAId < sectionBId ? sectionAId : sectionBId;
+    final hi = sectionAId < sectionBId ? sectionBId : sectionAId;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await myDb.rawInsert('''
+      INSERT INTO FrameJoinRules (section_a_id, section_b_id, is_active, updated_at)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(section_a_id, section_b_id)
+      DO UPDATE SET is_active = 1, updated_at = excluded.updated_at
+    ''', [lo, hi, now]);
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    final rows = await myDb.rawQuery(
+      'SELECT id FROM FrameJoinRules WHERE section_a_id = ? AND section_b_id = ? LIMIT 1',
+      [lo, hi],
+    );
+    return (rows.firstOrNull?['id'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> deleteFrameJoinRule(int id) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    await myDb.update(
+      'FrameJoinRules',
+      {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+  }
+
+  Future<void> deleteFrameJoinRuleBetween(int sectionAId, int sectionBId) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final lo = sectionAId < sectionBId ? sectionAId : sectionBId;
+    final hi = sectionAId < sectionBId ? sectionBId : sectionAId;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await myDb.update(
+      'FrameJoinRules',
+      {'is_active': 0, 'updated_at': now},
+      where: 'section_a_id = ? AND section_b_id = ?',
+      whereArgs: [lo, hi],
+    );
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+  }
+
   Future<List<Map<String, dynamic>>> searchSectionsWithProfile(
     String query,
   ) async {
@@ -6537,6 +6654,7 @@ class SqlDatabase {
           SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
         )
       ) AND (wa.is_settled = 0 OR wa.is_settled IS NULL)
+        AND (c.is_deleted IS NULL OR c.is_deleted = 0)
       ORDER BY wa.assigned_at DESC
     ''',
       [
@@ -6585,6 +6703,7 @@ class SqlDatabase {
           SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
         )
       ) AND wa.is_settled = 1
+        AND (c.is_deleted IS NULL OR c.is_deleted = 0)
       ORDER BY wa.settled_at DESC
     ''',
       [
@@ -7663,6 +7782,7 @@ class SqlDatabase {
       )
       WHERE wa.is_transferred_to_dist = 1
         AND (wa.is_completed IS NULL OR wa.is_completed = 0)
+        AND (c.is_deleted IS NULL OR c.is_deleted = 0)
       ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
     ''');
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
@@ -7867,6 +7987,7 @@ class SqlDatabase {
       )
       WHERE wa.has_reserve = 1
         AND (wa.is_completed IS NULL OR wa.is_completed = 0)
+        AND (c.is_deleted IS NULL OR c.is_deleted = 0)
       ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
     ''');
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
@@ -8709,6 +8830,13 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureOrderTrashInfrastructure(myDb);
+    final order = await myDb.query(
+      'Commandes',
+      columns: ['client_id'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
     final nowIso = DateTime.now().toUtc().toIso8601String();
     final res = await myDb.update(
       'Commandes',
@@ -8717,6 +8845,8 @@ class SqlDatabase {
       whereArgs: [id],
     );
     if (res > 0) {
+      final clientId = _paymentRecordId(order.isEmpty ? null : order.first['client_id']);
+      if (clientId != null) await reconcileClientPayments(clientId);
       try {
         CloudSyncService().notifyChangeImmediate();
       } catch (_) {}
@@ -8732,6 +8862,13 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureOrderTrashInfrastructure(myDb);
+    final order = await myDb.query(
+      'Commandes',
+      columns: ['client_id'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
     final res = await myDb.update(
       'Commandes',
       {'is_deleted': 0, 'deleted_at': null},
@@ -8739,6 +8876,8 @@ class SqlDatabase {
       whereArgs: [id],
     );
     if (res > 0) {
+      final clientId = _paymentRecordId(order.isEmpty ? null : order.first['client_id']);
+      if (clientId != null) await reconcileClientPayments(clientId);
       try {
         CloudSyncService().notifyChangeImmediate();
       } catch (_) {}
@@ -12005,15 +12144,23 @@ class SqlDatabase {
     await _ensurePaymentAllocationSchema(executor);
     final orders = await executor.query(
       'Commandes',
-      where: 'client_id = ?',
+      where: 'client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
       whereArgs: [clientId],
       orderBy: 'created_at ASC, id ASC',
     );
-    final allTransactions = await executor.query(
-      'Treasury',
-      where: 'entity_type = ? AND entity_id = ?',
-      whereArgs: ['Client', clientId],
-      orderBy: 'created_at ASC, id ASC',
+    // A receipt attached to a trashed order stays stored for a possible
+    // restore, but it must not become client credit nor be allocated to a
+    // different active order.
+    final allTransactions = await executor.rawQuery(
+      '''
+      SELECT t.* FROM Treasury t
+      LEFT JOIN Commandes c ON c.id = t.reference_id
+      WHERE t.entity_type = ? AND t.entity_id = ?
+        AND (t.reference_id IS NULL OR c.id IS NULL
+             OR c.is_deleted IS NULL OR c.is_deleted = 0)
+      ORDER BY t.created_at ASC, t.id ASC
+      ''',
+      ['Client', clientId],
     );
     final receipts = allTransactions.where(_isClientReceipt).toList();
 
@@ -12597,10 +12744,15 @@ class SqlDatabase {
     );
     final totalInvoices =
         (commandesRes.first['invoices'] as num?)?.toDouble() ?? 0.0;
-    final transactions = await myDb.query(
-      'Treasury',
-      where: 'entity_type = ? AND entity_id = ?',
-      whereArgs: ['Client', clientId],
+    final transactions = await myDb.rawQuery(
+      '''
+      SELECT t.* FROM Treasury t
+      LEFT JOIN Commandes c ON c.id = t.reference_id
+      WHERE t.entity_type = ? AND t.entity_id = ?
+        AND (t.reference_id IS NULL OR c.id IS NULL
+             OR c.is_deleted IS NULL OR c.is_deleted = 0)
+      ''',
+      ['Client', clientId],
     );
     var receipts = 0.0;
     var refunds = 0.0;

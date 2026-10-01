@@ -226,10 +226,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     ),
     _SeriesRole(
       key: 'triangle',
-      ar: 'Triangle',
-      fr: 'Triangle',
-      descriptionAr: 'Triangle',
-      descriptionFr: 'Profil triangle lié à la fermeture par crémone',
+      ar: 'ترينجل الكريمون',
+      fr: 'Tringle de crémone',
+      descriptionAr:
+          'بروفيل الترينجل المرتبط بالكريمون؛ يحسبه التطبيق قطعتين حسب موضع المقبض.',
+      descriptionFr:
+          'Profil de tringle lié à la crémone, calculé en deux pièces selon la position de la poignée.',
     ),
     _SeriesRole(
       key: 'renfort',
@@ -301,6 +303,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   List<Map<String, dynamic>> _series = [];
   List<Map<String, dynamic>> _sections = [];
   List<Map<String, dynamic>> _joints = [];
+  Map<int, Set<int>> _frameJoinPartnerIds = {};
+  List<Map<String, dynamic>> _allFrameSections = [];
+  bool _loadingFrameJoinRules = false;
   Map<String, dynamic>? _selectedProfile;
   Map<String, dynamic>? _selectedSeries;
   Map<String, dynamic>? _tableConfig;
@@ -415,29 +420,31 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   Iterable<_SeriesRole> get _availableRoles =>
       _roles.where((role) => !_isPvcProfile || role.key != 'reducer');
 
-  /// Keep configured roles at the top of the rules page.  A role is active
-  /// when at least one section has been assigned to it; unassigned roles stay
-  /// below them while preserving the administrator's stable role order.
-  List<_SeriesRole> get _orderedAvailableRoles {
-    final roles = _availableRoles
+  List<_SeriesRole> get _allConfigurableRoles {
+    return _availableRoles
         .where((role) {
           if (role.key != 'bardage') return true;
           final hasLinkedSection =
               _sectionIdsByRole[role.key]?.isNotEmpty ?? false;
           final hasAvailableBardage = _sections.any(_isBardageSection);
-          // Do not display the legacy empty Bardage block. The useful block stays
-          // visible as soon as it has a linked/available Bardage profile.
           return hasLinkedSection || hasAvailableBardage;
         })
         .toList(growable: false);
-    final active = roles.where(
-      (role) => _sectionIdsByRole[role.key]?.isNotEmpty ?? false,
-    );
-    final inactive = roles.where(
-      (role) => !(_sectionIdsByRole[role.key]?.isNotEmpty ?? false),
-    );
-    return [...active, ...inactive];
   }
+
+  List<_SeriesRole> get _activeRoles =>
+      _allConfigurableRoles
+          .where((role) => _sectionIdsByRole[role.key]?.isNotEmpty ?? false)
+          .toList(growable: false);
+
+  List<_SeriesRole> get _inactiveRoles =>
+      _allConfigurableRoles
+          .where((role) => !(_sectionIdsByRole[role.key]?.isNotEmpty ?? false))
+          .toList(growable: false);
+
+  /// Keep configured roles at the top of the rules page.
+  List<_SeriesRole> get _orderedAvailableRoles =>
+      [..._activeRoles, ..._inactiveRoles];
 
   @override
   void initState() {
@@ -534,6 +541,46 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _sections = results[0] as List<Map<String, dynamic>>;
       _joints = results[3] as List<Map<String, dynamic>>;
       _loadingDefinition = false;
+    });
+    unawaited(_loadFrameJoinData());
+  }
+
+  Future<void> _loadFrameJoinData() async {
+    final seriesId = _seriesId;
+    if (seriesId == null) return;
+    if (!mounted) return;
+    setState(() => _loadingFrameJoinRules = true);
+
+    final allSections = await widget.db.searchSectionsWithProfile('');
+    final frameSections = allSections.where((s) {
+      final type = s['type']?.toString().toLowerCase() ?? '';
+      return (s['is_frame'] as int?) == 1 ||
+          type == 'frame' ||
+          type.contains('cadre');
+    }).toList();
+
+    final myFrameSectionIds = _sections
+        .where((s) {
+          final type = s['type']?.toString().toLowerCase() ?? '';
+          return (s['is_frame'] as int?) == 1 ||
+              type == 'frame' ||
+              type.contains('cadre');
+        })
+        .map((s) => (s['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toSet();
+
+    final joinMap = <int, Set<int>>{};
+    for (final sId in myFrameSectionIds) {
+      final partners = await widget.db.readFrameJoinPartnerIds(sId);
+      if (partners.isNotEmpty) joinMap[sId] = partners;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _allFrameSections = frameSections;
+      _frameJoinPartnerIds = joinMap;
+      _loadingFrameJoinRules = false;
     });
   }
 
@@ -1240,7 +1287,85 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             _slidingFormulaCard(),
             const SizedBox(height: 14),
           ],
-          for (final role in _orderedAvailableRoles) _roleCard(role),
+          // ── الأدوار المفعّلة لهذه السلسلة ──
+          if (_activeRoles.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _t(
+                      'الأدوار المفعّلة لهذه السلسلة (${_activeRoles.length})',
+                      'Rôles configurés pour cette série (${_activeRoles.length})',
+                    ),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (final role in _activeRoles) _roleCard(role),
+          ],
+
+          // ── الفاصل البارز بين الأدوار النشطة والأدوار غير المحددة بعد ──
+          if (_activeRoles.isNotEmpty && _inactiveRoles.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.blueGrey.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.horizontal_rule_rounded,
+                    color: Colors.blueGrey.shade600,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _t(
+                        'أدوار إضافية غير محددة بعد (${_inactiveRoles.length})',
+                        'Autres rôles non configurés (${_inactiveRoles.length})',
+                      ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey.shade800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _t('اختياري', 'Optionnel'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blueGrey.shade500,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final role in _inactiveRoles) _roleCard(role),
+          ] else if (_activeRoles.isEmpty) ...[
+            for (final role in _inactiveRoles) _roleCard(role),
+          ],
           _aluminumJointLinksCard(),
           const SizedBox(height: 90),
         ],
@@ -1409,39 +1534,60 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     if (roleKey == 'bardage') return _isBardageSection(section);
 
     final rawType = (section['type']?.toString() ?? '').trim().toLowerCase();
+    final searchableText = [
+      section['type'],
+      section['name'],
+      section['code'],
+      section['description'],
+      section['label'],
+    ].whereType<Object>().join(' ').trim().toLowerCase();
+
+    // Older catalogues did not always store these two profiles with the
+    // canonical section type.  Their name/code still identifies them, so a
+    // cross-system share must not hide them merely because type is `other`.
+    if (roleKey == 'porte_joint') {
+      final compact = searchableText.replaceAll(RegExp(r'[\s_-]+'), '');
+      return compact.contains('portejoint') ||
+          searchableText.contains('حامل الجوان') ||
+          searchableText.contains('حامل جوان');
+    }
+    if (roleKey == 'triangle') {
+      return searchableText.contains('tringle') ||
+          searchableText.contains('triangle') ||
+          searchableText.contains('ترينجل') ||
+          searchableText.contains('تراينغل');
+    }
 
     // Map every role key to the set of section types that are valid for it.
     const Map<String, List<String>> roleToTypes = {
-      'frame':               ['frame'],
-      'frame_extension':     ['frame', 'frame_extension'],
-      'sash':                ['sash', 'sash_batmo', 'sash_porte'],
-      'sash_extension':      ['sash', 'sash_extension'],
-      'sash_lateral':        ['sash', 'sash_lateral'],
-      'sash_central':        ['sash', 'sash_central'],
-      'sash_traverse':       ['sash', 'sash_traverse', 'traverse'],
-      'montant_central_slim':['montant_central_slim'],
-      'complement_haut_base':['complement_haut_base'],
-      'mullion':             ['mullion', 'traverse'],
-      'glazing_bead':        ['parclose'],
-      'profile_angle':       ['profile_angle'],
-      'caniveau':            ['caniveau'],
-      'cache_caniveau':      ['cache_caniveau'],
-      'cache_rainure':       ['cache_rainure'],
-      'cache_rail':          ['cache_rail'],
-      'bavette':             ['bavette'],
-      'seuil':               ['seuil'],
-      'batmo':               ['batmo'],
-      'bouchon_batmo':       ['bouchon_batmo'],
-      'plant':               ['plinthe'],
-      'porte_joint':         ['porte_joint'],
-      'triangle':            ['triangle'],
-      'renfort':             ['renfort'],
-      'cache_renfort':       ['cache_renfort'],
-      'cache_dormant':       ['cache_dormant'],
-      'rail':                ['rail'],
-      'chicane':             ['chicane'],
-      'face_to_face':        ['face_to_face'],
-      'reducer':             ['reducer'],
+      'frame': ['frame'],
+      'frame_extension': ['frame', 'frame_extension'],
+      'sash': ['sash', 'sash_batmo', 'sash_porte'],
+      'sash_extension': ['sash', 'sash_extension'],
+      'sash_lateral': ['sash', 'sash_lateral'],
+      'sash_central': ['sash', 'sash_central'],
+      'sash_traverse': ['sash', 'sash_traverse', 'traverse'],
+      'montant_central_slim': ['montant_central_slim'],
+      'complement_haut_base': ['complement_haut_base'],
+      'mullion': ['mullion', 'traverse'],
+      'glazing_bead': ['parclose'],
+      'profile_angle': ['profile_angle'],
+      'caniveau': ['caniveau'],
+      'cache_caniveau': ['cache_caniveau'],
+      'cache_rainure': ['cache_rainure'],
+      'cache_rail': ['cache_rail'],
+      'bavette': ['bavette'],
+      'seuil': ['seuil'],
+      'batmo': ['batmo'],
+      'bouchon_batmo': ['bouchon_batmo'],
+      'plant': ['plinthe'],
+      'renfort': ['renfort'],
+      'cache_renfort': ['cache_renfort'],
+      'cache_dormant': ['cache_dormant'],
+      'rail': ['rail'],
+      'chicane': ['chicane'],
+      'face_to_face': ['face_to_face'],
+      'reducer': ['reducer'],
     };
 
     final allowed = roleToTypes[roleKey];
@@ -1819,29 +1965,37 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                             'حدد الإطارات التي يمكن أن يركب عليها مباشرة دون الحاجة لتبديلها:',
                             'Sélectionnez les dormants compatibles (sans substitution requise):',
                           ),
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         ...(() {
                           final frameSections = _sections
                               .where((s) => _sectionMatchesRole(s, 'frame'))
                               .toList();
-                          final selectedIds = (draft['compatible_frame_ids'] ?? '')
-                              .toString()
-                              .split(',')
-                              .map((e) => e.trim())
-                              .where((e) => e.isNotEmpty)
-                              .toSet();
+                          final selectedIds =
+                              (draft['compatible_frame_ids'] ?? '')
+                                  .toString()
+                                  .split(',')
+                                  .map((e) => e.trim())
+                                  .where((e) => e.isNotEmpty)
+                                  .toSet();
                           return frameSections.map((fSec) {
                             final sId = fSec['id']?.toString() ?? '';
                             final isChecked = selectedIds.contains(sId);
-                            final name = fSec['name']?.toString() ??
+                            final name =
+                                fSec['name']?.toString() ??
                                 fSec['reference']?.toString() ??
                                 'Dormant #$sId';
                             return CheckboxListTile(
                               dense: true,
                               value: isChecked,
-                              title: Text(name, style: const TextStyle(fontSize: 13)),
+                              title: Text(
+                                name,
+                                style: const TextStyle(fontSize: 13),
+                              ),
                               contentPadding: EdgeInsets.zero,
                               onChanged: (val) {
                                 if (val == true) {
@@ -1857,6 +2011,169 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                             );
                           });
                         })(),
+                        const Divider(height: 20),
+                      ],
+                      // ── ربط الإطارات المتوافقة (علاقة عكسية متماثلة A ↔ B) ──
+                      if (role.key == 'frame') ...[
+                        const Divider(height: 20),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.link_rounded,
+                              size: 18,
+                              color: Colors.blue.shade700,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _t(
+                                  'إطارات متوافقة للالتقاء مع هذا الإطار',
+                                  'Dormants compatibles pour jonction',
+                                ),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _t(
+                            'الربط متماثل وعكسي تلقائياً: تحديد إطار من سلسلة أخرى يعني أن كلا الإطارين يقبلان بعضهما البعض عند دمج الإطارات.',
+                            'Le lien est symétrique et réciproque : cocher un dormant d\'une autre série lie les deux profils mutuellement pour la jonction.',
+                          ),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (_loadingFrameJoinRules)
+                          const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        else
+                          Builder(
+                            builder: (context) {
+                              final currentSeriesId = _seriesId;
+                              final otherFrames = _allFrameSections.where((fs) {
+                                final fSeriesId =
+                                    (fs['series_id'] as num?)?.toInt() ??
+                                    (fs['source_series_id'] as num?)?.toInt();
+                                return fSeriesId != null &&
+                                    fSeriesId != currentSeriesId;
+                              }).toList();
+
+                              if (otherFrames.isEmpty) {
+                                return Text(
+                                  _t(
+                                    'لا توجد إطارات في سلاسل أخرى بعد.',
+                                    'Aucun dormant dans d\'autres séries.',
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              }
+
+                              final partnerIds =
+                                  _frameJoinPartnerIds[sectionId] ?? {};
+
+                              final grouped =
+                                  <String, List<Map<String, dynamic>>>{};
+                              for (final fs in otherFrames) {
+                                final profile =
+                                    fs['profile_name']?.toString() ??
+                                    fs['source_profile_name']?.toString() ??
+                                    '';
+                                final seriesName =
+                                    fs['series_name']?.toString() ??
+                                    fs['source_series_name']?.toString() ??
+                                    '';
+                                final gKey = [
+                                  if (profile.isNotEmpty) profile,
+                                  if (seriesName.isNotEmpty) seriesName,
+                                ].join(' / ');
+                                grouped.putIfAbsent(gKey, () => []).add(fs);
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final entry in grouped.entries) ...[
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        top: 8,
+                                        bottom: 2,
+                                      ),
+                                      child: Text(
+                                        entry.key,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                    for (final fs in entry.value) ...[
+                                      CheckboxListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        value: partnerIds.contains(
+                                          (fs['id'] as num?)?.toInt() ?? 0,
+                                        ),
+                                        title: Text(
+                                          (() {
+                                            final code = fs['code']
+                                                    ?.toString()
+                                                    .trim() ??
+                                                '';
+                                            final name = fs['name']
+                                                    ?.toString()
+                                                    .trim() ??
+                                                '';
+                                            return code.isNotEmpty
+                                                ? '$code — $name'
+                                                : name;
+                                          })(),
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                        subtitle: Text(
+                                          '${_t('السُمك', 'Épaisseur')}: ${fs['thickness'] ?? 0} mm  •  ${_t('العرض الظاهر', 'Larg. visible')}: ${fs['visible_width'] ?? 0} mm',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                        onChanged: (val) async {
+                                          final fsId =
+                                              (fs['id'] as num?)?.toInt() ?? 0;
+                                          if (fsId == 0) return;
+                                          if (val == true) {
+                                            await widget.db.saveFrameJoinRule(
+                                              sectionId,
+                                              fsId,
+                                            );
+                                          } else {
+                                            await widget.db
+                                                .deleteFrameJoinRuleBetween(
+                                              sectionId,
+                                              fsId,
+                                            );
+                                          }
+                                          await _loadFrameJoinData();
+                                          setDialogState(() {});
+                                        },
+                                      ),
+                                    ],
+                                  ],
+                                ],
+                              );
+                            },
+                          ),
                         const Divider(height: 20),
                       ],
                       _dialogSwitch(

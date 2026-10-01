@@ -68,7 +68,11 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
       }
 
       // 2. Get Client Orders (Commandes)
-      final ordersList = await myDb.query('Commandes', where: 'client_id = ?', whereArgs: [widget.clientId]);
+      final ordersList = await myDb.query(
+        'Commandes',
+        where: 'client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
+        whereArgs: [widget.clientId],
+      );
       _ordersList = ordersList;
 
       // 3. Get Client Payments (Treasury)
@@ -123,7 +127,8 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
           FROM Commandes_deliveries d
           LEFT JOIN Commandes c ON CAST(d.id_commandes AS TEXT) = CAST(c.id AS TEXT)
           LEFT JOIN Projects p ON c.project_id = p.id
-          WHERE CAST(d.client_id AS TEXT) = ? OR CAST(c.client_id AS TEXT) = ? OR d.id_commandes IN (SELECT id FROM Commandes WHERE client_id = ?)
+          WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
+            AND (CAST(d.client_id AS TEXT) = ? OR CAST(c.client_id AS TEXT) = ? OR d.id_commandes IN (SELECT id FROM Commandes WHERE client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)))
           ORDER BY d.id DESC
         ''', [widget.clientId.toString(), widget.clientId.toString(), widget.clientId]);
       } catch (e) {

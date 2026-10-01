@@ -333,7 +333,7 @@ class _ShowClientState extends State<ShowClient> {
     );
     final orders = await myDb.query(
       'Commandes',
-      where: 'client_id = ?',
+      where: 'client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
       whereArgs: [widget.clientId],
       orderBy: 'id DESC',
     );
@@ -349,7 +349,8 @@ class _ShowClientState extends State<ShowClient> {
         FROM Commandes_deliveries d
         LEFT JOIN Commandes c ON CAST(d.id_commandes AS TEXT) = CAST(c.id AS TEXT)
         LEFT JOIN Projects p ON c.project_id = p.id
-        WHERE CAST(d.client_id AS TEXT) = ? OR CAST(c.client_id AS TEXT) = ? OR d.id_commandes IN (SELECT id FROM Commandes WHERE client_id = ?)
+        WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
+          AND (CAST(d.client_id AS TEXT) = ? OR CAST(c.client_id AS TEXT) = ? OR d.id_commandes IN (SELECT id FROM Commandes WHERE client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)))
         ORDER BY d.id DESC
       ''', [widget.clientId.toString(), widget.clientId.toString(), widget.clientId]);
       deliveries = deliveries.map((d) => Map<String, dynamic>.from(d)).toList();
@@ -443,7 +444,7 @@ class _ShowClientState extends State<ShowClient> {
         JOIN Commandes c ON cd.id_commandes = c.id
         LEFT JOIN Projects p ON c.project_id = p.id
         LEFT JOIN WorkerAllocations wa ON wa.commande_detail_id = cd.id
-        WHERE c.client_id = ?
+        WHERE c.client_id = ? AND (c.is_deleted IS NULL OR c.is_deleted = 0)
         ORDER BY c.id DESC, cd.id ASC, wa.unit_index ASC
       ''', [widget.clientId]);
     } catch (e) {

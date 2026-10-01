@@ -87,9 +87,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         final res = await dbInstance.rawQuery('''
           SELECT cd.*, c.firstname, c.lastname, c.phone1, c.address, c.latitude, c.longitude, com.total as order_total
           FROM Commandes_deliveries cd
-          LEFT JOIN Client c ON (cd.client_id = c.id OR CAST(cd.client_id AS TEXT) = CAST(c.id AS TEXT))
-          LEFT JOIN Commandes com ON (cd.id_commandes = com.id OR CAST(cd.id_commandes AS TEXT) = CAST(com.id AS TEXT))
-          ORDER BY cd.delivery_date DESC
+        LEFT JOIN Client c ON (cd.client_id = c.id OR CAST(cd.client_id AS TEXT) = CAST(c.id AS TEXT))
+        LEFT JOIN Commandes com ON (cd.id_commandes = com.id OR CAST(cd.id_commandes AS TEXT) = CAST(com.id AS TEXT))
+        WHERE (com.is_deleted IS NULL OR com.is_deleted = 0)
+        ORDER BY cd.delivery_date DESC
         ''');
         setState(() {
           _deliveries = res;

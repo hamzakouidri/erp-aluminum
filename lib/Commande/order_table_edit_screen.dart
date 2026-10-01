@@ -430,55 +430,74 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       }
     }
 
+    void setKeyCtrl(
+      TextEditingController ctrl,
+      String category,
+      List<String> extracted,
+    ) {
+      final def = _defaultKeyForCategory(category);
+      if (extracted.isNotEmpty) {
+        final most = _mostCommon(extracted);
+        final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(most);
+        if (lang != AppLanguage.arabic && hasArabic) {
+          ctrl.text = def;
+        } else {
+          ctrl.text = most;
+        }
+      } else {
+        ctrl.text = def;
+      }
+    }
+
     if (titles.isNotEmpty) _globalTitleController.text = _mostCommon(titles);
 
-    if (gamKeys.isNotEmpty) _globalGamKeyController.text = _mostCommon(gamKeys);
+    setKeyCtrl(_globalGamKeyController, 'gam', gamKeys);
     if (gams.isNotEmpty) _globalGamController.text = _mostCommon(gams);
 
-    if (colorKeys.isNotEmpty)
-      _globalColorKeyController.text = _mostCommon(colorKeys);
+    setKeyCtrl(_globalColorKeyController, 'profileColor', colorKeys);
     if (colors.isNotEmpty) _globalColorController.text = _mostCommon(colors);
 
-    if (accessoryColorKeys.isNotEmpty) {
-      _globalAccessoryColorKeyController.text = _mostCommon(accessoryColorKeys);
-    }
+    setKeyCtrl(
+      _globalAccessoryColorKeyController,
+      'accessoryColor',
+      accessoryColorKeys,
+    );
     if (accessoryColors.isNotEmpty) {
       _globalAccessoryColorController.text = _mostCommon(accessoryColors);
     }
 
-    if (shutterColorKeys.isNotEmpty) {
-      _globalShutterColorKeyController.text = _mostCommon(shutterColorKeys);
-    }
+    setKeyCtrl(
+      _globalShutterColorKeyController,
+      'shutterColor',
+      shutterColorKeys,
+    );
     if (shutterColors.isNotEmpty) {
       _globalShutterColorController.text = _mostCommon(shutterColors);
     }
 
-    if (glassKeys.isNotEmpty)
-      _globalGlassKeyController.text = _mostCommon(glassKeys);
+    setKeyCtrl(_globalGlassKeyController, 'glass', glassKeys);
     if (glasses.isNotEmpty) _globalGlassController.text = _mostCommon(glasses);
 
-    if (coverKeys.isNotEmpty)
-      _globalCoverKeyController.text = _mostCommon(coverKeys);
+    setKeyCtrl(_globalCoverKeyController, 'cover', coverKeys);
     if (covers.isNotEmpty) _globalCoverController.text = _mostCommon(covers);
 
-    if (baseKeys.isNotEmpty)
-      _globalBaseKeyController.text = _mostCommon(baseKeys);
+    setKeyCtrl(_globalBaseKeyController, 'base', baseKeys);
     if (bases.isNotEmpty) _globalBaseController.text = _mostCommon(bases);
 
-    if (closureKeys.isNotEmpty) {
-      _globalClosureKeyController.text = _mostCommon(closureKeys);
-    }
-    if (closures.isNotEmpty)
+    setKeyCtrl(_globalClosureKeyController, 'closure', closureKeys);
+    if (closures.isNotEmpty) {
       _globalClosureController.text = _mostCommon(closures);
+    }
 
-    if (shutterKeys.isNotEmpty)
-      _globalShutterKeyController.text = _mostCommon(shutterKeys);
-    if (shutters.isNotEmpty)
+    setKeyCtrl(_globalShutterKeyController, 'shutter', shutterKeys);
+    if (shutters.isNotEmpty) {
       _globalShutterController.text = _mostCommon(shutters);
+    }
 
     if (lames.isNotEmpty) _globalLameController.text = _mostCommon(lames);
-    if (coulisses.isNotEmpty)
+    if (coulisses.isNotEmpty) {
       _globalCoulisseController.text = _mostCommon(coulisses);
+    }
   }
 
   void _collectCategoryValue(
@@ -1903,8 +1922,10 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                                 ),
                               TextButton.icon(
                                 icon: const Icon(Icons.design_services),
-                                label: const Text(
-                                  'تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة',
+                                label: Text(
+                                  t(
+                                    'تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة',
+                                  ),
                                 ),
                                 onPressed: () => _editActualDrawing(itemIndex),
                               ),
@@ -2164,7 +2185,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '${((double.tryParse(_priceControllers[itemIndex]!.text) ?? 0.0) * (int.tryParse(_quantityControllers[itemIndex]!.text) ?? 1)).toStringAsFixed(2)} دج',
+                                          '${((double.tryParse(_priceControllers[itemIndex]!.text) ?? 0.0) * (int.tryParse(_quantityControllers[itemIndex]!.text) ?? 1)).toStringAsFixed(2)} ${t('دج')}',
                                           style: TextStyle(
                                             color: isDark
                                                 ? Colors.lightBlueAccent

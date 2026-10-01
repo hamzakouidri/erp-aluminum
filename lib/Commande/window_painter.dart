@@ -398,10 +398,18 @@ class WindowPainter extends CustomPainter {
 
       if (model.hasShutter && !isSlantedOrArched) {
         if (model.isCaissonTunnel) {
-          if (model.shutterMechanism == 'حزام' ||
-              model.shutterMechanism == 'منايفال' ||
-              model.shutterMechanism == 'مانيفال' ||
-              model.shutterMechanism.toLowerCase().contains('manivelle')) {
+          final hasManualSplit = model.effectiveShutterSplits.any((split) {
+            final mechanism = split.mechanism?.trim().isNotEmpty == true
+                ? split.mechanism!.trim()
+                : model.shutterMechanism;
+            final normalized = mechanism.toLowerCase();
+            return mechanism == 'حزام' ||
+                mechanism == 'منايفال' ||
+                mechanism == 'مانيفال' ||
+                normalized.contains('manivelle') ||
+                normalized.contains('maniv');
+          });
+          if (hasManualSplit) {
             canvas.save();
             canvas.translate(0, -model.shutterBoxHeight);
             _drawShutterBox(
@@ -497,9 +505,18 @@ class WindowPainter extends CustomPainter {
           model.isCaissonTunnel ? 0.0 : model.shutterBoxHeight,
         );
         if (model.isCaissonTunnel) {
-          if (model.shutterMechanism == 'منايفال' ||
-              model.shutterMechanism == 'مانيفال' ||
-              model.shutterMechanism.toLowerCase().contains('manivelle')) {
+          final hasManualSplit = model.effectiveShutterSplits.any((split) {
+            final mechanism = split.mechanism?.trim().isNotEmpty == true
+                ? split.mechanism!.trim()
+                : model.shutterMechanism;
+            final normalized = mechanism.toLowerCase();
+            return mechanism == 'حزام' ||
+                mechanism == 'منايفال' ||
+                mechanism == 'مانيفال' ||
+                normalized.contains('manivelle') ||
+                normalized.contains('maniv');
+          });
+          if (hasManualSplit) {
             canvas.save();
             canvas.translate(0, -model.shutterBoxHeight);
             _drawShutterBox(
@@ -532,9 +549,13 @@ class WindowPainter extends CustomPainter {
       _drawProfileAngle(canvas, w, h, topOffset);
     }
 
-    if (model.hasShutter &&
-        !isSlantedOrArched &&
-        model.shutterMechanism == 'محرك') {
+    final hasMotorSplit = model.effectiveShutterSplits.any((split) {
+      final mechanism = split.mechanism?.trim().isNotEmpty == true
+          ? split.mechanism!.trim()
+          : model.shutterMechanism;
+      return mechanism == 'محرك' || mechanism.toLowerCase().contains('moteur');
+    });
+    if (model.hasShutter && !isSlantedOrArched && hasMotorSplit) {
       _drawMotorControls(canvas, w, h, t, topOffset);
     }
 
@@ -2299,7 +2320,34 @@ class WindowPainter extends CustomPainter {
     Rect? sourceFrame,
   }) {
     final outerPath = _buildOuterShapePath(w, h, topY);
-    final innerPath = _buildInnerShapePath(w, h, t, topY);
+    final frameForSides = sourceFrame ?? Rect.fromLTRB(0, topY, w, h);
+    final leftT = model.frameSideVisibleWidth(
+      frameForSides,
+      'left',
+      fallback: t,
+    );
+    final rightT = model.frameSideVisibleWidth(
+      frameForSides,
+      'right',
+      fallback: t,
+    );
+    final topT = model.frameSideVisibleWidth(frameForSides, 'top', fallback: t);
+    final bottomT = model.frameSideVisibleWidth(
+      frameForSides,
+      'bottom',
+      fallback: t,
+    );
+    final hasCustomSideProfiles = model.frameHasSideOverrides(frameForSides);
+    final innerPath = hasCustomSideProfiles && !_isSlantedOrArched
+        ? (Path()..addRect(
+            Rect.fromLTRB(
+              leftT,
+              topY + topT,
+              w - rightT,
+              h - (_hasEffectiveBottomFrame ? bottomT : 0.0),
+            ),
+          ))
+        : _buildInnerShapePath(w, h, t, topY);
 
     final path = Path()
       ..addPath(outerPath, Offset.zero)
@@ -2425,7 +2473,12 @@ class WindowPainter extends CustomPainter {
     _drawMiterCorners(
       canvas,
       outerRect,
-      Rect.fromLTRB(t, topY + t, w - t, h - t),
+      Rect.fromLTRB(
+        leftT,
+        topY + topT,
+        w - rightT,
+        h - (_hasEffectiveBottomFrame ? bottomT : 0.0),
+      ),
       t,
     );
   }
@@ -8156,8 +8209,16 @@ class WindowPainter extends CustomPainter {
 
       final boxRect = Rect.fromLTWH(startX, 0, boxWidth, effectiveBoxSize);
 
-      final mechanism = model.shutterMechanism;
-      bool isRight = model.shutterDriveSide == 'right';
+      // A divided shutter is made of independent boxes.  Each box can have
+      // its own motor/belt/crank and drive side; only fall back to the window
+      // defaults for drawings saved before split settings existed.
+      final mechanism = split.mechanism?.trim().isNotEmpty == true
+          ? split.mechanism!.trim()
+          : model.shutterMechanism;
+      final driveSide = split.driveSide?.trim().isNotEmpty == true
+          ? split.driveSide!.trim()
+          : model.shutterDriveSide;
+      bool isRight = driveSide == 'right';
       if (!model.isInternalView) {
         isRight = !isRight;
       }

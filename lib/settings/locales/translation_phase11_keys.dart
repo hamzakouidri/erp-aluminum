@@ -179,6 +179,158 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'Appliquer la séparation',
     AppLanguage.english: 'Apply split',
   },
+  'نوع الستار': {
+    AppLanguage.arabic: 'نوع الستار',
+    AppLanguage.french: 'Type de volet',
+    AppLanguage.english: 'Shutter mechanism',
+  },
+  'نوع الستار:': {
+    AppLanguage.arabic: 'نوع الستار:',
+    AppLanguage.french: 'Type de volet :',
+    AppLanguage.english: 'Shutter mechanism:',
+  },
+  'نوع الستار (Mechanism):': {
+    AppLanguage.arabic: 'نوع الستار (Mechanism):',
+    AppLanguage.french: 'Mécanisme du volet :',
+    AppLanguage.english: 'Shutter mechanism:',
+  },
+  'جهة الستار': {
+    AppLanguage.arabic: 'جهة الستار',
+    AppLanguage.french: 'Côté commande',
+    AppLanguage.english: 'Drive side',
+  },
+  'جهة الستار:': {
+    AppLanguage.arabic: 'جهة الستار:',
+    AppLanguage.french: 'Côté commande :',
+    AppLanguage.english: 'Drive side:',
+  },
+  'جهة الستار (Drive Side):': {
+    AppLanguage.arabic: 'جهة الستار (Drive Side):',
+    AppLanguage.french: 'Côté commande :',
+    AppLanguage.english: 'Drive side:',
+  },
+  'حزام': {
+    AppLanguage.arabic: 'حزام',
+    AppLanguage.french: 'Sangle',
+    AppLanguage.english: 'Strap',
+  },
+  'حزام (Sangle)': {
+    AppLanguage.arabic: 'حزام (Sangle)',
+    AppLanguage.french: 'Sangle',
+    AppLanguage.english: 'Strap',
+  },
+  'مانيفيل': {
+    AppLanguage.arabic: 'مانيفيل',
+    AppLanguage.french: 'Manivelle',
+    AppLanguage.english: 'Crank',
+  },
+  'منايفال': {
+    AppLanguage.arabic: 'مانيفيل',
+    AppLanguage.french: 'Manivelle',
+    AppLanguage.english: 'Crank',
+  },
+  'مانيفيل (Manivelle)': {
+    AppLanguage.arabic: 'مانيفيل (Manivelle)',
+    AppLanguage.french: 'Manivelle',
+    AppLanguage.english: 'Crank',
+  },
+  'محرك': {
+    AppLanguage.arabic: 'محرك',
+    AppLanguage.french: 'Moteur',
+    AppLanguage.english: 'Motor',
+  },
+  'محرك (Moteur)': {
+    AppLanguage.arabic: 'محرك (Moteur)',
+    AppLanguage.french: 'Moteur',
+    AppLanguage.english: 'Motor',
+  },
+  'يسار': {
+    AppLanguage.arabic: 'يسار',
+    AppLanguage.french: 'Gauche',
+    AppLanguage.english: 'Left',
+  },
+  'يسار (Gauche)': {
+    AppLanguage.arabic: 'يسار (Gauche)',
+    AppLanguage.french: 'Gauche',
+    AppLanguage.english: 'Left',
+  },
+  'يمين': {
+    AppLanguage.arabic: 'يمين',
+    AppLanguage.french: 'Droite',
+    AppLanguage.english: 'Right',
+  },
+  'يمين (Droite)': {
+    AppLanguage.arabic: 'يمين (Droite)',
+    AppLanguage.french: 'Droite',
+    AppLanguage.english: 'Right',
+  },
+
+  // ── خيارات تحديث التطبيق (App Update Settings) ──
+  'تحديث التطبيق': {
+    AppLanguage.arabic: 'تحديث التطبيق',
+    AppLanguage.french: 'Mise à jour de l\'application',
+    AppLanguage.english: 'App update',
+  },
+  'الإصدار الحالي:': {
+    AppLanguage.arabic: 'الإصدار الحالي:',
+    AppLanguage.french: 'Version actuelle :',
+    AppLanguage.english: 'Current version:',
+  },
+  'طريقة التحديث:': {
+    AppLanguage.arabic: 'طريقة التحديث:',
+    AppLanguage.french: 'Mode de mise à jour :',
+    AppLanguage.english: 'Update mode:',
+  },
+  'تحديث آلي (تلقائي)': {
+    AppLanguage.arabic: 'تحديث آلي (تلقائي)',
+    AppLanguage.french: 'Mise à jour automatique',
+    AppLanguage.english: 'Automatic update',
+  },
+  'تحديث آلي': {
+    AppLanguage.arabic: 'تحديث آلي',
+    AppLanguage.french: 'Mise à jour automatique',
+    AppLanguage.english: 'Automatic update',
+  },
+  'التحقق من التحديثات وتنزيلها تلقائياً عند توفر إصدار جديد.': {
+    AppLanguage.arabic: 'التحقق من التحديثات وتنزيلها تلقائياً عند توفر إصدار جديد.',
+    AppLanguage.french: 'Vérifier et télécharger automatiquement les mises à jour lorsqu\'une nouvelle version est disponible.',
+    AppLanguage.english: 'Automatically check and download updates when a new version is available.',
+  },
+  'تحديث يدوي': {
+    AppLanguage.arabic: 'تحديث يدوي',
+    AppLanguage.french: 'Mise à jour manuelle',
+    AppLanguage.english: 'Manual update',
+  },
+  'يتم التحديث فقط عند طلبك اليدوي بالضغط على زر الفحص.': {
+    AppLanguage.arabic: 'يتم التحديث فقط عند طلبك اليدوي بالضغط على زر الفحص.',
+    AppLanguage.french: 'Les mises à jour ne sont appliquées que sur demande manuelle.',
+    AppLanguage.english: 'Updates are only checked and applied when manually requested.',
+  },
+  'التحقق من وجود تحديثات الآن': {
+    AppLanguage.arabic: 'التحقق من وجود تحديثات الآن',
+    AppLanguage.french: 'Vérifier les mises à jour',
+    AppLanguage.english: 'Check for updates now',
+  },
+  'جارٍ التحقق من وجود تحديثات...': {
+    AppLanguage.arabic: 'جارٍ التحقق من وجود تحديثات...',
+    AppLanguage.french: 'Recherche de mises à jour...',
+    AppLanguage.english: 'Checking for updates...',
+  },
+  'التطبيق محدّث': {
+    AppLanguage.arabic: 'التطبيق محدّث',
+    AppLanguage.french: 'Application à jour',
+    AppLanguage.english: 'App is up to date',
+  },
+  'أنت تستخدم أحدث إصدار من التطبيق': {
+    AppLanguage.arabic: 'أنت تستخدم أحدث إصدار من التطبيق',
+    AppLanguage.french: 'Vous utilisez la dernière version de l\'application',
+    AppLanguage.english: 'You are using the latest version of the application',
+  },
+  'حسناً': {
+    AppLanguage.arabic: 'حسناً',
+    AppLanguage.french: 'D\'accord',
+    AppLanguage.english: 'OK',
+  },
 
   // ── 3. تحسين وتقطيع البروفيلات (Cutting Optimization) ──
   'تحسين وتقطيع البروفيلات (Optimisation)': {
@@ -966,5 +1118,191 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'Entrez un nombre valide supérieur ou égal à zéro',
     AppLanguage.english: 'Enter a valid number greater than or equal to zero',
   },
+  'تطبيق تعديلات الوصف فقط — لا يغيّر السعر': {
+    AppLanguage.arabic: 'تطبيق تعديلات الوصف فقط — لا يغيّر السعر',
+    AppLanguage.french:
+        'Appliquer uniquement les modifications de description — ne modifie pas le prix',
+    AppLanguage.english:
+        'Apply description edits only — does not change price',
+  },
+  'تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة': {
+    AppLanguage.arabic:
+        'تعديل الرسم والخيارات — اعتماد السعر من جدول الكمية والتكلفة',
+    AppLanguage.french:
+        'Modifier le dessin et les options — Appliquer le prix du tableau quantité et coût',
+    AppLanguage.english:
+        'Edit drawing and options — Apply price from quantity and cost table',
+  },
+  'Largeur: ': {
+    AppLanguage.arabic: 'العرض: ',
+    AppLanguage.french: 'Largeur : ',
+    AppLanguage.english: 'Width: ',
+  },
+  'Hauteur: ': {
+    AppLanguage.arabic: 'الارتفاع: ',
+    AppLanguage.french: 'Hauteur : ',
+    AppLanguage.english: 'Height: ',
+  },
+  'الكريمون يولّد قطعتين تراينغل تلقائيًا، وموضع المقبض يؤخذ من الرسم.': {
+    AppLanguage.arabic:
+        'الكريمون يولّد قطعتين تراينغل تلقائيًا، وموضع المقبض يؤخذ من الرسم.',
+    AppLanguage.french:
+        'La crémone génère automatiquement deux tringles, et la position de la poignée est issue du dessin.',
+    AppLanguage.english:
+        'The cremone automatically generates two triangle rods, and the handle position is taken from the drawing.',
+  },
+  'ربط هذا الأكسيسوار بالتراينغل': {
+    AppLanguage.arabic: 'ربط هذا الأكسيسوار بالتراينغل',
+    AppLanguage.french: 'Lier cet accessoire à la tringle',
+    AppLanguage.english: 'Link this accessory to triangle rod',
+  },
+  'بدون تراينغل': {
+    AppLanguage.arabic: 'بدون تراينغل',
+    AppLanguage.french: 'Sans tringle',
+    AppLanguage.english: 'Without triangle rod',
+  },
+  'عدد التراينغل لهذا الأكسيسوار': {
+    AppLanguage.arabic: 'عدد التراينغل لهذا الأكسيسوار',
+    AppLanguage.french: 'Nombre de tringles pour cet accessoire',
+    AppLanguage.english: 'Number of triangle rods for this accessory',
+  },
+  'موضع التقسيم': {
+    AppLanguage.arabic: 'موضع التقسيم',
+    AppLanguage.french: 'Position de division',
+    AppLanguage.english: 'Division position',
+  },
+  'منتصف الضلفة': {
+    AppLanguage.arabic: 'منتصف الضلفة',
+    AppLanguage.french: 'Milieu du vantail',
+    AppLanguage.english: 'Middle of sash',
+  },
+  'مسافة من الأسفل': {
+    AppLanguage.arabic: 'مسافة من الأسفل',
+    AppLanguage.french: 'Distance depuis le bas',
+    AppLanguage.english: 'Distance from bottom',
+  },
+  'المسافة من أسفل الضلفة (مم)': {
+    AppLanguage.arabic: 'المسافة من أسفل الضلفة (مم)',
+    AppLanguage.french: 'Distance depuis le bas du vantail (mm)',
+    AppLanguage.english: 'Distance from sash bottom (mm)',
+  },
+
+  // ── 7. الأنظمة الجاهزة للرسم السريع (Preset Window Systems) ──
+  'الأنظمة الجاهزة': {
+    AppLanguage.arabic: 'الأنظمة الجاهزة',
+    AppLanguage.french: 'Systèmes prêts',
+    AppLanguage.english: 'Ready systems',
+  },
+  'اختيار نظام جاهز': {
+    AppLanguage.arabic: 'اختيار نظام جاهز',
+    AppLanguage.french: 'Choisir un modèle prêt',
+    AppLanguage.english: 'Select a preset system',
+  },
+  'أنظمة ونماذج جاهزة للرسم السريع': {
+    AppLanguage.arabic: 'أنظمة ونماذج جاهزة للرسم السريع',
+    AppLanguage.french: 'Modèles prêts pour un dessin rapide',
+    AppLanguage.english: 'Ready models for quick drawing',
+  },
+  'أدخل أبعاد الإطار واختر النموذج المطلوب ليرسم تلقائياً بدقة': {
+    AppLanguage.arabic: 'أدخل أبعاد الإطار واختر النموذج المطلوب ليرسم تلقائياً بدقة',
+    AppLanguage.french: 'Saisissez les dimensions et choisissez le modèle à dessiner automatiquement',
+    AppLanguage.english: 'Enter frame dimensions and choose the template to draw automatically',
+  },
+  'نافذة بدون ستار': {
+    AppLanguage.arabic: 'نافذة بدون ستار',
+    AppLanguage.french: 'Fenêtre sans volet',
+    AppLanguage.english: 'Window without shutter',
+  },
+  'دلفة أو دلفتين تفتح جانبياً حسب العرض': {
+    AppLanguage.arabic: 'دلفة أو دلفتين تفتح جانبياً حسب العرض',
+    AppLanguage.french: '1 ou 2 vantaux ouvrants selon la largeur',
+    AppLanguage.english: '1 or 2 sashes based on width',
+  },
+  'نافذة مع ستار': {
+    AppLanguage.arabic: 'نافذة مع ستار',
+    AppLanguage.french: 'Fenêtre avec volet',
+    AppLanguage.english: 'Window with shutter',
+  },
+  'دلفة أو دلفتين مع صندوق الستار (Monobloc)': {
+    AppLanguage.arabic: 'دلفة أو دلفتين مع صندوق الستار (Monobloc)',
+    AppLanguage.french: '1 ou 2 vantaux avec coffre volet monobloc',
+    AppLanguage.english: '1 or 2 sashes with monobloc shutter',
+  },
+  'نافذة جرارة بدون ستار': {
+    AppLanguage.arabic: 'نافذة جرارة بدون ستار',
+    AppLanguage.french: 'Coulissant sans volet',
+    AppLanguage.english: 'Sliding window without shutter',
+  },
+  'نافذة منزلقة بضلفتين (2 Vantaux)': {
+    AppLanguage.arabic: 'نافذة منزلقة بضلفتين (2 Vantaux)',
+    AppLanguage.french: 'Coulissant standard à 2 vantaux',
+    AppLanguage.english: 'Standard 2-sash sliding window',
+  },
+  'نافذة جرارة مع الستار': {
+    AppLanguage.arabic: 'نافذة جرارة مع الستار',
+    AppLanguage.french: 'Coulissant avec volet',
+    AppLanguage.english: 'Sliding window with shutter',
+  },
+  'نافذة منزلقة بضلفتين مع صندوق الستار': {
+    AppLanguage.arabic: 'نافذة منزلقة بضلفتين مع صندوق الستار',
+    AppLanguage.french: 'Coulissant 2 vantaux avec coffre volet',
+    AppLanguage.english: '2-sash sliding with shutter box',
+  },
+  'باب بضلفة واحدة مع قفل': {
+    AppLanguage.arabic: 'باب بضلفة واحدة مع قفل',
+    AppLanguage.french: 'Porte 1 vantail avec serrure',
+    AppLanguage.english: 'Single door with lock',
+  },
+  'بروفيل ضلفة 105، قفل بمفتاح وبدون إطار سفلي': {
+    AppLanguage.arabic: 'بروفيل ضلفة 105، قفل بمفتاح وبدون إطار سفلي',
+    AppLanguage.french: 'Ouvrant 105, serrure à clé, sans dormant bas',
+    AppLanguage.english: 'Sash 105, key lock, without bottom frame',
+  },
+  'باب بضلفتين مع قفل': {
+    AppLanguage.arabic: 'باب بضلفتين مع قفل',
+    AppLanguage.french: 'Porte 2 vantaux مع serrure',
+    AppLanguage.english: 'Double door with lock',
+  },
+  'ضلفتين 105، قفل بمفتاح وبدون إطار سفلي': {
+    AppLanguage.arabic: 'ضلفتين 105، قفل بمفتاح وبدون إطار سفلي',
+    AppLanguage.french: '2 vantaux 105, serrure à clé, sans dormant bas',
+    AppLanguage.english: '2 sashes 105, key lock, without bottom frame',
+  },
+  'ستار وحده': {
+    AppLanguage.arabic: 'ستار وحده',
+    AppLanguage.french: 'Volet roulant seul',
+    AppLanguage.english: 'Roller shutter only',
+  },
+  'صندوق وشفرات الستار مع المجاري فقط': {
+    AppLanguage.arabic: 'صندوق وشفرات الستار مع المجاري فقط',
+    AppLanguage.french: 'Coffre et lames avec coulisses uniquement',
+    AppLanguage.english: 'Shutter box and slats with guides only',
+  },
+  'نافذة صغيرة تفتح من الأعلى': {
+    AppLanguage.arabic: 'نافذة صغيرة تفتح من الأعلى',
+    AppLanguage.french: 'Châssis à soufflet (abattant)',
+    AppLanguage.english: 'Top-opening hopper window (soufflet)',
+  },
+  'مفصلات سفلية وتفتح من الأعلى (Soufflet)': {
+    AppLanguage.arabic: 'مفصلات سفلية وتفتح من الأعلى (Soufflet)',
+    AppLanguage.french: 'Paumelles en bas et ouverture par le haut',
+    AppLanguage.english: 'Hinges on bottom, opens from top (soufflet)',
+  },
+  'رسم هذا النظام': {
+    AppLanguage.arabic: 'رسم هذا النظام',
+    AppLanguage.french: 'Dessiner ce modèle',
+    AppLanguage.english: 'Draw this template',
+  },
+  'تطبيق ورسم النظام': {
+    AppLanguage.arabic: 'تطبيق ورسم النظام',
+    AppLanguage.french: 'Appliquer et dessiner',
+    AppLanguage.english: 'Apply and draw',
+  },
+  'القياس الافتراضي': {
+    AppLanguage.arabic: 'القياس الافتراضي',
+    AppLanguage.french: 'Dimension par défaut',
+    AppLanguage.english: 'Default dimension',
+  },
 };
+
 

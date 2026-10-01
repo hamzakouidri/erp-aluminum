@@ -274,12 +274,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value: [
-                      'full_substitution',
-                      'chicane_combination',
-                      'independent_screwed',
-                      'none',
-                    ].contains(selectedRenfortType)
+                    value:
+                        [
+                          'full_substitution',
+                          'chicane_combination',
+                          'independent_screwed',
+                          'none',
+                        ].contains(selectedRenfortType)
                         ? selectedRenfortType
                         : 'full_substitution',
                     decoration: InputDecoration(
@@ -288,15 +289,23 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     items: [
                       DropdownMenuItem(
                         value: 'full_substitution',
-                        child: Text(_tr('استبدال كامل للمقطع (Full Substitution - مثل TPR)')),
+                        child: Text(
+                          _tr(
+                            'استبدال كامل للمقطع (Full Substitution - مثل TPR)',
+                          ),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'chicane_combination',
-                        child: Text(_tr('شيكان مدعمة مدمجة (Chicane Renforcée)')),
+                        child: Text(
+                          _tr('شيكان مدعمة مدمجة (Chicane Renforcée)'),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'independent_screwed',
-                        child: Text(_tr('عمود تدعيم مستقل ببراغي (Renfort Rapporté)')),
+                        child: Text(
+                          _tr('عمود تدعيم مستقل ببراغي (Renfort Rapporté)'),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'none',
@@ -416,15 +425,23 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     items: [
                       DropdownMenuItem(
                         value: 'full_substitution',
-                        child: Text(_tr('استبدال كامل للمقطع (Full Substitution - مثل TPR)')),
+                        child: Text(
+                          _tr(
+                            'استبدال كامل للمقطع (Full Substitution - مثل TPR)',
+                          ),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'chicane_combination',
-                        child: Text(_tr('شيكان مدعمة مدمجة (Chicane Renforcée)')),
+                        child: Text(
+                          _tr('شيكان مدعمة مدمجة (Chicane Renforcée)'),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'independent_screwed',
-                        child: Text(_tr('عمود تدعيم مستقل ببراغي (Renfort Rapporté)')),
+                        child: Text(
+                          _tr('عمود تدعيم مستقل ببراغي (Renfort Rapporté)'),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'none',
@@ -860,7 +877,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       DropdownMenuItem(value: 'seuil', child: Text('Seuil')),
                       DropdownMenuItem(
                         value: 'triangle',
-                        child: Text('Triangle'),
+                        child: Text('Tringle / Triangle'),
                       ),
                       DropdownMenuItem(
                         value: 'bardage',
@@ -909,8 +926,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         isSashRole = val == 'sash';
                         isMullionRole = val == 'mullion';
                         final bool is3PieceSash =
-                            hasThreePieceSash ||
-                            seriesName.contains('TPR');
+                            hasThreePieceSash || seriesName.contains('TPR');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
                                 seriesType == 'منزلق' ||
@@ -956,8 +972,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       (seriesType == 'Coulissant' ||
                           seriesType == 'منزلق' ||
                           seriesType == 'جرار') &&
-                      (hasThreePieceSash ||
-                          seriesName.contains('TPR'))) ...[
+                      (hasThreePieceSash || seriesName.contains('TPR'))) ...[
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value:
@@ -1523,7 +1538,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       DropdownMenuItem(value: 'seuil', child: Text('Seuil')),
                       DropdownMenuItem(
                         value: 'triangle',
-                        child: Text('Triangle'),
+                        child: Text('Tringle / Triangle'),
                       ),
                       DropdownMenuItem(
                         value: 'bardage',
@@ -1573,8 +1588,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         isSashRole = val == 'sash';
                         isMullionRole = val == 'mullion';
                         final bool is3PieceSash =
-                            hasThreePieceSash ||
-                            seriesName.contains('TPR');
+                            hasThreePieceSash || seriesName.contains('TPR');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
                                 seriesType == 'منزلق' ||
@@ -1620,8 +1634,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       (seriesType == 'Coulissant' ||
                           seriesType == 'منزلق' ||
                           seriesType == 'جرار') &&
-                      (hasThreePieceSash ||
-                          seriesName.contains('TPR'))) ...[
+                      (hasThreePieceSash || seriesName.contains('TPR'))) ...[
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value:

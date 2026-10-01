@@ -2816,23 +2816,38 @@ class _WindowViewState extends State<WindowView> {
                                         isDense: true,
                                         decoration: InputDecoration(
                                           labelText: Localization.translate(
-                                            'نوع الستار (Mechanism):',
+                                            'نوع الستار',
                                             lang,
                                           ),
                                           border: const OutlineInputBorder(),
                                         ),
-                                        items: const [
+                                        items: [
                                           DropdownMenuItem(
                                             value: 'حزام',
-                                            child: Text('حزام (Sangle)'),
+                                            child: Text(
+                                              Localization.translate(
+                                                'حزام',
+                                                lang,
+                                              ),
+                                            ),
                                           ),
                                           DropdownMenuItem(
                                             value: 'منايفال',
-                                            child: Text('مانيفيل (Manivelle)'),
+                                            child: Text(
+                                              Localization.translate(
+                                                'مانيفيل',
+                                                lang,
+                                              ),
+                                            ),
                                           ),
                                           DropdownMenuItem(
                                             value: 'محرك',
-                                            child: Text('محرك (Moteur)'),
+                                            child: Text(
+                                              Localization.translate(
+                                                'محرك',
+                                                lang,
+                                              ),
+                                            ),
                                           ),
                                         ],
                                         onChanged: (value) {
@@ -2850,19 +2865,29 @@ class _WindowViewState extends State<WindowView> {
                                         isDense: true,
                                         decoration: InputDecoration(
                                           labelText: Localization.translate(
-                                            'جهة الستار (Drive Side):',
+                                            'جهة الستار',
                                             lang,
                                           ),
                                           border: const OutlineInputBorder(),
                                         ),
-                                        items: const [
+                                        items: [
                                           DropdownMenuItem(
                                             value: 'left',
-                                            child: Text('يسار (Gauche)'),
+                                            child: Text(
+                                              Localization.translate(
+                                                'يسار',
+                                                lang,
+                                              ),
+                                            ),
                                           ),
                                           DropdownMenuItem(
                                             value: 'right',
-                                            child: Text('يمين (Droite)'),
+                                            child: Text(
+                                              Localization.translate(
+                                                'يمين',
+                                                lang,
+                                              ),
+                                            ),
                                           ),
                                         ],
                                         onChanged: (value) {
@@ -3231,6 +3256,29 @@ class _WindowViewState extends State<WindowView> {
 
     return [
       const SizedBox(width: 8),
+      TextButton.icon(
+        style: buttonStyle.copyWith(
+          backgroundColor: WidgetStatePropertyAll(
+            isDark
+                ? Colors.blue.shade900.withValues(alpha: 0.4)
+                : Colors.blue.shade50,
+          ),
+        ),
+        onPressed: () => _showPresetSystemsDialog(context),
+        icon: Icon(
+          Icons.auto_awesome_mosaic_rounded,
+          size: 18,
+          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+        ),
+        label: Text(
+          Localization.translate('الأنظمة الجاهزة', lang),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+          ),
+        ),
+      ),
       TextButton.icon(
         style: buttonStyle,
         onPressed: () => _showResizeDialog(context, focusWidth: true),
@@ -5580,6 +5628,119 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               ),
                             ),
+                          if (widget.model.zones.isEmpty &&
+                              !widget.model.isShutterOnly &&
+                              widget.model.drawingStart == null)
+                            Center(
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 420,
+                                ),
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).cardColor.withValues(alpha: 0.95),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).dividerColor.withValues(alpha: 0.6),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade700.withValues(
+                                          alpha: 0.12,
+                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.auto_awesome_mosaic_rounded,
+                                        color: Colors.blue.shade700,
+                                        size: 36,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      Localization.translate(
+                                        'أنظمة ونماذج جاهزة للرسم السريع',
+                                        lang,
+                                      ),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      Localization.translate(
+                                        'أدخل أبعاد الإطار واختر النموذج المطلوب ليرسم تلقائياً بدقة',
+                                        lang,
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color:
+                                            Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white60
+                                            : Colors.black54,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue.shade700,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 11,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () =>
+                                          _showPresetSystemsDialog(context),
+                                      icon: const Icon(
+                                        Icons.touch_app_rounded,
+                                        size: 20,
+                                      ),
+                                      label: Text(
+                                        Localization.translate(
+                                          'اختيار نظام جاهز',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       );
                     },
@@ -5588,6 +5749,36 @@ class _WindowViewState extends State<WindowView> {
                 _buildInteractiveBottomPanel(context),
               ],
             ),
+
+            // 🔵 زر رفع القائمة السفلية عند إخفائها
+            if (!_isBottomPanelExpanded)
+              Positioned(
+                bottom: 8,
+                left: 8,
+                child: GestureDetector(
+                  onTap: () => setState(() => _isBottomPanelExpanded = true),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade700,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 6,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.keyboard_arrow_up_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
 
             // 🟢 القائمة الجانبية اليسرى (Left Drawer) لخصائص الزجاج
             if (!widget.model.isShutterOnly)
@@ -11355,6 +11546,445 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  void _showPresetSystemsDialog(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final presets =
+        <
+          ({
+            WindowPresetType type,
+            String title,
+            String subtitle,
+            double defaultW,
+            double defaultH,
+            IconData icon,
+            Color accentColor,
+          })
+        >[
+          (
+            type: WindowPresetType.windowNoShutter,
+            title: 'نافذة بدون ستار',
+            subtitle: 'دلفة أو دلفتين تفتح جانبياً حسب العرض',
+            defaultW: 1200.0,
+            defaultH: 1200.0,
+            icon: Icons.window_rounded,
+            accentColor: Colors.blue,
+          ),
+          (
+            type: WindowPresetType.windowWithShutter,
+            title: 'نافذة مع ستار',
+            subtitle: 'دلفة أو دلفتين مع صندوق الستار (Monobloc)',
+            defaultW: 1200.0,
+            defaultH: 1400.0,
+            icon: Icons.layers_rounded,
+            accentColor: Colors.teal,
+          ),
+          (
+            type: WindowPresetType.slidingNoShutter,
+            title: 'نافذة جرارة بدون ستار',
+            subtitle: 'نافذة منزلقة بضلفتين (2 Vantaux)',
+            defaultW: 1400.0,
+            defaultH: 1200.0,
+            icon: Icons.sync_alt_rounded,
+            accentColor: Colors.indigo,
+          ),
+          (
+            type: WindowPresetType.slidingWithShutter,
+            title: 'نافذة جرارة مع الستار',
+            subtitle: 'نافذة منزلقة بضلفتين مع صندوق الستار',
+            defaultW: 1400.0,
+            defaultH: 1400.0,
+            icon: Icons.dock_rounded,
+            accentColor: Colors.cyan,
+          ),
+          (
+            type: WindowPresetType.singleDoor,
+            title: 'باب بضلفة واحدة مع قفل',
+            subtitle: 'بروفيل ضلفة 105، قفل بمفتاح وبدون إطار سفلي',
+            defaultW: 900.0,
+            defaultH: 2100.0,
+            icon: Icons.door_back_door_rounded,
+            accentColor: Colors.deepOrange,
+          ),
+          (
+            type: WindowPresetType.doubleDoor,
+            title: 'باب بضلفتين مع قفل',
+            subtitle: 'ضلفتين 105، قفل بمفتاح وبدون إطار سفلي',
+            defaultW: 1600.0,
+            defaultH: 2100.0,
+            icon: Icons.meeting_room_rounded,
+            accentColor: Colors.purple,
+          ),
+          (
+            type: WindowPresetType.shutterOnly,
+            title: 'ستار وحده',
+            subtitle: 'صندوق وشفرات الستار مع المجاري فقط',
+            defaultW: 1200.0,
+            defaultH: 1200.0,
+            icon: Icons.table_rows_rounded,
+            accentColor: Colors.orange,
+          ),
+          (
+            type: WindowPresetType.topOpeningSmallWindow,
+            title: 'نافذة صغيرة تفتح من الأعلى',
+            subtitle: 'مفصلات سفلية وتفتح من الأعلى (Soufflet)',
+            defaultW: 600.0,
+            defaultH: 500.0,
+            icon: Icons.vertical_align_top_rounded,
+            accentColor: Colors.green,
+          ),
+        ];
+
+    WindowPresetType selectedType = WindowPresetType.windowNoShutter;
+    final initialW = widget.model.width > 200 ? widget.model.width : 1200.0;
+    final initialH = widget.model.height > 200 ? widget.model.height : 1200.0;
+    final widthCtrl = TextEditingController(text: initialW.toInt().toString());
+    final heightCtrl = TextEditingController(text: initialH.toInt().toString());
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            void apply(WindowPresetType type) async {
+              final w = double.tryParse(widthCtrl.text);
+              final h = double.tryParse(heightCtrl.text);
+              if (w == null || h == null || w < 200 || h < 200) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      Localization.translate(
+                        'يرجى إدخال أبعاد صحيحة (العرض والارتفاع أكبر من 200 مم)',
+                        lang,
+                      ),
+                    ),
+                    backgroundColor: Colors.red.shade700,
+                  ),
+                );
+                return;
+              }
+              Navigator.of(dialogContext).pop();
+              await widget.model.applyPresetTemplate(
+                preset: type,
+                newWidth: w,
+                newHeight: h,
+              );
+              if (mounted) setState(() {});
+            }
+
+            final currentPreset = presets.firstWhere(
+              (p) => p.type == selectedType,
+            );
+
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade700.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.auto_awesome_mosaic_rounded,
+                      color: Colors.blue.shade700,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          Localization.translate('الأنظمة الجاهزة', lang),
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          Localization.translate(
+                            'أدخل أبعاد الإطار واختر النموذج المطلوب ليرسم تلقائياً بدقة',
+                            lang,
+                          ),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 720,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.blue.shade50.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white12
+                                : Colors.blue.shade100,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: widthCtrl,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(5),
+                                ],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    'العرض الإجمالي (mm)',
+                                    lang,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.straighten_rounded,
+                                    size: 20,
+                                  ),
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: isDark
+                                      ? const Color(0xFF262638)
+                                      : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: heightCtrl,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(5),
+                                ],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    'الارتفاع الإجمالي (mm)',
+                                    lang,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.height_rounded,
+                                    size: 20,
+                                  ),
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: isDark
+                                      ? const Color(0xFF262638)
+                                      : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: presets.map((preset) {
+                          final isSelected = selectedType == preset.type;
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setDialogState(() {
+                                selectedType = preset.type;
+                                widthCtrl.text = preset.defaultW
+                                    .toInt()
+                                    .toString();
+                                heightCtrl.text = preset.defaultH
+                                    .toInt()
+                                    .toString();
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              width: 340,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? preset.accentColor.withValues(
+                                        alpha: isDark ? 0.25 : 0.12,
+                                      )
+                                    : (isDark
+                                          ? const Color(0xFF252538)
+                                          : Colors.grey.shade50),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? preset.accentColor
+                                      : (isDark
+                                            ? Colors.white12
+                                            : Colors.grey.shade300),
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: preset.accentColor.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      preset.icon,
+                                      color: preset.accentColor,
+                                      size: 26,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          Localization.translate(
+                                            preset.title,
+                                            lang,
+                                          ),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: isSelected
+                                                ? preset.accentColor
+                                                : (isDark
+                                                      ? Colors.white
+                                                      : Colors.black87),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          Localization.translate(
+                                            preset.subtitle,
+                                            lang,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            color: isDark
+                                                ? Colors.white60
+                                                : Colors.black54,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${Localization.translate('القياس الافتراضي', lang)}: ${preset.defaultW.toInt()} × ${preset.defaultH.toInt()}',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            color: preset.accentColor
+                                                .withValues(alpha: 0.9),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.arrow_forward_rounded,
+                                      size: 20,
+                                    ),
+                                    color: preset.accentColor,
+                                    tooltip: Localization.translate(
+                                      'رسم هذا النظام',
+                                      lang,
+                                    ),
+                                    onPressed: () => apply(preset.type),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    Localization.translate('إلغاء', lang),
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: currentPreset.accentColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () => apply(selectedType),
+                  icon: const Icon(Icons.brush_rounded, size: 18),
+                  label: Text(
+                    Localization.translate('تطبيق ورسم النظام', lang),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   List<Map<String, dynamic>> _availableMullionFrameSections() {
     final frames = <Map<String, dynamic>>[];
     final seenIds = <String>{};
@@ -12923,6 +13553,48 @@ class _WindowViewState extends State<WindowView> {
         child: Row(
           children: [
             InkWell(
+              onTap: () => _showPresetSystemsDialog(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.blue.shade900.withValues(alpha: 0.4)
+                      : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isDark ? Colors.blue.shade700 : Colors.blue.shade300,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_mosaic_rounded,
+                      size: 15,
+                      color: isDark
+                          ? Colors.blue.shade300
+                          : Colors.blue.shade700,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      Localization.translate('الأنظمة الجاهزة', lang),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isDark
+                            ? Colors.blue.shade200
+                            : Colors.blue.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
               onTap: () {
                 _showResizeDialog(context, focusWidth: true);
               },
@@ -13546,6 +14218,235 @@ class _WindowViewState extends State<WindowView> {
         );
       },
     );
+  }
+
+  Future<void> _showFrameSideProfileDialog(BuildContext context) async {
+    final frame = widget.model.frameRectForSelection(
+      widget.model.selection.zoneId,
+    );
+    if (frame == null) return;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    String tr(String ar, String fr, String en) => switch (lang) {
+      AppLanguage.french => fr,
+      AppLanguage.english => en,
+      AppLanguage.arabic => ar,
+    };
+
+    final sliding = widget.model.frameUsesSlidingSeries(frame);
+    final base = widget.model.frameSectionForRect(frame)?.toMap();
+    if (base == null) return;
+    final raw = sliding
+        ? _slidingFrameProfiles
+        : (_openingFrameProfiles.isNotEmpty
+              ? _openingFrameProfiles
+              : _frameProfiles);
+    final allRows = <Map<String, dynamic>>[...raw];
+    if (widget.model.hasFrameJoinRules) {
+      for (final system in widget.model.availableSystems) {
+        for (final series in system.series) {
+          for (final section in series.sections) {
+            final type = section.type.toLowerCase();
+            if (!(section.isFrame ||
+                type == 'frame' ||
+                type.contains('cadre') ||
+                type.contains('dormant'))) {
+              continue;
+            }
+            allRows.add({
+              ...section.toMap(),
+              'source_series_id': series.id,
+              'series_id': series.id,
+            });
+          }
+        }
+      }
+    }
+
+    final candidates = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final item in allRows) {
+      final id = (item['id'] ?? '').toString();
+      if (id.isEmpty || !seen.add(id)) continue;
+      final same = id == (base['id'] ?? '').toString();
+      if (same || widget.model.frameMapsCanJoin(base, item)) {
+        candidates.add(item);
+      }
+    }
+    if (!seen.contains((base['id'] ?? '').toString())) {
+      candidates.insert(0, base);
+    }
+
+    final selectedSides = <String>{};
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Widget sideButton(String side, IconData icon, String label) {
+            final selected = selectedSides.contains(side);
+            final override = widget.model.frameSideOverrideForRect(frame, side);
+            return FilterChip(
+              selected: selected,
+              avatar: Icon(icon, size: 18),
+              label: Text(
+                override == null
+                    ? label
+                    : '$label • ${(override['code'] ?? override['name'] ?? '').toString()}',
+              ),
+              onSelected: (value) => setDialogState(() {
+                value ? selectedSides.add(side) : selectedSides.remove(side);
+              }),
+            );
+          }
+
+          return AlertDialog(
+            title: Text(
+              tr(
+                'تخصيص قطع الإطار حسب الجهة',
+                'Personnaliser les côtés du dormant',
+                'Customize frame sides',
+              ),
+            ),
+            content: SizedBox(
+              width: 620,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      tr(
+                        'حدد جهة أو عدة جهات، ثم اختر الإطار الذي ستُقطع منه. تظهر هنا فقط الإطارات المرتبطة والمتوافقة.',
+                        'Sélectionnez un ou plusieurs côtés, puis le dormant utilisé. Seuls les dormants liés et compatibles sont affichés.',
+                        'Select one or more sides, then choose the frame profile. Only linked compatible frames are shown.',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        sideButton(
+                          'top',
+                          Icons.arrow_upward,
+                          tr('علوي', 'Haut', 'Top'),
+                        ),
+                        sideButton(
+                          'right',
+                          Icons.arrow_forward,
+                          tr('يمين', 'Droite', 'Right'),
+                        ),
+                        sideButton(
+                          'bottom',
+                          Icons.arrow_downward,
+                          tr('سفلي', 'Bas', 'Bottom'),
+                        ),
+                        sideButton(
+                          'left',
+                          Icons.arrow_back,
+                          tr('يسار', 'Gauche', 'Left'),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 28),
+                    ...candidates.map((item) {
+                      final code = (item['code'] ?? '').toString();
+                      final name = (item['name'] ?? '').toString();
+                      return ListTile(
+                        minVerticalPadding: 8,
+                        leading: Container(
+                          width: 62,
+                          height: 62,
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white10
+                                : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.white24
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: SectionImageWidget(
+                            code: code,
+                            name: name,
+                            imagePath: item['image_path']?.toString(),
+                            size: 54,
+                            fallbackIcon: Icons.crop_square_rounded,
+                          ),
+                        ),
+                        title: Text(
+                          [code, name].where((e) => e.isNotEmpty).join(' - '),
+                        ),
+                        subtitle: Text(
+                          ((item['couvre_joint_width'] as num?)?.toDouble() ??
+                                      0) >
+                                  0
+                              ? tr(
+                                  'بغطاء جانبي مدمج',
+                                  'Avec couvre-joint intégré',
+                                  'Integrated side cover',
+                                )
+                              : tr(
+                                  'بدون غطاء جانبي مدمج',
+                                  'Sans couvre-joint intégré',
+                                  'Without integrated side cover',
+                                ),
+                        ),
+                        enabled: selectedSides.isNotEmpty,
+                        onTap: selectedSides.isEmpty
+                            ? null
+                            : () {
+                                widget.model.setFrameSideOverrides(
+                                  frame,
+                                  selectedSides,
+                                  item,
+                                );
+                                Navigator.pop(dialogContext);
+                              },
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: selectedSides.isEmpty
+                    ? null
+                    : () {
+                        widget.model.setFrameSideOverrides(
+                          frame,
+                          selectedSides,
+                          null,
+                        );
+                        Navigator.pop(dialogContext);
+                      },
+                child: Text(
+                  tr(
+                    'استعادة الإطار الأصلي',
+                    'Rétablir le dormant',
+                    'Restore original frame',
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(tr('إغلاق', 'Fermer', 'Close')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   void _showSplitDialog(BuildContext context, bool isHorizontal) {
@@ -16834,10 +17735,14 @@ class _WindowViewState extends State<WindowView> {
           rawOpeningProfiles,
           sliding: false,
         );
+        // `mixed` describes the editor route, not necessarily the current
+        // drawing. A Project Baton door must not display sliding frames just
+        // because the route supports both families.
+        final drawingHasSlidingFrame = widget.model.zones.any(
+          (candidate) => candidate.content == ZoneContent.slidingSash,
+        );
         final rawSlidingProfiles =
-            (widget.systemMode == 'mixed' ||
-                widget.systemMode == 'sliding' ||
-                selectedZoneUsesSlidingFrame)
+            (drawingHasSlidingFrame || selectedZoneUsesSlidingFrame)
             ? _slidingFrameProfiles
             : <Map<String, dynamic>>[];
         final slidingProfiles =
@@ -17116,6 +18021,23 @@ class _WindowViewState extends State<WindowView> {
           }
         }
 
+        final selectedPhysicalFrame = widget.model.frameRectForSelection(
+          widget.model.selection.zoneId,
+        );
+        if (selectedPhysicalFrame != null) {
+          children.add(const SizedBox(width: 8));
+          children.add(
+            _ContentButton(
+              label: Localization.translate('تخصيص جهات الإطار', lang),
+              icon: Icons.open_with_rounded,
+              selected: widget.model.frameHasSideOverrides(
+                selectedPhysicalFrame,
+              ),
+              onPressed: () => _showFrameSideProfileDialog(context),
+            ),
+          );
+        }
+
         // زر الغطاء الجانبي (Side Cover toggle)
         children.add(const SizedBox(width: 8));
         final bool isNestedSlidingFrame =
@@ -17159,20 +18081,20 @@ class _WindowViewState extends State<WindowView> {
           );
         }
 
-        // زر بروفيل الزاوية 90° (Profil d'angle / Tube carré 90°)
-        children.add(const SizedBox(width: 8));
-        children.add(
-          _ContentButton(
-            label: widget.model.usesProfileAngle
-                ? '${Localization.translate('بروفيل زاوية 90°', lang)}: ${widget.model.localizedProfileAngleModeName(lang)}'
-                : Localization.translate('إضافة بروفيل زاوية 90°', lang),
-            icon: Icons.square_foot_rounded,
-            selected: widget.model.usesProfileAngle,
-            onPressed: () {
-              _showProfileAngleDialog(context);
-            },
-          ),
-        );
+        // بروفيل الزاوية وصلة بين إطارين مستقلين، فلا يظهر لإطار واحد.
+        if (widget.model.getFrameRects().length >= 2) {
+          children.add(const SizedBox(width: 8));
+          children.add(
+            _ContentButton(
+              label: widget.model.usesProfileAngle
+                  ? '${Localization.translate('بروفيل زاوية 90°', lang)}: ${widget.model.localizedProfileAngleModeName(lang)}'
+                  : Localization.translate('إضافة بروفيل زاوية 90°', lang),
+              icon: Icons.square_foot_rounded,
+              selected: widget.model.usesProfileAngle,
+              onPressed: () => _showProfileAngleDialog(context),
+            ),
+          );
+        }
 
         if (!widget.model.isPVC &&
             (selectedZoneUsesOpeningFrame ||
@@ -19830,6 +20752,12 @@ class AppWorkspacePainter extends CustomPainter {
                       slidingFrameCode.isNotEmpty
                   ? slidingFrameCode
                   : frameCode);
+        String sideFrameCode(String side) {
+          final override = model.frameSideOverrideForRect(frame, side);
+          final code = (override?['code'] ?? '').toString().trim();
+          return code.isNotEmpty ? code : effectiveFrameCode;
+        }
+
         final isOnlyFrame = frameRects.length == 1;
         final netHeight = model.hasShutter && !model.isCaissonTunnel
             ? model.height - model.shutterBoxHeight
@@ -19858,7 +20786,7 @@ class AppWorkspacePainter extends CustomPainter {
                 : 0.0);
         _paintProfileDimensionLabel(
           canvas,
-          cutLabel(frameWidth, effectiveFrameCode),
+          cutLabel(frameWidth, sideFrameCode('top')),
           Rect.fromLTWH(
             frame.left + 2,
             frame.top + 1,
@@ -19868,7 +20796,7 @@ class AppWorkspacePainter extends CustomPainter {
         );
         _paintProfileDimensionLabel(
           canvas,
-          cutLabel(frameHeight, effectiveFrameCode),
+          cutLabel(frameHeight, sideFrameCode('left')),
           Rect.fromLTWH(
             frame.left + 1,
             frame.top + 2,

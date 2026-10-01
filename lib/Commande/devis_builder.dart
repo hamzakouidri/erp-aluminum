@@ -2022,20 +2022,15 @@ class DevisBuilder {
             false);
     final fixedOnlyWindow = !isShutterOnly && _isFixedOnlyWindow(zones);
 
-    final translatedSystem = Localization.translate(systemType, _currentLang);
-    final translatedSeries = Localization.translate(
-      displaySeries,
-      _currentLang,
-    );
-    final gammeParts = <String>[
-      if (translatedSystem.trim().isNotEmpty) translatedSystem.trim(),
-      if (translatedSeries.trim().isNotEmpty &&
-          translatedSeries.trim().toLowerCase() !=
-              translatedSystem.trim().toLowerCase())
-        translatedSeries.trim(),
-    ];
+    // The blue title already describes the window composition.  `Gamme`
+    // therefore contains series names only.  Mixed drawings persist opening
+    // and sliding series separately; keep both, with the sliding series first.
+    final gammeParts = _drawingSeriesLabels(map, displaySeries)
+        .map((name) => Localization.translate(name, _currentLang).trim())
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
     if (gammeParts.isNotEmpty) {
-      final value = gammeParts.join(' - ');
+      final value = gammeParts.join(' / ');
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Gamme: $value',
         AppLanguage.english => 'Series: $value',
@@ -2161,6 +2156,25 @@ class DevisBuilder {
     }
 
     return _removeRedundantGlassSummaryLines(details);
+  }
+
+  static List<String> _drawingSeriesLabels(
+    Map<String, dynamic> map,
+    String fallback,
+  ) {
+    final labels = <String>[];
+    final normalized = <String>{};
+
+    void add(dynamic raw) {
+      final value = raw?.toString().trim() ?? '';
+      if (value.isEmpty || _isGenericWindowLabel(value)) return;
+      if (normalized.add(value.toLowerCase())) labels.add(value);
+    }
+
+    add(map['slidingSeriesName']);
+    add(map['seriesName']);
+    if (labels.isEmpty) add(fallback);
+    return labels;
   }
 
   static List<Map<String, dynamic>> _zonesFromMap(Map<String, dynamic> map) {

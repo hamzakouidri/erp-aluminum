@@ -90,9 +90,9 @@ class Localization {
       }
     }
 
-    // Intercept dynamic shutter box splits: "فصل الصناديق (X)" / "Séparation des caissons (X)" / "Split Caissons (X)"
+    // Intercept dynamic shutter box splits: "فصل الصناديق (X)" / "Séparation des caissons (X)" / "Split shutter boxes (X)"
     final shutterSplitMatch = RegExp(
-      r'^(?:فصل الصناديق|Séparation des caissons|Split Caissons)\s*\(([0-9]+)\)$',
+      r'^(?:فصل الصناديق|Séparation des caissons|Split Caissons|Split shutter boxes)\s*\(([0-9]+)\)$',
       caseSensitive: false,
     ).firstMatch(trimmedKey);
     if (shutterSplitMatch != null) {
@@ -101,7 +101,7 @@ class Localization {
         case AppLanguage.french:
           return 'Séparation des caissons ($count)';
         case AppLanguage.english:
-          return 'Split Caissons ($count)';
+          return 'Split shutter boxes ($count)';
         case AppLanguage.arabic:
           return 'فصل الصناديق ($count)';
       }

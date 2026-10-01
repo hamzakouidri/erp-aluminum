@@ -22,6 +22,8 @@ enum CostMethod { linearMeter, squareMeter, percentage }
 
 enum AppViewMode { classic, tabs, windows }
 
+enum AppUpdateMode { automatic, manual }
+
 class AppSettingsProvider extends ChangeNotifier {
   // Default values
   // French is the default application language.
@@ -30,6 +32,7 @@ class AppSettingsProvider extends ChangeNotifier {
   CostMethod _costMethod = CostMethod.linearMeter;
   // Tabs are the default workspace on phones and other non-desktop devices.
   AppViewMode _viewMode = AppViewMode.tabs;
+  AppUpdateMode _updateMode = AppUpdateMode.automatic;
   double _profitMargin = 0.0;
   double _fontSizeScale = 1.0;
   String _geminiApiKey =
@@ -64,6 +67,9 @@ class AppSettingsProvider extends ChangeNotifier {
   CostMethod get costMethod => _costMethod;
 
   AppViewMode get viewMode => _viewMode;
+  AppUpdateMode get updateMode => _updateMode;
+  bool get isAutoUpdateEnabled => _updateMode == AppUpdateMode.automatic;
+  String get appVersion => '1.0.0';
 
   double get profitMargin => _profitMargin;
 
@@ -625,6 +631,16 @@ class AppSettingsProvider extends ChangeNotifier {
       _viewMode = AppViewMode.tabs;
     }
 
+    // Load Update Mode (defaults to automatic)
+    final updateModeIndex = prefs.getInt('app_update_mode');
+    if (updateModeIndex != null &&
+        updateModeIndex >= 0 &&
+        updateModeIndex < AppUpdateMode.values.length) {
+      _updateMode = AppUpdateMode.values[updateModeIndex];
+    } else {
+      _updateMode = AppUpdateMode.automatic;
+    }
+
     // Load Font Size
     _fontSizeScale = prefs.getDouble('app_font_scale') ?? 1.0;
 
@@ -693,5 +709,12 @@ class AppSettingsProvider extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('app_gemini_api_key', key);
+  }
+
+  Future<void> setUpdateMode(AppUpdateMode mode) async {
+    _updateMode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('app_update_mode', mode.index);
   }
 }
