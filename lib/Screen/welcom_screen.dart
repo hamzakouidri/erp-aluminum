@@ -455,8 +455,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
           _newOrdersCount = unreadOrders;
           _commandesCount = stats['cmdCount'] ?? '0';
           _cmdTrend = stats['cmdTrend'] ?? '—';
-          _ordersByStatus = Map<String, int>.from(
-            (chartData['byStatus'] as Map<String, int>?) ?? {},
+          _ordersByStatus = canonicalizeOrderStatusCounts(
+            Map<String, int>.from(
+              (chartData['byStatus'] as Map<String, int>?) ?? {},
+            ),
           );
           _ordersByMonth = Map<String, int>.from(
             (chartData['monthly'] as Map<String, int>?) ?? {},

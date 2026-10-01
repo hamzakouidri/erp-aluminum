@@ -3621,6 +3621,64 @@ class _CommandeState extends State<Commande> {
     );
   }
 
+  void _openOrderDetails(Map<String, dynamic> orderData) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            OrderMeasurementsDetailsScreen(orderData: orderData, db: db),
+      ),
+    );
+  }
+
+  Future<void> _openOrderDevis(
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
+    await _showHeavyLoadingDialog(context, lang);
+    try {
+      final rawItems = await db
+          .readCommandeDetails(orderData['id'])
+          .timeout(const Duration(seconds: 10));
+      final List<Map<String, dynamic>> itemsList = rawItems
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      await _restoreDocumentImagesFromStoredBytes(itemsList);
+      final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
+        const Duration(seconds: 6),
+      );
+      final devis = await DevisBuilder.build(
+        order: orderData,
+        items: itemsList,
+        workshop: workshop,
+        documentTitleKey: 'doc_devis',
+      ).timeout(const Duration(seconds: 10));
+      _dismissHeavyLoadingDialog();
+      if (!mounted) return;
+      final oId = orderData['id']?.toString() ?? '';
+      _openInWorkspaceTab(
+        entryId: 'devis_$oId',
+        title: _documentTabTitle(
+          docType: 'devis',
+          orderData: orderData,
+          lang: lang,
+        ),
+        icon: Icons.description_outlined,
+        content: DevisPreviewScreen(data: devis),
+      );
+    } catch (e) {
+      _dismissHeavyLoadingDialog();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showOrderContextMenu(
     BuildContext context,
     Map<String, dynamic> order,
@@ -3673,12 +3731,22 @@ class _CommandeState extends State<Commande> {
         statusRaw.contains('انتهاء') ||
         statusRaw.contains('منتهية');
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shortcuts = ShortcutBindings.instance;
+    String? _getShortcutBadgeText(String commandId) {
+      final binding = shortcuts.bindings[commandId];
+      if (binding == null || binding.isEmpty || binding == 'none') return null;
+      final lbl = ShortcutBindings.label(binding);
+      return lbl == '—' ? null : lbl;
+    }
+
     PopupMenuItem<String> _menuItem(
       String value,
       IconData icon,
       Color color,
       String title, {
       Color? textColor,
+      String? shortcut,
     }) {
       return PopupMenuItem<String>(
         value: value,
@@ -3699,6 +3767,38 @@ class _CommandeState extends State<Commande> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            if (shortcut != null && shortcut.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                constraints: const BoxConstraints(minWidth: 22),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2D3748) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF4A5568) : const Color(0xFFCBD5E1),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      offset: const Offset(0, 1),
+                      blurRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  shortcut,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white70 : const Color(0xFF334155),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       );
@@ -3715,6 +3815,7 @@ class _CommandeState extends State<Commande> {
             : (lang == AppLanguage.french
                   ? 'Détails de la commande'
                   : 'Order Details'),
+        shortcut: _getShortcutBadgeText('details_order'),
       ),
       const PopupMenuDivider(height: 8),
 
@@ -3724,6 +3825,7 @@ class _CommandeState extends State<Commande> {
         Icons.picture_as_pdf,
         Colors.red,
         Localization.translate('doc_devis_menu', lang),
+        shortcut: _getShortcutBadgeText('devis_order'),
       ),
 
       // 1.1 صور النوافذ (Picture)
@@ -3900,6 +4002,7 @@ class _CommandeState extends State<Commande> {
           Icons.edit,
           Colors.blue,
           Localization.translate('Edit Order', lang),
+          shortcut: _getShortcutBadgeText('edit_order'),
         ),
 
       // 6.5 تكرار الطلبية (Duplicate)
@@ -3928,6 +4031,7 @@ class _CommandeState extends State<Commande> {
           Colors.redAccent,
           Localization.translate('مسح الطلبية (Supprimer)', lang),
           textColor: Colors.red,
+          shortcut: _getShortcutBadgeText('delete_order'),
         ),
       ],
     ];
@@ -3941,56 +4045,9 @@ class _CommandeState extends State<Commande> {
     if (!mounted || selected == null) return;
     switch (selected) {
       case 'details':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                OrderMeasurementsDetailsScreen(orderData: orderData, db: db),
-          ),
-        );
+        _openOrderDetails(orderData);
       case 'devis':
-        await _showHeavyLoadingDialog(context, lang);
-        try {
-          final rawItems = await db
-              .readCommandeDetails(orderData['id'])
-              .timeout(const Duration(seconds: 10));
-          final List<Map<String, dynamic>> itemsList = rawItems
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList();
-          await _restoreDocumentImagesFromStoredBytes(itemsList);
-          final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
-            const Duration(seconds: 6),
-          );
-          final devis = await DevisBuilder.build(
-            order: orderData,
-            items: itemsList,
-            workshop: workshop,
-            documentTitleKey: 'doc_devis',
-          ).timeout(const Duration(seconds: 10));
-          _dismissHeavyLoadingDialog();
-          if (!mounted) return;
-          final oId = orderData['id']?.toString() ?? '';
-          _openInWorkspaceTab(
-            entryId: 'devis_$oId',
-            title: _documentTabTitle(
-              docType: 'devis',
-              orderData: orderData,
-              lang: lang,
-            ),
-            icon: Icons.description_outlined,
-            content: DevisPreviewScreen(data: devis),
-          );
-        } catch (e) {
-          _dismissHeavyLoadingDialog();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${_t('خطأ أثناء توليد الفاتورة')}: $e'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
+        await _openOrderDevis(orderData, lang);
       case 'picture':
         _exportOrderPicturePdf(context, orderData, lang);
       case 'payment':
@@ -6173,9 +6230,18 @@ class _CommandeState extends State<Commande> {
           );
           return KeyEventResult.handled;
         }
-        if (shortcuts.matches('delete_order', event) &&
+        if ((shortcuts.matches('delete_order', event) ||
+                event.logicalKey == LogicalKeyboardKey.delete) &&
             settings.canDeleteOrders()) {
           _showDeleteConfirmDialog(id);
+          return KeyEventResult.handled;
+        }
+        if (shortcuts.matches('devis_order', event)) {
+          _openOrderDevis(order, lang);
+          return KeyEventResult.handled;
+        }
+        if (shortcuts.matches('details_order', event)) {
+          _openOrderDetails(order);
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;

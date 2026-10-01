@@ -509,6 +509,21 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Importer un fichier .db',
     AppLanguage.english: 'Import .db file',
   },
+  'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.': {
+    AppLanguage.arabic:
+        '\u062a\u0645 \u0627\u0633\u062a\u064a\u0631\u0627\u062f \u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0628\u0646\u062c\u0627\u062d! \u064a\u0631\u062c\u0649 \u0625\u0639\u0627\u062f\u0629 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0644\u062a\u062d\u062f\u064a\u062b \u0643\u0627\u0641\u0629 \u0627\u0644\u0634\u0627\u0634\u0627\u062a.',
+    AppLanguage.french:
+        'Base de donn\u00e9es import\u00e9e avec succ\u00e8s ! Red\u00e9marrez l\u2019application pour actualiser tous les \u00e9crans.',
+    AppLanguage.english:
+        'Database imported successfully! Restart the application to refresh all screens.',
+  },
+  'فشل استيراد قاعدة البيانات': {
+    AppLanguage.arabic:
+        '\u0641\u0634\u0644 \u0627\u0633\u062a\u064a\u0631\u0627\u062f \u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a',
+    AppLanguage.french:
+        '\u00c9chec de l\u2019importation de la base de donn\u00e9es',
+    AppLanguage.english: 'Database import failed',
+  },
   'استيراد نسخة JSON': {
     AppLanguage.arabic: 'استيراد نسخة JSON',
     AppLanguage.french: 'Importer une sauvegarde JSON',

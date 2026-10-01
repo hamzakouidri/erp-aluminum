@@ -766,13 +766,36 @@ class _WindowViewState extends State<WindowView> {
       final label = '$normalizedType $normalizedName $normalizedCode';
       final role = designRole.isNotEmpty ? designRole : sharedRole;
 
-      // Old catalogues sometimes mark accessory profiles as `is_frame`.
-      // Couvre-joint and porte-joint remain separate components and must not
-      // leak into the frame picker because of that stale flag. Keep a real
-      // dormant explicitly assigned to the frame role, even when its name
-      // says that its couvre-joint is integrated.
-      final isFrameRole = role == 'frame';
-      final isNonFrameRole = role == 'side_cover' || role == 'porte_joint';
+      // 1. Accessory / non-frame check:
+      // Tringle, Port de joint, Parclose, etc. are NOT frames
+      final isNonFrame =
+          label.contains('tringle') ||
+          label.contains('port_de_joint') ||
+          label.contains('porte_de_joint') ||
+          label.contains('port_joint') ||
+          label.contains('porte_joint') ||
+          label.contains('portejoint') ||
+          label.contains('حامل_الجوان') ||
+          label.contains('parclose') ||
+          label.contains('rejet') ||
+          label.contains('bavette') ||
+          label.contains('cremone') ||
+          label.contains('crémone') ||
+          label.contains('charniere') ||
+          label.contains('charnière') ||
+          label.contains('roulette') ||
+          label.contains('vitrage') ||
+          label.contains('glace');
+      if (isNonFrame) {
+        return false;
+      }
+
+      final isFrameRole = role == 'frame' || role == 'sliding_frame';
+      final isNonFrameRole =
+          role == 'side_cover' ||
+          role == 'porte_joint' ||
+          role == 'tringle' ||
+          role == 'parclose';
       final isSideCoverType =
           normalizedType == 'side_cover' ||
           normalizedType == 'sidecover' ||
@@ -780,10 +803,6 @@ class _WindowViewState extends State<WindowView> {
           normalizedType == 'couvrejoint';
       final isPorteJointType =
           normalizedType == 'porte_joint' || normalizedType == 'portejoint';
-      final hasPorteJointLabel =
-          label.contains('porte_joint') ||
-          label.contains('portejoint') ||
-          label.contains('حامل_الجوان');
       final hasSideCoverLabel =
           label.contains('couvre_joint') ||
           label.contains('couvrejoint') ||
@@ -793,25 +812,67 @@ class _WindowViewState extends State<WindowView> {
           label.contains('كوفر_جوا') ||
           label.contains('غطاء_جانبي');
       final typeClearlyNamesFrame =
+          isFrameRole ||
           normalizedType == 'frame' ||
           normalizedType.contains('cadre') ||
-          normalizedType.contains('dormant');
+          normalizedType.contains('dormant') ||
+          normalizedName.contains('cadre') ||
+          normalizedName.contains('dormant') ||
+          normalizedName.contains('حلق') ||
+          normalizedName.contains('إطار');
 
       if (isNonFrameRole ||
           isSideCoverType ||
           isPorteJointType ||
-          hasPorteJointLabel ||
           (!isFrameRole && !typeClearlyNamesFrame && hasSideCoverLabel)) {
         return false;
       }
       if (sharedRole == 'frame_extension' || type == 'frame_extension') {
         return false;
       }
-      return isFrame ||
-          isFrameRole ||
-          type == 'frame' ||
-          type.contains('cadre') ||
-          type.contains('dormant');
+
+      final isBasicFrame = isFrame || isFrameRole || typeClearlyNamesFrame;
+      if (!isBasicFrame) return false;
+
+      // 2. Sliding vs Opening check:
+      bool isSlidingProfile() {
+        if (role == 'sliding_frame' || role == 'frame_sliding') return true;
+        final uScope =
+            (row['usage_scope'] ??
+                    row['design_usage_scope'] ??
+                    row['sharing_usage_scope'] ??
+                    '')
+                .toString()
+                .trim()
+                .toLowerCase();
+        if (uScope == 'sliding') return true;
+        final text = '$label $name $type $code'.toLowerCase();
+        if (RegExp(
+          r'\b\d+\s*rail|raill|monorail|couliss|glissi|galandage|سحاب|منزلق|جرار',
+        ).hasMatch(text)) {
+          return true;
+        }
+        return false;
+      }
+
+      final isSliding = isSlidingProfile();
+      if (sliding) {
+        // Looking for sliding frames: reject if strictly marked as opening
+        if (!isSliding &&
+            (role == 'frame' ||
+                label.contains('ouvrant') ||
+                label.contains('battant') ||
+                label.contains('frappe'))) {
+          return false;
+        }
+      } else {
+        // Looking for opening frames: REJECT any profile that is sliding!
+        if (isSliding) {
+          return false;
+        }
+      }
+
+      return true;
     }
 
     final merged = <Map<String, dynamic>>[];
@@ -4093,27 +4154,21 @@ class _WindowViewState extends State<WindowView> {
                               _lastTapTime = now;
                               _lastTapPosition = details.localPosition;
 
+                              final frameAtBorderHit = _frameAtBorder(modelPos);
                               if (!tappedZone &&
                                   !tappedMullion &&
+                                  frameAtBorderHit == null &&
                                   outerTap == DimensionTap.none &&
                                   innerTap == null &&
                                   mullionDimTap == null) {
-                                if (_isDrawerOpen || _isLeftDrawerOpen) {
-                                  setState(() {
-                                    _isDrawerOpen = false;
-                                    _isLeftDrawerOpen = false;
-                                  });
-                                  return;
-                                }
-                                if (_isBottomPanelExpanded ||
-                                    _isShutterSelected) {
-                                  setState(() {
-                                    _isBottomPanelExpanded = false;
-                                    _isShutterSelected = false;
-                                  });
-                                  widget.model.clearSelection();
-                                  return;
-                                }
+                                setState(() {
+                                  _isDrawerOpen = false;
+                                  _isLeftDrawerOpen = false;
+                                  _isBottomPanelExpanded = false;
+                                  _isShutterSelected = false;
+                                });
+                                widget.model.clearSelection();
+                                return;
                               }
 
                               if (outerTap != DimensionTap.none) {
@@ -8632,22 +8687,29 @@ class _WindowViewState extends State<WindowView> {
                 key: ValueKey(_showAllFrameProfiles),
                 initialValue: _showAllFrameProfiles,
                 isDense: true,
+                isExpanded: true,
                 decoration: InputDecoration(
                   labelText: Localization.translate('عرض الإطارات', lang),
                   prefixIcon: const Icon(Icons.view_carousel_outlined),
                   border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
                 ),
                 items: [
                   DropdownMenuItem<bool>(
                     value: false,
                     child: Text(
                       Localization.translate('الإطارات الصالحة فقط', lang),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   DropdownMenuItem<bool>(
                     value: true,
                     child: Text(
                       Localization.translate('كل إطارات السلسلة', lang),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -9148,7 +9210,7 @@ class _WindowViewState extends State<WindowView> {
                   return SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
-                      Localization.translate('ستار (Volet)', lang),
+                      Localization.translate('الستار (Volet)', lang),
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -9288,7 +9350,10 @@ class _WindowViewState extends State<WindowView> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
-                    Localization.translate('صندوق نفق (Coffre Tunnel)', lang),
+                    Localization.translate(
+                      'صندوق النفق (Caisson tunnel)',
+                      lang,
+                    ),
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -12833,6 +12898,15 @@ class _WindowViewState extends State<WindowView> {
               ),
             ),
           ),
+        if (!_isWindowsDesktop)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 8),
+            child: IconButton(
+              icon: const Icon(Icons.receipt_long_rounded, color: Colors.green),
+              tooltip: Localization.translate('الكمية والتكلفة', lang),
+              onPressed: () => _openMaterialConsumptionScreen(context),
+            ),
+          ),
       ],
     );
   }
@@ -14223,7 +14297,7 @@ class _WindowViewState extends State<WindowView> {
                           const SizedBox(width: 8),
                           _ContentButton(
                             label: Localization.translate(
-                              'التقاء الوسط (Face-to-Face)',
+                              'التقاء الظرفتين الوسطيتين (Batmo central)',
                               lang,
                             ),
                             icon: Icons.layers_rounded,
@@ -15170,19 +15244,28 @@ class _WindowViewState extends State<WindowView> {
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
 
-    // ── إذا تم تحديد الستار → اعرض لوحة الستار ──
-    if ((widget.model.isShutterOnly && _isBottomPanelExpanded) ||
-        (_isShutterSelected &&
-            (widget.model.hasShutter ||
-                widget.model.drawNextShapeAsShutterOnly))) {
+    // ── إذا تم تحديد الستار → اعرض لوحة الستار إذا كانت القائمة مرفوعة ──
+    if (_isBottomPanelExpanded &&
+        ((widget.model.isShutterOnly) ||
+            (_isShutterSelected &&
+                (widget.model.hasShutter ||
+                    widget.model.drawNextShapeAsShutterOnly)))) {
       return _buildShutterBottomPanel(context);
     }
 
-    // A drawing selection opens the panel automatically. The chevron remains
-    // available to open it manually when nothing is selected.
     final showExpanded = _isBottomPanelExpanded;
 
+    // A collapsed contextual panel must leave no handle or reserved height.
+    // Tapping a drawable frame/zone opens it again from the canvas hit-test.
+    if (!showExpanded) {
+      return const SizedBox.shrink();
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
@@ -15204,92 +15287,96 @@ class _WindowViewState extends State<WindowView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Available before selecting a zone too: choose a type, then tap
-            // the desired frame in the drawing.
-            if (!showExpanded)
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    // Opening the panel is enough to work with the drawing:
-                    // use the first frame as the active context so the frame,
-                    // sash, glass and handle tabs are immediately available.
-                    if (widget.model.selectedZone == null &&
-                        widget.model.zones.isNotEmpty) {
-                      widget.model.selection = SelectionInfo.zone(
-                        widget.model.zones.first.id,
-                      );
-                      _activeBottomTab = 0;
-                    }
-                    _isBottomPanelExpanded = true;
-                  });
-                },
-                child: Container(
-                  width: double.infinity,
-                  color: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Center(
-                    child: Icon(
-                      Icons.keyboard_arrow_up_rounded,
-                      color: Colors.blue.shade700,
-                      size: 22,
-                    ),
-                  ),
-                ),
-              ),
-
-            if (showExpanded) ...[
-              GestureDetector(
-                onTap: () => setState(() {
-                  _isBottomPanelExpanded = false;
-                }),
-                child: Container(
-                  width: double.infinity,
-                  color: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Center(
-                    child: Icon(
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: Localization.translate('إخفاء', lang),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() {
+                      _isBottomPanelExpanded = false;
+                    }),
+                    icon: Icon(
                       Icons.keyboard_arrow_down_rounded,
                       color: Colors.blue.shade700,
-                      size: 22,
+                      size: 24,
                     ),
                   ),
-                ),
-              ),
-              if (hasSelection) ...[
-                // Tier 1: Horizontal Scrollable Tabs (شائع | إطار | ورقة | عامود | زجاج / حشوات)
-                _buildTier1TabBar(isMullionSelected),
-                const Divider(height: 1, thickness: 0.5),
-                // Keep the two-row layout, but it must remain horizontally
-                // draggable on phones when the available actions exceed the
-                // narrow viewport instead of overflowing and freezing.
-                Container(
-                  height: 110,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: _HorizontalWheelScrollArea(
-                    builder: (context, controller) => SingleChildScrollView(
-                      controller: controller,
-                      scrollDirection: Axis.horizontal,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Align(
-                        alignment: AlignmentDirectional.topStart,
-                        child: Row(
-                          children: _arrangeInTwoRows(
-                            _buildTier2Options(context, isMullionSelected),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Material(
+                      color: Colors.green.shade600,
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => _openMaterialConsumptionScreen(context),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.receipt_long_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  Localization.translate(
+                                    'الكمية والتكلفة',
+                                    lang,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                   ),
+                ],
+              ),
+            ),
+            if (hasSelection) ...[
+              // Tier 1: Horizontal Scrollable Tabs (شائع | إطار | ورقة | عامود | زجاج / حشوات)
+              _buildTier1TabBar(isMullionSelected),
+              const Divider(height: 1, thickness: 0.5),
+              Container(
+                height: 110,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
-              ] else
-                _buildZoneContentPaintPicker(context),
-            ] else ...[
-              // Collapsed state: Show original Status Bar & Calculations
-              _buildCollapsedStatusBar(context),
-            ],
+                child: _HorizontalWheelScrollArea(
+                  builder: (context, controller) => SingleChildScrollView(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Align(
+                      alignment: AlignmentDirectional.topStart,
+                      child: Row(
+                        children: _arrangeInTwoRows(
+                          _buildTier2Options(context, isMullionSelected),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ] else
+              _buildZoneContentPaintPicker(context),
           ],
         ),
       ),
@@ -15418,6 +15505,24 @@ class _WindowViewState extends State<WindowView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            GestureDetector(
+              onTap: () => setState(() {
+                _isBottomPanelExpanded = false;
+                _isShutterSelected = false;
+              }),
+              child: Container(
+                width: double.infinity,
+                color: Colors.transparent,
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Center(
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Colors.blue.shade700,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
             if (!widget.model.isShutterOnly) ...[
               // ── Main Tab Bar showing "الستار (Volet)" selected ──
               _buildTier1TabBar(isMullionSelected),
@@ -15557,7 +15662,7 @@ class _WindowViewState extends State<WindowView> {
       // تفعيل/إلغاء الستار
       items.add(
         _ShutterChip(
-          label: 'الستار مفعّل',
+          label: 'الستار (Volet)',
           icon: Icons.layers_rounded,
           selected: widget.model.hasShutter,
           color: Colors.orange,
@@ -15668,10 +15773,10 @@ class _WindowViewState extends State<WindowView> {
       items.add(const SizedBox(width: 8));
     }
 
-    // صندوق نفق
+    // صندوق النفق
     items.add(
       _ShutterChip(
-        label: 'صندوق نفق',
+        label: 'صندوق النفق (Caisson tunnel)',
         icon: Icons.horizontal_rule_rounded,
         selected: widget.model.isCaissonTunnel,
         color: Colors.deepPurple,
@@ -16536,9 +16641,10 @@ class _WindowViewState extends State<WindowView> {
             children.add(const SizedBox(width: 8));
             children.add(
               _ContentButton(
-                label: zone.slidingFaceToFace
-                    ? 'التقاء الضلفتين الوسطيتين: مفعّل'
-                    : 'التقاء الضلفتين الوسطيتين: غير مفعّل',
+                label: Localization.translate(
+                  'التقاء الظرفتين الوسطيتين (Batmo central)',
+                  lang,
+                ),
                 icon: Icons.layers_rounded,
                 selected: zone.slidingFaceToFace,
                 onPressed: () {
@@ -16606,17 +16712,95 @@ class _WindowViewState extends State<WindowView> {
                 zone.content == ZoneContent.fixedGlass ||
                 zone.content == ZoneContent.empty);
 
+        bool isFrameCompatibleWithCurrentDrawing(
+          Map<String, dynamic> item, {
+          required bool sliding,
+        }) {
+          bool readBool(Object? value, {required bool fallback}) {
+            if (value is bool) return value;
+            if (value is num) return value != 0;
+            final normalized = value?.toString().trim().toLowerCase();
+            if (normalized == '1' ||
+                normalized == 'true' ||
+                normalized == 'yes') {
+              return true;
+            }
+            if (normalized == '0' ||
+                normalized == 'false' ||
+                normalized == 'no') {
+              return false;
+            }
+            return fallback;
+          }
+
+          final integratedCover = profileHasIntegratedSideCover(item);
+          final allowsStandaloneCover = readBool(
+            item['design_allows_side_cover'] ?? item['allows_side_cover'],
+            fallback: true,
+          );
+          final allowedWithShutter = readBool(
+            item['design_allowed_with_shutter'] ?? item['allowed_with_shutter'],
+            fallback: true,
+          );
+
+          final selectedSeriesIsPvc = _seriesIsPvc(
+            sliding
+                ? (widget.model.effectiveSlidingSeries ??
+                      widget.model.activeSlidingSeries)
+                : widget.model.activeSeries,
+          );
+
+          // 1. Shutter compatibility:
+          if (widget.model.hasShutter) {
+            if (!allowedWithShutter) return false;
+            if (!widget.model.isCaissonTunnel && !selectedSeriesIsPvc) {
+              if (integratedCover) return false;
+              if (!allowsStandaloneCover && widget.model.hasSideCovers) {
+                return false;
+              }
+            }
+          }
+
+          // 2. Side covers compatibility:
+          if (widget.model.hasSideCovers) {
+            final hasIntegratedCover =
+                widget.model.integratedFrameSideCoverWidth > 0;
+            final hasSeparateCover = !hasIntegratedCover;
+            if (hasSeparateCover) {
+              if (integratedCover || !allowsStandaloneCover) return false;
+            } else {
+              if (!integratedCover && !allowsStandaloneCover) return false;
+            }
+          }
+
+          // 3. 90° Profile angle compatibility:
+          if (widget.model.usesProfileAngle && integratedCover) {
+            try {
+              final compatible = widget.model.findCompatibleNoCoverFrame(
+                currentFrame: AluminumSection.fromMap(item),
+                sliding: sliding,
+              );
+              if (compatible == null) return false;
+            } catch (_) {
+              return false;
+            }
+          }
+
+          return true;
+        }
+
+        final angleJunctionFrames = widget.model
+            .getProfileAngleJunctionFrames();
+        final angleJunctionFrameIds = angleJunctionFrames.values
+            .map((e) => e.section.id)
+            .toSet();
+
         List<Map<String, dynamic>> profilesForPickerMode(
           List<Map<String, dynamic>> profiles, {
           required bool sliding,
         }) {
           if (_showAllFrameProfiles) return profiles.toList();
 
-          final validIds = profiles
-              .where((profile) => profile['frame_picker_configured'] == 1)
-              .map((profile) => _catalogRowId(profile))
-              .whereType<int>()
-              .toSet();
           final currentMap = sliding
               ? (widget.model.slidingFrameOverride ??
                     widget.model.getSlidingBaseFrameSection()?.toMap())
@@ -16625,25 +16809,16 @@ class _WindowViewState extends State<WindowView> {
           final currentId = currentMap == null
               ? null
               : _catalogRowId(currentMap);
-          if (currentId != null) validIds.add(currentId);
 
-          // The no-cover frame selected by the corner-profile rule is valid
-          // for this exact drawing even when it is not the catalogue default.
-          if (widget.model.usesProfileAngle && currentMap != null) {
-            try {
-              final compatible = widget.model.findCompatibleNoCoverFrame(
-                currentFrame: AluminumSection.fromMap(currentMap),
-                sliding: sliding,
-              );
-              if (compatible != null) validIds.add(compatible.id);
-            } catch (_) {
-              // A malformed legacy row remains available in "all frames";
-              // it must not broaden the strict compatible-only mode.
-            }
-          }
-          return profiles
-              .where((profile) => validIds.contains(_catalogRowId(profile)))
-              .toList();
+          return profiles.where((profile) {
+            final id = _catalogRowId(profile);
+            if (id != null && id == currentId) return true;
+            if (id != null && angleJunctionFrameIds.contains(id)) return true;
+            return isFrameCompatibleWithCurrentDrawing(
+              profile,
+              sliding: sliding,
+            );
+          }).toList();
         }
 
         final rawOpeningProfiles = (widget.systemMode == 'sliding')
@@ -16674,6 +16849,15 @@ class _WindowViewState extends State<WindowView> {
                   (profile) => !widget.model.isSlidingFrameExtension(profile),
                 )
                 .toList();
+
+        for (final entry in angleJunctionFrames.values) {
+          final targetList = entry.sliding ? slidingProfiles : openingProfiles;
+          final secMap = entry.section.toMap();
+          final id = _catalogRowId(secMap);
+          if (id != null && !targetList.any((p) => _catalogRowId(p) == id)) {
+            targetList.insert(0, secMap);
+          }
+        }
 
         Future<void> selectFrameProfile(
           Map<String, dynamic> item, {
@@ -16882,6 +17066,45 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else {
+          if (angleJunctionFrames.isNotEmpty) {
+            for (final entry in angleJunctionFrames.values) {
+              final isSliding = entry.sliding;
+              final sec = entry.section;
+              final codeStr = (sec.code != null && sec.code!.isNotEmpty)
+                  ? '${sec.code} - '
+                  : '';
+              final typeLabel = isSliding
+                  ? Localization.translate('منزلق', lang)
+                  : Localization.translate('فتح', lang);
+              final label =
+                  '${Localization.translate('إطار زاوية 90°', lang)} ($typeLabel): $codeStr${sec.name}';
+              final btn = Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _ProfileButton(
+                  label: label,
+                  code: sec.code,
+                  imagePath: sec.imagePath,
+                  selected: true,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${Localization.translate('إطار زاوية 90° معتمد في جدول الكمية والتكلفة', lang)}: $codeStr${sec.name}',
+                        ),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+              );
+              children.add(
+                hasBothFrameFamilies
+                    ? _Tier2RowItem(rowIndex: isSliding ? 1 : 0, child: btn)
+                    : btn,
+              );
+            }
+            children.add(const SizedBox(width: 8));
+          }
           if (openingProfiles.isNotEmpty) {
             addFrameProfileButtons(openingProfiles, sliding: false, prefix: '');
           }
@@ -16941,10 +17164,7 @@ class _WindowViewState extends State<WindowView> {
         children.add(
           _ContentButton(
             label: widget.model.usesProfileAngle
-                ? Localization.translate(
-                    'بروفيل زاوية 90°: ${widget.model.profileAngleModeName}',
-                    lang,
-                  )
+                ? '${Localization.translate('بروفيل زاوية 90°', lang)}: ${widget.model.localizedProfileAngleModeName(lang)}'
                 : Localization.translate('إضافة بروفيل زاوية 90°', lang),
             icon: Icons.square_foot_rounded,
             selected: widget.model.usesProfileAngle,
@@ -16961,8 +17181,8 @@ class _WindowViewState extends State<WindowView> {
           children.add(
             _ContentButton(
               label: widget.model.hasFramePlintheBottom
-                  ? 'حذف بلانت الإطار'
-                  : 'إضافة بلانت للإطار',
+                  ? Localization.translate('حذف بلانت الإطار', lang)
+                  : Localization.translate('إضافة بلانت للإطار', lang),
               icon: Icons.border_bottom_rounded,
               selected: widget.model.hasFramePlintheBottom,
               onPressed: () {
@@ -17736,7 +17956,7 @@ class _WindowViewState extends State<WindowView> {
               children.add(
                 _ContentButton(
                   label: Localization.translate(
-                    'التقاء الوسط (Face-to-Face)',
+                    'التقاء الظرفتين الوسطيتين (Batmo central)',
                     lang,
                   ),
                   icon: Icons.layers_rounded,

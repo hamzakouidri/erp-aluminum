@@ -344,4 +344,29 @@ const shortcutKeys = <String, Map<AppLanguage, String>>{
     AppLanguage.french: "parties",
     AppLanguage.english: "parts",
   },
+  'تسعيرة الطلبية المحددة': {
+    AppLanguage.arabic: 'تسعيرة الطلبية المحددة',
+    AppLanguage.french: 'Devis de la commande ciblée',
+    AppLanguage.english: 'Quote of focused order',
+  },
+  'تفاصيل الطلبية المحددة': {
+    AppLanguage.arabic: 'تفاصيل الطلبية المحددة',
+    AppLanguage.french: 'Détails de la commande ciblée',
+    AppLanguage.english: 'Details of focused order',
+  },
+  'استعادة الاختصارات الافتراضية': {
+    AppLanguage.arabic: 'استعادة الاختصارات الافتراضية',
+    AppLanguage.french: 'Rétablir les raccourcis par défaut',
+    AppLanguage.english: 'Restore default shortcuts',
+  },
+  'هل تريد حقاً استعادة جميع الاختصارات الافتراضية؟': {
+    AppLanguage.arabic: 'هل تريد حقاً استعادة جميع الاختصارات الافتراضية؟',
+    AppLanguage.french: 'Voulez-vous vraiment rétablir tous les raccourcis par défaut ?',
+    AppLanguage.english: 'Do you really want to restore all default shortcuts?',
+  },
+  'استعادة': {
+    AppLanguage.arabic: 'استعادة',
+    AppLanguage.french: 'Rétablir',
+    AppLanguage.english: 'Restore',
+  },
 };

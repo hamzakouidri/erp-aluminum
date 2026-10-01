@@ -18,6 +18,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/Commande/order_status_order.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/order_notification_service.dart';
 
@@ -160,22 +161,17 @@ class SqlDatabase {
   static String _canonicalKnownColorHex(String name, String fallback) {
     final normalized = name.toLowerCase().trim();
     if (normalized.contains('9007')) return '#8A939E';
-    if (normalized.contains('desert') ||
-        normalized.contains('ديزرت') ||
-        normalized.contains('ديزيرت') ||
-        normalized.contains('ديزر')) {
+    if (normalized.contains('desert')) {
       return '#B68B55';
     }
     if (normalized.contains('champagne') ||
         normalized.contains('chompagne') ||
-        normalized.contains('شامبان') ||
-        normalized.contains('شمبان')) {
+        normalized.contains('شامبان')) {
       return '#F7E7CE';
     }
     final isGold =
         normalized.contains('gold') ||
         normalized.contains('ذهبي') ||
-        normalized.contains('ذهب') ||
         normalized.contains('doré') ||
         normalized.contains('dore') ||
         RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(normalized);
@@ -1611,14 +1607,8 @@ class SqlDatabase {
         .replaceAll('ÃƒÂ©', 'Ã©')
         .replaceAll('ÃƒÂ¨', 'Ã¨')
         // Replace corrupted Arabic names
-        .replaceAll(
-          'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢',
-          'ستار أبيض',
-        )
-        .replaceAll(
-          'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
-          'ستار خشبي',
-        )
+        .replaceAll('â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢', 'ستار أبيض')
+        .replaceAll('â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨', 'ستار خشبي')
         .replaceAll(
           'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ¿â”˜Ã¥â”˜Ã¨/â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
           'ستار بني/خشبي',
@@ -4490,7 +4480,9 @@ class SqlDatabase {
 
   /// Ensures soft-delete columns (is_deleted, deleted_at) exist on Commandes
   /// to support the recycle bin (سلة المهملات).
-  Future<void> _ensureOrderTrashInfrastructure(DatabaseExecutor executor) async {
+  Future<void> _ensureOrderTrashInfrastructure(
+    DatabaseExecutor executor,
+  ) async {
     if (_orderTrashInfrastructureReady) return;
     try {
       await executor.execute(
@@ -4513,7 +4505,9 @@ class SqlDatabase {
 
   /// Ensures stock reservation columns exist on Commandes
   /// to support stock booking (حجز السلع للطلبية).
-  Future<void> _ensureOrderStockReservationInfrastructure(DatabaseExecutor executor) async {
+  Future<void> _ensureOrderStockReservationInfrastructure(
+    DatabaseExecutor executor,
+  ) async {
     if (_orderStockReservationInfrastructureReady) return;
     try {
       await executor.execute(
@@ -4551,17 +4545,23 @@ class SqlDatabase {
     try {
       if (reserved && remnantIds != null && remnantIds.isNotEmpty) {
         final idPlaceholders = List.filled(remnantIds.length, '?').join(',');
-        await myDb.rawUpdate('''
+        await myDb.rawUpdate(
+          '''
           UPDATE MaterialRemnants
           SET status = 'reserved', reserved_order_id = ?, reserved_at = ?
           WHERE id IN ($idPlaceholders) AND (status = 'available' OR reserved_order_id = ?)
-        ''', [orderId, now, ...remnantIds, orderId]);
+        ''',
+          [orderId, now, ...remnantIds, orderId],
+        );
       } else if (!reserved) {
-        await myDb.rawUpdate('''
+        await myDb.rawUpdate(
+          '''
           UPDATE MaterialRemnants
           SET status = 'available', reserved_order_id = NULL, reserved_at = NULL
           WHERE reserved_order_id = ? AND status = 'reserved'
-        ''', [orderId]);
+        ''',
+          [orderId],
+        );
       }
     } catch (e) {
       debugPrint('Warning updating MaterialRemnants reservation: $e');
@@ -5123,7 +5123,9 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return [];
     await _ensureOrderTrashInfrastructure(myDb);
-    return await myDb.rawQuery('SELECT * FROM Commandes WHERE (is_deleted IS NULL OR is_deleted = 0)');
+    return await myDb.rawQuery(
+      'SELECT * FROM Commandes WHERE (is_deleted IS NULL OR is_deleted = 0)',
+    );
   }
 
   Future<List<Map<String, dynamic>>> readCommandesWithClients() async {
@@ -5178,7 +5180,9 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return 0;
     await _ensureOrderTrashInfrastructure(myDb);
-    final res = await myDb.rawQuery('SELECT COUNT(*) as count FROM Commandes WHERE is_deleted = 1');
+    final res = await myDb.rawQuery(
+      'SELECT COUNT(*) as count FROM Commandes WHERE is_deleted = 1',
+    );
     if (res.isNotEmpty) {
       return (res.first['count'] as num?)?.toInt() ?? 0;
     }
@@ -5879,8 +5883,12 @@ class SqlDatabase {
             whereArgs: [orderId],
           );
           if (ord.isNotEmpty) {
-            final s = (ord.first['status'] ?? '').toString().toLowerCase().trim();
-            final isMfgAll = s.contains('full manufacturing') ||
+            final s = (ord.first['status'] ?? '')
+                .toString()
+                .toLowerCase()
+                .trim();
+            final isMfgAll =
+                s.contains('full manufacturing') ||
                 s.contains('تصنيع كلي') ||
                 s.contains('التصنيع الكلي') ||
                 s.contains('fabrication totale') ||
@@ -5893,7 +5901,8 @@ class SqlDatabase {
                 s.contains('مكتمل') ||
                 s.contains('done') ||
                 s.contains('منتهية');
-            final isDistAll = s.contains('full distribution') ||
+            final isDistAll =
+                s.contains('full distribution') ||
                 s.contains('توزيع كلي') ||
                 s.contains('livré') ||
                 s.contains('completed') ||
@@ -7156,7 +7165,9 @@ class SqlDatabase {
 
       // العدد المرجعي الإجمالي للعناصر (إما مجموع كميات الطلبية أو عدد المهام المسندة)
       int effectiveTotal = totalRequiredUnits > 0
-          ? (totalRequiredUnits > allOrderAllocs.length ? totalRequiredUnits : allOrderAllocs.length)
+          ? (totalRequiredUnits > allOrderAllocs.length
+                ? totalRequiredUnits
+                : allOrderAllocs.length)
           : allOrderAllocs.length;
 
       int mfgAllocs = allOrderAllocs
@@ -7165,9 +7176,9 @@ class SqlDatabase {
       int distAllocs = allOrderAllocs
           .where(
             (wa) =>
-        (wa['is_distributed'] as num?)?.toInt() == 1 ||
-            (wa['is_transferred_to_dist'] as num?)?.toInt() == 1,
-      )
+                (wa['is_distributed'] as num?)?.toInt() == 1 ||
+                (wa['is_transferred_to_dist'] as num?)?.toInt() == 1,
+          )
           .length;
       int installAllocs = allOrderAllocs
           .where((wa) => (wa['is_installed'] as num?)?.toInt() == 1)
@@ -7185,7 +7196,8 @@ class SqlDatabase {
       if (reserveAllocs > 0) {
         // ⚠️ إذا كان هناك أي تحفظ مسجل من عامل التركيب، تكون الأولوية للتحفظ
         targetStatus = 'Reserve';
-      } else if ((completedAllocs >= effectiveTotal || installAllocs >= effectiveTotal) &&
+      } else if ((completedAllocs >= effectiveTotal ||
+              installAllocs >= effectiveTotal) &&
           effectiveTotal > 0 &&
           reserveAllocs == 0) {
         // ✅ إذا تم تركيب كل العناصر بالكامل أو اكتمالها دون أي تحفظ
@@ -7218,7 +7230,8 @@ class SqlDatabase {
 
         // إذا ألغى العامل حالة الصنع وعادت العناصر المصنعة إلى صفر، تعود الطلبية لمرحلة ما قبل التصنيع
         if (targetStatus == null &&
-            (currentStatus == 'Partial Manufacturing' || currentStatus == 'Full Manufacturing')) {
+            (currentStatus == 'Partial Manufacturing' ||
+                currentStatus == 'Full Manufacturing')) {
           targetStatus = 'In Progress';
         }
 
@@ -7277,14 +7290,12 @@ class SqlDatabase {
   Future<void> updateWorkerAllocationManufactured(
     int allocationId,
     int isManufactured,
-  ) =>
-      updateWorkerAllocationManufacturing(allocationId, isManufactured);
+  ) => updateWorkerAllocationManufacturing(allocationId, isManufactured);
 
   Future<void> updateWorkerAllocationGlassInstalled(
     int allocationId,
     int isGlassInstalled,
-  ) =>
-      updateWorkerAllocationGlass(allocationId, isGlassInstalled);
+  ) => updateWorkerAllocationGlass(allocationId, isGlassInstalled);
 
   Future<void> updateWorkerAllocationManufacturing(
     int allocationId,
@@ -7511,7 +7522,11 @@ class SqlDatabase {
     try {
       Database? myDb = await db;
       if (myDb == null) return;
-      final orderRow = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
+      final orderRow = await myDb.query(
+        'Commandes',
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
       if (orderRow.isEmpty) return;
       final clientId = (orderRow.first['client_id'] as num?)?.toInt() ?? 0;
       if (clientId <= 0) return;
@@ -7960,9 +7975,9 @@ class SqlDatabase {
   }
 
   Future<void> updateWorkerAllocationPrice(
-      dynamic allocationId,
-      double price,
-      ) async {
+    dynamic allocationId,
+    double price,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final idInt = allocationId is int
@@ -8294,9 +8309,7 @@ class SqlDatabase {
     }
     await _backfillOrderCodes(myDb);
     if (details.isEmpty) {
-      throw StateError(
-        'لا يمكن حفظ طلبية بدون تفاصيل.',
-      );
+      throw StateError('لا يمكن حفظ طلبية بدون تفاصيل.');
     }
     if (!total.isFinite || !netPayable.isFinite) {
       throw StateError('مجموع الطلبية غير صالح.');
@@ -8345,7 +8358,8 @@ class SqlDatabase {
       if (idCommande == null) {
         final newOrderId = _nextDistributedId();
         final orderCode = await _reserveNextOrderCode(txn);
-        final initialStatus = (status.trim().isEmpty ||
+        final initialStatus =
+            (status.trim().isEmpty ||
                 status.trim().toLowerCase() == 'pending' ||
                 status.trim().toLowerCase() == 'en attente' ||
                 status.trim().toLowerCase() == 'en_attente' ||
@@ -8573,11 +8587,7 @@ class SqlDatabase {
       );
     }
     CloudSyncService().notifyChange();
-    _notifyOrderEventSafe(
-      orderId: distributedId,
-      isNew: true,
-      author: editor,
-    );
+    _notifyOrderEventSafe(orderId: distributedId, isNew: true, author: editor);
     return res;
   }
 
@@ -8645,9 +8655,10 @@ class SqlDatabase {
         final row = await readCommandeWithClientById(orderId);
         if (row == null) return;
 
-        final clientName =
-            '${row['firstname'] ?? ''} ${row['lastname'] ?? ''}'.trim();
-        final orderCode = row['order_code']?.toString() ??
+        final clientName = '${row['firstname'] ?? ''} ${row['lastname'] ?? ''}'
+            .trim();
+        final orderCode =
+            row['order_code']?.toString() ??
             row['display_number']?.toString() ??
             orderId.toString();
 
@@ -8701,10 +8712,7 @@ class SqlDatabase {
     final nowIso = DateTime.now().toUtc().toIso8601String();
     final res = await myDb.update(
       'Commandes',
-      {
-        'is_deleted': 1,
-        'deleted_at': nowIso,
-      },
+      {'is_deleted': 1, 'deleted_at': nowIso},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -8726,10 +8734,7 @@ class SqlDatabase {
     await _ensureOrderTrashInfrastructure(myDb);
     final res = await myDb.update(
       'Commandes',
-      {
-        'is_deleted': 0,
-        'deleted_at': null,
-      },
+      {'is_deleted': 0, 'deleted_at': null},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -9011,20 +9016,42 @@ class SqlDatabase {
     return res;
   }
 
-  
   static const Map<int, int> _unicodeToWin1252Map = <int, int>{
-    0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84,
-    0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88,
-    0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C,
-    0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93,
-    0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
-    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B,
-    0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+    0x20AC: 0x80,
+    0x201A: 0x82,
+    0x0192: 0x83,
+    0x201E: 0x84,
+    0x2026: 0x85,
+    0x2020: 0x86,
+    0x2021: 0x87,
+    0x02C6: 0x88,
+    0x2030: 0x89,
+    0x0160: 0x8A,
+    0x2039: 0x8B,
+    0x0152: 0x8C,
+    0x017D: 0x8E,
+    0x2018: 0x91,
+    0x2019: 0x92,
+    0x201C: 0x93,
+    0x201D: 0x94,
+    0x2022: 0x95,
+    0x2013: 0x96,
+    0x2014: 0x97,
+    0x02DC: 0x98,
+    0x2122: 0x99,
+    0x0161: 0x9A,
+    0x203A: 0x9B,
+    0x0153: 0x9C,
+    0x017E: 0x9E,
+    0x0178: 0x9F,
   };
 
   String _repairMojibakeString(String text) {
     if (text.isEmpty ||
-        (!text.contains('Ø') && !text.contains('Ã') && !text.contains('Â') && !text.contains('Ù'))) {
+        (!text.contains('Ø') &&
+            !text.contains('Ã') &&
+            !text.contains('Â') &&
+            !text.contains('Ù'))) {
       return text;
     }
     try {
@@ -9045,13 +9072,17 @@ class SqlDatabase {
     }
   }
 
-  Future<void> _repairCorruptedMojibakeAndLongIdsInTreasury(Database myDb) async {
+  Future<void> _repairCorruptedMojibakeAndLongIdsInTreasury(
+    Database myDb,
+  ) async {
     try {
       // 1. Repair Mojibake and replace huge Order IDs in Treasury
       final treasuryRows = await myDb.query('Treasury');
-      
+
       // Build order_id -> order_code lookup map for fast replacement
-      final orderRows = await myDb.rawQuery('SELECT id, order_code FROM Commandes WHERE order_code > 0');
+      final orderRows = await myDb.rawQuery(
+        'SELECT id, order_code FROM Commandes WHERE order_code > 0',
+      );
       final Map<int, int> orderCodeMap = {};
       for (final o in orderRows) {
         final id = (o['id'] as num?)?.toInt();
@@ -9111,7 +9142,9 @@ class SqlDatabase {
 
         // Also if reference_id points to an order and description has #refId or رقم refId
         final refId = (row['reference_id'] as num?)?.toInt();
-        if (refId != null && refId > 100000 && orderCodeMap.containsKey(refId)) {
+        if (refId != null &&
+            refId > 100000 &&
+            orderCodeMap.containsKey(refId)) {
           final code = orderCodeMap[refId]!;
           if (desc.contains(refId.toString())) {
             desc = desc.replaceAll(refId.toString(), code.toString());
@@ -9135,24 +9168,38 @@ class SqlDatabase {
       }
 
       // 2. Repair Mojibake in WorkerTransactions notes
-      final workerTxns = await myDb.rawQuery("SELECT id, note FROM WorkerTransactions WHERE note LIKE '%Ø%' OR note LIKE '%Ã%' OR note LIKE '%Ù%'");
+      final workerTxns = await myDb.rawQuery(
+        "SELECT id, note FROM WorkerTransactions WHERE note LIKE '%Ø%' OR note LIKE '%Ã%' OR note LIKE '%Ù%'",
+      );
       for (final w in workerTxns) {
         final wId = w['id'] as int;
         final note = (w['note'] ?? '').toString();
         final cleanNote = _repairMojibakeString(note);
         if (cleanNote != note) {
-          await myDb.update('WorkerTransactions', {'note': cleanNote}, where: 'id = ?', whereArgs: [wId]);
+          await myDb.update(
+            'WorkerTransactions',
+            {'note': cleanNote},
+            where: 'id = ?',
+            whereArgs: [wId],
+          );
         }
       }
 
       // 3. Repair Mojibake in Caisses names
-      final caisseRows = await myDb.rawQuery("SELECT id, name FROM Caisses WHERE name LIKE '%Ø%' OR name LIKE '%Ã%' OR name LIKE '%Ù%'");
+      final caisseRows = await myDb.rawQuery(
+        "SELECT id, name FROM Caisses WHERE name LIKE '%Ø%' OR name LIKE '%Ã%' OR name LIKE '%Ù%'",
+      );
       for (final c in caisseRows) {
         final cId = c['id'] as int;
         final name = (c['name'] ?? '').toString();
         final cleanName = _repairMojibakeString(name);
         if (cleanName != name) {
-          await myDb.update('Caisses', {'name': cleanName}, where: 'id = ?', whereArgs: [cId]);
+          await myDb.update(
+            'Caisses',
+            {'name': cleanName},
+            where: 'id = ?',
+            whereArgs: [cId],
+          );
         }
       }
     } catch (e) {
@@ -9511,7 +9558,8 @@ class SqlDatabase {
           limit: 1,
         );
         if (orderRow.isNotEmpty) {
-          effectiveClientId = (orderRow.first['client_id'] as num?)?.toInt() ?? 0;
+          effectiveClientId =
+              (orderRow.first['client_id'] as num?)?.toInt() ?? 0;
         }
       } catch (_) {}
     }
@@ -9573,7 +9621,9 @@ class SqlDatabase {
     // Old callers can still add a deposit, but never by writing directly to
     // Commandes. The single Treasury record is allocated to this order.
     final orderCode = _positiveInt(orderData.first['order_code']);
-    final displayNum = (orderCode != null && orderCode > 0) ? orderCode : idCommande;
+    final displayNum = (orderCode != null && orderCode > 0)
+        ? orderCode
+        : idCommande;
     return insertTreasury(
       'Encaissement',
       amount,
@@ -10010,7 +10060,9 @@ class SqlDatabase {
 
   static bool _achatTrashInfrastructureReady = false;
 
-  Future<void> _ensureAchatTrashInfrastructure(DatabaseExecutor executor) async {
+  Future<void> _ensureAchatTrashInfrastructure(
+    DatabaseExecutor executor,
+  ) async {
     if (_achatTrashInfrastructureReady) return;
     try {
       await executor.execute(
@@ -10018,9 +10070,7 @@ class SqlDatabase {
       );
     } catch (_) {}
     try {
-      await executor.execute(
-        'ALTER TABLE Achats ADD COLUMN deleted_at TEXT;',
-      );
+      await executor.execute('ALTER TABLE Achats ADD COLUMN deleted_at TEXT;');
     } catch (_) {}
     _achatTrashInfrastructureReady = true;
   }
@@ -10032,10 +10082,7 @@ class SqlDatabase {
     final now = DateTime.now().toUtc().toIso8601String();
     final res = await myDb.update(
       'Achats',
-      {
-        'is_deleted': 1,
-        'deleted_at': now,
-      },
+      {'is_deleted': 1, 'deleted_at': now},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -10049,10 +10096,7 @@ class SqlDatabase {
     await _ensureAchatTrashInfrastructure(myDb);
     final res = await myDb.update(
       'Achats',
-      {
-        'is_deleted': 0,
-        'deleted_at': null,
-      },
+      {'is_deleted': 0, 'deleted_at': null},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -10205,8 +10249,7 @@ class SqlDatabase {
         _withDistributedId({
           'transaction_type': 'Encaissement',
           'amount': refundedAmount,
-          'description':
-              'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
+          'description': 'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
           'reference_id': achatId,
           'entity_type': 'Supplier',
           'entity_id': supplierId,
@@ -10383,9 +10426,7 @@ class SqlDatabase {
         final workerName = worker['name']?.toString() ?? '';
 
         String desc =
-            (transactionType == 'advance'
-                ? 'سلفة للعامل '
-                : 'أجرة للعامل ') +
+            (transactionType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') +
             workerName;
         if (note.isNotEmpty) desc += ' - $note';
 
@@ -10483,10 +10524,7 @@ class SqlDatabase {
     if (records.isNotEmpty) {
       final treasuryId = records.first['id'] as int;
       String desc =
-          (newType == 'advance'
-              ? 'سلفة للعامل '
-              : 'أجرة للعامل ') +
-          workerName;
+          (newType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') + workerName;
       if (newNote.isNotEmpty) desc += ' - $newNote';
 
       await myDb.update(
@@ -12002,7 +12040,9 @@ class SqlDatabase {
         final legacyId = _nextDistributedId();
         final createdAt = order['created_at']?.toString();
         final orderCode = _positiveInt(order['order_code']);
-        final displayCode = (orderCode != null && orderCode > 0) ? orderCode : orderId;
+        final displayCode = (orderCode != null && orderCode > 0)
+            ? orderCode
+            : orderId;
         await executor.insert(
           'Treasury',
           _withDistributedId({
@@ -13214,11 +13254,35 @@ class SqlDatabase {
   ) {
     if (table == 'Commandes_details') {
       // The path is device-local and must never be synchronized: it points to
-      // a cache/app-support file that does not exist on another phone.  The
-      // image bytes, however, are the portable copy of the drawing and must
-      // travel with the order.  Removing them here made drawings disappear
-      // after an order was downloaded on another device.
+      // a cache/app-support file that does not exist on another phone.
       row.remove('drawing_image_path');
+      final partitionsJson = row['partitions_json']?.toString().trim() ?? '';
+      final base64Img = row['drawing_image_base64']?.toString() ?? '';
+      // If partitions_json is present, the drawing is fully defined as a vector model
+      // and will be rendered dynamically locally. Strip huge base64 strings (>100KB)
+      // to keep sync fast, lightweight, and prevent PostgREST timeouts.
+      if (partitionsJson.length > 20 &&
+          partitionsJson != '{}' &&
+          base64Img.length > 100000) {
+        row.remove('drawing_image_base64');
+      }
+    }
+    if (table == 'Commandes_deliveries') {
+      final itemsRaw = row['items_json'];
+      if (itemsRaw is String && itemsRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(itemsRaw);
+          if (decoded is List) {
+            for (final item in decoded) {
+              if (item is Map) {
+                item.remove('drawing_image_base64');
+                item.remove('drawing_image_path');
+              }
+            }
+            row['items_json'] = jsonEncode(decoded);
+          }
+        } catch (_) {}
+      }
     }
     return row;
   }
@@ -14147,9 +14211,7 @@ class SqlDatabase {
       final dbPath = await getDatabaseFilePath();
       final dbFile = File(dbPath);
       if (!await dbFile.exists()) {
-        throw Exception(
-          'ملف قاعدة البيانات غير موجود.',
-        );
+        throw Exception('ملف قاعدة البيانات غير موجود.');
       }
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/al_erp_backup.db');
@@ -14204,9 +14266,7 @@ class SqlDatabase {
       String? targetFolderPath;
       if (Platform.isAndroid) {
         // 1. Try Documents folder
-        final documentsDir = Directory(
-          '/storage/emulated/0/Documents/ورشتي',
-        );
+        final documentsDir = Directory('/storage/emulated/0/Documents/ورشتي');
         try {
           if (!await documentsDir.exists()) {
             await documentsDir.create(recursive: true);
@@ -14214,9 +14274,7 @@ class SqlDatabase {
           targetFolderPath = documentsDir.path;
         } catch (_) {
           // 2. Try Download folder as fallback
-          final downloadDir = Directory(
-            '/storage/emulated/0/Download/ورشتي',
-          );
+          final downloadDir = Directory('/storage/emulated/0/Download/ورشتي');
           try {
             if (!await downloadDir.exists()) {
               await downloadDir.create(recursive: true);
@@ -14257,7 +14315,11 @@ class SqlDatabase {
     }
   }
 
-  Future<void> importDatabaseFile(BuildContext context) async {
+  Future<void> importDatabaseFile(
+    BuildContext context, {
+    String? successMessage,
+    String? failurePrefix,
+  }) async {
     try {
       if (kIsWeb) {
         throw Exception(
@@ -14277,10 +14339,11 @@ class SqlDatabase {
         _db = await initDb();
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
-              style: TextStyle(fontFamily: 'Cairo'),
+              successMessage ??
+                  '\u062a\u0645 \u0627\u0633\u062a\u064a\u0631\u0627\u062f \u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0628\u0646\u062c\u0627\u062d! \u064a\u0631\u062c\u0649 \u0625\u0639\u0627\u062f\u0629 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0644\u062a\u062d\u062f\u064a\u062b \u0643\u0627\u0641\u0629 \u0627\u0644\u0634\u0627\u0634\u0627\u062a.',
+              style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
           ),
@@ -14291,7 +14354,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'فشل الاستيراد: $e',
+            '${failurePrefix ?? '\u0641\u0634\u0644 \u0627\u0644\u0627\u0633\u062a\u064a\u0631\u0627\u062f'}: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -14363,9 +14426,7 @@ class SqlDatabase {
   Future<void> importJsonBackup(BuildContext context) async {
     try {
       if (kIsWeb) {
-        throw Exception(
-          'الرجاء القيام بالاستيراد عبر تطبيق الموبايل.',
-        );
+        throw Exception('الرجاء القيام بالاستيراد عبر تطبيق الموبايل.');
       } else {
         final params = const OpenFileDialogParams();
         final filePath = await FlutterFileDialog.pickFile(params: params);
@@ -14385,9 +14446,7 @@ class SqlDatabase {
               ),
             );
           } else {
-            throw Exception(
-              'تنسيق ملف النسخة الاحتياطية غير صالح.',
-            );
+            throw Exception('تنسيق ملف النسخة الاحتياطية غير صالح.');
           }
         }
       }
@@ -14575,7 +14634,10 @@ class SqlDatabase {
         }
       }
 
-      return {'byStatus': byStatus, 'monthly': monthly};
+      return {
+        'byStatus': canonicalizeOrderStatusCounts(byStatus),
+        'monthly': monthly,
+      };
     } catch (e) {
       debugPrint('getOrderStatusStats error: $e');
       return {'byStatus': <String, int>{}, 'monthly': <String, int>{}};
@@ -15464,10 +15526,7 @@ class SqlDatabase {
       if (hasBrokenEncoding) {
         await myDb.update(
           'Locations',
-          {
-            'name': 'المستودع الرئيسي',
-            'type': 'مستودع رئيسي',
-          },
+          {'name': 'المستودع الرئيسي', 'type': 'مستودع رئيسي'},
           where: 'id = ?',
           whereArgs: [location['id']],
         );
@@ -15756,13 +15815,13 @@ class SqlDatabase {
     }
     for (var row in sectionRows) {
       int id = row['id'] as int;
-      final rawName   = row['name']?.toString()         ?? '';
-      final rawCode   = row['code']?.toString()         ?? '';
-      final serName   = row['series_name']?.toString()  ?? '';
-      final profName  = row['profile_name']?.toString() ?? '';
+      final rawName = row['name']?.toString() ?? '';
+      final rawCode = row['code']?.toString() ?? '';
+      final serName = row['series_name']?.toString() ?? '';
+      final profName = row['profile_name']?.toString() ?? '';
       // Build disambiguating display name identical to readCurrentStock
-      final codeStr    = rawCode.isNotEmpty ? '[$rawCode] ' : '';
-      final prefix     = [profName, serName].where((s) => s.isNotEmpty).join(' - ');
+      final codeStr = rawCode.isNotEmpty ? '[$rawCode] ' : '';
+      final prefix = [profName, serName].where((s) => s.isNotEmpty).join(' - ');
       final displayName = prefix.isNotEmpty
           ? '$prefix - $codeStr$rawName'
           : '$codeStr$rawName';
@@ -15774,15 +15833,15 @@ class SqlDatabase {
         double qty = stockMap[key] ?? 0.0;
         String cName = cId == 0 ? '' : (colorMap[cId] ?? '');
         allItems.add({
-          'item_type':    'Section',
-          'item_id':      id,
-          'item_name':    displayName,
-          'item_code':    rawCode,
-          'series_name':  serName,
+          'item_type': 'Section',
+          'item_id': id,
+          'item_name': displayName,
+          'item_code': rawCode,
+          'series_name': serName,
           'profile_name': profName,
-          'color_id':     cId == 0 ? null : cId,
-          'color_name':   cName,
-          'quantity':     qty,
+          'color_id': cId == 0 ? null : cId,
+          'color_name': cName,
+          'quantity': qty,
         });
       }
     }
@@ -15903,7 +15962,8 @@ class SqlDatabase {
         String cName = cId == 0 ? '' : (colorMap[cId] ?? '');
 
         if (type == 'Section') {
-          final r = await myDb.rawQuery('''
+          final r = await myDb.rawQuery(
+            '''
             SELECT sec.name, sec.code,
                    ser.name AS series_name,
                    p.name   AS profile_name
@@ -15911,15 +15971,22 @@ class SqlDatabase {
             LEFT JOIN Series  ser ON sec.series_id  = ser.id
             LEFT JOIN Profile p   ON ser.profile_id = p.id
             WHERE sec.id = ?
-          ''', [id]);
+          ''',
+            [id],
+          );
           if (r.isNotEmpty) {
-            final rawName  = r.first['name']?.toString()         ?? '';
-            final rawCode  = r.first['code']?.toString()         ?? '';
-            final serName  = r.first['series_name']?.toString()  ?? '';
+            final rawName = r.first['name']?.toString() ?? '';
+            final rawCode = r.first['code']?.toString() ?? '';
+            final serName = r.first['series_name']?.toString() ?? '';
             final profName = r.first['profile_name']?.toString() ?? '';
-            final codeStr  = rawCode.isNotEmpty ? '[$rawCode] ' : '';
-            final prefix   = [profName, serName].where((s) => s.isNotEmpty).join(' - ');
-            itemName = prefix.isNotEmpty ? '$prefix - $codeStr$rawName' : '$codeStr$rawName';
+            final codeStr = rawCode.isNotEmpty ? '[$rawCode] ' : '';
+            final prefix = [
+              profName,
+              serName,
+            ].where((s) => s.isNotEmpty).join(' - ');
+            itemName = prefix.isNotEmpty
+                ? '$prefix - $codeStr$rawName'
+                : '$codeStr$rawName';
           }
         } else if (type == 'Accessory') {
           final r = await myDb.query(
@@ -18422,9 +18489,11 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureTemperedGlassItemsTable(myDb);
-    final count = Sqflite.firstIntValue(
-      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassItems'),
-    ) ?? 0;
+    final count =
+        Sqflite.firstIntValue(
+          await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassItems'),
+        ) ??
+        0;
     if (count > 0) return;
 
     final defaultItems = [
@@ -18661,7 +18730,10 @@ class SqlDatabase {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getTemperedGlassItems({String? category, String? type}) async {
+  Future<List<Map<String, dynamic>>> getTemperedGlassItems({
+    String? category,
+    String? type,
+  }) async {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureTemperedGlassItemsTable(myDb);
@@ -18677,7 +18749,12 @@ class SqlDatabase {
       where += ' AND type = ?';
       args.add(type);
     }
-    return await myDb.query('TemperedGlassItems', where: where, whereArgs: args.isEmpty ? null : args, orderBy: 'id ASC');
+    return await myDb.query(
+      'TemperedGlassItems',
+      where: where,
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'id ASC',
+    );
   }
 
   Future<int> insertTemperedGlassItem(Map<String, dynamic> item) async {
@@ -18690,26 +18767,43 @@ class SqlDatabase {
   Future<int> updateTemperedGlassItem(int id, Map<String, dynamic> item) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassItems', item, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassItems',
+      item,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> deleteTemperedGlassItem(int id) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassItems', {'is_active': 0}, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassItems',
+      {'is_active': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> updateTemperedGlassItemPrice(int id, double price) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassItems', {'price': price}, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassItems',
+      {'price': price},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // ==========================================
   // Tempered Glass Systems, Kits & Rules
   // ==========================================
 
-  Future<void> _ensureTemperedGlassSystemsAndRulesTables(Database dbInstance) async {
+  Future<void> _ensureTemperedGlassSystemsAndRulesTables(
+    Database dbInstance,
+  ) async {
     await dbInstance.execute('''
       CREATE TABLE IF NOT EXISTS TemperedGlassSystems (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18782,9 +18876,11 @@ class SqlDatabase {
     if (myDb == null) return;
     await _ensureTemperedGlassSystemsAndRulesTables(myDb);
 
-    final sysCount = Sqflite.firstIntValue(
-      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassSystems'),
-    ) ?? 0;
+    final sysCount =
+        Sqflite.firstIntValue(
+          await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassSystems'),
+        ) ??
+        0;
 
     if (sysCount == 0) {
       final defaultSystems = [
@@ -18795,7 +18891,8 @@ class SqlDatabase {
           'name_en': 'Sliding shower cabin (I)',
           'category': 'douche',
           'icon_name': 'compare_arrows',
-          'description': 'كابينة دوش مستقيمة منزلقة تتكون من لوح ثابت ولوح باب منزلق',
+          'description':
+              'كابينة دوش مستقيمة منزلقة تتكون من لوح ثابت ولوح باب منزلق',
           'default_kit_code': 'kit_alfa',
           'is_active': 1,
           'display_order': 1,
@@ -18891,9 +18988,11 @@ class SqlDatabase {
       }
     }
 
-    final kitCount = Sqflite.firstIntValue(
-      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassKits'),
-    ) ?? 0;
+    final kitCount =
+        Sqflite.firstIntValue(
+          await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassKits'),
+        ) ??
+        0;
 
     if (kitCount == 0) {
       final defaultKits = [
@@ -18902,7 +19001,8 @@ class SqlDatabase {
           'name': 'كيت ألفا (Kit Alfa)',
           'system_code': 'coulissante',
           'target_panel': 'door',
-          'description': 'كيت كابينة دوش كوليسا قياسي - ثقبان علويان للرولمان في الباب',
+          'description':
+              'كيت كابينة دوش كوليسا قياسي - ثقبان علويان للرولمان في الباب',
           'is_active': 1,
         },
         {
@@ -18910,7 +19010,8 @@ class SqlDatabase {
           'name': 'كيت بيتا (Kit Beta)',
           'system_code': 'coulissante',
           'target_panel': 'door',
-          'description': 'كيت كابينة كوليسا للرولمانات الكبيرة Ø25 مم وخلوص 100 مم',
+          'description':
+              'كيت كابينة كوليسا للرولمانات الكبيرة Ø25 مم وخلوص 100 مم',
           'is_active': 1,
         },
         {
@@ -19042,7 +19143,8 @@ class SqlDatabase {
             'max_panel_width_mm': 0.0,
             'purpose': 'pivot_top',
           });
-        } else if (code == 'kit_charniere_mur' || code == 'kit_charniere_verre') {
+        } else if (code == 'kit_charniere_mur' ||
+            code == 'kit_charniere_verre') {
           await myDb.insert('TemperedGlassKitHoles', {
             'kit_id': kitId,
             'hole_index': 1,
@@ -19074,9 +19176,11 @@ class SqlDatabase {
     }
 
     // Default System Rules seed
-    final rulesCount = Sqflite.firstIntValue(
-      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassSystemRules'),
-    ) ?? 0;
+    final rulesCount =
+        Sqflite.firstIntValue(
+          await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassSystemRules'),
+        ) ??
+        0;
 
     if (rulesCount == 0) {
       // Find Kit Alfa ID and Beta ID
@@ -19122,7 +19226,9 @@ class SqlDatabase {
           'item_id': handle['id'],
           'rule_type': 'handle',
           'glass_thickness_mm': 0.0,
-          'is_default': (handle['name'] ?? '').toString().contains('30 سم') ? 1 : 0,
+          'is_default': (handle['name'] ?? '').toString().contains('30 سم')
+              ? 1
+              : 0,
           'is_active': 1,
           'notes': '',
         });
@@ -19152,14 +19258,20 @@ class SqlDatabase {
 
   // --- TemperedGlassSystems CRUD ---
 
-  Future<List<Map<String, dynamic>>> getTemperedGlassSystems({bool onlyActive = false}) async {
+  Future<List<Map<String, dynamic>>> getTemperedGlassSystems({
+    bool onlyActive = false,
+  }) async {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureTemperedGlassSystemsAndRulesTables(myDb);
     await seedDefaultTemperedGlassSystemsAndKits();
 
     final where = onlyActive ? 'is_active = 1' : null;
-    return await myDb.query('TemperedGlassSystems', where: where, orderBy: 'display_order ASC, id ASC');
+    return await myDb.query(
+      'TemperedGlassSystems',
+      where: where,
+      orderBy: 'display_order ASC, id ASC',
+    );
   }
 
   Future<int> insertTemperedGlassSystem(Map<String, dynamic> system) async {
@@ -19169,21 +19281,37 @@ class SqlDatabase {
     return await myDb.insert('TemperedGlassSystems', system);
   }
 
-  Future<int> updateTemperedGlassSystem(int id, Map<String, dynamic> system) async {
+  Future<int> updateTemperedGlassSystem(
+    int id,
+    Map<String, dynamic> system,
+  ) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassSystems', system, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassSystems',
+      system,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> deleteTemperedGlassSystem(int id) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassSystems', {'is_active': 0}, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassSystems',
+      {'is_active': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // --- TemperedGlassKits CRUD ---
 
-  Future<List<Map<String, dynamic>>> getTemperedGlassKits({String? systemCode, bool onlyActive = false}) async {
+  Future<List<Map<String, dynamic>>> getTemperedGlassKits({
+    String? systemCode,
+    bool onlyActive = false,
+  }) async {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureTemperedGlassSystemsAndRulesTables(myDb);
@@ -19193,7 +19321,8 @@ class SqlDatabase {
     List<dynamic>? args;
 
     if (onlyActive && systemCode != null && systemCode.isNotEmpty) {
-      where = 'is_active = 1 AND (system_code = ? OR system_code = "" OR system_code IS NULL)';
+      where =
+          'is_active = 1 AND (system_code = ? OR system_code = "" OR system_code IS NULL)';
       args = [systemCode];
     } else if (onlyActive) {
       where = 'is_active = 1';
@@ -19202,7 +19331,12 @@ class SqlDatabase {
       args = [systemCode];
     }
 
-    return await myDb.query('TemperedGlassKits', where: where, whereArgs: args, orderBy: 'id ASC');
+    return await myDb.query(
+      'TemperedGlassKits',
+      where: where,
+      whereArgs: args,
+      orderBy: 'id ASC',
+    );
   }
 
   Future<int> insertTemperedGlassKit(Map<String, dynamic> kit) async {
@@ -19215,15 +19349,32 @@ class SqlDatabase {
   Future<int> updateTemperedGlassKit(int id, Map<String, dynamic> kit) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassKits', kit, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassKits',
+      kit,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> deleteTemperedGlassKit(int id) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    await myDb.delete('TemperedGlassKitHoles', where: 'kit_id = ?', whereArgs: [id]);
-    await myDb.delete('TemperedGlassSystemRules', where: 'kit_id = ?', whereArgs: [id]);
-    return await myDb.delete('TemperedGlassKits', where: 'id = ?', whereArgs: [id]);
+    await myDb.delete(
+      'TemperedGlassKitHoles',
+      where: 'kit_id = ?',
+      whereArgs: [id],
+    );
+    await myDb.delete(
+      'TemperedGlassSystemRules',
+      where: 'kit_id = ?',
+      whereArgs: [id],
+    );
+    return await myDb.delete(
+      'TemperedGlassKits',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // --- TemperedGlassKitHoles CRUD ---
@@ -19240,13 +19391,20 @@ class SqlDatabase {
     );
   }
 
-  Future<void> saveTemperedGlassKitHoles(int kitId, List<Map<String, dynamic>> holes) async {
+  Future<void> saveTemperedGlassKitHoles(
+    int kitId,
+    List<Map<String, dynamic>> holes,
+  ) async {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureTemperedGlassSystemsAndRulesTables(myDb);
 
     await myDb.transaction((txn) async {
-      await txn.delete('TemperedGlassKitHoles', where: 'kit_id = ?', whereArgs: [kitId]);
+      await txn.delete(
+        'TemperedGlassKitHoles',
+        where: 'kit_id = ?',
+        whereArgs: [kitId],
+      );
       for (var i = 0; i < holes.length; i++) {
         final hole = Map<String, dynamic>.from(holes[i]);
         hole['kit_id'] = kitId;
@@ -19258,7 +19416,10 @@ class SqlDatabase {
 
   // --- TemperedGlassSystemRules CRUD ---
 
-  Future<List<Map<String, dynamic>>> getTemperedGlassSystemRules(String systemCode, {double? glassThicknessMm}) async {
+  Future<List<Map<String, dynamic>>> getTemperedGlassSystemRules(
+    String systemCode, {
+    double? glassThicknessMm,
+  }) async {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureTemperedGlassSystemsAndRulesTables(myDb);
@@ -19291,16 +19452,28 @@ class SqlDatabase {
     return await myDb.insert('TemperedGlassSystemRules', rule);
   }
 
-  Future<int> updateTemperedGlassSystemRule(int id, Map<String, dynamic> rule) async {
+  Future<int> updateTemperedGlassSystemRule(
+    int id,
+    Map<String, dynamic> rule,
+  ) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.update('TemperedGlassSystemRules', rule, where: 'id = ?', whereArgs: [id]);
+    return await myDb.update(
+      'TemperedGlassSystemRules',
+      rule,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> deleteTemperedGlassSystemRule(int id) async {
     final myDb = await db;
     if (myDb == null) return 0;
-    return await myDb.delete('TemperedGlassSystemRules', where: 'id = ?', whereArgs: [id]);
+    return await myDb.delete(
+      'TemperedGlassSystemRules',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<void> toggleTemperedGlassSystemRule({
@@ -19326,7 +19499,11 @@ class SqlDatabase {
       args.add(itemId);
     }
 
-    final existing = await myDb.query('TemperedGlassSystemRules', where: where, whereArgs: args);
+    final existing = await myDb.query(
+      'TemperedGlassSystemRules',
+      where: where,
+      whereArgs: args,
+    );
     if (existing.isNotEmpty) {
       await myDb.update(
         'TemperedGlassSystemRules',
@@ -19347,4 +19524,3 @@ class SqlDatabase {
     }
   }
 }
-

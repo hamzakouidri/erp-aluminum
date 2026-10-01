@@ -16689,6 +16689,56 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  String localizedProfileAngleModeName(AppLanguage lang) {
+    final junctions = getAdjacentFrameJunctions();
+    final activeJunctions = activeProfileAngleJunctions;
+    if (activeJunctions.isNotEmpty && junctions.isNotEmpty) {
+      if (activeJunctions.length == junctions.length) {
+        if (junctions.length == 1) {
+          final j = junctions.first;
+          return '${j.localizedLabel(lang)} (90°)';
+        }
+        final count = activeJunctions.length;
+        if (lang == AppLanguage.french) {
+          return 'Toutes les jonctions ($count) (90°)';
+        }
+        if (lang == AppLanguage.english) {
+          return 'All junctions ($count) (90°)';
+        }
+        return 'جميع الفواصل ($count) (90°)';
+      } else if (activeJunctions.length == 1) {
+        final j = junctions.firstWhere(
+          (j) => activeJunctions.contains(j.index),
+          orElse: () => junctions.first,
+        );
+        return '${j.localizedLabel(lang)} (90°)';
+      } else {
+        final count = activeJunctions.length;
+        if (lang == AppLanguage.french) return '$count jonctions (90°)';
+        if (lang == AppLanguage.english) return '$count junctions (90°)';
+        return '$count فواصل (90°)';
+      }
+    }
+    switch (profileAngleMode) {
+      case 1:
+        if (lang == AppLanguage.french) return 'Droite (90°)';
+        if (lang == AppLanguage.english) return 'Right (90°)';
+        return 'يمين (90°)';
+      case 2:
+        if (lang == AppLanguage.french) return 'Gauche (90°)';
+        if (lang == AppLanguage.english) return 'Left (90°)';
+        return 'يسار (90°)';
+      case 3:
+        if (lang == AppLanguage.french) return 'Deux côtés (90°)';
+        if (lang == AppLanguage.english) return 'Both sides (90°)';
+        return 'الجهتين (90°)';
+      default:
+        if (lang == AppLanguage.french) return 'Désactivé';
+        if (lang == AppLanguage.english) return 'Disabled';
+        return 'إيقاف';
+    }
+  }
+
   void toggleProfileAngleJunction(int junctionIndex, [bool? enabled]) {
     _saveSnapshot();
     profileAngleJunctionsDisabled = false;
@@ -16830,6 +16880,46 @@ class WindowModel extends ChangeNotifier {
     });
 
     return candidateSections.first;
+  }
+
+  /// Returns the compatible frames chosen for 90° corner junctions/edges
+  /// (without integrated cover) that appear in the BOM (Quantity & Cost table).
+  Map<String, ({AluminumSection section, bool sliding})> getProfileAngleJunctionFrames() {
+    final result = <String, ({AluminumSection section, bool sliding})>{};
+    if (!usesProfileAngle) return result;
+
+    void addJunctionSide(Rect frame) {
+      final currentFrame = frameSectionForRect(frame);
+      if (currentFrame == null) return;
+      final sliding = frameUsesSlidingSeries(frame);
+      final compatible = findCompatibleNoCoverFrame(
+        currentFrame: currentFrame,
+        sliding: sliding,
+      );
+      if (compatible == null) return;
+      final itemKey = '${sliding ? 'sliding' : 'opening'}:${compatible.id}';
+      result[itemKey] = (section: compatible, sliding: sliding);
+    }
+
+    final junctions = getAdjacentFrameJunctions();
+    for (final junction in junctions) {
+      if (!activeProfileAngleJunctions.contains(junction.index)) {
+        continue;
+      }
+      addJunctionSide(junction.firstFrame);
+      addJunctionSide(junction.secondFrame);
+    }
+
+    final frameRects = getFrameRects();
+    if (junctions.isEmpty && frameRects.isNotEmpty) {
+      if (profileAngleMode == 2 || profileAngleMode == 3) {
+        addJunctionSide(frameRects.first);
+      }
+      if (profileAngleMode == 1 || profileAngleMode == 3) {
+        addJunctionSide(frameRects.last);
+      }
+    }
+    return result;
   }
 
   void _restoreFramesBeforeProfileAngleFullSwitch() {

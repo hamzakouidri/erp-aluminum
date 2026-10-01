@@ -123,6 +123,18 @@ String orderStatusCanonicalLabel(String status) {
   };
 }
 
+/// Merges legacy/localized status labels into one canonical lifecycle row.
+/// This prevents `New`, `Nouveau`, `Draft`, `جديد` and `جديدة` from being
+/// rendered as several identical "Nouveau" entries in dashboard charts.
+Map<String, int> canonicalizeOrderStatusCounts(Map<String, int> counts) {
+  final merged = <String, int>{};
+  for (final entry in counts.entries) {
+    final canonical = orderStatusCanonicalLabel(entry.key);
+    merged[canonical] = (merged[canonical] ?? 0) + entry.value;
+  }
+  return merged;
+}
+
 int compareOrdersByLifecycle(
   Map<String, dynamic> first,
   Map<String, dynamic> second,

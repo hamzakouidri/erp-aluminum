@@ -58,7 +58,7 @@ class SupabaseWorkshopSyncService {
   // Keep each decoded response and the matching PostgREST query small.
   // Workshop rows embed JSON payloads, so a full restore after installation
   // must not request hundreds of orders/stock rows in one response.
-  static const int _downloadPageSize = 50;
+  static const int _downloadPageSize = 25;
   static const String _workshopProfileTable = '__WorkshopProfile';
   static const String _workshopProfileRowId = 'current';
   static const String _workshopCatalogConfigurationTable =
@@ -122,32 +122,50 @@ class SupabaseWorkshopSyncService {
         .select('id,code,join_code,name')
         .eq('id', workshopUuid)
         .maybeSingle();
-    final rows = await _client
+
+    final profileRow = await _client
         .from('workshop_sync_rows')
-        .select('table_name,row_id,payload')
+        .select('payload')
         .eq('workshop_id', workshopUuid)
-        .limit(10000);
-    final members = await _client
-        .from('workshop_members')
-        .select('user_id,role,blocked')
-        .eq('workshop_id', workshopUuid)
-        .limit(1000);
+        .eq('table_name', _workshopProfileTable)
+        .eq('row_id', _workshopProfileRowId)
+        .maybeSingle();
 
     var profileExists = false;
     var profileName = '';
-    for (final raw in rows) {
-      final row = Map<String, dynamic>.from(raw);
-      if (row['table_name']?.toString() != _workshopProfileTable ||
-          row['row_id']?.toString() != _workshopProfileRowId) {
-        continue;
-      }
-      final payload = row['payload'];
-      if (payload is Map) {
-        profileExists = true;
-        profileName = payload['workshop_name']?.toString().trim() ?? '';
-      }
-      break;
+    final profilePayload = profileRow?['payload'];
+    if (profilePayload is Map) {
+      profileExists = true;
+      profileName = profilePayload['workshop_name']?.toString().trim() ?? '';
     }
+
+    int syncRows = 0;
+    try {
+      final countResult = await _client
+          .from('workshop_sync_rows')
+          .count(CountOption.exact)
+          .eq('workshop_id', workshopUuid);
+      syncRows = countResult;
+    } catch (_) {
+      try {
+        final lightRows = await _client
+            .from('workshop_sync_rows')
+            .select('row_id')
+            .eq('workshop_id', workshopUuid)
+            .limit(1000);
+        syncRows = lightRows.length;
+      } catch (_) {}
+    }
+
+    int membersCount = 0;
+    try {
+      final members = await _client
+          .from('workshop_members')
+          .select('user_id')
+          .eq('workshop_id', workshopUuid)
+          .limit(100);
+      membersCount = members.length;
+    } catch (_) {}
 
     return WorkshopDataDiagnostics(
       userId: user.id,
@@ -155,8 +173,8 @@ class SupabaseWorkshopSyncService {
       workshopCode: _workshopCode ?? '',
       remoteWorkshopExists: workshop != null,
       remoteWorkshopName: workshop?['name']?.toString().trim() ?? '',
-      syncRows: rows.length,
-      members: members.length,
+      syncRows: syncRows,
+      members: membersCount,
       profileExists: profileExists,
       profileName: profileName,
     );
@@ -680,6 +698,13 @@ class SupabaseWorkshopSyncService {
       await loadAndApplyWorkshopCatalogConfiguration();
       await uploadPendingChanges();
       await uploadPendingShortcutBindings();
+      if (hasLocalBusinessData) {
+        try {
+          await uploadLocalWorkshopDataMerge();
+        } catch (e) {
+          debugPrint('uploadLocalWorkshopDataMerge startup error: $e');
+        }
+      }
     } catch (error) {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
@@ -1017,85 +1042,176 @@ class SupabaseWorkshopSyncService {
     var downloadedRows = 0;
     String? newestUpdate;
 
-    while (true) {
-      final rows = since != null && since.isNotEmpty
-          ? await _client
-                .from('workshop_sync_rows')
-                .select(
-                  'table_name,row_id,payload,updated_at,deleted_at,device_id',
-                )
-                .eq('workshop_id', workshopUuid)
-                .gt('updated_at', since)
-                .order('updated_at', ascending: true)
-                .range(start, start + _downloadPageSize - 1)
-          : await _client
-                .from('workshop_sync_rows')
-                .select(
-                  'table_name,row_id,payload,updated_at,deleted_at,device_id',
-                )
-                .eq('workshop_id', workshopUuid)
-                .order('updated_at', ascending: true)
-                .range(start, start + _downloadPageSize - 1);
-      if (rows.isEmpty) break;
+    void processRow(Map<String, dynamic> row) {
+      final table = row['table_name']?.toString() ?? '';
+      final rowId = row['row_id']?.toString() ?? '';
+      if (rowId.isEmpty) return;
 
-      for (final rawRow in rows) {
-        final row = Map<String, dynamic>.from(rawRow);
-        final table = row['table_name']?.toString() ?? '';
-        final rowId = row['row_id']?.toString() ?? '';
-        if (rowId.isEmpty) continue;
+      final updatedAt = row['updated_at']?.toString();
+      if (updatedAt != null &&
+          (newestUpdate == null || updatedAt.compareTo(newestUpdate!) > 0)) {
+        newestUpdate = updatedAt;
+      }
 
-        final updatedAt = row['updated_at']?.toString();
-        if (updatedAt != null &&
-            (newestUpdate == null || updatedAt.compareTo(newestUpdate) > 0)) {
-          newestUpdate = updatedAt;
-        }
+      final deletedAt = row['deleted_at']?.toString();
+      if (deletedAt != null && deletedAt.isNotEmpty) {
+        if (table == _workshopProfileTable) return;
+        if (!_isWorkshopTable(table)) return;
+        tombstones.add({
+          'table_name': table,
+          'row_id': rowId,
+          'deleted_at': deletedAt,
+        });
+        downloadedRows++;
+        return;
+      }
 
-        final deletedAt = row['deleted_at']?.toString();
-        if (deletedAt != null && deletedAt.isNotEmpty) {
-          if (table == _workshopProfileTable) continue;
-          if (!_isWorkshopTable(table)) continue;
-          tombstones.add({
-            'table_name': table,
-            'row_id': rowId,
-            'deleted_at': deletedAt,
-          });
+      final payload = row['payload'];
+      if (table == _workshopProfileTable) {
+        if (rowId == _workshopProfileRowId && payload is Map) {
+          unawaited(_applyWorkshopProfile(Map<String, dynamic>.from(payload)));
+          profileChanged = true;
           downloadedRows++;
-          continue;
         }
+        return;
+      }
+      if (table == _workshopCatalogConfigurationTable) {
+        if (rowId == _workshopCatalogConfigurationRowId &&
+            payload is Map &&
+            payload['tables'] is Map) {
+          catalogConfiguration = Map<String, dynamic>.from(
+            payload['tables'] as Map,
+          );
+          catalogConfigurationChanged = true;
+          downloadedRows++;
+        }
+        return;
+      }
+      if (!_isWorkshopTable(table)) return;
+      if (payload is Map) {
+        final list =
+            data.putIfAbsent(table, () => <Map<String, dynamic>>[])
+                as List<Map<String, dynamic>>;
+        list.add(Map<String, dynamic>.from(payload));
+        downloadedRows++;
+      }
+    }
 
-        final payload = row['payload'];
-        if (table == _workshopProfileTable) {
-          if (rowId == _workshopProfileRowId && payload is Map) {
-            await _applyWorkshopProfile(Map<String, dynamic>.from(payload));
+    if (full) {
+      // 1. Workshop Profile row
+      try {
+        final profileRow = await _client
+            .from('workshop_sync_rows')
+            .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+            .eq('workshop_id', workshopUuid)
+            .eq('table_name', _workshopProfileTable)
+            .eq('row_id', _workshopProfileRowId)
+            .maybeSingle();
+        if (profileRow != null) {
+          final rowMap = Map<String, dynamic>.from(profileRow);
+          final p = rowMap['payload'];
+          if (p is Map) {
+            await _applyWorkshopProfile(Map<String, dynamic>.from(p));
             profileChanged = true;
             downloadedRows++;
           }
-          continue;
         }
-        if (table == _workshopCatalogConfigurationTable) {
-          if (rowId == _workshopCatalogConfigurationRowId &&
-              payload is Map &&
-              payload['tables'] is Map) {
-            catalogConfiguration = Map<String, dynamic>.from(
-              payload['tables'] as Map,
-            );
+      } catch (e) {
+        debugPrint('Full restore profile fetch error: $e');
+      }
+
+      // 2. Workshop Catalog Configuration row
+      try {
+        final configRow = await _client
+            .from('workshop_sync_rows')
+            .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+            .eq('workshop_id', workshopUuid)
+            .eq('table_name', _workshopCatalogConfigurationTable)
+            .eq('row_id', _workshopCatalogConfigurationRowId)
+            .maybeSingle();
+        if (configRow != null) {
+          final rowMap = Map<String, dynamic>.from(configRow);
+          final p = rowMap['payload'];
+          if (p is Map && p['tables'] is Map) {
+            catalogConfiguration = Map<String, dynamic>.from(p['tables'] as Map);
             catalogConfigurationChanged = true;
             downloadedRows++;
           }
-          continue;
         }
-        if (!_isWorkshopTable(table)) continue;
-        if (payload is Map) {
-          final list =
-              data.putIfAbsent(table, () => <Map<String, dynamic>>[])
-                  as List<Map<String, dynamic>>;
-          list.add(Map<String, dynamic>.from(payload));
-          downloadedRows++;
-        }
+      } catch (e) {
+        debugPrint('Full restore catalog configuration fetch error: $e');
       }
 
-      if (rows.length < _downloadPageSize) break;
-      start += _downloadPageSize;
+      // 3. Business tables fetched table by table with adaptive batch sizes
+      for (final table in SqlDatabase.workshopTables) {
+        final isHeavy = table == 'Commandes_details' || table == 'Commandes_deliveries';
+        final tableBatchSize = isHeavy ? 5 : 50;
+        var offset = 0;
+        while (true) {
+          List<dynamic> rows = const [];
+          try {
+            rows = await _client
+                .from('workshop_sync_rows')
+                .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+                .eq('workshop_id', workshopUuid)
+                .eq('table_name', table)
+                .order('updated_at', ascending: true)
+                .range(offset, offset + tableBatchSize - 1);
+          } catch (batchError) {
+            debugPrint('Batch error on table $table at offset $offset: $batchError');
+            if (isHeavy) {
+              // Fallback: fetch single rows for this batch range to isolate any timeout
+              for (var single = offset; single < offset + tableBatchSize; single++) {
+                try {
+                  final singleRows = await _client
+                      .from('workshop_sync_rows')
+                      .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+                      .eq('workshop_id', workshopUuid)
+                      .eq('table_name', table)
+                      .order('updated_at', ascending: true)
+                      .range(single, single);
+                  if (singleRows.isEmpty) break;
+                  processRow(Map<String, dynamic>.from(singleRows.first as Map));
+                } catch (singleError) {
+                  debugPrint('Single row fetch error on $table at $single: $singleError');
+                }
+              }
+              offset += tableBatchSize;
+              continue;
+            } else {
+              break;
+            }
+          }
+
+          if (rows.isEmpty) break;
+          for (final rawRow in rows) {
+            processRow(Map<String, dynamic>.from(rawRow as Map));
+          }
+          if (rows.length < tableBatchSize) break;
+          offset += tableBatchSize;
+        }
+      }
+    } else {
+      const incrementalBatchSize = 10;
+      while (true) {
+        final rows = await _client
+            .from('workshop_sync_rows')
+            .select(
+              'table_name,row_id,payload,updated_at,deleted_at,device_id',
+            )
+            .eq('workshop_id', workshopUuid)
+            .gt('updated_at', since!)
+            .order('updated_at', ascending: true)
+            .range(start, start + incrementalBatchSize - 1);
+        if (rows.isEmpty) break;
+
+        for (final rawRow in rows) {
+          processRow(Map<String, dynamic>.from(rawRow as Map));
+        }
+
+        if (rows.length < incrementalBatchSize) break;
+        start += incrementalBatchSize;
+      }
     }
 
     if (!full && data.containsKey('Commandes')) {
@@ -1129,10 +1245,11 @@ class SupabaseWorkshopSyncService {
       data['SyncTombstones'] = tombstones;
     }
 
-    if (catalogConfiguration != null) {
+    final finalCatalogConfig = catalogConfiguration;
+    if (finalCatalogConfig != null) {
       _isApplyingRemoteData = true;
       try {
-        await _db.importWorkshopCatalogConfiguration(catalogConfiguration);
+        await _db.importWorkshopCatalogConfiguration(finalCatalogConfig);
       } finally {
         _isApplyingRemoteData = false;
       }
@@ -1175,7 +1292,7 @@ class SupabaseWorkshopSyncService {
     }
 
     if (newestUpdate != null) {
-      await _saveLastSyncAt(newestUpdate);
+      await _saveLastSyncAt(newestUpdate!);
     }
 
     lastDownloadSummary = downloadedRows == 0

@@ -717,12 +717,21 @@ bool _isX3dShutterComponent(Map<String, dynamic> component) {
 bool profileHasIntegratedSideCover(Map<String, dynamic> item) {
   final name = (item['name'] ?? '').toString().toLowerCase();
   final type = (item['type'] ?? '').toString().toLowerCase();
+  final code = (item['code'] ?? '').toString().toLowerCase();
   final rawWidth = item['couvre_joint_width'];
   final width = rawWidth is num
       ? rawWidth.toDouble()
       : double.tryParse('${rawWidth ?? ''}') ?? 0.0;
-  return width > 0 ||
-      name.contains('مدمج') ||
+  if (width > 0) return true;
+
+  final text = '$name $type $code'.replaceAll(RegExp(r'[\s\.\-_/]+'), ' ');
+  // If explicitly designated sans couvre-joint (scj) without 'avec cj', it's not integrated
+  if (RegExp(r'\b(sans\s*cj|sans\s*couvre|scj)\b').hasMatch(text) &&
+      !RegExp(r'\bavec\s*cj\b').hasMatch(text)) {
+    return false;
+  }
+
+  return name.contains('مدمج') ||
       name.contains('intégré') ||
       name.contains('integre') ||
       name.contains('monobloc') ||
@@ -732,7 +741,8 @@ bool profileHasIntegratedSideCover(Map<String, dynamic> item) {
       type.contains('monobloc') ||
       type.contains('sunset') ||
       type.contains('sontara') ||
-      type.contains('suntara');
+      type.contains('suntara') ||
+      RegExp(r'\b(avec\s*cj|avec\s*couvre\s*joint|a\s*cj)\b').hasMatch(text);
 }
 
 bool _profileSupportsEnabledSideCover(Map<String, dynamic> item) {

@@ -2,9 +2,9 @@ import '../app_settings.dart';
 
 final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
   'Caisson Tunnel': {
-    AppLanguage.arabic: 'Caisson Tunnel',
-    AppLanguage.french: 'Caisson Tunnel',
-    AppLanguage.english: 'Caisson Tunnel',
+    AppLanguage.arabic: 'صندوق النفق (Caisson tunnel)',
+    AppLanguage.french: 'Caisson tunnel',
+    AppLanguage.english: 'Tunnel box',
   },
   'نوع الأغطية (Kit):': {
     AppLanguage.arabic: 'نوع الأغطية (Kit):',

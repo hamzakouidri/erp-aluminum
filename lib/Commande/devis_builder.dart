@@ -1233,6 +1233,9 @@ class DevisBuilder {
             lower.startsWith('hauteur:') ||
             lower.startsWith('height:') ||
             lower.startsWith('الارتفاع:') ||
+            lower.startsWith('hauteur volet:') ||
+            lower.startsWith('shutter height:') ||
+            lower.startsWith('ارتفاع الستار:') ||
             lower.startsWith('hauteur poignée:') ||
             lower.startsWith('handle height:') ||
             lower.startsWith('ارتفاع المقبض:') ||
@@ -2052,6 +2055,20 @@ class DevisBuilder {
         AppLanguage.french => 'Hauteur: $height mm',
         AppLanguage.english => 'Height: $height mm',
         AppLanguage.arabic => 'الارتفاع: $height مم',
+      });
+    }
+
+    // When one split shutter extends below its window, show the exact extra
+    // curtain length directly below the window height in the quotation.
+    final shutterOverrunMm = _shutterHeightOverrunMm(map, height.toDouble());
+    if (shutterOverrunMm > 0.5) {
+      final overrunCm = _formatCentimetres(shutterOverrunMm / 10.0);
+      details.add(switch (_currentLang) {
+        AppLanguage.french =>
+          'Hauteur volet: +$overrunCm cm par rapport à la fenêtre',
+        AppLanguage.english =>
+          'Shutter height: +$overrunCm cm beyond the window',
+        AppLanguage.arabic => 'ارتفاع الستار: أطول من النافذة بـ $overrunCm سم',
       });
     }
 
@@ -3285,6 +3302,32 @@ class DevisBuilder {
       });
     }
     return lines;
+  }
+
+  static double _shutterHeightOverrunMm(
+    Map<String, dynamic> map,
+    double windowHeightMm,
+  ) {
+    if (map['hasShutter'] != true || windowHeightMm <= 0) return 0;
+    final rawSplits = map['shutterSplits'];
+    if (rawSplits is! List || rawSplits.isEmpty) return 0;
+
+    var maximumHeight = windowHeightMm;
+    for (final rawSplit in rawSplits) {
+      if (rawSplit is! Map) continue;
+      final customHeight = double.tryParse(
+        rawSplit['customHeight']?.toString() ?? '',
+      );
+      if (customHeight != null && customHeight > maximumHeight) {
+        maximumHeight = customHeight;
+      }
+    }
+    return maximumHeight - windowHeightMm;
+  }
+
+  static String _formatCentimetres(double value) {
+    if ((value - value.round()).abs() < 0.001) return value.round().toString();
+    return value.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '');
   }
 
   static List<String> _matchingDetails(

@@ -604,6 +604,7 @@ void main() {
         boundary: const Rect.fromLTRB(50, 50, 1950, 1150),
       );
       model.zones = [zone];
+      model.selection = SelectionInfo.zone(zone.id);
 
       expect(zone.openDirection, OpenDirection.right);
       model.setSelectedZoneSlidingSecondCentralHandle(true);

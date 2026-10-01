@@ -218,31 +218,49 @@ class SettingsScreen extends StatelessWidget {
           Localization.translate('تعذر تجهيز اتصال الورشة في Supabase.', lang),
         );
       }
-      final before = await sync.inspectWorkshopData();
+      WorkshopDataDiagnostics? before;
+      try {
+        before = await sync.inspectWorkshopData().timeout(
+          const Duration(seconds: 8),
+        );
+      } catch (e) {
+        debugPrint('Pre-download inspection skipped: $e');
+      }
+
       sync.lastDownloadSummary = '';
       await sync.downloadWorkshopData(full: true);
       try {
         await sync.loadAndApplyWorkshopCatalogConfiguration();
       } catch (_) {}
       final details = sync.lastDownloadSummary.trim();
-      final after = await sync.inspectWorkshopData();
+
+      WorkshopDataDiagnostics? after;
+      try {
+        after = await sync.inspectWorkshopData().timeout(
+          const Duration(seconds: 8),
+        );
+      } catch (e) {
+        debugPrint('Post-download inspection skipped: $e');
+      }
+
       final name = account.workshopName.trim().isEmpty
           ? account.workshopCode
           : account.workshopName.trim();
-      final identity =
-          'UID: ${after.userId}\nUUID الورشة: ${after.workshopUuid}\n'
-          'الكود المستخدم: ${after.workshopCode}\n'
-          'الورشة في Supabase: ${after.remoteWorkshopExists ? (after.remoteWorkshopName.isEmpty ? 'موجودة بلا اسم' : after.remoteWorkshopName) : 'غير موجودة'}\n'
-          'سجلات المزامنة: ${before.syncRows} قبل / ${after.syncRows} بعد\n'
-          'ملف معلومات الورشة: ${after.profileExists ? 'موجود' : 'غير موجود'}\n'
-          'مستخدمو الورشة: ${after.members}';
-      if (after.syncRows == 0) {
+      final identity = after != null
+          ? 'UID: ${after.userId}\nUUID الورشة: ${after.workshopUuid}\n'
+                'الكود المستخدم: ${after.workshopCode}\n'
+                'الورشة في Supabase: ${after.remoteWorkshopExists ? (after.remoteWorkshopName.isEmpty ? 'موجودة بلا اسم' : after.remoteWorkshopName) : 'غير موجودة'}\n'
+                'سجلات المزامنة: ${before?.syncRows ?? '?'} قبل / ${after.syncRows} بعد\n'
+                'ملف معلومات الورشة: ${after.profileExists ? 'موجود' : 'غير موجود'}\n'
+                'مستخدمو الورشة: ${after.members}'
+          : 'الكود المستخدم: ${account.workshopCode}';
+      if (after != null && after.syncRows == 0) {
         warningMessage =
             'لم يتم العثور على أي بيانات لهذه الورشة، رغم اكتمال الطلب. '
             'غالبًا الكود مرتبط بورشة أخرى، أو أن سجلاتها لم تُرفع إلى '
             'workshop_sync_rows، أو أن صلاحيات Supabase تمنع قراءتها.\n'
             '$identity';
-      } else if (!after.profileExists) {
+      } else if (after != null && !after.profileExists) {
         warningMessage =
             'تم العثور على سجلات، لكن ملف معلومات الورشة غير موجود؛ لذلك '
             'لن تظهر الصورة والعنوان والهاتف والتخصص.\n$identity';
@@ -476,13 +494,21 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // Display Settings
-          Card(child: ListTile(
-            leading: const Icon(Icons.keyboard),
-            title: Text(Localization.translate('اختصارات لوحة المفاتيح', lang)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => const KeyboardShortcutsScreen())),
-          )),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.keyboard),
+              title: Text(
+                Localization.translate('اختصارات لوحة المفاتيح', lang),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const KeyboardShortcutsScreen(),
+                ),
+              ),
+            ),
+          ),
           Card(
             elevation: 2,
             child: ListTile(
@@ -1153,6 +1179,14 @@ class SettingsScreen extends StatelessWidget {
                                     if (!context.mounted) return;
                                     await SqlDatabase().importDatabaseFile(
                                       context,
+                                      successMessage: Localization.translate(
+                                        'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
+                                        lang,
+                                      ),
+                                      failurePrefix: Localization.translate(
+                                        'فشل استيراد قاعدة البيانات',
+                                        lang,
+                                      ),
                                     );
                                   }
                                 },

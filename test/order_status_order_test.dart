@@ -51,6 +51,20 @@ void main() {
     expect(orderStatusCanonicalLabel('New'), 'Nouveau');
   });
 
+  test(
+    'dashboard merges every legacy new-order label into one Nouveau row',
+    () {
+      final counts = canonicalizeOrderStatusCounts({
+        'Nouveau': 2,
+        'New': 3,
+        'Draft': 1,
+        'جديدة': 4,
+      });
+
+      expect(counts, {'Nouveau': 10});
+    },
+  );
+
   test('canonical stages include measurements and installation in order', () {
     expect(
       canonicalOrderStatuses.indexOf('In Progress'),
