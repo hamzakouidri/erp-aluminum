@@ -17,6 +17,7 @@ import 'package:database_data/services/windows_google_sign_in.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 import 'settings/app_settings.dart';
 import 'settings/localization.dart';
 
@@ -553,6 +554,9 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<bool> _tryLegacyPasswordMigration() async {
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      return false;
+    }
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     AppAuthUser? legacyUser;
@@ -593,6 +597,9 @@ class _LoginScreenState extends State<LoginScreen>
     required String idToken,
     String? accessToken,
   }) async {
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      return null;
+    }
     try {
       await _auth.signInLegacyFirebaseWithGoogleToken(
         idToken: idToken,
@@ -629,19 +636,22 @@ class _LoginScreenState extends State<LoginScreen>
           password: _passwordController.text.trim(),
         );
       } catch (supabaseError) {
-        // Old Firebase accounts are bridged once, then all future sessions
-        // use Supabase and the same workshop code.
-        final migrated = await _tryLegacyPasswordMigration();
-        if (migrated) return;
+        // Old Firebase accounts are bridged once on mobile platforms.
+        if (!kIsWeb && defaultTargetPlatform != TargetPlatform.windows) {
+          final migrated = await _tryLegacyPasswordMigration();
+          if (migrated) return;
+        }
         throw supabaseError;
       }
       var account = await SupabaseAccountService().loadCurrentAccount();
       if (account == null ||
           _isSyntheticApplicationAdminAccount(user, account)) {
-        await _auth.signOut();
-        final migrated = await _tryLegacyPasswordMigration();
-        if (migrated) return;
-        account = await SupabaseAccountService().loadCurrentAccount();
+        if (!kIsWeb && defaultTargetPlatform != TargetPlatform.windows) {
+          await _auth.signOut();
+          final migrated = await _tryLegacyPasswordMigration();
+          if (migrated) return;
+          account = await SupabaseAccountService().loadCurrentAccount();
+        }
       }
       if (account == null) {
         throw const AppAuthException(
@@ -1160,12 +1170,15 @@ class _LoginScreenState extends State<LoginScreen>
       // Google may switch accounts without recreating the Flutter singletons.
       // Clear the previous account's local workshop hint before OAuth starts.
       await CloudSyncService().clearCachedWorkshopContext();
+      AppAuthUser user;
       String? idToken;
       String? accessToken;
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-        final tokens = await WindowsGoogleSignIn().signIn();
-        idToken = tokens.idToken;
-        accessToken = tokens.accessToken;
+        user = await const WindowsGoogleSignIn().signInWithSupabase();
+        try {
+          await windowManager.show();
+          await windowManager.focus();
+        } catch (_) {}
       } else {
         // Clear the plugin's cached Google account so the chooser is shown
         // instead of silently reusing the previous email.
@@ -1177,20 +1190,20 @@ class _LoginScreenState extends State<LoginScreen>
         ).signIn();
         if (googleUser == null) return;
         final googleAuth = await googleUser.authentication;
-        idToken = googleAuth.idToken;
-        accessToken = googleAuth.accessToken;
-      }
-      if (idToken == null || idToken.trim().isEmpty) {
-        throw const AppAuthException(
-          'google-token-missing',
-          'لم يتم الحصول على رمز Google صالح.',
+        final idToken = googleAuth.idToken;
+        final accessToken = googleAuth.accessToken;
+        if (idToken == null || idToken.trim().isEmpty) {
+          throw const AppAuthException(
+            'google-token-missing',
+            'لم يتم الحصول على رمز Google صالح.',
+          );
+        }
+
+        user = await _auth.signInWithGoogleIdToken(
+          idToken: idToken,
+          accessToken: accessToken,
         );
       }
-
-      final user = await _auth.signInWithGoogleIdToken(
-        idToken: idToken,
-        accessToken: accessToken,
-      );
       // Google can switch the Supabase session without recreating the Flutter
       // singletons. Reset the old workshop context before resolving this
       // Google account's membership.
@@ -1199,10 +1212,12 @@ class _LoginScreenState extends State<LoginScreen>
       if (_isLoginMode) {
         if (account == null ||
             _isSyntheticApplicationAdminAccount(user, account)) {
-          account = await _tryLegacyGoogleWorkshopMigration(
-            idToken: idToken,
-            accessToken: accessToken,
-          );
+          if (!kIsWeb && defaultTargetPlatform != TargetPlatform.windows) {
+            account = await _tryLegacyGoogleWorkshopMigration(
+              idToken: idToken!,
+              accessToken: accessToken,
+            );
+          }
           if (account == null) {
             // Google OAuth may create the Auth row before membership lookup.
             // Remove that orphan immediately; an account without a workshop
@@ -1216,13 +1231,16 @@ class _LoginScreenState extends State<LoginScreen>
             await _auth.signOut();
             throw const AppAuthException(
               'account-not-configured',
-              'لم يتم العثور على حساب مرتبط بورشة. يجب ترحيل الورشة القديمة أولاً.',
+              'لم يتم العثور على حساب مرتبط بورشة. إذا كنت مستخدماً جديداً، يرجى التبديل إلى "إنشاء حساب" للتسجيل.',
             );
           }
         }
-        if (account.role == 'admin' && _needsWorkshopNameRepair(account)) {
+        if (account.role == 'admin' &&
+            _needsWorkshopNameRepair(account) &&
+            !kIsWeb &&
+            defaultTargetPlatform != TargetPlatform.windows) {
           final repaired = await _tryLegacyGoogleWorkshopMigration(
-            idToken: idToken,
+            idToken: idToken!,
             accessToken: accessToken,
           );
           if (repaired != null) account = repaired;
@@ -1344,13 +1362,12 @@ class _LoginScreenState extends State<LoginScreen>
       }
 
       // 2. Trigger Google Sign-In. The mobile implementation remains exactly
-      // the same; Windows uses the system browser and a PKCE OAuth callback.
+      // the same; Windows uses the system browser and Supabase OAuth callback.
+      AppAuthUser user;
       String? googleIdToken;
       String? googleAccessToken;
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-        final tokens = await WindowsGoogleSignIn().signIn();
-        googleIdToken = tokens.idToken;
-        googleAccessToken = tokens.accessToken;
+        user = await const WindowsGoogleSignIn().signInWithSupabase();
       } else {
         final GoogleSignInAccount? googleUser = await GoogleSignIn(
           serverClientId: _googleServerClientId,
@@ -1367,19 +1384,18 @@ class _LoginScreenState extends State<LoginScreen>
             await googleUser.authentication;
         googleIdToken = googleAuth.idToken;
         googleAccessToken = googleAuth.accessToken;
-      }
 
-      // 3. Google is exchanged directly for a Supabase Auth session.
-      if (googleIdToken == null || googleIdToken!.trim().isEmpty) {
-        throw const AppAuthException(
-          'google-token-missing',
-          'لم يتم الحصول على رمز Google صالح.',
+        if (googleIdToken == null || googleIdToken.trim().isEmpty) {
+          throw const AppAuthException(
+            'google-token-missing',
+            'لم يتم الحصول على رمز Google صالح.',
+          );
+        }
+        user = await _auth.signInWithGoogleIdToken(
+          idToken: googleIdToken,
+          accessToken: googleAccessToken,
         );
       }
-      final user = await _auth.signInWithGoogleIdToken(
-        idToken: googleIdToken!,
-        accessToken: googleAccessToken,
-      );
 
       final uid = user.uid;
       final email = user.email ?? '';

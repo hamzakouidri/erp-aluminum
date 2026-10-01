@@ -643,56 +643,142 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
   }
 
   List<WindowModel> _glassWorkModelsFromPayload(Map<String, dynamic> payload) {
-    final rawItems = payload['items'];
-    if (rawItems is! List) return const [];
-    final models = <WindowModel>[];
-    for (final rawItem in rawItems) {
-      if (rawItem is! Map) continue;
-      final item = Map<String, dynamic>.from(rawItem);
-      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
-      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
-      if (width <= 0 || height <= 0) continue;
-      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
-      final area =
-          (item['areaSqm'] as num?)?.toDouble() ??
-          ((width / 1000) * (height / 1000));
-      final unitPrice =
-          (item['unitPrice'] as num?)?.toDouble() ??
-          area * ((item['pricePerSqm'] as num?)?.toDouble() ?? 0);
-      final totalPrice =
-          (item['totalPrice'] as num?)?.toDouble() ?? unitPrice * quantity;
-      final workLabel = payload['workTypeLabel']?.toString() ?? 'عمل زجاجي';
-      final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
-      final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
-      final shapeLabel = payload['panelShapeLabel']?.toString() ?? 'مستقيم (I)';
-      final operationLabel = payload['operationLabel']?.toString() ?? 'منزلق';
-      final kitLabel = payload['selectedKitLabel']?.toString() ?? '';
-      final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
-      final notes = payload['notes']?.toString() ?? '';
+    final rawItems = payload['items'] as List?;
+    final overallWidth =
+        (payload['overallWidthMm'] as num?)?.toDouble() ??
+        (payload['widthMm'] as num?)?.toDouble() ??
+        1000.0;
+    final overallHeight =
+        (payload['overallHeightMm'] as num?)?.toDouble() ??
+        (payload['heightMm'] as num?)?.toDouble() ??
+        2000.0;
 
-      final singlePayload = <String, dynamic>{
-        ...payload,
-        'itemsCount': 1,
-        'totalQuantity': quantity,
-        'grandTotalAreaSqm': area * quantity,
-        'grandTotalPrice': totalPrice,
-        'items': [item],
-      };
-      final model = _makeModel(w: width, h: height);
-      model.isGlassWork = true;
-      model.isReplaced = false;
-      model.manualNameOverride = 'Verre Trempé - $workLabel - $shapeLabel';
-      model.description =
-          '$operationLabel${kitLabel.isEmpty ? '' : ' | $kitLabel'} | $shapeLabel | '
-          '$finishLabel ${thickness.toStringAsFixed(0)} mm | $stickerLabel | '
-          '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm'
-          '${notes.isEmpty ? '' : ' | $notes'}';
-      model.quantity = quantity < 1 ? 1 : quantity;
-      model.glassWorkPayload = singlePayload;
-      model.manualPriceOverride = unitPrice;
-      models.add(model);
+    double totalArea =
+        (payload['grandTotalAreaSqm'] as num?)?.toDouble() ?? 0.0;
+    double totalPrice = (payload['grandTotalPrice'] as num?)?.toDouble() ?? 0.0;
+
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final glassBaseName = switch (lang) {
+      AppLanguage.french => 'Verre trempé',
+      AppLanguage.english => 'Tempered glass',
+      AppLanguage.arabic => 'زجاج مقسّى',
+    };
+    final panelsPrefix = switch (lang) {
+      AppLanguage.french => 'Panneaux',
+      AppLanguage.english => 'Panels',
+      AppLanguage.arabic => 'الألواح',
+    };
+    final overallPrefix = switch (lang) {
+      AppLanguage.french => 'Dimensions totales',
+      AppLanguage.english => 'Overall dimensions',
+      AppLanguage.arabic => 'القياس الإجمالي',
+    };
+    final mmUnit = switch (lang) {
+      AppLanguage.arabic => 'مم',
+      _ => 'mm',
+    };
+
+    final panelDescriptions = <String>[];
+    if (rawItems != null) {
+      for (var i = 0; i < rawItems.length; i++) {
+        final item = rawItems[i];
+        if (item is! Map) continue;
+        final w = (item['widthMm'] as num?)?.toDouble() ?? 0.0;
+        final h = (item['heightMm'] as num?)?.toDouble() ?? 0.0;
+        final role = item['role']?.toString() ?? 'panel';
+        final roleLabel = switch (role) {
+          'door' => switch (lang) {
+            AppLanguage.french => 'Porte',
+            AppLanguage.english => 'Door',
+            AppLanguage.arabic => 'باب',
+          },
+          'fixed' => switch (lang) {
+            AppLanguage.french => 'Fixe',
+            AppLanguage.english => 'Fixed',
+            AppLanguage.arabic => 'ثابت',
+          },
+          'vitrine_left' => switch (lang) {
+            AppLanguage.french => 'Vantail gauche',
+            AppLanguage.english => 'Left leaf',
+            AppLanguage.arabic => 'درفة يسرى',
+          },
+          'vitrine_right' => switch (lang) {
+            AppLanguage.french => 'Vantail droit',
+            AppLanguage.english => 'Right leaf',
+            AppLanguage.arabic => 'درفة يمنى',
+          },
+          _ => switch (lang) {
+            AppLanguage.french => 'Panneau ${i + 1}',
+            AppLanguage.english => 'Panel ${i + 1}',
+            AppLanguage.arabic => 'لوح ${i + 1}',
+          },
+        };
+        final area =
+            (item['areaSqm'] as num?)?.toDouble() ?? ((w / 1000) * (h / 1000));
+        if (totalArea == 0.0) totalArea += area;
+        final up = (item['unitPrice'] as num?)?.toDouble() ?? 0.0;
+        if (totalPrice == 0.0) totalPrice += up;
+        panelDescriptions.add(
+          '$roleLabel: ${w.toStringAsFixed(0)} × ${h.toStringAsFixed(0)} $mmUnit',
+        );
+      }
     }
-    return models;
+
+    final workLabel =
+        payload['workTypeLabel']?.toString() ??
+        (lang == AppLanguage.french
+            ? 'Cabine de douche'
+            : (lang == AppLanguage.english ? 'Shower cabin' : 'كابين دوش'));
+    final finishLabel =
+        payload['glassTypeLabel']?.toString() ??
+        payload['glassFinishLabel']?.toString() ??
+        (lang == AppLanguage.french
+            ? 'Transparent'
+            : (lang == AppLanguage.english ? 'Clear' : 'شفاف'));
+    final thickness =
+        (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)
+            ?.toDouble() ??
+        10.0;
+    final sablageMode = payload['sablageMode']?.toString() ?? 'none';
+    final sablageLabel = switch (sablageMode) {
+      'full' => switch (lang) {
+        AppLanguage.french => 'Sablage complet',
+        AppLanguage.english => 'Full frosting',
+        AppLanguage.arabic => 'سابلاج كامل',
+      },
+      'decorative' => switch (lang) {
+        AppLanguage.french => 'Sablage décoratif',
+        AppLanguage.english => 'Decorative frosting',
+        AppLanguage.arabic => 'سابلاج ديكور',
+      },
+      _ => switch (lang) {
+        AppLanguage.french => 'Sans sablage',
+        AppLanguage.english => 'No frosting',
+        AppLanguage.arabic => 'بدون سابلاج',
+      },
+    };
+
+    final model = _makeModel(w: overallWidth, h: overallHeight);
+    model.isGlassWork = true;
+    model.isReplaced = false;
+    model.manualNameOverride = '$glassBaseName - $workLabel';
+
+    final panelsSummary = panelDescriptions.isNotEmpty
+        ? ' | $panelsPrefix: ${panelDescriptions.join(" ، ")}'
+        : '';
+    model.description =
+        '$glassBaseName | $workLabel | $finishLabel ${thickness.toStringAsFixed(0)} $mmUnit | $sablageLabel'
+        ' | $overallPrefix: ${overallWidth.toStringAsFixed(0)} × ${overallHeight.toStringAsFixed(0)} $mmUnit'
+        '$panelsSummary';
+
+    model.quantity = 1;
+    model.glassWorkPayload = Map<String, dynamic>.from(payload);
+    model.manualPriceOverride = totalPrice > 0 ? totalPrice : null;
+
+    return [model];
   }
 
   @override
@@ -1124,7 +1210,11 @@ Widget _buildSystemIcon({
 
   Widget buildCandidate(int index) {
     if (index >= candidates.length) {
-      return Icon(fallbackIcon, size: (width ?? height ?? 24) * 0.7, color: Colors.blue);
+      return Icon(
+        fallbackIcon,
+        size: (width ?? height ?? 24) * 0.7,
+        color: Colors.blue,
+      );
     }
     return Image.asset(
       candidates[index],

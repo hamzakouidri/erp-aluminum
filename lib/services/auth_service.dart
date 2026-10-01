@@ -89,6 +89,12 @@ class AppAuthService {
         final response = await _supabaseAuth.signInWithPassword(
           email: email.trim(),
           password: password,
+        ).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw const AppAuthException(
+            'network-timeout',
+            'انتهت مهلة الاتصال بالخادم. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.',
+          ),
         );
         final user = _fromSupabaseUser(response.user);
         if (user == null) {
@@ -211,6 +217,12 @@ class AppAuthService {
     required String email,
     required String password,
   }) async {
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      throw const AppAuthException(
+        'not-supported',
+        'Firebase غير مدعوم على هذه المنصة.',
+      );
+    }
     try {
       final response = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
@@ -233,6 +245,12 @@ class AppAuthService {
     required String idToken,
     String? accessToken,
   }) async {
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      throw const AppAuthException(
+        'not-supported',
+        'Firebase غير مدعوم على هذه المنصة.',
+      );
+    }
     try {
       final credential = firebase.GoogleAuthProvider.credential(
         idToken: idToken,
@@ -252,7 +270,12 @@ class AppAuthService {
     }
   }
 
-  Future<void> signOutLegacyFirebase() => _firebaseAuth.signOut();
+  Future<void> signOutLegacyFirebase() async {
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) return;
+    try {
+      await _firebaseAuth.signOut();
+    } catch (_) {}
+  }
 
   /// GoogleSignIn has no Windows implementation in this project. Supabase
   /// owns the Windows session, so do not call the mobile plugin there.

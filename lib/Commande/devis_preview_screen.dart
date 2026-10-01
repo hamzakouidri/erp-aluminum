@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Commande/pdf_invoice_api.dart';
 
@@ -38,6 +39,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Timer? _debounceTimer;
   bool _isLoaded = false;
   int? _activeDeliveryId;
+  String? _activeDeliveryDate;
   int _imageMode = 0; // 0=Latérale, 1=Sous-prix, 2=Pleine largeur
   static const _blue = Color(0xFF1565C0);
   static const _headerBlue = Color(0xFF1976D2);
@@ -135,21 +137,25 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Future<void> _checkExistingDelivery() async {
-    if (_activeDeliveryId != null || !_isBonLivraison || data.orderId <= 0) return;
+    if (!_isBonLivraison || data.orderId <= 0) return;
     try {
       final deliveries = await SqlDatabase().readCommandeDeliveries(data.orderId);
       if (deliveries.isNotEmpty) {
-        if (!data.isPartial) {
-          final loadedRecord = deliveries.firstWhere(
-            (d) => (d['is_loaded'] as num?)?.toInt() == 1,
-            orElse: () => deliveries.first,
-          );
-          if (mounted) {
-            setState(() {
-              _activeDeliveryId = (loadedRecord['id'] as num?)?.toInt();
-              _isLoaded = (loadedRecord['is_loaded'] as num?)?.toInt() == 1;
-            });
-          }
+        final loadedRecord = _activeDeliveryId != null
+            ? deliveries.firstWhere(
+                (d) => (d['id'] as num?)?.toInt() == _activeDeliveryId,
+                orElse: () => deliveries.first,
+              )
+            : deliveries.firstWhere(
+                (d) => (d['is_loaded'] as num?)?.toInt() == 1,
+                orElse: () => deliveries.first,
+              );
+        if (mounted) {
+          setState(() {
+            _activeDeliveryId = (loadedRecord['id'] as num?)?.toInt();
+            _isLoaded = (loadedRecord['is_loaded'] as num?)?.toInt() == 1;
+            _activeDeliveryDate = loadedRecord['delivery_date']?.toString();
+          });
         }
       }
     } catch (_) {}
@@ -170,7 +176,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         content: Text(
           isFr
               ? 'Confirmez-vous que le client a bien reçu cette marchandise ? Le bon de livraison sera validé et enregistré dans le dossier du client.'
-              : 'هل تؤكد استلام الزبون لهذه السلع فعلياً؟ سيتم تأكيد وصل التسليم وتسجيله في سجل تفاصيل الزبون.',
+              : 'هل تؤكد استلام الزبون لهذه السلع فعلياً؟ سيتم تأكيد وصل التسليم وتسجيله في سجل تفاصيل الزبون وتحديث حالة الطلبية.',
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
@@ -201,50 +207,74 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
     try {
       final db = SqlDatabase();
+      int orderId = data.orderId;
+      int clientId = data.clientId;
+      if (clientId <= 0 && orderId > 0) {
+        final order = await db.readCommandeWithClientById(orderId);
+        if (order != null && order['client_id'] != null) {
+          clientId = (order['client_id'] as num).toInt();
+        }
+      }
+
+      final now = DateTime.now();
+      final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(now);
+
+      List<Map<String, dynamic>> itemsList = [];
+      if (data.rawItems != null && data.rawItems!.isNotEmpty) {
+        itemsList = data.rawItems!;
+      } else {
+        itemsList = data.items.map((it) => {
+          'id': it.detailId,
+          'name': it.title,
+          'quantity': it.quantity,
+          'price': it.unitPrice,
+          'width': it.width,
+          'height': it.height,
+          'description': it.details.join('\n'),
+          'drawing_image_path': it.imagePath,
+        }).toList();
+      }
+
       if (_activeDeliveryId != null) {
         await db.updateCommandeDeliveryIsLoaded(_activeDeliveryId!, 1);
       } else {
-        int orderId = data.orderId;
-        int clientId = data.clientId;
-        if (clientId <= 0 && orderId > 0) {
-          final order = await db.readCommandeWithClientById(orderId);
-          if (order != null && order['client_id'] != null) {
-            clientId = (order['client_id'] as num).toInt();
+        int? existingDelId;
+        if (orderId > 0) {
+          final existingDeliveries = await db.readCommandeDeliveries(orderId);
+          if (existingDeliveries.isNotEmpty) {
+            existingDelId = (existingDeliveries.first['id'] as num?)?.toInt();
           }
         }
-
-        final now = DateTime.now();
-        final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(now);
-
-        List<Map<String, dynamic>> itemsList = [];
-        if (data.rawItems != null && data.rawItems!.isNotEmpty) {
-          itemsList = data.rawItems!;
+        if (existingDelId != null && existingDelId > 0) {
+          await db.updateCommandeDeliveryIsLoaded(existingDelId, 1);
+          _activeDeliveryId = existingDelId;
         } else {
-          itemsList = data.items.map((it) => {
-            'id': it.detailId,
-            'name': it.title,
-            'quantity': it.quantity,
-            'price': it.unitPrice,
-            'width': it.width,
-            'height': it.height,
-            'description': it.details.join('\n'),
-            'drawing_image_path': it.imagePath,
-          }).toList();
+          final newDeliveryId = await db.insertCommandeDelivery(
+            orderId,
+            clientId,
+            dateStr,
+            jsonEncode(itemsList),
+            data.totalTTC,
+            isLoaded: 1,
+          );
+          _activeDeliveryId = newDeliveryId;
+          _activeDeliveryDate = dateStr;
         }
-
-        final newDeliveryId = await db.insertCommandeDelivery(
-          orderId,
-          clientId,
-          dateStr,
-          jsonEncode(itemsList),
-          data.totalTTC,
-          isLoaded: 1,
-        );
-        _activeDeliveryId = newDeliveryId;
       }
+
+      // 🚚 تحديث حالة الطلبية مباشرة إلى توزيع جزئي أو توزيع كلي
+      final bool isFull = !data.isPartial;
+      final targetStatus = isFull ? 'Full Distribution' : 'Partial Distribution';
+      if (orderId > 0) {
+        await db.updateCommandeStatus(orderId, targetStatus, skipAllocationSync: true);
+        await db.markItemsAllocationsTransferred(orderId, itemsList, isFullOrder: isFull);
+        await db.syncOrderAndAllocationsStatus(orderId);
+      }
+      CloudSyncService().notifyChange();
 
       setState(() {
         _isLoaded = true;
+        _activeDeliveryDate ??= dateStr;
       });
 
       if (mounted) {
@@ -1116,6 +1146,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                           _buildTopHeader(),
                           const Divider(height: 28, thickness: 1),
                           _buildParties(),
+                          if (_isBonLivraison) ...[
+                            _buildBonLivraisonBanner(context),
+                          ],
                           if (_chequeNumber.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Align(
@@ -1236,13 +1269,30 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       }
     } catch (_) {}
 
-    final seq = data.sequenceNumber > 0
-        ? data.sequenceNumber
-        : (data.orderId > 0 && data.orderId < 100000
-              ? data.orderId
-              : (data.orderId % 1000).abs());
+    final seq = data.orderDisplayNumber;
     final seqNum = seq.toString().padLeft(3, '0');
     return '$prefix$year2$seqNum';
+  }
+
+  String get _documentOrderReferenceText {
+    final num = data.orderDisplayNumber;
+    if (_invoiceLanguage == AppLanguage.french) {
+      return 'Pour la commande N° $num';
+    } else if (_invoiceLanguage == AppLanguage.english) {
+      return 'For order #$num';
+    } else {
+      return 'للطلبية رقم $num';
+    }
+  }
+
+  String get _orderMetaLabel {
+    if (_invoiceLanguage == AppLanguage.french) {
+      return 'Commande N°:';
+    } else if (_invoiceLanguage == AppLanguage.english) {
+      return 'Order N°:';
+    } else {
+      return 'الطلبية رقم:';
+    }
   }
 
   Widget _buildTopHeader() {
@@ -1293,6 +1343,16 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                       fontFamily: 'Cairo',
                     ),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _documentOrderReferenceText,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueGrey.shade700,
+                      fontFamily: 'Cairo',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1300,7 +1360,15 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 _metaLine('N°:', _formatDocumentNumber(data)),
+                _metaLine(_orderMetaLabel, '#${data.orderDisplayNumber}'),
                 _metaLine('Date:', data.orderDate),
+                if (_isBonLivraison && (_activeDeliveryDate != null || _isLoaded))
+                  _metaLine(
+                    _invoiceLanguage == AppLanguage.french
+                        ? 'Date sortie / livraison:'
+                        : 'تاريخ الخروج / التسليم:',
+                    _activeDeliveryDate ?? data.orderDate,
+                  ),
                 if (data.isProForma && data.validUntil.isNotEmpty)
                   _metaLine('Valide jusqu\'au:', data.validUntil),
               ],
@@ -1356,7 +1424,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               '$phonePrefix${data.workshop.phone}',
             if (data.workshop.address.isNotEmpty)
               '$addressPrefix${data.workshop.address}',
-            if (_isOfficial) ...[
+            if (_isOfficial || _isBonLivraison) ...[
               if (data.workshop.rc.isNotEmpty) 'RC: ${data.workshop.rc}',
               if (data.workshop.nif.isNotEmpty) 'NIF: ${data.workshop.nif}',
               if (data.workshop.nis.isNotEmpty) 'NIS: ${data.workshop.nis}',
@@ -1402,6 +1470,151 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               line,
               style: const TextStyle(fontSize: 13, color: Colors.black87),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBonLivraisonBanner(BuildContext context) {
+    final isFr = _invoiceLanguage == AppLanguage.french;
+    final remaining = (data.totalTTC - data.amountPaid);
+    final isSoldOut = remaining <= 0.01;
+    final exitDate = _activeDeliveryDate ?? data.orderDate;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 14, bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _isLoaded ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _isLoaded ? const Color(0xFF81C784) : const Color(0xFFFFD54F),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _isLoaded ? Icons.verified : Icons.info_outline,
+                color: _isLoaded ? Colors.green.shade800 : Colors.amber.shade900,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isFr
+                      ? 'ATTESTATION DE SORTIE & LIVRAISON DE MARCHANDISE'
+                      : 'وصل وإثبات خروج وتسليم السلع من الورشة',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: _isLoaded ? Colors.green.shade900 : Colors.amber.shade900,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _isLoaded ? Colors.green.shade700 : Colors.amber.shade700,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _isLoaded
+                      ? (isFr ? 'VALIDÉ / SORTI' : 'مؤكد / خرجت من الورشة')
+                      : (isFr ? 'EN ATTENTE' : 'في انتظار الخروج والتأكيد'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 16, thickness: 0.8),
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _bannerInfoItem(
+                icon: Icons.calendar_today,
+                label: isFr ? 'Date de commande :' : 'تقدم بالطلب بتاريخ :',
+                value: data.orderDate,
+              ),
+              _bannerInfoItem(
+                icon: Icons.outbox,
+                label: isFr ? 'Date de sortie / livraison :' : 'تاريخ الخروج والتسليم :',
+                value: exitDate,
+                isHighlight: true,
+              ),
+              _bannerInfoItem(
+                icon: Icons.payments_outlined,
+                label: isFr ? 'Avance payée :' : 'دفع مقدماً :',
+                value: data.amountPaid > 0
+                    ? '${data.amountPaid.toStringAsFixed(2)} DZD'
+                    : (isFr ? 'Aucune avance' : 'بدون تسبيق'),
+              ),
+              _bannerInfoItem(
+                icon: isSoldOut ? Icons.check_circle : Icons.pending_actions,
+                label: isFr ? 'Règlement / Solde :' : 'حالة الحساب الباقي :',
+                value: isSoldOut
+                    ? (isFr ? 'Compte soldé (Payé intégralement)' : 'أكمل الحساب بالكامل (Soldé)')
+                    : (isFr ? 'Reste: ${remaining.toStringAsFixed(2)} DZD' : 'المتبقي: ${remaining.toStringAsFixed(2)} دج'),
+                isSuccess: isSoldOut,
+              ),
+              _bannerInfoItem(
+                icon: Icons.inventory_2_outlined,
+                label: isFr ? 'Type de livraison :' : 'نوع التسليم :',
+                value: data.isPartial
+                    ? (isFr ? 'Livraison partielle' : 'تسليم جزئي (توزيع جزئي)')
+                    : (isFr ? 'Livraison totale' : 'تسليم كلي (توزيع كلي)'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bannerInfoItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool isHighlight = false,
+    bool isSuccess = false,
+  }) {
+    Color valColor = Colors.black87;
+    if (isHighlight) valColor = const Color(0xFF1565C0);
+    if (isSuccess) valColor = Colors.green.shade800;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: Colors.blueGrey.shade600),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            color: Colors.blueGrey.shade800,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Cairo',
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: valColor,
+            fontFamily: 'Cairo',
           ),
         ),
       ],

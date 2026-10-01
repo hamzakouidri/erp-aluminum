@@ -14,6 +14,7 @@ import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_config.dart';
 import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/desktop_window_frame.dart';
+import 'package:database_data/widgets/auth_session_view.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -152,12 +153,12 @@ class _AppBootstrapState extends State<AppBootstrap> {
               size: Size(1280, 800),
               minimumSize: Size(900, 600),
               center: true,
-              backgroundColor: Colors.transparent,
+              backgroundColor: Color(0xFF0F2027),
               skipTaskbar: false,
               titleBarStyle: TitleBarStyle.hidden,
               windowButtonVisibility: false,
             )
-          : const WindowOptions(backgroundColor: Colors.transparent);
+          : const WindowOptions(backgroundColor: Color(0xFF0F2027));
       await windowManager.waitUntilReadyToShow(options, () async {
         await windowManager.show();
         await windowManager.focus();
@@ -308,7 +309,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ? 'Cairo'
         : 'Arial';
 
-    return MaterialApp(
+    return AuthSessionView(
+      authStateChanges: AppAuthService().authStateChanges,
+      initialUser: AppAuthService().currentUser,
+      builder: (context, user) => MaterialApp(
       scaffoldMessengerKey: _scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: Localization.translate('ورشتي', settings.language),
@@ -422,11 +426,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ),
         );
       },
-      home: StreamBuilder<AppAuthUser?>(
-        stream: AppAuthService().authStateChanges,
-        initialData: AppAuthService().currentUser,
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
+      home: Builder(
+        builder: (context) {
+          if (user != null) {
             const authenticatedContent = SubscriptionChecker();
             if (!kIsWeb && Platform.isWindows) {
               return DesktopWindowFrame(
@@ -436,17 +438,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             }
             return authenticatedContent;
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
           final loginContent = const LoginScreen();
           if (!kIsWeb && Platform.isWindows) {
             return DesktopWindowFrame(child: loginContent);
           }
           return loginContent;
         },
+      ),
       ),
     );
   }

@@ -3525,6 +3525,38 @@ class ComponentCalculator {
       }
     }
 
+    final angleJunctionFramePieces = <double>[];
+    AluminumSection? angleJunctionFrame;
+    if (window.usesProfileAngle &&
+        window.hasSideCovers &&
+        !window.isIntegratedFrame) {
+      final curOpening = window.activeFrameOverride ??
+          window.getSectionByType('frame')?.toMap();
+      if (curOpening != null) {
+        angleJunctionFrame = window.findCompatibleNoCoverFrame(
+          currentFrame: AluminumSection.fromMap(curOpening),
+          sliding: window.systemMode == 'sliding',
+        );
+      }
+      if (angleJunctionFrame != null) {
+        int piecesNeeded = 0;
+        if (window.profileAngleMode == 3) {
+          piecesNeeded += 2;
+        } else if (window.profileAngleMode > 0) {
+          piecesNeeded += 1;
+        }
+        piecesNeeded += window.activeProfileAngleJunctions.length * 2;
+
+        final targetPieces = window.systemMode == 'sliding'
+            ? slidingOuterFramePieces
+            : framePieces;
+        // Take up to piecesNeeded from the end (which are height cuts)
+        for (int i = 0; i < piecesNeeded && targetPieces.isNotEmpty; i++) {
+          angleJunctionFramePieces.add(targetPieces.removeLast());
+        }
+      }
+    }
+
     if (framePieces.isNotEmpty) {
       items.add(
         createProfile(
@@ -3535,6 +3567,19 @@ class ComponentCalculator {
           overrideMap: outerFrameOverride,
           // The frame selected in the drawing is authoritative. A stale table
           // value from an earlier selection must not replace it.
+          preferOverrideMap: true,
+        ),
+      );
+    }
+
+    if (angleJunctionFramePieces.isNotEmpty && angleJunctionFrame != null) {
+      items.add(
+        createProfile(
+          "إطار لجهة بروفيل الزاوية (Dormant côté angle)",
+          colorName,
+          pieces: angleJunctionFramePieces,
+          unit: 'قطاع',
+          overrideMap: angleJunctionFrame.toMap(),
           preferOverrideMap: true,
         ),
       );

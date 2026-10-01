@@ -88,6 +88,87 @@ class _KeyboardShortcutsScreenState extends State<KeyboardShortcutsScreen> {
     return KeyEventResult.handled;
   }
 
+  Future<void> _showAddShortcutDialog() async {
+    var query = '';
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final available = ShortcutBindings.commands.entries.where((entry) {
+            if (ShortcutBindings.defaultCommands.contains(entry.key) ||
+                ShortcutBindings.instance.bindings.containsKey(entry.key)) {
+              return false;
+            }
+            final needle = query.trim().toLowerCase();
+            if (needle.isEmpty) return true;
+            final category =
+                ShortcutBindings.commandCategories[entry.key] ?? '';
+            return tr(entry.value).toLowerCase().contains(needle) ||
+                tr(category).toLowerCase().contains(needle);
+          }).toList();
+
+          return AlertDialog(
+            title: Text(tr('إضافة اختصار جديد')),
+            content: SizedBox(
+              width: 520,
+              height: 520,
+              child: Column(
+                children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: tr('ابحث عن صفحة أو خاصية...'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => setDialogState(() => query = value),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: available.isEmpty
+                        ? Center(
+                            child: Text(tr('لا توجد خصائص أخرى لإضافتها.')),
+                          )
+                        : ListView.separated(
+                            itemCount: available.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final entry = available[index];
+                              final category =
+                                  ShortcutBindings.commandCategories[entry
+                                      .key] ??
+                                  '';
+                              return ListTile(
+                                leading: const Icon(Icons.add_circle_outline),
+                                title: Text(tr(entry.value)),
+                                subtitle: category.isEmpty
+                                    ? null
+                                    : Text(tr(category)),
+                                onTap: () =>
+                                    Navigator.pop(dialogContext, entry.key),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(tr('إلغاء')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _capturing = selected);
+    _captureFocus.requestFocus();
+  }
+
   @override
   Widget build(BuildContext context) => Focus(
     focusNode: _captureFocus,
@@ -109,7 +190,12 @@ class _KeyboardShortcutsScreenState extends State<KeyboardShortcutsScreen> {
             tr('لتعديل أو حذف طلبية، حدد زر خياراتها بلوحة المفاتيح أولًا.'),
           ),
           const Divider(),
-          for (final command in ShortcutBindings.commands.entries)
+          for (final command in ShortcutBindings.commands.entries.where(
+            (entry) =>
+                ShortcutBindings.defaultCommands.contains(entry.key) ||
+                entry.key == _capturing ||
+                ShortcutBindings.instance.bindings.containsKey(entry.key),
+          ))
             ListTile(
               title: Text(tr(command.value)),
               subtitle: Text(
@@ -137,6 +223,12 @@ class _KeyboardShortcutsScreenState extends State<KeyboardShortcutsScreen> {
                     : () => _save(command.key, null),
               ),
             ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: !_ready ? null : _showAddShortcutDialog,
+            icon: const Icon(Icons.add),
+            label: Text(tr('إضافة اختصار جديد')),
+          ),
         ],
       ),
     ),

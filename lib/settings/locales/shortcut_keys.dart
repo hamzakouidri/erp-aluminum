@@ -1,6 +1,141 @@
 import '../app_settings.dart';
 
 const shortcutKeys = <String, Map<AppLanguage, String>>{
+  'إضافة اختصار جديد': {
+    AppLanguage.arabic: 'إضافة اختصار جديد',
+    AppLanguage.french: 'Ajouter un raccourci',
+    AppLanguage.english: 'Add shortcut',
+  },
+  'ابحث عن صفحة أو خاصية...': {
+    AppLanguage.arabic: 'ابحث عن صفحة أو خاصية...',
+    AppLanguage.french: 'Rechercher une page ou une fonction…',
+    AppLanguage.english: 'Search for a page or action…',
+  },
+  'لا توجد خصائص أخرى لإضافتها.': {
+    AppLanguage.arabic: 'لا توجد خصائص أخرى لإضافتها.',
+    AppLanguage.french: 'Aucune autre fonction à ajouter.',
+    AppLanguage.english: 'No more actions to add.',
+  },
+  'الرسم والطلبات': {
+    AppLanguage.arabic: 'الرسم والطلبات',
+    AppLanguage.french: 'Conception et commandes',
+    AppLanguage.english: 'Design and orders',
+  },
+  'الحسابات والسندات': {
+    AppLanguage.arabic: 'الحسابات والسندات',
+    AppLanguage.french: 'Comptes et bons',
+    AppLanguage.english: 'Accounts and vouchers',
+  },
+  'الزبائن والمشاريع': {
+    AppLanguage.arabic: 'الزبائن والمشاريع',
+    AppLanguage.french: 'Clients et projets',
+    AppLanguage.english: 'Customers and projects',
+  },
+  'المخزون والمنتجات': {
+    AppLanguage.arabic: 'المخزون والمنتجات',
+    AppLanguage.french: 'Stock et produits',
+    AppLanguage.english: 'Inventory and products',
+  },
+  'التقارير والمهام': {
+    AppLanguage.arabic: 'التقارير والمهام',
+    AppLanguage.french: 'Rapports et tâches',
+    AppLanguage.english: 'Reports and tasks',
+  },
+  'الإدارة والإعدادات': {
+    AppLanguage.arabic: 'الإدارة والإعدادات',
+    AppLanguage.french: 'Gestion et paramètres',
+    AppLanguage.english: 'Management and settings',
+  },
+  'المبيعات': {
+    AppLanguage.arabic: 'المبيعات',
+    AppLanguage.french: 'Ventes',
+    AppLanguage.english: 'Sales',
+  },
+  'المشتريات': {
+    AppLanguage.arabic: 'المشتريات',
+    AppLanguage.french: 'Achats',
+    AppLanguage.english: 'Purchases',
+  },
+  'الموردون': {
+    AppLanguage.arabic: 'الموردون',
+    AppLanguage.french: 'Fournisseurs',
+    AppLanguage.english: 'Suppliers',
+  },
+  'المنتجات': {
+    AppLanguage.arabic: 'المنتجات',
+    AppLanguage.french: 'Produits',
+    AppLanguage.english: 'Products',
+  },
+  'الزبائن': {
+    AppLanguage.arabic: 'الزبائن',
+    AppLanguage.french: 'Clients',
+    AppLanguage.english: 'Customers',
+  },
+  'كشف حساب الزبائن': {
+    AppLanguage.arabic: 'كشف حساب الزبائن',
+    AppLanguage.french: 'Relevé clients',
+    AppLanguage.english: 'Customer ledger',
+  },
+  'رفع القياسات': {
+    AppLanguage.arabic: 'رفع القياسات',
+    AppLanguage.french: 'Saisie des mesures',
+    AppLanguage.english: 'Measurements',
+  },
+  'التوزيع والتتبع': {
+    AppLanguage.arabic: 'التوزيع والتتبع',
+    AppLanguage.french: 'Distribution et suivi',
+    AppLanguage.english: 'Distribution and tracking',
+  },
+  'مركز التقارير': {
+    AppLanguage.arabic: 'مركز التقارير',
+    AppLanguage.french: 'Centre de rapports',
+    AppLanguage.english: 'Reports center',
+  },
+  'كل المشاريع': {
+    AppLanguage.arabic: 'كل المشاريع',
+    AppLanguage.french: 'Tous les projets',
+    AppLanguage.english: 'All projects',
+  },
+  'مهامي وتصنيعاتي': {
+    AppLanguage.arabic: 'مهامي وتصنيعاتي',
+    AppLanguage.french: 'Mes tâches et fabrications',
+    AppLanguage.english: 'My tasks and manufacturing',
+  },
+  'أرشيف المهام والتوزيع': {
+    AppLanguage.arabic: 'أرشيف المهام والتوزيع',
+    AppLanguage.french: 'Archives et distribution',
+    AppLanguage.english: 'Tasks and distribution archive',
+  },
+  'المهام الخارجية': {
+    AppLanguage.arabic: 'المهام الخارجية',
+    AppLanguage.french: 'Opérations externes',
+    AppLanguage.english: 'External operations',
+  },
+  'صلاحيات المستخدمين': {
+    AppLanguage.arabic: 'صلاحيات المستخدمين',
+    AppLanguage.french: 'Gestion des utilisateurs',
+    AppLanguage.english: 'User permissions',
+  },
+  'إدارة الأسعار': {
+    AppLanguage.arabic: 'إدارة الأسعار',
+    AppLanguage.french: 'Gestion des prix',
+    AppLanguage.english: 'Price management',
+  },
+  'الأنظمة المستعملة': {
+    AppLanguage.arabic: 'الأنظمة المستعملة',
+    AppLanguage.french: 'Systèmes utilisés',
+    AppLanguage.english: 'Selected systems',
+  },
+  'إعدادات التطبيق': {
+    AppLanguage.arabic: 'إعدادات التطبيق',
+    AppLanguage.french: "Paramètres de l'application",
+    AppLanguage.english: 'Application settings',
+  },
+  'تقرير النواقص': {
+    AppLanguage.arabic: 'تقرير النواقص',
+    AppLanguage.french: 'Rapport des manques',
+    AppLanguage.english: 'Shortage report',
+  },
   'تُحفظ الاختصارات لجميع أعضاء الورشة.': {
     AppLanguage.arabic: 'تُحفظ الاختصارات لجميع أعضاء الورشة.',
     AppLanguage.french:

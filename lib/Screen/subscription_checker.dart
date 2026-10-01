@@ -16,6 +16,7 @@ import 'package:database_data/services/supabase_account_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import '../widgets/subscription_deadline.dart';
+import '../services/offline_account_cache.dart';
 
 class SubscriptionChecker extends StatefulWidget {
   const SubscriptionChecker({super.key});
@@ -543,7 +544,7 @@ class SupabaseSubscriptionGate extends StatefulWidget {
 }
 
 class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
-  static const _accountCachePrefix = 'supabase_account_cache_v1_';
+  static const _accountCachePrefix = accountCachePrefix;
   Timer? _expiryTimer;
   Timer? _subscriptionCheckTimer;
   RealtimeChannel? _subscriptionChannel;
@@ -567,44 +568,21 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
     if (userId == null || userId.isEmpty) return null;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('');
-      if (raw != null && raw.isNotEmpty) {
-        final map = jsonDecode(raw);
-        if (map is Map && map['userId']?.toString() == userId) {
-          return _accountFromMap(Map<String, dynamic>.from(map));
-        }
-      }
+      final map = readOfflineAccount(prefs, userId);
+      if (map != null) return _accountFromMap(map);
 
-      // Offline fallback: allow local access if the workshop code is cached
-      final workshopCode = prefs.getString('workshop_code') ?? '';
-      final role = prefs.getString('user_role') ?? 'worker';
-      final workshopName = prefs.getString('workshop_name') ?? '';
-      if (workshopCode.isNotEmpty) {
-        return SupabaseAccountSnapshot(
-          userId: userId,
-          email: AppAuthService().currentUser?.email ?? '',
-          role: role,
-          workshopId:
-              prefs.getString('cached_workshop_uuid') ??
-              prefs.getString('selected_supabase_workshop_id') ??
-              workshopCode,
-          workshopCode: workshopCode,
-          workshopName: workshopName,
-          permissions: const <String, dynamic>{},
-          blocked: false,
-          subscription: const <String, dynamic>{'status': 'active'},
-        );
-      }
+      // A workshop code alone never proves membership or subscription.
     } catch (error) {
-      debugPrint('Cached Supabase account could not be read: ');
+      debugPrint('Cached Supabase account could not be read: $error');
     }
     try {
-      final account = await SupabaseAccountService().loadCurrentAccount();
+      final account = await SupabaseAccountService().loadCurrentAccount()
+          .timeout(const Duration(seconds: 15));
       if (account != null) await _cacheAccount(account);
       return account;
     } catch (e) {
-      debugPrint('SupabaseAccountService loadCurrentAccount offline error: ');
-      return null;
+      // Preserve an unavailable check as an error, not "no membership".
+      rethrow;
     }
   }
 
@@ -643,10 +621,20 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
   }
 
   Future<void> _refreshAccountInBackground() async {
+    final userId = _currentUserId;
     try {
-      final account = await SupabaseAccountService().loadCurrentAccount();
+      final account = await SupabaseAccountService().loadCurrentAccount()
+          .timeout(const Duration(seconds: 15));
       if (!mounted) return;
-      if (account != null) await _cacheAccount(account);
+      if (userId != _currentUserId) return;
+      if (account != null) {
+        await _cacheAccount(account);
+      } else if (userId != null) {
+        // A successful server check that revoked membership invalidates the
+        // old offline grant as well. Network failures never enter this path.
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('$_accountCachePrefix$userId');
+      }
       if (!mounted) return;
       setState(() => _accountFuture = Future.value(account));
       if (account != null) _scheduleSubscriptionExpiry(account);
@@ -726,6 +714,9 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
     final endsAt = DateTime.tryParse(raw)?.toLocal();
     if (endsAt == null) return;
     final delay = endsAt.difference(DateTime.now());
+    // The local deadline widget enforces expiry. Do not repeatedly schedule
+    // an immediate network refresh for an already expired cached account.
+    if (delay <= Duration.zero) return;
     _expiryTimer = Timer(
       delay.isNegative || delay == Duration.zero ? Duration.zero : delay,
       _reloadAccountSilently,
@@ -754,6 +745,9 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
     }
     final rawEndsAt = account.subscription['ends_at']?.toString();
     final endsAt = rawEndsAt == null ? null : DateTime.tryParse(rawEndsAt);
+    if (rawEndsAt != null && rawEndsAt.trim().isNotEmpty && endsAt == null) {
+      return false;
+    }
     if (endsAt != null) return DateTime.now().toUtc().isBefore(endsAt.toUtc());
     return status == 'active';
   }
@@ -776,9 +770,24 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  'تعذر تحميل بيانات الحساب من Supabase:\n${snapshot.error}',
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.cloud_off_rounded, size: 48),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'تعذر التحقق من الاشتراك، ولا توجد بيانات تحقق محفوظة لهذا الحساب. اتصل بالإنترنت ثم أعد المحاولة.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => setState(() {
+                        _accountFuture = _loadCachedAccountFirst();
+                        unawaited(_bindSubscriptionRealtime());
+                      }),
+                      child: const Text('إعادة المحاولة'),
+                    ),
+                  ],
                 ),
               ),
             ),

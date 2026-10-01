@@ -697,7 +697,12 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.english: 'Error generating picture file: ',
   },
   'trash': {
-    AppLanguage.arabic: 'سلة المهملات',
+    AppLanguage.arabic: 'سلة المحذوفات',
+    AppLanguage.french: 'Corbeille',
+    AppLanguage.english: 'Trash',
+  },
+  'سلة المحذوفات': {
+    AppLanguage.arabic: 'سلة المحذوفات',
     AppLanguage.french: 'Corbeille',
     AppLanguage.english: 'Trash',
   },

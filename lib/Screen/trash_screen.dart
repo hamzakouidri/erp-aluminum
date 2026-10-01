@@ -453,7 +453,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          Localization.translate('سلة المحذوفات', lang),
+          _t('trash', lang),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: isDark
@@ -465,11 +465,11 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
           tabs: [
             Tab(
               icon: const Icon(Icons.shopping_cart_outlined, size: 18),
-              text: ' ()',
+              text: '${Localization.translate('commandes', lang)} (${_trashOrders.length})',
             ),
             Tab(
               icon: const Icon(Icons.receipt_long_outlined, size: 18),
-              text: ' ()',
+              text: '${Localization.translate('achats', lang)} (${_trashAchats.length})',
             ),
           ],
         ),
@@ -613,17 +613,17 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        ': ',
+                        '${Localization.translate('invoice_number', lang)}: $invoiceNum',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        ': ',
+                        '${Localization.translate('supplier', lang)}: $supplierName',
                         style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        ' DZD',
+                        '${NumberFormat('#,##0.00').format(total)} DZD',
                         style: const TextStyle(
                           color: Colors.blueGrey,
                           fontSize: 12,
@@ -633,7 +633,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                       if (deletedAt != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          ': ',
+                          '${_t('deleted_date', lang)}: ${_formatDate(deletedAt)}',
                           style: TextStyle(color: Colors.red.shade400, fontSize: 11),
                         ),
                       ],
@@ -741,7 +741,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                             order['display_number'] ?? order['order_code'] ?? orderId;
                         final firstName = order['firstname'] ?? '';
                         final lastName = order['lastname'] ?? '';
-                        final clientName = ' '.trim();
+                        final clientName = '$firstName $lastName'.trim();
                         final phone = order['phone'] ?? '';
                         final total = (order['total'] as num?)?.toDouble() ?? 0.0;
                         final netPayable =
@@ -774,7 +774,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
-                                        '#',
+                                        '#$displayCode',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: Colors.red,
@@ -795,7 +795,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                       ),
                                     ),
                                     Text(
-                                      ' DZD',
+                                      '${NumberFormat('#,##0.00').format(displayAmount)} DZD',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: isDark
@@ -845,46 +845,69 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                   ),
                                 ],
                                 const SizedBox(height: 6),
-                                Row(
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     if (createdAt != null) ...[
-                                      const Icon(
-                                        Icons.calendar_today_outlined,
-                                        size: 13,
-                                        color: Colors.grey,
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_today_outlined,
+                                            size: 13,
+                                            color: Colors.grey,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${Localization.translate('Date', lang)}: ${_formatDate(createdAt)}',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        ': ',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
                                     ],
                                     if (deletedAt != null) ...[
-                                      const Icon(
-                                        Icons.delete_outline,
-                                        size: 13,
-                                        color: Colors.redAccent,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        ': ',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.redAccent,
-                                        ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.delete_outline,
+                                            size: 13,
+                                            color: Colors.redAccent,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${_t('deleted_date', lang)}: ${_formatDate(deletedAt)}',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.redAccent,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ],
                                 ),
                                 const Divider(height: 16),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    OutlinedButton.icon(
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final isCompact = constraints.maxWidth < 480;
+
+                                    final viewDetailsBtn = OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
                                       icon: const Icon(
                                         Icons.visibility_outlined,
                                         size: 16,
@@ -895,17 +918,18 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                           lang,
                                         ),
                                         style: const TextStyle(fontSize: 12),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                       onPressed: () =>
                                           _showOrderSummaryDialog(order, lang),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton.icon(
+                                    );
+
+                                    final restoreBtn = ElevatedButton.icon(
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.teal,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
+                                          horizontal: 10,
                                           vertical: 6,
                                         ),
                                         shape: RoundedRectangleBorder(
@@ -923,17 +947,18 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold,
                                         ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                       onPressed: () =>
                                           _restoreOrder(orderId, lang),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton.icon(
+                                    );
+
+                                    final deleteBtn = ElevatedButton.icon(
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.red[700],
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
+                                          horizontal: 10,
                                           vertical: 6,
                                         ),
                                         shape: RoundedRectangleBorder(
@@ -951,11 +976,42 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold,
                                         ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                       onPressed: () =>
                                           _permanentlyDeleteOrder(orderId, lang),
-                                    ),
-                                  ],
+                                    );
+
+                                    if (isCompact) {
+                                      return Column(
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(child: restoreBtn),
+                                              const SizedBox(width: 8),
+                                              Expanded(child: deleteBtn),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: viewDetailsBtn,
+                                          ),
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        viewDetailsBtn,
+                                        const SizedBox(width: 8),
+                                        restoreBtn,
+                                        const SizedBox(width: 8),
+                                        deleteBtn,
+                                      ],
+                                    );
+                                  },
                                 ),
                               ],
                             ),

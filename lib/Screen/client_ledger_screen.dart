@@ -4,7 +4,10 @@ import 'package:intl/intl.dart';
 import '../sql_database.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
+import 'dart:convert';
 import '../Commande/order_workspace_screen.dart';
+import '../Commande/devis_builder.dart';
+import '../Commande/devis_preview_screen.dart';
 import 'client_ledger_pdf_service.dart';
 import 'receipt_pdf_service.dart';
 
@@ -23,6 +26,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
 
   Map<String, dynamic>? _client;
   List<Map<String, dynamic>> _ledgerItems = [];
+  List<Map<String, dynamic>> _ordersList = [];
   bool _isLoading = true;
 
   double _totalDebit = 0.0;
@@ -65,6 +69,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
 
       // 2. Get Client Orders (Commandes)
       final ordersList = await myDb.query('Commandes', where: 'client_id = ?', whereArgs: [widget.clientId]);
+      _ordersList = ordersList;
 
       // 3. Get Client Payments (Treasury)
       final treasuryList = await myDb.query('Treasury', where: "entity_type = 'Client' AND entity_id = ?", whereArgs: [widget.clientId]);
@@ -99,6 +104,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
 
         tempItems.add({
           'id': orderId,
+          'displayCode': displayCode,
           'date': date,
           'type': 'Order',
           'label': 'طلب شراء / Commande #$displayCode',
@@ -106,6 +112,59 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
           'credit': 0.0,
           'details': orderDetailsMap[orderId] ?? [],
           'rawData': order,
+        });
+      }
+
+      // 3.5. Get Client Deliveries (Commandes_deliveries)
+      List<Map<String, dynamic>> deliveriesList = [];
+      try {
+        deliveriesList = await myDb.rawQuery('''
+          SELECT d.*, c.order_code, c.order_code AS display_number, COALESCE(p.name, '') AS project_name, c.status as order_status
+          FROM Commandes_deliveries d
+          LEFT JOIN Commandes c ON CAST(d.id_commandes AS TEXT) = CAST(c.id AS TEXT)
+          LEFT JOIN Projects p ON c.project_id = p.id
+          WHERE CAST(d.client_id AS TEXT) = ? OR CAST(c.client_id AS TEXT) = ? OR d.id_commandes IN (SELECT id FROM Commandes WHERE client_id = ?)
+          ORDER BY d.id DESC
+        ''', [widget.clientId.toString(), widget.clientId.toString(), widget.clientId]);
+      } catch (e) {
+        debugPrint('Error loading deliveries in ledger: $e');
+      }
+
+      for (var d in deliveriesList) {
+        final dateStr = d['delivery_date']?.toString() ?? '';
+        DateTime date = DateTime.now();
+        try {
+          date = DateTime.parse(dateStr);
+        } catch (_) {
+          try {
+            date = DateFormat('yyyy-MM-dd HH:mm').parse(dateStr);
+          } catch (_) {}
+        }
+
+        final orderId = (d['id_commandes'] as num?)?.toInt() ?? 0;
+        final matchingOrder = ordersList.firstWhere(
+          (o) => (o['id'] as num?)?.toInt() == orderId,
+          orElse: () => <String, dynamic>{},
+        );
+        final orderDisplayCode = (matchingOrder['order_code'] as num?)?.toInt() ??
+            (d['order_code'] as num?)?.toInt() ??
+            (orderId < 100000 && orderId > 0 ? orderId : '?');
+
+        final deliveryId = (d['id'] as num?)?.toInt() ?? 0;
+        final isLoaded = (d['is_loaded'] as num?)?.toInt() == 1;
+
+        tempItems.add({
+          'id': deliveryId,
+          'orderId': orderId,
+          'displayCode': orderDisplayCode,
+          'date': date,
+          'type': 'Delivery',
+          'label': 'وصل تسليم / Bon de livraison #$deliveryId (الطلبية #$orderDisplayCode)',
+          'debit': 0.0,
+          'credit': 0.0,
+          'isLoaded': isLoaded,
+          'details': null,
+          'rawData': d,
         });
       }
 
@@ -176,6 +235,52 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _openDeliveryPreview(Map<String, dynamic> delivery) async {
+    final orderId = (delivery['id_commandes'] as num?)?.toInt() ?? 0;
+    final order = _ordersList.firstWhere(
+      (o) => (o['id'] as num?)?.toInt() == orderId,
+      orElse: () => <String, dynamic>{},
+    );
+    if (order.isEmpty) return;
+
+    List<Map<String, dynamic>> items = [];
+    try {
+      final raw = jsonDecode(delivery['items_json']?.toString() ?? '[]');
+      if (raw is List) {
+        items = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (_) {}
+
+    final workshop = await DevisBuilder.loadWorkshopInfo().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => DevisWorkshopInfo.empty,
+    );
+
+    final orderStatus = (order['status'] ?? '').toString();
+    final bool isPartial = (delivery['is_partial'] as num?)?.toInt() == 1 ||
+        orderStatus == 'Partial Distribution';
+
+    final devis = await DevisBuilder.build(
+      order: order,
+      items: items,
+      workshop: workshop,
+      isPartial: isPartial,
+      documentTitleKey: isPartial ? 'doc_bon_livraison_partiel' : 'doc_bon_livraison',
+    );
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DevisPreviewScreen(
+          data: devis,
+          deliveryId: delivery['id'] as int?,
+          initialIsLoaded: (delivery['is_loaded'] as num?)?.toInt() == 1,
+        ),
+      ),
+    ).then((_) => _loadLedgerData());
   }
 
   void _showReceiptOptions(BuildContext context, Map<String, dynamic> treasuryItem) {
@@ -515,7 +620,18 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                               amountColor = Colors.blue.shade700;
                               amountPrefix = '+';
                               displayAmount = debit;
-                              displayLabel = '${Localization.translate('طلب شراء', lang)} #${item['id']}';
+                              displayLabel = '${Localization.translate('طلب شراء', lang)} #${item['displayCode'] ?? item['id']}';
+                            } else if (type == 'Delivery') {
+                              avatarIcon = Icons.local_shipping_rounded;
+                              iconColor = Colors.teal;
+                              amountColor = Colors.teal.shade700;
+                              amountPrefix = '';
+                              displayAmount = 0.0;
+                              final orderCode = item['displayCode'] ?? '';
+                              final delivId = item['id'];
+                              displayLabel = lang == AppLanguage.french
+                                  ? 'Bon de livraison #$delivId (Cmd #$orderCode)'
+                                  : '${Localization.translate('وصل تسليم (BL)', lang)} #$delivId (${Localization.translate('الطلبية', lang)} #$orderCode)';
                             } else if (type == 'Payment') {
                               avatarIcon = Icons.check_circle_rounded;
                               iconColor = Colors.green;
@@ -556,16 +672,56 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                                   children: [
                                     Text(dateStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
                                     const SizedBox(height: 2),
-                                    Text(
-                                      '${Localization.translate('رصيد جاري', lang)}: ${formatter.format(running)} $currency',
-                                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontWeight: FontWeight.w500, fontFamily: 'Cairo'),
-                                    ),
+                                    if (type != 'Delivery')
+                                      Text(
+                                        '${Localization.translate('رصيد جاري', lang)}: ${formatter.format(running)} $currency',
+                                        style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontWeight: FontWeight.w500, fontFamily: 'Cairo'),
+                                      )
+                                    else
+                                      Text(
+                                        lang == AppLanguage.french ? 'Marchandise sortie / livrée' : 'تم خروج وتسليم السلع للزبون',
+                                        style: TextStyle(fontSize: 11, color: Colors.teal.shade700, fontWeight: FontWeight.w500, fontFamily: 'Cairo'),
+                                      ),
                                   ],
                                 ),
-                                trailing: Text(
-                                  '$amountPrefix${formatter.format(displayAmount)} $currency',
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: amountColor, fontSize: 13),
-                                ),
+                                trailing: type == 'Delivery'
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: (item['isLoaded'] == true ? Colors.green : Colors.teal).withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: (item['isLoaded'] == true ? Colors.green : Colors.teal).shade300,
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              item['isLoaded'] == true ? Icons.check_circle : Icons.inventory_2_outlined,
+                                              size: 13,
+                                              color: (item['isLoaded'] == true ? Colors.green : Colors.teal).shade700,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              item['isLoaded'] == true
+                                                  ? (lang == AppLanguage.french ? 'Livré' : 'مُسلَّم')
+                                                  : (lang == AppLanguage.french ? 'En cours' : 'قيد التسليم'),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 11,
+                                                color: (item['isLoaded'] == true ? Colors.green : Colors.teal).shade800,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : Text(
+                                        '$amountPrefix${formatter.format(displayAmount)} $currency',
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: amountColor, fontSize: 13),
+                                      ),
                                 onTap: () {
                                   if (type == 'Order') {
                                     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
@@ -587,6 +743,8 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                                       editCommandeId: item['id'] as int,
                                       onSaved: _loadLedgerData,
                                     );
+                                  } else if (type == 'Delivery') {
+                                    _openDeliveryPreview(item['rawData'] as Map<String, dynamic>);
                                   } else {
                                     // Open options dialog for payment/refund receipt print
                                     _showReceiptOptions(context, item['rawData'] as Map<String, dynamic>);

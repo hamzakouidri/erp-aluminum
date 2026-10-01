@@ -59,6 +59,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   List<Map<String, dynamic>> shutterBoxLimitsList = [];
   List<Map<String, dynamic>> kitBundlesList = [];
   List<Map<String, dynamic>> caissonTunnelPricesList = [];
+  List<Map<String, dynamic>> temperedGlassItemsList = [];
+  String _temperedGlassSearchQuery = '';
+  String _temperedGlassCategoryFilter = 'all';
 
   Map<int, Map<int, double>> seriesColorPrices = {};
   Map<int, Map<int, double>> sectionColorPrices = {};
@@ -100,7 +103,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 9,
+      length: 10,
       vsync: this,
       initialIndex: _sessionSelectedTab ?? widget.initialIndex,
     );
@@ -525,6 +528,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       tempGlissieres = ['Glissière 25', 'Glissière 120', 'Glissière 100'];
     }
 
+    final tempTgItems = await db.getTemperedGlassItems();
     if (!mounted || requestId != _loadRequestId) return;
     setState(() {
       seriesList = sList;
@@ -538,6 +542,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       shutterBoxLimitsList = limitsList;
       kitBundlesList = kbList;
       caissonTunnelPricesList = ctPricesList;
+      temperedGlassItemsList = tempTgItems;
 
       seriesColorPrices = tempPrices;
       accessoryColorPrices = tempAccPrices;
@@ -1374,6 +1379,210 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         );
       },
     );
+  }
+
+  Widget _buildTemperedGlassPricingTab(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+
+    final filtered = temperedGlassItemsList.where((item) {
+      final matchesCat = _temperedGlassCategoryFilter == 'all' || item['category'] == _temperedGlassCategoryFilter;
+      final q = _temperedGlassSearchQuery.trim().toLowerCase();
+      final matchesQuery = q.isEmpty ||
+          (item['name'] ?? '').toString().toLowerCase().contains(q) ||
+          (item['notes'] ?? '').toString().toLowerCase().contains(q) ||
+          (item['category_name'] ?? '').toString().toLowerCase().contains(q);
+      return matchesCat && matchesQuery;
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: switch (lang) {
+                      AppLanguage.french => 'Rechercher un accessoire / profilé verre trempé...',
+                      AppLanguage.english => 'Search tempered glass accessory / profile...',
+                      _ => 'بحث في إكسسوارات وقطاعات الزجاج المقسى...',
+                    },
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Theme.of(context).cardColor,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                  onChanged: (val) => setState(() => _temperedGlassSearchQuery = val),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              'all',
+              'poignee',
+              'charniere',
+              'profile',
+              'fixation',
+              'joint',
+              'serrure',
+            ].map((cat) {
+              final isSel = _temperedGlassCategoryFilter == cat;
+              final catLabel = switch (cat) {
+                'all' => Localization.translate('الكل', lang),
+                'poignee' => switch (lang) { AppLanguage.french => 'Poignées', AppLanguage.english => 'Handles', _ => 'المقابض' },
+                'charniere' => switch (lang) { AppLanguage.french => 'Charnières', AppLanguage.english => 'Hinges', _ => 'المفصلات' },
+                'profile' => switch (lang) { AppLanguage.french => 'Profilés & Rails', AppLanguage.english => 'Profiles & Rails', _ => 'القطاعات والسكك' },
+                'fixation' => switch (lang) { AppLanguage.french => 'Fixations', AppLanguage.english => 'Clamps', _ => 'التثبيت والمشابك' },
+                'joint' => switch (lang) { AppLanguage.french => 'Joints', AppLanguage.english => 'Seals', _ => 'الجوانات والعوازل' },
+                'serrure' => switch (lang) { AppLanguage.french => 'Serrures', AppLanguage.english => 'Locks', _ => 'الأقفال' },
+                _ => cat,
+              };
+              return Padding(
+                padding: const EdgeInsets.only(right: 6, left: 6),
+                child: ChoiceChip(
+                  selected: isSel,
+                  label: Text(catLabel),
+                  selectedColor: Colors.teal.shade600,
+                  labelStyle: TextStyle(color: isSel ? Colors.white : null),
+                  onSelected: (_) => setState(() => _temperedGlassCategoryFilter = cat),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Text(
+                    Localization.translate('لم يتم العثور على عناصر.', lang),
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = filtered[index];
+                    final name = item['name']?.toString() ?? '';
+                    final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                    final unit = item['unit']?.toString() ?? 'piece';
+                    final unitLabel = unit == 'meter'
+                        ? (lang == AppLanguage.french ? '/m' : (lang == AppLanguage.english ? '/m' : 'للمتر'))
+                        : (lang == AppLanguage.french ? '/pièce' : (lang == AppLanguage.english ? '/pc' : 'للقطعة'));
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.teal.shade200.withValues(alpha: 0.5)),
+                      ),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.teal.shade50,
+                          child: Icon(Icons.hardware_outlined, color: Colors.teal.shade800),
+                        ),
+                        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        subtitle: Text(
+                          '${item['category_name'] ?? item['category'] ?? ''} • $unitLabel',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                        ),
+                        trailing: SizedBox(
+                          width: 170,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${price.toStringAsFixed(0)} DZD',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Colors.teal.shade800,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 18),
+                                tooltip: Localization.translate('تعديل السعر', lang),
+                                onPressed: () => _showEditTemperedGlassPriceDialog(item),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showEditTemperedGlassPriceDialog(Map<String, dynamic> item) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final priceCtrl = TextEditingController(text: (item['price'] as num?)?.toString() ?? '0');
+    final costCtrl = TextEditingController(text: (item['cost_price'] as num?)?.toString() ?? '0');
+    final id = item['id'] as int;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(item['name']?.toString() ?? ''),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: priceCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: switch (lang) {
+                  AppLanguage.french => 'Prix de vente (DZD)',
+                  AppLanguage.english => 'Selling Price (DZD)',
+                  _ => 'سعر البيع (د.ج)',
+                },
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: costCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: switch (lang) {
+                  AppLanguage.french => 'Prix de revient / coût (DZD)',
+                  AppLanguage.english => 'Cost Price (DZD)',
+                  _ => 'سعر التكلفة (د.ج)',
+                },
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(Localization.translate('إلغاء', lang))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(Localization.translate('حفظ', lang))),
+        ],
+      ),
+    );
+
+    if (saved == true && mounted) {
+      final p = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+      final c = double.tryParse(costCtrl.text.trim()) ?? 0.0;
+      await db.updateTemperedGlassItem(id, {'price': p, 'cost_price': c});
+      _loadAllData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   Widget _buildShutterSqmPricesList(BuildContext context) {
@@ -4429,6 +4638,13 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             Tab(text: Localization.translate("أسعار المقاطع", lang)),
             Tab(text: Localization.translate("حدود الصناديق (Caissons)", lang)),
             const Tab(text: 'Caisson Tunnel'),
+            Tab(
+              text: switch (lang) {
+                AppLanguage.french => 'Accessoires Verre Trempé',
+                AppLanguage.english => 'Tempered Glass Acc.',
+                _ => 'إكسسوارات الزجاج المقسّى',
+              },
+            ),
           ],
         ),
       ),
@@ -4455,6 +4671,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   _buildSectionPricingTab(context),
                   _buildShutterBoxLimitsTab(context),
                   _buildCaissonTunnelPricingTab(context),
+                  _buildTemperedGlassPricingTab(context),
                 ],
               ),
       ),

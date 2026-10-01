@@ -116,113 +116,157 @@ class ItemMeasurementsDialog extends StatelessWidget {
       return indices;
     }
 
-    final content = SizedBox(
-      width: embedded ? double.infinity : 1000,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _measurementAndStatus(
-              Text(
-                complete
-                    ? tr(
-                        'القياسات مؤكدة',
-                        'Mesures confirmées',
-                        'Measurements confirmed',
-                      )
-                    : tr(
-                        'المؤكد: ${confirmed.length} من $quantity',
-                        'Confirmées : ${confirmed.length} sur $quantity',
-                        'Confirmed: ${confirmed.length} of $quantity',
-                      ),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: complete ? Colors.green : Colors.orange,
+    final body = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          complete
+              ? tr(
+                  'القياسات مؤكدة',
+                  'Mesures confirmées',
+                  'Measurements confirmed',
+                )
+              : tr(
+                  'المؤكد: ${confirmed.length} من $quantity',
+                  'Confirmées : ${confirmed.length} sur $quantity',
+                  'Confirmed: ${confirmed.length} of $quantity',
                 ),
-              ),
-              rawAllocations is List
-                  ? Column(
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: complete ? Colors.green : Colors.orange,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0)
+            const Divider(
+              height: 20,
+              thickness: 0.8,
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: _measurementAndStatus(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${i + 1}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          tr('حالة العنصر', 'État de l’élément', 'Item status'),
+                          '${rows[i]['width']} × ${rows[i]['height']} ${tr('مم', 'mm', 'mm')}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
                         ),
-                        MeasurementProgress(
-                          allocations: allocations,
-                          quantity: quantity,
-                          language: language,
+                        const SizedBox(height: 4),
+                        Text(
+                          [
+                            tr(
+                              'الكمية: ${rows[i]['qty']}',
+                              'Quantité : ${rows[i]['qty']}',
+                              'Quantity: ${rows[i]['qty']}',
+                            ),
+                            if (rows[i]['position'].toString().isNotEmpty)
+                              tr(
+                                'الموقع: ${rows[i]['position']}',
+                                'Emplacement : ${rows[i]['position']}',
+                                'Location: ${rows[i]['position']}',
+                              ),
+                            if (confirmed.isEmpty ||
+                                rows[i]['pending'] == true)
+                              tr(
+                                'غير مؤكدة — قياسات أولية',
+                                'Non confirmées — mesures initiales',
+                                'Unconfirmed — initial measurements',
+                              ),
+                          ].join('\n'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).textTheme.bodySmall?.color,
+                          ),
                         ),
                       ],
+                    ),
+                  ),
+                ],
+              ),
+              rawAllocations is List && rows.length > 1
+                  ? MeasurementProgress(
+                      allocations: allocations,
+                      quantity: measurementQuantityValue(rows[i]['qty']),
+                      language: language,
+                      unitIndices: indicesFor(rows[i]),
                     )
                   : null,
             ),
-            const SizedBox(height: 12),
-            for (var i = 0; i < rows.length; i++)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: _measurementAndStatus(
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${i + 1}'),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${rows[i]['width']} × ${rows[i]['height']} ${tr('مم', 'mm', 'mm')}',
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              [
-                                tr(
-                                  'الكمية: ${rows[i]['qty']}',
-                                  'Quantité : ${rows[i]['qty']}',
-                                  'Quantity: ${rows[i]['qty']}',
-                                ),
-                                if (rows[i]['position'].toString().isNotEmpty)
-                                  tr(
-                                    'الموقع: ${rows[i]['position']}',
-                                    'Emplacement : ${rows[i]['position']}',
-                                    'Location: ${rows[i]['position']}',
-                                  ),
-                                if (confirmed.isEmpty ||
-                                    rows[i]['pending'] == true)
-                                  tr(
-                                    'غير مؤكدة — قياسات أولية',
-                                    'Non confirmées — mesures initiales',
-                                    'Unconfirmed — initial measurements',
-                                  ),
-                              ].join('\n'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+          ),
+        ],
+        if (rawAllocations is List) ...[
+          const SizedBox(height: 12),
+          const Divider(thickness: 1.2),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr('حالة العنصر', 'État de l’élément', 'Item status'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
-                  rawAllocations is List && rows.length > 1
-                      ? MeasurementProgress(
-                          allocations: allocations,
-                          quantity: measurementQuantityValue(rows[i]['qty']),
-                          language: language,
-                          unitIndices: indicesFor(rows[i]),
-                        )
-                      : null,
                 ),
-              ),
-            if (!isSaved)
-              Text(
-                tr(
-                  'احفظ الطلبية أولاً لتأكيد القياسات.',
-                  'Enregistrez la commande avant de confirmer les mesures.',
-                  'Save the order before confirming measurements.',
+                const SizedBox(height: 6),
+                MeasurementProgress(
+                  allocations: allocations,
+                  quantity: quantity,
+                  language: language,
                 ),
+              ],
+            ),
+          ),
+        ],
+        if (!isSaved)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              tr(
+                'احفظ الطلبية أولاً لتأكيد القياسات.',
+                'Enregistrez la commande avant de confirmer les mesures.',
+                'Save the order before confirming measurements.',
               ),
-          ],
-        ),
-      ),
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+          ),
+      ],
+    );
+
+    final content = SizedBox(
+      width: embedded ? double.infinity : 1000,
+      child: embedded
+          ? body
+          : SingleChildScrollView(child: body),
     );
     if (embedded) return content;
     return Directionality(

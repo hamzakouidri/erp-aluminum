@@ -15,6 +15,8 @@ import 'catalogue_manager.dart';
 import 'catalog_rules_screen.dart';
 import 'series_accessories_screen.dart';
 import 'series_table_config_screen.dart';
+import 'tempered_glass_items_screen.dart';
+import 'glass_systems_rules_screen.dart';
 
 class ProductsMenuScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -251,6 +253,46 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => GlassScreen(db: widget.db),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (settings.canViewGlass()) ...[
+                _buildMenuCard(
+                  context,
+                  title: switch (lang) {
+                    AppLanguage.french => 'Accessoires et profilés verre trempé',
+                    AppLanguage.english => 'Tempered Glass Accessories & Profiles',
+                    _ => 'إكسسوارات وقطاعات الزجاج المقسّى',
+                  },
+                  icon: Icons.grid_view_rounded,
+                  color: Colors.teal,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TemperedGlassItemsScreen(db: widget.db),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildMenuCard(
+                  context,
+                  title: switch (lang) {
+                    AppLanguage.french => 'Systèmes & Règles de kits verre',
+                    AppLanguage.english => 'Glass Systems & Kit Rules',
+                    _ => 'أنظمة وقواعد كيت الزجاج المقسّى',
+                  },
+                  icon: Icons.architecture_rounded,
+                  color: Colors.cyan.shade800,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => GlassSystemsRulesScreen(db: widget.db),
                       ),
                     );
                   },

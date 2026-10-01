@@ -135,7 +135,7 @@ void main() {
       );
 
       expect(details.planType, SubscriptionPlanType.lifetime);
-      expect(details.planType.displayNameAr, 'اشتراك مدى الحياة');
+      expect(details.planType.displayNameAr, 'اشتراك دائم للورشة (مدى الحياة)');
       expect(details.isLifetime, isTrue);
       expect(details.canRenew, isFalse);
       expect(details.formattedStartDate, '2023/05/15');

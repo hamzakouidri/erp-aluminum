@@ -9,6 +9,9 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
+import '../widgets/home_back_boundary.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cloud_sync_service.dart';
@@ -23,6 +26,34 @@ import 'welcom_screen.dart';
 import '../login_screen.dart';
 
 const double _workspaceHeaderHeight = 110;
+
+bool _exitConfirmationOpen = false;
+Future<void> _confirmHomeExit(BuildContext context) async {
+  if (_exitConfirmationOpen) return;
+  _exitConfirmationOpen = true;
+  try {
+    final lang = context.read<AppSettingsProvider>().language;
+    final exit = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: Text(Localization.translate('الخروج من التطبيق', lang)),
+      content: Text(Localization.translate('هل تريد الخروج من التطبيق؟', lang)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate('لا', lang))),
+        TextButton(onPressed: () => Navigator.pop(ctx, true),
+            child: Text(Localization.translate('خروج', lang))),
+      ],
+    ));
+    if (exit != true || !context.mounted ||
+        !context.read<WorkspaceController>().isHomeActive) return;
+    if (_isWindowsDesktop) {
+      await windowManager.close();
+    } else {
+      await SystemNavigator.pop();
+    }
+  } finally {
+    _exitConfirmationOpen = false;
+  }
+}
 
 bool get _isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -188,8 +219,33 @@ class WorkspaceController extends ChangeNotifier {
     _activeIndex = homeIndex;
     notifyListeners();
   }
+  void closeAndReturnHome(int index) {
+    if (index < 0 || index >= _entries.length) {
+      activateHome();
+      return;
+    }
+    final entry = _entries[index];
+    if (entry.id == 'home') {
+      activateHome();
+      return;
+    }
+    close(index);
+    activateHome();
+  }
 
-  Future<void> handleBackNavigation() async {
+  void closeByIdAndReturnHome(String entryId) {
+    if (entryId == 'home') {
+      activateHome();
+      return;
+    }
+    final index = _entries.indexWhere((entry) => entry.id == entryId);
+    if (index != -1) {
+      close(index);
+    }
+    activateHome();
+  }
+
+  Future<void> handleBackNavigation({Future<void> Function()? onHome}) async {
     if (_entries.isEmpty) {
       activateHome();
       return;
@@ -204,9 +260,9 @@ class WorkspaceController extends ChangeNotifier {
     }
 
     if (!isHomeActive) {
-      activateHome();
+      closeAndReturnHome(_activeIndex);
     } else {
-      notifyListeners();
+      await onHome?.call();
     }
   }
 
@@ -597,7 +653,16 @@ class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
         onGenerateInitialRoutes: (_, __) {
           return [
             MaterialPageRoute(
-              builder: (_) => widget.entry.content,
+              builder: (context) => widget.entry.id == 'home'
+                  ? widget.entry.content
+                  : HomeBackBoundary(
+                      label: Localization.translate('الصفحة الرئيسية',
+                          context.read<AppSettingsProvider>().language),
+                      onBack: () => context
+                          .read<WorkspaceController>()
+                          .closeByIdAndReturnHome(widget.entry.id),
+                      child: widget.entry.content,
+                    ),
               settings: RouteSettings(name: widget.entry.id),
             ),
           ];
@@ -1481,7 +1546,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        workspace.handleBackNavigation();
+        workspace.handleBackNavigation(onHome: () => _confirmHomeExit(context));
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFEAF1FB),
@@ -1759,7 +1824,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        workspace.handleBackNavigation();
+        workspace.handleBackNavigation(onHome: () => _confirmHomeExit(context));
       },
       child: Scaffold(
         drawer: isDesktop ? null : AppDrawer(),

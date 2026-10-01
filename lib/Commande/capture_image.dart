@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/window_painter.dart';
+import 'package:database_data/Screen/tempered_glass_work_screen.dart';
 
 Future<Uint8List> captureWindowImage(
   WindowModel model, {
@@ -14,6 +15,16 @@ Future<Uint8List> captureWindowImage(
 }) async {
   model.clearSelection();
   if (model.isGlassWork) {
+    if (model.glassWorkPayload != null) {
+      try {
+        return await TemperedGlassWorkScreen.renderToPng(
+          model.glassWorkPayload!,
+          maxSide: maxSide,
+        );
+      } catch (e) {
+        debugPrint('Error rendering glass work drawing: $e');
+      }
+    }
     final selectedPath = model.glassWorkPayload?['imagePath']?.toString() ?? '';
     if (selectedPath.isNotEmpty) {
       try {

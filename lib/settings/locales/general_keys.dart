@@ -1,6 +1,11 @@
 import '../app_settings.dart';
 
 const Map<String, Map<AppLanguage, String>> generalKeys = {
+  'تخصيص': {
+    AppLanguage.arabic: 'تخصيص',
+    AppLanguage.french: 'Personnaliser',
+    AppLanguage.english: 'Customize',
+  },
   'أسعار البروفيلات': {
     AppLanguage.arabic: 'أسعار البروفيلات',
     AppLanguage.french: 'Prix des profilés',
@@ -1007,7 +1012,8 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'Rosettes',
   },
   'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.': {
-    AppLanguage.arabic: 'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+    AppLanguage.arabic:
+        'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
     AppLanguage.french:
         'Aucune rosace décorative dans la base de données. Veuillez d’abord en ajouter.',
     AppLanguage.english:
@@ -1023,7 +1029,8 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'سُمك الزجاج مطابق لسعة البيركلوز': {
     AppLanguage.arabic: 'سُمك الزجاج مطابق لسعة البيركلوز',
-    AppLanguage.french: 'L’épaisseur du vitrage correspond à la capacité de la parclose',
+    AppLanguage.french:
+        'L’épaisseur du vitrage correspond à la capacité de la parclose',
     AppLanguage.english: 'Glass thickness matches the parclose capacity',
   },
   'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)': {
@@ -4953,8 +4960,7 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'إظهار المقابض والمفاصل والتجاويف في الوجه الخارجي',
     AppLanguage.french:
         'Afficher poignées, paumelles et cavités sur la face externe',
-    AppLanguage.english:
-        'Show handles, hinges and cavities on the outer face',
+    AppLanguage.english: 'Show handles, hinges and cavities on the outer face',
   },
   'خصائص الستار': {
     AppLanguage.arabic: 'خصائص الستار',
@@ -5262,6 +5268,26 @@ This action cannot be undone!''',
     AppLanguage.french: 'Latéral :',
     AppLanguage.english: 'Lateral:',
   },
+  'طرفية يسرى': {
+    AppLanguage.arabic: 'الطرفية اليسرى',
+    AppLanguage.french: 'Extrême gauche',
+    AppLanguage.english: 'Outer left',
+  },
+  'طرفية يمنى': {
+    AppLanguage.arabic: 'الطرفية اليمنى',
+    AppLanguage.french: 'Extrême droite',
+    AppLanguage.english: 'Outer right',
+  },
+  'وسطى يسار': {
+    AppLanguage.arabic: 'الوسطى اليسرى',
+    AppLanguage.french: 'Intermédiaire gauche',
+    AppLanguage.english: 'Inner left',
+  },
+  'وسطى يمين': {
+    AppLanguage.arabic: 'الوسطى اليمنى',
+    AppLanguage.french: 'Intermédiaire droite',
+    AppLanguage.english: 'Inner right',
+  },
   'المركزي (Central):': {
     AppLanguage.arabic: 'المركزي (Central):',
     AppLanguage.french: 'Central :',
@@ -5276,6 +5302,16 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'هذه السلسلة لا تدعم تدعيم المونطو',
     AppLanguage.french: 'Cette série ne supporte pas le renfort montant',
     AppLanguage.english: 'This series does not support montant reinforcement',
+  },
+  'البروفيل:': {
+    AppLanguage.arabic: 'القطاع:',
+    AppLanguage.french: 'Profil :',
+    AppLanguage.english: 'Profile:',
+  },
+  'هذه السلسلة لا تدعم مونتوسليم': {
+    AppLanguage.arabic: 'هذه السلسلة لا تدعم القائم الوسطي النحيف',
+    AppLanguage.french: 'Cette série ne prend pas en charge le Montant Slim.',
+    AppLanguage.english: 'This series does not support the Slim Montant.',
   },
   'سيستم او بي (System OB)': {
     AppLanguage.arabic: 'سيستم او بي (System OB)',
@@ -6489,6 +6525,26 @@ This action cannot be undone!''',
     AppLanguage.french: 'Nouveau',
     AppLanguage.english: 'New',
   },
+  'Nouveau': {
+    AppLanguage.arabic: 'جديدة',
+    AppLanguage.french: 'Nouveau',
+    AppLanguage.english: 'New',
+  },
+  'المؤكدة فما فوق': {
+    AppLanguage.arabic: 'المؤكدة فما فوق',
+    AppLanguage.french: 'Confirmées et plus',
+    AppLanguage.english: 'Confirmed and above',
+  },
+  'قيد التصنيع وما بعدها': {
+    AppLanguage.arabic: 'قيد التصنيع وما بعدها',
+    AppLanguage.french: 'En fabrication et plus',
+    AppLanguage.english: 'In manufacturing and beyond',
+  },
+  'التوزيع وما بعده': {
+    AppLanguage.arabic: 'التوزيع وما بعده',
+    AppLanguage.french: 'En distribution et plus',
+    AppLanguage.english: 'In distribution and beyond',
+  },
   'Partial Distribution': {
     AppLanguage.arabic: 'توزيع جزئي',
     AppLanguage.french: 'Distribution partielle',
@@ -6505,9 +6561,49 @@ This action cannot be undone!''',
     AppLanguage.english: 'Partial Manufacturing',
   },
   'Full Manufacturing': {
-    AppLanguage.arabic: 'تصنيع كلي',
+    AppLanguage.arabic: 'تصنيع كامل',
     AppLanguage.french: 'Fabrication complète',
     AppLanguage.english: 'Full Manufacturing',
+  },
+  'تصنيع كامل': {
+    AppLanguage.arabic: 'تصنيع كامل',
+    AppLanguage.french: 'Fabrication complète',
+    AppLanguage.english: 'Full Manufacturing',
+  },
+  'تصنيع كلي': {
+    AppLanguage.arabic: 'تصنيع كامل',
+    AppLanguage.french: 'Fabrication complète',
+    AppLanguage.english: 'Full Manufacturing',
+  },
+  'تصنيع جزئي': {
+    AppLanguage.arabic: 'تصنيع جزئي',
+    AppLanguage.french: 'Fabrication partielle',
+    AppLanguage.english: 'Partial Manufacturing',
+  },
+  'توزيع جزئي': {
+    AppLanguage.arabic: 'توزيع جزئي',
+    AppLanguage.french: 'Livraison partielle',
+    AppLanguage.english: 'Partial Distribution',
+  },
+  'توزيع كامل': {
+    AppLanguage.arabic: 'توزيع كامل',
+    AppLanguage.french: 'Livraison complète',
+    AppLanguage.english: 'Full Distribution',
+  },
+  'توزيع كلي': {
+    AppLanguage.arabic: 'توزيع كلي',
+    AppLanguage.french: 'Livraison complète',
+    AppLanguage.english: 'Full Distribution',
+  },
+  'تأكيد القياسات': {
+    AppLanguage.arabic: 'تأكيد القياسات',
+    AppLanguage.french: 'Confirmation des mesures',
+    AppLanguage.english: 'In Progress',
+  },
+  'تحت التحفظ': {
+    AppLanguage.arabic: 'تحت التحفظ',
+    AppLanguage.french: 'Sous réserve',
+    AppLanguage.english: 'Under Reserve',
   },
   'المستودع': {
     AppLanguage.arabic: 'المستودع',
@@ -6713,9 +6809,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Workshop Default Series',
   },
   'حدد السلسلة التي تفتح بها النوافذ الجديدة تلقائياً بدون الحاجة لتغييرها في كل مرة:': {
-    AppLanguage.arabic: 'حدد السلسلة التي تفتح بها النوافذ الجديدة تلقائياً بدون الحاجة لتغييرها في كل مرة:',
-    AppLanguage.french: 'Définissez les séries qui s\'ouvrent automatiquement pour les nouvelles fenêtres :',
-    AppLanguage.english: 'Define the series that open automatically for new windows:',
+    AppLanguage.arabic:
+        'حدد السلسلة التي تفتح بها النوافذ الجديدة تلقائياً بدون الحاجة لتغييرها في كل مرة:',
+    AppLanguage.french:
+        'Définissez les séries qui s\'ouvrent automatiquement pour les nouvelles fenêtres :',
+    AppLanguage.english:
+        'Define the series that open automatically for new windows:',
   },
   'سلسلة الفتح الافتراضية (Battant):': {
     AppLanguage.arabic: 'سلسلة الفتح الافتراضية (Battant):',
@@ -6858,9 +6957,12 @@ This action cannot be undone!''',
     AppLanguage.english: '90° Angle Profile (Square Tube)',
   },
   'حدد الفواصل بين الإطارات المتلاصقة التي يركب فيها أنبوب الزاوية 90°:': {
-    AppLanguage.arabic: 'حدد الفواصل بين الإطارات المتلاصقة التي يركب فيها أنبوب الزاوية 90°:',
-    AppLanguage.french: 'Sélectionnez les jonctions entre cadres recevant le tube d\'angle 90° :',
-    AppLanguage.english: 'Select junctions between frames receiving 90° angle tube:',
+    AppLanguage.arabic:
+        'حدد الفواصل بين الإطارات المتلاصقة التي يركب فيها أنبوب الزاوية 90°:',
+    AppLanguage.french:
+        'Sélectionnez les jonctions entre cadres recevant le tube d\'angle 90° :',
+    AppLanguage.english:
+        'Select junctions between frames receiving 90° angle tube:',
   },
   'إلغاء بروفيل الزاوية بين الإطارات (إيقاف)': {
     AppLanguage.arabic: 'إلغاء بروفيل الزاوية بين الإطارات (إيقاف)',

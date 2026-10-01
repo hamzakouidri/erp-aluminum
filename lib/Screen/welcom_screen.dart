@@ -407,6 +407,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Future<void> _loadStats() async {
     final loadToken = ++_statsLoadToken;
     try {
+      await db.migrateAllPendingOrdersToNouveau();
       final coreData = await Future.wait<dynamic>([
         db.getDashboardStats(),
         db.getOrderStatusStats(),
@@ -3634,6 +3635,23 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
+  int _orderLifecycleWeight(String key) {
+    final s = key.trim().toLowerCase();
+    if (s == 'nouveau' || s == 'new' || s == 'جديدة' || s == 'جديد' || s == 'draft') return 10;
+    if (s == 'confirmed' || s.contains('مؤكد') || s.contains('confirme')) return 20;
+    if (s == 'in progress' || s.contains('قياسات') || s.contains('جارية') || s.contains('cours')) return 30;
+    if (s == 'pending' || s == 'en attente' || s == 'en_attente' || s.contains('انتظار')) return 40;
+    if (s == 'partial manufacturing' || s.contains('تصنيع جزئي') || s.contains('fabrication partielle')) return 50;
+    if (s == 'full manufacturing' || s.contains('تصنيع كلي') || s.contains('fabrication totale')) return 60;
+    if (s == 'partial distribution' || s.contains('توزيع جزئي') || s.contains('livraison partielle')) return 70;
+    if (s == 'full distribution' || s.contains('توزيع كلي') || s.contains('livraison totale')) return 80;
+    if (s == 'installation' || s.contains('تركيب')) return 90;
+    if (s == 'reserve' || s.contains('تحفظ') || s.contains('réserve')) return 95;
+    if (s == 'done' || s == 'livré' || s == 'livre' || s.contains('منتهي') || s.contains('مكتمل')) return 100;
+    if (s == 'cancelled' || s.contains('ملغاة') || s.contains('annulé')) return 999;
+    return 85;
+  }
+
   Widget _buildDesktopActivityPanel(
     BuildContext context,
     Color cardColor,
@@ -3646,10 +3664,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
       (sum, value) => sum + value,
     );
     final statusColors = <String, Color>{
+      'Nouveau': const Color(0xFF64748B),
       'New': const Color(0xFF64748B),
-      'Pending': const Color(0xFFF59E0B),
       'Confirmed': const Color(0xFF10B981),
       'In Progress': const Color(0xFF2563EB),
+      'Pending': const Color(0xFFF59E0B),
       'Partial Manufacturing': const Color(0xFF0EA5E9),
       'Full Manufacturing': const Color(0xFF0F766E),
       'Partial Distribution': const Color(0xFFF97316),
@@ -3658,8 +3677,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
       'Reserve': const Color(0xFFEF4444),
       'Done': const Color(0xFF059669),
     };
+    final sortedStatusMap = <String, int>{};
     final legendEntries = _ordersByStatus.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+      ..sort((a, b) => _orderLifecycleWeight(a.key).compareTo(_orderLifecycleWeight(b.key)));
+    for (final e in legendEntries) {
+      sortedStatusMap[e.key] = e.value;
+    }
     return _desktopPanel(
       context: context,
       title: _desktopText(
@@ -3704,7 +3727,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                         CustomPaint(
                           size: const Size.square(116),
                           painter: _DonutPainter(
-                            data: _ordersByStatus,
+                            data: sortedStatusMap,
                             colors: statusColors,
                             progress: 1,
                             bgColor: mutedColor.withValues(alpha: 0.14),
@@ -5759,10 +5782,11 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   int _selectedTab = 0; // 0 = Donut (حسب الحالة), 1 = Bar (شهري)
 
   static const _statusColors = {
+    'Nouveau': Color(0xFF546E7A), // رمادي مزرق
     'New': Color(0xFF546E7A), // رمادي مزرق
-    'Pending': Color(0xFFE65100), // برتقالي محروق
     'Confirmed': Color(0xFF2E7D32), // أخضر داكن
     'In Progress': Color(0xFF1565C0), // أزرق داكن
+    'Pending': Color(0xFFE65100), // برتقالي محروق
     'Partial Manufacturing': Color(0xFF0288D1), // أزرق فاتح
     'Full Manufacturing': Color(0xFF00796B), // تيل داكن
     'Partial Distribution': Color(0xFFF57C00), // برتقالي داكن
@@ -5774,10 +5798,11 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   };
 
   static const _statusAr = {
+    'Nouveau': 'جديدة',
     'New': 'جديدة',
-    'Pending': 'قيد الانتظار',
     'Confirmed': 'مؤكدة',
-    'In Progress': 'جارية',
+    'In Progress': 'تأكيد القياسات',
+    'Pending': 'قيد الانتظار',
     'Partial Manufacturing': 'تصنيع جزئي',
     'Full Manufacturing': 'تصنيع كامل',
     'Partial Distribution': 'توزيع جزئي',
@@ -5787,6 +5812,37 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
     'Done': 'منتهية',
     'Unknown': 'أخرى',
   };
+
+  Map<String, int> get _sortedByStatus {
+    final entries = widget.byStatus.entries.toList()
+      ..sort((a, b) {
+        final wA = _statusOrderWeight(a.key);
+        final wB = _statusOrderWeight(b.key);
+        return wA.compareTo(wB);
+      });
+    final res = <String, int>{};
+    for (final e in entries) {
+      res[e.key] = e.value;
+    }
+    return res;
+  }
+
+  static int _statusOrderWeight(String key) {
+    final s = key.trim().toLowerCase();
+    if (s == 'nouveau' || s == 'new' || s == 'جديدة' || s == 'جديد' || s == 'draft') return 10;
+    if (s == 'confirmed' || s.contains('مؤكد') || s.contains('confirme')) return 20;
+    if (s == 'in progress' || s.contains('قياسات') || s.contains('جارية') || s.contains('cours')) return 30;
+    if (s == 'pending' || s == 'en attente' || s == 'en_attente' || s.contains('انتظار')) return 40;
+    if (s == 'partial manufacturing' || s.contains('تصنيع جزئي') || s.contains('fabrication partielle')) return 50;
+    if (s == 'full manufacturing' || s.contains('تصنيع كلي') || s.contains('تصنيع كامل') || s.contains('fabrication totale') || s.contains('fabrication complète')) return 60;
+    if (s == 'partial distribution' || s.contains('توزيع جزئي') || s.contains('livraison partielle')) return 70;
+    if (s == 'full distribution' || s.contains('توزيع كلي') || s.contains('توزيع كامل') || s.contains('livraison totale') || s.contains('livraison complète')) return 80;
+    if (s == 'installation' || s.contains('تركيب')) return 90;
+    if (s == 'reserve' || s.contains('تحفظ') || s.contains('réserve')) return 95;
+    if (s == 'done' || s == 'livré' || s == 'livre' || s.contains('منتهي') || s.contains('مكتمل')) return 100;
+    if (s == 'cancelled' || s.contains('ملغاة') || s.contains('annulé')) return 999;
+    return 85;
+  }
 
   @override
   void initState() {
@@ -5939,7 +5995,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                 CustomPaint(
                   size: const Size(140, 140),
                   painter: _DonutPainter(
-                    data: widget.byStatus,
+                    data: _sortedByStatus,
                     colors: _statusColors,
                     progress: _progress.value,
                     bgColor: Theme.of(context).scaffoldBackgroundColor,
@@ -5970,7 +6026,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: widget.byStatus.entries.map((e) {
+              children: _sortedByStatus.entries.map((e) {
                 final color = _statusColors[e.key] ?? const Color(0xFF94A3B8);
                 final pct = total > 0
                     ? (e.value / total * 100).toStringAsFixed(1)
@@ -5990,10 +6046,9 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          Localization.translate(
-                            _statusAr[e.key] ?? e.key,
-                            lang,
-                          ),
+                          lang == AppLanguage.arabic
+                              ? (_statusAr[e.key] ?? Localization.translate(e.key, lang))
+                              : Localization.translate(e.key, lang),
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFF334155),

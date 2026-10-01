@@ -33,13 +33,35 @@ class UrlLauncherWindows extends UrlLauncherPlatform {
     required Map<String, String> headers,
     String? webOnlyWindowName,
   }) async {
+    // 1. Primary: Use PowerShell Start-Process with explicit single-quoted URL
+    // so characters like &, =, ?, # are treated as literal characters and not
+    // shell variables or command separators.
     try {
-      // Do not pass URLs through `cmd /c start`. Query separators such as
-      // `&` can be interpreted by cmd.exe as command separators, truncating
-      // OAuth URLs (for example, dropping response_type from Google OAuth).
-      // explorer.exe receives the URL as one process argument and delegates
-      // it to the user's default browser without shell parsing.
-      final result = await Process.run('explorer.exe', [url]);
+      final safeUrl = url.replaceAll("'", "''");
+      final psResult = await Process.run('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle',
+        'Hidden',
+        '-Command',
+        "Start-Process -FilePath '$safeUrl'",
+      ]);
+      if (psResult.exitCode == 0) return true;
+    } catch (_) {}
+
+    // 2. Secondary: rundll32 FileProtocolHandler
+    try {
+      final fallback = await Process.run('rundll32.exe', [
+        'url.dll,FileProtocolHandler',
+        url,
+      ]);
+      if (fallback.exitCode == 0) return true;
+    } catch (_) {}
+
+    // 3. Fallback: cmd.exe start
+    try {
+      final escaped = url.replaceAll('&', '^&');
+      final result = await Process.run('cmd.exe', ['/c', 'start', '', escaped]);
       return result.exitCode == 0;
     } catch (_) {
       return false;

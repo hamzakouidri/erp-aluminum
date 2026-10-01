@@ -2308,6 +2308,7 @@ class _WindowViewState extends State<WindowView> {
 
     initDivisionControllers(divisionCount);
 
+    final defaultDrawingHeight = widget.model.height.toDouble();
     final Map<int, TextEditingController> frameHeightControllers = {};
     for (int i = 0; i < frames.length; i++) {
       double? existingH;
@@ -2319,8 +2320,15 @@ class _WindowViewState extends State<WindowView> {
           existingH = match.first.customHeight;
         }
       }
+      final frameTotalH =
+          (widget.model.hasShutter && !widget.model.isCaissonTunnel)
+          ? (frames[i].height + widget.model.shutterBoxHeight)
+          : frames[i].height;
+      final effectiveDefaultH = (frameTotalH - defaultDrawingHeight).abs() < 1.0
+          ? defaultDrawingHeight
+          : frameTotalH;
       frameHeightControllers[i] = TextEditingController(
-        text: (existingH ?? frames[i].height).toStringAsFixed(1),
+        text: (existingH ?? effectiveDefaultH).toStringAsFixed(1),
       );
     }
 
@@ -2403,8 +2411,8 @@ class _WindowViewState extends State<WindowView> {
                                   decoration: BoxDecoration(
                                     color: selectedTab == 0
                                         ? (isDark
-                                            ? Colors.teal.shade800
-                                            : Colors.teal.shade100)
+                                              ? Colors.teal.shade800
+                                              : Colors.teal.shade100)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -2421,11 +2429,11 @@ class _WindowViewState extends State<WindowView> {
                                             : FontWeight.normal,
                                         color: selectedTab == 0
                                             ? (isDark
-                                                ? Colors.white
-                                                : Colors.teal.shade900)
+                                                  ? Colors.white
+                                                  : Colors.teal.shade900)
                                             : (isDark
-                                                ? Colors.white70
-                                                : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                       ),
                                     ),
                                   ),
@@ -2443,8 +2451,8 @@ class _WindowViewState extends State<WindowView> {
                                   decoration: BoxDecoration(
                                     color: selectedTab == 1
                                         ? (isDark
-                                            ? Colors.teal.shade800
-                                            : Colors.teal.shade100)
+                                              ? Colors.teal.shade800
+                                              : Colors.teal.shade100)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -2461,11 +2469,11 @@ class _WindowViewState extends State<WindowView> {
                                             : FontWeight.normal,
                                         color: selectedTab == 1
                                             ? (isDark
-                                                ? Colors.white
-                                                : Colors.teal.shade900)
+                                                  ? Colors.white
+                                                  : Colors.teal.shade900)
                                             : (isDark
-                                                ? Colors.white70
-                                                : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                       ),
                                     ),
                                   ),
@@ -2670,7 +2678,9 @@ class _WindowViewState extends State<WindowView> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.white : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -2730,8 +2740,8 @@ class _WindowViewState extends State<WindowView> {
                                   lang,
                                 )
                               : (i == divisionCount - 1
-                                  ? '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('اليسار', lang)})'
-                                  : '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('الوسط', lang)})');
+                                    ? '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('اليسار', lang)})'
+                                    : '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('الوسط', lang)})');
                           return Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(
@@ -2785,14 +2795,24 @@ class _WindowViewState extends State<WindowView> {
                                           decimal: true,
                                         ),
                                     onChanged: (val) {
-                                      final entered = double.tryParse(val.replaceAll(',', '.').trim());
+                                      final entered = double.tryParse(
+                                        val.replaceAll(',', '.').trim(),
+                                      );
                                       if (entered != null && entered > 0) {
-                                        final remaining = widget.model.width - entered;
-                                        final otherIndices = List.generate(divisionCount, (idx) => idx)..remove(i);
-                                        if (otherIndices.isNotEmpty && remaining > 0) {
-                                          final share = (remaining / otherIndices.length).toStringAsFixed(1);
+                                        final remaining =
+                                            widget.model.width - entered;
+                                        final otherIndices = List.generate(
+                                          divisionCount,
+                                          (idx) => idx,
+                                        )..remove(i);
+                                        if (otherIndices.isNotEmpty &&
+                                            remaining > 0) {
+                                          final share =
+                                              (remaining / otherIndices.length)
+                                                  .toStringAsFixed(1);
                                           for (final otherIdx in otherIndices) {
-                                            divisionControllers[otherIdx].text = share;
+                                            divisionControllers[otherIdx].text =
+                                                share;
                                           }
                                         }
                                       }
@@ -2888,7 +2908,10 @@ class _WindowViewState extends State<WindowView> {
                         widget.model.autoSplitShutterPerFrame();
                         for (int i = 0; i < frames.length; i++) {
                           final hVal = double.tryParse(
-                            frameHeightControllers[i]!.text.replaceAll(',', '.'),
+                            frameHeightControllers[i]!.text.replaceAll(
+                              ',',
+                              '.',
+                            ),
                           );
                           if (hVal != null && hVal > 0) {
                             widget.model.setShutterSplitHeight(i, hVal);
@@ -3008,10 +3031,7 @@ class _WindowViewState extends State<WindowView> {
           ),
           label: Text(
             widget.model.isShutterSplit
-                ? Localization.translate(
-                    'فصل الصناديق (${widget.model.effectiveShutterSplits.length})',
-                    lang,
-                  )
+                ? '${Localization.translate('فصل الصناديق', lang)} (${widget.model.effectiveShutterSplits.length})'
                 : Localization.translate('فصل الصناديق', lang),
             style: TextStyle(
               fontSize: 12,
@@ -3110,8 +3130,8 @@ class _WindowViewState extends State<WindowView> {
                               lang == AppLanguage.french
                                   ? 'Appliquer la lame recommandée'
                                   : (lang == AppLanguage.english
-                                      ? 'Apply recommended blade'
-                                      : 'تطبيق الشفرة المقترحة'),
+                                        ? 'Apply recommended blade'
+                                        : 'تطبيق الشفرة المقترحة'),
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -3119,7 +3139,8 @@ class _WindowViewState extends State<WindowView> {
                             ),
                             onPressed: () async {
                               widget.model.applyRecommendedShutterBlade();
-                              await widget.model.updateShutterDefaultsIfNeeded();
+                              await widget.model
+                                  .updateShutterDefaultsIfNeeded();
                               if (mounted) setState(() {});
                             },
                           ),
@@ -3158,26 +3179,24 @@ class _WindowViewState extends State<WindowView> {
                               // narrower than the surrounding profile.
                               InnerDimensionHit? individualTap =
                                   _frameProfileDimensionHit(modelPos);
-                              final physicalFrames =
-                                  widget.model.getPhysicalFrameInfos();
+                              final physicalFrames = widget.model
+                                  .getPhysicalFrameInfos();
                               if (physicalFrames.length > 1) {
-                                final sorted = List<PhysicalFrameInfo>.from(
-                                  physicalFrames,
-                                )..sort(
-                                    (a, b) => a.rect.left != b.rect.left
-                                        ? a.rect.left.compareTo(b.rect.left)
-                                        : a.rect.top.compareTo(b.rect.top),
-                                  );
+                                final sorted =
+                                    List<PhysicalFrameInfo>.from(physicalFrames)
+                                      ..sort(
+                                        (a, b) => a.rect.left != b.rect.left
+                                            ? a.rect.left.compareTo(b.rect.left)
+                                            : a.rect.top.compareTo(b.rect.top),
+                                      );
                                 final hasVaryingHeights = sorted.any(
                                   (f) =>
-                                      (f.rect.height -
-                                              sorted.first.rect.height)
+                                      (f.rect.height - sorted.first.rect.height)
                                           .abs() >
                                       1.0,
                                 );
 
-                                final double scW =
-                                    widget.model.sideCoverWidth;
+                                final double scW = widget.model.sideCoverWidth;
                                 double offsetDistTop = 105.0;
                                 if (widget.model.hasShutter) {
                                   offsetDistTop += 20.0;
@@ -3303,11 +3322,7 @@ class _WindowViewState extends State<WindowView> {
                                 if (individualTap == null &&
                                     sorted.length >= 3 &&
                                     hasVaryingHeights) {
-                                  for (
-                                    int i = 1;
-                                    i < sorted.length - 1;
-                                    i++
-                                  ) {
+                                  for (int i = 1; i < sorted.length - 1; i++) {
                                     final f = sorted[i];
                                     final dimX =
                                         f.rect.left +
@@ -4179,8 +4194,9 @@ class _WindowViewState extends State<WindowView> {
                                   widget.model.isDrawingMode) {
                                 final zone = widget.model.selectedZone!;
                                 final bounds = zone.boundary;
-                                final modelPos =
-                                    _getModelPos(details.localPosition);
+                                final modelPos = _getModelPos(
+                                  details.localPosition,
+                                );
                                 double newRatio =
                                     (modelPos.dx - bounds.left) / bounds.width;
                                 newRatio = newRatio.clamp(0.15, 0.85);
@@ -4300,10 +4316,13 @@ class _WindowViewState extends State<WindowView> {
                                       (zone.content == ZoneContent.singleSash ||
                                           zone.content ==
                                               ZoneContent.doubleSash)) {
-                                    final activeIsRight = widget.model.activeSubZone != null &&
+                                    final activeIsRight =
+                                        widget.model.activeSubZone != null &&
                                             widget.model.activeSubZone != 'all'
-                                        ? widget.model.activeSubZone!.startsWith('right')
-                                        : (zone.openDirection != OpenDirection.left);
+                                        ? widget.model.activeSubZone!
+                                              .startsWith('right')
+                                        : (zone.openDirection !=
+                                              OpenDirection.left);
 
                                     final sep = 4.0;
                                     final midX =
@@ -4340,7 +4359,7 @@ class _WindowViewState extends State<WindowView> {
                                           zone.handlePositionRatio ?? 0.5;
                                       double hX = sashRect.center.dx;
                                       double hY = sashRect.center.dy;
-  
+
                                       if (handleSide == OpenDirection.left) {
                                         hX = sashRect.left + 20;
                                         double topYVal = getSashTopY(
@@ -4388,7 +4407,7 @@ class _WindowViewState extends State<WindowView> {
                                             sashRect.left +
                                             (sashRect.width * hRatio);
                                       }
-  
+
                                       final handleScreenPos = modelToScreen(
                                         Offset(hX, hY),
                                       );
@@ -4596,15 +4615,17 @@ class _WindowViewState extends State<WindowView> {
                                         (touchScreen.dx - dividerScreenX).abs();
 
                                     final double hitThreshold =
-                                        (zone.content == ZoneContent.doubleSash &&
-                                                widget.model.activeSubZone == 'all')
-                                            ? 60.0
-                                            : 30.0;
+                                        (zone.content ==
+                                                ZoneContent.doubleSash &&
+                                            widget.model.activeSubZone == 'all')
+                                        ? 60.0
+                                        : 30.0;
                                     if (zone.content ==
                                             ZoneContent.doubleSash &&
                                         dist < hitThreshold &&
                                         touchScreen.dy >= topScreenY - 20.0 &&
-                                        touchScreen.dy <= bottomScreenY + 20.0) {
+                                        touchScreen.dy <=
+                                            bottomScreenY + 20.0) {
                                       widget.model.selectAt(
                                         modelPos,
                                         isLongPress: true,
@@ -5013,8 +5034,7 @@ class _WindowViewState extends State<WindowView> {
                                     widget.model.selectedZone != null &&
                                     !(widget.model.selectedZone!.content ==
                                             ZoneContent.doubleSash &&
-                                        widget.model.activeSubZone ==
-                                            'all') &&
+                                        widget.model.activeSubZone == 'all') &&
                                     widget.model.isDrawingMode) {
                                   _handleHandleDrag(
                                     details.focalPointDelta,
@@ -8922,7 +8942,9 @@ class _WindowViewState extends State<WindowView> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                widget.model.localizedShutterWidthWarning(lang) ??
+                                widget.model.localizedShutterWidthWarning(
+                                      lang,
+                                    ) ??
                                     widget.model.shutterWidthWarning!,
                                 style: TextStyle(
                                   color: Colors.orange.shade900,
@@ -8955,8 +8977,8 @@ class _WindowViewState extends State<WindowView> {
                                 lang == AppLanguage.french
                                     ? 'Appliquer la recommandation'
                                     : (lang == AppLanguage.english
-                                        ? 'Apply recommendation'
-                                        : 'تطبيق المقترح'),
+                                          ? 'Apply recommendation'
+                                          : 'تطبيق المقترح'),
                                 style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
@@ -8964,7 +8986,8 @@ class _WindowViewState extends State<WindowView> {
                               ),
                               onPressed: () async {
                                 widget.model.applyRecommendedShutterBlade();
-                                await widget.model.updateShutterDefaultsIfNeeded();
+                                await widget.model
+                                    .updateShutterDefaultsIfNeeded();
                                 if (mounted) setState(() {});
                               },
                             ),
@@ -9194,10 +9217,7 @@ class _WindowViewState extends State<WindowView> {
                 const SizedBox(height: 10),
                 _ContentButton(
                   label: widget.model.isShutterSplit
-                      ? Localization.translate(
-                          'فصل الصناديق (${widget.model.effectiveShutterSplits.length})',
-                          lang,
-                        )
+                      ? '${Localization.translate('فصل الصناديق', lang)} (${widget.model.effectiveShutterSplits.length})'
                       : Localization.translate('فصل الصناديق', lang),
                   icon: Icons.view_column_rounded,
                   selected: widget.model.isShutterSplit,
@@ -9232,7 +9252,10 @@ class _WindowViewState extends State<WindowView> {
                   title: Text(Localization.translate('Seuil (بروفيل C)', lang)),
                   subtitle: Text(
                     widget.model.frameRoleRequiredInAllScopes('seuil')
-                        ? Localization.translate('مفعل حتميًا حسب قواعد السلسلة', lang)
+                        ? Localization.translate(
+                            'مفعل حتميًا حسب قواعد السلسلة',
+                            lang,
+                          )
                         : Localization.translate('يستبدل الإطار السفلي', lang),
                   ),
                   value: widget.model.frameRoleEnabledInAnyScope('seuil'),
@@ -9245,11 +9268,22 @@ class _WindowViewState extends State<WindowView> {
               if (widget.model.hasCaniveauSupport)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(Localization.translate('تفعيل الكانيفو (Système C zéro)', lang)),
+                  title: Text(
+                    Localization.translate(
+                      'تفعيل الكانيفو (Système C zéro)',
+                      lang,
+                    ),
+                  ),
                   subtitle: Text(
                     widget.model.frameRoleEnabledInAnyScope('seuil')
-                        ? Localization.translate('غير متاح مع بروفيل C / Seuil', lang)
-                        : Localization.translate('يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً', lang),
+                        ? Localization.translate(
+                            'غير متاح مع بروفيل C / Seuil',
+                            lang,
+                          )
+                        : Localization.translate(
+                            'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً',
+                            lang,
+                          ),
                   ),
                   value: widget.model.useOptionalCaniveau,
                   activeThumbColor: Colors.blue,
@@ -9283,11 +9317,15 @@ class _WindowViewState extends State<WindowView> {
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Text(Localization.translate('أسفل فقط', lang)),
+                            child: Text(
+                              Localization.translate('أسفل فقط', lang),
+                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Text(Localization.translate('الجهات الأربع', lang)),
+                            child: Text(
+                              Localization.translate('الجهات الأربع', lang),
+                            ),
                           ),
                         ],
                       ),
@@ -9298,11 +9336,19 @@ class _WindowViewState extends State<WindowView> {
               if (widget.model.hasFrameRole('cache_dormant'))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(Localization.translate('كاش الإطار (Cache dormant)', lang)),
+                  title: Text(
+                    Localization.translate('كاش الإطار (Cache dormant)', lang),
+                  ),
                   subtitle: Text(
                     widget.model.frameRoleRequiredInAllScopes('cache_dormant')
-                        ? Localization.translate('مفعل حتميًا حسب قواعد السلسلة', lang)
-                        : Localization.translate('يتبع فقط جهات الإطار الموجودة', lang),
+                        ? Localization.translate(
+                            'مفعل حتميًا حسب قواعد السلسلة',
+                            lang,
+                          )
+                        : Localization.translate(
+                            'يتبع فقط جهات الإطار الموجودة',
+                            lang,
+                          ),
                   ),
                   value: widget.model.frameRoleEnabledInAnyScope(
                     'cache_dormant',
@@ -9324,8 +9370,15 @@ class _WindowViewState extends State<WindowView> {
                           null))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(Localization.translate('تراينغل (Triangle)', lang)),
-                  subtitle: Text(Localization.translate('استعمال اختياري حسب ربط الأكسيسوار', lang)),
+                  title: Text(
+                    Localization.translate('تراينغل (Triangle)', lang),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'استعمال اختياري حسب ربط الأكسيسوار',
+                      lang,
+                    ),
+                  ),
                   value: widget.model.useOptionalTriangle,
                   activeThumbColor: Colors.blue,
                   onChanged: widget.model.toggleOptionalTriangle,
@@ -9612,7 +9665,10 @@ class _WindowViewState extends State<WindowView> {
                 // 🟢 2. قسم تدعيم المونطو (يظهر دائماً في الأسفل)
                 // 🟢 هذا الجزء يحل مشكلة تدعيم المونطو (Renfort)
                 Text(
-                  Localization.translate('تدعيم المونطو والأعمدة (Renfort)', lang),
+                  Localization.translate(
+                    'تدعيم المونطو والأعمدة (Renfort)',
+                    lang,
+                  ),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
@@ -9638,8 +9694,14 @@ class _WindowViewState extends State<WindowView> {
                     );
 
                     final bool hasThreePiece =
-                        (widget.model.effectiveSlidingSeries?.hasThreePieceSash ??
-                            widget.model.activeSlidingSeries?.hasThreePieceSash ??
+                        (widget
+                                .model
+                                .effectiveSlidingSeries
+                                ?.hasThreePieceSash ??
+                            widget
+                                .model
+                                .activeSlidingSeries
+                                ?.hasThreePieceSash ??
                             false) ||
                         '${widget.model.effectiveSlidingSeries?.name ?? widget.model.activeSlidingSeries?.name ?? ''}'
                             .toLowerCase()
@@ -9732,10 +9794,21 @@ class _WindowViewState extends State<WindowView> {
                                       ?.name;
                               if (linkedCentral != null &&
                                   linkedCentral.toString().isNotEmpty) {
+                                final rawProfile = linkedCentral.toString();
+                                final localizedProfile =
+                                    rawProfile.toLowerCase() ==
+                                        'ouvrant central'
+                                    ? switch (lang) {
+                                        AppLanguage.arabic =>
+                                          'القائم الوسطي للضلفة',
+                                        AppLanguage.french => 'Ouvrant central',
+                                        AppLanguage.english => 'Central sash',
+                                      }
+                                    : rawProfile;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 4),
                                   child: Text(
-                                    '${Localization.translate('البروفيل:', lang)} $linkedCentral',
+                                    '${Localization.translate('البروفيل:', lang)} $localizedProfile',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.blue.shade700,
@@ -11900,168 +11973,121 @@ class _WindowViewState extends State<WindowView> {
     // to open it. An edited sliding-only drawing can arrive through the
     // mixed editor route, so using `widget.systemMode` here showed the false
     // hints "سلسلة الفتح / Gamme coulissant" instead of its saved BS90.
-    final hasSlidingDrawing = widget.model.zones.any(
+    final hasSliding = widget.model.zones.any(
       (zone) => zone.content == ZoneContent.slidingSash,
     );
-    final hasOpeningDrawing = widget.model.zones.any(
+    final hasOpening = widget.model.zones.any(
       (zone) =>
           zone.content == ZoneContent.singleSash ||
-          zone.content == ZoneContent.doubleSash ||
-          (hasSlidingDrawing &&
-              (zone.content == ZoneContent.empty ||
-                  zone.content == ZoneContent.fixedGlass)),
+          zone.content == ZoneContent.doubleSash,
     );
-    final isSlidingOnlyDrawing = hasSlidingDrawing && !hasOpeningDrawing;
-    final isOpeningOnlyDrawing = hasOpeningDrawing && !hasSlidingDrawing;
-    final isMixedDrawing = hasSlidingDrawing && hasOpeningDrawing;
-    final isInitialOrEmptyDrawing = !hasOpeningDrawing && !hasSlidingDrawing;
 
-    // Once the canvas contains opening or both constructions, the first selector
-    // is always the opening-series selector. Only when the drawing contains exclusively
-    // sliding sashes does the first selector become the sliding one.
-    final selectorShowsSliding = isSlidingOnlyDrawing;
+    // قواعد الظهور والاختفاء بدقة:
+    // 1) عند الدخول إلى صفحة جديدة: تظهر السلسلتان معاً
+    // 2) عند رسم نافذة منزلقة فقط: تبقى المنزلقة وتختفي الفتح
+    // 3) عند رسم نافذة فتح فقط: تبقى الفتح وتختفي المنزلقة
+    // 4) عند رسم الاثنين معاً: يظهران معاً
+    final bool showOpeningSelector;
+    final bool showSlidingSelector;
 
-    // The first selector is the real frame-owning series. A second selector
-    // exists when the canvas contains both opening and sliding, or in the initial state
-    // so the user can choose either opening or sliding from the start.
-    var primarySeries = selectorShowsSliding
-        ? widget.model.activeSlidingSeries
-        : widget.model.activeSeries;
-    // Adding an opening frame to a saved sliding drawing must initialize its
-    // counterpart without replacing the series already used by that drawing.
-    if (!selectorShowsSliding && primarySeries == null && isMixedDrawing) {
-      final owner = profileSystemForSeries(
-        widget.model.availableSystems,
-        widget.model.activeSlidingSeries,
-      );
-      final candidates = owner == null
-          ? <AluminumSeries>[]
-          : _seriesForScope(owner, 'opening').toList();
-      if (candidates.isNotEmpty) {
-        primarySeries = candidates.first;
-        if (!_openingSeriesAutoSelectionQueued) {
-          _openingSeriesAutoSelectionQueued = true;
-          final candidate = candidates.first;
-          final slidingId = widget.model.activeSlidingSeries?.id;
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            try {
-              if (mounted &&
-                  widget.model.activeSeries == null &&
-                  widget.model.activeSlidingSeries?.id == slidingId) {
-                widget.model.systemMode = 'mixed';
-                await widget.model.setActiveSeries(candidate);
-              }
-            } finally {
-              _openingSeriesAutoSelectionQueued = false;
-            }
-          });
-        }
-      }
+    if (hasSliding && !hasOpening) {
+      showOpeningSelector = false;
+      showSlidingSelector = true;
+    } else if (hasOpening && !hasSliding) {
+      showOpeningSelector = true;
+      showSlidingSelector = false;
+    } else {
+      showOpeningSelector = true;
+      showSlidingSelector = true;
     }
-    final primarySystem = profileSystemForSeries(
-      widget.model.availableSystems,
-      primarySeries,
-    );
-    final primaryItemsList = () {
-      final List<AluminumSeries> list = [];
-      for (var system in widget.model.availableSystems) {
-        list.addAll(
-          _seriesForScope(system, selectorShowsSliding ? 'sliding' : 'opening'),
-        );
-      }
-      // Keep a selected legacy series visible only when it belongs to the
-      // selector's mode. Never reinsert a series from the other mode.
-      final selectedPrimarySeries = primarySeries;
-      final primaryMatchesMode =
-          selectedPrimarySeries != null &&
-          (selectorShowsSliding
-              ? primarySystem != null &&
-                    _seriesMatchesScope(
-                      selectedPrimarySeries,
-                      primarySystem,
-                      'sliding',
-                    )
-              : primarySystem != null &&
-                    _seriesMatchesScope(
-                      selectedPrimarySeries,
-                      primarySystem,
-                      'opening',
-                    ));
-      if (selectedPrimarySeries != null &&
-          primaryMatchesMode &&
-          !list.any((s) => s.id == selectedPrimarySeries.id)) {
-        list.add(selectedPrimarySeries);
-      }
 
-      final uniqueList = <AluminumSeries>[];
-      for (final s in list) {
-        if (!uniqueList.any((existing) => existing.id == s.id)) {
-          uniqueList.add(s);
+    // 🔵 قائمة سلاسل الفتح فقط (تظهر باللون الأزرق - بدون خلط بالمنزلق)
+    final openingItemsList = () {
+      final list = <AluminumSeries>[];
+      for (final system in widget.model.availableSystems) {
+        for (final series in system.series) {
+          if (isOpeningSeriesForDrawing(series, system) &&
+              !isSlidingSeriesForDrawing(series)) {
+            if (!list.any((s) => s.id == series.id)) {
+              list.add(series);
+            }
+          }
         }
       }
-      return uniqueList;
+      return list;
     }();
 
-    final primarySeriesId = primarySeries?.id;
-    final safePrimaryValue =
-        (primarySeriesId != null &&
-            primaryItemsList.any((s) => s.id == primarySeriesId))
-        ? primaryItemsList.firstWhere((s) => s.id == primarySeriesId)
-        : null;
+    // القيمة الفعالة لسلسلة الفتح
+    final safeOpeningValue =
+        (widget.model.activeSeries != null &&
+            openingItemsList.any((s) => s.id == widget.model.activeSeries!.id))
+        ? openingItemsList.firstWhere(
+            (s) => s.id == widget.model.activeSeries!.id,
+          )
+        : (openingItemsList.isNotEmpty ? openingItemsList.first : null);
 
+    if (widget.model.activeSeries == null && safeOpeningValue != null) {
+      widget.model.activeSeries = safeOpeningValue;
+    }
+
+    // التوافق مع النظام: إذا تم تعيين أو اختيار سلسلة فتح، نحدد نظامها
+    final activeOpeningSystem = profileSystemForSeries(
+      widget.model.availableSystems,
+      safeOpeningValue ?? widget.model.activeSeries,
+    );
+
+    // 🟢 قائمة سلاسل المنزلق فقط (تظهر باللون الأخضر)
+    // إذا كانت المنزلقة وحدها: تحتوي جميع قوائم السلاسل المنزلقة
+    // إذا كان هناك فتح: تختار من نفس النظام التابع للفتح ولا تخرج عنه
     final slidingItemsList = () {
-      // The selector must use the same role/scope rule as the model.  The
-      // system name is commercial data, so it must not be used to classify a
-      // series as opening or sliding.
-      final List<AluminumSeries> list = [];
-      if (primarySystem != null) {
-        // Resolve the list directly from the selected opening series' system.
-        // This guarantees that choosing one of several opening series never
-        // falls back to sliding rows from another system with the same
-        // material or a similar commercial name.
-        list.addAll(
-          _seriesForScope(
-            primarySystem,
-            'sliding',
-          ).where((series) => series.id != primarySeries?.id),
-        );
-      }
-      final activeSlidingSystem = profileSystemForSeries(
-        widget.model.availableSystems,
-        widget.model.activeSlidingSeries,
-      );
-      if (widget.model.activeSlidingSeries != null &&
-          activeSlidingSystem != null &&
-          _seriesMatchesScope(
-            widget.model.activeSlidingSeries!,
-            activeSlidingSystem,
-            'sliding',
-          ) &&
-          widget.model.activeSlidingSeries!.id != primarySeries?.id &&
-          !list.any((s) => s.id == widget.model.activeSlidingSeries!.id)) {
-        list.add(widget.model.activeSlidingSeries!);
-      }
-      if (list.isEmpty || isInitialOrEmptyDrawing) {
-        for (var system in widget.model.availableSystems) {
-          for (var s in _seriesForScope(system, 'sliding')) {
-            if (s.id != primarySeries?.id &&
-                !list.any((existing) => existing.id == s.id)) {
+      final list = <AluminumSeries>[];
+      final bool slidingAlone = hasSliding && !hasOpening;
+
+      if (!slidingAlone && activeOpeningSystem != null) {
+        for (final s in activeOpeningSystem.series) {
+          if (isSlidingSeriesForDrawing(s) &&
+              !isOpeningSeriesForDrawing(s, activeOpeningSystem)) {
+            if (!list.any((existing) => existing.id == s.id)) {
               list.add(s);
             }
           }
         }
       }
 
-      final uniqueList = <AluminumSeries>[];
-      for (final s in list) {
-        if (!uniqueList.any((existing) => existing.id == s.id)) {
-          uniqueList.add(s);
+      if (list.isEmpty || slidingAlone) {
+        for (final system in widget.model.availableSystems) {
+          for (final s in system.series) {
+            if (isSlidingSeriesForDrawing(s) &&
+                !isOpeningSeriesForDrawing(s, system)) {
+              if (!list.any((existing) => existing.id == s.id)) {
+                list.add(s);
+              }
+            }
+          }
         }
       }
-      return uniqueList;
+      return list;
     }();
 
-    final selectedSlidingValue =
+    // اختيار تلقائي لسلسلة منزلقة من نفس النظام عند وجود سلسلة فتح
+    if (activeOpeningSystem != null && !hasSliding) {
+      final sameSystemSliding = activeOpeningSystem.series
+          .where(
+            (s) =>
+                isSlidingSeriesForDrawing(s) &&
+                !isOpeningSeriesForDrawing(s, activeOpeningSystem),
+          )
+          .toList();
+      if (sameSystemSliding.isNotEmpty) {
+        final cur = widget.model.activeSlidingSeries;
+        if (cur == null || !sameSystemSliding.any((s) => s.id == cur.id)) {
+          widget.model.activeSlidingSeries = sameSystemSliding.first;
+        }
+      }
+    }
+
+    // القيمة الفعالة لسلسلة المنزلق
+    final safeSlidingValue =
         (widget.model.activeSlidingSeries != null &&
             slidingItemsList.any(
               (s) => s.id == widget.model.activeSlidingSeries!.id,
@@ -12069,42 +12095,11 @@ class _WindowViewState extends State<WindowView> {
         ? slidingItemsList.firstWhere(
             (s) => s.id == widget.model.activeSlidingSeries!.id,
           )
-        : null;
-    // During the asynchronous catalogue switch, the model can briefly have
-    // no sliding selection even though the selected opening system already
-    // exposes valid sliding series. Show the actual first series immediately
-    // and persist it, instead of showing the generic "Gamme المنزلق" hint.
-    // A saved drawing can briefly have no resolved in-memory series while its
-    // catalogue is still loading. Do not persist the first dropdown item in
-    // that interval: doing so overwrote the saved BS90 id/name and reopened
-    // every edited window with the default sliding series.
-    final savedSlidingMatches = slidingItemsList.where(
-      (series) =>
-          series.id == widget.model.loadedSlidingSeriesId ||
-          (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty == true &&
-              series.name.trim() ==
-                  widget.model.loadedSlidingSeriesName!.trim()),
-    );
-    final hasPendingSavedSlidingSeries =
-        widget.model.loadedSlidingSeriesId != null ||
-        (widget.model.loadedSlidingSeriesName?.trim().isNotEmpty ?? false);
-    final autoSlidingValue =
-        selectedSlidingValue ??
-        (savedSlidingMatches.isNotEmpty ? savedSlidingMatches.first : null) ??
-        (!hasPendingSavedSlidingSeries &&
-                isMixedDrawing &&
-                slidingItemsList.isNotEmpty
-            ? slidingItemsList.first
-            : null);
-    if (selectedSlidingValue == null &&
-        isMixedDrawing &&
-        autoSlidingValue != null) {
-      _queueMixedSlidingSeriesSelection(
-        autoSlidingValue,
-        widget.model.activeSeries?.id,
-      );
+        : (slidingItemsList.isNotEmpty ? slidingItemsList.first : null);
+
+    if (widget.model.activeSlidingSeries == null && safeSlidingValue != null) {
+      widget.model.activeSlidingSeries = safeSlidingValue;
     }
-    final safeSlidingValue = autoSlidingValue;
 
     return AppBar(
       backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
@@ -12209,111 +12204,105 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ),
             ],
-            // A full window remains a full design even when the tunnel box or
-            // shutter is selected. Keep its profile selectors visible; only
-            // a truly standalone shutter hides the window-system controls.
             if (!isStandaloneShutterContext &&
                 widget.model.availableSystems.isNotEmpty) ...[
-              Container(
-                constraints: const BoxConstraints(maxWidth: 160),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? (selectorShowsSliding
-                            ? Colors.green.shade900.withValues(alpha: 0.3)
-                            : Colors.blue.shade900.withValues(alpha: 0.3))
-                      : (selectorShowsSliding
-                            ? Colors.green.shade50
-                            : Colors.blue.shade50),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDark
-                        ? (selectorShowsSliding
-                              ? Colors.green.shade800
-                              : Colors.blue.shade800)
-                        : (selectorShowsSliding
-                              ? Colors.green.shade200
-                              : Colors.blue.shade200),
+              // 🔵 قائمة سلسلة الفتح (تظهر باللون الأزرق دائماً - وتختفي عند رسم منزلق فقط)
+              if (showOpeningSelector && openingItemsList.isNotEmpty) ...[
+                Container(
+                  constraints: const BoxConstraints(maxWidth: 160),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 0,
                   ),
-                ),
-                child: DropdownButton<AluminumSeries>(
-                  isExpanded: true,
-                  value: safePrimaryValue,
-                  dropdownColor: isDark
-                      ? const Color(0xFF1E1E2C)
-                      : Colors.white,
-                  hint: Text(
-                    Localization.translate(
-                      selectorShowsSliding ? 'سلسلة المنزلق' : 'سلسلة الفتح',
-                      lang,
-                    ),
-                    style: TextStyle(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.blue.shade900.withValues(alpha: 0.3)
+                        : Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
                       color: isDark
-                          ? (selectorShowsSliding
-                                ? Colors.green.shade300
-                                : Colors.blue.shade300)
-                          : (selectorShowsSliding ? Colors.green : Colors.blue),
-                      fontSize: 12,
+                          ? Colors.blue.shade800
+                          : Colors.blue.shade300,
                     ),
                   ),
-                  underline: const SizedBox(),
-                  icon: Icon(
-                    Icons.keyboard_arrow_down,
-                    color: isDark
-                        ? (selectorShowsSliding
-                              ? Colors.green.shade300
-                              : Colors.blue.shade300)
-                        : (selectorShowsSliding ? Colors.green : Colors.blue),
-                    size: 18,
-                  ),
-                  items: primaryItemsList.map((series) {
-                    return DropdownMenuItem<AluminumSeries>(
-                      value: series,
-                      child: Text(
-                        series.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? (selectorShowsSliding
-                                    ? Colors.green.shade300
-                                    : Colors.blue.shade300)
-                              : (selectorShowsSliding
-                                    ? Colors.green
-                                    : Colors.blue),
-                          fontSize: 12,
-                        ),
-                        overflow: TextOverflow.visible,
+                  child: DropdownButton<AluminumSeries>(
+                    isExpanded: true,
+                    value: safeOpeningValue,
+                    dropdownColor: isDark
+                        ? const Color(0xFF1E1E2C)
+                        : Colors.white,
+                    hint: Text(
+                      Localization.translate('سلسلة الفتح', lang),
+                      style: TextStyle(
+                        color: isDark
+                            ? Colors.blue.shade300
+                            : Colors.blue.shade800,
+                        fontSize: 12,
+                        fontFamily: 'Cairo',
                       ),
-                    );
-                  }).toList(),
-                  onChanged: (AluminumSeries? newSeries) {
-                    if (newSeries != null) {
-                      if (isMixedDrawing || widget.model.systemMode == 'mixed') {
-                        widget.model.systemMode = 'mixed';
-                      } else if (isInitialOrEmptyDrawing &&
-                          widget.systemMode != 'mixed') {
-                        widget.model.systemMode = 'french';
-                      }
-                      if (selectorShowsSliding) {
-                        unawaited(
-                          widget.model.setActiveSlidingSeries(newSeries),
+                    ),
+                    underline: const SizedBox(),
+                    icon: Icon(
+                      Icons.keyboard_arrow_down,
+                      color: isDark
+                          ? Colors.blue.shade300
+                          : Colors.blue.shade800,
+                      size: 18,
+                    ),
+                    items: openingItemsList.map((series) {
+                      return DropdownMenuItem<AluminumSeries>(
+                        value: series,
+                        child: Text(
+                          series.name,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? Colors.blue.shade300
+                                : Colors.blue.shade800,
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.visible,
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (AluminumSeries? newSeries) async {
+                      if (newSeries != null) {
+                        await widget.model.setActiveSeries(newSeries);
+                        // اختيار تلقائي لسلسلة منزلقة من نفس النظام
+                        final ownerSystem = profileSystemForSeries(
+                          widget.model.availableSystems,
+                          newSeries,
                         );
-                      } else {
-                        unawaited(widget.model.setActiveSeries(newSeries));
+                        if (ownerSystem != null) {
+                          final compatibleSliding = ownerSystem.series
+                              .where(
+                                (s) =>
+                                    isSlidingSeriesForDrawing(s) &&
+                                    !isOpeningSeriesForDrawing(s, ownerSystem),
+                              )
+                              .toList();
+                          if (compatibleSliding.isNotEmpty) {
+                            await widget.model.setActiveSlidingSeries(
+                              compatibleSliding.first,
+                            );
+                          }
+                        }
+                        if (mounted) setState(() {});
                       }
-                    }
-                  },
+                    },
+                  ),
                 ),
-              ),
-              // Show the sliding series selector when the drawing is mixed,
-              // when the mode is mixed, or in initial/empty state so the user
-              // can choose either or both from the start.
-              if ((isMixedDrawing ||
-                      isInitialOrEmptyDrawing ||
-                      widget.model.systemMode == 'mixed' ||
-                      widget.systemMode == 'mixed') &&
-                  slidingItemsList.isNotEmpty) ...[
+              ],
+
+              // مسافة فاصلة إذا ظهرت القائمتان معاً
+              if (showOpeningSelector &&
+                  showSlidingSelector &&
+                  openingItemsList.isNotEmpty &&
+                  slidingItemsList.isNotEmpty)
                 const SizedBox(width: 8),
+
+              // 🟢 قائمة سلسلة المنزلق (تظهر باللون الأخضر دائماً - وتختفي عند رسم فتح فقط)
+              if (showSlidingSelector && slidingItemsList.isNotEmpty) ...[
                 Container(
                   constraints: const BoxConstraints(maxWidth: 160),
                   padding: const EdgeInsets.symmetric(
@@ -12328,7 +12317,7 @@ class _WindowViewState extends State<WindowView> {
                     border: Border.all(
                       color: isDark
                           ? Colors.green.shade800
-                          : Colors.green.shade200,
+                          : Colors.green.shade300,
                     ),
                   ),
                   child: DropdownButton<AluminumSeries>(
@@ -12337,8 +12326,11 @@ class _WindowViewState extends State<WindowView> {
                     hint: Text(
                       Localization.translate('سلسلة المنزلق', lang),
                       style: TextStyle(
-                        color: isDark ? Colors.green.shade300 : Colors.green,
+                        color: isDark
+                            ? Colors.green.shade300
+                            : Colors.green.shade800,
                         fontSize: 12,
+                        fontFamily: 'Cairo',
                       ),
                     ),
                     dropdownColor: isDark
@@ -12347,7 +12339,9 @@ class _WindowViewState extends State<WindowView> {
                     underline: const SizedBox(),
                     icon: Icon(
                       Icons.keyboard_arrow_down,
-                      color: isDark ? Colors.green.shade300 : Colors.green,
+                      color: isDark
+                          ? Colors.green.shade300
+                          : Colors.green.shade800,
                       size: 18,
                     ),
                     items: slidingItemsList.map((series) {
@@ -12359,19 +12353,17 @@ class _WindowViewState extends State<WindowView> {
                             fontWeight: FontWeight.bold,
                             color: isDark
                                 ? Colors.green.shade300
-                                : Colors.green,
+                                : Colors.green.shade800,
                             fontSize: 12,
                           ),
                           overflow: TextOverflow.visible,
                         ),
                       );
                     }).toList(),
-                    onChanged: (AluminumSeries? newSeries) {
+                    onChanged: (AluminumSeries? newSeries) async {
                       if (newSeries != null) {
-                        if (isInitialOrEmptyDrawing) {
-                          widget.model.systemMode = 'sliding';
-                        }
-                        widget.model.setActiveSlidingSeries(newSeries);
+                        await widget.model.setActiveSlidingSeries(newSeries);
+                        if (mounted) setState(() {});
                       }
                     },
                   ),
@@ -12686,10 +12678,7 @@ class _WindowViewState extends State<WindowView> {
                       const SizedBox(width: 5),
                       Text(
                         widget.model.isShutterSplit
-                            ? Localization.translate(
-                                'فصل الصناديق (${widget.model.effectiveShutterSplits.length})',
-                                lang,
-                              )
+                            ? '${Localization.translate('فصل الصناديق', lang)} (${widget.model.effectiveShutterSplits.length})'
                             : Localization.translate('فصل الصناديق', lang),
                         style: const TextStyle(
                           fontSize: 12,
@@ -12872,11 +12861,17 @@ class _WindowViewState extends State<WindowView> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    Localization.translate('توافق الإطارات عند الزاوية 90°', lang),
+                                    Localization.translate(
+                                      'توافق الإطارات عند الزاوية 90°',
+                                      lang,
+                                    ),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12.5,
-                                      color: widget.model.frameSwitchedForProfileAngle
+                                      color:
+                                          widget
+                                              .model
+                                              .frameSwitchedForProfileAngle
                                           ? Colors.green.shade900
                                           : Colors.blue.shade900,
                                     ),
@@ -13745,8 +13740,8 @@ class _WindowViewState extends State<WindowView> {
     String seriesName = activeSeriesForSystem != null
         ? activeSeriesForSystem!.name.toLowerCase()
         : '';
-    final effSliding = widget.model.effectiveSlidingSeries ??
-        widget.model.activeSlidingSeries;
+    final effSliding =
+        widget.model.effectiveSlidingSeries ?? widget.model.activeSlidingSeries;
     String slidingSeriesName = effSliding != null
         ? effSliding.name.toLowerCase()
         : seriesName;
@@ -13805,7 +13800,7 @@ class _WindowViewState extends State<WindowView> {
                           profileType: 'Frame',
                           seriesId: useSlidingProfiles
                               ? (widget.model.effectiveSlidingSeries?.id ??
-                                  widget.model.activeSlidingSeries?.id)
+                                    widget.model.activeSlidingSeries?.id)
                               : widget.model.activeSeries?.id,
                           materialType: useSlidingProfiles
                               ? (widget.model.isSlidingPVC
@@ -13877,7 +13872,7 @@ class _WindowViewState extends State<WindowView> {
                             profileType: 'sash',
                             seriesId: useSlidingProfiles
                                 ? (widget.model.effectiveSlidingSeries?.id ??
-                                    widget.model.activeSlidingSeries?.id)
+                                      widget.model.activeSlidingSeries?.id)
                                 : widget.model.activeSeries?.id,
                             materialType: useSlidingProfiles
                                 ? (widget.model.isSlidingPVC
@@ -15278,7 +15273,10 @@ class _WindowViewState extends State<WindowView> {
     }
 
     if (widget.model.hasShutter && widget.model.shutterWidthWarning != null) {
-      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
       final rec = widget.model.recommendedShutterBlade;
       items.add(
         Container(
@@ -15296,7 +15294,11 @@ class _WindowViewState extends State<WindowView> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.straighten, color: Colors.orange.shade800, size: 18),
+                  Icon(
+                    Icons.straighten,
+                    color: Colors.orange.shade800,
+                    size: 18,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -15319,7 +15321,10 @@ class _WindowViewState extends State<WindowView> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange.shade800,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       visualDensity: VisualDensity.compact,
                     ),
                     icon: const Icon(Icons.check_circle_outline, size: 14),
@@ -15327,9 +15332,12 @@ class _WindowViewState extends State<WindowView> {
                       lang == AppLanguage.french
                           ? 'Appliquer la recommandation'
                           : (lang == AppLanguage.english
-                              ? 'Apply recommendation'
-                              : 'تطبيق المقترح'),
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                ? 'Apply recommendation'
+                                : 'تطبيق المقترح'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     onPressed: () async {
                       widget.model.applyRecommendedShutterBlade();
@@ -15470,8 +15478,10 @@ class _WindowViewState extends State<WindowView> {
         ),
       ];
     }
-    final lang =
-        Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final current = widget.model.componentOverrides['الشرائح (Lames)'];
     final currentId = current?['id'];
     final list = _shutterLamesOptions.map<Widget>((opt) {
@@ -15507,7 +15517,8 @@ class _WindowViewState extends State<WindowView> {
               final selected =
                   widget.model.componentOverrides['الشرائح (Lames)'];
               if (selected?['id'] != opt['id']) return;
-              final warning = widget.model.localizedShutterWidthWarning(lang) ??
+              final warning =
+                  widget.model.localizedShutterWidthWarning(lang) ??
                   widget.model.shutterWidthWarning;
               if (warning != null) {
                 final rec = widget.model.recommendedShutterBlade;
@@ -15523,12 +15534,13 @@ class _WindowViewState extends State<WindowView> {
                               label: lang == AppLanguage.french
                                   ? 'Appliquer'
                                   : (lang == AppLanguage.english
-                                      ? 'Apply'
-                                      : 'تطبيق المقترح'),
+                                        ? 'Apply'
+                                        : 'تطبيق المقترح'),
                               textColor: Colors.yellowAccent,
                               onPressed: () async {
                                 widget.model.applyRecommendedShutterBlade();
-                                await widget.model.updateShutterDefaultsIfNeeded();
+                                await widget.model
+                                    .updateShutterDefaultsIfNeeded();
                                 if (mounted) setState(() {});
                               },
                             )
@@ -15545,7 +15557,8 @@ class _WindowViewState extends State<WindowView> {
     }).toList();
 
     if (widget.model.shutterWidthWarning != null) {
-      final warning = widget.model.localizedShutterWidthWarning(lang) ??
+      final warning =
+          widget.model.localizedShutterWidthWarning(lang) ??
           widget.model.shutterWidthWarning!;
       final rec = widget.model.recommendedShutterBlade;
       list.add(
@@ -16296,7 +16309,8 @@ class _WindowViewState extends State<WindowView> {
         final slidingProfiles =
             _filterFrameProfilesForDrawingRules(
                   rawSlidingProfiles,
-                  series: widget.model.effectiveSlidingSeries ??
+                  series:
+                      widget.model.effectiveSlidingSeries ??
                       widget.model.activeSlidingSeries,
                   drawingMode: AccessoryDrawingMode.sliding,
                 )
@@ -16587,7 +16601,7 @@ class _WindowViewState extends State<WindowView> {
                 zone.content == ZoneContent.slidingSash);
         final expectedSashSeriesId = isSliding
             ? (widget.model.effectiveSlidingSeries?.id ??
-                widget.model.activeSlidingSeries?.id)
+                  widget.model.activeSlidingSeries?.id)
             : widget.model.activeSeries?.id;
         final sashProfiles = isSliding
             ? (_slidingSashProfiles.isNotEmpty
@@ -16751,8 +16765,8 @@ class _WindowViewState extends State<WindowView> {
           }
 
           bool isLateralSelected(Map<String, dynamic> item) {
-            final bool itemIsReinforced =
-                widget.model.isSlidingMontantReinforced(item, central: false);
+            final bool itemIsReinforced = widget.model
+                .isSlidingMontantReinforced(item, central: false);
 
             final bool hasAnyReinforced =
                 !_pvcMontantReinforcementDisabled &&
@@ -16766,7 +16780,9 @@ class _WindowViewState extends State<WindowView> {
 
             final bool hasAnyNormal = widget.model.zones.any((z) {
               if (z.content != ZoneContent.slidingSash) return false;
-              final sashes = z.slidingSashesCount > 0 ? z.slidingSashesCount : 2;
+              final sashes = z.slidingSashesCount > 0
+                  ? z.slidingSashesCount
+                  : 2;
               final bool hasMeetingInCenter =
                   z.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
               final lateralCount = hasMeetingInCenter ? 4 : 2;
@@ -16825,8 +16841,8 @@ class _WindowViewState extends State<WindowView> {
             );
             if (isChicane && hasSlimCentral) return false;
 
-            final bool itemIsReinforced =
-                widget.model.isSlidingMontantReinforced(item, central: true);
+            final bool itemIsReinforced = widget.model
+                .isSlidingMontantReinforced(item, central: true);
 
             final bool hasAnyReinforced =
                 !_pvcMontantReinforcementDisabled &&
@@ -16840,7 +16856,9 @@ class _WindowViewState extends State<WindowView> {
 
             final bool hasAnyNormal = widget.model.zones.any((z) {
               if (z.content != ZoneContent.slidingSash) return false;
-              final sashes = z.slidingSashesCount > 0 ? z.slidingSashesCount : 2;
+              final sashes = z.slidingSashesCount > 0
+                  ? z.slidingSashesCount
+                  : 2;
               final bool hasMeetingInCenter =
                   z.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
               final centralCount = hasMeetingInCenter
@@ -16867,7 +16885,7 @@ class _WindowViewState extends State<WindowView> {
                     : 'قائم وسطي (Sash Central)'] ??
                 (!itemIsReinforced
                     ? (widget.model.componentOverrides['قائم وسطي (Central)'] ??
-                       widget.model.componentOverrides['الشيكان (Chicane)'])
+                          widget.model.componentOverrides['الشيكان (Chicane)'])
                     : null);
             if (current is Map &&
                 current['id']?.toString() == '${item['id']}') {
@@ -16890,11 +16908,15 @@ class _WindowViewState extends State<WindowView> {
                 await _sectionPriceForSelectedColor(mutableSelected);
 
             if (traverseProfiles.isNotEmpty &&
-                widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] == null) {
-              final chosenTraverse = Map<String, dynamic>.from(traverseProfiles.first);
+                widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] ==
+                    null) {
+              final chosenTraverse = Map<String, dynamic>.from(
+                traverseProfiles.first,
+              );
               chosenTraverse['calculated_price'] =
                   await _sectionPriceForSelectedColor(chosenTraverse);
-              widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] = chosenTraverse;
+              widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] =
+                  chosenTraverse;
             }
 
             setState(() {
@@ -16923,11 +16945,15 @@ class _WindowViewState extends State<WindowView> {
                 itemText.contains('شيكان');
 
             if (traverseProfiles.isNotEmpty &&
-                widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] == null) {
-              final chosenTraverse = Map<String, dynamic>.from(traverseProfiles.first);
+                widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] ==
+                    null) {
+              final chosenTraverse = Map<String, dynamic>.from(
+                traverseProfiles.first,
+              );
               chosenTraverse['calculated_price'] =
                   await _sectionPriceForSelectedColor(chosenTraverse);
-              widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] = chosenTraverse;
+              widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] =
+                  chosenTraverse;
             }
 
             setState(() {
@@ -19338,12 +19364,17 @@ class AppWorkspacePainter extends CustomPainter {
     final physicalFrames = model.getPhysicalFrameInfos();
     final bool isMultiFrame = physicalFrames.length > 1;
     final sortedFrames = List<PhysicalFrameInfo>.from(physicalFrames)
-      ..sort((a, b) => a.rect.left != b.rect.left
-          ? a.rect.left.compareTo(b.rect.left)
-          : a.rect.top.compareTo(b.rect.top));
+      ..sort(
+        (a, b) => a.rect.left != b.rect.left
+            ? a.rect.left.compareTo(b.rect.left)
+            : a.rect.top.compareTo(b.rect.top),
+      );
 
-    final bool hasVaryingHeights = isMultiFrame &&
-        sortedFrames.any((f) => (f.rect.height - sortedFrames.first.rect.height).abs() > 1.0);
+    final bool hasVaryingHeights =
+        isMultiFrame &&
+        sortedFrames.any(
+          (f) => (f.rect.height - sortedFrames.first.rect.height).abs() > 1.0,
+        );
 
     double offsetDistTop = isMultiFrame ? 105.0 : 60.0;
     if (model.hasShutter) {
@@ -19526,7 +19557,10 @@ class AppWorkspacePainter extends CustomPainter {
       if (sortedFrames.length >= 3 && hasVaryingHeights) {
         for (int i = 1; i < sortedFrames.length - 1; i++) {
           final fInfo = sortedFrames[i];
-          final double dimX = pos.dx + fInfo.rect.left + math.min(fInfo.rect.width * 0.28, 65.0);
+          final double dimX =
+              pos.dx +
+              fInfo.rect.left +
+              math.min(fInfo.rect.width * 0.28, 65.0);
           final double startY = pos.dy + fInfo.rect.top;
           final double endY = pos.dy + fInfo.rect.bottom;
           _drawDimension(

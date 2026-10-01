@@ -41,6 +41,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   ::CoUninitialize();
+  ::ExitProcess(0);
   return EXIT_SUCCESS;
 }
 

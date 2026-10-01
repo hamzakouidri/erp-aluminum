@@ -5221,14 +5221,21 @@ class WindowModel extends ChangeNotifier {
     final sortedFrames = List<Rect>.from(frames)
       ..sort((a, b) => a.left.compareTo(b.left));
 
+    final defaultDrawingHeight = height.toDouble();
     final newSplits = <ShutterSplitSection>[];
     for (int i = 0; i < sortedFrames.length; i++) {
       final f = sortedFrames[i];
+      final frameTotalH = (hasShutter && !isCaissonTunnel)
+          ? (f.height + shutterBoxHeight)
+          : f.height;
+      final effectiveDefaultH = (frameTotalH - defaultDrawingHeight).abs() < 1.0
+          ? defaultDrawingHeight
+          : frameTotalH;
       newSplits.add(
         ShutterSplitSection(
           width: f.width,
           leftOffset: f.left,
-          customHeight: f.height < height ? math.max(150.0, f.height) : null,
+          customHeight: effectiveDefaultH,
           label: 'صندوق إطار ${i + 1}',
           frameIndex: i,
         ),
@@ -14069,6 +14076,25 @@ class WindowModel extends ChangeNotifier {
       zone.cellIsPanel.clear();
       zone.cellIsSash.clear();
       zone.cellIsDoubleSash.clear();
+      zone.cellGlassSpec = {};
+
+      // When converting a fixed frame to sashes, clear old fixed-glass décor
+      if (previousContent == ZoneContent.fixedGlass &&
+          (content == ZoneContent.singleSash ||
+              content == ZoneContent.doubleSash ||
+              content == ZoneContent.slidingSash)) {
+        if (zone.glass.decorH > 0 ||
+            zone.glass.decorV > 0 ||
+            zone.glass.hasRosettes) {
+          zone.glass = zone.glass.copyWith(
+            decorH: 0,
+            decorV: 0,
+            decorHPositions: const [],
+            decorVPositions: const [],
+            hasRosettes: false,
+          );
+        }
+      }
 
       // Fixed, empty and sliding content all sit on a real lower frame.
       // Discard the old local hide flag so the frame corners and bottom cover
@@ -16639,13 +16665,32 @@ class WindowModel extends ChangeNotifier {
   }
 
   /// Searches for a compatible frame section without integrated side cover (couvre-joint)
-  /// that matches the current frame's visible width (العرض الظاهر).
+  /// that matches the current frame's visible width (العرض الظاهر), preferring any
+  /// frame sections configured as compatible with the profile_angle role.
   AluminumSection? findCompatibleNoCoverFrame({
     required AluminumSection currentFrame,
     bool sliding = false,
   }) {
     final series = sliding ? activeSlidingSeries : activeFrameSeries;
     if (series == null) return null;
+
+    // Check if the series has configured compatible_frame_ids for profile_angle
+    final roleOptions = _seriesDesignRoleOptions[series.id]?['profile_angle'];
+    final compatibleIdSet = <int>{};
+    if (roleOptions != null) {
+      for (final opt in roleOptions.values) {
+        final raw = opt['compatible_frame_ids']?.toString() ?? '';
+        for (final part in raw.split(',')) {
+          final id = int.tryParse(part.trim());
+          if (id != null) compatibleIdSet.add(id);
+        }
+      }
+    }
+
+    // If currentFrame is already in compatible_frame_ids, no switch needed!
+    if (compatibleIdSet.isNotEmpty && compatibleIdSet.contains(currentFrame.id)) {
+      return null;
+    }
 
     final targetVisibleWidth = currentFrame.visibleWidth > 0
         ? currentFrame.visibleWidth
@@ -16666,8 +16711,15 @@ class WindowModel extends ChangeNotifier {
 
     if (candidateSections.isEmpty) return null;
 
-    // Sort candidates by closeness to targetVisibleWidth
+    // Sort candidates:
+    // 1. Prefer sections that are explicitly listed in compatible_frame_ids
+    // 2. Sort by closeness to targetVisibleWidth
     candidateSections.sort((a, b) {
+      final aInCompatible = compatibleIdSet.contains(a.id);
+      final bInCompatible = compatibleIdSet.contains(b.id);
+      if (aInCompatible && !bInCompatible) return -1;
+      if (!aInCompatible && bInCompatible) return 1;
+
       final aW = a.visibleWidth > 0 ? a.visibleWidth : (a.thickness > 0 ? a.thickness : 0.0);
       final bW = b.visibleWidth > 0 ? b.visibleWidth : (b.thickness > 0 ? b.thickness : 0.0);
       final diffA = (aW - targetVisibleWidth).abs();
@@ -16685,6 +16737,13 @@ class WindowModel extends ChangeNotifier {
   /// to a compatible frame without integrated cover and with matching visible width.
   void adaptFramesForProfileAngle() {
     if (usesProfileAngle) {
+      // If the drawing has separate side covers and is not an integrated frame,
+      // we do not need to switch the entire frame. Only the junction-side vertical
+      // jamb will be cut with the compatible frame in the BOM!
+      if (hasSideCovers && !isIntegratedFrame) {
+        return;
+      }
+
       // Opening series frame check
       final currentOpening = activeFrameOverride ?? getSectionByType('frame')?.toMap();
       final bool openingHasCover = _overrideHasIntegratedSideCover(currentOpening) ||

@@ -37,7 +37,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
     super.initState();
     final defaultPlan = AlgerianPaymentService.defaultPlans.firstWhere(
       (p) => p.id == widget.initialPlanId,
-      orElse: () => AlgerianPaymentService.defaultPlans[1], // 3 months default
+      orElse: () => AlgerianPaymentService.defaultPlans.firstWhere(
+        (p) => p.id == 'quarterly',
+        orElse: () => AlgerianPaymentService.defaultPlans.first,
+      ),
     );
     _selectedPlan = defaultPlan;
     _loadConfig();
@@ -205,7 +208,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                '${Localization.translate('تم تجديد اشتراك الورشة لـ', lang)} ${_selectedPlan.titleAr} (${_selectedPlan.durationLabelAr}). ${Localization.translate('شكراً لثقتكم!', lang)}',
+                '${Localization.translate('تم تجديد اشتراك الورشة لـ', lang)} ${_selectedPlan.getTitle(lang)} (${_selectedPlan.getDurationLabel(lang)}). ${Localization.translate('شكراً لثقتكم!', lang)}',
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
@@ -459,8 +462,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               _buildBrandBadge(Localization.translate('الذهبية', lang), Colors.amber[700]!),
               _buildBrandBadge(Localization.translate('CIB', lang), Colors.cyan[400]!),
@@ -527,10 +532,13 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
                       Text(
-                        plan.titleAr,
+                        plan.getTitle(lang),
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           fontWeight: FontWeight.bold,
@@ -538,8 +546,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                           color: isDark ? Colors.white : const Color(0xFF1E293B),
                         ),
                       ),
-                      if (plan.isPopular) ...[
-                        const SizedBox(width: 8),
+                      if (plan.getBadge(lang) != null || plan.isPopular)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
@@ -547,20 +554,21 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            Localization.translate('الأكثر طلباً', lang),
+                            plan.getBadge(lang) ?? Localization.translate('الأكثر طلباً', lang),
                             style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ),
-                      ],
                     ],
                   ),
+                  const SizedBox(height: 2),
                   Text(
-                    plan.durationLabelAr,
+                    plan.getDurationLabel(lang),
                     style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -636,7 +644,10 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
                       Text(
                         title,
@@ -647,7 +658,6 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                           color: isDark ? Colors.white : const Color(0xFF1E293B),
                         ),
                       ),
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
@@ -704,44 +714,58 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                Localization.translate('المبلغ الإجمالي للدفع:', lang),
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              Flexible(
+                child: Text(
+                  Localization.translate('المبلغ الإجمالي للدفع:', lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                ),
               ),
-              Text(
-                '${NumberFormat('#,###').format(_selectedPlan.priceDzd)} ${Localization.translate('د.ج', lang)}',
-                style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2563EB),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '${NumberFormat('#,###').format(_selectedPlan.priceDzd)} ${Localization.translate('د.ج', lang)}',
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2563EB),
+                  ),
+                  textAlign: TextAlign.end,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          ElevatedButton.icon(
+          ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: _isLoading ? null : _processOnlinePayment,
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)),
-                  )
-                : const Icon(Icons.payment_rounded),
-            label: Text(
-              _isLoading
-                  ? Localization.translate('جاري تجهيز بوابة الدفع...', lang)
-                  : '${Localization.translate('ادفع الآن بالبطاقة', lang)} (${_selectedMethod == PaymentMethodType.edahabia ? Localization.translate('الذهبية', lang) : "CIB"})',
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)),
+                      )
+                    : const Icon(Icons.payment_rounded, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    _isLoading
+                        ? Localization.translate('جاري تجهيز بوابة الدفع...', lang)
+                        : '${Localization.translate('ادفع الآن بالبطاقة', lang)} (${_selectedMethod == PaymentMethodType.edahabia ? Localization.translate('الذهبية', lang) : "CIB"})',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13.5),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -799,9 +823,13 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
                         Localization.translate('رقم الحساب البريدي (RIP):', lang),
                         style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
                       ),
-                      Text(
-                        rip,
-                        style: const TextStyle(fontFamily: 'Courier', fontWeight: FontWeight.bold, fontSize: 15),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          rip,
+                          style: const TextStyle(fontFamily: 'Courier', fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
                       ),
                     ],
                   ),
@@ -840,20 +868,29 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          ElevatedButton.icon(
+          ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: _isSubmittingBaridiMob ? null : _submitBaridiMobReceipt,
-            icon: _isSubmittingBaridiMob
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)))
-                : const Icon(Icons.send_rounded),
-            label: Text(
-              Localization.translate('تأكيد التحويل وإرسال الإشعار', lang),
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _isSubmittingBaridiMob
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)))
+                    : const Icon(Icons.send_rounded, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    Localization.translate('تأكيد التحويل وإرسال الإشعار', lang),
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

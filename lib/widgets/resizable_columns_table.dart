@@ -30,6 +30,8 @@ class ResizableTableRow {
   final List<Widget> cells;
   final Color? color;
   final VoidCallback? onTap;
+  final VoidCallback? onDoubleTap;
+  final KeyEventResult Function(KeyEvent)? onKeyEvent;
   final ValueChanged<Offset>? onSecondaryTapDown;
   final String? reorderId;
 
@@ -37,6 +39,8 @@ class ResizableTableRow {
     required this.cells,
     this.color,
     this.onTap,
+    this.onDoubleTap,
+    this.onKeyEvent,
     this.onSecondaryTapDown,
     this.reorderId,
   });
@@ -476,6 +480,10 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     if (rows.isEmpty) return KeyEventResult.ignored;
 
     final current = _focusedRowIndex ?? -1;
+    if (current >= 0 && current < rows.length) {
+      final result = rows[current].row.onKeyEvent?.call(event);
+      if (result != null && result != KeyEventResult.ignored) return result;
+    }
     int nextIndex;
     switch (event.logicalKey) {
       case LogicalKeyboardKey.arrowDown:
@@ -997,21 +1005,26 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       ],
     );
 
-    // A plain onTapDown (not a full tap gesture) always marks the row as
-    // focused/highlighted on pointer-down, independent of whatever the row's
-    // own onTap/InkWell does with the completed tap.
-    final interactiveRow = GestureDetector(
+    // Select immediately, without waiting for the double-tap recognizer.
+    final interactiveRow = Listener(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _focusRow(index),
-      onSecondaryTapDown: row.onSecondaryTapDown == null
-          ? null
-          : (details) => row.onSecondaryTapDown!(details.globalPosition),
-      child: row.onTap == null
-          ? rowBody
-          : Material(
-              color: Colors.transparent,
-              child: InkWell(onTap: row.onTap, child: rowBody),
-            ),
+      onPointerDown: (_) => _focusRow(index),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onSecondaryTapDown: row.onSecondaryTapDown == null
+            ? null
+            : (details) => row.onSecondaryTapDown!(details.globalPosition),
+        child: row.onTap == null && row.onDoubleTap == null
+            ? rowBody
+            : Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: row.onTap,
+                  onDoubleTap: row.onDoubleTap,
+                  child: rowBody,
+                ),
+              ),
+      ),
     );
 
     return KeyedSubtree(key: _rowKeyFor(rowId), child: interactiveRow);

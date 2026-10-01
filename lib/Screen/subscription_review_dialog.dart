@@ -265,32 +265,38 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  details.isLifetime
-                                      ? Icons.all_inclusive_rounded
-                                      : Icons.star_rounded,
-                                  color: details.isLifetime
-                                      ? Colors.purple.shade600
-                                      : const Color(0xFF2563EB),
-                                  size: 22,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  planTitle,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: isDark
-                                        ? Colors.white
-                                        : (details.isLifetime
-                                              ? const Color(0xFF581C87)
-                                              : const Color(0xFF1E3A8A)),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    details.isLifetime
+                                        ? Icons.all_inclusive_rounded
+                                        : Icons.star_rounded,
+                                    color: details.isLifetime
+                                        ? Colors.purple.shade600
+                                        : const Color(0xFF2563EB),
+                                    size: 22,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      planTitle,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark
+                                            ? Colors.white
+                                            : (details.isLifetime
+                                                  ? const Color(0xFF581C87)
+                                                  : const Color(0xFF1E3A8A)),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
@@ -654,7 +660,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const SizedBox(height: 14),
 
                           // Electronic Payment Button
-                          ElevatedButton.icon(
+                          ElevatedButton(
                             onPressed: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -662,61 +668,79 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                 ),
                               );
                             },
-                            icon: const Icon(
-                              Icons.credit_card_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            label: Text(
-                              Localization.translate(
-                                'الدفع الإلكتروني الفوري (الذهبية / CIB / بريدي موب)',
-                                lang,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                              ),
-                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1E88E5),
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               elevation: 2,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.credit_card_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    Localization.translate(
+                                      'الدفع الإلكتروني الفوري (الذهبية / CIB / بريدي موب)',
+                                      lang,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 10),
 
                           // WhatsApp Contact Button
-                          ElevatedButton.icon(
+                          ElevatedButton(
                             onPressed: () => _launchWhatsApp(context, details),
-                            icon: const Icon(
-                              Icons.wechat_rounded,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                            label: Text(
-                              Localization.translate(
-                                'طلب تجديد الاشتراك عبر واتساب',
-                                lang,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green.shade600,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               elevation: 2,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.wechat_rounded,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    Localization.translate(
+                                      'طلب تجديد الاشتراك عبر واتساب',
+                                      lang,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

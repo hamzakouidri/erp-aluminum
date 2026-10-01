@@ -247,7 +247,7 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
         _createTab(
           editCommandeId: orderId,
           title: clientName.isEmpty
-              ? '${_orderWorkspaceText(context, 'طلبية')} #$orderId'
+              ? '${_orderWorkspaceText(context, 'طلبية')} #${_orderDisplayNumber(order)}'
               : clientName,
         ),
       );

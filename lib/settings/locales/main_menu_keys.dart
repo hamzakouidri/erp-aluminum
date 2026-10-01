@@ -36,6 +36,11 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.french: 'Accueil',
     AppLanguage.english: 'Home',
   },
+  'الصفحة الرئيسية': {
+    AppLanguage.arabic: 'الصفحة الرئيسية',
+    AppLanguage.french: 'Page d’accueil',
+    AppLanguage.english: 'Home page',
+  },
   'حدد نوع النافذة للبدء في الحسابات': {
     AppLanguage.arabic: 'حدد نوع النافذة للبدء في الحسابات',
     AppLanguage.french: '',
@@ -51,16 +56,10 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.french: 'Calcul des quantités et des marchandises',
     AppLanguage.english: 'Quantities and goods calculation',
   },
-  'إعدادات المصادقة غير موجودة: يرجى الذهاب إلى Firebase Console -> قسم Authentication وتفعيل البريد الإلكتروني (Email/Password).': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'إعدادات غير مكتملة: يرجى الذهاب إلى Firebase Console -> قسم Authentication -> واضغط على Get Started ثم قم بتفعيل Email/Password.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
+  'إعدادات المصادقة غير موجودة: يرجى الذهاب إلى Firebase Console -> قسم Authentication وتفعيل البريد الإلكتروني (Email/Password).':
+      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
+  'إعدادات غير مكتملة: يرجى الذهاب إلى Firebase Console -> قسم Authentication -> واضغط على Get Started ثم قم بتفعيل Email/Password.':
+      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
   'إنشاء حساب': {
     AppLanguage.arabic: 'إنشاء حساب',
     AppLanguage.french: 'Créer un compte',
@@ -111,14 +110,12 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.french: 'Calculer le coût',
     AppLanguage.english: 'Calculate cost',
   },
-  'طريقة تسجيل الدخول هذه غير مفعلة في لوحة التحكم (يرجى تفعيل Email/Password).': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
+  'طريقة تسجيل الدخول هذه غير مفعلة في لوحة التحكم (يرجى تفعيل Email/Password).':
+      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
   'عفواً، لم أسمع أي شيء. حاول التحدث بصوت أوضح.': {
     AppLanguage.arabic: 'عفواً، لم أسمع أي شيء. حاول التحدث بصوت أوضح.',
-    AppLanguage.french: 'Désolé, je n\'ai rien entendu. Parlez plus clairement.',
+    AppLanguage.french:
+        'Désolé, je n\'ai rien entendu. Parlez plus clairement.',
     AppLanguage.english: 'Sorry, I didn\'t hear anything. Speak more clearly.',
   },
   'كلمة المرور': {

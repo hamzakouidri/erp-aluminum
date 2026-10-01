@@ -275,6 +275,11 @@ class SqlDatabase {
     'KitBundleItems',
     'KitItemRanges',
     'KitItemVariants',
+    'TemperedGlassItems',
+    'TemperedGlassSystems',
+    'TemperedGlassKits',
+    'TemperedGlassKitHoles',
+    'TemperedGlassSystemRules',
   ];
 
   static const List<String> workshopTables = [
@@ -513,6 +518,7 @@ class SqlDatabase {
     try {
       await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
     } catch (_) {}
+    await _migratePendingOrdersToNouveau(db);
     await _ensureDeliveriesLoadedColumn(db);
     await _ensureAccessoryRulesColumns(db);
     try {
@@ -1794,6 +1800,7 @@ class SqlDatabase {
         track_count INTEGER NOT NULL DEFAULT 0,
         track_adds INTEGER NOT NULL DEFAULT 0,
         supported_track_counts TEXT NOT NULL DEFAULT '',
+        compatible_frame_ids TEXT NOT NULL DEFAULT '',
         is_required INTEGER NOT NULL DEFAULT 0,
         is_default INTEGER NOT NULL DEFAULT 0,
         is_visible INTEGER NOT NULL DEFAULT 1,
@@ -1892,6 +1899,7 @@ class SqlDatabase {
       'ALTER TABLE SeriesDesignRoles ADD COLUMN track_count INTEGER NOT NULL DEFAULT 0;',
       'ALTER TABLE SeriesDesignRoles ADD COLUMN track_adds INTEGER NOT NULL DEFAULT 0;',
       "ALTER TABLE SeriesDesignRoles ADD COLUMN supported_track_counts TEXT NOT NULL DEFAULT '';",
+      "ALTER TABLE SeriesDesignRoles ADD COLUMN compatible_frame_ids TEXT NOT NULL DEFAULT '';",
     ]) {
       try {
         await db.execute(statement);
@@ -5196,7 +5204,7 @@ class SqlDatabase {
     );
 
     if (!skipAllocationSync) {
-      await _syncAllocationsFromOrderStatus(id, newStatus);
+      await syncAllocationsFromOrderStatus(id, newStatus);
     }
 
     // The local database is authoritative for the current action. Cloud
@@ -5312,7 +5320,7 @@ class SqlDatabase {
               whereArgs: [orderId],
             );
             if (updateMap.containsKey('status')) {
-              await _syncAllocationsFromOrderStatus(orderId, cloudStatus);
+              await syncAllocationsFromOrderStatus(orderId, cloudStatus);
             }
             didChange = true;
           }
@@ -5451,7 +5459,7 @@ class SqlDatabase {
     return res;
   }
 
-  Future<void> _syncAllocationsFromOrderStatus(
+  Future<void> syncAllocationsFromOrderStatus(
     int orderId,
     String status,
   ) async {
@@ -5560,13 +5568,13 @@ class SqlDatabase {
           updates['reserve_at'] = null;
         } else if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
           updates['is_manufactured'] = 1;
-          // âœ… Only set timestamp if not already recorded (preserve the exact button-press moment)
+          // ✅ Only set timestamp if not already recorded (preserve the exact button-press moment)
           if (current['manufactured_at'] == null ||
               current['manufactured_at'].toString().isEmpty) {
             updates['manufactured_at'] = nowStr;
           }
           updates['is_glass_installed'] = 1;
-          // âœ… Only set timestamp if not already recorded
+          // ✅ Only set timestamp if not already recorded
           if (current['glass_installed_at'] == null ||
               current['glass_installed_at'].toString().isEmpty) {
             updates['glass_installed_at'] = nowStr;
@@ -5575,10 +5583,17 @@ class SqlDatabase {
 
         if (isDistAll || (isDistPartial && i == 0 && j == 0)) {
           updates['is_distributed'] = 1;
-          // âœ… Only set timestamp if not already recorded
+          // ✅ Only set timestamp if not already recorded
           if (current['distributed_at'] == null ||
               current['distributed_at'].toString().isEmpty) {
             updates['distributed_at'] = nowStr;
+          }
+          if (isDistAll) {
+            updates['is_transferred_to_dist'] = 1;
+            if (current['transferred_at'] == null ||
+                current['transferred_at'].toString().isEmpty) {
+              updates['transferred_at'] = nowStr;
+            }
           }
         }
 
@@ -5593,6 +5608,13 @@ class SqlDatabase {
           allocationIdsToUpload.add(allocId);
         }
       }
+    }
+
+    if (isDistAll && orderId > 0) {
+      await myDb.rawUpdate(
+        'UPDATE Commandes_details SET delivered_qty = quantity WHERE id_commandes = ?',
+        [orderId],
+      );
     }
 
     if (allocationIdsToUpload.isNotEmpty) {
@@ -5612,11 +5634,60 @@ class SqlDatabase {
         final orderId = (order['id'] as num?)?.toInt() ?? 0;
         final status = order['status']?.toString() ?? '';
         if (orderId > 0 && status.isNotEmpty) {
-          await _syncAllocationsFromOrderStatus(orderId, status);
+          await syncAllocationsFromOrderStatus(orderId, status);
         }
       }
     } catch (e) {
       debugPrint('syncAllAllocationsFromAllOrderStatuses error: $e');
+    }
+  }
+
+  Future<void> _migratePendingOrdersToNouveau(DatabaseExecutor db) async {
+    try {
+      await db.execute('''
+        UPDATE Commandes 
+        SET status = 'Nouveau' 
+        WHERE LOWER(TRIM(status)) IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'قيد الانتظار', 'في حالة انتظار')
+           OR status IS NULL 
+           OR TRIM(status) = '';
+      ''');
+    } catch (e) {
+      debugPrint('Error in _migratePendingOrdersToNouveau: $e');
+    }
+  }
+
+  /// Migrates all existing orders in 'Pending' / 'En attente' to 'Nouveau'
+  /// and notifies listeners and cloud sync safely.
+  Future<int> migrateAllPendingOrdersToNouveau() async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    try {
+      final rows = await myDb.rawQuery('''
+        SELECT id FROM Commandes 
+        WHERE LOWER(TRIM(status)) IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'قيد الانتظار', 'في حالة انتظار')
+           OR status IS NULL 
+           OR TRIM(status) = ''
+      ''');
+      if (rows.isEmpty) return 0;
+      final count = await myDb.rawUpdate('''
+        UPDATE Commandes 
+        SET status = 'Nouveau',
+            updated_at = '${DateTime.now().toUtc().toIso8601String()}'
+        WHERE LOWER(TRIM(status)) IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'قيد الانتظار', 'في حالة انتظار')
+           OR status IS NULL 
+           OR TRIM(status) = ''
+      ''');
+      for (final row in rows) {
+        final id = (row['id'] as num?)?.toInt();
+        if (id != null) {
+          unawaited(_uploadOrderStatusToCloud(id, 'Nouveau'));
+        }
+      }
+      CloudSyncService().notifyChange();
+      return count;
+    } catch (e) {
+      debugPrint('migrateAllPendingOrdersToNouveau error: $e');
+      return 0;
     }
   }
 
@@ -5628,7 +5699,7 @@ class SqlDatabase {
       FROM Commandes_details d
       JOIN Commandes c ON d.id_commandes = c.id
       WHERE c.id < ? 
-        AND c.status NOT IN ('En attente', 'في الانتظار', 'Pending', 'Draft', 'ملغاة')
+        AND c.status NOT IN ('En attente', 'في الانتظار', 'Pending', 'Draft', 'ملغاة', 'Nouveau', 'New', 'جديدة', 'جديد')
     ''',
       [targetOrderId],
     );
@@ -5787,6 +5858,61 @@ class SqlDatabase {
 
     // ðŸ›¡ï¸ 2. Clean slate initialization: reset all status flags for new allocation
     final nowStr = DateTime.now().toUtc().toIso8601String();
+    int isMfg = 0;
+    int isGlass = 0;
+    int isDist = 0;
+    int isTrans = 0;
+    try {
+      final cd = await myDb.query(
+        'Commandes_details',
+        columns: ['id_commandes'],
+        where: 'id = ?',
+        whereArgs: [detailId],
+      );
+      if (cd.isNotEmpty) {
+        final orderId = (cd.first['id_commandes'] as num?)?.toInt() ?? 0;
+        if (orderId > 0) {
+          final ord = await myDb.query(
+            'Commandes',
+            columns: ['status'],
+            where: 'id = ?',
+            whereArgs: [orderId],
+          );
+          if (ord.isNotEmpty) {
+            final s = (ord.first['status'] ?? '').toString().toLowerCase().trim();
+            final isMfgAll = s.contains('full manufacturing') ||
+                s.contains('تصنيع كلي') ||
+                s.contains('التصنيع الكلي') ||
+                s.contains('fabrication totale') ||
+                s.contains('full distribution') ||
+                s.contains('توزيع كلي') ||
+                s.contains('livré') ||
+                s.contains('installation') ||
+                s.contains('التركيب') ||
+                s.contains('completed') ||
+                s.contains('مكتمل') ||
+                s.contains('done') ||
+                s.contains('منتهية');
+            final isDistAll = s.contains('full distribution') ||
+                s.contains('توزيع كلي') ||
+                s.contains('livré') ||
+                s.contains('completed') ||
+                s.contains('مكتمل') ||
+                s.contains('done') ||
+                s.contains('منتهية');
+            if (isMfgAll) {
+              isMfg = 1;
+              isGlass = 1;
+            }
+            if (isDistAll) {
+              isDist = 1;
+              isTrans = 1;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
     final Map<String, dynamic> row = {
       'commande_detail_id': detailId,
       'worker_uid': workerUid,
@@ -5794,14 +5920,14 @@ class SqlDatabase {
       'worker_price': workerPrice,
       'assigned_at': nowStr,
       'is_settled': 0,
-      'is_manufactured': 0,
-      'manufactured_at': null,
-      'is_glass_installed': 0,
-      'glass_installed_at': null,
-      'is_distributed': 0,
-      'distributed_at': null,
-      'is_transferred_to_dist': 0,
-      'transferred_at': null,
+      'is_manufactured': isMfg,
+      'manufactured_at': isMfg == 1 ? nowStr : null,
+      'is_glass_installed': isGlass,
+      'glass_installed_at': isGlass == 1 ? nowStr : null,
+      'is_distributed': isDist,
+      'distributed_at': isDist == 1 ? nowStr : null,
+      'is_transferred_to_dist': isTrans,
+      'transferred_at': isTrans == 1 ? nowStr : null,
       'updated_at': nowStr,
     };
     if (unitIndex != null) row['unit_index'] = unitIndex;
@@ -7148,6 +7274,18 @@ class SqlDatabase {
     return totalMfgQty >= totalRequiredQty;
   }
 
+  Future<void> updateWorkerAllocationManufactured(
+    int allocationId,
+    int isManufactured,
+  ) =>
+      updateWorkerAllocationManufacturing(allocationId, isManufactured);
+
+  Future<void> updateWorkerAllocationGlassInstalled(
+    int allocationId,
+    int isGlassInstalled,
+  ) =>
+      updateWorkerAllocationGlass(allocationId, isGlassInstalled);
+
   Future<void> updateWorkerAllocationManufacturing(
     int allocationId,
     int isManufactured,
@@ -7348,6 +7486,9 @@ class SqlDatabase {
               final orderId =
                   (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
               if (orderId > 0) {
+                if (isTransferred == 1) {
+                  await recordAllocationDeliveryNote(orderId, detailRow.first);
+                }
                 await syncOrderAndAllocationsStatus(orderId);
               }
             }
@@ -7360,6 +7501,129 @@ class SqlDatabase {
 
     await _uploadAllocationStatusToCloud(allocationId);
     CloudSyncService().notifyChange();
+  }
+
+  /// تسجيل وصل تسليم تلقائي في Commandes_deliveries عند خروج نافذة أو عنصر من الورشة
+  Future<void> recordAllocationDeliveryNote(
+    int orderId,
+    Map<String, dynamic> detail,
+  ) async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      final orderRow = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
+      if (orderRow.isEmpty) return;
+      final clientId = (orderRow.first['client_id'] as num?)?.toInt() ?? 0;
+      if (clientId <= 0) return;
+
+      final now = DateTime.now();
+      final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(now);
+      final detailId = (detail['id'] as num?)?.toInt() ?? 0;
+
+      final itemMap = {
+        'id': detailId,
+        'name': detail['window_type']?.toString() ?? 'نافذة',
+        'quantity': 1,
+        'price': (detail['prix'] as num?)?.toDouble() ?? 0.0,
+        'width': (detail['largeur'] as num?)?.toDouble() ?? 0.0,
+        'height': (detail['hauteur'] as num?)?.toDouble() ?? 0.0,
+        'color': detail['color']?.toString() ?? '',
+        'glass': detail['glass']?.toString() ?? '',
+        'description': detail['description']?.toString() ?? '',
+        'drawing_image_path': detail['drawing_image_path']?.toString() ?? '',
+      };
+
+      final existingDeliveries = await myDb.query(
+        'Commandes_deliveries',
+        where: 'id_commandes = ?',
+        whereArgs: [orderId],
+        orderBy: 'id DESC',
+      );
+
+      bool alreadyDelivered = false;
+      for (final d in existingDeliveries) {
+        try {
+          final items = jsonDecode(d['items_json']?.toString() ?? '[]');
+          if (items is List) {
+            for (final it in items) {
+              if ((it['id'] as num?)?.toInt() == detailId) {
+                alreadyDelivered = true;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+        if (alreadyDelivered) break;
+      }
+
+      if (!alreadyDelivered) {
+        await insertCommandeDelivery(
+          orderId,
+          clientId,
+          dateStr,
+          jsonEncode([itemMap]),
+          (itemMap['price'] as double),
+          isLoaded: 1,
+        );
+        await myDb.rawUpdate(
+          'UPDATE Commandes_details SET delivered_qty = MIN(quantity, COALESCE(delivered_qty, 0) + 1) WHERE id = ?',
+          [detailId],
+        );
+        await syncOrderAndAllocationsStatus(orderId);
+      }
+    } catch (e) {
+      debugPrint('recordAllocationDeliveryNote error: $e');
+    }
+  }
+
+  /// تحديث حالة إسنادات العناصر عند تأكيد وصل التسليم في صفحة المعاينة
+  Future<void> markItemsAllocationsTransferred(
+    int orderId,
+    List<Map<String, dynamic>> items, {
+    bool isFullOrder = false,
+  }) async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      final nowStr = DateTime.now().toUtc().toIso8601String();
+      for (final it in items) {
+        final detailId = (it['id'] as num?)?.toInt() ?? 0;
+        final qty = (it['quantity'] as num?)?.toInt() ?? 1;
+        if (detailId > 0) {
+          await myDb.update(
+            'WorkerAllocations',
+            {
+              'is_transferred_to_dist': 1,
+              'transferred_at': nowStr,
+              'is_distributed': 1,
+              'distributed_at': nowStr,
+              'updated_at': nowStr,
+            },
+            where: 'commande_detail_id = ?',
+            whereArgs: [detailId],
+          );
+          if (isFullOrder) {
+            await myDb.rawUpdate(
+              'UPDATE Commandes_details SET delivered_qty = quantity WHERE id = ?',
+              [detailId],
+            );
+          } else {
+            await myDb.rawUpdate(
+              'UPDATE Commandes_details SET delivered_qty = MIN(quantity, COALESCE(delivered_qty, 0) + ?) WHERE id = ?',
+              [qty, detailId],
+            );
+          }
+        }
+      }
+      if (isFullOrder && orderId > 0) {
+        await myDb.rawUpdate(
+          'UPDATE Commandes_details SET delivered_qty = quantity WHERE id_commandes = ?',
+          [orderId],
+        );
+      }
+    } catch (e) {
+      debugPrint('markItemsAllocationsTransferred error: $e');
+    }
   }
 
   Future<List<Map<String, dynamic>>> readFieldInstallationAllocations() async {
@@ -8081,11 +8345,18 @@ class SqlDatabase {
       if (idCommande == null) {
         final newOrderId = _nextDistributedId();
         final orderCode = await _reserveNextOrderCode(txn);
+        final initialStatus = (status.trim().isEmpty ||
+                status.trim().toLowerCase() == 'pending' ||
+                status.trim().toLowerCase() == 'en attente' ||
+                status.trim().toLowerCase() == 'en_attente' ||
+                status.trim().contains('انتظار'))
+            ? 'Nouveau'
+            : status;
         await txn.insert('Commandes', {
           'id': newOrderId,
           'order_code': orderCode,
           'client_id': clientId,
-          'status': status,
+          'status': initialStatus,
           'description': description,
           'remise': remise,
           'tva': tva,
@@ -9229,11 +9500,26 @@ class SqlDatabase {
   }) async {
     Database? myDb = await db;
     await _ensureDeliveriesLoadedColumn(myDb!);
+    int effectiveClientId = clientId;
+    if (effectiveClientId <= 0 && idCommande > 0) {
+      try {
+        final orderRow = await myDb.query(
+          'Commandes',
+          columns: ['client_id'],
+          where: 'id = ?',
+          whereArgs: [idCommande],
+          limit: 1,
+        );
+        if (orderRow.isNotEmpty) {
+          effectiveClientId = (orderRow.first['client_id'] as num?)?.toInt() ?? 0;
+        }
+      } catch (_) {}
+    }
     var res = await myDb.insert(
       'Commandes_deliveries',
       _withDistributedId({
         'id_commandes': idCommande,
-        'client_id': clientId,
+        'client_id': effectiveClientId,
         'delivery_date': date,
         'items_json': itemsJson,
         'total_amount': totalAmount,
@@ -17233,6 +17519,8 @@ class SqlDatabase {
           'track_adds': role['track_adds'] ?? 0,
           'supported_track_counts':
               role['supported_track_counts']?.toString() ?? '',
+          'compatible_frame_ids':
+              role['compatible_frame_ids']?.toString() ?? '',
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -18100,6 +18388,963 @@ class SqlDatabase {
       'clients_suppliers': clientsSuppliersCount,
       'trash': trashCount,
     };
+  }
+
+  Future<void> _ensureTemperedGlassItemsTable(Database dbInstance) async {
+    await dbInstance.execute('''
+      CREATE TABLE IF NOT EXISTS TemperedGlassItems (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        category_name TEXT,
+        type TEXT NOT NULL DEFAULT 'accessoire',
+        unit TEXT NOT NULL DEFAULT 'piece',
+        price REAL NOT NULL DEFAULT 0.0,
+        cost_price REAL NOT NULL DEFAULT 0.0,
+        default_qty INTEGER NOT NULL DEFAULT 1,
+        holes_count INTEGER DEFAULT 0,
+        entraxe REAL DEFAULT 0.0,
+        image_path TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+  }
+
+  Future<void> ensureTemperedGlassItemsTable() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureTemperedGlassItemsTable(myDb);
+    await seedDefaultTemperedGlassItems();
+  }
+
+  Future<void> seedDefaultTemperedGlassItems() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureTemperedGlassItemsTable(myDb);
+    final count = Sqflite.firstIntValue(
+      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassItems'),
+    ) ?? 0;
+    if (count > 0) return;
+
+    final defaultItems = [
+      // Handles (مقابض)
+      {
+        'name': 'مقبض باب زجاجي ستانلس 30 سم (Poignée inox 30cm)',
+        'category': 'poignee',
+        'category_name': 'المقابض',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 4500.0,
+        'cost_price': 3200.0,
+        'default_qty': 1,
+        'holes_count': 2,
+        'entraxe': 200.0,
+        'notes': 'Entraxe 200 mm - Ø25 mm',
+      },
+      {
+        'name': 'مقبض باب زجاجي ستانلس 45 سم (Poignée inox 45cm)',
+        'category': 'poignee',
+        'category_name': 'المقابض',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 5800.0,
+        'cost_price': 4200.0,
+        'default_qty': 1,
+        'holes_count': 2,
+        'entraxe': 300.0,
+        'notes': 'Entraxe 300 mm - Ø25 mm',
+      },
+      {
+        'name': 'مقبض دائري مفرد للباب (Bouton rond inox)',
+        'category': 'poignee',
+        'category_name': 'المقابض',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 2200.0,
+        'cost_price': 1500.0,
+        'default_qty': 1,
+        'holes_count': 1,
+        'entraxe': 0.0,
+        'notes': 'Trou unique Ø10-12 mm',
+      },
+      {
+        'name': 'مقبض مناشف كابين دوش (Porte-serviette douche)',
+        'category': 'poignee',
+        'category_name': 'المقابض',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 4800.0,
+        'cost_price': 3500.0,
+        'default_qty': 1,
+        'holes_count': 2,
+        'entraxe': 450.0,
+        'notes': 'Entraxe 450 mm',
+      },
+      // Hinges & Clamps (مفصلات ومشابك)
+      {
+        'name': 'مفصلة زجاج / جدار 90° ستانلس (Charnière verre/mur 90°)',
+        'category': 'charniere',
+        'category_name': 'المفصلات',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 3800.0,
+        'cost_price': 2700.0,
+        'default_qty': 2,
+        'holes_count': 2,
+        'entraxe': 58.0,
+        'notes': 'Inox 304 pour douche',
+      },
+      {
+        'name': 'مفصلة زجاج / زجاج 180° (Charnière verre/verre 180°)',
+        'category': 'charniere',
+        'category_name': 'المفصلات',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 4200.0,
+        'cost_price': 3000.0,
+        'default_qty': 2,
+        'holes_count': 4,
+        'entraxe': 58.0,
+        'notes': 'Inox 304',
+      },
+      {
+        'name': 'مفصلة زجاج / زجاج 90° (Charnière verre/verre 90°)',
+        'category': 'charniere',
+        'category_name': 'المفصلات',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 4400.0,
+        'cost_price': 3100.0,
+        'default_qty': 2,
+        'holes_count': 4,
+        'entraxe': 58.0,
+        'notes': 'Angle 90 degrés',
+      },
+      {
+        'name': 'مفصلة أرضية محورية لفاترين (Pivot de sol / Pivot bas)',
+        'category': 'charniere',
+        'category_name': 'المفصلات',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 14000.0,
+        'cost_price': 10500.0,
+        'default_qty': 1,
+        'holes_count': 0,
+        'entraxe': 0.0,
+        'notes': 'Pour porte vitrine lourde',
+      },
+      {
+        'name': 'مربط / مشبك زجاج حائطي (Pince à verre mur)',
+        'category': 'fixation',
+        'category_name': 'التثبيت والمشابك',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 1800.0,
+        'cost_price': 1200.0,
+        'default_qty': 3,
+        'holes_count': 1,
+        'entraxe': 0.0,
+        'notes': 'Fixation fixe sans encoche ou avec trou',
+      },
+      {
+        'name': 'مربط زجاج / زجاج (Pince verre/verre)',
+        'category': 'fixation',
+        'category_name': 'التثبيت والمشابك',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 2200.0,
+        'cost_price': 1500.0,
+        'default_qty': 2,
+        'holes_count': 2,
+        'entraxe': 0.0,
+        'notes': 'Liaison deux panneaux fixes',
+      },
+      // Profiles & Rails (القطاعات والسكك)
+      {
+        'name': 'بروفيل ألومنيوم U للزجاج 15×15 مم (Profilé U 15x15)',
+        'category': 'profile',
+        'category_name': 'القطاعات والسكك',
+        'type': 'profile',
+        'unit': 'meter',
+        'price': 1200.0,
+        'cost_price': 850.0,
+        'default_qty': 2,
+        'holes_count': 0,
+        'entraxe': 0.0,
+        'notes': 'Pour verre 8-10 mm',
+      },
+      {
+        'name': 'بروفيل ألومنيوم U للزجاج 20×20 مم (Profilé U 20x20)',
+        'category': 'profile',
+        'category_name': 'القطاعات والسكك',
+        'type': 'profile',
+        'unit': 'meter',
+        'price': 1600.0,
+        'cost_price': 1100.0,
+        'default_qty': 2,
+        'holes_count': 0,
+        'entraxe': 0.0,
+        'notes': 'Pour verre 10-12 mm',
+      },
+      {
+        'name': 'سكة علوية كابين دوش مع رولات (Rail haut + Chariots roulettes)',
+        'category': 'profile',
+        'category_name': 'القطاعات والسكك',
+        'type': 'profile',
+        'unit': 'piece',
+        'price': 16500.0,
+        'cost_price': 12000.0,
+        'default_qty': 1,
+        'holes_count': 2,
+        'entraxe': 0.0,
+        'notes': 'Système coulissant complet inox',
+      },
+      {
+        'name': 'أنبوب تثبيت علوي ستانلس Ø25 مم (Tube raidisseur inox Ø25)',
+        'category': 'profile',
+        'category_name': 'القطاعات والسكك',
+        'type': 'profile',
+        'unit': 'meter',
+        'price': 3500.0,
+        'cost_price': 2500.0,
+        'default_qty': 1,
+        'holes_count': 0,
+        'entraxe': 0.0,
+        'notes': 'Tringle de maintien haute',
+      },
+      // Seals (جوانات وعوازل)
+      {
+        'name': 'جوان مغناطيسي للباب 180° (Joint magnétique 180°)',
+        'category': 'joint',
+        'category_name': 'الجوانات والعوازل',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 1900.0,
+        'cost_price': 1300.0,
+        'default_qty': 1,
+        'holes_count': 0,
+        'entraxe': 0.0,
+        'notes': 'Longueur 2.20m',
+      },
+      {
+        'name': 'جوان شفة سفلية مانع تسرب الماء (Joint bas bavette)',
+        'category': 'joint',
+        'category_name': 'الجوانات والعوازل',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 1500.0,
+        'cost_price': 950.0,
+        'default_qty': 1,
+        'holes_count': 0,
+        'entraxe': 0.0,
+        'notes': 'Longueur 1.00m',
+      },
+      // Locks & Latches (أقفال ومزاليج)
+      {
+        'name': 'قفل زجاج سفلي مع ركيزة أرضية (Serrure basse verre sol)',
+        'category': 'serrure',
+        'category_name': 'الأقفال',
+        'type': 'accessoire',
+        'unit': 'piece',
+        'price': 4800.0,
+        'cost_price': 3400.0,
+        'default_qty': 1,
+        'holes_count': 1,
+        'entraxe': 0.0,
+        'notes': 'Verrouillage au sol pour vitrine ou porte',
+      },
+    ];
+
+    for (final item in defaultItems) {
+      await myDb.insert('TemperedGlassItems', item);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getTemperedGlassItems({String? category, String? type}) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureTemperedGlassItemsTable(myDb);
+    await seedDefaultTemperedGlassItems();
+
+    String where = 'is_active = 1';
+    List<dynamic> args = [];
+    if (category != null && category.isNotEmpty && category != 'all') {
+      where += ' AND category = ?';
+      args.add(category);
+    }
+    if (type != null && type.isNotEmpty && type != 'all') {
+      where += ' AND type = ?';
+      args.add(type);
+    }
+    return await myDb.query('TemperedGlassItems', where: where, whereArgs: args.isEmpty ? null : args, orderBy: 'id ASC');
+  }
+
+  Future<int> insertTemperedGlassItem(Map<String, dynamic> item) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureTemperedGlassItemsTable(myDb);
+    return await myDb.insert('TemperedGlassItems', item);
+  }
+
+  Future<int> updateTemperedGlassItem(int id, Map<String, dynamic> item) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassItems', item, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteTemperedGlassItem(int id) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassItems', {'is_active': 0}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> updateTemperedGlassItemPrice(int id, double price) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassItems', {'price': price}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ==========================================
+  // Tempered Glass Systems, Kits & Rules
+  // ==========================================
+
+  Future<void> _ensureTemperedGlassSystemsAndRulesTables(Database dbInstance) async {
+    await dbInstance.execute('''
+      CREATE TABLE IF NOT EXISTS TemperedGlassSystems (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name_ar TEXT NOT NULL,
+        name_fr TEXT DEFAULT '',
+        name_en TEXT DEFAULT '',
+        category TEXT DEFAULT 'douche',
+        icon_name TEXT DEFAULT 'shower',
+        description TEXT DEFAULT '',
+        default_kit_code TEXT DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        display_order INTEGER DEFAULT 0
+      )
+    ''');
+
+    await dbInstance.execute('''
+      CREATE TABLE IF NOT EXISTS TemperedGlassKits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        system_code TEXT DEFAULT '',
+        target_panel TEXT NOT NULL DEFAULT 'door',
+        description TEXT DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+
+    await dbInstance.execute('''
+      CREATE TABLE IF NOT EXISTS TemperedGlassKitHoles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kit_id INTEGER NOT NULL,
+        hole_index INTEGER NOT NULL DEFAULT 1,
+        diameter_mm REAL NOT NULL DEFAULT 20.0,
+        ref_x TEXT NOT NULL DEFAULT 'left',
+        offset_x_mm REAL NOT NULL DEFAULT 80.0,
+        ref_y TEXT NOT NULL DEFAULT 'top',
+        offset_y_mm REAL NOT NULL DEFAULT 35.0,
+        reference_mode TEXT NOT NULL DEFAULT 'edge',
+        min_panel_width_mm REAL DEFAULT 0.0,
+        max_panel_width_mm REAL DEFAULT 0.0,
+        purpose TEXT DEFAULT 'kit_roller'
+      )
+    ''');
+
+    await dbInstance.execute('''
+      CREATE TABLE IF NOT EXISTS TemperedGlassSystemRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        system_code TEXT NOT NULL,
+        item_id INTEGER,
+        kit_id INTEGER,
+        rule_type TEXT NOT NULL,
+        glass_thickness_mm REAL DEFAULT 0.0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        notes TEXT DEFAULT ''
+      )
+    ''');
+  }
+
+  Future<void> ensureTemperedGlassSystemsAndRulesTables() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    await seedDefaultTemperedGlassSystemsAndKits();
+  }
+
+  Future<void> seedDefaultTemperedGlassSystemsAndKits() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+
+    final sysCount = Sqflite.firstIntValue(
+      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassSystems'),
+    ) ?? 0;
+
+    if (sysCount == 0) {
+      final defaultSystems = [
+        {
+          'code': 'coulissante',
+          'name_ar': 'كابينة دوش منزلقة (I)',
+          'name_fr': 'Cabine de douche coulissante (I)',
+          'name_en': 'Sliding shower cabin (I)',
+          'category': 'douche',
+          'icon_name': 'compare_arrows',
+          'description': 'كابينة دوش مستقيمة منزلقة تتكون من لوح ثابت ولوح باب منزلق',
+          'default_kit_code': 'kit_alfa',
+          'is_active': 1,
+          'display_order': 1,
+        },
+        {
+          'code': 'cabine_l',
+          'name_ar': 'كابينة دوش زاوية (L)',
+          'name_fr': 'Cabine de douche d’angle (L)',
+          'name_en': 'Corner shower cabin (L)',
+          'category': 'douche',
+          'icon_name': 'shower',
+          'description': 'كابينة دوش على شكل زاوية L مع جانب ثابت وباب',
+          'default_kit_code': 'kit_alfa',
+          'is_active': 1,
+          'display_order': 2,
+        },
+        {
+          'code': 'cabine_porte',
+          'name_ar': 'كابينة دوش بباب واحد',
+          'name_fr': 'Cabine de douche porte simple',
+          'name_en': 'Single door shower cabin',
+          'category': 'douche',
+          'icon_name': 'door_front_door_outlined',
+          'description': 'كابينة دوش بباب مفصلي واحد',
+          'default_kit_code': 'kit_charniere_mur',
+          'is_active': 1,
+          'display_order': 3,
+        },
+        {
+          'code': 'cabine_fixe_porte',
+          'name_ar': 'كابينة دوش ثابت مع باب',
+          'name_fr': 'Cabine de douche fixe + porte',
+          'name_en': 'Fixed panel + door shower cabin',
+          'category': 'douche',
+          'icon_name': 'meeting_room_outlined',
+          'description': 'كابينة دوش تتكون من لوح ثابت مع باب مفصلي',
+          'default_kit_code': 'kit_charniere_verre',
+          'is_active': 1,
+          'display_order': 4,
+        },
+        {
+          'code': 'cabine_u',
+          'name_ar': 'كابينة دوش زاوية (U)',
+          'name_fr': 'Cabine de douche en U',
+          'name_en': 'U-shaped shower cabin',
+          'category': 'douche',
+          'icon_name': 'check_box_outline_blank',
+          'description': 'كابينة دوش محاطة بثلاث جهات ثابتة وباب',
+          'default_kit_code': 'kit_alfa',
+          'is_active': 1,
+          'display_order': 5,
+        },
+        {
+          'code': 'vitrine_1p',
+          'name_ar': 'فيترين بباب واحد',
+          'name_fr': 'Vitrine à une porte',
+          'name_en': 'One-door storefront',
+          'category': 'vitrine',
+          'icon_name': 'storefront',
+          'description': 'واجهة زجاجية بمحور دوران أو مفصلات مع باب واحد',
+          'default_kit_code': 'kit_pivot',
+          'is_active': 1,
+          'display_order': 6,
+        },
+        {
+          'code': 'vitrine_2p',
+          'name_ar': 'فيترين ببابين',
+          'name_fr': 'Vitrine à deux portes',
+          'name_en': 'Two-door storefront',
+          'category': 'vitrine',
+          'icon_name': 'meeting_room_outlined',
+          'description': 'واجهة زجاجية ببابين مزدوجين',
+          'default_kit_code': 'kit_pivot',
+          'is_active': 1,
+          'display_order': 7,
+        },
+        {
+          'code': 'paroi_fixe',
+          'name_ar': 'حاجز دوش ثابت (Paroi fixe)',
+          'name_fr': 'Paroi de douche fixe',
+          'name_en': 'Fixed shower screen',
+          'category': 'douche',
+          'icon_name': 'crop_portrait',
+          'description': 'لوح زجاجي ثابت لحماية الدوش بدون أبواب متحركة',
+          'default_kit_code': '',
+          'is_active': 1,
+          'display_order': 8,
+        },
+      ];
+
+      for (final sys in defaultSystems) {
+        await myDb.insert('TemperedGlassSystems', sys);
+      }
+    }
+
+    final kitCount = Sqflite.firstIntValue(
+      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassKits'),
+    ) ?? 0;
+
+    if (kitCount == 0) {
+      final defaultKits = [
+        {
+          'code': 'kit_alfa',
+          'name': 'كيت ألفا (Kit Alfa)',
+          'system_code': 'coulissante',
+          'target_panel': 'door',
+          'description': 'كيت كابينة دوش كوليسا قياسي - ثقبان علويان للرولمان في الباب',
+          'is_active': 1,
+        },
+        {
+          'code': 'kit_beta',
+          'name': 'كيت بيتا (Kit Beta)',
+          'system_code': 'coulissante',
+          'target_panel': 'door',
+          'description': 'كيت كابينة كوليسا للرولمانات الكبيرة Ø25 مم وخلوص 100 مم',
+          'is_active': 1,
+        },
+        {
+          'code': 'kit_pivot',
+          'name': 'كيت محور دوران (Kit Pivot)',
+          'system_code': 'vitrine_1p',
+          'target_panel': 'door',
+          'description': 'محور دوران أرضي وعلوي لأبواب الواجهات والفيترين',
+          'is_active': 1,
+        },
+        {
+          'code': 'kit_charniere_mur',
+          'name': 'كيت مفصلات زجاج / جدار (Charnières Verre-Mur)',
+          'system_code': 'cabine_porte',
+          'target_panel': 'door',
+          'description': 'مفصلتان لتثبيت باب الزجاج على الجدار مباشرة',
+          'is_active': 1,
+        },
+        {
+          'code': 'kit_charniere_verre',
+          'name': 'كيت مفصلات زجاج / زجاج 180° (Charnières Verre-Verre)',
+          'system_code': 'cabine_fixe_porte',
+          'target_panel': 'door',
+          'description': 'مفصلتان لتثبيت باب الزجاج على لوح زجاجي ثابت',
+          'is_active': 1,
+        },
+      ];
+
+      for (final kit in defaultKits) {
+        final kitId = await myDb.insert('TemperedGlassKits', kit);
+        final code = kit['code'] as String;
+
+        if (code == 'kit_alfa') {
+          // Hole 1: Top-Left roller
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 1,
+            'diameter_mm': 20.0,
+            'ref_x': 'left',
+            'offset_x_mm': 80.0,
+            'ref_y': 'top',
+            'offset_y_mm': 35.0,
+            'reference_mode': 'edge', // from edge to edge of hole
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'door_top_left',
+          });
+          // Hole 2: Top-Right roller
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 2,
+            'diameter_mm': 20.0,
+            'ref_x': 'right',
+            'offset_x_mm': 80.0,
+            'ref_y': 'top',
+            'offset_y_mm': 35.0,
+            'reference_mode': 'edge',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'door_top_right',
+          });
+          // Conditional Hole 3: Center roller if door width >= 1200 mm
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 3,
+            'diameter_mm': 20.0,
+            'ref_x': 'center',
+            'offset_x_mm': 0.0,
+            'ref_y': 'top',
+            'offset_y_mm': 35.0,
+            'reference_mode': 'center',
+            'min_panel_width_mm': 1200.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'door_top_center',
+          });
+        } else if (code == 'kit_beta') {
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 1,
+            'diameter_mm': 25.0,
+            'ref_x': 'left',
+            'offset_x_mm': 100.0,
+            'ref_y': 'top',
+            'offset_y_mm': 40.0,
+            'reference_mode': 'edge',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'door_top_left',
+          });
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 2,
+            'diameter_mm': 25.0,
+            'ref_x': 'right',
+            'offset_x_mm': 100.0,
+            'ref_y': 'top',
+            'offset_y_mm': 40.0,
+            'reference_mode': 'edge',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'door_top_right',
+          });
+        } else if (code == 'kit_pivot') {
+          // Bottom pivot
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 1,
+            'diameter_mm': 20.0,
+            'ref_x': 'left',
+            'offset_x_mm': 60.0,
+            'ref_y': 'bottom',
+            'offset_y_mm': 60.0,
+            'reference_mode': 'center',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'pivot_bottom',
+          });
+          // Top pivot
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 2,
+            'diameter_mm': 20.0,
+            'ref_x': 'left',
+            'offset_x_mm': 60.0,
+            'ref_y': 'top',
+            'offset_y_mm': 60.0,
+            'reference_mode': 'center',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'pivot_top',
+          });
+        } else if (code == 'kit_charniere_mur' || code == 'kit_charniere_verre') {
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 1,
+            'diameter_mm': 16.0,
+            'ref_x': 'left',
+            'offset_x_mm': 45.0,
+            'ref_y': 'top',
+            'offset_y_mm': 200.0,
+            'reference_mode': 'edge',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'hinge_top',
+          });
+          await myDb.insert('TemperedGlassKitHoles', {
+            'kit_id': kitId,
+            'hole_index': 2,
+            'diameter_mm': 16.0,
+            'ref_x': 'left',
+            'offset_x_mm': 45.0,
+            'ref_y': 'bottom',
+            'offset_y_mm': 200.0,
+            'reference_mode': 'edge',
+            'min_panel_width_mm': 0.0,
+            'max_panel_width_mm': 0.0,
+            'purpose': 'hinge_bottom',
+          });
+        }
+      }
+    }
+
+    // Default System Rules seed
+    final rulesCount = Sqflite.firstIntValue(
+      await myDb.rawQuery('SELECT COUNT(*) FROM TemperedGlassSystemRules'),
+    ) ?? 0;
+
+    if (rulesCount == 0) {
+      // Find Kit Alfa ID and Beta ID
+      final kits = await myDb.query('TemperedGlassKits');
+      final kitMap = {for (var k in kits) k['code'] as String: k['id'] as int};
+
+      // Find Items
+      final items = await myDb.query('TemperedGlassItems');
+      final itemsByCategory = <String, List<Map<String, dynamic>>>{};
+      for (final item in items) {
+        final cat = item['category'] as String? ?? '';
+        itemsByCategory.putIfAbsent(cat, () => []).add(item);
+      }
+
+      // Link coulissante:
+      if (kitMap.containsKey('kit_alfa')) {
+        await myDb.insert('TemperedGlassSystemRules', {
+          'system_code': 'coulissante',
+          'kit_id': kitMap['kit_alfa'],
+          'rule_type': 'kit',
+          'glass_thickness_mm': 0.0,
+          'is_default': 1,
+          'is_active': 1,
+          'notes': 'Default kit for sliding shower cabin',
+        });
+      }
+      if (kitMap.containsKey('kit_beta')) {
+        await myDb.insert('TemperedGlassSystemRules', {
+          'system_code': 'coulissante',
+          'kit_id': kitMap['kit_beta'],
+          'rule_type': 'kit',
+          'glass_thickness_mm': 0.0,
+          'is_default': 0,
+          'is_active': 1,
+          'notes': 'Heavy duty kit for sliding shower cabin',
+        });
+      }
+
+      // Link handles and towel handles to coulissante
+      for (final handle in itemsByCategory['poignee'] ?? []) {
+        await myDb.insert('TemperedGlassSystemRules', {
+          'system_code': 'coulissante',
+          'item_id': handle['id'],
+          'rule_type': 'handle',
+          'glass_thickness_mm': 0.0,
+          'is_default': (handle['name'] ?? '').toString().contains('30 سم') ? 1 : 0,
+          'is_active': 1,
+          'notes': '',
+        });
+      }
+
+      // Link thickness-dependent profiles
+      for (final prof in itemsByCategory['profile'] ?? []) {
+        final name = (prof['name'] ?? '').toString();
+        double thickness = 0.0;
+        if (name.contains('15×15')) {
+          thickness = 8.0; // 8mm to 10mm
+        } else if (name.contains('20×20')) {
+          thickness = 10.0; // 10mm to 12mm
+        }
+        await myDb.insert('TemperedGlassSystemRules', {
+          'system_code': 'coulissante',
+          'item_id': prof['id'],
+          'rule_type': 'profile',
+          'glass_thickness_mm': thickness,
+          'is_default': 1,
+          'is_active': 1,
+          'notes': '',
+        });
+      }
+    }
+  }
+
+  // --- TemperedGlassSystems CRUD ---
+
+  Future<List<Map<String, dynamic>>> getTemperedGlassSystems({bool onlyActive = false}) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    await seedDefaultTemperedGlassSystemsAndKits();
+
+    final where = onlyActive ? 'is_active = 1' : null;
+    return await myDb.query('TemperedGlassSystems', where: where, orderBy: 'display_order ASC, id ASC');
+  }
+
+  Future<int> insertTemperedGlassSystem(Map<String, dynamic> system) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    return await myDb.insert('TemperedGlassSystems', system);
+  }
+
+  Future<int> updateTemperedGlassSystem(int id, Map<String, dynamic> system) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassSystems', system, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteTemperedGlassSystem(int id) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassSystems', {'is_active': 0}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- TemperedGlassKits CRUD ---
+
+  Future<List<Map<String, dynamic>>> getTemperedGlassKits({String? systemCode, bool onlyActive = false}) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    await seedDefaultTemperedGlassSystemsAndKits();
+
+    String? where;
+    List<dynamic>? args;
+
+    if (onlyActive && systemCode != null && systemCode.isNotEmpty) {
+      where = 'is_active = 1 AND (system_code = ? OR system_code = "" OR system_code IS NULL)';
+      args = [systemCode];
+    } else if (onlyActive) {
+      where = 'is_active = 1';
+    } else if (systemCode != null && systemCode.isNotEmpty) {
+      where = 'system_code = ? OR system_code = "" OR system_code IS NULL';
+      args = [systemCode];
+    }
+
+    return await myDb.query('TemperedGlassKits', where: where, whereArgs: args, orderBy: 'id ASC');
+  }
+
+  Future<int> insertTemperedGlassKit(Map<String, dynamic> kit) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    return await myDb.insert('TemperedGlassKits', kit);
+  }
+
+  Future<int> updateTemperedGlassKit(int id, Map<String, dynamic> kit) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassKits', kit, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteTemperedGlassKit(int id) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await myDb.delete('TemperedGlassKitHoles', where: 'kit_id = ?', whereArgs: [id]);
+    await myDb.delete('TemperedGlassSystemRules', where: 'kit_id = ?', whereArgs: [id]);
+    return await myDb.delete('TemperedGlassKits', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- TemperedGlassKitHoles CRUD ---
+
+  Future<List<Map<String, dynamic>>> getTemperedGlassKitHoles(int kitId) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    return await myDb.query(
+      'TemperedGlassKitHoles',
+      where: 'kit_id = ?',
+      whereArgs: [kitId],
+      orderBy: 'hole_index ASC, id ASC',
+    );
+  }
+
+  Future<void> saveTemperedGlassKitHoles(int kitId, List<Map<String, dynamic>> holes) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+
+    await myDb.transaction((txn) async {
+      await txn.delete('TemperedGlassKitHoles', where: 'kit_id = ?', whereArgs: [kitId]);
+      for (var i = 0; i < holes.length; i++) {
+        final hole = Map<String, dynamic>.from(holes[i]);
+        hole['kit_id'] = kitId;
+        hole['hole_index'] = i + 1;
+        await txn.insert('TemperedGlassKitHoles', hole);
+      }
+    });
+  }
+
+  // --- TemperedGlassSystemRules CRUD ---
+
+  Future<List<Map<String, dynamic>>> getTemperedGlassSystemRules(String systemCode, {double? glassThicknessMm}) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    await seedDefaultTemperedGlassSystemsAndKits();
+
+    String query = '''
+      SELECT r.*, 
+             k.name as kit_name, k.code as kit_code, k.target_panel as kit_target_panel,
+             i.name as item_name, i.category as item_category, i.price as item_price, i.unit as item_unit, i.notes as item_notes
+      FROM TemperedGlassSystemRules r
+      LEFT JOIN TemperedGlassKits k ON r.kit_id = k.id
+      LEFT JOIN TemperedGlassItems i ON r.item_id = i.id
+      WHERE r.system_code = ? AND r.is_active = 1
+    ''';
+    List<dynamic> args = [systemCode];
+
+    if (glassThicknessMm != null && glassThicknessMm > 0) {
+      query += ' AND (r.glass_thickness_mm = 0 OR r.glass_thickness_mm = ?)';
+      args.add(glassThicknessMm);
+    }
+
+    query += ' ORDER BY r.rule_type ASC, r.is_default DESC, r.id ASC';
+    return await myDb.rawQuery(query, args);
+  }
+
+  Future<int> insertTemperedGlassSystemRule(Map<String, dynamic> rule) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+    return await myDb.insert('TemperedGlassSystemRules', rule);
+  }
+
+  Future<int> updateTemperedGlassSystemRule(int id, Map<String, dynamic> rule) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.update('TemperedGlassSystemRules', rule, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteTemperedGlassSystemRule(int id) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    return await myDb.delete('TemperedGlassSystemRules', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> toggleTemperedGlassSystemRule({
+    required String systemCode,
+    int? kitId,
+    int? itemId,
+    required String ruleType,
+    required bool isActive,
+    double glassThicknessMm = 0.0,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureTemperedGlassSystemsAndRulesTables(myDb);
+
+    String where = 'system_code = ? AND rule_type = ?';
+    List<dynamic> args = [systemCode, ruleType];
+
+    if (kitId != null) {
+      where += ' AND kit_id = ?';
+      args.add(kitId);
+    } else if (itemId != null) {
+      where += ' AND item_id = ?';
+      args.add(itemId);
+    }
+
+    final existing = await myDb.query('TemperedGlassSystemRules', where: where, whereArgs: args);
+    if (existing.isNotEmpty) {
+      await myDb.update(
+        'TemperedGlassSystemRules',
+        {'is_active': isActive ? 1 : 0, 'glass_thickness_mm': glassThicknessMm},
+        where: where,
+        whereArgs: args,
+      );
+    } else if (isActive) {
+      await myDb.insert('TemperedGlassSystemRules', {
+        'system_code': systemCode,
+        'kit_id': kitId,
+        'item_id': itemId,
+        'rule_type': ruleType,
+        'glass_thickness_mm': glassThicknessMm,
+        'is_default': 0,
+        'is_active': 1,
+      });
+    }
   }
 }
 

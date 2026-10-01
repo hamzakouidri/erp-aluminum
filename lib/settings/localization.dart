@@ -90,6 +90,23 @@ class Localization {
       }
     }
 
+    // Intercept dynamic shutter box splits: "فصل الصناديق (X)" / "Séparation des caissons (X)" / "Split Caissons (X)"
+    final shutterSplitMatch = RegExp(
+      r'^(?:فصل الصناديق|Séparation des caissons|Split Caissons)\s*\(([0-9]+)\)$',
+      caseSensitive: false,
+    ).firstMatch(trimmedKey);
+    if (shutterSplitMatch != null) {
+      final count = shutterSplitMatch.group(1)!;
+      switch (lang) {
+        case AppLanguage.french:
+          return 'Séparation des caissons ($count)';
+        case AppLanguage.english:
+          return 'Split Caissons ($count)';
+        case AppLanguage.arabic:
+          return 'فصل الصناديق ($count)';
+      }
+    }
+
     // Intercept dynamic profile lengths: "طول القطاع: X مم" / "Longueur : X mm" / "Length: X mm"
     final lengthMatch = RegExp(
       r'^(?:طول القطاع|Longueur|Length)\s*:\s*([\d.,]+)\s*(?:مم|mm)$',

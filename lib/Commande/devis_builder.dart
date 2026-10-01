@@ -155,6 +155,17 @@ class DevisData {
   /// and must never be printed as the client's document number.
   String get clientReference =>
       clientNumber > 0 ? clientNumber.toString().padLeft(3, '0') : '';
+
+  /// Human-facing small sequential order number. The database ID can be a distributed
+  /// large timestamp/hash and must never be printed as the order number.
+  int get orderDisplayNumber =>
+      sequenceNumber > 0
+          ? sequenceNumber
+          : (orderId > 0 && orderId < 100000
+              ? orderId
+              : ((orderId % 1000).abs() + 1));
+
+  String get orderDisplayLabel => '#$orderDisplayNumber';
 }
 
 class DevisBuilder {
@@ -305,8 +316,21 @@ class DevisBuilder {
 
     int priorConfirmedWindowsCount = 0;
     int sequenceNumber = 0;
-    final orderIdVal = order['id'] as int?;
-    if (orderIdVal != null) {
+    for (final key in const ['order_code', 'display_number']) {
+      final val = order[key];
+      final numVal = val is num
+          ? val.toInt()
+          : int.tryParse(val?.toString().trim() ?? '');
+      if (numVal != null && numVal > 0) {
+        sequenceNumber = numVal;
+        break;
+      }
+    }
+    final rawId = order['id'];
+    final orderIdVal = rawId is num
+        ? rawId.toInt()
+        : int.tryParse(rawId?.toString().trim() ?? '');
+    if (orderIdVal != null && orderIdVal > 0) {
       try {
         priorConfirmedWindowsCount = await db.getPriorConfirmedWindowsCount(
           orderIdVal,
@@ -314,15 +338,17 @@ class DevisBuilder {
       } catch (e) {
         debugPrint('Error getting prior confirmed windows count: $e');
       }
-      try {
-        sequenceNumber = await db.getOrderSequenceNumber(orderIdVal);
-      } catch (e) {
-        debugPrint('Error getting order sequence number: $e');
+      if (sequenceNumber <= 0) {
+        try {
+          sequenceNumber = await db.getOrderSequenceNumber(orderIdVal);
+        } catch (e) {
+          debugPrint('Error getting order sequence number: $e');
+        }
       }
     }
 
     return DevisData(
-      orderId: order['id'] as int,
+      orderId: orderIdVal ?? 0,
       orderDate: orderDate,
       validUntil: validUntil,
       workshop: supplier,
@@ -856,8 +882,10 @@ class DevisBuilder {
     final bool isGlassWork =
         map['isGlassWork'] == true ||
         (item['game']?.toString().contains('Verre Trempé') == true) ||
+        (item['game']?.toString().contains('فير ترومبي') == true) ||
         displaySeries.toLowerCase().contains('verre trempé') ||
         displaySeries.toLowerCase().contains('verre trempe') ||
+        displaySeries.contains('فير ترومبي') ||
         displaySeries.contains('عمل زجاجي');
 
     // Build DevisLineItem Title
@@ -867,7 +895,17 @@ class DevisBuilder {
     } else if (isMoustiquaire) {
       title = 'Moustiquaire (موستيكير)';
     } else if (isGlassWork) {
-      title = displaySeries.isEmpty ? 'Verre Trempé' : displaySeries;
+      final overrideName = map['manualNameOverride']?.toString().trim() ??
+          item['window_type']?.toString().trim() ??
+          '';
+      if (overrideName.isNotEmpty) {
+        title = overrideName.startsWith('فير ترومبي') ||
+                overrideName.startsWith('Verre Trempé')
+            ? overrideName
+            : 'فير ترومبي - $overrideName';
+      } else {
+        title = 'فير ترومبي';
+      }
     } else if (isShutterOnly) {
       title = 'Volet roulant';
     } else {
@@ -1068,24 +1106,47 @@ class DevisBuilder {
       final workType =
           payload['workTypeLabel']?.toString() ??
           item['window_type']?.toString() ??
-          'عمل زجاجي';
+          'كابين دوش';
       final finish =
+          payload['glassTypeLabel']?.toString() ??
           payload['glassFinishLabel']?.toString() ??
           item['glass']?.toString() ??
           'شفاف';
-      final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
-      final sticker =
-          payload['stickerLabel']?.toString() ??
-          item['color']?.toString() ??
-          'بدون ستيكر';
+      final thickness = (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)?.toDouble() ?? 10;
+      final sablageMode = payload['sablageMode']?.toString() ?? 'none';
+      final sablageLabel = sablageMode == 'none'
+          ? 'بدون سابلاج'
+          : (sablageMode == 'full' ? 'سابلاج كامل' : 'سابلاج ديكور');
       final notes = payload['notes']?.toString() ?? '';
 
       details.clear();
-      details.add('نوع العمل: $workType');
-      details.add(
-        'الزجاج: $finish ${thickness.toStringAsFixed(0)} mm | $sticker',
-      );
-      details.add('القياس: $width × $height mm');
+      details.add('الخاصية: $workType');
+      details.add('الزجاج: $finish ${thickness.toStringAsFixed(0)} مم | $sablageLabel');
+      details.add('القياس الإجمالي: $width × $height مم');
+
+      final rawItems = payload['items'] as List?;
+      if (rawItems != null && rawItems.length > 1) {
+        final panelStrs = <String>[];
+        for (var i = 0; i < rawItems.length; i++) {
+          final p = rawItems[i];
+          if (p is Map) {
+            final pw = (p['widthMm'] as num?)?.toDouble() ?? 0;
+            final ph = (p['heightMm'] as num?)?.toDouble() ?? 0;
+            final role = p['role']?.toString() ?? '';
+            final roleArabic = switch (role) {
+              'door' => 'الباب',
+              'fixed' => 'الثابت',
+              'vitrine_left' => 'الدرفة اليسرى',
+              'vitrine_right' => 'الدرفة اليمنى',
+              _ => 'اللوح ${i + 1}',
+            };
+            panelStrs.add('$roleArabic: ${pw.toStringAsFixed(0)} × ${ph.toStringAsFixed(0)} مم');
+          }
+        }
+        if (panelStrs.isNotEmpty) {
+          details.add('الألواح (${rawItems.length}): ${panelStrs.join(" | ")}');
+        }
+      }
       if (notes.trim().isNotEmpty) details.add(notes.trim());
 
       return DevisLineItem(
@@ -1099,7 +1160,7 @@ class DevisBuilder {
         replacementReason: replacementReason,
         width: width,
         height: height,
-        color: sticker,
+        color: sablageLabel,
         detailId: detailId,
       );
     }
@@ -2015,14 +2076,17 @@ class DevisBuilder {
       details.addAll(
         _unifiedGlassDetails(item, map, useFillingLabel: fixedOnlyWindow),
       );
-      details.addAll(
-        _matchingDetails(existingDetails, const [
-          'décor vitrage:',
-          'decor vitrage:',
-          'glass decor:',
-          'ديكور الزجاج:',
-        ]),
-      );
+      if (map['zones'] == null ||
+          (map['zones'] is List && (map['zones'] as List).isEmpty)) {
+        details.addAll(
+          _matchingDetails(existingDetails, const [
+            'décor vitrage:',
+            'decor vitrage:',
+            'glass decor:',
+            'ديكور الزجاج:',
+          ]),
+        );
+      }
       if (!fixedOnlyWindow) {
         details.addAll(_coverJointDetails(map));
         details.add(switch (_currentLang) {

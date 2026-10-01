@@ -76,12 +76,13 @@ class _CommandePageState extends State<CommandePage> {
       listen: false,
     ).language;
     final modelMap = Map<String, dynamic>.from(product.toMap());
-    final seriesName =
-        product.activeFrameSeries?.name ??
-        product.loadedSeriesName ??
-        product.activeSlidingSeries?.name ??
-        product.loadedSlidingSeriesName ??
-        '';
+    final seriesName = product.isGlassWork
+        ? 'فير ترومبي'
+        : (product.activeFrameSeries?.name ??
+            product.loadedSeriesName ??
+            product.activeSlidingSeries?.name ??
+            product.loadedSlidingSeriesName ??
+            '');
     final colorName =
         product.selectedDbColor?['name']?.toString() ?? product.frameColor.name;
 
@@ -171,7 +172,7 @@ class _CommandePageState extends State<CommandePage> {
   bool _isApplyingBulkChange = false;
   final Set<WindowModel> _bulkSelectedProducts = <WindowModel>{};
   bool _isBulkSelectionMode = false;
-  String _editOrderStatus = 'Pending';
+  String _editOrderStatus = 'Nouveau';
   bool _editOrderStatusLoaded = false;
   double _editAdvancePayment = 0.0;
 
@@ -191,9 +192,12 @@ class _CommandePageState extends State<CommandePage> {
 
   bool _isPendingOrderStatus(String value) {
     final status = _normalizedOrderStatus(value);
-    return status == 'pending' ||
-        status == 'draft' ||
+    return status == 'nouveau' ||
         status == 'new' ||
+        status == 'جديد' ||
+        status == 'جديدة' ||
+        status == 'pending' ||
+        status == 'draft' ||
         status == 'en attente' ||
         status == 'en_attente' ||
         status == 'في الانتظار';
@@ -220,9 +224,12 @@ class _CommandePageState extends State<CommandePage> {
     if (widget.editCommandeId == null) return true;
     if (!_editOrderStatusLoaded) return false;
     final status = _normalizedOrderStatus(_editOrderStatus);
-    return status == 'pending' ||
-        status == 'draft' ||
+    return status == 'nouveau' ||
         status == 'new' ||
+        status == 'جديد' ||
+        status == 'جديدة' ||
+        status == 'pending' ||
+        status == 'draft' ||
         status == 'en attente' ||
         status == 'en_attente' ||
         status == 'في الانتظار' ||
@@ -537,64 +544,133 @@ class _CommandePageState extends State<CommandePage> {
   }
 
   List<WindowModel> _modelsFromGlassWorkPayload(Map<String, dynamic> payload) {
-    final rawItems = payload['items'];
-    if (rawItems is! List) return const [];
-    final models = <WindowModel>[];
-    final payloadId =
-        payload['payloadId']?.toString() ??
-        'payload_${DateTime.now().millisecondsSinceEpoch}';
-    for (final rawItem in rawItems) {
-      if (rawItem is! Map) continue;
-      final item = Map<String, dynamic>.from(rawItem);
-      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
-      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
-      if (width <= 0 || height <= 0) continue;
-      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
-      final area =
-          (item['areaSqm'] as num?)?.toDouble() ??
-          ((width / 1000) * (height / 1000));
-      final unitPrice =
-          (item['unitPrice'] as num?)?.toDouble() ??
-          area * ((item['pricePerSqm'] as num?)?.toDouble() ?? 0);
-      final totalPrice =
-          (item['totalPrice'] as num?)?.toDouble() ?? unitPrice * quantity;
-      final workLabel = payload['workTypeLabel']?.toString() ?? 'عمل زجاجي';
-      final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
-      final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
-      final shapeLabel = payload['panelShapeLabel']?.toString() ?? 'مستقيم (I)';
-      final operationLabel = payload['operationLabel']?.toString() ?? 'منزلق';
-      final kitLabel = payload['selectedKitLabel']?.toString() ?? '';
-      final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
-      final notes = payload['notes']?.toString() ?? '';
-      final singlePayload = <String, dynamic>{
-        ...payload,
-        'payloadId': payloadId,
-        'itemsCount': 1,
-        'totalQuantity': quantity,
-        'grandTotalAreaSqm': area * quantity,
-        'grandTotalPrice': totalPrice,
-        'items': [item],
-      };
-      final model = WindowModel(
-        width: width,
-        height: height,
-        profileThickness: 60,
-        db: widget.db,
-      );
-      model.isGlassWork = true;
-      model.isReplaced = false;
-      model.manualNameOverride = 'Verre Trempé - $workLabel - $shapeLabel';
-      model.description =
-          '$operationLabel${kitLabel.isEmpty ? '' : ' | $kitLabel'} | $shapeLabel | '
-          '$finishLabel ${thickness.toStringAsFixed(0)} mm | $stickerLabel | '
-          '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm'
-          '${notes.isEmpty ? '' : ' | $notes'}';
-      model.quantity = quantity < 1 ? 1 : quantity;
-      model.glassWorkPayload = singlePayload;
-      model.manualPriceOverride = unitPrice;
-      models.add(model);
+    final rawItems = payload['items'] as List?;
+    final overallWidth = (payload['overallWidthMm'] as num?)?.toDouble() ??
+        (payload['widthMm'] as num?)?.toDouble() ??
+        1000.0;
+    final overallHeight = (payload['overallHeightMm'] as num?)?.toDouble() ??
+        (payload['heightMm'] as num?)?.toDouble() ??
+        2000.0;
+
+    double totalArea = (payload['grandTotalAreaSqm'] as num?)?.toDouble() ?? 0.0;
+    double totalPrice = (payload['grandTotalPrice'] as num?)?.toDouble() ?? 0.0;
+
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final glassBaseName = switch (lang) {
+      AppLanguage.french => 'Verre trempé',
+      AppLanguage.english => 'Tempered glass',
+      AppLanguage.arabic => 'زجاج مقسّى',
+    };
+    final panelsPrefix = switch (lang) {
+      AppLanguage.french => 'Panneaux',
+      AppLanguage.english => 'Panels',
+      AppLanguage.arabic => 'الألواح',
+    };
+    final overallPrefix = switch (lang) {
+      AppLanguage.french => 'Dimensions totales',
+      AppLanguage.english => 'Overall dimensions',
+      AppLanguage.arabic => 'القياس الإجمالي',
+    };
+    final mmUnit = switch (lang) {
+      AppLanguage.arabic => 'مم',
+      _ => 'mm',
+    };
+
+    final panelDescriptions = <String>[];
+    if (rawItems != null) {
+      for (var i = 0; i < rawItems.length; i++) {
+        final item = rawItems[i];
+        if (item is! Map) continue;
+        final w = (item['widthMm'] as num?)?.toDouble() ?? 0.0;
+        final h = (item['heightMm'] as num?)?.toDouble() ?? 0.0;
+        final role = item['role']?.toString() ?? 'panel';
+        final roleLabel = switch (role) {
+          'door' => switch (lang) {
+            AppLanguage.french => 'Porte',
+            AppLanguage.english => 'Door',
+            AppLanguage.arabic => 'باب',
+          },
+          'fixed' => switch (lang) {
+            AppLanguage.french => 'Fixe',
+            AppLanguage.english => 'Fixed',
+            AppLanguage.arabic => 'ثابت',
+          },
+          'vitrine_left' => switch (lang) {
+            AppLanguage.french => 'Vantail gauche',
+            AppLanguage.english => 'Left leaf',
+            AppLanguage.arabic => 'درفة يسرى',
+          },
+          'vitrine_right' => switch (lang) {
+            AppLanguage.french => 'Vantail droit',
+            AppLanguage.english => 'Right leaf',
+            AppLanguage.arabic => 'درفة يمنى',
+          },
+          _ => switch (lang) {
+            AppLanguage.french => 'Panneau ${i + 1}',
+            AppLanguage.english => 'Panel ${i + 1}',
+            AppLanguage.arabic => 'لوح ${i + 1}',
+          },
+        };
+        final area = (item['areaSqm'] as num?)?.toDouble() ?? ((w / 1000) * (h / 1000));
+        if (totalArea == 0.0) totalArea += area;
+        final up = (item['unitPrice'] as num?)?.toDouble() ?? 0.0;
+        if (totalPrice == 0.0) totalPrice += up;
+        panelDescriptions.add('$roleLabel: ${w.toStringAsFixed(0)} × ${h.toStringAsFixed(0)} $mmUnit');
+      }
     }
-    return models;
+
+    final workLabel = payload['workTypeLabel']?.toString() ??
+        (lang == AppLanguage.french
+            ? 'Cabine de douche'
+            : (lang == AppLanguage.english ? 'Shower cabin' : 'كابين دوش'));
+    final finishLabel = payload['glassTypeLabel']?.toString() ??
+        payload['glassFinishLabel']?.toString() ??
+        (lang == AppLanguage.french
+            ? 'Transparent'
+            : (lang == AppLanguage.english ? 'Clear' : 'شفاف'));
+    final thickness = (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)?.toDouble() ?? 10.0;
+    final sablageMode = payload['sablageMode']?.toString() ?? 'none';
+    final sablageLabel = switch (sablageMode) {
+      'full' => switch (lang) {
+        AppLanguage.french => 'Sablage complet',
+        AppLanguage.english => 'Full frosting',
+        AppLanguage.arabic => 'سابلاج كامل',
+      },
+      'decorative' => switch (lang) {
+        AppLanguage.french => 'Sablage décoratif',
+        AppLanguage.english => 'Decorative frosting',
+        AppLanguage.arabic => 'سابلاج ديكور',
+      },
+      _ => switch (lang) {
+        AppLanguage.french => 'Sans sablage',
+        AppLanguage.english => 'No frosting',
+        AppLanguage.arabic => 'بدون سابلاج',
+      },
+    };
+
+    final model = WindowModel(
+      width: overallWidth,
+      height: overallHeight,
+      profileThickness: 60,
+      db: widget.db,
+    );
+    model.isGlassWork = true;
+    model.isReplaced = false;
+    model.manualNameOverride = '$glassBaseName - $workLabel';
+
+    final panelsSummary = panelDescriptions.isNotEmpty
+        ? ' | $panelsPrefix: ${panelDescriptions.join(" ، ")}'
+        : '';
+    model.description =
+        '$glassBaseName | $workLabel | $finishLabel ${thickness.toStringAsFixed(0)} $mmUnit | $sablageLabel'
+        ' | $overallPrefix: ${overallWidth.toStringAsFixed(0)} × ${overallHeight.toStringAsFixed(0)} $mmUnit'
+        '$panelsSummary';
+
+    model.quantity = 1;
+    model.glassWorkPayload = Map<String, dynamic>.from(payload);
+    model.manualPriceOverride = totalPrice > 0 ? totalPrice : null;
+
+    return [model];
   }
 
   void _replaceProductWithIndependentModels(
@@ -828,7 +904,7 @@ class _CommandePageState extends State<CommandePage> {
       setState(() {
         _editOrderStatus = cmd['status']?.toString().trim().isNotEmpty == true
             ? cmd['status'].toString()
-            : 'Pending';
+            : 'Nouveau';
         _editOrderStatusLoaded = true;
         _editAdvancePayment = _readMoney(cmd['advance_payment']);
         selectedClient = {
@@ -1421,13 +1497,15 @@ class _CommandePageState extends State<CommandePage> {
           'sort_order': index,
           'largeur': p.width.toInt(),
           'hauteur': p.height.toInt(),
-          'game': p.isShutterOnly
-              ? 'Volet roulant'
-              : (p.manualNameOverride ?? ''),
+          'game': p.isGlassWork
+              ? 'فير ترومبي'
+              : (p.isShutterOnly
+                  ? 'Volet roulant'
+                  : (p.manualNameOverride ?? '')),
           'quantity': p.quantity,
           'glass': p.isGlassWork
-              ? '${p.glassWorkPayload?['glassFinishLabel'] ?? 'Verre'} '
-                    '${((p.glassWorkPayload?['thicknessMm'] as num?)?.toDouble() ?? 10).toStringAsFixed(0)} mm'
+              ? '${p.glassWorkPayload?['glassTypeLabel'] ?? p.glassWorkPayload?['glassFinishLabel'] ?? 'شفاف'} '
+                    '${((p.glassWorkPayload?['glassThicknessMm'] ?? p.glassWorkPayload?['thicknessMm'] as num?)?.toDouble() ?? 10).toStringAsFixed(0)} مم'
               : (p.zones.isNotEmpty &&
                         p.zones.first.glass.structure == GlassStructure.double
                     ? 'Double'
@@ -1435,7 +1513,11 @@ class _CommandePageState extends State<CommandePage> {
           'color': selectedColorName != null && selectedColorName.isNotEmpty
               ? selectedColorName
               : (p.isGlassWork
-                    ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
+                    ? (p.glassWorkPayload?['sablageMode']?.toString() == 'full'
+                        ? 'سابلاج كامل'
+                        : (p.glassWorkPayload?['sablageMode']?.toString() == 'decorative'
+                            ? 'سابلاج ديكور'
+                            : 'بدون سابلاج'))
                     : p.frameColor.toString().split('.').last),
           'volet': p.hasShutter ? 'Yes' : 'No',
           'accessories': '',
@@ -1443,7 +1525,7 @@ class _CommandePageState extends State<CommandePage> {
           'price': p.manualPriceOverride ?? p.totalCost,
           'window_type': p.isGlassWork
               ? (p.glassWorkPayload?['workTypeLabel']?.toString() ??
-                    'Verre Trempé')
+                    'كابين دوش')
               : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
                     ? 'Double Sash'
                     : 'Single Sash'),
@@ -1464,9 +1546,9 @@ class _CommandePageState extends State<CommandePage> {
       await widget.db.saveCommandeWithDetails(
         idCommande: widget.editCommandeId,
         clientId: (clientId as num).toInt(),
-        // Editing an existing order must never move it back to Pending. This
+        // Editing an existing order must never move it back to Nouveau. This
         // preserves the production workflow state on every later save.
-        status: widget.editCommandeId == null ? 'Pending' : _editOrderStatus,
+        status: widget.editCommandeId == null ? 'Nouveau' : _editOrderStatus,
         description: controller.text,
         remise: remise,
         tva: tax,
@@ -4029,6 +4111,7 @@ class _CommandePageState extends State<CommandePage> {
     final bool isGlassWork =
         p.isGlassWork ||
         (p.manualNameOverride?.contains('Verre Trempé') == true) ||
+        (p.manualNameOverride?.contains('فير ترومبي') == true) ||
         (p.manualNameOverride?.contains('عمل زجاجي') == true);
 
     if (isCaisson) {
@@ -4259,6 +4342,10 @@ class _CommandePageState extends State<CommandePage> {
                                   if (p.isGlassWork ||
                                       (p.manualNameOverride?.contains(
                                             'Verre Trempé',
+                                          ) ==
+                                          true) ||
+                                      (p.manualNameOverride?.contains(
+                                            'فير ترومبي',
                                           ) ==
                                           true)) {
                                     final result = await Navigator.push(
@@ -4573,31 +4660,10 @@ class _CommandePageState extends State<CommandePage> {
                                               ),
                                     )
                                   : isGlassWork
-                                  ? Builder(
-                                      builder: (context) {
-                                        final path = p
-                                            .glassWorkPayload?['imagePath']
-                                            ?.toString();
-                                        if (path != null &&
-                                            path.isNotEmpty &&
-                                            File(path).existsSync()) {
-                                          return Image.file(
-                                            File(path),
-                                            fit: BoxFit.contain,
-                                          );
-                                        }
-                                        return Image.asset(
-                                          'Icon/verre.png',
-                                          fit: BoxFit.contain,
-                                          errorBuilder:
-                                              (context, error, stackTrace) =>
-                                                  const Icon(
-                                                    Icons.window_rounded,
-                                                    color: Colors.cyan,
-                                                    size: 56,
-                                                  ),
-                                        );
-                                      },
+                                  ? TemperedGlassWorkScreen.buildDrawingPreview(
+                                      p.glassWorkPayload,
+                                      width: 130,
+                                      height: 130,
                                     )
                                   : IgnorePointer(
                                       child: FittedBox(

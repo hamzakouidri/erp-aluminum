@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
+import '../settings/app_settings.dart';
 
 enum PaymentMethodType {
   edahabia, // البطاقة الذهبية
@@ -17,7 +18,13 @@ class SubscriptionPlan {
   final String id;
   final String titleAr;
   final String titleFr;
+  final String titleEn;
   final String durationLabelAr;
+  final String durationLabelFr;
+  final String durationLabelEn;
+  final String? badgeAr;
+  final String? badgeFr;
+  final String? badgeEn;
   final int durationDays;
   final double priceDzd;
   final double? originalPriceDzd;
@@ -27,12 +34,51 @@ class SubscriptionPlan {
     required this.id,
     required this.titleAr,
     required this.titleFr,
+    required this.titleEn,
     required this.durationLabelAr,
+    required this.durationLabelFr,
+    required this.durationLabelEn,
+    this.badgeAr,
+    this.badgeFr,
+    this.badgeEn,
     required this.durationDays,
     required this.priceDzd,
     this.originalPriceDzd,
     this.isPopular = false,
   });
+
+  String getTitle(AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.french:
+        return titleFr;
+      case AppLanguage.english:
+        return titleEn;
+      case AppLanguage.arabic:
+        return titleAr;
+    }
+  }
+
+  String getDurationLabel(AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.french:
+        return durationLabelFr;
+      case AppLanguage.english:
+        return durationLabelEn;
+      case AppLanguage.arabic:
+        return durationLabelAr;
+    }
+  }
+
+  String? getBadge(AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.french:
+        return badgeFr;
+      case AppLanguage.english:
+        return badgeEn;
+      case AppLanguage.arabic:
+        return badgeAr;
+    }
+  }
 }
 
 class AlgerianPaymentService {
@@ -46,38 +92,71 @@ class AlgerianPaymentService {
   static const List<SubscriptionPlan> defaultPlans = [
     SubscriptionPlan(
       id: 'monthly',
-      titleAr: 'اشتراك شهري',
-      titleFr: 'Abonnement Mensuel',
-      durationLabelAr: '1 شهر (30 يوم)',
+      titleAr: 'شهر (30 يوما)',
+      titleFr: '1 mois (30 jours)',
+      titleEn: '1 Month (30 days)',
+      durationLabelAr: 'شهر (30 يوما)',
+      durationLabelFr: '1 mois (30 jours)',
+      durationLabelEn: '1 month (30 days)',
       durationDays: 30,
       priceDzd: 3000.0,
     ),
     SubscriptionPlan(
+      id: 'two_months',
+      titleAr: 'اشتراك شهرين',
+      titleFr: 'Abonnement 2 mois',
+      titleEn: '2 Months Subscription',
+      durationLabelAr: 'شهران (60 يوما)',
+      durationLabelFr: '2 mois (60 jours)',
+      durationLabelEn: '2 months (60 days)',
+      durationDays: 60,
+      priceDzd: 5500.0,
+      originalPriceDzd: 6000.0,
+    ),
+    SubscriptionPlan(
       id: 'quarterly',
       titleAr: 'اشتراك 3 أشهر',
-      titleFr: 'Abonnement Trimestriel',
-      durationLabelAr: '3 أشهر (90 يوم)',
+      titleFr: 'Abonnement 3 mois',
+      titleEn: '3 Months Subscription',
+      durationLabelAr: '3 أشهر (90 يوما)',
+      durationLabelFr: '3 mois (90 jours)',
+      durationLabelEn: '3 months (90 days)',
       durationDays: 90,
       priceDzd: 8000.0,
       originalPriceDzd: 9000.0,
       isPopular: true,
+      badgeAr: 'الأكثر طلباً',
+      badgeFr: 'Le plus demandé',
+      badgeEn: 'Most Popular',
     ),
     SubscriptionPlan(
       id: 'yearly',
       titleAr: 'اشتراك سنوي (الأفضل قيمة)',
-      titleFr: 'Abonnement Annuel',
-      durationLabelAr: '12 شهر (365 يوم)',
+      titleFr: 'Abonnement annuel (Meilleure valeur)',
+      titleEn: 'Annual Subscription (Best value)',
+      durationLabelAr: '12 شهر (365 يوما)',
+      durationLabelFr: '12 mois (365 jours)',
+      durationLabelEn: '12 months (365 days)',
       durationDays: 365,
       priceDzd: 25000.0,
       originalPriceDzd: 36000.0,
+      badgeAr: 'الأفضل قيمة',
+      badgeFr: 'Meilleure valeur',
+      badgeEn: 'Best Value',
     ),
     SubscriptionPlan(
       id: 'lifetime',
-      titleAr: 'اشتراك دائم للورشة',
-      titleFr: 'Abonnement Illimité',
+      titleAr: 'اشتراك دائم للورشة (مدى الحياة)',
+      titleFr: 'Abonnement permanent atelier (À vie)',
+      titleEn: 'Permanent Workshop Subscription (Lifetime)',
       durationLabelAr: 'مدى الحياة',
-      durationDays: 3650,
+      durationLabelFr: 'À vie',
+      durationLabelEn: 'Lifetime',
+      durationDays: 36500,
       priceDzd: 65000.0,
+      badgeAr: 'مدى الحياة',
+      badgeFr: 'À vie',
+      badgeEn: 'Lifetime',
     ),
   ];
 

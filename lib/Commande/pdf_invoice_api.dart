@@ -180,6 +180,13 @@ class PdfInvoiceApi {
           pw.Divider(color: PdfColors.grey400),
           pw.SizedBox(height: 12),
           _buildParties(data),
+          if (data.documentTitleKey == 'doc_bon_livraison' ||
+              data.documentTitleKey == 'doc_bon_livraison_sans_prix' ||
+              data.documentTitleKey == 'doc_bon_livraison_partiel' ||
+              data.documentTitleKey == 'doc_bon_livraison_partiel_sans_prix' ||
+              (data.documentTitleKey?.toLowerCase().contains('livraison') ?? false)) ...[
+            _buildBonLivraisonBannerPdf(data),
+          ],
           if (data.chequeNumber.isNotEmpty) ...[
             pw.SizedBox(height: 6),
             pw.Align(
@@ -297,13 +304,30 @@ class PdfInvoiceApi {
       }
     } catch (_) {}
 
-    final seq = data.sequenceNumber > 0
-        ? data.sequenceNumber
-        : (data.orderId > 0 && data.orderId < 100000
-              ? data.orderId
-              : (data.orderId % 1000).abs());
+    final seq = data.orderDisplayNumber;
     final seqNum = seq.toString().padLeft(3, '0');
     return '$prefix$year2$seqNum';
+  }
+
+  static String _orderReferenceText(DevisData data) {
+    final num = data.orderDisplayNumber;
+    if (_currentLang == AppLanguage.french) {
+      return 'Pour la commande N° $num';
+    } else if (_currentLang == AppLanguage.english) {
+      return 'For order #$num';
+    } else {
+      return 'للطلبية رقم $num';
+    }
+  }
+
+  static String _orderMetaLabel() {
+    if (_currentLang == AppLanguage.french) {
+      return 'Commande N°:';
+    } else if (_currentLang == AppLanguage.english) {
+      return 'Order N°:';
+    } else {
+      return 'الطلبية رقم:';
+    }
   }
 
   static pw.Widget _buildTopHeader(DevisData data) {
@@ -322,7 +346,15 @@ class PdfInvoiceApi {
       if (titleKey == 'BON_ROUTE') {
         titleKey = 'FACTURE_VENTE';
       }
-      if (titleKey == 'doc_bon_livraison_sans_prix' ||
+      if (titleKey == 'BON_CHARGE') {
+        if (_currentLang == AppLanguage.french) {
+          titleText = 'Bon d\'expédition / Charge';
+        } else if (_currentLang == AppLanguage.english) {
+          titleText = 'Shipping & Delivery Note';
+        } else {
+          titleText = 'فاتورة / وصل شحن كلي';
+        }
+      } else if (titleKey == 'doc_bon_livraison_sans_prix' ||
           titleKey == 'doc_bon_livraison_partiel' ||
           titleKey == 'doc_bon_livraison_partiel_sans_prix') {
         if (_currentLang == AppLanguage.french) {
@@ -348,6 +380,8 @@ class PdfInvoiceApi {
         );
       } catch (_) {}
     }
+
+    final orderRef = _orderReferenceText(data);
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -386,12 +420,23 @@ class PdfInvoiceApi {
                     color: _blue,
                   ),
                 ),
+                pw.SizedBox(height: 3),
+                pw.Text(
+                  _ar(orderRef),
+                  textDirection: _dir(orderRef),
+                  style: pw.TextStyle(
+                    fontSize: 11,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blueGrey700,
+                  ),
+                ),
               ],
             ),
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
                 _metaLine(t('N°:'), _formatDocumentNumber(data)),
+                _metaLine(_ar(_orderMetaLabel()), '#${data.orderDisplayNumber}'),
                 _metaLine(t('Date:'), data.orderDate),
                 if (data.isProForma && data.validUntil.isNotEmpty)
                   _metaLine(t('Valide jusqu\'au:'), data.validUntil),
@@ -453,7 +498,13 @@ class PdfInvoiceApi {
               '$addressPrefix${data.workshop.address}',
             if (data.isProForma ||
                 data.documentTitleKey == 'FACTURE_VENTE' ||
-                data.documentTitleKey == 'BON_ROUTE') ...[
+                data.documentTitleKey == 'BON_ROUTE' ||
+                data.documentTitleKey == 'doc_bon_livraison' ||
+                data.documentTitleKey == 'doc_bon_livraison_sans_prix' ||
+                data.documentTitleKey == 'doc_bon_livraison_partiel' ||
+                data.documentTitleKey == 'doc_bon_livraison_partiel_sans_prix' ||
+                (data.documentTitleKey?.toLowerCase().contains('livraison') ?? false) ||
+                (data.documentTitleKey?.toLowerCase().contains('bl') ?? false)) ...[
               if (data.workshop.rc.isNotEmpty) 'RC: ${data.workshop.rc}',
               if (data.workshop.nif.isNotEmpty) 'NIF: ${data.workshop.nif}',
               if (data.workshop.nis.isNotEmpty) 'NIS: ${data.workshop.nis}',
@@ -475,6 +526,102 @@ class PdfInvoiceApi {
           ]),
         ),
       ],
+    );
+  }
+
+  static pw.Widget _buildBonLivraisonBannerPdf(DevisData data) {
+    final isFr = _currentLang == AppLanguage.french;
+    final remaining = data.totalTTC - data.amountPaid;
+    final isSoldOut = remaining <= 0.01;
+
+    final bannerTitle = isFr
+        ? 'ATTESTATION DE LIVRAISON ET SORTIE D\'ATELIER'
+        : 'وصل وإثبات خروج وتسليم السلع من الورشة';
+    final dateCmdText = isFr
+        ? 'Date commande: ${data.orderDate}'
+        : 'تاريخ الطلب: ${data.orderDate}';
+    final avanceText = isFr
+        ? 'Avance: ${data.amountPaid > 0 ? "${data.amountPaid.toStringAsFixed(2)} DZD" : "0.00 DZD"}'
+        : 'التسبيق: ${data.amountPaid > 0 ? "${data.amountPaid.toStringAsFixed(2)} دج" : "0.00 دج"}';
+    final soldeText = isFr
+        ? 'Solde: ${isSoldOut ? "Compte soldé" : "Reste ${remaining.toStringAsFixed(2)} DZD"}'
+        : 'الحساب: ${isSoldOut ? "أكمل الحساب (Soldé)" : "باقي ${remaining.toStringAsFixed(2)} دج"}';
+    final badgeText = data.isPartial
+        ? (isFr ? 'LIVRAISON PARTIELLE' : 'تسليم جزئي')
+        : (isFr ? 'LIVRAISON TOTALE' : 'تسليم كلي');
+
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 8, bottom: 8),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey100,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+        border: pw.Border.all(color: PdfColors.blueGrey300, width: 0.8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                _ar(bannerTitle),
+                textDirection: _dir(bannerTitle),
+                style: pw.TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _blue,
+                ),
+              ),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: const pw.BoxDecoration(
+                  color: PdfColors.green700,
+                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Text(
+                  _ar(badgeText),
+                  textDirection: _dir(badgeText),
+                  style: const pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 5),
+          pw.Row(
+            children: [
+              pw.Expanded(
+                child: pw.Text(
+                  _ar(dateCmdText),
+                  textDirection: _dir(dateCmdText),
+                  style: const pw.TextStyle(fontSize: 8.5),
+                ),
+              ),
+              pw.Expanded(
+                child: pw.Text(
+                  _ar(avanceText),
+                  textDirection: _dir(avanceText),
+                  style: const pw.TextStyle(fontSize: 8.5),
+                ),
+              ),
+              pw.Expanded(
+                child: pw.Text(
+                  _ar(soldeText),
+                  textDirection: _dir(soldeText),
+                  style: pw.TextStyle(
+                    fontSize: 8.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: isSoldOut ? PdfColors.green800 : PdfColors.amber800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1387,7 +1534,9 @@ class PdfInvoiceApi {
     final isOfficial =
         data.isProForma ||
         data.documentTitleKey == 'FACTURE_VENTE' ||
-        data.documentTitleKey == 'BON_ROUTE';
+        data.documentTitleKey == 'BON_ROUTE' ||
+        (data.documentTitleKey?.toLowerCase().contains('livraison') ?? false) ||
+        (data.documentTitleKey?.toLowerCase().contains('bl') ?? false);
     if (!isOfficial) return pw.SizedBox();
 
     final parts = <String>[];

@@ -63,7 +63,7 @@ class _SalesScreenState extends State<SalesScreen> {
         SELECT cd.*, co.status as order_status, co.total as order_total, co.net_payable as order_net_payable, c.firstname, c.lastname FROM Commandes_deliveries cd
         JOIN Commandes co ON cd.id_commandes = co.id
         JOIN Client c ON cd.client_id = c.id
-        WHERE LOWER(TRIM(co.status)) NOT IN ('pending', 'في حالة انتظار')
+        WHERE LOWER(TRIM(co.status)) NOT IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'في حالة انتظار', 'nouveau', 'new', 'جديد', 'جديدة', 'draft')
         ORDER BY cd.delivery_date DESC
       ''');
 

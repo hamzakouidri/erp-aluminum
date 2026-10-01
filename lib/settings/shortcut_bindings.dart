@@ -7,8 +7,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../Screen/app_workspace_shell.dart';
 import '../Screen/treasury_screen.dart';
 import '../Screen/inventory_screen.dart';
+import '../Screen/achat_screen.dart';
+import '../Screen/client_chrono_search_screen.dart';
+import '../Screen/distribution_tracking_screen.dart';
+import '../Screen/external_operations_hub_screen.dart';
+import '../Screen/global_consumption_report_screen.dart';
+import '../Screen/measurements_screen.dart';
+import '../Screen/price_management_screen.dart';
+import '../Screen/projects_screen.dart';
+import '../Screen/reports_hub_screen.dart';
+import '../Screen/sales_screen.dart';
+import '../Screen/selected_systems_screen.dart';
+import '../Screen/settings_screen.dart';
+import '../Screen/suppliers_screen.dart';
+import '../Screen/worker_archive_screen.dart';
+import '../Screen/worker_tasks_screen.dart';
+import '../Screen/workers_management_screen.dart';
+import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../Commande/order_workspace_screen.dart';
+import '../items_produits/products_menu_screen.dart';
 import '../sql_database.dart';
 import 'app_settings.dart';
 import 'localization.dart';
@@ -27,6 +45,62 @@ class ShortcutBindings {
     'new_order': 'إضافة طلبية جديدة',
     'edit_order': 'تعديل الطلبية المحددة',
     'delete_order': 'حذف الطلبية المحددة',
+    'sales': 'المبيعات',
+    'purchases': 'المشتريات',
+    'suppliers': 'الموردون',
+    'products': 'المنتجات',
+    'customers': 'الزبائن',
+    'customer_ledger': 'كشف حساب الزبائن',
+    'measurements': 'رفع القياسات',
+    'distribution': 'التوزيع والتتبع',
+    'reports': 'مركز التقارير',
+    'projects': 'كل المشاريع',
+    'worker_tasks': 'مهامي وتصنيعاتي',
+    'worker_archive': 'أرشيف المهام والتوزيع',
+    'external_operations': 'المهام الخارجية',
+    'workers': 'صلاحيات المستخدمين',
+    'prices': 'إدارة الأسعار',
+    'selected_systems': 'الأنظمة المستعملة',
+    'settings': 'إعدادات التطبيق',
+    'shortage_report': 'تقرير النواقص',
+  };
+
+  static const defaultCommands = {
+    'drawing_mode',
+    'orders',
+    'treasury',
+    'inventory',
+    'new_order',
+    'edit_order',
+    'delete_order',
+  };
+
+  static const commandCategories = {
+    'drawing_mode': 'الرسم والطلبات',
+    'orders': 'الرسم والطلبات',
+    'new_order': 'الرسم والطلبات',
+    'edit_order': 'الرسم والطلبات',
+    'delete_order': 'الرسم والطلبات',
+    'sales': 'الرسم والطلبات',
+    'measurements': 'الرسم والطلبات',
+    'distribution': 'الرسم والطلبات',
+    'treasury': 'الحسابات والسندات',
+    'purchases': 'الحسابات والسندات',
+    'suppliers': 'الحسابات والسندات',
+    'customers': 'الزبائن والمشاريع',
+    'customer_ledger': 'الزبائن والمشاريع',
+    'projects': 'الزبائن والمشاريع',
+    'inventory': 'المخزون والمنتجات',
+    'products': 'المخزون والمنتجات',
+    'shortage_report': 'المخزون والمنتجات',
+    'reports': 'التقارير والمهام',
+    'worker_tasks': 'التقارير والمهام',
+    'worker_archive': 'التقارير والمهام',
+    'external_operations': 'التقارير والمهام',
+    'workers': 'الإدارة والإعدادات',
+    'prices': 'الإدارة والإعدادات',
+    'selected_systems': 'الإدارة والإعدادات',
+    'settings': 'الإدارة والإعدادات',
   };
   final Map<String, String> bindings = {};
 
@@ -61,8 +135,10 @@ class ShortcutBindings {
       final value = jsonDecode(second);
       return value is Map &&
           value['label']?.toString().toUpperCase() == first.substring(15) &&
-          value['ctrl'] == false && value['alt'] == false &&
-          value['shift'] == false && value['meta'] == false;
+          value['ctrl'] == false &&
+          value['alt'] == false &&
+          value['shift'] == false &&
+          value['meta'] == false;
     }
     if (second.startsWith('legacy_drawing:') && first.startsWith('{')) {
       return sameShortcut(second, first);
@@ -178,6 +254,74 @@ class ShortcutBindings {
         case 'inventory':
           if (settings.canAccessInventory())
             screen = InventoryScreen(db: SqlDatabase());
+          break;
+        case 'sales':
+          if (settings.canViewSales()) screen = SalesScreen(db: SqlDatabase());
+          break;
+        case 'purchases':
+          if (settings.canRegisterPurchases())
+            screen = AchatScreen(db: SqlDatabase());
+          break;
+        case 'suppliers':
+          if (settings.canViewSuppliers())
+            screen = SuppliersScreen(db: SqlDatabase());
+          break;
+        case 'products':
+          if (settings.canViewMyAccreditations())
+            screen = ProductsMenuScreen(db: SqlDatabase());
+          break;
+        case 'customers':
+          if (settings.canViewClients()) screen = Customers();
+          break;
+        case 'customer_ledger':
+          if (settings.canViewClientLedger())
+            screen = const ClientChronoSearchScreen();
+          break;
+        case 'measurements':
+          if (settings.canAccessMeasurements())
+            screen = MeasurementsScreen(db: SqlDatabase());
+          break;
+        case 'distribution':
+          if (settings.canAccessDistributionTracking())
+            screen = const DistributionTrackingScreen();
+          break;
+        case 'reports':
+          if (settings.canViewStatistics())
+            screen = ReportsHubScreen(db: SqlDatabase());
+          break;
+        case 'projects':
+          if (settings.canViewProjects())
+            screen = ProjectsScreen(db: SqlDatabase());
+          break;
+        case 'worker_tasks':
+          if (settings.canViewMyTasks())
+            screen = WorkerTasksScreen(db: SqlDatabase());
+          break;
+        case 'worker_archive':
+          if (settings.canViewMyTasks())
+            screen = WorkerArchiveScreen(db: SqlDatabase());
+          break;
+        case 'external_operations':
+          if (settings.canAccessExternalOperations())
+            screen = ExternalOperationsHubScreen(db: SqlDatabase());
+          break;
+        case 'workers':
+          if (settings.canManageWorkers())
+            screen = WorkersManagementScreen(db: SqlDatabase());
+          break;
+        case 'prices':
+          if (settings.canChangePrices()) screen = PriceManagementScreen();
+          break;
+        case 'selected_systems':
+          if (settings.canSelectSystems())
+            screen = const SelectedSystemsScreen();
+          break;
+        case 'settings':
+          if (settings.canAccessSettings()) screen = const SettingsScreen();
+          break;
+        case 'shortage_report':
+          if (settings.canViewGlobalConsumption())
+            screen = GlobalConsumptionReportScreen(db: SqlDatabase());
           break;
       }
       if (screen == null) return false;

@@ -104,7 +104,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
       'titleFr': 'Système à frappe',
       'titleEn': 'Casement system',
       'subtitleAr': 'نظام الفتح الداخلي والخارجي والقلاب',
-      'subtitleFr': 'Système à ouverture intérieure, extérieure et oscillo-battante',
+      'subtitleFr':
+          'Système à ouverture intérieure, extérieure et oscillo-battante',
       'subtitleEn': 'Inward, outward and tilt-turn opening system',
       'iconPath': 'Icon/french.png',
       'defaultIcon': Icons.door_front_door_rounded,
@@ -161,9 +162,12 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
       'titleAr': 'الناموسية',
       'titleFr': 'Moustiquaire',
       'titleEn': 'Insect screen',
-      'subtitleAr': 'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
-      'subtitleFr': 'Systèmes moustiquaires (enroulables, plissés, fixes et coulissants)',
-      'subtitleEn': 'Insect screen systems (roller, pleated, fixed and sliding)',
+      'subtitleAr':
+          'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
+      'subtitleFr':
+          'Systèmes moustiquaires (enroulables, plissés, fixes et coulissants)',
+      'subtitleEn':
+          'Insect screen systems (roller, pleated, fixed and sliding)',
       'iconPath': 'Icon/media.webp',
       'defaultIcon': Icons.grid_4x4_rounded,
       'categoryAr': 'ناموسية',
@@ -268,7 +272,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
 
   void _showSelectionLimitMessage(String label, int limit) {
     if (!mounted) return;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final message = limit == 0
         ? 'لا توجد $label مفعلة في اشتراك هذه الورشة.'
         : 'يسمح اشتراك هذه الورشة بحد أقصى $limit من $label.';
@@ -294,7 +301,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await _loadSubscriptionLimits();
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final suffix = switch (lang) {
       AppLanguage.french => 'Fr',
       AppLanguage.english => 'En',
@@ -507,8 +517,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     setState(() {
       var enabledCount = 0;
       for (var mode in _systemModes) {
-        final canEnable = _maxSystemModes == null ||
-            enabledCount < _maxSystemModes!;
+        final canEnable =
+            _maxSystemModes == null || enabledCount < _maxSystemModes!;
         mode.isActive = enable && canEnable;
         if (mode.isActive) enabledCount++;
         prefs.setBool('system_active_${mode.id}', mode.isActive);
@@ -574,8 +584,7 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     var enabledCount = 0;
     setState(() {
       for (var p in _profileSystems) {
-        final canEnable = _maxProfiles == null ||
-            enabledCount < _maxProfiles!;
+        final canEnable = _maxProfiles == null || enabledCount < _maxProfiles!;
         p.isActive = enable && canEnable;
         if (p.isActive) enabledCount++;
       }
@@ -945,8 +954,10 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                   child: Center(
                     child: Builder(
                       builder: (context) {
-                        final filename =
-                            item.iconPath.replaceAll('\\', '/').split('/').last;
+                        final filename = item.iconPath
+                            .replaceAll('\\', '/')
+                            .split('/')
+                            .last;
                         final candidates = <String>[
                           item.iconPath,
                           if (!item.iconPath.startsWith('assets/'))
@@ -965,8 +976,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                               item.defaultIcon,
                               color: item.isActive
                                   ? (isDark
-                                      ? Colors.blue.shade300
-                                      : Colors.blue.shade700)
+                                        ? Colors.blue.shade300
+                                        : Colors.blue.shade700)
                                   : Colors.grey,
                               size: 26,
                             );

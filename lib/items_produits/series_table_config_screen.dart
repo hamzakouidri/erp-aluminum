@@ -674,6 +674,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           ? 1
           : 0,
       'supported_track_counts': role == 'frame_extension' ? '3,4,5,6,7' : '2',
+      'compatible_frame_ids': '',
     };
   }
 
@@ -733,6 +734,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'track_adds': _number(row['track_adds']).round(),
       'supported_track_counts':
           row['supported_track_counts']?.toString().trim() ?? '',
+      'compatible_frame_ids':
+          row['compatible_frame_ids']?.toString().trim() ?? '',
     });
   }
 
@@ -1801,6 +1804,61 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           role.key == 'sash_extension' ||
                           role.key == 'porte_joint')
                         const Divider(height: 20),
+                      if (role.key == 'profile_angle') ...[
+                        const Divider(height: 20),
+                        Text(
+                          _t(
+                            'الإطارات المتوافقة مع هذا البروفيل دونجل',
+                            'Dormants compatibles avec ce profil d\'angle',
+                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _t(
+                            'حدد الإطارات التي يمكن أن يركب عليها مباشرة دون الحاجة لتبديلها:',
+                            'Sélectionnez les dormants compatibles (sans substitution requise):',
+                          ),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        ...(() {
+                          final frameSections = _sections
+                              .where((s) => _sectionMatchesRole(s, 'frame'))
+                              .toList();
+                          final selectedIds = (draft['compatible_frame_ids'] ?? '')
+                              .toString()
+                              .split(',')
+                              .map((e) => e.trim())
+                              .where((e) => e.isNotEmpty)
+                              .toSet();
+                          return frameSections.map((fSec) {
+                            final sId = fSec['id']?.toString() ?? '';
+                            final isChecked = selectedIds.contains(sId);
+                            final name = fSec['name']?.toString() ??
+                                fSec['reference']?.toString() ??
+                                'Dormant #$sId';
+                            return CheckboxListTile(
+                              dense: true,
+                              value: isChecked,
+                              title: Text(name, style: const TextStyle(fontSize: 13)),
+                              contentPadding: EdgeInsets.zero,
+                              onChanged: (val) {
+                                if (val == true) {
+                                  selectedIds.add(sId);
+                                } else {
+                                  selectedIds.remove(sId);
+                                }
+                                update(
+                                  'compatible_frame_ids',
+                                  selectedIds.join(','),
+                                );
+                              },
+                            );
+                          });
+                        })(),
+                        const Divider(height: 20),
+                      ],
                       _dialogSwitch(
                         title: _t('يظهر في الرسم', 'Visible au dessin'),
                         value: _truthy(

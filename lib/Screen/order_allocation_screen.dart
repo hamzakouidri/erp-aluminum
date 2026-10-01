@@ -310,6 +310,11 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     setState(() => _isLoading = true);
     try {
       final orderId = widget.orderData['id'] as int;
+      final currentOrder = await widget.db.readCommandeWithClientById(orderId);
+      final currentStatus = currentOrder?['status']?.toString() ?? widget.orderData['status']?.toString() ?? '';
+      if (currentStatus.isNotEmpty) {
+        await widget.db.syncAllocationsFromOrderStatus(orderId, currentStatus);
+      }
       final rawDetails = await widget.db.readCommandeDetails(orderId);
       final rawWorkers = await widget.db.readEmployees();
 
@@ -1733,99 +1738,71 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                           spacing: 6,
                                                           runSpacing: 4,
                                                           children: [
-                                                            Container(
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        6,
-                                                                    vertical: 2,
+                                                              InkWell(
+                                                                onTap: () async {
+                                                                  final allocId = (alloc['id'] as num?)?.toInt() ?? 0;
+                                                                  if (allocId <= 0) return;
+                                                                  final newMfg = isManufactured ? 0 : 1;
+                                                                  await widget.db.updateWorkerAllocationManufactured(allocId, newMfg);
+                                                                  final oId = (widget.orderData['id'] as num?)?.toInt() ?? 0;
+                                                                  if (oId > 0) {
+                                                                    await widget.db.syncOrderAndAllocationsStatus(oId);
+                                                                  }
+                                                                  _loadData();
+                                                                },
+                                                                borderRadius: BorderRadius.circular(6),
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                  decoration: BoxDecoration(
+                                                                    color: isManufactured
+                                                                        ? Colors.green.withOpacity(0.12)
+                                                                        : Colors.orange.withOpacity(0.12),
+                                                                    borderRadius: BorderRadius.circular(6),
                                                                   ),
-                                                              decoration: BoxDecoration(
-                                                                color:
-                                                                    isManufactured
-                                                                    ? Colors
-                                                                          .green
-                                                                          .withOpacity(
-                                                                            0.12,
-                                                                          )
-                                                                    : Colors
-                                                                          .orange
-                                                                          .withOpacity(
-                                                                            0.12,
-                                                                          ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      6,
+                                                                  child: Text(
+                                                                    isManufactured ? 'تم الصنع ✅' : 'لم يصنع بعد ⏳',
+                                                                    style: TextStyle(
+                                                                      color: isManufactured ? Colors.green : Colors.orange,
+                                                                      fontSize: 10,
+                                                                      fontWeight: FontWeight.bold,
+                                                                      fontFamily: 'Cairo',
                                                                     ),
-                                                              ),
-                                                              child: Text(
-                                                                isManufactured
-                                                                    ? 'تم الصنع ✅'
-                                                                    : 'لم يصنع بعد ⏳',
-                                                                style: TextStyle(
-                                                                  color:
-                                                                      isManufactured
-                                                                      ? Colors
-                                                                            .green
-                                                                      : Colors
-                                                                            .orange,
-                                                                  fontSize: 10,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  fontFamily:
-                                                                      'Cairo',
+                                                                  ),
                                                                 ),
                                                               ),
-                                                            ),
-                                                            Container(
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        6,
-                                                                    vertical: 2,
+                                                              InkWell(
+                                                                onTap: () async {
+                                                                  final allocId = (alloc['id'] as num?)?.toInt() ?? 0;
+                                                                  if (allocId <= 0) return;
+                                                                  final isGlass = (alloc['is_glass_installed'] as num?)?.toInt() == 1;
+                                                                  final newGlass = isGlass ? 0 : 1;
+                                                                  await widget.db.updateWorkerAllocationGlassInstalled(allocId, newGlass);
+                                                                  final oId = (widget.orderData['id'] as num?)?.toInt() ?? 0;
+                                                                  if (oId > 0) {
+                                                                    await widget.db.syncOrderAndAllocationsStatus(oId);
+                                                                  }
+                                                                  _loadData();
+                                                                },
+                                                                borderRadius: BorderRadius.circular(6),
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                  decoration: BoxDecoration(
+                                                                    color: alloc['is_glass_installed'] == 1
+                                                                        ? Colors.blue.withOpacity(0.12)
+                                                                        : Colors.orange.withOpacity(0.12),
+                                                                    borderRadius: BorderRadius.circular(6),
                                                                   ),
-                                                              decoration: BoxDecoration(
-                                                                color:
-                                                                    alloc['is_glass_installed'] ==
-                                                                        1
-                                                                    ? Colors
-                                                                          .blue
-                                                                          .withOpacity(
-                                                                            0.12,
-                                                                          )
-                                                                    : Colors
-                                                                          .orange
-                                                                          .withOpacity(
-                                                                            0.12,
-                                                                          ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      6,
+                                                                  child: Text(
+                                                                    alloc['is_glass_installed'] == 1 ? 'تم تركيب الزجاج 💎' : 'لم يركب الزجاج ⏳',
+                                                                    style: TextStyle(
+                                                                      color: alloc['is_glass_installed'] == 1 ? Colors.blue : Colors.orange,
+                                                                      fontSize: 10,
+                                                                      fontWeight: FontWeight.bold,
+                                                                      fontFamily: 'Cairo',
                                                                     ),
-                                                              ),
-                                                              child: Text(
-                                                                alloc['is_glass_installed'] ==
-                                                                        1
-                                                                    ? 'تم تركيب الزجاج 💎'
-                                                                    : 'لم يركب الزجاج ⏳',
-                                                                style: TextStyle(
-                                                                  color:
-                                                                      alloc['is_glass_installed'] ==
-                                                                          1
-                                                                      ? Colors
-                                                                            .blue
-                                                                      : Colors
-                                                                            .orange,
-                                                                  fontSize: 10,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  fontFamily:
-                                                                      'Cairo',
+                                                                  ),
                                                                 ),
                                                               ),
-                                                            ),
                                                           ],
                                                         ),
                                                       ],

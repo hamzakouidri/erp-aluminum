@@ -6,6 +6,8 @@ import 'package:database_data/services/supabase_account_service.dart';
 
 enum SubscriptionPlanType {
   yearly,
+  threeMonths,
+  twoMonths,
   monthly,
   trial,
   lifetime;
@@ -13,39 +15,51 @@ enum SubscriptionPlanType {
   String get displayNameAr {
     switch (this) {
       case SubscriptionPlanType.yearly:
-        return 'اشتراك سنوي';
+        return 'اشتراك سنوي (الأفضل قيمة)';
+      case SubscriptionPlanType.threeMonths:
+        return 'اشتراك 3 أشهر';
+      case SubscriptionPlanType.twoMonths:
+        return 'اشتراك شهرين';
       case SubscriptionPlanType.monthly:
-        return 'اشتراك شهري';
+        return 'شهر (30 يوما)';
       case SubscriptionPlanType.trial:
         return 'فترة تجريبية';
       case SubscriptionPlanType.lifetime:
-        return 'اشتراك مدى الحياة';
+        return 'اشتراك دائم للورشة (مدى الحياة)';
     }
   }
 
   String get displayNameFr {
     switch (this) {
       case SubscriptionPlanType.yearly:
-        return 'Abonnement Annuel';
+        return 'Abonnement annuel (Meilleure valeur)';
+      case SubscriptionPlanType.threeMonths:
+        return 'Abonnement 3 mois';
+      case SubscriptionPlanType.twoMonths:
+        return 'Abonnement 2 mois';
       case SubscriptionPlanType.monthly:
-        return 'Abonnement Mensuel';
+        return '1 mois (30 jours)';
       case SubscriptionPlanType.trial:
         return 'Période d\'essai';
       case SubscriptionPlanType.lifetime:
-        return 'Abonnement à vie';
+        return 'Abonnement permanent atelier (À vie)';
     }
   }
 
   String get displayNameEn {
     switch (this) {
       case SubscriptionPlanType.yearly:
-        return 'Yearly Subscription';
+        return 'Annual Subscription (Best value)';
+      case SubscriptionPlanType.threeMonths:
+        return '3 Months Subscription';
+      case SubscriptionPlanType.twoMonths:
+        return '2 Months Subscription';
       case SubscriptionPlanType.monthly:
-        return 'Monthly Subscription';
+        return '1 Month (30 days)';
       case SubscriptionPlanType.trial:
         return 'Trial Period';
       case SubscriptionPlanType.lifetime:
-        return 'Lifetime Subscription';
+        return 'Permanent Workshop Subscription (Lifetime)';
     }
   }
 }
@@ -288,7 +302,19 @@ class SubscriptionService {
     SubscriptionPlanType planType;
     if (rawPlan == 'yearly' || rawPlan == 'annual' || rawPlan == 'سنوي') {
       planType = SubscriptionPlanType.yearly;
-    } else if (rawPlan == 'monthly' || rawPlan == 'شهري') {
+    } else if (rawPlan == 'quarterly' ||
+        rawPlan == 'three_months' ||
+        rawPlan == '3_months' ||
+        rawPlan == '3 أشهر') {
+      planType = SubscriptionPlanType.threeMonths;
+    } else if (rawPlan == 'two_months' ||
+        rawPlan == '2_months' ||
+        rawPlan == 'شهرين') {
+      planType = SubscriptionPlanType.twoMonths;
+    } else if (rawPlan == 'monthly' ||
+        rawPlan == 'شهري' ||
+        rawPlan == 'شهر (30 يوما)' ||
+        rawPlan == 'شهر') {
       planType = SubscriptionPlanType.monthly;
     } else if (rawPlan == 'trial' ||
         rawStatus == 'trial' ||
@@ -300,9 +326,11 @@ class SubscriptionService {
         final totalSpanDays = endDate.difference(startDate).inDays;
         if (totalSpanDays >= 180) {
           planType = SubscriptionPlanType.yearly;
-        } else if (totalSpanDays > 35) {
-          planType = SubscriptionPlanType.yearly;
-        } else if (totalSpanDays >= 25 && totalSpanDays <= 35) {
+        } else if (totalSpanDays >= 75 && totalSpanDays < 180) {
+          planType = SubscriptionPlanType.threeMonths;
+        } else if (totalSpanDays >= 45 && totalSpanDays < 75) {
+          planType = SubscriptionPlanType.twoMonths;
+        } else if (totalSpanDays >= 25 && totalSpanDays < 45) {
           planType = SubscriptionPlanType.monthly;
         } else {
           planType = SubscriptionPlanType.trial;
@@ -318,6 +346,10 @@ class SubscriptionService {
     if (endDate == null) {
       if (planType == SubscriptionPlanType.yearly) {
         endDate = startDate.add(const Duration(days: 365));
+      } else if (planType == SubscriptionPlanType.threeMonths) {
+        endDate = startDate.add(const Duration(days: 90));
+      } else if (planType == SubscriptionPlanType.twoMonths) {
+        endDate = startDate.add(const Duration(days: 60));
       } else if (planType == SubscriptionPlanType.monthly) {
         endDate = startDate.add(const Duration(days: 30));
       } else {

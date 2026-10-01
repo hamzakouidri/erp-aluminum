@@ -55,7 +55,7 @@ class OrderExportService {
         'tva': (order['tva'] as num?)?.toDouble() ?? 0.0,
         'total': (order['total'] as num?)?.toDouble() ?? 0.0,
         'net_payable': (order['net_payable'] as num?)?.toDouble() ?? 0.0,
-        'status': order['status'] ?? 'En attente',
+        'status': order['status'] ?? 'Nouveau',
       },
       'items': details.map((item) {
         return <String, dynamic>{
@@ -258,7 +258,7 @@ class OrderExportService {
 
     final newOrderId = await db.saveCommandeWithDetails(
       clientId: clientId,
-      status: orderData['status']?.toString() ?? 'En attente',
+      status: orderData['status']?.toString() ?? 'Nouveau',
       description: orderData['description']?.toString() ?? '',
       remise: remise,
       tva: tva,

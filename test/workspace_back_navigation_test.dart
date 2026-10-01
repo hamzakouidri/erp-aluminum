@@ -1,9 +1,35 @@
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:database_data/widgets/home_back_boundary.dart';
 
 void main() {
-  testWidgets('Back at a tab root returns home and keeps the tab open', (
+  testWidgets('standalone page has a home button and intercepts route back', (tester) async {
+    var backs = 0;
+    await tester.pumpWidget(MaterialApp(home: HomeBackBoundary(
+      label: 'Home', onBack: () => backs++, child: const Scaffold(body: Text('Quote')),
+    )));
+    await tester.tap(find.text('Home'));
+    expect(backs, 1);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(backs, 2);
+    expect(find.text('Quote'), findsOneWidget);
+  });
+
+  test('exit callback is only reached from home', () async {
+    final workspace = WorkspaceController();
+    var exits = 0;
+    workspace.open(entryId: 'quote', title: 'Quote', icon: Icons.description,
+        content: const SizedBox());
+    await workspace.handleBackNavigation(onHome: () async { exits++; });
+    expect(workspace.isHomeActive, isTrue);
+    expect(exits, 0);
+    await workspace.handleBackNavigation(onHome: () async { exits++; });
+    expect(exits, 1);
+    workspace.dispose();
+  });
+  testWidgets('Back at a tab root returns home and closes the tab', (
     tester,
   ) async {
     final workspace = WorkspaceController();
@@ -30,7 +56,7 @@ void main() {
 
     await workspace.handleBackNavigation();
     expect(workspace.isHomeActive, isTrue);
-    expect(workspace.entries.any((entry) => entry.id == 'order'), isTrue);
+    expect(workspace.entries.any((entry) => entry.id == 'order'), isFalse);
     expect(rootBackCalls, 0);
     await tester.pumpWidget(const SizedBox());
     workspace.dispose();
@@ -63,6 +89,7 @@ void main() {
     expect(key.currentState!.canPop(), isFalse);
     await workspace.handleBackNavigation();
     expect(workspace.isHomeActive, isTrue);
+    expect(workspace.entries.any((entry) => entry.id == 'order'), isFalse);
     await tester.pumpWidget(const SizedBox());
     workspace.dispose();
   });
