@@ -4786,6 +4786,21 @@ This action cannot be undone!''',
   },
 
   // --- Order Editing Screen (add_commande) ---
+  'Faux Bois Marron': {
+    AppLanguage.arabic: 'خشبي بني (Faux Bois Marron)',
+    AppLanguage.french: 'Faux Bois Marron',
+    AppLanguage.english: 'Brown Wood (Faux Bois Marron)',
+  },
+  'خشبي بني (Faux Bois Marron)': {
+    AppLanguage.arabic: 'خشبي بني (Faux Bois Marron)',
+    AppLanguage.french: 'Faux Bois Marron',
+    AppLanguage.english: 'Brown Wood (Faux Bois Marron)',
+  },
+  'خشبي بني': {
+    AppLanguage.arabic: 'خشبي بني',
+    AppLanguage.french: 'Faux Bois Marron',
+    AppLanguage.english: 'Brown Wood',
+  },
   'بني فاتح (Faux Bois)': {
     AppLanguage.arabic: 'بني فاتح (Faux Bois)',
     AppLanguage.french: 'Marron clair (Faux Bois)',

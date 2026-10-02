@@ -92,6 +92,10 @@ class WindowPainter extends CustomPainter {
         cleanName.contains('antique') ||
         cleanName.contains('انتيك') ||
         cleanName.contains('onteak') ||
+        cleanName.contains('faux bois marron') ||
+        cleanName.contains('marron faux bois') ||
+        (cleanName.contains('marron') && cleanName.contains('bois')) ||
+        (cleanName.contains('بني') && cleanName.contains('خشب')) ||
         cleanName.contains('╪º┘å╪¬┘è┘â');
 
     final bool isGreyTexture =
@@ -1703,35 +1707,9 @@ class WindowPainter extends CustomPainter {
         _localBottomFrame = previousBottomFrame;
       }
     } else {
-      // Compute per-frame insets caused by active profil d'angle junctions.
-      // Each active junction eats tubeW/2 from the right side of the left
-      // frame and tubeW/2 from the left side of the right frame, so the tube
-      // sits perfectly in the gap without adding to the total window width.
-      final junctions = model.getAdjacentFrameJunctions();
-      final activeJunctions = model.activeProfileAngleJunctions;
-
-      // angleSection lookup (same as _drawProfileAngle)
-      final angleSection =
-          model.getConfiguredSectionForRole(
-            'profile_angle',
-            useSlidingSeries: model.systemMode == 'sliding',
-          ) ??
-          model.getConfiguredSectionForRole(
-            'profile_angle',
-            useSlidingSeries: model.systemMode != 'sliding',
-          ) ??
-          model.getSectionByType('profile_angle') ??
-          model.getSlidingSectionByType('profile_angle') ??
-          model.getSectionByType('tube_carre') ??
-          model.getSlidingSectionByType('tube_carre');
-      final double tubeW =
-          (angleSection != null && angleSection.visibleWidth > 0)
-          ? angleSection.visibleWidth.clamp(30.0, 100.0)
-          : 50.0;
-
-      // getAdjacentFrameJunctions() sorts frames by (left, top) before
-      // assigning firstFrameIndex/secondFrameIndex.  We must use the same
-      // order so that the inset map keys align with those indices.
+      // Frames with profile d'angle junctions touch at the same X coordinate
+      // (no gap — the tube sits behind the corner at 90°).
+      // Draw each frame at its own position using the frame rect coordinates.
       final sortedFrames = List<Rect>.from(frameRects)
         ..sort((a, b) {
           final cmp = a.left.compareTo(b.left);
@@ -2026,137 +2004,94 @@ class WindowPainter extends CustomPainter {
     }
   }
 
+  /// Draws the corner (profile d'angle / tube carré 90°) visual.
+  ///
+  /// **Key rule**: the tube sits BEHIND the corner, perpendicular to both
+  /// frames.  It does NOT add to the total window width.
+  ///
+  /// Visual strategy
+  /// ───────────────
+  /// • Junction between two side-by-side frames → draw a 90° L-corner
+  ///   symbol at the meeting edge.
+  /// • Outer-edge mode (right / left) → draw a short perpendicular "wing"
+  ///   at the canvas edge using a canvas transform, giving the impression of
+  ///   the frame turning at 90°.  The wing stays within or at the edge of
+  ///   the canvas; the canvas width itself is NEVER increased.
   void _drawProfileAngle(Canvas canvas, double w, double h, double top) {
     if (!model.usesProfileAngle) return;
-    final angleSection =
-        model.getConfiguredSectionForRole(
-          'profile_angle',
-          useSlidingSeries: model.systemMode == 'sliding',
-        ) ??
-        model.getConfiguredSectionForRole(
-          'profile_angle',
-          useSlidingSeries: model.systemMode != 'sliding',
-        ) ??
-        model.getSectionByType('profile_angle') ??
-        model.getSlidingSectionByType('profile_angle') ??
-        model.getSectionByType('tube_carre') ??
-        model.getSlidingSectionByType('tube_carre');
-    final double tubeW = (angleSection != null && angleSection.visibleWidth > 0)
-        ? angleSection.visibleWidth.clamp(30.0, 100.0)
-        : 50.0;
 
-    void drawTubeAt(Rect rect, {bool isRight = true, bool isJunction = false}) {
-      // 1. Base aluminium tube body
-      canvas.drawRect(rect, _buildPaint(rect));
 
-      // 2. Outer border
-      final borderPaint = Paint()
-        ..color = _fb
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5;
-      canvas.drawRect(rect, borderPaint);
-
-      // 3. Hollow square tube wall lines (thickness 3.5mm)
-      const double wallT = 3.5;
-      final innerRect = Rect.fromLTRB(
-        rect.left + wallT,
-        rect.top + wallT,
-        rect.right - wallT,
-        rect.bottom - wallT,
-      );
-      final innerPaint = Paint()
-        ..color = _fb.withOpacity(0.35)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0;
-      canvas.drawRect(innerRect, innerPaint);
-
-      // 4. Perpendicular corner representation (Tube Carré 90°)
-      // Between frames: drawn as a single solid column touching both frames.
-      // On outer borders: draw return facet to show orthogonal return.
-      if (!isJunction) {
-        final facetW = tubeW * 0.35;
-        final returnRect = isRight
-            ? Rect.fromLTRB(
-                rect.right - facetW,
-                rect.top,
-                rect.right,
-                rect.bottom,
-              )
-            : Rect.fromLTRB(
-                rect.left,
-                rect.top,
-                rect.left + facetW,
-                rect.bottom,
-              );
-
-        final facetShading = Paint()
-          ..color = Colors.black.withOpacity(0.12)
-          ..style = PaintingStyle.fill;
-        canvas.drawRect(returnRect, facetShading);
-
-        final facetBorder = Paint()
-          ..color = _fb.withOpacity(0.5)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0;
-        canvas.drawLine(
-          Offset(
-            isRight ? (rect.right - facetW) : (rect.left + facetW),
-            rect.top,
-          ),
-          Offset(
-            isRight ? (rect.right - facetW) : (rect.left + facetW),
-            rect.bottom,
-          ),
-          facetBorder,
-        );
-
-        if (isRight) {
-          canvas.drawLine(
-            Offset(rect.right - facetW, rect.top),
-            Offset(rect.right, rect.top + facetW),
-            facetBorder,
-          );
-          canvas.drawLine(
-            Offset(rect.right - facetW, rect.bottom),
-            Offset(rect.right, rect.bottom - facetW),
-            facetBorder,
-          );
-        } else {
-          canvas.drawLine(
-            Offset(rect.left + facetW, rect.top),
-            Offset(rect.left, rect.top + facetW),
-            facetBorder,
-          );
-          canvas.drawLine(
-            Offset(rect.left + facetW, rect.bottom),
-            Offset(rect.left, rect.bottom - facetW),
-            facetBorder,
-          );
-        }
-      }
-
-      // 5. Angle 90° indication badge at vertical center
-      final center = Offset(rect.center.dx, rect.center.dy);
-      _draw90DegreeCornerBadge(canvas, center);
-    }
-
-    // A. Draw multi-frame junctions
+    // ─────────────────────────────────────────────────────────────────────────
+    // A.  Inter-frame junctions (two frames side-by-side with angle profile)
+    // ─────────────────────────────────────────────────────────────────────────
+    // The tube sits BEHIND the corner.  Frames touch at the same X without any
+    // gap.  We draw a thin L-corner indicator at the meeting edge to show the
+    // 90° turn, then a small "depth wing" going perpendicular.
     final junctions = model.getAdjacentFrameJunctions();
     final activeJunctions = model.activeProfileAngleJunctions;
     for (final j in junctions) {
-      if (activeJunctions.contains(j.index)) {
-        double gapLeft = math.min(j.firstFrame.right, j.secondFrame.left);
-        double gapRight = math.max(j.firstFrame.right, j.secondFrame.left);
-        if ((gapRight - gapLeft).abs() < 1.0) {
-          gapLeft = j.x - tubeW / 2.0;
-          gapRight = j.x + tubeW / 2.0;
-        }
-        final rect = Rect.fromLTRB(gapLeft, j.top, gapRight, j.bottom);
-        drawTubeAt(rect, isJunction: true);
-      }
+      if (!activeJunctions.contains(j.index)) continue;
+
+      // The shared edge X = the point where the two frames meet.
+      final edgeX = j.x.clamp(0.0, w);
+      final jTop = j.top.clamp(0.0, h);
+      final jBottom = j.bottom.clamp(0.0, h);
+      final frameH = jBottom - jTop;
+      if (frameH <= 0) continue;
+
+      // Thickness of the frame profile (used for the wing thickness).
+      final t = model.profileThickness.clamp(20.0, 80.0).toDouble();
+
+      final fillPaint = _buildPaint(Rect.fromLTWH(edgeX - t, jTop, t, frameH));
+      final borderPaint = Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2;
+
+      // 1. Corner band on Frame 1 (right edge) — thin vertical strip showing
+      //    the frame end touching the corner.
+      final frame1End = Rect.fromLTRB(edgeX - t, jTop, edgeX, jBottom);
+      canvas.drawRect(frame1End, fillPaint);
+      canvas.drawRect(frame1End, borderPaint);
+
+      // 2. Perpendicular "depth wing" at the junction:
+      //    Short horizontal strips at top and bottom of Frame 1's right edge,
+      //    going to the RIGHT (perpendicular direction, into the corner).
+      //    This visually shows the frame turning at 90°.
+      final wingDepth = t * 1.2; // how far the wing extends
+      // Top wing
+      final topWing = Rect.fromLTWH(edgeX, jTop, wingDepth, t);
+      canvas.drawRect(topWing, fillPaint);
+      canvas.drawRect(topWing, borderPaint);
+      // Bottom wing
+      final bottomWing = Rect.fromLTWH(edgeX, jBottom - t, wingDepth, t);
+      canvas.drawRect(bottomWing, fillPaint);
+      canvas.drawRect(bottomWing, borderPaint);
+      // Closing edge of the perpendicular wing (right side)
+      final closingPaint = Paint()
+        ..color = _fb.withValues(alpha: 0.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      canvas.drawLine(
+        Offset(edgeX + wingDepth, jTop),
+        Offset(edgeX + wingDepth, jTop + t),
+        closingPaint,
+      );
+      canvas.drawLine(
+        Offset(edgeX + wingDepth, jBottom - t),
+        Offset(edgeX + wingDepth, jBottom),
+        closingPaint,
+      );
+
+      // 3. 90° badge at the junction center.
+      _draw90DegreeCornerBadge(canvas, Offset(edgeX, (jTop + jBottom) / 2));
     }
 
-    // B. Draw single frame / outer edges
+    // ─────────────────────────────────────────────────────────────────────────
+    // B.  Outer-edge mode (single frame with angle profile on right / left)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Draw a foreshortened "L-wing" AT the canvas edge (not beyond it) to
+    // show the frame turning at 90°.  The canvas width is NOT increased.
     if (model.profileAngleMode > 0) {
       final sides = <String>[];
       if (model.profileAngleMode == 1 || model.profileAngleMode == 3)
@@ -2166,10 +2101,64 @@ class WindowPainter extends CustomPainter {
 
       for (final side in sides) {
         final bool isRight = side == 'right';
-        final double left = isRight ? w : -tubeW;
-        final double right = isRight ? (w + tubeW) : 0.0;
-        final rect = Rect.fromLTRB(left, top, right, h);
-        drawTubeAt(rect, isRight: isRight, isJunction: false);
+        // Thickness of the frame profile at the edge.
+        final t = model.profileThickness.clamp(20.0, 80.0).toDouble();
+        // Wing depth: how far it extends perpendicular (stays within canvas).
+        final wingDepth = math.min(t * 1.5, w * 0.12);
+
+        final edgeX = isRight ? w : 0.0;
+
+        final fillPaint = _buildPaint(
+          Rect.fromLTWH(isRight ? edgeX - t : edgeX, top, t, h - top),
+        );
+        final borderPaint = Paint()
+          ..color = _fb
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        final closingPaint = Paint()
+          ..color = _fb.withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
+
+        // Frame edge strip (end of the frame, touching the corner).
+        final edgeStrip = isRight
+            ? Rect.fromLTRB(edgeX - t, top, edgeX, h)
+            : Rect.fromLTRB(edgeX, top, edgeX + t, h);
+        canvas.drawRect(edgeStrip, fillPaint);
+        canvas.drawRect(edgeStrip, borderPaint);
+
+        // Perpendicular top wing.
+        final topWingRect = isRight
+            ? Rect.fromLTWH(edgeX - t, top, wingDepth + t, t)
+            : Rect.fromLTWH(edgeX - wingDepth, top, wingDepth + t, t);
+        canvas.drawRect(topWingRect, fillPaint);
+        canvas.drawRect(topWingRect, borderPaint);
+
+        // Perpendicular bottom wing.
+        final bottomWingRect = isRight
+            ? Rect.fromLTWH(edgeX - t, h - t, wingDepth + t, t)
+            : Rect.fromLTWH(edgeX - wingDepth, h - t, wingDepth + t, t);
+        canvas.drawRect(bottomWingRect, fillPaint);
+        canvas.drawRect(bottomWingRect, borderPaint);
+
+        // Closing short edge of each wing.
+        final wingTip = isRight ? edgeX + wingDepth : edgeX - wingDepth;
+        canvas.drawLine(
+          Offset(wingTip, top),
+          Offset(wingTip, top + t),
+          closingPaint,
+        );
+        canvas.drawLine(
+          Offset(wingTip, h - t),
+          Offset(wingTip, h),
+          closingPaint,
+        );
+
+        // 90° badge at the center of the corner edge.
+        _draw90DegreeCornerBadge(
+          canvas,
+          Offset(edgeX, (top + h) / 2),
+        );
       }
     }
   }
@@ -4109,8 +4098,10 @@ class WindowPainter extends CustomPainter {
         zone.sashThickness ?? model.getSectionThickness('sash', fallback: 45.0);
     final isSlidingZone = zone.content == ZoneContent.slidingSash;
     final sashOverride = isSlidingZone
-        ? (model.slidingSashOverride ?? model.sashOverride)
-        : model.sashOverride;
+        ? (zone.slidingSashOverride ??
+            model.slidingSashOverride ??
+            model.sashOverride)
+        : (zone.sashOverride ?? model.sashOverride);
     final overriddenSashCode = (sashOverride?['code'] ?? '').toString().trim();
     final sashCode = overriddenSashCode.isNotEmpty
         ? overriddenSashCode
@@ -4216,8 +4207,9 @@ class WindowPainter extends CustomPainter {
           totalCutWidth * (1.0 - effectiveRatio) - finishedSashWeldLoss;
       displayHeight = r.height + overlap * 2 - finishedSashWeldLoss;
     } else if (zone.content == ZoneContent.slidingSash) {
-      final slidingSashOverride =
-          model.slidingSashOverride ?? model.sashOverride;
+      final slidingSashOverride = zone.slidingSashOverride ??
+          model.slidingSashOverride ??
+          model.sashOverride;
       double slidingOverlap = slidingSashOverride != null
           ? (slidingSashOverride['sash_overlap'] ?? 8.0).toDouble()
           : 8.0;
@@ -6971,9 +6963,10 @@ class WindowPainter extends CustomPainter {
 
   bool _isHandleSashProfile(WindowZone? zone) {
     if (zone == null) return false;
-    if (model.sashOverride != null) {
-      final name = model.sashOverride!['name']?.toString().toLowerCase() ?? '';
-      final code = model.sashOverride!['code']?.toString().toLowerCase() ?? '';
+    final activeOverride = zone.sashOverride ?? model.sashOverride;
+    if (activeOverride != null) {
+      final name = activeOverride['name']?.toString().toLowerCase() ?? '';
+      final code = activeOverride['code']?.toString().toLowerCase() ?? '';
       if (name.contains('مقبض') ||
           name.contains('poignée') ||
           name.contains('handle') ||

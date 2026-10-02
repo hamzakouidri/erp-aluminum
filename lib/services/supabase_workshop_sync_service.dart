@@ -43,6 +43,14 @@ class SupabaseWorkshopSyncService {
 
   factory SupabaseWorkshopSyncService() => _instance;
 
+  @visibleForTesting
+  static bool shouldDownloadFullOnStartup({
+    required bool bootstrapComplete,
+    required bool hasSyncCursor,
+  }) {
+    return !bootstrapComplete || !hasSyncCursor;
+  }
+
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
 
   // Realtime handles normal changes. This slow pass only repairs a missed
@@ -679,32 +687,29 @@ class SupabaseWorkshopSyncService {
         print('Supabase permission refresh skipped during startup: $error');
       }
       final needsFullBootstrap = await _needsFullBootstrapDownload();
-      final hasLocalBusinessData = await _hasLocalBusinessData();
-      // A phone can keep the bootstrap preference after its local database
-      // was cleared/reinstalled. In that case an incremental download starts
-      // after an old timestamp and silently misses the workshop profile,
-      // clients, orders, and other historical rows. Missing local business
-      // data is therefore also a signal to rebuild the workshop snapshot.
-      final shouldDownloadFull = needsFullBootstrap || !hasLocalBusinessData;
-      if (shouldDownloadFull) {
+      // A full workshop snapshot is intentionally a one-time bootstrap. Using
+      // the presence of clients or orders as an initialization signal made an
+      // empty/new workshop download every remote row again on each launch.
+      // SharedPreferences and the local database share the app lifecycle, so
+      // reinstall/clear-data removes this marker and correctly triggers a new
+      // bootstrap. Explicit recovery remains available through the full
+      // restore action.
+      if (needsFullBootstrap) {
         await downloadWorkshopData(full: true);
       } else {
         await downloadWorkshopData();
       }
-      if (shouldDownloadFull) {
+      if (needsFullBootstrap) {
         await _markFullBootstrapComplete();
       }
       // تحميل قواعد الإكسسوارات لضمان وجودها دائماً في هاتف العامل
       await loadAndApplyWorkshopCatalogConfiguration();
       await uploadPendingChanges();
       await uploadPendingShortcutBindings();
-      if (hasLocalBusinessData) {
-        try {
-          await uploadLocalWorkshopDataMerge();
-        } catch (e) {
-          debugPrint('uploadLocalWorkshopDataMerge startup error: $e');
-        }
-      }
+      // Do not call uploadLocalWorkshopDataMerge here. It scans every remote
+      // workshop key and exported every local table on every launch. Pending
+      // local changes are already uploaded above; the full merge is reserved
+      // for explicit repair/migration flows.
     } catch (error) {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
@@ -1133,7 +1138,9 @@ class SupabaseWorkshopSyncService {
           final rowMap = Map<String, dynamic>.from(configRow);
           final p = rowMap['payload'];
           if (p is Map && p['tables'] is Map) {
-            catalogConfiguration = Map<String, dynamic>.from(p['tables'] as Map);
+            catalogConfiguration = Map<String, dynamic>.from(
+              p['tables'] as Map,
+            );
             catalogConfigurationChanged = true;
             downloadedRows++;
           }
@@ -1144,7 +1151,8 @@ class SupabaseWorkshopSyncService {
 
       // 3. Business tables fetched table by table with adaptive batch sizes
       for (final table in SqlDatabase.workshopTables) {
-        final isHeavy = table == 'Commandes_details' || table == 'Commandes_deliveries';
+        final isHeavy =
+            table == 'Commandes_details' || table == 'Commandes_deliveries';
         final tableBatchSize = isHeavy ? 5 : 50;
         var offset = 0;
         while (true) {
@@ -1152,28 +1160,42 @@ class SupabaseWorkshopSyncService {
           try {
             rows = await _client
                 .from('workshop_sync_rows')
-                .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+                .select(
+                  'table_name,row_id,payload,updated_at,deleted_at,device_id',
+                )
                 .eq('workshop_id', workshopUuid)
                 .eq('table_name', table)
                 .order('updated_at', ascending: true)
                 .range(offset, offset + tableBatchSize - 1);
           } catch (batchError) {
-            debugPrint('Batch error on table $table at offset $offset: $batchError');
+            debugPrint(
+              'Batch error on table $table at offset $offset: $batchError',
+            );
             if (isHeavy) {
               // Fallback: fetch single rows for this batch range to isolate any timeout
-              for (var single = offset; single < offset + tableBatchSize; single++) {
+              for (
+                var single = offset;
+                single < offset + tableBatchSize;
+                single++
+              ) {
                 try {
                   final singleRows = await _client
                       .from('workshop_sync_rows')
-                      .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+                      .select(
+                        'table_name,row_id,payload,updated_at,deleted_at,device_id',
+                      )
                       .eq('workshop_id', workshopUuid)
                       .eq('table_name', table)
                       .order('updated_at', ascending: true)
                       .range(single, single);
                   if (singleRows.isEmpty) break;
-                  processRow(Map<String, dynamic>.from(singleRows.first as Map));
+                  processRow(
+                    Map<String, dynamic>.from(singleRows.first as Map),
+                  );
                 } catch (singleError) {
-                  debugPrint('Single row fetch error on $table at $single: $singleError');
+                  debugPrint(
+                    'Single row fetch error on $table at $single: $singleError',
+                  );
                 }
               }
               offset += tableBatchSize;
@@ -1196,9 +1218,7 @@ class SupabaseWorkshopSyncService {
       while (true) {
         final rows = await _client
             .from('workshop_sync_rows')
-            .select(
-              'table_name,row_id,payload,updated_at,deleted_at,device_id',
-            )
+            .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
             .eq('workshop_id', workshopUuid)
             .gt('updated_at', since!)
             .order('updated_at', ascending: true)
@@ -1293,6 +1313,11 @@ class SupabaseWorkshopSyncService {
 
     if (newestUpdate != null) {
       await _saveLastSyncAt(newestUpdate!);
+    } else if (full) {
+      // An empty workshop still completed its bootstrap. Seed the incremental
+      // cursor so the next launch does not repeat the full download merely
+      // because there were no remote business rows carrying updated_at.
+      await _saveLastSyncAt(DateTime.now().toUtc().toIso8601String());
     }
 
     lastDownloadSummary = downloadedRows == 0
@@ -1974,7 +1999,12 @@ class SupabaseWorkshopSyncService {
     final key = _bootstrapKey();
     if (key == null) return false;
     final prefs = await SharedPreferences.getInstance();
-    return !(prefs.getBool(key) ?? false);
+    final bootstrapComplete = prefs.getBool(key) ?? false;
+    final syncCursor = await _readLastSyncAt();
+    return shouldDownloadFullOnStartup(
+      bootstrapComplete: bootstrapComplete,
+      hasSyncCursor: syncCursor != null && syncCursor.trim().isNotEmpty,
+    );
   }
 
   Future<void> _markFullBootstrapComplete() async {
@@ -1986,18 +2016,6 @@ class SupabaseWorkshopSyncService {
 
   bool _isWorkshopTable(String table) {
     return SqlDatabase.workshopTables.contains(table);
-  }
-
-  Future<bool> _hasLocalBusinessData() async {
-    final myDb = await _db.db;
-    if (myDb == null) return false;
-    try {
-      final clients = await myDb.query('Client', limit: 1);
-      final orders = await myDb.query('Commandes', limit: 1);
-      return clients.isNotEmpty || orders.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
   }
 
   int _countRows(Map<String, dynamic> data, String table) {

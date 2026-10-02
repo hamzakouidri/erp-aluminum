@@ -853,9 +853,36 @@ class DevisBuilder {
       }
     }
 
-    final displaySeries = (gameName != null && gameName.trim().isNotEmpty)
+    final rawZones = map['zones'];
+    final zonesList = _zonesFromMap(map);
+    final hasSlidingInZones = zonesList.any((z) {
+      final c = (z['content']?.toString() ?? '').toLowerCase();
+      return c.contains('slidingsash');
+    });
+    final hasOpeningInZones = zonesList.any((z) {
+      final c = (z['content']?.toString() ?? '').toLowerCase();
+      return c.contains('singlesash') || c.contains('doublesash');
+    });
+
+    String resolvedSeries = (gameName != null && gameName.trim().isNotEmpty)
         ? gameName.trim()
         : (seriesName ?? profileName ?? '');
+
+    if (zonesList.isNotEmpty) {
+      if (hasSlidingInZones && !hasOpeningInZones) {
+        final slidingName = map['slidingSeriesName']?.toString().trim() ?? '';
+        if (slidingName.isNotEmpty) {
+          resolvedSeries = slidingName;
+        }
+      } else if (hasOpeningInZones && !hasSlidingInZones) {
+        final openingName =
+            (seriesName ?? map['seriesName'])?.toString().trim() ?? '';
+        if (openingName.isNotEmpty) {
+          resolvedSeries = openingName;
+        }
+      }
+    }
+    final displaySeries = resolvedSeries;
 
     final bool isCaissonTunnel =
         map['isCaissonTunnel'] == true ||
@@ -865,7 +892,6 @@ class DevisBuilder {
     // a tunnel box. Only a standalone calculator result may use the special
     // tunnel-only invoice row; otherwise the ordinary window line must keep
     // its opening/sliding profiles and shutter details.
-    final rawZones = map['zones'];
     final isDesignedWindow =
         map['isDesignDrawing'] == true ||
         (rawZones is List && rawZones.isNotEmpty) ||
@@ -897,18 +923,21 @@ class DevisBuilder {
     } else if (isMoustiquaire) {
       title = 'Moustiquaire (موستيكير)';
     } else if (isGlassWork) {
-      final overrideName =
+      final rawOverrideName =
           map['manualNameOverride']?.toString().trim() ??
           item['window_type']?.toString().trim() ??
           '';
+      final overrideName = rawOverrideName
+          .replaceFirst(RegExp(r'^فير ترومبي\s*[-–—]?\s*'), '')
+          .replaceFirst(
+            RegExp(r'^Verre\s+Tremp[eé]\s*[-–—]?\s*', caseSensitive: false),
+            '',
+          )
+          .trim();
       if (overrideName.isNotEmpty) {
-        title =
-            overrideName.startsWith('فير ترومبي') ||
-                overrideName.startsWith('Verre Trempé')
-            ? overrideName
-            : 'فير ترومبي - $overrideName';
+        title = 'Verre trempé - $overrideName';
       } else {
-        title = 'فير ترومبي';
+        title = 'Verre trempé';
       }
     } else if (isShutterOnly) {
       title = 'Volet roulant';
@@ -1110,28 +1139,28 @@ class DevisBuilder {
       final workType =
           payload['workTypeLabel']?.toString() ??
           item['window_type']?.toString() ??
-          'كابين دوش';
+          'Cabine de douche';
       final finish =
           payload['glassTypeLabel']?.toString() ??
           payload['glassFinishLabel']?.toString() ??
           item['glass']?.toString() ??
-          'شفاف';
+          'Transparent';
       final thickness =
           (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)
               ?.toDouble() ??
           10;
       final sablageMode = payload['sablageMode']?.toString() ?? 'none';
       final sablageLabel = sablageMode == 'none'
-          ? 'بدون سابلاج'
-          : (sablageMode == 'full' ? 'سابلاج كامل' : 'سابلاج ديكور');
+          ? 'Sans sablage'
+          : (sablageMode == 'full' ? 'Sablage complet' : 'Sablage décoratif');
       final notes = payload['notes']?.toString() ?? '';
 
       details.clear();
-      details.add('الخاصية: $workType');
+      details.add('Propriété : $workType');
       details.add(
-        'الزجاج: $finish ${thickness.toStringAsFixed(0)} مم | $sablageLabel',
+        'Verre : $finish ${thickness.toStringAsFixed(0)} mm | $sablageLabel',
       );
-      details.add('القياس الإجمالي: $width × $height مم');
+      details.add('Dimensions hors tout : $width × $height mm');
 
       final rawItems = payload['items'] as List?;
       if (rawItems != null && rawItems.length > 1) {
@@ -1142,20 +1171,22 @@ class DevisBuilder {
             final pw = (p['widthMm'] as num?)?.toDouble() ?? 0;
             final ph = (p['heightMm'] as num?)?.toDouble() ?? 0;
             final role = p['role']?.toString() ?? '';
-            final roleArabic = switch (role) {
-              'door' => 'الباب',
-              'fixed' => 'الثابت',
-              'vitrine_left' => 'الدرفة اليسرى',
-              'vitrine_right' => 'الدرفة اليمنى',
-              _ => 'اللوح ${i + 1}',
+            final roleLabel = switch (role) {
+              'door' => 'Porte',
+              'fixed' => 'Fixe',
+              'vitrine_left' => 'Vantail gauche',
+              'vitrine_right' => 'Vantail droit',
+              _ => 'Panneau ${i + 1}',
             };
             panelStrs.add(
-              '$roleArabic: ${pw.toStringAsFixed(0)} × ${ph.toStringAsFixed(0)} مم',
+              '$roleLabel : ${pw.toStringAsFixed(0)} × ${ph.toStringAsFixed(0)} mm',
             );
           }
         }
         if (panelStrs.isNotEmpty) {
-          details.add('الألواح (${rawItems.length}): ${panelStrs.join(" | ")}');
+          details.add(
+            'Panneaux (${rawItems.length}) : ${panelStrs.join(" | ")}',
+          );
         }
       }
       if (notes.trim().isNotEmpty) details.add(notes.trim());
@@ -2171,8 +2202,46 @@ class DevisBuilder {
       if (normalized.add(value.toLowerCase())) labels.add(value);
     }
 
-    add(map['slidingSeriesName']);
-    add(map['seriesName']);
+    final zones = _zonesFromMap(map);
+    final hasSliding = zones.any((z) {
+      final c = (z['content']?.toString() ?? '').toLowerCase();
+      return c.contains('slidingsash');
+    });
+    final hasOpening = zones.any((z) {
+      final c = (z['content']?.toString() ?? '').toLowerCase();
+      return c.contains('singlesash') || c.contains('doublesash');
+    });
+
+    if (zones.isNotEmpty) {
+      if (hasSliding && hasOpening) {
+        // Mixed drawings persist opening and sliding series separately; keep both, with sliding series first.
+        add(map['slidingSeriesName']);
+        add(map['seriesName']);
+      } else if (hasSliding) {
+        add(map['slidingSeriesName']);
+      } else if (hasOpening) {
+        add(map['seriesName']);
+      } else {
+        // Fixed only or other non-sash zones
+        final sysMode = map['systemMode']?.toString().toLowerCase();
+        if (sysMode == 'sliding') {
+          add(map['slidingSeriesName']);
+        } else {
+          add(map['seriesName']);
+        }
+      }
+    } else {
+      final sysMode = map['systemMode']?.toString().toLowerCase();
+      if (sysMode == 'sliding') {
+        add(map['slidingSeriesName']);
+      } else if (sysMode == 'french') {
+        add(map['seriesName']);
+      } else {
+        add(map['slidingSeriesName']);
+        add(map['seriesName']);
+      }
+    }
+
     if (labels.isEmpty) add(fallback);
     return labels;
   }
@@ -3508,6 +3577,11 @@ class DevisBuilder {
         case 'gris':
         case 'رمادي':
           return 'Gris';
+        case 'faux bois marron':
+        case 'marron faux bois':
+        case 'خشبي بني':
+        case 'بني خشبي':
+          return 'Faux Bois Marron';
         case 'brown':
         case 'faux bois':
         case 'bouni':
@@ -3534,6 +3608,11 @@ class DevisBuilder {
         case 'gris':
         case 'رمادي':
           return 'Grey';
+        case 'faux bois marron':
+        case 'marron faux bois':
+        case 'خشبي بني':
+        case 'بني خشبي':
+          return 'Brown Wood (Faux Bois Marron)';
         case 'brown':
         case 'faux bois':
         case 'بني':
@@ -3559,6 +3638,11 @@ class DevisBuilder {
         case 'gris':
         case 'رمادي':
           return 'رمادي';
+        case 'faux bois marron':
+        case 'marron faux bois':
+        case 'خشبي بني':
+        case 'بني خشبي':
+          return 'خشبي بني (Faux Bois Marron)';
         case 'brown':
         case 'faux bois':
         case 'بني':

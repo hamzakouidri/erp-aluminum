@@ -360,7 +360,17 @@ enum GlassProcessing { none, tempered, laminated, lowE }
 
 enum OpenDirection { left, right, top, bottom }
 
-enum FrameColor { white, brown, gray, black, beige, gris, antique, lightWood }
+enum FrameColor {
+  white,
+  brown,
+  gray,
+  black,
+  beige,
+  gris,
+  antique,
+  lightWood,
+  fauxBoisMarron,
+}
 
 enum SelectionType { zone, mullion, innerDivision, frame }
 
@@ -1256,6 +1266,8 @@ class WindowZone {
   Map<String, dynamic>? selectedDbColor;
   bool isSash105;
   double? sashThickness;
+  Map<String, dynamic>? sashOverride;
+  Map<String, dynamic>? slidingSashOverride;
   int innerH;
   int innerV;
   int slidingSashesCount;
@@ -1341,6 +1353,8 @@ class WindowZone {
     this.selectedDbColor,
     this.isSash105 = false,
     this.sashThickness,
+    this.sashOverride,
+    this.slidingSashOverride,
     this.innerH = 0,
     this.innerV = 0,
     this.slidingSashesCount = 2,
@@ -1425,6 +1439,12 @@ class WindowZone {
     selectedDbColor: selectedDbColor,
     isSash105: isSash105,
     sashThickness: sashThickness,
+    sashOverride: sashOverride == null
+        ? null
+        : Map<String, dynamic>.from(sashOverride!),
+    slidingSashOverride: slidingSashOverride == null
+        ? null
+        : Map<String, dynamic>.from(slidingSashOverride!),
     innerH: innerH,
     innerV: innerV,
     slidingSashesCount: slidingSashesCount,
@@ -1482,6 +1502,12 @@ class WindowZone {
         : Map<String, dynamic>.from(selectedDbColor!),
     isSash105: isSash105,
     sashThickness: sashThickness,
+    sashOverride: sashOverride == null
+        ? null
+        : Map<String, dynamic>.from(sashOverride!),
+    slidingSashOverride: slidingSashOverride == null
+        ? null
+        : Map<String, dynamic>.from(slidingSashOverride!),
     innerH: innerH,
     innerV: innerV,
     slidingSashesCount: slidingSashesCount,
@@ -1535,6 +1561,8 @@ class WindowZone {
     Map<String, dynamic>? selectedDbColor,
     bool? isSash105,
     double? sashThickness,
+    Map<String, dynamic>? sashOverride,
+    Map<String, dynamic>? slidingSashOverride,
     int? innerH,
     int? innerV,
     int? slidingSashesCount,
@@ -1582,6 +1610,14 @@ class WindowZone {
     selectedDbColor: selectedDbColor ?? this.selectedDbColor,
     isSash105: isSash105 ?? this.isSash105,
     sashThickness: sashThickness ?? this.sashThickness,
+    sashOverride: sashOverride ??
+        (this.sashOverride != null
+            ? Map<String, dynamic>.from(this.sashOverride!)
+            : null),
+    slidingSashOverride: slidingSashOverride ??
+        (this.slidingSashOverride != null
+            ? Map<String, dynamic>.from(this.slidingSashOverride!)
+            : null),
     innerH: innerH ?? this.innerH,
     innerV: innerV ?? this.innerV,
     slidingSashesCount: slidingSashesCount ?? this.slidingSashesCount,
@@ -1876,6 +1912,12 @@ extension FrameColorExtension on FrameColor {
           const Color(0xFFA8803E),
           const Color(0xFF7A5828),
         ];
+      case FrameColor.fauxBoisMarron:
+        return [
+          const Color(0xFFA86F44),
+          const Color(0xFF8D5B4C),
+          const Color(0xFF6E4032),
+        ];
     }
   }
 
@@ -1897,6 +1939,8 @@ extension FrameColorExtension on FrameColor {
         return const Color(0xFF4D3E32);
       case FrameColor.lightWood:
         return const Color(0xFF7A5828);
+      case FrameColor.fauxBoisMarron:
+        return const Color(0xFF5D3528);
     }
   }
 }
@@ -2025,6 +2069,17 @@ List<Color> getEffectiveGradientColors(
         const Color(0xFFF7E7CE),
         const Color(0xFFC9AE86),
       ];
+    }
+
+    if (name.contains('faux bois marron') ||
+        name.contains('marron faux bois') ||
+        (name.contains('marron') &&
+            (name.contains('bois') ||
+                name.contains('faux') ||
+                name.contains('خشب'))) ||
+        (name.contains('بني') &&
+            (name.contains('خشب') || name.contains('خشبي')))) {
+      return FrameColor.fauxBoisMarron.gradientColors;
     }
 
     if (name.contains('wood') ||
@@ -4383,23 +4438,79 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  List<WindowZone> zonesInFrameOf(WindowZone targetZone) {
+    final groups = _frameZoneGroups();
+    for (final group in groups) {
+      if (group.any((z) => z.id == targetZone.id)) {
+        return group;
+      }
+    }
+    return [targetZone];
+  }
+
   void applySashOverride(
     Map<String, dynamic> sash, {
     required bool sliding,
     bool manualSelection = false,
+    WindowZone? targetZone,
   }) {
+    _saveSnapshot();
     final mutable = Map<String, dynamic>.from(sash);
     if (manualSelection) {
       mutable['manual_selection'] = true;
     }
 
-    if (sliding) {
-      slidingSashOverride = mutable;
+    final is105 = _isSash105Profile(mutable);
+    final widthVal = (mutable['visible_width'] as num?)?.toDouble() ?? 0.0;
+    final target = targetZone ?? selectedZone;
+    final isMultiFrame = getFrameRects().length > 1;
+
+    if (target != null && isMultiFrame) {
+      final frameZones = zonesInFrameOf(target);
+      for (final z in frameZones) {
+        if (sliding) {
+          if (z.content == ZoneContent.slidingSash) {
+            z.slidingSashOverride = mutable;
+            if (widthVal > 0) z.sashThickness = widthVal;
+          }
+        } else {
+          if (z.content == ZoneContent.singleSash ||
+              z.content == ZoneContent.doubleSash) {
+            z.sashOverride = mutable;
+            z.isSash105 = is105;
+            z.sashThickness = widthVal > 0
+                ? widthVal
+                : _calculateSashThickness(is105, override: mutable);
+          }
+        }
+      }
     } else {
-      sashOverride = mutable;
-      selectedSashCode = mutable['code']?.toString() ?? selectedSashCode;
+      if (sliding) {
+        slidingSashOverride = mutable;
+        for (final z in zones) {
+          if (z.content == ZoneContent.slidingSash) {
+            z.slidingSashOverride = mutable;
+            if (widthVal > 0) z.sashThickness = widthVal;
+          }
+        }
+      } else {
+        sashOverride = mutable;
+        selectedSashCode = mutable['code']?.toString() ?? selectedSashCode;
+        for (final z in zones) {
+          if (z.content == ZoneContent.singleSash ||
+              z.content == ZoneContent.doubleSash) {
+            z.sashOverride = mutable;
+            z.isSash105 = is105;
+            z.sashThickness = widthVal > 0
+                ? widthVal
+                : _calculateSashThickness(is105, override: mutable);
+          }
+        }
+      }
     }
+
     updateAllSashThicknesses();
+    notifyListeners();
   }
 
   bool isSlidingMontantReinforced(
@@ -8702,15 +8813,17 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
-  double _calculateSashThickness(bool is105) {
+  double _calculateSashThickness(bool is105, {Map<String, dynamic>? override}) {
     final useSliding = systemMode == 'sliding' || usesSlidingPrimaryProfiles;
-    final selectedOverride = useSliding ? slidingSashOverride : sashOverride;
+    final selectedOverride = override ?? (useSliding ? slidingSashOverride : sashOverride);
     final selectedSeries = useSliding ? activeSlidingSeries : activeSeries;
 
     // إذا كان هناك ضلفة مخصصة مختارة، نستخدم العرض الظاهر لها
     if (selectedOverride != null) {
       double t = (selectedOverride['visible_width'] as num?)?.toDouble() ?? 0.0;
       if (t > 0) return t;
+      double th = (selectedOverride['thickness'] as num?)?.toDouble() ?? 0.0;
+      if (th > 0) return th;
     }
 
     if (selectedSeries == null || selectedSeries.sections.isEmpty) {
@@ -18637,6 +18750,13 @@ class WindowModel extends ChangeNotifier {
   bool _zoneUsesSash105(WindowZone zone) {
     if (zone.isSash105) return true;
 
+    if (zone.sashOverride != null) {
+      return _isSash105Profile(
+        zone.sashOverride,
+        fallbackWidth: zone.sashThickness ?? 0.0,
+      );
+    }
+
     // A divided sash may have its own profile.  Handle state is stored on its
     // parent zone, so keep door-handle options available when such a cell is
     // thick even if the parent was created as a normal window sash.
@@ -18661,16 +18781,36 @@ class WindowModel extends ChangeNotifier {
   }
 
   void updateAllSashThicknesses() {
-    bool is105 = _determineIsSash105FromSashOverride();
+    bool globalIs105 = _determineIsSash105FromSashOverride();
 
     for (var z in zones) {
       if (z.content == ZoneContent.singleSash ||
           z.content == ZoneContent.doubleSash ||
           z.content == ZoneContent.slidingSash) {
-        if (sashOverride != null) {
-          z.isSash105 = is105;
+        if (z.sashOverride != null) {
+          z.isSash105 = _isSash105Profile(
+            z.sashOverride,
+            fallbackWidth: z.sashThickness ?? 0.0,
+          );
+          z.sashThickness = _calculateSashThickness(
+            z.isSash105,
+            override: z.sashOverride,
+          );
+        } else if (z.slidingSashOverride != null &&
+            z.content == ZoneContent.slidingSash) {
+          z.sashThickness = _calculateSashThickness(
+            false,
+            override: z.slidingSashOverride,
+          );
+        } else {
+          if (sashOverride != null) {
+            z.isSash105 = globalIs105;
+          }
+          z.sashThickness = _calculateSashThickness(
+            z.isSash105,
+            override: sashOverride,
+          );
         }
-        z.sashThickness = _calculateSashThickness(z.isSash105);
       }
     }
   }
@@ -21272,19 +21412,83 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleSashType104105() {
-    if (selectedZone == null) return;
+  Future<void> toggleSashType104105({WindowZone? targetZone}) async {
+    final target = targetZone ?? selectedZone;
+    if (target == null) return;
     _saveSnapshot();
-    selectedZone!.isSash105 = !selectedZone!.isSash105;
-    selectedZone!.sashThickness = _calculateSashThickness(
-      selectedZone!.isSash105,
-    );
-    if (!selectedZone!.isSash105) {
-      if (selectedZone!.lockType == LockType.clef ||
-          selectedZone!.lockType == LockType.condamnation) {
-        selectedZone!.lockType = LockType.none;
+
+    bool currentIs105 = target.isSash105;
+    if (target.sashOverride != null) {
+      final code = target.sashOverride!['code']?.toString().toLowerCase() ?? '';
+      final name = target.sashOverride!['name']?.toString().toLowerCase() ?? '';
+      if (code.contains('104') || name.contains('104')) {
+        currentIs105 = false;
+      } else if (code.contains('105') ||
+          code.contains('porte') ||
+          code.contains('ouvr') ||
+          name.contains('105') ||
+          name.contains('porte') ||
+          name.contains('ouvr') ||
+          name.contains('بورت')) {
+        currentIs105 = true;
       }
     }
+
+    final targetIs105 = !currentIs105;
+
+    Map<String, dynamic>? matchingSection;
+    if (activeSeries != null) {
+      final targetCode = targetIs105 ? '105' : '104';
+      AluminumSection? foundSection;
+      for (final sec in activeSeries!.sections) {
+        if (sec.type.toLowerCase() == 'sash' &&
+            (sec.code.contains(targetCode) || sec.name.contains(targetCode))) {
+          foundSection = sec;
+          break;
+        }
+      }
+      if (foundSection != null) {
+        double price = 0.0;
+        if (selectedDbColor != null) {
+          final colorId = selectedDbColor!['id'];
+          final db = SqlDatabase();
+          price = await db.getSectionPrice(foundSection.id, colorId);
+        }
+        matchingSection = foundSection.toMap();
+        matchingSection['calculated_price'] = price;
+        matchingSection['manual_selection'] = true;
+      }
+    }
+
+    final isMultiFrame = getFrameRects().length > 1;
+    final zonesToUpdate = isMultiFrame ? zonesInFrameOf(target) : zones;
+
+    for (final z in zonesToUpdate) {
+      if (z.content == ZoneContent.singleSash ||
+          z.content == ZoneContent.doubleSash) {
+        z.isSash105 = targetIs105;
+        if (matchingSection != null) {
+          z.sashOverride = Map<String, dynamic>.from(matchingSection);
+        }
+        final widthVal =
+            (z.sashOverride?['visible_width'] as num?)?.toDouble() ?? 0.0;
+        z.sashThickness = widthVal > 0
+            ? widthVal
+            : _calculateSashThickness(targetIs105, override: z.sashOverride);
+        if (!targetIs105) {
+          if (z.lockType == LockType.clef ||
+              z.lockType == LockType.condamnation) {
+            z.lockType = LockType.none;
+          }
+        }
+      }
+    }
+
+    if (!isMultiFrame && matchingSection != null) {
+      sashOverride = Map<String, dynamic>.from(matchingSection);
+      selectedSashCode = matchingSection['code']?.toString() ?? selectedSashCode;
+    }
+
     notifyListeners();
   }
 
@@ -23959,8 +24163,6 @@ class WindowModel extends ChangeNotifier {
         final cmp = a.left.compareTo(b.left);
         return cmp != 0 ? cmp : a.top.compareTo(b.top);
       });
-      final double tubeW = profileAngleTubeWidth;
-      int junctionCounter = 0;
       for (int i = 0; i < rects.length; i++) {
         for (int j = i + 1; j < rects.length; j++) {
           final r1 = rects[i];
@@ -23981,20 +24183,18 @@ class WindowModel extends ChangeNotifier {
                       math.max(r.top, math.max(r1.top, r2.top)) + 10.0;
             });
             if (!hasIntermediate && (r2.left - r1.right).abs() <= maxGap) {
-              final currentJunctionIndex = junctionCounter++;
-              final hasActiveTube = isProfileAngleJunctionActive(
-                currentJunctionIndex,
-              );
-              final halfGap = hasActiveTube ? (tubeW / 2.0) : 0.0;
+              // Profile-angle tube sits BEHIND the corner (90° perpendicular).
+              // It does NOT occupy space between the frames in the same plane —
+              // frames touch at the same X coordinate without any gap.
               final commonX = (r1.right + r2.left) / 2.0;
               rects[i] = Rect.fromLTRB(
                 r1.left,
                 r1.top,
-                commonX - halfGap,
+                commonX,
                 r1.bottom,
               );
               rects[j] = Rect.fromLTRB(
-                commonX + halfGap,
+                commonX,
                 r2.top,
                 r2.right,
                 r2.bottom,

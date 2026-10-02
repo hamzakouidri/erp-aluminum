@@ -329,6 +329,8 @@ extension WindowZoneSerialization on WindowZone {
       'sashColor': sashColor.name,
       'selectedDbColor': _colorSelectionFromRaw(selectedDbColor),
       'isSash105': isSash105,
+      'sashOverride': sashOverride,
+      'slidingSashOverride': slidingSashOverride,
       'innerH': innerH,
       'innerV': innerV,
       'slidingSashesCount': slidingSashesCount,
@@ -402,6 +404,12 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     ),
     selectedDbColor: _colorSelectionFromRaw(map['selectedDbColor']),
     isSash105: map['isSash105'] ?? false,
+    sashOverride: map['sashOverride'] != null
+        ? Map<String, dynamic>.from(map['sashOverride'] as Map)
+        : null,
+    slidingSashOverride: map['slidingSashOverride'] != null
+        ? Map<String, dynamic>.from(map['slidingSashOverride'] as Map)
+        : null,
     useClassicHandle: map['useClassicHandle'] ?? false,
     useOctoHandle: map['useOctoHandle'] ?? false,
     usePvcHandleOnAlu: map['usePvcHandleOnAlu'] ?? false,

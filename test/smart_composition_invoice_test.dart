@@ -1,3 +1,6 @@
+import 'dart:ui';
+import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -375,6 +378,111 @@ void main() {
         AppLanguage.arabic,
       );
       expect(arComp, 'نافذة منزلقة 4 درفات و إطار ثابت');
+    });
+
+    test('3-sash opening window only shows opening series, not sliding', () {
+      final drawing = {
+        'seriesName': 'TPR 40000',
+        'slidingSeriesName': 'TPR 67000',
+        'zones': [
+          {
+            'boundary': {'left': 0.0, 'top': 0.0, 'width': 600.0, 'height': 1200.0},
+            'content': 'singleSash',
+          },
+          {
+            'boundary': {'left': 600.0, 'top': 0.0, 'width': 600.0, 'height': 1200.0},
+            'content': 'singleSash',
+          },
+          {
+            'boundary': {'left': 1200.0, 'top': 0.0, 'width': 600.0, 'height': 1200.0},
+            'content': 'singleSash',
+          },
+        ],
+      };
+
+      final frLine = DevisBuilder.buildLineItemFromDetail({
+        'id': 10,
+        'partitions_json': drawing,
+      }, overrideLang: AppLanguage.french);
+      expect(frLine.details.first, 'Gamme: TPR 40000');
+      expect(frLine.details.first.contains('67000'), isFalse);
+
+      final arLine = DevisBuilder.buildLineItemFromDetail({
+        'id': 10,
+        'partitions_json': drawing,
+      }, overrideLang: AppLanguage.arabic);
+      expect(arLine.details.first, 'السلسلة: TPR 40000');
+      expect(arLine.details.first.contains('67000'), isFalse);
+    });
+
+    test('2-sash sliding window only shows sliding series, not opening', () {
+      final drawing = {
+        'seriesName': 'TPR 40000',
+        'slidingSeriesName': 'TPR 67000',
+        'zones': [
+          {
+            'boundary': {'left': 0.0, 'top': 0.0, 'width': 1200.0, 'height': 1200.0},
+            'content': 'slidingSash',
+            'slidingSashesCount': 2,
+          },
+        ],
+      };
+
+      final frLine = DevisBuilder.buildLineItemFromDetail({
+        'id': 11,
+        'partitions_json': drawing,
+      }, overrideLang: AppLanguage.french);
+      expect(frLine.details.first, 'Gamme: TPR 67000');
+      expect(frLine.details.first.contains('40000'), isFalse);
+
+      final arLine = DevisBuilder.buildLineItemFromDetail({
+        'id': 11,
+        'partitions_json': drawing,
+      }, overrideLang: AppLanguage.arabic);
+      expect(arLine.details.first, 'السلسلة: TPR 67000');
+      expect(arLine.details.first.contains('40000'), isFalse);
+    });
+
+    test('Multi-frame independent sashes: zone sashOverride and serialization', () {
+      final zone1 = WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(0, 0, 800, 1200),
+        content: ZoneContent.singleSash,
+        sashOverride: {
+          'id': 104,
+          'code': 'TPR-104',
+          'name': 'Ouvrant 104',
+          'visible_width': 50.0,
+        },
+      );
+      final zone2 = WindowZone(
+        id: 'z2',
+        boundary: const Rect.fromLTWH(800, 0, 800, 1200),
+        content: ZoneContent.singleSash,
+        sashOverride: {
+          'id': 105,
+          'code': 'TPR-105',
+          'name': 'Ouvrant 105',
+          'visible_width': 70.0,
+        },
+      );
+
+      final map1 = zone1.toMap();
+      final map2 = zone2.toMap();
+
+      expect(map1['sashOverride']['code'], 'TPR-104');
+      expect(map2['sashOverride']['code'], 'TPR-105');
+
+      final restored1 = windowZoneFromMap(map1);
+      final restored2 = windowZoneFromMap(map2);
+
+      expect(restored1.sashOverride?['code'], 'TPR-104');
+      expect(restored2.sashOverride?['code'], 'TPR-105');
+
+      final cloned1 = restored1.clone();
+      final cloned2 = restored2.clone();
+      expect(cloned1.sashOverride?['code'], 'TPR-104');
+      expect(cloned2.sashOverride?['code'], 'TPR-105');
     });
   });
 }

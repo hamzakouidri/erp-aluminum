@@ -62,11 +62,22 @@ class _WindowViewState extends State<WindowView> {
       'drawing_frame_picker_show_all_profiles';
   bool _showAllFrameProfiles = false;
 
+  static const _hidePresetCardPreferenceKey =
+      'drawing_hide_preset_quick_card';
+  bool _hidePresetCard = false;
+
   Future<void> _setShowAllFrameProfiles(bool value) async {
     if (_showAllFrameProfiles == value) return;
     setState(() => _showAllFrameProfiles = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showAllFramesPreferenceKey, value);
+  }
+
+  Future<void> _setHidePresetCard(bool value) async {
+    if (_hidePresetCard == value) return;
+    setState(() => _hidePresetCard = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hidePresetCardPreferenceKey, value);
   }
 
   bool _drawingShortcut(KeyEvent event) {
@@ -1002,6 +1013,10 @@ class _WindowViewState extends State<WindowView> {
     } else if (cleanName.contains('antique') ||
         cleanName.contains('انتيك') ||
         cleanName.contains('onteak') ||
+        cleanName.contains('faux bois marron') ||
+        cleanName.contains('marron faux bois') ||
+        (cleanName.contains('marron') && cleanName.contains('bois')) ||
+        (cleanName.contains('بني') && cleanName.contains('خشب')) ||
         cleanName.contains('╪º┘å╪¬┘è┘â')) {
       assetPath = 'assets/images/wood_texture_antique.png';
     } else if (cleanName.contains('grey') ||
@@ -2170,6 +2185,10 @@ class _WindowViewState extends State<WindowView> {
       final showAllFrames = prefs.getBool(_showAllFramesPreferenceKey) ?? false;
       if (mounted && showAllFrames != _showAllFrameProfiles) {
         setState(() => _showAllFrameProfiles = showAllFrames);
+      }
+      final hidePreset = prefs.getBool(_hidePresetCardPreferenceKey) ?? false;
+      if (mounted && hidePreset != _hidePresetCard) {
+        setState(() => _hidePresetCard = hidePreset);
       }
     });
     // Activate drawing mode for 10 seconds when entering the screen
@@ -5634,23 +5653,26 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               ),
                             ),
-                          if (widget.model.zones.isEmpty &&
+                          if (!_hidePresetCard &&
+                              widget.model.zones.isEmpty &&
                               !widget.model.isShutterOnly &&
                               widget.model.drawingStart == null)
-                            Center(
+                            PositionedDirectional(
+                              top: 16,
+                              end: 16,
                               child: Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
                                 constraints: const BoxConstraints(
-                                  maxWidth: 420,
+                                  maxWidth: 270,
                                 ),
-                                padding: const EdgeInsets.all(20),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Theme.of(
                                     context,
-                                  ).cardColor.withValues(alpha: 0.95),
-                                  borderRadius: BorderRadius.circular(16),
+                                  ).cardColor.withValues(alpha: 0.96),
+                                  borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
                                     color: Theme.of(
                                       context,
@@ -5661,39 +5683,56 @@ class _WindowViewState extends State<WindowView> {
                                       color: Colors.black.withValues(
                                         alpha: 0.15,
                                       ),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 6),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
                                     ),
                                   ],
                                 ),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.shade700.withValues(
-                                          alpha: 0.12,
+                                    Row(
+                                      children: [
+                                        _PresetThumbnailWidget(
+                                          preset: WindowPresetType.slidingNoShutter,
+                                          width: 32,
+                                          height: 32,
+                                          isDark: Theme.of(context).brightness ==
+                                              Brightness.dark,
+                                          accentColor: Colors.blue.shade700,
                                         ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.auto_awesome_mosaic_rounded,
-                                        color: Colors.blue.shade700,
-                                        size: 36,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      Localization.translate(
-                                        'أنظمة ونماذج جاهزة للرسم السريع',
-                                        lang,
-                                      ),
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            Localization.translate(
+                                              'أنظمة ونماذج جاهزة للرسم السريع',
+                                              lang,
+                                            ),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        InkWell(
+                                          onTap: () => _setHidePresetCard(true),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(4),
+                                            child: Icon(
+                                              Icons.close_rounded,
+                                              size: 18,
+                                              color: Theme.of(context)
+                                                  .hintColor,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
@@ -5702,35 +5741,34 @@ class _WindowViewState extends State<WindowView> {
                                         lang,
                                       ),
                                       style: TextStyle(
-                                        fontSize: 12,
-                                        color:
-                                            Theme.of(context).brightness ==
+                                        fontSize: 11,
+                                        color: Theme.of(context).brightness ==
                                                 Brightness.dark
                                             ? Colors.white60
                                             : Colors.black54,
                                       ),
-                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 10),
                                     ElevatedButton.icon(
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.blue.shade700,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 20,
-                                          vertical: 11,
+                                          horizontal: 12,
+                                          vertical: 8,
                                         ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
                                       ),
                                       onPressed: () =>
                                           _showPresetSystemsDialog(context),
                                       icon: const Icon(
                                         Icons.touch_app_rounded,
-                                        size: 20,
+                                        size: 16,
                                       ),
                                       label: Text(
                                         Localization.translate(
@@ -5739,7 +5777,7 @@ class _WindowViewState extends State<WindowView> {
                                         ),
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 13,
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ),
@@ -11781,69 +11819,85 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         child: Row(
                           children: [
-                            Expanded(
-                              child: TextField(
-                                controller: widthCtrl,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  LengthLimitingTextInputFormatter(5),
-                                ],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    'العرض الإجمالي (mm)',
-                                    lang,
-                                  ),
-                                  prefixIcon: const Icon(
-                                    Icons.straighten_rounded,
-                                    size: 20,
-                                  ),
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: isDark
-                                      ? const Color(0xFF262638)
-                                      : Colors.white,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                              ),
+                            _PresetThumbnailWidget(
+                              preset: selectedType,
+                              width: 80,
+                              height: 80,
+                              isDark: isDark,
+                              accentColor: currentPreset.accentColor,
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 14),
                             Expanded(
-                              child: TextField(
-                                controller: heightCtrl,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  LengthLimitingTextInputFormatter(5),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: widthCtrl,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                        LengthLimitingTextInputFormatter(5),
+                                      ],
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: Localization.translate(
+                                          'العرض الإجمالي (mm)',
+                                          lang,
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.straighten_rounded,
+                                          size: 20,
+                                        ),
+                                        isDense: true,
+                                        filled: true,
+                                        fillColor: isDark
+                                            ? const Color(0xFF262638)
+                                            : Colors.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: heightCtrl,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                        LengthLimitingTextInputFormatter(5),
+                                      ],
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: Localization.translate(
+                                          'الارتفاع الإجمالي (mm)',
+                                          lang,
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.height_rounded,
+                                          size: 20,
+                                        ),
+                                        isDense: true,
+                                        filled: true,
+                                        fillColor: isDark
+                                            ? const Color(0xFF262638)
+                                            : Colors.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    'الارتفاع الإجمالي (mm)',
-                                    lang,
-                                  ),
-                                  prefixIcon: const Icon(
-                                    Icons.height_rounded,
-                                    size: 20,
-                                  ),
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: isDark
-                                      ? const Color(0xFF262638)
-                                      : Colors.white,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
                               ),
                             ),
                           ],
@@ -11892,20 +11946,12 @@ class _WindowViewState extends State<WindowView> {
                               ),
                               child: Row(
                                 children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: preset.accentColor.withValues(
-                                        alpha: 0.15,
-                                      ),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(
-                                      preset.icon,
-                                      color: preset.accentColor,
-                                      size: 26,
-                                    ),
+                                  _PresetThumbnailWidget(
+                                    preset: preset.type,
+                                    width: 52,
+                                    height: 52,
+                                    isDark: isDark,
+                                    accentColor: preset.accentColor,
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -15215,68 +15261,125 @@ class _WindowViewState extends State<WindowView> {
                       zone.content == ZoneContent.doubleSash ||
                       zone.content == ZoneContent.slidingSash) ...[
                     const SizedBox(width: 8),
-                    _ContentButton(
-                      label:
-                          ((zone.content == ZoneContent.slidingSash ||
-                                      widget.systemMode == 'sliding')
-                                  ? widget.model.slidingSashOverride
-                                  : widget.model.sashOverride) !=
-                              null
-                          ? '${((zone.content == ZoneContent.slidingSash || widget.systemMode == 'sliding') ? widget.model.slidingSashOverride : widget.model.sashOverride)!['name']}'
-                          : Localization.translate('اختر الظلفة (Sash)', lang),
-                      icon: Icons.format_paint_rounded,
-                      selected:
-                          ((zone.content == ZoneContent.slidingSash ||
-                                  widget.systemMode == 'sliding')
-                              ? widget.model.slidingSashOverride
-                              : widget.model.sashOverride) !=
-                          null,
-                      onPressed: () async {
-                        final useSlidingProfiles =
+                    Builder(
+                      builder: (context) {
+                        final isSliding =
                             zone.content == ZoneContent.slidingSash ||
                             widget.systemMode == 'sliding';
-                        final selected = await showDialog<Map<String, dynamic>>(
-                          context: context,
-                          builder: (context) => ProfileSelectorDialog(
-                            profileType: 'sash',
-                            seriesId: useSlidingProfiles
-                                ? (widget.model.effectiveSlidingSeries?.id ??
-                                      widget.model.activeSlidingSeries?.id)
-                                : widget.model.activeSeries?.id,
-                            materialType: useSlidingProfiles
-                                ? (widget.model.isSlidingPVC
-                                      ? 'PVC'
-                                      : 'Aluminium')
-                                : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
-                            accessoryDrawingMode: useSlidingProfiles
-                                ? AccessoryDrawingMode.sliding
-                                : AccessoryDrawingMode.opening,
-                            hasSimpleGlassForReducer:
-                                widget.model.hasSimpleGlassForReducer,
-                            hasDoubleGlassForRules:
-                                widget.model.hasDoubleGlassForRules,
-                          ),
-                        );
-                        if (selected != null) {
-                          final mutableSelected = Map<String, dynamic>.from(
-                            selected,
-                          );
-                          mutableSelected['calculated_price'] =
-                              await _sectionPriceForSelectedColor(
+                        final activeSashOverride = isSliding
+                            ? (zone.slidingSashOverride ??
+                                widget.model.slidingSashOverride)
+                            : (zone.sashOverride ??
+                                widget.model.sashOverride);
+                        return _ContentButton(
+                          label: activeSashOverride != null
+                              ? '${activeSashOverride['name']}'
+                              : Localization.translate('اختر الظلفة (Sash)', lang),
+                          icon: Icons.format_paint_rounded,
+                          selected: activeSashOverride != null,
+                          onPressed: () async {
+                            final useSlidingProfiles = isSliding;
+                            final selected =
+                                await showDialog<Map<String, dynamic>>(
+                              context: context,
+                              builder: (context) => ProfileSelectorDialog(
+                                profileType: 'sash',
+                                seriesId: useSlidingProfiles
+                                    ? (widget.model.effectiveSlidingSeries?.id ??
+                                          widget.model.activeSlidingSeries?.id)
+                                    : widget.model.activeSeries?.id,
+                                materialType: useSlidingProfiles
+                                    ? (widget.model.isSlidingPVC
+                                          ? 'PVC'
+                                          : 'Aluminium')
+                                    : (widget.model.isPVC
+                                          ? 'PVC'
+                                          : 'Aluminium'),
+                                accessoryDrawingMode: useSlidingProfiles
+                                    ? AccessoryDrawingMode.sliding
+                                    : AccessoryDrawingMode.opening,
+                                hasSimpleGlassForReducer:
+                                    widget.model.hasSimpleGlassForReducer,
+                                hasDoubleGlassForRules:
+                                    widget.model.hasDoubleGlassForRules,
+                              ),
+                            );
+                            if (selected != null) {
+                              final mutableSelected =
+                                  Map<String, dynamic>.from(selected);
+                              mutableSelected['calculated_price'] =
+                                  await _sectionPriceForSelectedColor(
                                 mutableSelected,
                               );
 
-                          setState(() {
-                            widget.model.applySashOverride(
-                              mutableSelected,
-                              sliding: useSlidingProfiles,
-                              manualSelection: true,
-                            );
-                            widget.model.refreshUI();
-                          });
-                        }
+                              setState(() {
+                                widget.model.applySashOverride(
+                                  mutableSelected,
+                                  sliding: useSlidingProfiles,
+                                  manualSelection: true,
+                                  targetZone: zone,
+                                );
+                                widget.model.refreshUI();
+                              });
+                            }
+                          },
+                        );
                       },
                     ),
+                    if (zone.content == ZoneContent.singleSash ||
+                        zone.content == ZoneContent.doubleSash) ...[
+                      Builder(
+                        builder: (context) {
+                          bool isCur105 = zone.isSash105;
+                          if (zone.sashOverride != null) {
+                            final code = zone.sashOverride!['code']?.toString().toLowerCase() ?? '';
+                            final name = zone.sashOverride!['name']?.toString().toLowerCase() ?? '';
+                            if (code.contains('104') || name.contains('104')) {
+                              isCur105 = false;
+                            } else if (code.contains('105') ||
+                                code.contains('porte') ||
+                                code.contains('ouvr') ||
+                                name.contains('105') ||
+                                name.contains('porte') ||
+                                name.contains('ouvr') ||
+                                name.contains('بورت')) {
+                              isCur105 = true;
+                            }
+                          }
+                          bool has104105Option = false;
+                          if (widget.model.activeSeries != null) {
+                            for (var sec in widget.model.activeSeries!.sections) {
+                              if (sec.type.toLowerCase() == 'sash' &&
+                                  (sec.code.contains('105') ||
+                                      sec.code.contains('porte') ||
+                                      sec.name.contains('105') ||
+                                      sec.name.contains('porte'))) {
+                                has104105Option = true;
+                                break;
+                              }
+                            }
+                          }
+                          if (!has104105Option) return const SizedBox.shrink();
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(width: 8),
+                              _ContentButton(
+                                label: isCur105
+                                    ? Localization.translate('الظلفة 105 (صندوق باب)', lang)
+                                    : Localization.translate('الظلفة 104 (نافذة)', lang),
+                                icon: Icons.door_front_door_outlined,
+                                selected: isCur105,
+                                onPressed: () async {
+                                  await widget.model.toggleSashType104105(targetZone: zone);
+                                  setState(() {});
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
                     if (zone.content == ZoneContent.slidingSash) ...[
                       const SizedBox(width: 8),
                       _ContentButton(
@@ -18384,8 +18487,11 @@ class _WindowViewState extends State<WindowView> {
               ),
             );
             for (final item in baseSashProfiles) {
+              final activeSlidingSash =
+                  widget.model.selectedZone?.slidingSashOverride ??
+                  widget.model.slidingSashOverride;
               final selected =
-                  widget.model.slidingSashOverride?['id']?.toString() ==
+                  activeSlidingSash?['id']?.toString() ==
                   item['id']?.toString();
               final code = '${item['code'] ?? ''}'.trim();
               final name = '${item['name'] ?? 'بدون اسم'}'.trim();
@@ -18407,6 +18513,7 @@ class _WindowViewState extends State<WindowView> {
                           chosen,
                           sliding: true,
                           manualSelection: true,
+                          targetZone: widget.model.selectedZone,
                         );
                         widget.model.refreshUI();
                       });
@@ -18819,9 +18926,11 @@ class _WindowViewState extends State<WindowView> {
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
             final label = '$codeStr$nameStr';
+            final currentSashOverride =
+                zone.sashOverride ?? widget.model.sashOverride;
             final isSelected =
-                widget.model.sashOverride != null &&
-                widget.model.sashOverride!['id'] == item['id'];
+                currentSashOverride != null &&
+                currentSashOverride['id'] == item['id'];
 
             children.add(
               Padding(
@@ -18840,6 +18949,7 @@ class _WindowViewState extends State<WindowView> {
                         mutableSelected,
                         sliding: false,
                         manualSelection: true,
+                        targetZone: zone,
                       );
                       widget.model.refreshUI();
                     });
@@ -21736,4 +21846,490 @@ bool isDoubleGlassValid(
     return false;
   }
   return true;
+}
+
+class _PresetThumbnailWidget extends StatelessWidget {
+  final WindowPresetType preset;
+  final double width;
+  final double height;
+  final bool isDark;
+  final Color? accentColor;
+
+  const _PresetThumbnailWidget({
+    required this.preset,
+    this.width = 64,
+    this.height = 64,
+    required this.isDark,
+    this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF161622) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: (accentColor ?? Colors.blue).withValues(alpha: 0.35),
+          width: 1.2,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: CustomPaint(
+        size: Size(width, height),
+        painter: _PresetThumbnailPainter(
+          preset: preset,
+          isDark: isDark,
+          accentColor: accentColor ?? Colors.blue,
+        ),
+      ),
+    );
+  }
+}
+
+class _PresetThumbnailPainter extends CustomPainter {
+  final WindowPresetType preset;
+  final bool isDark;
+  final Color accentColor;
+
+  _PresetThumbnailPainter({
+    required this.preset,
+    required this.isDark,
+    required this.accentColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final frameBorderColor =
+        isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155);
+    final frameFillColor =
+        isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final glassFillColor =
+        isDark ? const Color(0xFF0F2B48) : const Color(0xFFE0F2FE);
+    final glassSheenColor =
+        Colors.white.withValues(alpha: isDark ? 0.15 : 0.45);
+    final sashBorderColor =
+        isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+    final sashFillColor =
+        isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+    final openLineColor = accentColor.withValues(alpha: 0.85);
+    final shutterBoxColor =
+        isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1);
+    final shutterBladeColor =
+        isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
+    final handleColor =
+        isDark ? Colors.amber.shade300 : const Color(0xFFD97706);
+
+    final framePaint = Paint()
+      ..color = frameFillColor
+      ..style = PaintingStyle.fill;
+
+    final frameBorderPaint = Paint()
+      ..color = frameBorderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+
+    final sashBorderPaint = Paint()
+      ..color = sashBorderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+
+    final sashFillPaint = Paint()
+      ..color = sashFillColor
+      ..style = PaintingStyle.fill;
+
+    final glassPaint = Paint()
+      ..color = glassFillColor
+      ..style = PaintingStyle.fill;
+
+    final openLinePaint = Paint()
+      ..color = openLineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    void drawGlass(Rect glassRect) {
+      canvas.drawRect(glassRect, glassPaint);
+      final sheenPaint = Paint()
+        ..color = glassSheenColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9;
+      final p1 = Offset(glassRect.left + glassRect.width * 0.15,
+          glassRect.bottom - glassRect.height * 0.15);
+      final p2 = Offset(glassRect.left + glassRect.width * 0.45,
+          glassRect.top + glassRect.height * 0.15);
+      canvas.drawLine(p1, p2, sheenPaint);
+      final p3 = Offset(glassRect.left + glassRect.width * 0.5,
+          glassRect.bottom - glassRect.height * 0.15);
+      final p4 = Offset(glassRect.left + glassRect.width * 0.8,
+          glassRect.top + glassRect.height * 0.15);
+      canvas.drawLine(p3, p4, sheenPaint);
+    }
+
+    void drawOpenTriangles(Rect sashRect, {required bool hingesLeft}) {
+      final path = Path();
+      if (hingesLeft) {
+        path.moveTo(sashRect.left, sashRect.top);
+        path.lineTo(sashRect.right, sashRect.center.dy);
+        path.lineTo(sashRect.left, sashRect.bottom);
+      } else {
+        path.moveTo(sashRect.right, sashRect.top);
+        path.lineTo(sashRect.left, sashRect.center.dy);
+        path.lineTo(sashRect.right, sashRect.bottom);
+      }
+      canvas.drawPath(path, openLinePaint);
+    }
+
+    void drawTopOpenTriangle(Rect sashRect) {
+      final path = Path()
+        ..moveTo(sashRect.left, sashRect.bottom)
+        ..lineTo(sashRect.center.dx, sashRect.top)
+        ..lineTo(sashRect.right, sashRect.bottom);
+      canvas.drawPath(path, openLinePaint);
+    }
+
+    void drawSlidingArrows(Rect rect, {required bool isLeftSash}) {
+      final arrowPaint = Paint()
+        ..color = accentColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3
+        ..strokeCap = StrokeCap.round;
+      final cy = rect.center.dy;
+      final arrowW = rect.width * 0.42;
+      if (isLeftSash) {
+        final startX = rect.center.dx - arrowW / 2;
+        final endX = rect.center.dx + arrowW / 2;
+        canvas.drawLine(Offset(startX, cy), Offset(endX, cy), arrowPaint);
+        canvas.drawLine(
+            Offset(endX - 2.5, cy - 2.5), Offset(endX, cy), arrowPaint);
+        canvas.drawLine(
+            Offset(endX - 2.5, cy + 2.5), Offset(endX, cy), arrowPaint);
+      } else {
+        final startX = rect.center.dx + arrowW / 2;
+        final endX = rect.center.dx - arrowW / 2;
+        canvas.drawLine(Offset(startX, cy), Offset(endX, cy), arrowPaint);
+        canvas.drawLine(
+            Offset(endX + 2.5, cy - 2.5), Offset(endX, cy), arrowPaint);
+        canvas.drawLine(
+            Offset(endX + 2.5, cy + 2.5), Offset(endX, cy), arrowPaint);
+      }
+    }
+
+    void drawShutterBox(Rect boxRect) {
+      final boxPaint = Paint()
+        ..color = shutterBoxColor
+        ..style = PaintingStyle.fill;
+      final boxBorder = Paint()
+        ..color = frameBorderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(boxRect, const Radius.circular(2)), boxPaint);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(boxRect, const Radius.circular(2)),
+          boxBorder);
+
+      final bladePaint = Paint()
+        ..color = shutterBladeColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8;
+      const count = 3;
+      final step = boxRect.height / (count + 1);
+      for (var i = 1; i <= count; i++) {
+        final y = boxRect.top + i * step;
+        canvas.drawLine(Offset(boxRect.left + 2, y),
+            Offset(boxRect.right - 2, y), bladePaint);
+      }
+    }
+
+    switch (preset) {
+      case WindowPresetType.shutterOnly:
+        final boxH = size.height * 0.28;
+        final boxRect = Rect.fromLTWH(2, 2, size.width - 4, boxH);
+        drawShutterBox(boxRect);
+        final railW = 4.0;
+        final railY = boxRect.bottom;
+        final railH = size.height - railY - 2;
+        final leftRail = Rect.fromLTWH(2, railY, railW, railH);
+        final rightRail =
+            Rect.fromLTWH(size.width - 2 - railW, railY, railW, railH);
+        canvas.drawRect(leftRail, framePaint);
+        canvas.drawRect(leftRail, frameBorderPaint);
+        canvas.drawRect(rightRail, framePaint);
+        canvas.drawRect(rightRail, frameBorderPaint);
+        final innerW = size.width - 4 - 2 * railW;
+        const bladeCount = 7;
+        final bladeStep = railH / (bladeCount + 1);
+        final bladePaint = Paint()
+          ..color = shutterBladeColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9;
+        for (var i = 1; i <= bladeCount; i++) {
+          final y = railY + i * bladeStep;
+          canvas.drawLine(
+              Offset(2 + railW, y), Offset(size.width - 2 - railW, y), bladePaint);
+        }
+        canvas.drawRect(
+          Rect.fromLTWH(2 + railW, railY + railH - 3.5, innerW, 3.5),
+          Paint()..color = frameBorderColor..style = PaintingStyle.fill,
+        );
+        break;
+
+      case WindowPresetType.singleDoor:
+        final doorW = size.width * 0.65;
+        final doorX = (size.width - doorW) / 2;
+        final doorRect = Rect.fromLTWH(doorX, 2, doorW, size.height - 4);
+        canvas.drawRect(doorRect, framePaint);
+        canvas.drawRect(doorRect, frameBorderPaint);
+        canvas.drawLine(
+          Offset(doorX - 2, doorRect.bottom),
+          Offset(doorX + doorW + 2, doorRect.bottom),
+          Paint()
+            ..color = frameBorderColor
+            ..strokeWidth = 2.0,
+        );
+        const sashPad = 3.2;
+        final sashRect = Rect.fromLTRB(
+          doorRect.left + sashPad,
+          doorRect.top + sashPad,
+          doorRect.right - sashPad,
+          doorRect.bottom - 1.5,
+        );
+        canvas.drawRect(sashRect, sashFillPaint);
+        canvas.drawRect(sashRect, sashBorderPaint);
+        final glassRect = Rect.fromLTRB(
+          sashRect.left + 3.0,
+          sashRect.top + 3.0,
+          sashRect.right - 3.0,
+          sashRect.top + sashRect.height * 0.62,
+        );
+        drawGlass(glassRect);
+        canvas.drawRect(glassRect, sashBorderPaint);
+        final panelRect = Rect.fromLTRB(
+          sashRect.left + 3.0,
+          glassRect.bottom + 2.5,
+          sashRect.right - 3.0,
+          sashRect.bottom - 3.5,
+        );
+        canvas.drawRect(panelRect, framePaint);
+        canvas.drawRect(panelRect, sashBorderPaint);
+        final handleX = sashRect.right - 4.5;
+        final handleY = sashRect.top + sashRect.height * 0.52;
+        canvas.drawCircle(
+            Offset(handleX, handleY), 1.8, Paint()..color = handleColor);
+        canvas.drawLine(Offset(handleX, handleY), Offset(handleX - 4, handleY),
+            Paint()..color = handleColor..strokeWidth = 1.3);
+        canvas.drawCircle(
+            Offset(handleX, handleY + 3.5), 0.9, Paint()..color = handleColor);
+        drawOpenTriangles(sashRect, hingesLeft: true);
+        break;
+
+      case WindowPresetType.doubleDoor:
+        final doorW = size.width * 0.88;
+        final doorX = (size.width - doorW) / 2;
+        final doorRect = Rect.fromLTWH(doorX, 2, doorW, size.height - 4);
+        canvas.drawRect(doorRect, framePaint);
+        canvas.drawRect(doorRect, frameBorderPaint);
+        canvas.drawLine(
+          Offset(doorX - 2, doorRect.bottom),
+          Offset(doorX + doorW + 2, doorRect.bottom),
+          Paint()
+            ..color = frameBorderColor
+            ..strokeWidth = 2.0,
+        );
+        const sashPad = 3.0;
+        final innerW = doorRect.width - 2 * sashPad;
+        final leafW = innerW / 2;
+        final leftSash = Rect.fromLTWH(doorRect.left + sashPad,
+            doorRect.top + sashPad, leafW - 0.5, doorRect.height - sashPad - 1.5);
+        canvas.drawRect(leftSash, sashFillPaint);
+        canvas.drawRect(leftSash, sashBorderPaint);
+        final leftGlass = Rect.fromLTRB(leftSash.left + 2.5, leftSash.top + 2.5,
+            leftSash.right - 2.5, leftSash.top + leftSash.height * 0.62);
+        drawGlass(leftGlass);
+        canvas.drawRect(leftGlass, sashBorderPaint);
+        final leftPanel = Rect.fromLTRB(leftSash.left + 2.5,
+            leftGlass.bottom + 2.0, leftSash.right - 2.5, leftSash.bottom - 3.5);
+        canvas.drawRect(leftPanel, framePaint);
+        canvas.drawRect(leftPanel, sashBorderPaint);
+        drawOpenTriangles(leftSash, hingesLeft: true);
+        final rightSash = Rect.fromLTWH(
+            doorRect.left + sashPad + leafW + 0.5,
+            doorRect.top + sashPad,
+            leafW - 0.5,
+            doorRect.height - sashPad - 1.5);
+        canvas.drawRect(rightSash, sashFillPaint);
+        canvas.drawRect(rightSash, sashBorderPaint);
+        final rightGlass = Rect.fromLTRB(rightSash.left + 2.5,
+            rightSash.top + 2.5, rightSash.right - 2.5, rightSash.top + rightSash.height * 0.62);
+        drawGlass(rightGlass);
+        canvas.drawRect(rightGlass, sashBorderPaint);
+        final rightPanel = Rect.fromLTRB(rightSash.left + 2.5,
+            rightGlass.bottom + 2.0, rightSash.right - 2.5, rightSash.bottom - 3.5);
+        canvas.drawRect(rightPanel, framePaint);
+        canvas.drawRect(rightPanel, sashBorderPaint);
+        drawOpenTriangles(rightSash, hingesLeft: false);
+        final midY = leftSash.top + leftSash.height * 0.52;
+        canvas.drawCircle(
+            Offset(leftSash.right - 2.0, midY), 1.5, Paint()..color = handleColor);
+        canvas.drawCircle(Offset(rightSash.left + 2.0, midY), 1.5,
+            Paint()..color = handleColor);
+        break;
+
+      case WindowPresetType.topOpeningSmallWindow:
+        final winW = size.width - 6;
+        final winH = size.height * 0.58;
+        final winRect =
+            Rect.fromLTWH(3, (size.height - winH) / 2, winW, winH);
+        canvas.drawRect(winRect, framePaint);
+        canvas.drawRect(winRect, frameBorderPaint);
+        const sashPad = 3.2;
+        final sashRect = winRect.deflate(sashPad);
+        canvas.drawRect(sashRect, sashFillPaint);
+        canvas.drawRect(sashRect, sashBorderPaint);
+        final glassRect = sashRect.deflate(2.8);
+        drawGlass(glassRect);
+        canvas.drawRect(glassRect, sashBorderPaint);
+        drawTopOpenTriangle(sashRect);
+        canvas.drawRect(
+          Rect.fromCenter(
+              center: Offset(sashRect.center.dx, sashRect.top + 2.5),
+              width: 5,
+              height: 2),
+          Paint()..color = handleColor,
+        );
+        break;
+
+      case WindowPresetType.windowNoShutter:
+        final winRect = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
+        canvas.drawRect(winRect, framePaint);
+        canvas.drawRect(winRect, frameBorderPaint);
+        const sashPad = 3.2;
+        final innerRect = winRect.deflate(sashPad);
+        final leafW = innerRect.width / 2;
+        final leftSash = Rect.fromLTWH(
+            innerRect.left, innerRect.top, leafW - 0.5, innerRect.height);
+        canvas.drawRect(leftSash, sashFillPaint);
+        canvas.drawRect(leftSash, sashBorderPaint);
+        final leftGlass = leftSash.deflate(2.8);
+        drawGlass(leftGlass);
+        canvas.drawRect(leftGlass, sashBorderPaint);
+        drawOpenTriangles(leftSash, hingesLeft: true);
+        final rightSash = Rect.fromLTWH(
+            innerRect.left + leafW + 0.5, innerRect.top, leafW - 0.5, innerRect.height);
+        canvas.drawRect(rightSash, sashFillPaint);
+        canvas.drawRect(rightSash, sashBorderPaint);
+        final rightGlass = rightSash.deflate(2.8);
+        drawGlass(rightGlass);
+        canvas.drawRect(rightGlass, sashBorderPaint);
+        drawOpenTriangles(rightSash, hingesLeft: false);
+        canvas.drawCircle(
+            Offset(leftSash.right, innerRect.center.dy), 1.8,
+            Paint()..color = handleColor);
+        break;
+
+      case WindowPresetType.windowWithShutter:
+        final boxH = size.height * 0.28;
+        final boxRect = Rect.fromLTWH(2, 2, size.width - 4, boxH);
+        drawShutterBox(boxRect);
+        final winRect = Rect.fromLTWH(
+            2, boxRect.bottom, size.width - 4, size.height - boxRect.bottom - 2);
+        canvas.drawRect(winRect, framePaint);
+        canvas.drawRect(winRect, frameBorderPaint);
+        const sashPad = 2.8;
+        final innerRect = winRect.deflate(sashPad);
+        final leafW = innerRect.width / 2;
+        final leftSash = Rect.fromLTWH(
+            innerRect.left, innerRect.top, leafW - 0.5, innerRect.height);
+        canvas.drawRect(leftSash, sashFillPaint);
+        canvas.drawRect(leftSash, sashBorderPaint);
+        final leftGlass = leftSash.deflate(2.4);
+        drawGlass(leftGlass);
+        canvas.drawRect(leftGlass, sashBorderPaint);
+        drawOpenTriangles(leftSash, hingesLeft: true);
+        final rightSash = Rect.fromLTWH(
+            innerRect.left + leafW + 0.5, innerRect.top, leafW - 0.5, innerRect.height);
+        canvas.drawRect(rightSash, sashFillPaint);
+        canvas.drawRect(rightSash, sashBorderPaint);
+        final rightGlass = rightSash.deflate(2.4);
+        drawGlass(rightGlass);
+        canvas.drawRect(rightGlass, sashBorderPaint);
+        drawOpenTriangles(rightSash, hingesLeft: false);
+        break;
+
+      case WindowPresetType.slidingNoShutter:
+        final winRect = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
+        canvas.drawRect(winRect, framePaint);
+        canvas.drawRect(winRect, frameBorderPaint);
+        const sashPad = 3.2;
+        final innerRect = winRect.deflate(sashPad);
+        const overlap = 4.0;
+        final sashW = (innerRect.width + overlap) / 2;
+        final leftSash =
+            Rect.fromLTWH(innerRect.left, innerRect.top, sashW, innerRect.height);
+        canvas.drawRect(leftSash, sashFillPaint);
+        canvas.drawRect(leftSash, sashBorderPaint);
+        final leftGlass = leftSash.deflate(2.8);
+        drawGlass(leftGlass);
+        canvas.drawRect(leftGlass, sashBorderPaint);
+        drawSlidingArrows(leftSash, isLeftSash: true);
+        final rightSash = Rect.fromLTWH(
+            innerRect.right - sashW, innerRect.top, sashW, innerRect.height);
+        canvas.drawRect(rightSash, sashFillPaint);
+        canvas.drawRect(rightSash, sashBorderPaint);
+        final rightGlass = rightSash.deflate(2.8);
+        drawGlass(rightGlass);
+        canvas.drawRect(rightGlass, sashBorderPaint);
+        drawSlidingArrows(rightSash, isLeftSash: false);
+        canvas.drawLine(
+            Offset(leftSash.right, innerRect.top),
+            Offset(leftSash.right, innerRect.bottom),
+            sashBorderPaint);
+        break;
+
+      case WindowPresetType.slidingWithShutter:
+        final boxH = size.height * 0.28;
+        final boxRect = Rect.fromLTWH(2, 2, size.width - 4, boxH);
+        drawShutterBox(boxRect);
+        final winRect = Rect.fromLTWH(
+            2, boxRect.bottom, size.width - 4, size.height - boxRect.bottom - 2);
+        canvas.drawRect(winRect, framePaint);
+        canvas.drawRect(winRect, frameBorderPaint);
+        const sashPad = 2.8;
+        final innerRect = winRect.deflate(sashPad);
+        const overlap = 4.0;
+        final sashW = (innerRect.width + overlap) / 2;
+        final leftSash =
+            Rect.fromLTWH(innerRect.left, innerRect.top, sashW, innerRect.height);
+        canvas.drawRect(leftSash, sashFillPaint);
+        canvas.drawRect(leftSash, sashBorderPaint);
+        final leftGlass = leftSash.deflate(2.4);
+        drawGlass(leftGlass);
+        canvas.drawRect(leftGlass, sashBorderPaint);
+        drawSlidingArrows(leftSash, isLeftSash: true);
+        final rightSash = Rect.fromLTWH(
+            innerRect.right - sashW, innerRect.top, sashW, innerRect.height);
+        canvas.drawRect(rightSash, sashFillPaint);
+        canvas.drawRect(rightSash, sashBorderPaint);
+        final rightGlass = rightSash.deflate(2.4);
+        drawGlass(rightGlass);
+        canvas.drawRect(rightGlass, sashBorderPaint);
+        drawSlidingArrows(rightSash, isLeftSash: false);
+        canvas.drawLine(
+            Offset(leftSash.right, innerRect.top),
+            Offset(leftSash.right, innerRect.bottom),
+            sashBorderPaint);
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PresetThumbnailPainter oldDelegate) {
+    return oldDelegate.preset != preset ||
+        oldDelegate.isDark != isDark ||
+        oldDelegate.accentColor != accentColor;
+  }
 }

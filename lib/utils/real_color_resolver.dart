@@ -96,7 +96,11 @@ DecorationImage? realColorTextureImage(Map<String, dynamic>? colorData) {
     assetPath = 'assets/images/wood_texture_d0.png';
   } else if (name.contains('antique') ||
       name.contains('انتيك') ||
-      name.contains('onteak')) {
+      name.contains('onteak') ||
+      name.contains('faux bois marron') ||
+      name.contains('marron faux bois') ||
+      (name.contains('marron') && name.contains('bois')) ||
+      (name.contains('بني') && name.contains('خشب'))) {
     assetPath = 'assets/images/wood_texture_antique.png';
   } else if (name.contains('grey') ||
       name.contains('gray') ||
@@ -200,6 +204,20 @@ List<Color>? _namedGradient(Object? rawName) {
       name.contains('شمباني') ||
       name.contains('شومباني')) {
     return const [Color(0xFFFFF4DF), Color(0xFFF7E7CE), Color(0xFFC9AE86)];
+  }
+  if (name.contains('faux bois marron') ||
+      name.contains('marron faux bois') ||
+      (name.contains('marron') &&
+          (name.contains('bois') ||
+              name.contains('faux') ||
+              name.contains('خشب'))) ||
+      (name.contains('بني') &&
+          (name.contains('خشب') || name.contains('خشبي')))) {
+    return const [
+      Color(0xFFA86F44),
+      Color(0xFF8D5B4C),
+      Color(0xFF6E4032),
+    ];
   }
   if (isWoodColorName(name)) {
     return [

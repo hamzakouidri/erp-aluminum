@@ -4347,6 +4347,9 @@ class ComponentCalculator {
       double plintheCutWidth(double sashOuterWidth) =>
           math.max(0.0, sashOuterWidth - (plintheSashVisibleWidth * 2.0));
 
+      final Map<String, List<double>> sashPiecesByProfile = {};
+      final Map<String, Map<String, dynamic>> sashOverrideByProfile = {};
+
       for (var zone in window.zones) {
         final double overlap = seriesSashOverlap;
         double clearW = zone.boundary.width;
@@ -4362,19 +4365,33 @@ class ComponentCalculator {
           clearH = fullOpening['height']!;
         }
 
+        final zoneSashOverride = zone.sashOverride ?? openingSashOverride;
+        final profileKey = zoneSashOverride?['id']?.toString() ??
+            zoneSashOverride?['code']?.toString() ??
+            (zone.isSash105 ? '105' : '104');
+        if (zoneSashOverride != null) {
+          sashOverrideByProfile[profileKey] = zoneSashOverride;
+        }
+        final zoneSashPieces =
+            sashPiecesByProfile.putIfAbsent(profileKey, () => <double>[]);
+
         if (zone.content == ZoneContent.singleSash) {
           double sashW = clearW + overlap * 2;
           double sashH = clearH + overlap * 2;
           if (zone.hasSashPlintheBottom) {
-            sashPieces.addAll([sashW / 1000.0, sashH / 1000.0, sashH / 1000.0]);
+            final cuts = [sashW / 1000.0, sashH / 1000.0, sashH / 1000.0];
+            sashPieces.addAll(cuts);
+            zoneSashPieces.addAll(cuts);
             sashPlinthePieces.add(plintheCutWidth(sashW) / 1000.0);
           } else {
-            sashPieces.addAll([
+            final cuts = [
               sashW / 1000.0,
               sashW / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-            ]);
+            ];
+            sashPieces.addAll(cuts);
+            zoneSashPieces.addAll(cuts);
           }
         } else if (zone.content == ZoneContent.doubleSash) {
           // The overlap belongs to the complete clear opening first.  Only
@@ -4386,31 +4403,31 @@ class ComponentCalculator {
           double sashWRight = totalSashWidth * (1.0 - zone.doubleSashRatio);
           double sashH = clearH + overlap * 2;
           if (zone.hasSashPlintheBottom) {
-            sashPieces.addAll([
+            final cuts = [
               sashWLeft / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-            ]);
-            sashPlinthePieces.add(plintheCutWidth(sashWLeft) / 1000.0);
-            sashPieces.addAll([
               sashWRight / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-            ]);
+            ];
+            sashPieces.addAll(cuts);
+            zoneSashPieces.addAll(cuts);
+            sashPlinthePieces.add(plintheCutWidth(sashWLeft) / 1000.0);
             sashPlinthePieces.add(plintheCutWidth(sashWRight) / 1000.0);
           } else {
-            sashPieces.addAll([
+            final cuts = [
               sashWLeft / 1000.0,
               sashWLeft / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-            ]);
-            sashPieces.addAll([
               sashWRight / 1000.0,
               sashWRight / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-            ]);
+            ];
+            sashPieces.addAll(cuts);
+            zoneSashPieces.addAll(cuts);
           }
         } else if (zone.content == ZoneContent.slidingSash) {
           final slidingSashOverride = window.slidingSashOverride;
@@ -4857,7 +4874,40 @@ class ComponentCalculator {
         }
       }
 
-      if (sashPieces.isNotEmpty) {
+      if (sashPiecesByProfile.isNotEmpty) {
+        if (sashPiecesByProfile.length == 1) {
+          final entry = sashPiecesByProfile.entries.first;
+          items.add(
+            createProfile(
+              'الظلفة (Sash)',
+              colorName,
+              pieces: entry.value,
+              unit: 'قطاع',
+              overrideMap:
+                  sashOverrideByProfile[entry.key] ?? openingSashOverride,
+              preferOverrideMap: sashOverrideByProfile[entry.key] != null,
+            ),
+          );
+        } else {
+          for (final entry in sashPiecesByProfile.entries) {
+            final profileMap = sashOverrideByProfile[entry.key];
+            final profileName = profileMap?['name']?.toString() ??
+                profileMap?['code']?.toString() ??
+                entry.key;
+            items.add(
+              createProfile(
+                'الظلفة (Sash) - $profileName',
+                colorName,
+                pieces: entry.value,
+                unit: 'قطاع',
+                overrideMap: profileMap ?? openingSashOverride,
+                preferOverrideMap: true,
+                roleKey: 'sash',
+              ),
+            );
+          }
+        }
+      } else if (sashPieces.isNotEmpty) {
         items.add(
           createProfile(
             'الظلفة (Sash)',
@@ -7788,10 +7838,14 @@ class ComponentCalculator {
 
       // baseGw and baseGh are now calculated below after retrieving glassDeduction for casement windows
       double glassDeduction = 0.0;
-      if (window.sashOverride != null) {
+      final activeZoneSash = (zone.content == ZoneContent.slidingSash ||
+              window.usesSlidingPrimaryProfiles)
+          ? (zone.slidingSashOverride ?? window.slidingSashOverride)
+          : (zone.sashOverride ?? window.sashOverride);
+      if (activeZoneSash != null) {
         glassDeduction =
-            ((window.sashOverride!['glass_deduction'] ??
-                        window.sashOverride!['glassDeduction'] ??
+            ((activeZoneSash['glass_deduction'] ??
+                        activeZoneSash['glassDeduction'] ??
                         0.0)
                     as num)
                 .toDouble();
@@ -7802,12 +7856,18 @@ class ComponentCalculator {
         }
       }
 
+      double zoneSw = zone.sashThickness ??
+          (activeZoneSash != null
+              ? ((activeZoneSash['visible_width'] as num?)?.toDouble() ?? sw)
+              : sw);
+      if (zoneSw <= 0) zoneSw = sw;
+
       // The glass starts from the exact sash-cut length. It loses the two
       // sash faces and the 10 mm safety clearance; PVC additionally loses
       // 5 mm once welded. With a 60 mm sash this is 135 mm, so a 570 mm
       // sash cut produces a 435 mm glass cut.
       final double sashGlassDeduction =
-          (sw * 2.0) + videVerre + (window.isPVC ? 5.0 : 0.0);
+          (zoneSw * 2.0) + videVerre + (window.isPVC ? 5.0 : 0.0);
 
       if (zone.content == ZoneContent.fixedGlass ||
           zone.content == ZoneContent.empty) {
@@ -7826,7 +7886,7 @@ class ComponentCalculator {
               : (window.getConfiguredSectionForRole('plant')?.thickness ??
                     window.getConfiguredSectionForRole('plant')?.visibleWidth ??
                     0.0);
-          baseGh += sw;
+          baseGh += zoneSw;
           baseGh -= plintheW;
         }
 
@@ -7854,7 +7914,7 @@ class ComponentCalculator {
           double plintheW = window.plintheHeight > 0
               ? window.plintheHeight
               : 40.0;
-          baseGh += sw;
+          baseGh += zoneSw;
           baseGh -= plintheW;
         }
         sashesCount = 2;

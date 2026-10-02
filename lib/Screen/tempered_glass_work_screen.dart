@@ -224,6 +224,16 @@ class TemperedGlassWorkScreen extends StatefulWidget {
       }
     }
 
+    final sablageRegions = <_SablageRegion>[];
+    final regionsRaw = payload['sablageRegions'] as List?;
+    if (regionsRaw != null) {
+      for (final r in regionsRaw) {
+        if (r is Map) {
+          sablageRegions.add(_SablageRegion.fromMap(r));
+        }
+      }
+    }
+
     final panels = <_GlassPanel>[];
     final rawPanels = (payload['drawingPanels'] ?? payload['items']) as List?;
     if (rawPanels != null && rawPanels.isNotEmpty) {
@@ -303,6 +313,7 @@ class TemperedGlassWorkScreen extends StatefulWidget {
       panels: panels,
       draftPanel: null,
       sablageBands: sablageBands,
+      sablageRegions: sablageRegions,
       draftSablageOffsetMm: null,
       sablageBandWidthMm: 40.0,
       overallHeightMm: overallHeightMm,
@@ -5073,7 +5084,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             children: [
               const Icon(Icons.clear, size: 19, color: Colors.grey),
               const SizedBox(width: 10),
-              Text(_tr('بدون سابلاج', 'Sans sablage', 'No frosting')),
+              Expanded(
+                child: Text(_tr('بدون سابلاج', 'Sans sablage', 'No frosting')),
+              ),
             ],
           ),
         ),
@@ -5084,8 +5097,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             children: [
               const Icon(Icons.format_color_fill, size: 19, color: Colors.cyan),
               const SizedBox(width: 10),
-              Text(
-                _tr('تعتيم كامل (Full)', 'Sablage complet', 'Full frosting'),
+              Expanded(
+                child: Text(
+                  _tr('تعتيم كامل (Full)', 'Sablage complet', 'Full frosting'),
+                ),
               ),
             ],
           ),
@@ -5101,11 +5116,13 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 color: Colors.deepOrange,
               ),
               const SizedBox(width: 10),
-              Text(
-                _tr(
-                  'تعتيم ديكور (Decorative)',
-                  'Sablage décoratif',
-                  'Decorative frosting',
+              Expanded(
+                child: Text(
+                  _tr(
+                    'تعتيم ديكور (Decorative)',
+                    'Sablage décoratif',
+                    'Decorative frosting',
+                  ),
                 ),
               ),
             ],
@@ -5119,15 +5136,17 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             children: [
               Icon(Icons.add_box_outlined, size: 19, color: Colors.teal.shade700),
               const SizedBox(width: 10),
-              Text(
-                _tr(
-                  'إضافة منطقة صابلاج...',
-                  'Ajouter une zone...',
-                  'Add frosting zone...',
-                ),
-                style: TextStyle(
-                  color: Colors.teal.shade800,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  _tr(
+                    'إضافة منطقة صابلاج...',
+                    'Ajouter une zone...',
+                    'Add frosting zone...',
+                  ),
+                  style: TextStyle(
+                    color: Colors.teal.shade800,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -5141,13 +5160,15 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               children: [
                 const Icon(Icons.clear_all, size: 19, color: Colors.red),
                 const SizedBox(width: 10),
-                Text(
-                  _tr(
-                    'مسح جميع مناطق الصابلاج',
-                    'Effacer tout le sablage',
-                    'Clear all frosting',
+                Expanded(
+                  child: Text(
+                    _tr(
+                      'مسح جميع مناطق الصابلاج',
+                      'Effacer tout le sablage',
+                      'Clear all frosting',
+                    ),
+                    style: const TextStyle(color: Colors.red),
                   ),
-                  style: const TextStyle(color: Colors.red),
                 ),
               ],
             ),
@@ -5584,6 +5605,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   Future<void> _addSablageRegion() async {
     var type = _SablageRegionType.full;
+    var fromBottom = true;
+    String? errorMessage;
     final start = TextEditingController(text: '0');
     final end = TextEditingController(
       text: _overallHeightMm.toStringAsFixed(0),
@@ -5597,151 +5620,304 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     final region = await showDialog<_SablageRegion>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(
-            _tr(
-              'إضافة منطقة سابلاج',
-              'Ajouter une zone de sablage',
-              'Add frosting zone',
+        builder: (context, setDialogState) {
+          final curFrom = _parseMillimeters(start.text);
+          final curTo = _parseMillimeters(end.text);
+          final heightDiff = (curFrom != null && curTo != null) ? (curTo - curFrom) : null;
+
+          return AlertDialog(
+            title: Text(
+              _tr(
+                'إضافة منطقة سابلاج',
+                'Ajouter une zone de sablage',
+                'Add frosting zone',
+              ),
             ),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<_SablageRegionType>(
-                  value: type,
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      'نمط المنطقة',
-                      'Motif de la zone',
-                      'Zone pattern',
-                    ),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: _SablageRegionType.clear,
-                      child: Text(_tr('شفاف', 'Transparent', 'Clear')),
-                    ),
-                    DropdownMenuItem(
-                      value: _SablageRegionType.full,
-                      child: Text(
-                        _tr('سابلاج كامل', 'Sablage complet', 'Full frosting'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<_SablageRegionType>(
+                    value: type,
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'نمط المنطقة',
+                        'Motif de la zone',
+                        'Zone pattern',
                       ),
                     ),
-                    DropdownMenuItem(
-                      value: _SablageRegionType.bands,
-                      child: Text(
-                        _tr(
-                          'سابلاج بخطوط',
-                          'Sablage par bandes',
-                          'Striped frosting',
+                    items: [
+                      DropdownMenuItem(
+                        value: _SablageRegionType.clear,
+                        child: Text(_tr('شفاف', 'Transparent', 'Clear')),
+                      ),
+                      DropdownMenuItem(
+                        value: _SablageRegionType.full,
+                        child: Text(
+                          _tr('سابلاج كامل', 'Sablage complet', 'Full frosting'),
                         ),
+                      ),
+                      DropdownMenuItem(
+                        value: _SablageRegionType.bands,
+                        child: Text(
+                          _tr(
+                            'سابلاج بخطوط',
+                            'Sablage par bandes',
+                            'Striped frosting',
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) => setDialogState(() {
+                      type = value ?? type;
+                      errorMessage = null;
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<bool>(
+                    value: fromBottom,
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'المرجع للقياس',
+                        'Référence de mesure',
+                        'Measurement reference',
+                      ),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: true,
+                        child: Text(
+                          _tr('من الأسفل (الأرضية)', 'Depuis le bas', 'From bottom'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: false,
+                        child: Text(
+                          _tr('من الأعلى', 'Depuis le haut', 'From top'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) => setDialogState(() {
+                      fromBottom = value ?? true;
+                      errorMessage = null;
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: start,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: fromBottom
+                          ? _tr(
+                              'البداية من الأسفل',
+                              'Début depuis le bas',
+                              'Start from bottom',
+                            )
+                          : _tr(
+                              'البداية من الأعلى',
+                              'Début depuis le haut',
+                              'Start from top',
+                            ),
+                      suffixText: 'mm',
+                    ),
+                    onChanged: (_) => setDialogState(() => errorMessage = null),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: end,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: fromBottom
+                          ? _tr(
+                              'النهاية من الأسفل',
+                              'Fin depuis le bas',
+                              'End from bottom',
+                            )
+                          : _tr(
+                              'النهاية من الأعلى',
+                              'Fin depuis le haut',
+                              'End from top',
+                            ),
+                      suffixText: 'mm',
+                    ),
+                    onChanged: (_) => setDialogState(() => errorMessage = null),
+                  ),
+                  if (heightDiff != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      heightDiff > 0
+                          ? _tr(
+                              'ارتفاع منطقة السابلاج: ${heightDiff.toStringAsFixed(0)} مم',
+                              'Hauteur de la zone : ${heightDiff.toStringAsFixed(0)} mm',
+                              'Zone height: ${heightDiff.toStringAsFixed(0)} mm',
+                            )
+                          : _tr(
+                              'تنبيه: النهاية يجب أن تكون أكبر من البداية (الارتفاع حالياً: 0 مم)',
+                              'Attention : la fin doit être supérieure au début (hauteur : 0 mm)',
+                              'Warning: end must be greater than start (height: 0 mm)',
+                            ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: heightDiff > 0
+                            ? Colors.green.shade700
+                            : Colors.orange.shade800,
                       ),
                     ),
                   ],
-                  onChanged: (value) =>
-                      setDialogState(() => type = value ?? type),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: start,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      'البداية من الأسفل',
-                      'Début depuis le bas',
-                      'Start from bottom',
-                    ),
-                    suffixText: 'mm',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: end,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _tr(
-                      'النهاية من الأسفل',
-                      'Fin depuis le bas',
-                      'End from bottom',
-                    ),
-                    suffixText: 'mm',
-                  ),
-                ),
-                if (type == _SablageRegionType.bands) ...[
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: opaque,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: _tr(
-                        'عرض الخط الصبغي',
-                        'Largeur de bande sablée',
-                        'Frosted band width',
+                  if (type == _SablageRegionType.bands) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: opaque,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
                       ),
-                      suffixText: 'mm',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: clear,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: _tr(
-                        'عرض الفراغ الشفاف',
-                        'Largeur de bande transparente',
-                        'Clear gap width',
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'عرض الخط الصبغي',
+                          'Largeur de bande sablée',
+                          'Frosted band width',
+                        ),
+                        suffixText: 'mm',
                       ),
-                      suffixText: 'mm',
+                      onChanged: (_) => setDialogState(() => errorMessage = null),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: clear,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'عرض الفراغ الشفاف',
+                          'Largeur de bande transparente',
+                          'Clear gap width',
+                        ),
+                        suffixText: 'mm',
+                      ),
+                      onChanged: (_) => setDialogState(() => errorMessage = null),
+                    ),
+                  ],
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.red.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, size: 18, color: Colors.red.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              errorMessage!,
+                              style: TextStyle(
+                                color: Colors.red.shade800,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
-            ),
-            FilledButton(
-              onPressed: () {
-                final from = _parseMillimeters(start.text);
-                final to = _parseMillimeters(end.text);
-                final band = _parseMillimeters(opaque.text) ?? 40;
-                final gap = _parseMillimeters(clear.text) ?? 40;
-                if (from == null ||
-                    to == null ||
-                    to <= from ||
-                    from < 0 ||
-                    to > _overallHeightMm ||
-                    band <= 0 ||
-                    gap < 0)
-                  return;
-                Navigator.pop(
-                  dialogContext,
-                  _SablageRegion(
-                    type: type,
-                    startMm: from,
-                    endMm: to,
-                    opaqueBandMm: band,
-                    clearBandMm: gap,
-                  ),
-                );
-              },
-              child: Text(_tr('إضافة', 'Ajouter', 'Add')),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final from = _parseMillimeters(start.text);
+                  final to = _parseMillimeters(end.text);
+                  final band = _parseMillimeters(opaque.text) ?? 40;
+                  final gap = _parseMillimeters(clear.text) ?? 40;
+
+                  if (from == null || to == null) {
+                    setDialogState(() {
+                      errorMessage = _tr(
+                        'يرجى إدخال قيم عددية صحيحة.',
+                        'Veuillez saisir des valeurs valides.',
+                        'Please enter valid numbers.',
+                      );
+                    });
+                    return;
+                  }
+                  if (from < 0) {
+                    setDialogState(() {
+                      errorMessage = _tr(
+                        'قيمة البداية لا يمكن أن تكون سالبة.',
+                        'Le début ne peut pas être inférieur à 0.',
+                        'Start cannot be negative.',
+                      );
+                    });
+                    return;
+                  }
+                  if (to <= from) {
+                    final suggested = (from + 400).toInt();
+                    setDialogState(() {
+                      errorMessage = _tr(
+                        'النهاية ($to مم) يجب أن تكون أكبر من البداية ($from مم). مثلاً: اجعل النهاية $suggested مم لتكون المنطقة بارتفاع 400 مم.',
+                        'La fin ($to mm) doit être supérieure au début ($from mm). Ex : fin $suggested mm pour une hauteur de 400 mm.',
+                        'End must be greater than start. E.g. set end to $suggested mm.',
+                      );
+                    });
+                    return;
+                  }
+                  if (to > _overallHeightMm) {
+                    setDialogState(() {
+                      errorMessage = _tr(
+                        'النهاية ($to مم) تتجاوز الارتفاع الإجمالي للزجاج (${_overallHeightMm.toInt()} مم).',
+                        'La fin ($to mm) dépasse la hauteur totale (${_overallHeightMm.toInt()} mm).',
+                        'End exceeds total height.',
+                      );
+                    });
+                    return;
+                  }
+                  if (type == _SablageRegionType.bands && band <= 0) {
+                    setDialogState(() {
+                      errorMessage = _tr(
+                        'عرض الخط الصبغي يجب أن يكون أكبر من 0.',
+                        'La largeur de bande sablée doit être supérieure à 0.',
+                        'Frosted band width must be greater than 0.',
+                      );
+                    });
+                    return;
+                  }
+
+                  Navigator.pop(
+                    dialogContext,
+                    _SablageRegion(
+                      type: type,
+                      startMm: from,
+                      endMm: to,
+                      fromBottom: fromBottom,
+                      opaqueBandMm: band,
+                      clearBandMm: gap,
+                    ),
+                  );
+                },
+                child: Text(_tr('إضافة', 'Ajouter', 'Add')),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (region == null || !mounted) return;
@@ -7607,47 +7783,178 @@ class _GlassManufacturingSheet extends StatelessWidget {
     );
   }
 
+  String _translateGlassType(BuildContext context, Object? type) {
+    final val = type?.toString().trim() ?? '';
+    final lower = val.toLowerCase();
+    if (lower == 'شفاف' ||
+        lower == 'clear' ||
+        lower == 'clair' ||
+        lower == 'transparent') {
+      return _tr3(context, 'شفاف', 'Clear', 'Clear');
+    }
+    if (lower == 'ملون' || lower == 'teinté' || lower == 'tinted') {
+      return _tr3(context, 'ملون', 'Teinté', 'Tinted');
+    }
+    if (lower == 'عاكس' ||
+        lower == 'réfléchissant' ||
+        lower == 'reflective') {
+      return _tr3(context, 'عاكس', 'Réfléchissant', 'Reflective');
+    }
+    if (lower == 'مصفح' || lower == 'feuilleté' || lower == 'laminated') {
+      return _tr3(context, 'مصفح', 'Feuilleté', 'Laminated');
+    }
+    if (lower == 'معتّم' || lower == 'opaque') {
+      return _tr3(context, 'معتّم', 'Opaque', 'Opaque');
+    }
+    if (lower == 'مرآة' || lower == 'mirror' || lower == 'miroir') {
+      return _tr3(context, 'مرآة', 'Miroir', 'Mirror');
+    }
+    return val.isEmpty ? '—' : val;
+  }
+
+  String _translateEdgeFinish(BuildContext context, Object? finish) {
+    final val = finish?.toString().trim() ?? '';
+    final lower = val.toLowerCase();
+    if (lower.contains('extra') ||
+        lower.contains('جداً') ||
+        lower.contains('très')) {
+      return _tr3(context, 'ناعم جداً', 'Très poli', 'Extra smooth');
+    }
+    if (lower.contains('smooth') ||
+        lower.contains('ناعم') ||
+        lower.contains('poli')) {
+      return _tr3(context, 'ناعم (بولي)', 'Poli', 'Polished');
+    }
+    return val.isEmpty ? '—' : val;
+  }
+
   Widget _panelDetails(BuildContext context, _GlassPanel panel, int index) {
-    final holes = panel.holes
-        .map(
-          (hole) =>
-              'Ø${hole.diameterMm.toStringAsFixed(0)} mm (${hole.xMm.toStringAsFixed(0)} × ${hole.yMm.toStringAsFixed(0)} mm)',
-        )
-        .join('، ');
+    int startHoleNum = 1;
+    for (int p = 0; p < index; p++) {
+      startHoleNum += panels[p].holes.length;
+    }
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
+        color: Colors.white,
         border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.22)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 15,
-            backgroundColor: Colors.cyan.shade700,
-            foregroundColor: Colors.white,
-            child: Text('${index + 1}'),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_role(context, panel.role)} — ${_mm(panel.widthMm)} × ${_mm(panel.heightMm)}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.cyan.shade800,
+                foregroundColor: Colors.white,
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 3),
-                Text(
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${_role(context, panel.role)} — ${_mm(panel.widthMm)} × ${_mm(panel.heightMm)}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: panel.holes.isEmpty ? Colors.grey.shade100 : Colors.deepOrange.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: panel.holes.isEmpty ? Colors.grey.shade300 : Colors.deepOrange.shade200,
+                  ),
+                ),
+                child: Text(
                   panel.holes.isEmpty
                       ? _tr3(context, 'بدون ثقوب', 'Sans perçage', 'No holes')
-                      : '${_tr3(context, 'الثقوب', 'Perçages', 'Holes')}: $holes',
-                  style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+                      : '${panel.holes.length} ${_tr3(context, 'ثقوب', 'perçages', 'holes')}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: panel.holes.isEmpty ? Colors.grey.shade700 : Colors.deepOrange.shade800,
+                  ),
                 ),
+              ),
+            ],
+          ),
+          if (panel.holes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (var hIdx = 0; hIdx < panel.holes.length; hIdx++) ...[
+                  Builder(
+                    builder: (context) {
+                      final hole = panel.holes[hIdx];
+                      final holeNum = startHoleNum + hIdx;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFBE9E7),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.deepOrange.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: Colors.deepOrange.shade700,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '#$holeNum',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Ø${hole.diameterMm.toStringAsFixed(0)} mm',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.deepOrange.shade900,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '(X: ${hole.xMm.toStringAsFixed(0)} mm, Y: ${hole.yMm.toStringAsFixed(0)} mm)',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: Color(0xFF37474F),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ],
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -7661,12 +7968,19 @@ class _GlassManufacturingSheet extends StatelessWidget {
         .toDouble();
     final isFrosted = sablageMode != _SablageMode.none;
     final tempered = payload['glassTempered'] == true
-        ? _tr(context, 'نعم')
-        : _tr(context, 'لا');
+        ? _tr3(context, 'نعم', 'Oui', 'Yes')
+        : _tr3(context, 'لا', 'Non', 'No');
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_tr(context, 'ورقة تصنيع الزجاج')),
+        title: Text(
+          _tr3(
+            context,
+            'ورقة تصنيع الزجاج',
+            'Fiche de fabrication du verre',
+            'Glass manufacturing sheet',
+          ),
+        ),
         backgroundColor: Colors.cyan.shade800,
         foregroundColor: Colors.white,
         actions: [
@@ -7674,8 +7988,8 @@ class _GlassManufacturingSheet extends StatelessWidget {
             onPressed: () => Navigator.pop(context, payload),
             icon: const Icon(Icons.check, color: Colors.white),
             label: Text(
-              _tr(context, 'اعتماد'),
-              style: TextStyle(color: Colors.white),
+              _tr3(context, 'اعتماد', 'Valider', 'Approve'),
+              style: const TextStyle(color: Colors.white),
             ),
           ),
         ],
@@ -7746,15 +8060,20 @@ class _GlassManufacturingSheet extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              _tr(context, 'مواصفات الزجاج'),
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              _tr3(
+                context,
+                'مواصفات الزجاج',
+                'Spécifications du verre',
+                'Glass specifications',
+              ),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
                 _spec(
                   _tr3(context, 'نوع الزجاج', 'Type de verre', 'Glass type'),
-                  _value(payload['glassType']),
+                  _translateGlassType(context, payload['glassType']),
                 ),
                 _spec(
                   _tr3(context, 'السمك', 'Épaisseur', 'Thickness'),
@@ -7767,7 +8086,10 @@ class _GlassManufacturingSheet extends StatelessWidget {
                 _spec(_tr3(context, 'مقسّى', 'Trempé', 'Tempered'), tempered),
                 _spec(
                   _tr3(context, 'نوع الحواف', 'Type de chants', 'Edge finish'),
-                  _value(payload['edgeFinishLabel'] ?? payload['edgeFinish']),
+                  _translateEdgeFinish(
+                    context,
+                    payload['edgeFinishLabel'] ?? payload['edgeFinish'],
+                  ),
                 ),
               ],
             ),
@@ -7821,7 +8143,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
                 'Détail des panneaux et perçages',
                 'Panels and holes details',
               ),
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             for (var index = 0; index < panels.length; index++)
@@ -7830,7 +8152,14 @@ class _GlassManufacturingSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => Navigator.pop(context, payload),
               icon: const Icon(Icons.check_circle_outline),
-              label: Text(_tr(context, 'اعتماد وإضافة إلى الطلب')),
+              label: Text(
+                _tr3(
+                  context,
+                  'اعتماد وإضافة إلى الطلب',
+                  'Valider et ajouter à la commande',
+                  'Approve and add to order',
+                ),
+              ),
             ),
           ],
         ),
@@ -8168,6 +8497,19 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       ..strokeWidth = 1.5;
     final scaleX = panel.rect.width / panel.widthMm;
     final scaleY = panel.rect.height / panel.heightMm;
+
+    int holeLabelIndex(_GlassHole targetHole) {
+      int count = 0;
+      for (final p in panels) {
+        if (identical(p, panel)) {
+          final idx = p.holes.indexOf(targetHole);
+          return count + (idx >= 0 ? idx : 0) + 1;
+        }
+        count += p.holes.length;
+      }
+      return panel.holes.indexOf(targetHole) + 1;
+    }
+
     canvas.save();
     canvas.clipRect(panel.rect);
     for (final hole in panel.holes) {
@@ -8177,23 +8519,50 @@ class _GlassPanelDrawingPainter extends CustomPainter {
         panel.rect.top + _safeHoleYMm(panel, hole, diameterMm) * scaleY,
       );
       final radius = math
-          .max(3.0, diameterMm * math.min(scaleX, scaleY) / 2)
+          .max(4.0, diameterMm * math.min(scaleX, scaleY) / 2)
           .toDouble();
       canvas.drawCircle(center, radius, fill);
       canvas.drawCircle(center, radius, border);
 
-      if (holeDimensionMode == _HoleDimensionMode.center) {
+      final holeNum = holeLabelIndex(hole);
+      final numPainter = TextPainter(
+        text: TextSpan(
+          text: '$holeNum',
+          style: TextStyle(
+            fontSize: math.max(7.5, radius * 0.95).clamp(7.5, 12.0),
+            fontWeight: FontWeight.w900,
+            color: Colors.deepOrange.shade900,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      numPainter.paint(
+        canvas,
+        center - Offset(numPainter.width / 2, numPainter.height / 2),
+      );
+
+      if (holeDimensionMode == _HoleDimensionMode.center && radius > 10) {
         final crossPaint = Paint()
-          ..color = Colors.deepOrange.shade800
-          ..strokeWidth = 1.0;
+          ..color = Colors.deepOrange.shade800.withValues(alpha: 0.5)
+          ..strokeWidth = 0.8;
         canvas.drawLine(
-          center - const Offset(2.5, 0),
-          center + const Offset(2.5, 0),
+          center - Offset(radius + 2, 0),
+          center - Offset(radius - 2, 0),
           crossPaint,
         );
         canvas.drawLine(
-          center - const Offset(0, 2.5),
-          center + const Offset(0, 2.5),
+          center + Offset(radius - 2, 0),
+          center + Offset(radius + 2, 0),
+          crossPaint,
+        );
+        canvas.drawLine(
+          center - Offset(0, radius + 2),
+          center - Offset(0, radius - 2),
+          crossPaint,
+        );
+        canvas.drawLine(
+          center + Offset(0, radius - 2),
+          center + Offset(0, radius + 2),
           crossPaint,
         );
       }
@@ -8725,14 +9094,23 @@ class _GlassPanelDrawingPainter extends CustomPainter {
               : overallHeightMm;
           final scale = panel.rect.height / panelHeightMm;
           final glassRect = _glassContentRect(panel.rect);
-          final top = (sharedTop ?? panel.rect.top) + region.startMm * scale;
-          final bottom = (sharedTop ?? panel.rect.top) + region.endMm * scale;
+          final double top;
+          final double bottom;
+          if (region.fromBottom) {
+            top = glassRect.bottom - region.endMm * scale;
+            bottom = glassRect.bottom - region.startMm * scale;
+          } else {
+            top = (sharedTop ?? panel.rect.top) + region.startMm * scale;
+            bottom = (sharedTop ?? panel.rect.top) + region.endMm * scale;
+          }
           final regionRect = Rect.fromLTRB(
             glassRect.left,
             top,
             glassRect.right,
             bottom,
           ).intersect(glassRect);
+
+          if (regionRect.width <= 0 || regionRect.height <= 0) continue;
 
           if (region.type == _SablageRegionType.clear) {
             if (regionRect.height >= 26) {
@@ -8757,12 +9135,21 @@ class _GlassPanelDrawingPainter extends CustomPainter {
                 offset + region.opaqueBandMm,
                 region.endMm,
               );
+              final double bandTop;
+              final double bandBottom;
+              if (region.fromBottom) {
+                bandTop = glassRect.bottom - bandEnd * scale;
+                bandBottom = glassRect.bottom - offset * scale;
+              } else {
+                bandTop = (sharedTop ?? panel.rect.top) + offset * scale;
+                bandBottom = (sharedTop ?? panel.rect.top) + bandEnd * scale;
+              }
               canvas.drawRect(
                 Rect.fromLTRB(
                   glassRect.left,
-                  (sharedTop ?? panel.rect.top) + offset * scale,
+                  bandTop,
                   glassRect.right,
-                  (sharedTop ?? panel.rect.top) + bandEnd * scale,
+                  bandBottom,
                 ).intersect(glassRect),
                 paint,
               );
@@ -9220,6 +9607,7 @@ class _SablageRegion {
     required this.type,
     required this.startMm,
     required this.endMm,
+    this.fromBottom = true,
     this.opaqueBandMm = 40,
     this.clearBandMm = 40,
   });
@@ -9227,6 +9615,7 @@ class _SablageRegion {
   final _SablageRegionType type;
   final double startMm;
   final double endMm;
+  final bool fromBottom;
   final double opaqueBandMm;
   final double clearBandMm;
 
@@ -9234,6 +9623,7 @@ class _SablageRegion {
     'type': type.name,
     'startMm': startMm,
     'endMm': endMm,
+    'fromBottom': fromBottom,
     'opaqueBandMm': opaqueBandMm,
     'clearBandMm': clearBandMm,
   };
@@ -9252,6 +9642,7 @@ class _SablageRegion {
       type: type,
       startMm: number('startMm', 0),
       endMm: number('endMm', 0),
+      fromBottom: map['fromBottom'] as bool? ?? true,
       opaqueBandMm: number('opaqueBandMm', 40),
       clearBandMm: number('clearBandMm', 40),
     );

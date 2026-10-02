@@ -242,12 +242,34 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     map['quantity'] = effectiveQuantity;
     map['description'] = effectiveDescription;
 
-    final seriesName =
-        product.activeSeries?.name ??
-        product.loadedSeriesName ??
-        product.activeSlidingSeries?.name ??
-        product.loadedSlidingSeriesName ??
-        '';
+    final bool hasSliding = product.zones.any(
+      (z) => z.content == ZoneContent.slidingSash,
+    );
+    final bool hasOpening = product.zones.any(
+      (z) =>
+          z.content == ZoneContent.singleSash ||
+          z.content == ZoneContent.doubleSash,
+    );
+    final String seriesName;
+    if (product.isGlassWork) {
+      seriesName = 'فير ترومبي';
+    } else if (hasSliding && !hasOpening) {
+      seriesName = product.activeSlidingSeries?.name ??
+          product.loadedSlidingSeriesName ??
+          product.activeFrameSeries?.name ??
+          '';
+    } else if (hasOpening && !hasSliding) {
+      seriesName = product.activeSeries?.name ??
+          product.loadedSeriesName ??
+          product.activeFrameSeries?.name ??
+          '';
+    } else {
+      seriesName = product.activeFrameSeries?.name ??
+          product.loadedSeriesName ??
+          product.activeSlidingSeries?.name ??
+          product.loadedSlidingSeriesName ??
+          '';
+    }
     final colorName =
         product.selectedDbColor?['name']?.toString() ?? product.frameColor.name;
 
@@ -1065,6 +1087,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           lower == 'gris' ||
           lower == 'رمادي')
         return 'Gris';
+      if (lower == 'faux bois marron' || lower == 'marron faux bois' || lower == 'خشبي بني' || lower == 'بني خشبي')
+        return 'Faux Bois Marron';
       if (lower == 'brown' || lower == 'faux bois' || lower == 'بني')
         return 'Faux Bois';
       if (lower == 'black' || lower == 'noir' || lower == 'أسود') return 'Noir';
@@ -1078,6 +1102,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           lower == 'gris' ||
           lower == 'رمادي')
         return 'Grey';
+      if (lower == 'faux bois marron' || lower == 'marron faux bois' || lower == 'خشبي بني' || lower == 'بني خشبي')
+        return 'Brown Wood (Faux Bois Marron)';
       if (lower == 'brown' || lower == 'faux bois' || lower == 'بني')
         return 'Wood Faux';
       if (lower == 'black' || lower == 'noir' || lower == 'أسود')
@@ -1092,6 +1118,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           lower == 'gris' ||
           lower == 'رمادي')
         return 'رمادي';
+      if (lower == 'faux bois marron' || lower == 'marron faux bois' || lower == 'خشبي بني' || lower == 'بني خشبي')
+        return 'خشبي بني (Faux Bois Marron)';
       if (lower == 'brown' || lower == 'faux bois' || lower == 'بني')
         return 'بني';
       if (lower == 'black' || lower == 'noir' || lower == 'أسود') return 'أسود';

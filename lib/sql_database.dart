@@ -169,6 +169,12 @@ class SqlDatabase {
         normalized.contains('شامبان')) {
       return '#F7E7CE';
     }
+    if (normalized.contains('faux bois marron') ||
+        normalized.contains('marron faux bois') ||
+        (normalized.contains('marron') && normalized.contains('bois')) ||
+        (normalized.contains('بني') && normalized.contains('خشب'))) {
+      return '#8D5B4C';
+    }
     final isGold =
         normalized.contains('gold') ||
         normalized.contains('ذهبي') ||
@@ -10728,6 +10734,23 @@ class SqlDatabase {
         );
         changed = true;
       }
+      final hasFauxBoisMarron = rows.any((r) {
+        final n = (r['name']?.toString() ?? '').toLowerCase().trim();
+        return n == 'faux bois marron' ||
+            n == 'marron faux bois' ||
+            n == 'خشبي بني' ||
+            n == 'خشبي بني (faux bois marron)';
+      });
+      if (!hasFauxBoisMarron) {
+        await myDb.insert('Colors', {
+          'name': 'Faux Bois Marron',
+          'hex_code': '#8D5B4C',
+          'type': 'Global',
+          'price': 0.0,
+          'is_glass_color': 0,
+        });
+        changed = true;
+      }
     } catch (_) {
       _knownColorsRepaired = false;
       return;
@@ -10775,6 +10798,7 @@ class SqlDatabase {
         {'name': 'أسود', 'hex_code': '#000000', 'type': 'Global'},
         {'name': 'بيج', 'hex_code': '#F5F5DC', 'type': 'Global'},
         {'name': 'خام', 'hex_code': '#E0E0E0', 'type': 'Global'},
+        {'name': 'Faux Bois Marron', 'hex_code': '#8D5B4C', 'type': 'Global'},
       ];
       for (var c in defaults) {
         await myDb.insert('Colors', c);
