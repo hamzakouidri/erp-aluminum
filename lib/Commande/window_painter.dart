@@ -2766,6 +2766,7 @@ class WindowPainter extends CustomPainter {
         ? model.effectiveSideCoverSegments
         : const <SideCoverSegment>[];
     final pieces = <({FrameEdgeSegment edge, double visible})>[];
+    bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
     for (final edge in edges) {
       // The box already has an outer cover. Its contact with the frame is
@@ -2775,8 +2776,29 @@ class WindowPainter extends CustomPainter {
       }
       if (model.hiddenSideCoverSegments.contains(edge.side) ||
           model.removedShutterSides.contains(edge.side) ||
-          (edge.side == 'bottom' && !_hasEffectiveBottomFrame)) {
+          (edge.side == 'bottom' && !_hasEffectiveBottomFrame) ||
+          !model.isSideCoverSegmentEnabled(edge.side)) {
         continue;
+      }
+
+      final edgeFrame = edge.frameRect ??
+          model.getFrameRects().cast<Rect?>().firstWhere(
+                (r) =>
+                    r != null &&
+                    (isHorizontal(edge.side)
+                        ? (edge.side == 'top'
+                            ? (r.top - edge.coordinate).abs() <= 2.0
+                            : (r.bottom - edge.coordinate).abs() <= 2.0)
+                        : (edge.side == 'left'
+                            ? (r.left - edge.coordinate).abs() <= 2.0
+                            : (r.right - edge.coordinate).abs() <= 2.0)),
+                orElse: () => null,
+              );
+      if (edgeFrame != null) {
+        final hasCover = model.isIntegratedFrame
+            ? model.frameSideHasIntegratedCover(edgeFrame, edge.side)
+            : model.frameSideAllowsSideCover(edgeFrame, edge.side);
+        if (!hasCover) continue;
       }
 
       final spans = customSegments.isEmpty
@@ -2814,7 +2836,6 @@ class WindowPainter extends CustomPainter {
     if (pieces.isEmpty) return;
 
     const tolerance = 2.0;
-    bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
     Offset endpointOf(
       ({FrameEdgeSegment edge, double visible}) piece,
@@ -3153,21 +3174,36 @@ class WindowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
+    final frame = model.getFrameRects().firstOrNull ?? Rect.fromLTWH(0, 0, w, h);
     final isInternal = overrideIsInternalView ?? model.isInternalView;
-    final hasL = isInternal
-        ? !model.removedShutterSides.contains('left')
-        : !model.removedShutterSides.contains('right');
-    final hasR = isInternal
-        ? !model.removedShutterSides.contains('right')
-        : !model.removedShutterSides.contains('left');
-    final hasT = !model.removedShutterSides.contains('top');
-    // The lower cover and the lower frame are different states.  A user may
-    // hide only the bottom cover while the real lower frame remains present;
-    // the vertical cover must still finish against that frame instead of
-    // ending with an open cut.
-    final hasBottomFrameForJoin = _hasEffectiveBottomFrame;
-    final hasB =
-        !model.removedShutterSides.contains('bottom') && hasBottomFrameForJoin;
+    final sideL = isInternal ? 'left' : 'right';
+    final sideR = isInternal ? 'right' : 'left';
+
+    final hasSideCoverL = model.isIntegratedFrame
+        ? model.frameSideHasIntegratedCover(frame, sideL)
+        : model.frameSideAllowsSideCover(frame, sideL);
+    final hasSideCoverR = model.isIntegratedFrame
+        ? model.frameSideHasIntegratedCover(frame, sideR)
+        : model.frameSideAllowsSideCover(frame, sideR);
+    final hasSideCoverT = model.isIntegratedFrame
+        ? model.frameSideHasIntegratedCover(frame, 'top')
+        : model.frameSideAllowsSideCover(frame, 'top');
+    final hasSideCoverB = model.isIntegratedFrame
+        ? model.frameSideHasIntegratedCover(frame, 'bottom')
+        : model.frameSideAllowsSideCover(frame, 'bottom');
+
+    final hasL = (isInternal
+            ? !model.removedShutterSides.contains('left')
+            : !model.removedShutterSides.contains('right')) &&
+        hasSideCoverL;
+    final hasR = (isInternal
+            ? !model.removedShutterSides.contains('right')
+            : !model.removedShutterSides.contains('left')) &&
+        hasSideCoverR;
+    final hasT = !model.removedShutterSides.contains('top') && hasSideCoverT;
+    final hasBottomFrameForJoin = _hasEffectiveBottomFrame && hasSideCoverB;
+    final hasB = !model.removedShutterSides.contains('bottom') &&
+        hasBottomFrameForJoin;
 
     double yTopL =
         topY + (isInternal ? model.topSlantLeftY : model.topSlantRightY);
@@ -3215,14 +3251,10 @@ class WindowPainter extends CustomPainter {
           ..lineTo(outerEnd.dx, outerEnd.dy);
         canvas.drawPath(outerEdge, borderPaint);
 
-        // خط زاوية البداية المائل 45°
-        if (hasStartJoin) {
-          canvas.drawLine(outerStart, innerStart, borderPaint);
-        }
-        // خط زاوية النهاية المائل 45°
-        if (hasEndJoin) {
-          canvas.drawLine(outerEnd, innerEnd, borderPaint);
-        }
+        // خط زاوية البداية المائل 45° أو حد النهاية المستقيم
+        canvas.drawLine(outerStart, innerStart, borderPaint);
+        // خط زاوية النهاية المائل 45° أو حد النهاية المستقيم
+        canvas.drawLine(outerEnd, innerEnd, borderPaint);
       }
     }
 

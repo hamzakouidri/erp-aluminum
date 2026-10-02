@@ -237,7 +237,7 @@ class BomEngineV2 {
     // quantities produced by the drawing and are deliberately kept visible
     // (with their warning state) instead of disappearing from a specific
     // series merely because a second rule lookup found no exact match.
-    return visibleItems;
+    return _mergeIdenticalScrews(visibleItems);
   }
 
   Future<bool> _calculatedMaterialRoleExplicitlyDisabled(
@@ -577,6 +577,84 @@ class BomEngineV2 {
       }
     }
     return result;
+  }
+
+  List<BomItem> _mergeIdenticalScrews(List<BomItem> items) {
+    const screwRoles = {
+      'kit_screw',
+      'box_screw',
+      'motor_screw',
+      'batmo_screw',
+      'bouchon_batmo_screw',
+      'renfort_screw',
+      'manivelle_screw',
+      'assembly_screw',
+      'installation_screw',
+      'accessory_screw',
+    };
+    bool isScrew(BomItem item) {
+      final role =
+          (item.roleKey ?? item.selectorType ?? '').toLowerCase().trim();
+      if (screwRoles.contains(role)) return true;
+      if (role.startsWith('is_') && screwRoles.contains(role.substring(3))) {
+        return true;
+      }
+      final name = item.originalName.toLowerCase();
+      if (name.contains('براغي') ||
+          name.contains('برغي') ||
+          name.contains('vis') ||
+          name.contains('screw')) {
+        return true;
+      }
+      final overrideKey = item.overrideKey ?? '';
+      if (overrideKey.startsWith('linked-accessory:screw:') ||
+          overrideKey.startsWith('assembly:combined:assembly_screw:') ||
+          overrideKey.startsWith('screw:combined:')) {
+        return true;
+      }
+      return false;
+    }
+
+    final nonScrews = <BomItem>[];
+    final screwBuckets = <String, List<BomItem>>{};
+
+    for (final item in items) {
+      if (!isScrew(item)) {
+        nonScrews.add(item);
+        continue;
+      }
+      final key = item.catalogItemId != null && item.catalogItemId! > 0
+          ? 'id:${item.catalogItemId}'
+          : 'name:${item.originalName.trim().toLowerCase()}';
+      screwBuckets.putIfAbsent(key, () => []).add(item);
+    }
+
+    final mergedScrews = <BomItem>[];
+    for (final group in screwBuckets.values) {
+      if (group.length == 1) {
+        mergedScrews.add(group.first);
+        continue;
+      }
+      final first = group.first;
+      double totalQty = 0;
+      final details = <String>[];
+      for (final s in group) {
+        totalQty += s.quantity;
+        final label = s.originalName.trim();
+        final count = s.quantity.toInt();
+        details.add('$label: $count');
+      }
+      final merged = _bomItemWithQuantity(
+        first,
+        totalQty,
+        overrideKey:
+            'screw:combined:${first.catalogItemId ?? first.originalName}',
+        cuttingList: details.join(' | '),
+      );
+      mergedScrews.add(merged);
+    }
+
+    return [...nonScrews, ...mergedScrews];
   }
 
   Future<List<BomItem>> _linkedAccessoryItems(
@@ -1065,9 +1143,13 @@ class BomEngineV2 {
           AccessoryDrawingMode.sliding;
       final rectangular = role == 'frame' || role == 'sash' ||
           role == 'frame_extension' || role == 'sash_extension';
+      // If geometric demands already account for frame corners or sash corners,
+      // individual profile pieces (e.g. customized bottom frame, angle junction,
+      // or replacement stiles) must NOT add duplicate corner demands.
       if ((role == 'frame' || role == 'sash') &&
-          geometricDemands.any((d) => d.sliding == sliding &&
-              d.target == role && d.sectionId == sectionId)) continue;
+          geometricDemands.any((d) => d.sliding == sliding && d.target == role)) {
+        continue;
+      }
       // A complete rectangular profile has four corner joints, not eight
       // independent ends. Extensions are physical frames too. If geometric
       // metadata is missing, the actual resolved cuts still carry demand.
@@ -1266,6 +1348,7 @@ class BomEngineV2 {
     BomItem item,
     double quantity, {
     String? overrideKey,
+    String? cuttingList,
   }) {
     return BomItem(
       category: item.category,
@@ -1285,7 +1368,7 @@ class BomEngineV2 {
       isActive: item.isActive,
       exclusionGroup: item.exclusionGroup,
       pieces: item.pieces,
-      cuttingList: item.cuttingList,
+      cuttingList: cuttingList ?? item.cuttingList,
       kitGroupName: item.kitGroupName,
       exactQuantity: item.exactQuantity == null ? null : quantity,
       catalogItemId: item.catalogItemId,
@@ -1862,8 +1945,12 @@ class BomEngineV2 {
     // required for mixed drawings where opening and sliding zones coexist.
     if (roleKey == 'batmo' ||
         roleKey == 'bouchon_batmo' ||
+        roleKey == 'batmo_screw' ||
+        roleKey == 'bouchon_batmo_screw' ||
         selectorType == 'batmo' ||
-        selectorType == 'bouchon_batmo') {
+        selectorType == 'bouchon_batmo' ||
+        selectorType == 'is_batmo_screw' ||
+        selectorType == 'is_bouchon_batmo_screw') {
       return AccessoryDrawingMode.opening;
     }
 

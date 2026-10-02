@@ -5175,33 +5175,39 @@ class _WindowViewState extends State<WindowView> {
                                 } else if (_draggedFrameResizeHandle != null &&
                                     _draggedFrameZoneId != null) {
                                   final handle = _draggedFrameResizeHandle!;
-                                  final deltaX =
-                                      details.focalPointDelta.dx /
-                                      (_userScale * widget.model.canvasScale);
-                                  final deltaY =
-                                      details.focalPointDelta.dy /
-                                      (_userScale * widget.model.canvasScale);
+                                  final moveLeft =
+                                      handle == _FrameResizeHandle.left ||
+                                      handle == _FrameResizeHandle.topLeft ||
+                                      handle == _FrameResizeHandle.bottomLeft;
+                                  final moveRight =
+                                      handle == _FrameResizeHandle.right ||
+                                      handle == _FrameResizeHandle.topRight ||
+                                      handle == _FrameResizeHandle.bottomRight;
+                                  final moveTop =
+                                      handle == _FrameResizeHandle.top ||
+                                      handle == _FrameResizeHandle.topLeft ||
+                                      handle == _FrameResizeHandle.topRight;
+                                  final moveBottom =
+                                      handle == _FrameResizeHandle.bottom ||
+                                      handle == _FrameResizeHandle.bottomLeft ||
+                                      handle == _FrameResizeHandle.bottomRight;
+
+                                  final scaleFactor =
+                                      _userScale * widget.model.canvasScale;
+                                  final deltaX = (moveLeft || moveRight) &&
+                                          scaleFactor > 0.0001
+                                      ? details.focalPointDelta.dx / scaleFactor
+                                      : 0.0;
+                                  final deltaY = (moveTop || moveBottom) &&
+                                          scaleFactor > 0.0001
+                                      ? details.focalPointDelta.dy / scaleFactor
+                                      : 0.0;
                                   widget.model.resizeFrameFromHandles(
                                     _draggedFrameZoneId!,
-                                    moveLeft:
-                                        handle == _FrameResizeHandle.left ||
-                                        handle == _FrameResizeHandle.topLeft ||
-                                        handle == _FrameResizeHandle.bottomLeft,
-                                    moveRight:
-                                        handle == _FrameResizeHandle.right ||
-                                        handle == _FrameResizeHandle.topRight ||
-                                        handle ==
-                                            _FrameResizeHandle.bottomRight,
-                                    moveTop:
-                                        handle == _FrameResizeHandle.top ||
-                                        handle == _FrameResizeHandle.topLeft ||
-                                        handle == _FrameResizeHandle.topRight,
-                                    moveBottom:
-                                        handle == _FrameResizeHandle.bottom ||
-                                        handle ==
-                                            _FrameResizeHandle.bottomLeft ||
-                                        handle ==
-                                            _FrameResizeHandle.bottomRight,
+                                    moveLeft: moveLeft,
+                                    moveRight: moveRight,
+                                    moveTop: moveTop,
+                                    moveBottom: moveBottom,
                                     deltaX: deltaX,
                                     deltaY: deltaY,
                                     saveHistory: !_frameResizeHistorySaved,
@@ -8169,16 +8175,48 @@ class _WindowViewState extends State<WindowView> {
                   runSpacing: 6,
                   children: intercallChoices.map((g) {
                     int val = (g['thickness'] as num?)?.toInt() ?? 0;
+                    final isSliding = widget.systemMode == 'sliding' ||
+                        widget.model.systemMode == 'sliding' ||
+                        (zone != null && zone.content == ZoneContent.slidingSash);
+                    final double tOuter =
+                        spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+                    final double tInner =
+                        spec.thicknessInner ?? kDefaultGlassPaneThickness;
+                    final double jointAllowance = isSliding
+                        ? (widget.model.selectedVitrageJointThickness(fallback: 2.0) * (spec.jointTwoSides ? 2 : 1))
+                        : (widget.model.selectedVitrageJointThickness(fallback: 2.0) +
+                            widget.model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0));
+                    final maxCapacity = widget.model.glazingCapacityForStructure(
+                      GlassStructure.double,
+                      sliding: isSliding,
+                    );
+                    final totalWithJoint = tOuter + val + tInner + jointAllowance;
+                    final bool exceedsCapacity = maxCapacity != null && totalWithJoint > maxCapacity;
+                    final bool hasGlazingBead = widget.model.hasGlazingBeadForContext(sliding: isSliding);
+
                     return _IntercallButton(
                       thickness: val,
                       selected: spec.intercallThickness == val,
+                      exceedsCapacity: exceedsCapacity,
                       showWarning:
                           widget.model.getPriceForIntercall(val) == 0.0,
                       onPressed: () {
-                        final double tOuter =
-                            spec.thicknessOuter ?? kDefaultGlassPaneThickness;
-                        final double tInner =
-                            spec.thicknessInner ?? kDefaultGlassPaneThickness;
+                        if (exceedsCapacity) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'لا يمكن استقبال فاصل (Intercal) $val مم:\n'
+                                'السماكة الإجمالية مع الجوان (${totalWithJoint.toStringAsFixed(1)} مم) تتجاوز سعة ${hasGlazingBead ? "الـ Parclose" : "الضلفة"} القصوى (${maxCapacity.toStringAsFixed(1)} مم).\n'
+                                'يجب تغيير سماكة الزجاج أولاً ثم اختيار الـ Intercal.',
+                              ),
+                              backgroundColor: Colors.red.shade800,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                          return;
+                        }
+
                         String? warning;
                         if (requiredIntercall == null) {
                           warning =
@@ -8186,17 +8224,6 @@ class _WindowViewState extends State<WindowView> {
                         } else if (val != requiredIntercall) {
                           warning =
                               'تنبيه: السماكة المقترحة مع Parclose هي $requiredIntercall مم، وتم اختيار $val مم يدوياً.';
-                        }
-                        if (!isDoubleGlassValid(
-                          tOuter,
-                          val,
-                          tInner,
-                          spec.jointTwoSides,
-                          widget.model,
-                          widget.systemMode,
-                        )) {
-                          warning =
-                              '${warning == null ? '' : '$warning\n'}تنبيه: سماكة الزجاج المختارة (${tOuter + val + tInner} مم) تتجاوز قيود الجوان في السلسلة.';
                         }
                         final newSpec = spec.copyWith(intercallThickness: val);
                         if (zone != null) {
@@ -8210,6 +8237,7 @@ class _WindowViewState extends State<WindowView> {
                         }
                         _startPaintbrushMode(glassSpec: newSpec);
                         if (warning != null) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(warning),
@@ -12462,16 +12490,25 @@ class _WindowViewState extends State<WindowView> {
     }
 
     Widget sideButton(String side) {
+      final allowed = model.canSideUseSideCover(side);
       final enabled = model.isSideCoverSegmentEnabled(side);
       return Tooltip(
-        message: Localization.translate(
-          'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
-          lang,
-        ),
+        message: !allowed
+            ? Localization.translate(
+                'بروفيل هذه الجهة لا يقبل غطاء جانبي',
+                lang,
+              )
+            : Localization.translate(
+                'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
+                lang,
+              ),
         child: Stack(
           children: [
             FilterChip(
-              labelStyle: const TextStyle(fontSize: 10),
+              labelStyle: TextStyle(
+                fontSize: 10,
+                color: !allowed ? Colors.grey : null,
+              ),
               label: Text(labelFor(side)),
               selected: enabled,
               onSelected: (_) {},
@@ -12483,10 +12520,28 @@ class _WindowViewState extends State<WindowView> {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => model.toggleSideCoverSegment(side),
-                onLongPress: () => _showSideCoverSegmentDialog(context, side),
-                onSecondaryTap: () =>
-                    _showSideCoverSegmentDialog(context, side),
+                onTap: () {
+                  if (!allowed) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'بروفيل الإطار الحالي في الجهة (${labelFor(side)}) لا يسمح بتركيب غطاء جانبي.',
+                        ),
+                        backgroundColor: Colors.orange.shade800,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                    return;
+                  }
+                  model.toggleSideCoverSegment(side);
+                },
+                onLongPress: allowed
+                    ? () => _showSideCoverSegmentDialog(context, side)
+                    : null,
+                onSecondaryTap: allowed
+                    ? () => _showSideCoverSegmentDialog(context, side)
+                    : null,
               ),
             ),
           ],
@@ -14238,15 +14293,42 @@ class _WindowViewState extends State<WindowView> {
     final sliding = widget.model.frameUsesSlidingSeries(frame);
     final base = widget.model.frameSectionForRect(frame)?.toMap();
     if (base == null) return;
+
+    bool isRowSliding(Map<String, dynamic> row) {
+      final role = (row['role_key'] ?? row['role'] ?? row['design_role'] ?? '')
+          .toString()
+          .toLowerCase();
+      if (role == 'sliding_frame' || role == 'frame_sliding') return true;
+      final uScope = (row['usage_scope'] ??
+              row['design_usage_scope'] ??
+              row['sharing_usage_scope'] ??
+              '')
+          .toString()
+          .toLowerCase();
+      if (uScope == 'sliding') return true;
+      if (uScope == 'opening' || uScope == 'ouvrant') return false;
+      final text =
+          '${row['label'] ?? ''} ${row['name'] ?? ''} ${row['type'] ?? ''} ${row['code'] ?? ''}'
+              .toLowerCase();
+      return RegExp(
+        r'\b\d+\s*rail|raill|monorail|couliss|glissi|galandage|سحاب|منزلق|جرار',
+      ).hasMatch(text);
+    }
+
     final raw = sliding
-        ? _slidingFrameProfiles
+        ? _slidingFrameProfiles.where((r) => isRowSliding(r)).toList()
         : (_openingFrameProfiles.isNotEmpty
-              ? _openingFrameProfiles
-              : _frameProfiles);
+                ? _openingFrameProfiles
+                : _frameProfiles)
+            .where((r) => !isRowSliding(r))
+            .toList();
+
     final allRows = <Map<String, dynamic>>[...raw];
     if (widget.model.hasFrameJoinRules) {
+      final baseSec = AluminumSection.fromMap(base);
       for (final system in widget.model.availableSystems) {
         for (final series in system.series) {
+          if (series.id == baseSec.seriesId) continue;
           for (final section in series.sections) {
             final type = section.type.toLowerCase();
             if (!(section.isFrame ||
@@ -14255,8 +14337,11 @@ class _WindowViewState extends State<WindowView> {
                 type.contains('dormant'))) {
               continue;
             }
+            final map = section.toMap();
+            if (isRowSliding(map) != sliding) continue;
+            if (!widget.model.framesCanJoin(baseSec, section)) continue;
             allRows.add({
-              ...section.toMap(),
+              ...map,
               'source_series_id': series.id,
               'series_id': series.id,
             });
@@ -14265,13 +14350,27 @@ class _WindowViewState extends State<WindowView> {
       }
     }
 
+    final baseT = (base['thickness'] as num?)?.toDouble() ?? 0.0;
     final candidates = <Map<String, dynamic>>[];
     final seen = <String>{};
     for (final item in allRows) {
       final id = (item['id'] ?? '').toString();
       if (id.isEmpty || !seen.add(id)) continue;
       final same = id == (base['id'] ?? '').toString();
-      if (same || widget.model.frameMapsCanJoin(base, item)) {
+      if (same) {
+        candidates.add(item);
+        continue;
+      }
+
+      // Check sliding vs opening compatibility
+      if (isRowSliding(item) != sliding) continue;
+
+      // Check depth / thickness compatibility
+      final itemT = (item['thickness'] as num?)?.toDouble() ?? 0.0;
+      if (baseT > 0 && itemT > 0 && (baseT - itemT).abs() > 2.0) continue;
+
+      // Check join compatibility
+      if (widget.model.frameMapsCanJoin(base, item)) {
         candidates.add(item);
       }
     }
@@ -20138,12 +20237,14 @@ class _IntercallButton extends StatelessWidget {
   final bool selected;
   final VoidCallback onPressed;
   final bool showWarning;
+  final bool exceedsCapacity;
 
   const _IntercallButton({
     required this.thickness,
     required this.selected,
     required this.onPressed,
     this.showWarning = false,
+    this.exceedsCapacity = false,
   });
 
   @override
@@ -20159,13 +20260,17 @@ class _IntercallButton extends StatelessWidget {
               ? (isDark
                     ? Colors.blue.shade900.withValues(alpha: 0.3)
                     : Colors.blue.shade50)
-              : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
+              : exceedsCapacity
+                  ? (isDark ? Colors.red.shade900.withValues(alpha: 0.15) : Colors.red.shade50)
+                  : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: selected
                 ? Colors.blue
-                : (isDark ? Colors.white24 : Colors.grey.shade300),
-            width: 1.5,
+                : exceedsCapacity
+                    ? (isDark ? Colors.red.shade400 : Colors.red.shade300)
+                    : (isDark ? Colors.white24 : Colors.grey.shade300),
+            width: selected ? 1.5 : (exceedsCapacity ? 1.2 : 1.0),
           ),
         ),
         child: Row(
@@ -20175,8 +20280,12 @@ class _IntercallButton extends StatelessWidget {
               'Intercall',
               style: TextStyle(
                 color: isDark
-                    ? Colors.white
-                    : (selected ? Colors.blue.shade900 : Colors.grey.shade800),
+                    ? (exceedsCapacity ? Colors.red.shade300 : Colors.white)
+                    : (selected
+                        ? Colors.blue.shade900
+                        : exceedsCapacity
+                            ? Colors.red.shade700
+                            : Colors.grey.shade800),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -20189,15 +20298,23 @@ class _IntercallButton extends StatelessWidget {
                   Icons.crop_free_rounded,
                   size: 22,
                   color: isDark
-                      ? Colors.white
-                      : (selected ? Colors.blue : Colors.grey.shade500),
+                      ? (exceedsCapacity ? Colors.red.shade400 : Colors.white)
+                      : (selected
+                          ? Colors.blue
+                          : exceedsCapacity
+                              ? Colors.red.shade400
+                              : Colors.grey.shade500),
                 ),
                 Text(
                   thickness.toString(),
                   style: TextStyle(
                     color: isDark
                         ? Colors.white
-                        : (selected ? Colors.blue.shade700 : Colors.black87),
+                        : (selected
+                            ? Colors.blue.shade700
+                            : exceedsCapacity
+                                ? Colors.red.shade900
+                                : Colors.black87),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -20209,13 +20326,24 @@ class _IntercallButton extends StatelessWidget {
               'مم',
               style: TextStyle(
                 color: isDark
-                    ? Colors.white
-                    : (selected ? Colors.blue.shade900 : Colors.grey.shade800),
+                    ? (exceedsCapacity ? Colors.red.shade300 : Colors.white)
+                    : (selected
+                        ? Colors.blue.shade900
+                        : exceedsCapacity
+                            ? Colors.red.shade700
+                            : Colors.grey.shade800),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-            if (showWarning) ...[
+            if (exceedsCapacity) ...[
+              const SizedBox(width: 5),
+              Icon(
+                Icons.block_rounded,
+                color: isDark ? Colors.red.shade400 : Colors.red.shade700,
+                size: 15,
+              ),
+            ] else if (showWarning) ...[
               const SizedBox(width: 5),
               const Icon(
                 Icons.warning_amber_rounded,
@@ -21548,7 +21676,7 @@ class _ProfileButton extends StatelessWidget {
   }
 }
 
-// Helper validation functions for sliding system glass/gasket thickness constraints (e.g. TPR 67000)
+// Helper validation functions for glass/gasket thickness constraints (Ouvrant & Coulissant)
 bool isGlassThicknessValid(
   double thickVal,
   GlassSpecification spec,
@@ -21559,10 +21687,22 @@ bool isGlassThicknessValid(
       systemMode == 'sliding' ||
       model.systemMode == 'sliding' ||
       model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
-  if (isSliding && model.isSliding67Family) {
-    final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
-    final double maxAllowed = 24.0 - minGasket; // 20.0 or 22.0
-    if (thickVal > maxAllowed) return false;
+  final double jointAllowance;
+  if (isSliding) {
+    final double j = model.selectedVitrageJointThickness(fallback: 2.0);
+    jointAllowance = spec.jointTwoSides ? (j * 2) : j;
+  } else {
+    jointAllowance = model.selectedVitrageJointThickness(fallback: 2.0) +
+        (spec.structure == GlassStructure.double
+            ? model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0)
+            : 0.0);
+  }
+  final maxCapacity = model.glazingCapacityForStructure(
+    spec.structure,
+    sliding: isSliding,
+  );
+  if (maxCapacity != null && (thickVal + jointAllowance) > maxCapacity) {
+    return false;
   }
   return true;
 }
@@ -21579,10 +21719,21 @@ bool isDoubleGlassValid(
       systemMode == 'sliding' ||
       model.systemMode == 'sliding' ||
       model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
-  if (isSliding && model.isSliding67Family) {
-    final double minGasket = jointTwoSides ? 4.0 : 2.0;
-    final double maxAllowed = 24.0 - minGasket; // 20.0 or 22.0
-    if ((thickOuter + intercall + thickInner) > maxAllowed) return false;
+  final double jointAllowance;
+  if (isSliding) {
+    final double j = model.selectedVitrageJointThickness(fallback: 2.0);
+    jointAllowance = jointTwoSides ? (j * 2) : j;
+  } else {
+    jointAllowance = model.selectedVitrageJointThickness(fallback: 2.0) +
+        model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0);
+  }
+  final maxCapacity = model.glazingCapacityForStructure(
+    GlassStructure.double,
+    sliding: isSliding,
+  );
+  if (maxCapacity != null &&
+      (thickOuter + intercall + thickInner + jointAllowance) > maxCapacity) {
+    return false;
   }
   return true;
 }

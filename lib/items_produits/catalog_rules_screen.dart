@@ -242,7 +242,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         final itemId = (raw['item_id'] as num?)?.toInt();
         if (table.isEmpty || itemId == null) continue;
         final rule = Map<String, dynamic>.from(raw)..['series_id'] = seriesId;
-        final storedRole = rule['role_key']?.toString();
+        final storedRole = rule['role_key']?.toString() ?? '';
         if (storedRole == 'sliding_clamp' || storedRole == 'clamp') {
           rule['role_key'] = 'clam';
           if (storedRole == 'sliding_clamp') rule['usage_scope'] = 'sliding';
@@ -255,14 +255,48 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             rule['role_key'] = 'alignment_square';
           }
         }
-        _rulesByItem[_itemKey(table, itemId)] = rule;
+        final key = _itemKey(table, itemId);
+        if (_rulesByItem.containsKey(key)) {
+          final existing = _rulesByItem[key]!;
+          final extra = (existing['extra_roles'] as Set<String>?) ?? <String>{
+            if (existing['role_key']?.toString().isNotEmpty ?? false)
+              existing['role_key'].toString(),
+          };
+          if (storedRole.isNotEmpty) extra.add(storedRole);
+          existing['extra_roles'] = extra;
+          if (_truthy(rule['is_active'])) existing['is_active'] = true;
+        } else {
+          rule['extra_roles'] = <String>{
+            if (storedRole.isNotEmpty) storedRole,
+          };
+          _rulesByItem[key] = rule;
+        }
       }
       _assemblySections = sections;
       for (final table in _tables) {
         for (final item
             in _itemsByTable[table] ?? const <Map<String, dynamic>>[]) {
           final itemId = _itemId(item);
-          if (itemId != null) _ruleFor(table, itemId)['series_id'] = seriesId;
+          if (itemId != null) {
+            final rule = _ruleFor(table, itemId);
+            rule['series_id'] = seriesId;
+            if (table == 'Accessories' && _isScrewItem(item)) {
+              final extra = (rule['extra_roles'] as Set<String>?) ?? <String>{};
+              if (extra.isEmpty) {
+                final fromItem = _screwRolesFromItem(item);
+                if (fromItem.isNotEmpty) {
+                  extra.addAll(fromItem);
+                  rule['extra_roles'] = extra;
+                  if (rule['role_key']?.toString().isEmpty ?? true) {
+                    rule['role_key'] = fromItem.first;
+                  }
+                  rule['is_active'] = true;
+                }
+              }
+              rule['show_in_drawing'] = false;
+              rule['show_in_quantity'] = true;
+            }
+          }
         }
       }
       _loadedRulesSeriesId = seriesId;
@@ -507,6 +541,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       // The old guessed role is still used as a convenient first suggestion
       // when the button is activated, but is not enabled silently.
       'role_key': '',
+      'extra_roles': <String>{},
       'usage_scope': 'global',
       'show_when_glass': 'any',
       'selection_mode': 'always',
@@ -554,17 +589,31 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     setState(() {
       rule['is_active'] = enabled;
       if (enabled) {
-        if (rule['role_key']?.toString().trim().isEmpty ?? true) {
-          rule['role_key'] = _guessRole(table, item);
-        }
-        if (rule['role_key'] == 'assembly_screw' ||
-            rule['role_key'] == 'accessory_screw' ||
-            rule['role_key'] == 'installation_screw' ||
-            rule['role_key'] == 'bouchon_batmo_screw') {
-          // This is a calculated material requirement, not an object painted
-          // on the window canvas.
+        if (table == 'Accessories' && _isScrewItem(item)) {
+          final extra = (rule['extra_roles'] as Set<String>?) ?? <String>{};
+          if (extra.isEmpty) {
+            final fromItem = _screwRolesFromItem(item);
+            if (fromItem.isNotEmpty) {
+              extra.addAll(fromItem);
+            } else {
+              final guessed = _guessRole(table, item);
+              extra.add(_isScrewRole(guessed) ? guessed : 'accessory_screw');
+            }
+          }
+          rule['extra_roles'] = extra;
+          if (extra.isNotEmpty) {
+            rule['role_key'] = extra.first;
+          }
           rule['show_in_quantity'] = true;
           rule['show_in_drawing'] = false;
+        } else {
+          if (rule['role_key']?.toString().trim().isEmpty ?? true) {
+            rule['role_key'] = _guessRole(table, item);
+          }
+          if (_isScrewRole(rule['role_key']?.toString() ?? '')) {
+            rule['show_in_quantity'] = true;
+            rule['show_in_drawing'] = false;
+          }
         }
         _inspectedItemKey = key;
       } else {
@@ -804,6 +853,37 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     return guessed;
   }
 
+  static const _screwRoles = {
+    'kit_screw',
+    'box_screw',
+    'motor_screw',
+    'batmo_screw',
+    'bouchon_batmo_screw',
+    'renfort_screw',
+    'manivelle_screw',
+    'assembly_screw',
+    'installation_screw',
+    'accessory_screw',
+  };
+
+  bool _isScrewRole(String role) =>
+      _screwRoles.contains(role.trim().toLowerCase());
+
+  Set<String> _screwRolesFromItem(Map<String, dynamic> item) {
+    return {
+      if (_truthy(item['is_batmo_screw'])) 'batmo_screw',
+      if (_truthy(item['is_bouchon_batmo_screw'])) 'bouchon_batmo_screw',
+      if (_truthy(item['is_kit_screw'])) 'kit_screw',
+      if (_truthy(item['is_caisson_screw'])) 'box_screw',
+      if (_truthy(item['is_moteur_screw'])) 'motor_screw',
+      if (_truthy(item['is_renfort_screw'])) 'renfort_screw',
+      if (_truthy(item['is_manivelle_screw'])) 'manivelle_screw',
+      if (_truthy(item['is_assembly_screw'])) 'assembly_screw',
+      if (_truthy(item['is_installation_screw'])) 'installation_screw',
+      if (_truthy(item['is_accessory_screw'])) 'accessory_screw',
+    };
+  }
+
   bool _isScrewItem(Map<String, dynamic> item) {
     final text = '${item['name'] ?? ''} ${item['type'] ?? ''}'.toLowerCase();
     return _textLooksLikeScrew(text) ||
@@ -836,13 +916,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     _CatalogGroup group,
   ) {
     if (table == 'Accessories') {
-      final explicitRoles = <String>{
-        if (_truthy(item['is_accessory_screw'])) 'accessory_screw',
-        if (_truthy(item['is_installation_screw'])) 'installation_screw',
-        if (_truthy(item['is_bouchon_batmo_screw'])) 'bouchon_batmo_screw',
+      final itemId = _itemId(item);
+      final rule =
+          itemId != null ? _rulesByItem[_itemKey(table, itemId)] : null;
+      final extraRoles =
+          (rule?['extra_roles'] as Set<String>?) ?? <String>{};
+      final mainRole = rule?['role_key']?.toString() ?? '';
+      final activeRoles = <String>{
+        if (mainRole.isNotEmpty) mainRole,
+        ...extraRoles,
+        ..._screwRolesFromItem(item),
       };
-      if (explicitRoles.isNotEmpty &&
-          group.roleKeys.any(explicitRoles.contains)) {
+      if (activeRoles.any(group.roleKeys.contains)) {
+        return true;
+      }
+      if (_isScrewItem(item) && group.roleKeys.any(_isScrewRole)) {
         return true;
       }
     }
@@ -1106,19 +1194,66 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     setState(() => _saving = true);
     try {
       for (final table in _tables) {
-        final rules = _rulesByItem.entries
-            .where((entry) => entry.key.startsWith('$table:'))
-            .map((entry) => entry.value)
-            .where(
-              (rule) =>
-                  _truthy(rule['is_active']) &&
-                  (rule['role_key']?.toString().isNotEmpty ?? false),
-            )
-            .toList();
+        final rulesToSave = <Map<String, dynamic>>[];
+        for (final entry in _rulesByItem.entries.where(
+          (e) => e.key.startsWith('$table:'),
+        )) {
+          final rule = entry.value;
+          if (!_truthy(rule['is_active'])) continue;
+          final itemId = (rule['item_id'] as num?)?.toInt();
+          if (itemId == null) continue;
+
+          final extraRoles =
+              (rule['extra_roles'] as Set<String>?) ?? <String>{};
+          final mainRole = rule['role_key']?.toString().trim() ?? '';
+          final allRoles = <String>{
+            if (mainRole.isNotEmpty) mainRole,
+            ...extraRoles,
+          };
+
+          final item = (_itemsByTable[table] ?? const <Map<String, dynamic>>[])
+              .where((c) => _itemId(c) == itemId)
+              .firstOrNull;
+
+          if (table == 'Accessories' &&
+              (item != null && _isScrewItem(item) ||
+                  allRoles.any(_isScrewRole))) {
+            for (final r in allRoles) {
+              final rRule = Map<String, dynamic>.from(rule);
+              rRule['role_key'] = r;
+              rRule['show_in_drawing'] = 0;
+              rRule['show_in_quantity'] = 1;
+              rulesToSave.add(rRule);
+            }
+            if (item != null) {
+              await widget.db.updateAccessory(itemId, {
+                'is_batmo_screw': allRoles.contains('batmo_screw') ? 1 : 0,
+                'is_bouchon_batmo_screw':
+                    allRoles.contains('bouchon_batmo_screw') ? 1 : 0,
+                'is_kit_screw': allRoles.contains('kit_screw') ? 1 : 0,
+                'is_caisson_screw': allRoles.contains('box_screw') ? 1 : 0,
+                'is_moteur_screw': allRoles.contains('motor_screw') ? 1 : 0,
+                'is_renfort_screw': allRoles.contains('renfort_screw') ? 1 : 0,
+                'is_manivelle_screw':
+                    allRoles.contains('manivelle_screw') ? 1 : 0,
+                'is_assembly_screw':
+                    allRoles.contains('assembly_screw') ? 1 : 0,
+                'is_installation_screw':
+                    allRoles.contains('installation_screw') ? 1 : 0,
+                'is_accessory_screw':
+                    allRoles.contains('accessory_screw') ? 1 : 0,
+              });
+            }
+          } else {
+            if (mainRole.isNotEmpty) {
+              rulesToSave.add(rule);
+            }
+          }
+        }
         await widget.db.saveCatalogItemRules(
           itemTable: table,
           seriesId: seriesId,
-          rules: rules,
+          rules: rulesToSave,
           syncCatalog: false,
         );
       }
@@ -1735,16 +1870,45 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _itemTitle(item),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
-        subtitle: Text(
-          role != null
-              ? '${_t('الدور:', 'Rôle :')} ${_t(role.ar, role.fr)}'
-              : _t('الدور غير محدد', 'Rôle non défini'),
-          style: TextStyle(
-            fontSize: 12,
-            color: role != null
-                ? Theme.of(context).colorScheme.primary
-                : Colors.orange.shade700,
-          ),
+        subtitle: Builder(
+          builder: (context) {
+            final extra =
+                (rule['extra_roles'] as Set<String>?) ?? <String>{};
+            final allRoleKeys = <String>{
+              if (rule['role_key']?.toString().isNotEmpty ?? false)
+                rule['role_key'].toString(),
+              ...extra,
+            };
+            if (allRoleKeys.length > 1) {
+              final labels = allRoleKeys
+                  .map((k) {
+                    final r = _rolesForTable(table)
+                        .where((cand) => cand.key == k)
+                        .firstOrNull;
+                    return r != null ? _t(r.ar, r.fr) : k;
+                  })
+                  .join(' • ');
+              return Text(
+                '${_t('الأدوار:', 'Rôles :')} $labels',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              );
+            }
+            return Text(
+              role != null
+                  ? '${_t('الدور:', 'Rôle :')} ${_t(role.ar, role.fr)}'
+                  : _t('الدور غير محدد', 'Rôle non défini'),
+              style: TextStyle(
+                fontSize: 12,
+                color: role != null
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.orange.shade700,
+              ),
+            );
+          },
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1994,6 +2158,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         table == 'Accessories' && selectedRole == 'espagnolette';
     final isAssemblyScrewRule =
         table == 'Accessories' && selectedRole == 'assembly_screw';
+    final isScrew = table == 'Accessories' &&
+        (_isScrewItem(item) ||
+            _isScrewRole(storedRole ?? '') ||
+            ((rule['extra_roles'] as Set<String>?)?.isNotEmpty ?? false));
 
     return Card(
       key: ValueKey('inspector:$_selectedSeriesId:$table:$itemId'),
@@ -2046,30 +2214,131 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               ],
             ),
             const Divider(height: 24),
-            DropdownButtonFormField<String>(
-              key: ValueKey('role-select:$itemId:$selectedRole'),
-              initialValue: selectedRole,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: _t('الدور / العنوان', 'Rôle / rubrique'),
-                border: const OutlineInputBorder(),
-                isDense: true,
-              ),
-              items: itemRoles
-                  .map(
-                    (role) => DropdownMenuItem(
-                      value: role.key,
-                      child: Text(_t(role.ar, role.fr)),
+            if (isScrew) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(20),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.build_circle_outlined,
+                          size: 20,
+                          color: Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _t(
+                              'أدوار هذا البرغي (يمكن اختيار عدة أدوار)',
+                              'Rôles de cette vis (choix multiple)',
+                            ),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  )
-                  .toList(),
-              onChanged: readOnly
-                  ? null
-                  : (value) {
-                      if (value == null) return;
-                      setState(() => rule['role_key'] = value);
-                    },
-            ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _t(
+                        'يمكن للبرغي أن يؤدي عدة أدوار معاً (باتمو، صندوق، كيت...). وسيتم دمج أعداده تلقائياً في الكميات المطلوبة.',
+                        'Cette vis peut avoir plusieurs rôles (batmo, caisson, kit...). Ses quantités seront combinées automatiquement.',
+                      ),
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 10),
+                    Builder(
+                      builder: (context) {
+                        final extra = (rule['extra_roles'] as Set<String>?) ??
+                            <String>{
+                              if (rule['role_key']?.toString().isNotEmpty ??
+                                  false)
+                                rule['role_key'].toString(),
+                            };
+                        final screwRoleList = itemRoles
+                            .where((r) => _isScrewRole(r.key))
+                            .toList();
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: screwRoleList.map((role) {
+                            final isSelected = extra.contains(role.key);
+                            return FilterChip(
+                              avatar: isSelected
+                                  ? const Icon(Icons.check, size: 16)
+                                  : null,
+                              label: Text(_t(role.ar, role.fr)),
+                              selected: isSelected,
+                              onSelected: readOnly
+                                  ? null
+                                  : (selected) {
+                                      setState(() {
+                                        if (selected) {
+                                          extra.add(role.key);
+                                          rule['is_active'] = true;
+                                        } else {
+                                          extra.remove(role.key);
+                                          if (extra.isEmpty) {
+                                            rule['is_active'] = false;
+                                          }
+                                        }
+                                        rule['extra_roles'] = extra;
+                                        if (extra.isNotEmpty) {
+                                          rule['role_key'] = extra.first;
+                                        } else {
+                                          rule['role_key'] = '';
+                                        }
+                                        rule['show_in_drawing'] = false;
+                                        rule['show_in_quantity'] = true;
+                                      });
+                                    },
+                              selectedColor: Colors.blue.shade100,
+                              checkmarkColor: Colors.blue.shade800,
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              DropdownButtonFormField<String>(
+                key: ValueKey('role-select:$itemId:$selectedRole'),
+                initialValue: selectedRole,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: _t('الدور / العنوان', 'Rôle / rubrique'),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: itemRoles
+                    .map(
+                      (role) => DropdownMenuItem(
+                        value: role.key,
+                        child: Text(_t(role.ar, role.fr)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: readOnly
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        setState(() => rule['role_key'] = value);
+                      },
+              ),
+            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _validUsageScope(rule['usage_scope']),
@@ -2181,7 +2450,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   readOnly: readOnly,
                 ),
                 _ruleChip(rule, 'show_in_dialog', _t('نافذة التغيير', 'Choix'), readOnly: readOnly),
-                if (!isAssemblyScrewRule)
+                if (!isAssemblyScrewRule && !isScrew)
                   _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin'), readOnly: readOnly),
               ],
             ),

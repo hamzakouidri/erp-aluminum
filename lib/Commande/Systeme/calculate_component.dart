@@ -2253,18 +2253,28 @@ class ComponentCalculator {
     }) {
       final selectorType =
           selectorTypeOverride ?? _selectorTypeForAccessory(originalName);
+      final roleKey = roleKeyOverride ?? _roleKeyForAccessorySelector(selectorType);
+      final overrideItem = window.componentOverrides[originalName] ??
+          (roleKey != null ? window.componentOverrides[roleKey] : null) ??
+          (originalName.contains('براغي الباتمو')
+              ? (window.componentOverrides['براغي الباتمو'] ??
+                  window.componentOverrides['براغي الباتمو 3.9*50'])
+              : null) ??
+          (originalName.contains('براغي بوشون باتمو')
+              ? window.componentOverrides['براغي بوشون باتمو']
+              : null);
       return _createAccessory(
         window.componentOverrides,
         originalName,
         isActive: isActive,
         color: color,
         qty: qty * window.quantity,
-        catalogItemId: catalogueId(window.componentOverrides[originalName]),
+        catalogItemId: catalogueId(overrideItem),
         colorId: catalogueColorId(color, accessory: true),
         overrideKey: originalName,
         selectorCategory: 'accessory',
         selectorType: selectorType,
-        roleKey: roleKeyOverride ?? _roleKeyForAccessorySelector(selectorType),
+        roleKey: roleKey,
         sourceSeriesId: sliding || window.systemMode == 'sliding'
             ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
             : window.activeSeries?.id,
@@ -2707,6 +2717,7 @@ class ComponentCalculator {
 
     bool hasSeparateCoverOn(String side) {
       if (!hasNonIntegratedSideCover) return false;
+      if (!window.canSideUseSideCover(side)) return false;
       if (side == 'bottom' && !window.hasBottomFrame) return false;
       if (frameRects.length > 1) {
         return window.getExposedFrameEdgeSegments().any(
@@ -4042,22 +4053,32 @@ class ComponentCalculator {
                 (endX - x).abs() <= 2.0 && (endY - y).abs() <= 2.0;
           }
 
+          bool isEdgeAllowed(FrameEdgeSegment edge) {
+            if (window.hiddenSideCoverSegments.contains(edge.side) ||
+                window.removedShutterSides.contains(edge.side) ||
+                (edge.side == 'bottom' && !window.hasBottomFrame) ||
+                !window.isSideCoverSegmentEnabled(edge.side)) {
+              return false;
+            }
+            if (edge.frameRect != null &&
+                !window.frameSideAllowsSideCover(edge.frameRect!, edge.side)) {
+              return false;
+            }
+            return true;
+          }
+
           bool hasMiterAt(FrameEdgeSegment edge, double axis) {
             final x = isHorizontal(edge.side) ? axis : edge.coordinate;
             final y = isHorizontal(edge.side) ? edge.coordinate : axis;
             return exposedEdges.any(
               (other) =>
+                  isEdgeAllowed(other) &&
                   isHorizontal(other.side) != isHorizontal(edge.side) &&
                   isEndpointAt(other, x, y),
             );
           }
 
-          for (final edge in exposedEdges) {
-            if (window.hiddenSideCoverSegments.contains(edge.side) ||
-                window.removedShutterSides.contains(edge.side) ||
-                (edge.side == 'bottom' && !window.hasBottomFrame)) {
-              continue;
-            }
+          for (final edge in exposedEdges.where(isEdgeAllowed)) {
             for (final segment in window.effectiveSideCoverSegments.where(
               (segment) => segment.side == edge.side,
             )) {
@@ -4114,30 +4135,78 @@ class ComponentCalculator {
         if (frameRects.length > 1) {
           // The cover is one continuous perimeter around the union of all
           // touching physical frames, not one rectangle per frame.
-          for (final edge in window.getExposedFrameEdgeSegments()) {
+          final exposedEdges = window.getExposedFrameEdgeSegments();
+          bool isHorizontal(String side) => side == 'top' || side == 'bottom';
+
+          bool isEdgeAllowed(FrameEdgeSegment edge) {
             if (window.hiddenSideCoverSegments.contains(edge.side) ||
                 window.removedShutterSides.contains(edge.side) ||
-                (edge.side == 'bottom' && !window.hasBottomFrame)) {
-              continue;
+                (edge.side == 'bottom' && !window.hasBottomFrame) ||
+                !window.isSideCoverSegmentEnabled(edge.side)) {
+              return false;
             }
+            if (edge.frameRect != null &&
+                !window.frameSideAllowsSideCover(edge.frameRect!, edge.side)) {
+              return false;
+            }
+            return true;
+          }
+
+          final activeEdges = exposedEdges.where(isEdgeAllowed).toList();
+
+          bool hasActiveMiterAt(FrameEdgeSegment edge, double axis) {
+            final x = isHorizontal(edge.side) ? axis : edge.coordinate;
+            final y = isHorizontal(edge.side) ? edge.coordinate : axis;
+            return activeEdges.any(
+              (other) =>
+                  isHorizontal(other.side) != isHorizontal(edge.side) &&
+                  (((isHorizontal(other.side) ? other.start : other.coordinate) - x).abs() <= 5.0 &&
+                   ((isHorizontal(other.side) ? other.coordinate : other.start) - y).abs() <= 5.0 ||
+                   ((isHorizontal(other.side) ? other.end : other.coordinate) - x).abs() <= 5.0 &&
+                   ((isHorizontal(other.side) ? other.coordinate : other.end) - y).abs() <= 5.0),
+            );
+          }
+
+          for (final edge in activeEdges) {
+            final miterCount = (hasActiveMiterAt(edge, edge.start) ? 1 : 0) +
+                (hasActiveMiterAt(edge, edge.end) ? 1 : 0);
             sideCoverPieces.add(
-              (edge.length + (2 * w) + pvcWeldingAllowance) / 1000.0,
+              (edge.length + (miterCount * w) + pvcWeldingAllowance) / 1000.0,
             );
           }
         } else {
-          final verticalLen = window.height + (2 * w) + pvcWeldingAllowance;
-          final horizontalLen = window.width + (2 * w) + pvcWeldingAllowance;
+          final leftMiterCount =
+              (hasSeparateCoverTop ? 1 : 0) + (hasSeparateCoverBottom ? 1 : 0);
+          final rightMiterCount =
+              (hasSeparateCoverTop ? 1 : 0) + (hasSeparateCoverBottom ? 1 : 0);
+          final topMiterCount =
+              (hasSeparateCoverLeft ? 1 : 0) + (hasSeparateCoverRight ? 1 : 0);
+          final bottomMiterCount =
+              (hasSeparateCoverLeft ? 1 : 0) + (hasSeparateCoverRight ? 1 : 0);
+
           if (hasSeparateCoverLeft) {
-            sideCoverPieces.add(verticalLen / 1000.0);
+            sideCoverPieces.add(
+              (window.height + (leftMiterCount * w) + pvcWeldingAllowance) /
+                  1000.0,
+            );
           }
           if (hasSeparateCoverRight) {
-            sideCoverPieces.add(verticalLen / 1000.0);
+            sideCoverPieces.add(
+              (window.height + (rightMiterCount * w) + pvcWeldingAllowance) /
+                  1000.0,
+            );
           }
           if (hasSeparateCoverTop) {
-            sideCoverPieces.add(horizontalLen / 1000.0);
+            sideCoverPieces.add(
+              (window.width + (topMiterCount * w) + pvcWeldingAllowance) /
+                  1000.0,
+            );
           }
           if (hasSeparateCoverBottom) {
-            sideCoverPieces.add(horizontalLen / 1000.0);
+            sideCoverPieces.add(
+              (window.width + (bottomMiterCount * w) + pvcWeldingAllowance) /
+                  1000.0,
+            );
           }
         }
       }
@@ -5476,6 +5545,8 @@ class ComponentCalculator {
         createAccessory(
           'براغي الباتمو 3.9*50',
           qty: batmoScrews * doubleSashCount,
+          roleKeyOverride: 'batmo_screw',
+          selectorTypeOverride: 'is_batmo_screw',
         ),
       );
       final bouchonOverride =
@@ -5517,6 +5588,8 @@ class ComponentCalculator {
           createAccessory(
             'براغي بوشون باتمو',
             qty: (doubleSashCount * 2).toInt(),
+            roleKeyOverride: 'bouchon_batmo_screw',
+            selectorTypeOverride: 'is_bouchon_batmo_screw',
           ),
         );
       }
@@ -9737,6 +9810,7 @@ class ComponentCalculator {
 
     items = _mergeIdenticalJoints(items);
     items = _mergeIdenticalSideCoverProfiles(items);
+    items = _mergeIdenticalProfiles(items);
 
     if (window.isShutterOnly) {
       return items.where((item) => item.category == 'shutter').toList();
@@ -10002,6 +10076,124 @@ class ComponentCalculator {
         roleKey: first.roleKey,
         sourceSeriesId: first.sourceSeriesId,
         materialType: first.materialType,
+      );
+      absorbed.addAll(group.skip(1));
+    }
+
+    return [
+      for (final item in items)
+        if (!absorbed.contains(item)) mergedByFirst[item] ?? item,
+    ];
+  }
+
+  /// دمج بروفيلات الألمنيوم المتطابقة (من نفس القطاع ونفس اللون ونفس الطول)
+  /// مثل الإطار السفلي وإطار جهة بروفيل الزاوية أو أجزاء الحلق المختلفة،
+  /// ليتم جمع قطع القص في سطر واحد وإعادة تحسين القص (Bar optimization) معاً.
+  static List<BomItem> _mergeIdenticalProfiles(List<BomItem> items) {
+    if (items.isEmpty) return items;
+
+    bool isMergeableProfile(BomItem item) {
+      if (item.category != 'profile') return false;
+      final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
+      final name = '${item.originalName} ${item.name}'.toLowerCase();
+      if (role == 'side_cover' ||
+          name.contains('couvre-joint') ||
+          name.contains('couvre joint') ||
+          name.contains('side cover') ||
+          name.contains('الغطاء الجانبي')) {
+        return false;
+      }
+      final id = item.catalogItemId;
+      final code = item.profileCode?.trim() ?? '';
+      return (id != null && id > 0) || code.isNotEmpty;
+    }
+
+    final groups = <String, List<BomItem>>{};
+    for (final item in items.where(isMergeableProfile)) {
+      final id = item.catalogItemId ?? 0;
+      final code = (item.profileCode ?? '').trim().toLowerCase();
+      final keyId = id > 0 ? 'id:$id' : 'code:$code';
+      final color = (item.colorName ?? '').trim().toLowerCase();
+      final unit = item.unit.trim().toLowerCase();
+      final barLength = ((item.length ?? 0.0) * 100).round();
+      groups.putIfAbsent('$keyId:$color:$unit:$barLength', () => []).add(item);
+    }
+
+    if (groups.values.every((group) => group.length < 2)) return items;
+
+    final mergedByFirst = <BomItem, BomItem>{};
+    final absorbed = <BomItem>{};
+
+    for (final group in groups.values.where((group) => group.length > 1)) {
+      final first = group.first;
+      final pieces = <double>[for (final item in group) ...?item.pieces];
+      final roles = <String>[];
+      for (final item in group) {
+        final lines = item.name.split('\n');
+        final role = lines.isNotEmpty ? lines[0].trim() : item.originalName.trim();
+        if (role.isNotEmpty && !roles.contains(role)) roles.add(role);
+      }
+
+      final barLength = first.length ?? 0.0;
+      final optimization = barLength > 0 && pieces.isNotEmpty
+          ? optimizeCutting(pieces: pieces, barLength: barLength)
+          : null;
+      final exact = optimization?['exactBars'] as double? ??
+          group.fold<double>(
+            0.0,
+            (total, item) => total + (item.exactQuantity ?? item.quantity),
+          );
+      final quantity = optimization?['optimizedBars'] as int?;
+      final cuttingList = pieces.isEmpty
+          ? first.cuttingList
+          : 'قطع القص: ${_cuttingPiecesLabel(pieces)}';
+
+      final catalogLines = first.name.split('\n');
+      String? catalogLabel;
+      if (catalogLines.length > 1) {
+        for (var i = 1; i < catalogLines.length; i++) {
+          final l = catalogLines[i].trim();
+          if (!l.contains('المطلوب الفعلي')) {
+            catalogLabel = l;
+            break;
+          }
+        }
+      }
+
+      final displayName = [
+        roles.join(' + '),
+        if (catalogLabel != null && catalogLabel.isNotEmpty) catalogLabel,
+        '(المطلوب الفعلي: ${exact.toStringAsFixed(2)} بارة)',
+      ].join('\n');
+
+      mergedByFirst[first] = BomItem(
+        category: 'profile',
+        originalName: roles.join(' + '),
+        profileCode: first.profileCode,
+        name: displayName,
+        imagePath: first.imagePath,
+        colorName: first.colorName,
+        length: first.length,
+        quantity: quantity?.toDouble() ??
+            group.fold<double>(0.0, (total, item) => total + item.quantity),
+        unit: first.unit,
+        unitPrice: first.unitPrice,
+        isMissing: group.every((item) => item.isMissing),
+        isInteractive: first.isInteractive,
+        isActive: group.any((item) => item.isActive),
+        pieces: pieces.isEmpty ? null : pieces,
+        cuttingList: cuttingList,
+        exactQuantity: exact,
+        catalogItemId: first.catalogItemId,
+        inventoryItemType: first.inventoryItemType,
+        colorId: first.colorId,
+        overrideKey: first.overrideKey,
+        selectorCategory: first.selectorCategory,
+        selectorType: first.selectorType,
+        roleKey: first.roleKey,
+        sourceSeriesId: first.sourceSeriesId,
+        materialType: first.materialType,
+        targetThicknessMm: first.targetThicknessMm,
       );
       absorbed.addAll(group.skip(1));
     }

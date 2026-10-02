@@ -198,6 +198,11 @@ int assemblyQuantity(
   final bottom = (assemblyInt(rule['bottom_corner_qty']) ?? 1).clamp(0, 100000);
   var quantity = 0;
   for (final demand in demands) {
+    // Clams (corner joints) belong strictly to physical 45-degree frame and sash corners.
+    // Intermediate battements, angle profiles, mullions, and transoms must never receive corner clams.
+    if (perCornerClamp && demand.target != 'frame' && demand.target != 'sash') {
+      continue;
+    }
     if (linkedSections.isNotEmpty) {
       // An explicit section link is more precise than the generic
       // frame/sash target. This also allows assembly hardware to follow a

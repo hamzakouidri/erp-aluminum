@@ -69,11 +69,13 @@ class DesktopScrollCoordinator {
     _lastPointerPosition = event.position;
 
     try {
-      final markedTargets =
-          _hits.remove(event.original ?? event) ??
-          <_DesktopScrollableRegistration>{};
-      final hitTargets = <_DesktopScrollableRegistration>{...markedTargets};
-      if (hitTargets.isEmpty) return;
+      final key = event.original ?? event;
+      final markedTargets = _hits[key];
+      final hitTargets = markedTargets != null
+          ? <_DesktopScrollableRegistration>{...markedTargets}
+          : <_DesktopScrollableRegistration>{};
+      final pool = hitTargets.isNotEmpty ? hitTargets : _registrations;
+      if (pool.isEmpty) return;
 
       final verticalDelta = event.scrollDelta.dy;
       final horizontalDelta = event.scrollDelta.dx;
@@ -81,7 +83,7 @@ class DesktopScrollCoordinator {
       final delta = useVertical ? verticalDelta : horizontalDelta;
       if (delta == 0) return;
 
-      final candidates = hitTargets
+      final candidates = pool
           .where(
             (registration) =>
                 registration.bounds?.contains(event.position) == true &&
@@ -357,12 +359,6 @@ class _DesktopScrollableRegistration {
           !renderObject.attached) {
         return null;
       }
-      var needsLayout = false;
-      assert(() {
-        if (renderObject.debugNeedsLayout) needsLayout = true;
-        return true;
-      }());
-      if (needsLayout) return null;
       final origin = renderObject.localToGlobal(Offset.zero);
       return origin & renderObject.size;
     } catch (_) {
@@ -484,6 +480,13 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    if (isWindowsDesktop) {
+      return const ClampingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      );
+    }
     return const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
   }
 

@@ -428,12 +428,14 @@ class FrameEdgeSegment {
   final double start;
   final double end;
   final double coordinate;
+  final Rect? frameRect;
 
   const FrameEdgeSegment({
     required this.side,
     required this.start,
     required this.end,
     required this.coordinate,
+    this.frameRect,
   });
 
   double get length => math.max(0.0, end - start);
@@ -4946,13 +4948,36 @@ class WindowModel extends ChangeNotifier {
     _frameJoinPartners = partners;
   }
 
-  /// Returns true when sections are declared join-compatible,
-  /// or when no join rules exist at all (open/permissive policy).
+  /// Returns true when sections are declared join-compatible.
+  /// Sections from DIFFERENT series MUST have an explicit entry in [FrameJoinRules].
+  /// Sections from the SAME series must have matching profile thickness and matching sliding/ouvrant category.
   bool framesCanJoin(AluminumSection a, AluminumSection b) {
-    if (_frameJoinPartners.isEmpty) return true;
-    final partnersOfA = _frameJoinPartners[a.id];
-    if (partnersOfA == null) return false;
-    return partnersOfA.contains(b.id);
+    if (a.id == b.id) return true;
+
+    // Check sliding vs ouvrant mismatch:
+    final aIsSliding = a.type.toLowerCase().contains('sliding') ||
+        a.type.toLowerCase().contains('couliss') ||
+        a.name.toLowerCase().contains('rail') ||
+        a.name.toLowerCase().contains('couliss');
+    final bIsSliding = b.type.toLowerCase().contains('sliding') ||
+        b.type.toLowerCase().contains('couliss') ||
+        b.name.toLowerCase().contains('rail') ||
+        b.name.toLowerCase().contains('couliss');
+    if (aIsSliding != bIsSliding) return false;
+
+    // Different series: MUST have an explicit link in _frameJoinPartners!
+    if (a.seriesId != 0 && b.seriesId != 0 && a.seriesId != b.seriesId) {
+      final partnersOfA = _frameJoinPartners[a.id];
+      if (partnersOfA == null) return false;
+      return partnersOfA.contains(b.id);
+    }
+
+    // Same series: require matching thickness/depth if both specify it
+    if (a.thickness > 0 && b.thickness > 0 && (a.thickness - b.thickness).abs() > 2.0) {
+      return false;
+    }
+
+    return true;
   }
 
   bool frameMapsCanJoin(
@@ -4960,13 +4985,64 @@ class WindowModel extends ChangeNotifier {
     Map<String, dynamic> second,
   ) {
     try {
-      return framesCanJoin(
-        AluminumSection.fromMap(first),
-        AluminumSection.fromMap(second),
-      );
+      final idA = (first['id'] as num?)?.toInt();
+      final idB = (second['id'] as num?)?.toInt();
+      if (idA != null && idB != null && idA == idB) return true;
+
+      // Sliding vs ouvrant mismatch check:
+      bool isSliding(Map<String, dynamic> m) {
+        final role = (m['role_key'] ?? m['role'] ?? m['design_role'] ?? '').toString().toLowerCase();
+        if (role == 'sliding_frame' || role == 'frame_sliding') return true;
+        final uScope = (m['usage_scope'] ?? m['design_usage_scope'] ?? m['sharing_usage_scope'] ?? '').toString().toLowerCase();
+        if (uScope == 'sliding') return true;
+        if (uScope == 'opening' || uScope == 'ouvrant') return false;
+        final text = '${m['label'] ?? ''} ${m['name'] ?? ''} ${m['type'] ?? ''} ${m['code'] ?? ''}'.toLowerCase();
+        return RegExp(r'\b\d+\s*rail|raill|monorail|couliss|glissi|galandage|سحاب|منزلق|جرار').hasMatch(text);
+      }
+      if (isSliding(first) != isSliding(second)) return false;
+
+      // Thickness / depth check:
+      final tA = (first['thickness'] as num?)?.toDouble() ?? 0.0;
+      final tB = (second['thickness'] as num?)?.toDouble() ?? 0.0;
+      if (tA > 0 && tB > 0 && (tA - tB).abs() > 2.0) return false;
+
+      final seriesA = (first['series_id'] as num?)?.toInt() ??
+          (first['source_series_id'] as num?)?.toInt();
+      final seriesB = (second['series_id'] as num?)?.toInt() ??
+          (second['source_series_id'] as num?)?.toInt();
+
+      if (seriesA != null && seriesB != null && seriesA != seriesB) {
+        if (idA == null || idB == null) return false;
+        final partnersOfA = _frameJoinPartners[idA];
+        if (partnersOfA == null) return false;
+        return partnersOfA.contains(idB);
+      }
+
+      return true;
     } catch (_) {
       return false;
     }
+  }
+
+  Set<String> profileAngleSidesForFrame(Rect frame) {
+    if (!usesProfileAngle) return const {};
+    final result = <String>{};
+    final junctions = getAdjacentFrameJunctions();
+    for (final junction in junctions) {
+      if (!activeProfileAngleJunctions.contains(junction.index)) continue;
+      if (junction.firstFrame == frame) result.add('right');
+      if (junction.secondFrame == frame) result.add('left');
+    }
+    final frameRects = getFrameRects();
+    if (junctions.isEmpty && frameRects.isNotEmpty) {
+      if ((profileAngleMode == 2 || profileAngleMode == 3) && frameRects.first == frame) {
+        result.add('left');
+      }
+      if ((profileAngleMode == 1 || profileAngleMode == 3) && frameRects.last == frame) {
+        result.add('right');
+      }
+    }
+    return result;
   }
 
   String? _frameSideStoragePrefix(Rect frame) {
@@ -4982,9 +5058,25 @@ class WindowModel extends ChangeNotifier {
 
   Map<String, dynamic>? frameSideOverrideForRect(Rect frame, String side) {
     final prefix = _frameSideStoragePrefix(frame);
-    if (prefix == null) return null;
-    final raw = componentOverrides['$prefix:${side.toLowerCase()}'];
-    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+    if (prefix != null) {
+      final raw = componentOverrides['$prefix:${side.toLowerCase()}'];
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    }
+    // If no manual override on this side, check if it touches a profile angle
+    if (usesProfileAngle && profileAngleSidesForFrame(frame).contains(side.toLowerCase())) {
+      final currentFrame = frameSectionForRect(frame);
+      if (currentFrame != null) {
+        final sliding = frameUsesSlidingSeries(frame);
+        final compatible = findCompatibleNoCoverFrame(
+          currentFrame: currentFrame,
+          sliding: sliding,
+        );
+        if (compatible != null) {
+          return compatible.toMap();
+        }
+      }
+    }
+    return null;
   }
 
   bool frameHasSideOverrides(Rect frame) => const [
@@ -5014,6 +5106,13 @@ class WindowModel extends ChangeNotifier {
     return _overrideHasIntegratedSideCover(effective);
   }
 
+  bool frameSideAllowsSideCover(Rect frame, String side) {
+    final override = frameSideOverrideForRect(frame, side);
+    final effective = override ?? frameSectionForRect(frame)?.toMap();
+    if (effective == null) return true;
+    return _overrideAllowsStandaloneSideCover(effective);
+  }
+
   void setFrameSideOverrides(
     Rect frame,
     Iterable<String> sides,
@@ -5034,19 +5133,23 @@ class WindowModel extends ChangeNotifier {
           ..['frame_side'] = side;
       }
 
-      // For a single integrated frame, the visible couvre-joint belongs to
-      // the selected side profile. Keep the existing cover painter in sync:
-      // a plain replacement hides that side, while an integrated replacement
-      // (or restoring the integrated base frame) shows it again.
-      if (getFrameRects().length == 1) {
-        final effective = section ?? frameSectionForRect(frame)?.toMap();
-        if (_overrideHasIntegratedSideCover(effective)) {
-          removedShutterSides.remove(side);
-        } else if (_overrideHasIntegratedSideCover(
-          frameSectionForRect(frame)?.toMap(),
-        )) {
-          removedShutterSides.add(side);
-        }
+      // If the replaced frame profile for this side cannot carry a couvre-joint,
+      // cancel/disable the couvre-joint on this specific side only, keeping all
+      // other sides (e.g. top, left, right) intact and active.
+      final effective = section ?? frameSectionForRect(frame)?.toMap();
+      final allowsCover = isIntegratedFrame
+          ? _overrideHasIntegratedSideCover(effective)
+          : _overrideAllowsStandaloneSideCover(effective);
+
+      if (!allowsCover) {
+        _materializeLegacySideCoverSegments();
+        sideCoverSegments =
+            sideCoverSegments.where((s) => s.side != side).toList();
+        hiddenSideCoverSegments.add(side);
+        removedShutterSides.add(side);
+      } else if (hasSideCovers) {
+        removedShutterSides.remove(side);
+        hiddenSideCoverSegments.remove(side);
       }
     }
     notifyListeners();
@@ -6315,9 +6418,35 @@ class WindowModel extends ChangeNotifier {
     return segments;
   }
 
+  bool canSideUseSideCover(String side) {
+    final normalized = side.toLowerCase();
+    final frames = getFrameRects();
+    if (frames.isEmpty) return true;
+    final minLeft = frames.map((f) => f.left).reduce(math.min);
+    final maxRight = frames.map((f) => f.right).reduce(math.max);
+    final minTop = frames.map((f) => f.top).reduce(math.min);
+    final maxBottom = frames.map((f) => f.bottom).reduce(math.max);
+
+    for (final frame in frames) {
+      bool touchesSide = false;
+      if (normalized == 'left' && (frame.left - minLeft).abs() <= 5.0) touchesSide = true;
+      if (normalized == 'right' && (frame.right - maxRight).abs() <= 5.0) touchesSide = true;
+      if (normalized == 'top' && (frame.top - minTop).abs() <= 5.0) touchesSide = true;
+      if (normalized == 'bottom' && (frame.bottom - maxBottom).abs() <= 5.0) touchesSide = true;
+      if (!touchesSide) continue;
+
+      if (normalized == 'bottom' && !hasBottomFrameForRect(frame)) return false;
+      final allows = isIntegratedFrame
+          ? frameSideHasIntegratedCover(frame, normalized)
+          : frameSideAllowsSideCover(frame, normalized);
+      if (!allows) return false;
+    }
+    return true;
+  }
+
   bool isSideCoverSegmentEnabled(String side) {
     final normalized = side.toLowerCase();
-    if (normalized == 'bottom' && !canUseBottomSideCover) {
+    if (!canSideUseSideCover(normalized)) {
       return false;
     }
     if (!useCustomSideCoverLayout) {
@@ -6338,7 +6467,7 @@ class WindowModel extends ChangeNotifier {
     const sides = ['top', 'left', 'right', 'bottom'];
     final segments = <SideCoverSegment>[];
     for (final side in sides) {
-      if (side == 'bottom' && !canUseBottomSideCover) continue;
+      if (!canSideUseSideCover(side)) continue;
       if (removedShutterSides.contains(side)) continue;
       final length = sideCoverSideLength(side);
       if (length <= 0) continue;
@@ -6362,7 +6491,7 @@ class WindowModel extends ChangeNotifier {
     const allowedSides = {'left', 'right', 'top', 'bottom'};
     final normalized = side.toLowerCase();
     if (!allowedSides.contains(normalized)) return;
-    if (normalized == 'bottom' && !canUseBottomSideCover) {
+    if (!canSideUseSideCover(normalized)) {
       return;
     }
 
@@ -15284,25 +15413,31 @@ class WindowModel extends ChangeNotifier {
     }
 
     zones[zoneIndex].boundary = next;
-    double nextWidth = 200.0;
-    double nextHeight = 200.0;
-    for (final zone in zones) {
-      nextWidth = math.max(nextWidth, zone.boundary.right + profileThickness);
-      nextHeight = math.max(
-        nextHeight,
-        zone.boundary.bottom + (hasBottomFrame ? profileThickness : 0.0),
-      );
+    if (moveLeft || moveRight) {
+      double nextWidth = 200.0;
+      for (final zone in zones) {
+        nextWidth = math.max(nextWidth, zone.boundary.right + profileThickness);
+      }
+      width = math.min(maximumFrameBarLengthMm, nextWidth);
     }
-    width = math.min(maximumFrameBarLengthMm, nextWidth);
-    height = math.min(maximumFrameBarLengthMm, nextHeight);
+    if (moveTop || moveBottom) {
+      double nextHeight = 200.0;
+      for (final zone in zones) {
+        nextHeight = math.max(
+          nextHeight,
+          zone.boundary.bottom + (hasBottomFrame ? profileThickness : 0.0),
+        );
+      }
+      height = math.min(maximumFrameBarLengthMm, nextHeight);
+    }
     _resizeSideCoverSegments(oldWidth, oldHeight, width, height);
     notifyListeners();
   }
 
   /// Snaps a physical frame edge to the outside edge of the next touching
-  /// frame when the dragged edge is within 100 mm. This lets an upper frame
-  /// grow from one lower frame to two, three, or more frames without requiring
-  /// millimetre-perfect dragging.
+  /// frame when the dragged edge is within 20 mm. This lets an upper frame
+  /// grow from one lower frame to two, three, or more frames smoothly without
+  /// sudden large jumps.
   double _snapPhysicalFrameEdge({
     required int frameIndex,
     required Rect current,
@@ -15310,7 +15445,7 @@ class WindowModel extends ChangeNotifier {
     required String side,
     required double proposed,
   }) {
-    const threshold = 100.0;
+    const threshold = 20.0;
 
     // Snapping is for extension toward a neighbouring frame. It must not
     // pull an edge back when the user is deliberately reducing its size.
@@ -15834,8 +15969,10 @@ class WindowModel extends ChangeNotifier {
     if (resizedRects.isNotEmpty) {
       final minLeft = resizedRects.map((rect) => rect.left).reduce(math.min);
       final minTop = resizedRects.map((rect) => rect.top).reduce(math.min);
-      final shiftX = minLeft.abs() > 0.001 ? -minLeft : 0.0;
-      final shiftY = minTop.abs() > 0.001 ? -minTop : 0.0;
+      final shiftX =
+          (moveLeft || moveRight) && minLeft.abs() > 0.001 ? -minLeft : 0.0;
+      final shiftY =
+          (moveTop || moveBottom) && minTop.abs() > 0.001 ? -minTop : 0.0;
       if (shiftX != 0.0 || shiftY != 0.0) {
         for (final zone in zones) {
           zone.boundary = zone.boundary.shift(Offset(shiftX, shiftY));
@@ -15844,17 +15981,23 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    double nextWidth = 200.0;
-    double nextHeight = 200.0;
-    for (final zone in zones) {
-      nextWidth = math.max(nextWidth, zone.boundary.right + profileThickness);
-      nextHeight = math.max(
-        nextHeight,
-        zone.boundary.bottom + (hasBottomFrame ? profileThickness : 0.0),
-      );
+    if (moveLeft || moveRight) {
+      double nextWidth = 200.0;
+      for (final zone in zones) {
+        nextWidth = math.max(nextWidth, zone.boundary.right + profileThickness);
+      }
+      width = math.min(maximumFrameBarLengthMm, nextWidth);
     }
-    width = math.min(maximumFrameBarLengthMm, nextWidth);
-    height = math.min(maximumFrameBarLengthMm, nextHeight);
+    if (moveTop || moveBottom) {
+      double nextHeight = 200.0;
+      for (final zone in zones) {
+        nextHeight = math.max(
+          nextHeight,
+          zone.boundary.bottom + (hasBottomFrame ? profileThickness : 0.0),
+        );
+      }
+      height = math.min(maximumFrameBarLengthMm, nextHeight);
+    }
     _resizeSideCoverSegments(oldWidth, oldHeight, width, height);
     notifyListeners();
   }
@@ -17685,11 +17828,7 @@ class WindowModel extends ChangeNotifier {
     return rect == null ? effectiveHasBottomFrame : hasBottomFrameForRect(rect);
   }
 
-  bool get canUseBottomSideCover {
-    final frames = getFrameRects();
-    if (frames.length > 1) return frames.any(hasBottomFrameForRect);
-    return hasBottomFrame;
-  }
+  bool get canUseBottomSideCover => canSideUseSideCover('bottom');
 
   bool get canEditSelectedBottomFrame {
     if (!canDisableBottomFrame) return false;
@@ -23915,6 +24054,7 @@ class WindowModel extends ChangeNotifier {
     // layout/rounding. Treat that seam as shared so no cover or visual gap is
     // produced between the frames.
     const tolerance = 5.0;
+    final maxJunctionGap = math.max(100.0, profileAngleTubeWidth + 20.0);
     final raw = <FrameEdgeSegment>[];
 
     void addVisiblePieces({
@@ -23923,6 +24063,7 @@ class WindowModel extends ChangeNotifier {
       required double end,
       required double coordinate,
       required List<List<double>> blockers,
+      Rect? frameRect,
     }) {
       var pieces = <List<double>>[
         [start, end],
@@ -23954,6 +24095,7 @@ class WindowModel extends ChangeNotifier {
               start: piece[0],
               end: piece[1],
               coordinate: coordinate,
+              frameRect: frameRect,
             ),
           );
         }
@@ -23972,9 +24114,13 @@ class WindowModel extends ChangeNotifier {
         start: rect.left,
         end: rect.right,
         coordinate: rect.top,
+        frameRect: rect,
         blockers: [
           for (final other in others)
-            if ((other.bottom - rect.top).abs() <= tolerance)
+            if (rect.top - other.bottom >= -tolerance &&
+                rect.top - other.bottom <= maxJunctionGap &&
+                math.min(rect.right, other.right) >
+                    math.max(rect.left, other.left) + tolerance)
               [
                 math.max(rect.left, other.left),
                 math.min(rect.right, other.right),
@@ -23986,9 +24132,13 @@ class WindowModel extends ChangeNotifier {
         start: rect.left,
         end: rect.right,
         coordinate: rect.bottom,
+        frameRect: rect,
         blockers: [
           for (final other in others)
-            if ((other.top - rect.bottom).abs() <= tolerance)
+            if (other.top - rect.bottom >= -tolerance &&
+                other.top - rect.bottom <= maxJunctionGap &&
+                math.min(rect.right, other.right) >
+                    math.max(rect.left, other.left) + tolerance)
               [
                 math.max(rect.left, other.left),
                 math.min(rect.right, other.right),
@@ -24000,9 +24150,13 @@ class WindowModel extends ChangeNotifier {
         start: rect.top,
         end: rect.bottom,
         coordinate: rect.left,
+        frameRect: rect,
         blockers: [
           for (final other in others)
-            if ((other.right - rect.left).abs() <= tolerance)
+            if (rect.left - other.right >= -tolerance &&
+                rect.left - other.right <= maxJunctionGap &&
+                math.min(rect.bottom, other.bottom) >
+                    math.max(rect.top, other.top) + tolerance)
               [
                 math.max(rect.top, other.top),
                 math.min(rect.bottom, other.bottom),
@@ -24014,9 +24168,13 @@ class WindowModel extends ChangeNotifier {
         start: rect.top,
         end: rect.bottom,
         coordinate: rect.right,
+        frameRect: rect,
         blockers: [
           for (final other in others)
-            if ((other.left - rect.right).abs() <= tolerance)
+            if (other.left - rect.right >= -tolerance &&
+                other.left - rect.right <= maxJunctionGap &&
+                math.min(rect.bottom, other.bottom) >
+                    math.max(rect.top, other.top) + tolerance)
               [
                 math.max(rect.top, other.top),
                 math.min(rect.bottom, other.bottom),
@@ -24039,12 +24197,13 @@ class WindowModel extends ChangeNotifier {
         final previous = merged.last;
         if (previous.side == segment.side &&
             (previous.coordinate - segment.coordinate).abs() <= tolerance &&
-            segment.start <= previous.end + tolerance) {
+            segment.start <= previous.end + maxJunctionGap) {
           merged[merged.length - 1] = FrameEdgeSegment(
             side: previous.side,
             start: previous.start,
             end: math.max(previous.end, segment.end),
             coordinate: previous.coordinate,
+            frameRect: previous.frameRect ?? segment.frameRect,
           );
           continue;
         }
