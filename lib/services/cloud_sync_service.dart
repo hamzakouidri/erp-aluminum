@@ -2642,7 +2642,7 @@ class CloudSyncService {
   }
 
   /// إشعار بوجود تغيير عاجل محلياً (كعمليات الصندوق والمعاملات المالية) والرفع الفوري للسحابة بدون انتظار
-  void notifyChangeImmediate() async {
+  Future<void> notifyChangeImmediate() async {
     _dbUpdateController.add('');
     final supabaseWorkshopSync = SupabaseWorkshopSyncService();
     _backupRetryTimer?.cancel();
@@ -2656,7 +2656,7 @@ class CloudSyncService {
         _localSyncQueuedAfterRestore = true;
         return;
       }
-      supabaseWorkshopSync.notifyLocalChange(immediate: true);
+      await supabaseWorkshopSync.uploadPendingChanges();
       await _clearFirebaseTransactionalPendingFlag();
       return;
     }

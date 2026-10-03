@@ -15,6 +15,7 @@ import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../sql_database.dart';
 import 'achat_screen.dart';
+import 'material_sales_screen.dart';
 import 'trash_screen.dart';
 import 'suppliers_screen.dart';
 import 'settings_screen.dart';
@@ -30,6 +31,7 @@ import 'client_chrono_search_screen.dart';
 import '../login_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'inventory_screen.dart';
+import 'material_remnants_screen.dart';
 import 'worker_archive_screen.dart';
 import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
@@ -826,6 +828,25 @@ class _AppDrawerState extends State<AppDrawer> {
           color: Colors.teal,
         ),
       );
+      // بيع المواد والمستلزمات – Material Sales
+      orderItems.add(
+        _desktopMenuItem(
+          title: _desktopLabel(
+            lang,
+            arabic: 'بيع المواد والمستلزمات',
+            french: 'Vente Matériaux',
+            english: 'Material Sales',
+          ),
+          icon: Icons.store_mall_directory_rounded,
+          onTap: () => _openScreen(
+            'material_sales',
+            Icons.store_mall_directory_rounded,
+            MaterialSalesScreen(db: db),
+            titleKey: 'material_sales',
+          ),
+          color: const Color(0xFF06B6D4),
+        ),
+      );
     }
     if (settings.canAccessDistributionTracking()) {
       orderItems.add(
@@ -921,6 +942,24 @@ class _AppDrawerState extends State<AppDrawer> {
             titleKey: 'inventory',
           ),
           color: const Color(0xFF8B5CF6),
+        ),
+      );
+      inventoryItems.add(
+        _desktopMenuItem(
+          title: _desktopLabel(
+            lang,
+            arabic: 'إدارة فضلات الألواح والمقاطع',
+            french: 'Gestion des chutes (Panneaux & Profilés)',
+            english: 'Remnants management',
+          ),
+          icon: Icons.recycling_rounded,
+          onTap: () => _openScreen(
+            'material_remnants',
+            Icons.recycling_rounded,
+            const MaterialRemnantsScreen(),
+            titleKey: 'material_remnants',
+          ),
+          color: Colors.teal,
         ),
       );
     }
@@ -1911,6 +1950,29 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
+          if (settings.canViewSales())
+            ListTile(
+              leading: const Icon(
+                Icons.store_mall_directory_rounded,
+                color: Color(0xFF06B6D4),
+              ),
+              title: Text(
+                lang == AppLanguage.french
+                    ? 'Vente Matériaux'
+                    : lang == AppLanguage.english
+                        ? 'Material Sales'
+                        : 'بيع المواد والمستلزمات',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              onTap: () {
+                _openScreen(
+                  'material_sales',
+                  Icons.store_mall_directory_rounded,
+                  MaterialSalesScreen(db: db),
+                  titleKey: 'material_sales',
+                );
+              },
+            ),
           if (settings.canViewMyAccreditations())
             ListTile(
               leading: const Icon(Icons.production_quantity_limits),
@@ -1937,6 +1999,26 @@ class _AppDrawerState extends State<AppDrawer> {
                   Icons.warehouse_rounded,
                   InventoryScreen(db: db),
                   titleKey: 'المخزون',
+                );
+              },
+            ),
+          if (settings.canAccessInventory())
+            ListTile(
+              leading: const Icon(
+                Icons.recycling_rounded,
+                color: Colors.teal,
+              ),
+              title: Text(
+                lang == AppLanguage.arabic
+                    ? 'إدارة فضلات الألواح والمقاطع (Chutes)'
+                    : 'Gestion des chutes (Panneaux & Profilés)',
+              ),
+              onTap: () {
+                _openScreen(
+                  'material_remnants',
+                  Icons.recycling_rounded,
+                  const MaterialRemnantsScreen(),
+                  titleKey: 'material_remnants',
                 );
               },
             ),

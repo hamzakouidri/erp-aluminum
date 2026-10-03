@@ -25,7 +25,10 @@ class WorkerPushNotificationService {
       WorkerPushNotificationService._();
 
   StreamSubscription<String>? _tokenSubscription;
+  StreamSubscription<AuthState>? _authSubscription;
   bool _initialized = false;
+  void Function(Map<String, dynamic>)? _notificationTapHandler;
+  Map<String, dynamic>? _pendingNotificationData;
 
   bool get _supported =>
       kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
@@ -45,20 +48,88 @@ class WorkerPushNotificationService {
     await messaging.requestPermission(alert: true, badge: true, sound: true);
     await _registerToken(await messaging.getToken());
     _tokenSubscription = messaging.onTokenRefresh.listen(_registerToken);
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+      state,
+    ) {
+      if (state.session != null) {
+        unawaited(_registerCurrentTokenWithRetry());
+      }
+    });
+
+    OrderNotificationService().onNotificationTap = _handleNotificationTap;
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      unawaited(_syncThenHandleNotificationTap(message.data));
+    });
+    final initialMessage = await messaging.getInitialMessage();
+    if (initialMessage != null) {
+      unawaited(_syncThenHandleNotificationTap(initialMessage.data));
+    }
 
     FirebaseMessaging.onMessage.listen((message) {
+      unawaited(_downloadLatestWorkshopData());
       final notification = message.notification;
       OrderNotificationService().showAssignmentNotification(
         title: notification?.title ?? 'مهمة جديدة',
         body: notification?.body ?? 'تم إسناد عمل جديد إليك',
+        data: message.data,
       );
     });
+  }
+
+  void setNotificationTapHandler(void Function(Map<String, dynamic>) handler) {
+    _notificationTapHandler = handler;
+    final pending = _pendingNotificationData;
+    if (pending != null) {
+      _pendingNotificationData = null;
+      handler(pending);
+    }
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    if (data.isEmpty) return;
+    final handler = _notificationTapHandler;
+    if (handler == null) {
+      _pendingNotificationData = Map<String, dynamic>.from(data);
+      return;
+    }
+    handler(Map<String, dynamic>.from(data));
+  }
+
+  Future<void> _syncThenHandleNotificationTap(Map<String, dynamic> data) async {
+    await _downloadLatestWorkshopData();
+    _handleNotificationTap(data);
+  }
+
+  Future<void> _downloadLatestWorkshopData() async {
+    try {
+      final sync = SupabaseWorkshopSyncService();
+      final ready = await sync.ensureStarted(
+        timeout: const Duration(seconds: 15),
+      );
+      if (ready) await sync.downloadWorkshopData();
+    } catch (error) {
+      debugPrint('Push notification sync failed: $error');
+    }
   }
 
   Future<void> refreshRegistration() async {
     if (!_supported) return;
     await initialize();
-    await _registerToken(await FirebaseMessaging.instance.getToken());
+    await _registerCurrentTokenWithRetry();
+  }
+
+  Future<void> _registerCurrentTokenWithRetry() async {
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        await _registerToken(await FirebaseMessaging.instance.getToken());
+        final user = Supabase.instance.client.auth.currentUser;
+        final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
+        if (user != null && workshopId.isNotEmpty) return;
+      } catch (error) {
+        debugPrint('Push token registration attempt failed: $error');
+      }
+      await Future<void>.delayed(Duration(seconds: attempt + 1));
+    }
   }
 
   Future<void> _registerToken(String? token) async {
@@ -79,19 +150,22 @@ class WorkerPushNotificationService {
   Future<void> sendAssignment({
     required String workshopId,
     required String workerUid,
+    required int orderId,
     required int orderNumber,
     required int quantity,
   }) async {
     if (workshopId.trim().isEmpty || workerUid.trim().isEmpty) return;
-    await Supabase.instance.client.functions.invoke(
+    final response = await Supabase.instance.client.functions.invoke(
       'send-worker-assignment',
       body: {
         'workshop_id': workshopId,
         'worker_uids': [workerUid],
+        'order_id': orderId,
         'order_number': orderNumber,
         'quantity': quantity,
       },
     );
+    _verifyPushResponse(response.data);
   }
 
   Future<Map<String, bool>> loadPreferences(Iterable<String> eventTypes) async {
@@ -128,7 +202,7 @@ class WorkerPushNotificationService {
   }) async {
     final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
     if (workshopId.isEmpty) return;
-    await Supabase.instance.client.functions.invoke(
+    final response = await Supabase.instance.client.functions.invoke(
       'send-worker-assignment',
       body: {
         'workshop_id': workshopId,
@@ -139,11 +213,25 @@ class WorkerPushNotificationService {
         'data': data,
       },
     );
+    _verifyPushResponse(response.data);
+  }
+
+  void _verifyPushResponse(dynamic data) {
+    if (data is! Map) return;
+    final failed = (data['failed'] as num?)?.toInt() ?? 0;
+    final sent = (data['sent'] as num?)?.toInt() ?? 0;
+    if (failed > 0 || sent == 0) {
+      throw StateError(
+        'تعذر إرسال إشعار FCM: ${data['errors'] ?? data['error'] ?? data}',
+      );
+    }
   }
 
   Future<void> dispose() async {
     await _tokenSubscription?.cancel();
+    await _authSubscription?.cancel();
     _tokenSubscription = null;
+    _authSubscription = null;
     _initialized = false;
   }
 }

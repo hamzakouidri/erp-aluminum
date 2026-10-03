@@ -25,6 +25,7 @@ import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Commande/devis_preview_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/order_picture_pdf_service.dart';
+import 'package:database_data/services/glass_fabrication_pdf_service.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/order_required_goods_screen.dart';
@@ -32,6 +33,7 @@ import 'package:database_data/Commande/order_measurements_confirm_screen.dart';
 import 'package:database_data/Commande/partial_proforma_screen.dart';
 import 'package:database_data/Screen/order_allocation_screen.dart';
 import '../Screen/cutting_optimization_screen.dart';
+import '../Screen/sheet_optimization_screen.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
@@ -47,14 +49,21 @@ class Commande extends StatefulWidget {
   /// Opens the normal new-order form after the orders page has appeared.
   /// The dashboard uses this so its add action behaves like the page action.
   final bool openAddOrderOnStart;
+  final int? initialOrderId;
 
-  const Commande({super.key, this.openAddOrderOnStart = false});
+  const Commande({
+    super.key,
+    this.openAddOrderOnStart = false,
+    this.initialOrderId,
+  });
 
   @override
   State<Commande> createState() => _CommandeState();
 }
 
 class _CommandeState extends State<Commande> {
+  bool _initialOrderOpened = false;
+  int? _notificationHighlightedOrderId;
   static const String _orderSortColumnPreferenceKey =
       'orders_sort_column_device';
   static const String _orderSortAscendingPreferenceKey =
@@ -77,6 +86,10 @@ class _CommandeState extends State<Commande> {
   late Future<List<Map<String, dynamic>>> _data;
   List<Map<String, dynamic>>? _cachedCommandes;
   String _searchQuery = '';
+  bool _showMobileSearch = false;
+  final TextEditingController _mobileSearchController =
+      TextEditingController();
+  final FocusNode _mobileSearchFocusNode = FocusNode();
   BuildContext? _loadingDialogContext;
   StreamSubscription? _dbUpdateSubscription;
   Timer? _syncRefreshDebounce;
@@ -484,6 +497,16 @@ class _CommandeState extends State<Commande> {
     return TextSpan(children: spans);
   }
 
+  static String _normalizeSearch(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[إأآا]'), 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+        .trim();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -542,6 +565,16 @@ class _CommandeState extends State<Commande> {
         setState(() {
           _cachedCommandes = list;
         });
+        final initialOrderId = widget.initialOrderId;
+        if (!_initialOrderOpened && initialOrderId != null) {
+          final matches = list.where(
+            (order) => order['id'].toString() == initialOrderId.toString(),
+          );
+          if (matches.isNotEmpty) {
+            _initialOrderOpened = true;
+            _notificationHighlightedOrderId = initialOrderId;
+          }
+        }
       }
       return list;
     });
@@ -619,6 +652,8 @@ class _CommandeState extends State<Commande> {
     _syncRefreshDebounce?.cancel();
     _dbUpdateSubscription?.cancel();
     _scrollController.dispose();
+    _mobileSearchController.dispose();
+    _mobileSearchFocusNode.dispose();
     for (final controller in _orderColumnControllers.values) {
       controller.dispose();
     }
@@ -846,13 +881,23 @@ class _CommandeState extends State<Commande> {
     AppLanguage lang,
   ) {
     List<Map<String, dynamic>> filtered = rawData.where((d) {
-      final query = _searchQuery.toLowerCase().trim();
+      final query = _searchQuery.trim();
       if (query.isNotEmpty) {
-        final first = (d['firstname'] ?? '').toString().toLowerCase();
-        final last = (d['lastname'] ?? '').toString().toLowerCase();
-        final phone = (d['phone'] ?? '').toString().toLowerCase();
-        final full = '$first $last $phone';
-        if (!query.split(' ').every((term) => full.contains(term))) {
+        final first = (d['firstname'] ?? '').toString();
+        final last = (d['lastname'] ?? '').toString();
+        final phone = (d['phone'] ?? '').toString();
+        final id = (d['id'] ?? '').toString();
+        final seq = (d['sequence_number'] ?? '').toString();
+        final project = (d['project_name'] ?? '').toString();
+        final location = (d['window_location'] ?? '').toString();
+        final full = '$first $last $phone $id $seq $project $location';
+
+        final normalizedFull = _normalizeSearch(full);
+        final normalizedQuery = _normalizeSearch(query);
+        final terms = normalizedQuery
+            .split(RegExp(r'\s+'))
+            .where((term) => term.isNotEmpty);
+        if (!terms.every((term) => normalizedFull.contains(term))) {
           return false;
         }
       }
@@ -1111,6 +1156,34 @@ class _CommandeState extends State<Commande> {
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
         actions: [
+          if (!isDesktop)
+            IconButton(
+              icon: Icon(
+                _showMobileSearch
+                    ? Icons.close_rounded
+                    : Icons.search_rounded,
+                color: Colors.white,
+              ),
+              tooltip: Localization.translate(
+                _showMobileSearch ? 'إغلاق البحث' : 'Search',
+                lang,
+              ),
+              onPressed: () {
+                setState(() {
+                  _showMobileSearch = !_showMobileSearch;
+                  if (!_showMobileSearch) {
+                    _mobileSearchController.clear();
+                    _searchQuery = '';
+                    _mobileSearchFocusNode.unfocus();
+                  }
+                });
+                if (_showMobileSearch) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _mobileSearchFocusNode.requestFocus();
+                  });
+                }
+              },
+            ),
           IconButton(
             icon: _isImportPicking
                 ? const SizedBox(
@@ -1176,71 +1249,66 @@ class _CommandeState extends State<Commande> {
             ),
         ],
       ),
-      body: DesktopScrollFallback(
-        controller: _scrollController,
-        child: Column(
-          children: [
-            // 🔍 Filters — shown only on Mobile
-            if (!(MediaQuery.of(context).size.width >= 900 ||
-                Platform.isWindows))
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                margin: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    width: 1,
-                    color: Theme.of(context).dividerColor,
-                  ),
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.filter_alt_outlined,
-                          color: Colors.blue,
+      body: Builder(
+        builder: (context) {
+          final bodyColumn = Column(
+            children: [
+              if (!isDesktop && _showMobileSearch)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                  child: TextField(
+                    controller: _mobileSearchController,
+                    focusNode: _mobileSearchFocusNode,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _mobileSearchFocusNode.unfocus(),
+                    onChanged: (value) {
+                      setState(() => _searchQuery = value);
+                      if (_scrollController.hasClients) {
+                        _scrollController.jumpTo(0);
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: Localization.translate('Search', lang),
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: _searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: Localization.translate(
+                                'مسح البحث',
+                                lang,
+                              ),
+                              icon: const Icon(Icons.clear_rounded),
+                              onPressed: () {
+                                _mobileSearchController.clear();
+                                setState(() => _searchQuery = '');
+                                if (_scrollController.hasClients) {
+                                  _scrollController.jumpTo(0);
+                                }
+                                _mobileSearchFocusNode.requestFocus();
+                              },
+                            ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: Theme.of(context).cardColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).dividerColor,
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          Localization.translate(
-                            "Filters Commandes",
-                            Provider.of<AppSettingsProvider>(context).language,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      onChanged: (val) {
-                        setState(() {
-                          _searchQuery = val;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: Localization.translate(
-                          "Search",
-                          Provider.of<AppSettingsProvider>(context).language,
-                        ),
-                        prefixIcon: const Icon(Icons.search),
-                        border: const OutlineInputBorder(),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
             Expanded(
               child: Container(
-                margin: const EdgeInsets.all(10),
+                margin: isDesktop
+                    ? const EdgeInsets.all(10)
+                    : const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
                 ),
                 child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: _data,
@@ -1450,19 +1518,24 @@ class _CommandeState extends State<Commande> {
                       );
                     }
                     final data = rawData.where((d) {
-                      final query = _searchQuery.toLowerCase().trim();
+                      final query = _searchQuery.trim();
                       if (query.isEmpty) return true;
-                      final first = (d['firstname'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final last = (d['lastname'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final phone = (d['phone'] ?? '').toString().toLowerCase();
-                      final full = '$first $last $phone';
-                      return query
-                          .split(' ')
-                          .every((term) => full.contains(term));
+
+                      final first = (d['firstname'] ?? '').toString();
+                      final last = (d['lastname'] ?? '').toString();
+                      final phone = (d['phone'] ?? '').toString();
+                      final id = (d['id'] ?? '').toString();
+                      final seq = (d['sequence_number'] ?? '').toString();
+                      final project = (d['project_name'] ?? '').toString();
+                      final location = (d['window_location'] ?? '').toString();
+                      final full = '$first $last $phone $id $seq $project $location';
+
+                      final normalizedFull = _normalizeSearch(full);
+                      final normalizedQuery = _normalizeSearch(query);
+                      final terms = normalizedQuery
+                          .split(RegExp(r'\s+'))
+                          .where((term) => term.isNotEmpty);
+                      return terms.every((term) => normalizedFull.contains(term));
                     }).toList();
 
                     if (data.isEmpty) {
@@ -1486,6 +1559,14 @@ class _CommandeState extends State<Commande> {
                     return ListView.builder(
                       controller: _scrollController,
                       primary: false,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.fromLTRB(
+                        10,
+                        8,
+                        10,
+                        _showMobileSearch ? 16 : 80,
+                      ),
                       itemCount: data.length,
                       itemBuilder: (context, index) {
                         final clientFirst = data[index]['firstname'] ?? '';
@@ -1515,241 +1596,293 @@ class _CommandeState extends State<Commande> {
                             borderRadius: BorderRadius.circular(15),
                           ),
                           elevation: 2,
-                          margin: const EdgeInsets.symmetric(vertical: 8),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(15),
-                            leading: CircleAvatar(
-                              radius: 25,
-                              backgroundColor: Colors.blue.shade100,
-                              child: const Icon(
-                                Icons.receipt_long,
-                                color: Colors.blue,
-                              ),
-                            ),
-                            title: RichText(
-                              text: TextSpan(
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Theme.of(
-                                    context,
-                                  ).textTheme.bodyLarge?.color,
-                                ),
-                                children: [
-                                  highlightText(clientDisplay, _searchQuery),
-                                ],
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 5),
-                                Text(
-                                  formatDate(data[index]),
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall?.color,
-                                  ),
-                                ),
-                                if (hasPhone)
-                                  RichText(
-                                    text: TextSpan(
-                                      style: TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall?.color,
-                                        fontSize: 14,
-                                      ),
-                                      children: [
-                                        highlightText(
-                                          clientPhone.toString(),
-                                          _searchQuery,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                if (data[index]['project_name'] != null &&
-                                    data[index]['project_name']
-                                        .toString()
-                                        .isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Flexible(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade50,
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.folder,
-                                                size: 12,
-                                                color: Colors.blue.shade700,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Flexible(
-                                                child: Text(
-                                                  data[index]['project_name']
-                                                      .toString(),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  maxLines: 1,
-                                                  style: TextStyle(
-                                                    color: Colors.blue.shade800,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 10,
-                                  runSpacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${total.toStringAsFixed(2)} دج',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _getStatusColor(status),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        _translateStatus(
-                                          status,
-                                          Provider.of<AppSettingsProvider>(
-                                            context,
-                                            listen: false,
-                                          ).language,
-                                        ),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    Builder(
-                                      builder: (ctx) {
-                                        final currentStatus =
-                                            (data[index]['status'] ?? '')
-                                                .toString();
-                                        if (_hasPassedFullManufacturing(
-                                          currentStatus,
-                                        )) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        final isStockReserved =
-                                            (data[index]['is_stock_reserved']
-                                                    as num?)
-                                                ?.toInt() ==
-                                            1;
-                                        final lang =
-                                            Provider.of<AppSettingsProvider>(
-                                              ctx,
-                                              listen: false,
-                                            ).language;
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 7,
-                                            vertical: 2.5,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: isStockReserved
-                                                ? Colors.green.withValues(
-                                                    alpha: 0.15,
-                                                  )
-                                                : Colors.grey.withValues(
-                                                    alpha: 0.12,
-                                                  ),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: isStockReserved
-                                                  ? Colors.green.shade600
-                                                  : Colors.grey.shade400,
-                                              width: 0.8,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                isStockReserved
-                                                    ? Icons.check_circle
-                                                    : Icons
-                                                          .inventory_2_outlined,
-                                                size: 11,
-                                                color: isStockReserved
-                                                    ? Colors.green.shade800
-                                                    : Colors.grey.shade600,
-                                              ),
-                                              const SizedBox(width: 3),
-                                              Text(
-                                                isStockReserved
-                                                    ? Localization.translate(
-                                                        'تم الحجز',
-                                                        lang,
-                                                      )
-                                                    : Localization.translate(
-                                                        'لم يُحجز بعد',
-                                                        lang,
-                                                      ),
-                                                style: TextStyle(
-                                                  color: isStockReserved
-                                                      ? Colors.green.shade900
-                                                      : Colors.grey.shade700,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            trailing: const Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              size: 14,
-                              color: Colors.grey,
-                            ),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(15),
                             onTap: settings.canViewOrderDetails()
                                 ? () {
                                     _showOrderOptions(context, data[index]);
                                   }
                                 : null,
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundColor: Colors.blue.shade100,
+                                    child: const Icon(
+                                      Icons.receipt_long,
+                                      color: Colors.blue,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        RichText(
+                                          text: TextSpan(
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15,
+                                              color: Theme.of(
+                                                context,
+                                              ).textTheme.bodyLarge?.color,
+                                            ),
+                                            children: [
+                                              highlightText(
+                                                clientDisplay,
+                                                _searchQuery,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          formatDate(data[index]),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall?.color,
+                                          ),
+                                        ),
+                                        if (hasPhone) ...[
+                                          const SizedBox(height: 2),
+                                          RichText(
+                                            text: TextSpan(
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).textTheme.bodySmall?.color,
+                                                fontSize: 13,
+                                              ),
+                                              children: [
+                                                highlightText(
+                                                  clientPhone.toString(),
+                                                  _searchQuery,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                        if (data[index]['project_name'] !=
+                                                null &&
+                                            data[index]['project_name']
+                                                .toString()
+                                                .isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blue.shade50,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      6,
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.folder,
+                                                        size: 12,
+                                                        color: Colors
+                                                            .blue.shade700,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Flexible(
+                                                        child: Text(
+                                                          data[index]
+                                                                  ['project_name']
+                                                              .toString(),
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          maxLines: 1,
+                                                          style: TextStyle(
+                                                            color: Colors
+                                                                .blue.shade800,
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 6,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            Text(
+                                              '${total.toStringAsFixed(2)} دج',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 3,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: _getStatusColor(status),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: Text(
+                                                _translateStatus(
+                                                  status,
+                                                  Provider.of<AppSettingsProvider>(
+                                                    context,
+                                                    listen: false,
+                                                  ).language,
+                                                ),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            Builder(
+                                              builder: (ctx) {
+                                                final currentStatus =
+                                                    (data[index]['status'] ??
+                                                            '')
+                                                        .toString();
+                                                if (_hasPassedFullManufacturing(
+                                                  currentStatus,
+                                                )) {
+                                                  return const SizedBox.shrink();
+                                                }
+                                                final isStockReserved =
+                                                    (data[index][
+                                                                'is_stock_reserved']
+                                                            as num?)
+                                                        ?.toInt() ==
+                                                    1;
+                                                final lang = Provider.of<
+                                                        AppSettingsProvider>(
+                                                      ctx,
+                                                      listen: false,
+                                                    ).language;
+                                                return Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 7,
+                                                    vertical: 2.5,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: isStockReserved
+                                                        ? Colors.green
+                                                            .withValues(
+                                                            alpha: 0.15,
+                                                          )
+                                                        : Colors.grey
+                                                            .withValues(
+                                                            alpha: 0.12,
+                                                          ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      12,
+                                                    ),
+                                                    border: Border.all(
+                                                      color: isStockReserved
+                                                          ? Colors
+                                                              .green.shade600
+                                                          : Colors
+                                                              .grey.shade400,
+                                                      width: 0.8,
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        isStockReserved
+                                                            ? Icons
+                                                                .check_circle
+                                                            : Icons
+                                                                .inventory_2_outlined,
+                                                        size: 11,
+                                                        color: isStockReserved
+                                                            ? Colors
+                                                                .green.shade800
+                                                            : Colors
+                                                                .grey.shade600,
+                                                      ),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        isStockReserved
+                                                            ? Localization
+                                                                .translate(
+                                                                'تم الحجز',
+                                                                lang,
+                                                              )
+                                                            : Localization
+                                                                .translate(
+                                                                'لم يُحجز بعد',
+                                                                lang,
+                                                              ),
+                                                        style: TextStyle(
+                                                          color: isStockReserved
+                                                              ? Colors
+                                                                  .green.shade900
+                                                              : Colors
+                                                                  .grey.shade700,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 4),
+                                    child: Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      size: 14,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -1759,10 +1892,21 @@ class _CommandeState extends State<Commande> {
               ),
             ),
           ],
-        ),
-      ),
+        );
 
-      floatingActionButton: (!isDesktop && settings.canCreateOrders())
+        if (isDesktop) {
+          return DesktopScrollFallback(
+            controller: _scrollController,
+            child: bodyColumn,
+          );
+        }
+        return bodyColumn;
+      },
+    ),
+
+      floatingActionButton: (!isDesktop &&
+              settings.canCreateOrders() &&
+              MediaQuery.of(context).viewInsets.bottom == 0)
           ? FloatingActionButton(
               onPressed: () {
                 openOrderInWorkspaceTab(
@@ -2031,6 +2175,27 @@ class _CommandeState extends State<Commande> {
                       _exportOrderPicturePdf(context, orderData, lang);
                     },
                   ),
+
+                ListTile(
+                  leading: const Icon(
+                    Icons.grid_view_rounded,
+                    color: Color(0xFF00695C),
+                  ),
+                  title: Text(
+                    Localization.translate('ورقة تصنيع الزجاج (PDF)', lang),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'جميع تصاميم ومقاسات وثقوب الزجاج المقسى للطلبية',
+                      lang,
+                    ),
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportOrderGlassFabricationPdf(context, orderData, lang);
+                  },
+                ),
 
                 if (isConfirmedOrBeyond &&
                     (settings.canEditPayments() ||
@@ -3034,6 +3199,35 @@ class _CommandeState extends State<Commande> {
                     );
                   },
                 ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.dashboard_customize_rounded,
+                    color: Colors.teal,
+                  ),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Débit des Panneaux & Feuilles (2D)'
+                        : 'تقطيع الألواح والصفائح (2D)',
+                  ),
+                  subtitle: Text(
+                    lang == AppLanguage.french
+                        ? 'Panneau sandwich, Résine, Alucobond, Plexiglas'
+                        : 'بانو ساندويتش، ريزين، أليكوبوند، بيكسي جلاس',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SheetOptimizationScreen(
+                          orderId: orderId,
+                          orderName: _displayOrderLabel(orderData),
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 if (settings.canViewFicheDeCoupe())
                   ListTile(
                     leading: const Icon(Icons.cut, color: Colors.orange),
@@ -3621,6 +3815,66 @@ class _CommandeState extends State<Commande> {
     );
   }
 
+  Future<void> _exportOrderGlassFabricationPdf(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
+    final orderId = (orderData['id'] as num?)?.toInt() ?? 0;
+    final details = await db.readCommandeDetails(orderId);
+    final payloads = <Map<String, dynamic>>[];
+    for (final d in details) {
+      final partitionsJson = d['partitions_json'];
+      if (partitionsJson != null) {
+        try {
+          final decoded = partitionsJson is Map
+              ? Map<String, dynamic>.from(partitionsJson)
+              : Map<String, dynamic>.from(jsonDecode(partitionsJson.toString()));
+          if (decoded['isGlassWork'] == true ||
+              decoded['glassWorkPayload'] != null ||
+              (d['window_type']?.toString().contains('Verre Trempé') == true) ||
+              (d['window_type']?.toString().contains('فير ترومبي') == true)) {
+            final p = decoded['glassWorkPayload'] != null
+                ? Map<String, dynamic>.from(decoded['glassWorkPayload'])
+                : decoded;
+            p['itemTitle'] = d['window_type']?.toString() ?? 'Verre trempé';
+            payloads.add(p);
+          }
+        } catch (_) {}
+      }
+    }
+    if (!mounted || !context.mounted) return;
+    if (payloads.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              'لا توجد عناصر زجاج مقسى في هذه الطلبية',
+              lang,
+            ),
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    final clientName =
+        '${orderData['firstname'] ?? ''} ${orderData['lastname'] ?? ''}'.trim();
+    final clientPhone = orderData['phone']?.toString() ?? '';
+    final orderNumber = orderData['id']?.toString() ?? '';
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GlassFabricationPreviewScreen(
+          payloads: payloads,
+          clientName: clientName,
+          clientPhone: clientPhone,
+          orderNumber: orderNumber,
+        ),
+      ),
+    );
+  }
+
   void _openOrderDetails(Map<String, dynamic> orderData) {
     Navigator.push(
       context,
@@ -3774,10 +4028,14 @@ class _CommandeState extends State<Commande> {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2D3748) : const Color(0xFFF1F5F9),
+                  color: isDark
+                      ? const Color(0xFF2D3748)
+                      : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(5),
                   border: Border.all(
-                    color: isDark ? const Color(0xFF4A5568) : const Color(0xFFCBD5E1),
+                    color: isDark
+                        ? const Color(0xFF4A5568)
+                        : const Color(0xFFCBD5E1),
                     width: 1,
                   ),
                   boxShadow: [
@@ -3934,6 +4192,16 @@ class _CommandeState extends State<Commande> {
         Icons.architecture_rounded,
         Colors.indigo,
         Localization.translate('تحسين القص (Optimisation de Coupe)', lang),
+      ),
+
+      // 2.05 تقطيع الألواح والصفائح (2D)
+      _menuItem(
+        'sheet_optimisation',
+        Icons.dashboard_customize_rounded,
+        Colors.teal,
+        lang == AppLanguage.french
+            ? 'Débit des Panneaux (2D)'
+            : 'تقطيع الألواح والصفائح (2D)',
       ),
 
       // 2.1 ورقة التقطيع (Fiche de Coupe)
@@ -4688,6 +4956,16 @@ class _CommandeState extends State<Commande> {
                 CuttingOptimizationScreen(db: db, initialOrderId: orderId),
           ),
         );
+      case 'sheet_optimisation':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SheetOptimizationScreen(
+              orderId: orderId,
+              orderName: _displayOrderLabel(orderData),
+            ),
+          ),
+        );
       case 'fiche_coupe':
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -5258,7 +5536,8 @@ class _CommandeState extends State<Commande> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              duration: const Duration(milliseconds: 2500),
+              duration: const Duration(seconds: 5),
+              persist: false,
               dismissDirection: DismissDirection.horizontal,
               showCloseIcon: true,
               closeIconColor: Colors.white70,
@@ -6249,6 +6528,20 @@ class _CommandeState extends State<Commande> {
 
       return ResizableTableRow(
         reorderId: order['id'].toString(),
+        color:
+            _notificationHighlightedOrderId?.toString() ==
+                order['id'].toString()
+            ? (Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF594B16)
+                  : const Color(0xFFFFF1A8))
+            : null,
+        onTap: () {
+          if (_notificationHighlightedOrderId?.toString() ==
+              order['id'].toString()) {
+            setState(() => _notificationHighlightedOrderId = null);
+          }
+          _openOrderDetails(order);
+        },
         onKeyEvent: handleOrderKey,
         onDoubleTap: context.read<AppSettingsProvider>().canEditOrders()
             ? () => openOrderInWorkspaceTab(
@@ -6535,6 +6828,8 @@ class _CommandeState extends State<Commande> {
                       borderRadius: BorderRadius.circular(10),
                       child: ResizableColumnsTable(
                         persistenceKey: 'orders',
+                        revealRowId: _notificationHighlightedOrderId
+                            ?.toString(),
                         footerCells: {
                           'total': Text(
                             data

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
@@ -43,6 +44,7 @@ class OrderNotificationService {
   bool _initialized = false;
   bool _isSubscribed = false;
   int _notifId = 0;
+  void Function(Map<String, dynamic>)? onNotificationTap;
 
   // ── public API ────────────────────────────────────────────────────────────
 
@@ -123,6 +125,7 @@ class OrderNotificationService {
   /// [authorName] is who triggered the action (optional).
   Future<void> broadcastOrderEvent({
     required String workshopUuid,
+    required int orderId,
     required bool isNew,
     required String clientName,
     required String orderCode,
@@ -156,6 +159,7 @@ class OrderNotificationService {
       final ch = _channel ?? client.channel('order_events_$cleanUuid');
 
       final payload = {
+        'order_id': orderId,
         'client_name': clientName,
         'order_code': orderCode,
         'author': authorName,
@@ -196,6 +200,7 @@ class OrderNotificationService {
 
   /// Secondary trigger when incremental sync downloads an order from another device.
   Future<void> showOrderNotificationFromSync({
+    required int orderId,
     required String clientName,
     required String orderCode,
     String author = '',
@@ -206,6 +211,7 @@ class OrderNotificationService {
       orderCode: orderCode,
       author: author,
       isNew: isNew,
+      orderId: orderId,
     );
   }
 
@@ -236,8 +242,13 @@ class OrderNotificationService {
   Future<void> showAssignmentNotification({
     required String title,
     required String body,
+    Map<String, dynamic> data = const {},
   }) async {
-    await _showLocalNotification(title: title, body: body);
+    await _showLocalNotification(
+      title: title,
+      body: body,
+      payload: data.isEmpty ? null : jsonEncode(data),
+    );
   }
 
   // ── private helpers ────────────────────────────────────────────────────────
@@ -265,7 +276,21 @@ class OrderNotificationService {
     );
 
     try {
-      await _plugin.initialize(initSettings);
+      await _plugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (response) {
+          final payload = response.payload;
+          if (payload == null || payload.isEmpty) return;
+          try {
+            final decoded = jsonDecode(payload);
+            if (decoded is Map) {
+              onNotificationTap?.call(Map<String, dynamic>.from(decoded));
+            }
+          } catch (e) {
+            debugPrint('OrderNotif: invalid tap payload – $e');
+          }
+        },
+      );
       if (!kIsWeb && Platform.isAndroid) {
         final android = _plugin
             .resolvePlatformSpecificImplementation<
@@ -306,6 +331,7 @@ class OrderNotificationService {
       orderCode: orderCode,
       author: author,
       isNew: isNew,
+      orderId: int.tryParse(payload['order_id']?.toString() ?? ''),
     );
   }
 
@@ -333,6 +359,7 @@ class OrderNotificationService {
     required String orderCode,
     required String author,
     required bool isNew,
+    int? orderId,
   }) {
     final dedupeKey = '$orderCode:${isNew ? "new" : "edit"}';
     if (_recentNotifications.contains(dedupeKey)) return;
@@ -354,12 +381,17 @@ class OrderNotificationService {
     if (orderCode.isNotEmpty) body += '  |  #$orderCode';
     if (author.isNotEmpty) body += '\nبواسطة: $author';
 
-    _showLocalNotification(title: title, body: body);
+    _showLocalNotification(
+      title: title,
+      body: body,
+      payload: orderId == null ? null : jsonEncode({'order_id': orderId}),
+    );
   }
 
   Future<void> _showLocalNotification({
     required String title,
     required String body,
+    String? payload,
   }) async {
     if (kIsWeb) return;
     try {
@@ -384,7 +416,7 @@ class OrderNotificationService {
         macOS: iosDetails,
       );
 
-      await _plugin.show(_notifId++, title, body, details);
+      await _plugin.show(_notifId++, title, body, details, payload: payload);
       debugPrint('OrderNotif: local notification shown – $title');
     } catch (e) {
       debugPrint('OrderNotif: show notification failed – $e');

@@ -22,8 +22,14 @@ class TreasuryScreen extends StatefulWidget {
 
   /// وضع العرض فقط — يخفي أزرار الإضافة والحذف
   final bool readOnly;
+  final int? initialTransactionId;
 
-  const TreasuryScreen({super.key, required this.db, this.readOnly = false});
+  const TreasuryScreen({
+    super.key,
+    required this.db,
+    this.readOnly = false,
+    this.initialTransactionId,
+  });
 
   static const Map<int, int> _unicodeToWin1252 = <int, int>{
     0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84,
@@ -153,6 +159,8 @@ class TreasuryScreen extends StatefulWidget {
       ValueChanged<Map<String, dynamic>> onEdit,
       ValueChanged<Map<String, dynamic>> onDelete,
       ValueChanged<Map<String, dynamic>> onReceipt, {
+        required int? highlightedTransactionId,
+        required ValueChanged<Map<String, dynamic>> onHighlightedTap,
         required TableDateRange dateRange,
         required ValueChanged<TableDateRange> onDateRangeChanged,
         required NumericFilterState numericFilter,
@@ -463,7 +471,14 @@ class TreasuryScreen extends StatefulWidget {
       final description = _readableText(item['description']).trim();
 
       return ResizableTableRow(
+        reorderId: item['id'].toString(),
+        color: highlightedTransactionId?.toString() == item['id'].toString()
+            ? (isDark ? const Color(0xFF594B16) : const Color(0xFFFFF1A8))
+            : null,
         onTap: () {
+          if (highlightedTransactionId?.toString() == item['id'].toString()) {
+            onHighlightedTap(item);
+          }
           if (!readOnly && canEditPayments) {
             onEdit(item);
           } else {
@@ -750,6 +765,7 @@ class TreasuryScreen extends StatefulWidget {
               ),
               child: ResizableColumnsTable(
                 persistenceKey: 'treasury',
+                revealRowId: highlightedTransactionId?.toString(),
                 footerCells: {
                   'income': Text(transactions.where(_isIncomeTransaction).fold<double>(0,
                     (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
@@ -784,6 +800,7 @@ class TreasuryScreen extends StatefulWidget {
 }
 
 class _TreasuryScreenState extends State<TreasuryScreen> {
+  int? _highlightedTransactionId;
   List<Map<String, dynamic>> _allTransactions = [];
   List<Map<String, dynamic>> _filteredTransactions = [];
   bool _isLoading = false;
@@ -821,6 +838,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   @override
   void initState() {
     super.initState();
+    _highlightedTransactionId = widget.initialTransactionId;
     _loadData();
     _loadEntities();
     _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
@@ -3271,6 +3289,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                       _showEditTransactionDialog,
                       _deleteTransaction,
                           (item) => _showReceiptOptions(context, item),
+                      highlightedTransactionId: _highlightedTransactionId,
+                      onHighlightedTap: (_) {
+                        setState(() => _highlightedTransactionId = null);
+                      },
                       dateRange: _dateRange,
                       onDateRangeChanged: (range) {
                         setState(() {

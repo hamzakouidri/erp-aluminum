@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
+import '../Commande/glass_handle_designs.dart';
 
 class TemperedGlassItemsScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -100,6 +102,13 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
     String category = existing?['category']?.toString() ?? (_selectedCategory != 'all' ? _selectedCategory : 'poignee');
     String type = existing?['type']?.toString() ?? 'accessoire';
     String unit = existing?['unit']?.toString() ?? 'piece';
+    String imagePath = existing?['image_path']?.toString() ?? '';
+    String handleDesignCode = existing?['handle_design_code']?.toString() ?? '';
+    if (category == 'poignee' && handleDesignCode.isEmpty) {
+      final resolved = GlassHandleDesignCatalog.resolveForItem(existing);
+      handleDesignCode = resolved.code;
+      if (imagePath.isEmpty) imagePath = resolved.assetPath;
+    }
 
     final saved = await showDialog<bool>(
       context: context,
@@ -127,6 +136,87 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (category == 'poignee') ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.shade50.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.teal.shade300, width: 1.2),
+                      ),
+                      child: Row(
+                        children: [
+                          GlassHandleThumbnailView(
+                            imagePath: imagePath,
+                            designCode: handleDesignCode,
+                            size: 58,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _tr(
+                                    'الرسمة والصورة المرتبطة',
+                                    'Modèle de dessin lié',
+                                    'Linked Drawing Design',
+                                  ),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  handleDesignCode.isNotEmpty
+                                      ? (GlassHandleDesignCatalog.findByCode(handleDesignCode)?.labelAr ?? handleDesignCode)
+                                      : (imagePath.isNotEmpty ? 'صورة محددة' : 'اختر تصميم المقبض'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.teal.shade900,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.teal.shade700,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () async {
+                              final picked = await GlassHandleDesignPickerModal.show(
+                                context,
+                                currentCode: handleDesignCode,
+                                currentImagePath: imagePath,
+                              );
+                              if (picked != null) {
+                                setDlg(() {
+                                  handleDesignCode = picked.code;
+                                  imagePath = picked.assetPath;
+                                  if (nameCtrl.text.trim().isEmpty) {
+                                    nameCtrl.text = picked.labelAr;
+                                  }
+                                  if (holesCtrl.text == '0' || holesCtrl.text.isEmpty) {
+                                    holesCtrl.text = picked.defaultHolesCount.toString();
+                                  }
+                                  if (entraxeCtrl.text == '0' || entraxeCtrl.text.isEmpty) {
+                                    entraxeCtrl.text = picked.defaultEntraxe.toStringAsFixed(0);
+                                  }
+                                });
+                              }
+                            },
+                            icon: const Icon(Icons.photo_library_outlined, size: 16),
+                            label: Text(_tr('تغيير', 'Changer', 'Change'), style: const TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Row(
                     children: [
                       Expanded(
@@ -281,6 +371,8 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
         'cost_price': cost,
         'holes_count': holes,
         'entraxe': entraxe,
+        'image_path': imagePath,
+        'handle_design_code': handleDesignCode,
         'notes': notes,
         'is_active': 1,
       };
@@ -440,6 +532,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                           final holes = (item['holes_count'] as num?)?.toInt() ?? 0;
                           final entraxe = (item['entraxe'] as num?)?.toDouble() ?? 0.0;
                           final notes = item['notes']?.toString() ?? '';
+                          final imagePath = item['image_path']?.toString() ?? '';
 
                           return Card(
                             elevation: 1,
@@ -452,15 +545,37 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: Colors.teal.shade50,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(_categoryIcon(cat), color: Colors.teal.shade800, size: 26),
-                                  ),
+                                  cat == 'poignee'
+                                      ? GlassHandleThumbnailView(
+                                          imagePath: imagePath,
+                                          designCode: item['handle_design_code']?.toString(),
+                                          size: 54,
+                                        )
+                                      : Container(
+                                          width: 52,
+                                          height: 52,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: Colors.teal.shade100),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(9),
+                                            child: imagePath.isNotEmpty
+                                                ? (imagePath.startsWith('assets/')
+                                                    ? Image.asset(
+                                                        imagePath,
+                                                        fit: BoxFit.contain,
+                                                        errorBuilder: (_, __, ___) => Icon(_categoryIcon(cat), color: Colors.teal.shade800, size: 26),
+                                                      )
+                                                    : Image.file(
+                                                        File(imagePath),
+                                                        fit: BoxFit.contain,
+                                                        errorBuilder: (_, __, ___) => Icon(_categoryIcon(cat), color: Colors.teal.shade800, size: 26),
+                                                      ))
+                                                : Icon(_categoryIcon(cat), color: Colors.teal.shade800, size: 26),
+                                          ),
+                                        ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(

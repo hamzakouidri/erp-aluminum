@@ -67,6 +67,7 @@ class ResizableColumnsTable extends StatefulWidget {
   /// Enables long-press/mouse-drag reordering of rows for desktop tables.
   /// Reordering changes display order only; calculations remain unchanged.
   final bool reorderableRows;
+
   /// Fixed summary cells keyed by column ID; never part of row scrolling.
   final Map<String, Widget>? footerCells;
   final ValueChanged<List<String>>? onRowOrderChanged;
@@ -87,6 +88,7 @@ class ResizableColumnsTable extends StatefulWidget {
   /// [ResizableTableRow.reorderId] (or its display index if none was given).
   /// Null means no row is currently focused.
   final ValueChanged<String?>? onFocusedRowChanged;
+  final String? revealRowId;
 
   const ResizableColumnsTable({
     super.key,
@@ -111,6 +113,7 @@ class ResizableColumnsTable extends StatefulWidget {
     this.onColumnOrderChanged,
     this.focusedRowColor,
     this.onFocusedRowChanged,
+    this.revealRowId,
   });
 
   @override
@@ -154,6 +157,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     _syncRowOrder();
     _syncColumnOrder();
     unawaited(_loadTablePreferences());
+    _revealRequestedRow();
   }
 
   @override
@@ -180,6 +184,27 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     if (namespaceChanged || columnsChanged) {
       unawaited(_loadTablePreferences());
     }
+    if (widget.revealRowId != oldWidget.revealRowId ||
+        widget.rows.length != oldWidget.rows.length) {
+      _revealRequestedRow();
+    }
+  }
+
+  void _revealRequestedRow() {
+    final targetId = widget.revealRowId;
+    if (targetId == null || targetId.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _rowKeysById[targetId];
+      final rowContext = key?.currentContext;
+      if (rowContext == null) return;
+      Scrollable.ensureVisible(
+        rowContext,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -649,12 +674,20 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               if (widget.footerCells != null)
                 Container(
                   color: filterRowColor,
-                  child: IntrinsicHeight(child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [for (final column in _orderedColumns())
-                      _buildCell(widget.footerCells![column.id] ?? const SizedBox.shrink(),
-                        column, borderColor)],
-                  )),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final column in _orderedColumns())
+                          _buildCell(
+                            widget.footerCells![column.id] ??
+                                const SizedBox.shrink(),
+                            column,
+                            borderColor,
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -998,9 +1031,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             top: 0,
             bottom: 0,
             width: 3,
-            child: IgnorePointer(
-              child: Container(color: accentColor),
-            ),
+            child: IgnorePointer(child: Container(color: accentColor)),
           ),
       ],
     );

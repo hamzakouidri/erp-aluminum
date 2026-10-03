@@ -69,16 +69,24 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
   // Optimization Results
   CuttingOptimizationReport? _report;
   String _selectedProfileFilter = 'الكل';
+  late final TabController _mobileTabController;
 
   @override
   void initState() {
     super.initState();
+    _mobileTabController = TabController(length: 2, vsync: this);
     _selectedOrderId = widget.initialOrderId;
     _rangeOrderId = widget.initialOrderId;
     if (widget.initialOrderId != null) {
       _selectedOrderIds.add(widget.initialOrderId!);
     }
     _loadOrders();
+  }
+
+  @override
+  void dispose() {
+    _mobileTabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadOrders() async {
@@ -196,6 +204,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
           _selectedProfileFilter = 'الكل';
           _isOptimizing = false;
         });
+        if (report.groups.isNotEmpty) {
+          _mobileTabController.animateTo(1);
+        }
       }
     } catch (e, st) {
       debugPrint('Optimization error: $e\n$st');
@@ -246,9 +257,24 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             ? detail['color'].toString()
             : 'Standard';
 
-        for (final lenM in item.pieces!) {
+        for (var pieceIndex = 0; pieceIndex < item.pieces!.length; pieceIndex++) {
+          final lenM = item.pieces![pieceIndex];
           final lenMm = (lenM * 1000.0).roundToDouble();
           if (lenMm <= 0) continue;
+          final explicitAngles = item.pieceCutAngles != null &&
+                  pieceIndex < item.pieceCutAngles!.length
+              ? RegExp(r'\d+')
+                  .allMatches(item.pieceCutAngles![pieceIndex])
+                  .map((match) => int.tryParse(match.group(0) ?? ''))
+                  .whereType<int>()
+                  .toList()
+              : const <int>[];
+          final angleLeft = explicitAngles.length >= 2
+              ? explicitAngles[0]
+              : 45;
+          final angleRight = explicitAngles.length >= 2
+              ? explicitAngles[1]
+              : 45;
 
           for (int q = 0; q < quantity; q++) {
             pieces.add(
@@ -262,8 +288,8 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                 profileCode: profileCode,
                 color: color,
                 lengthMm: lenMm,
-                angleLeft: 45,
-                angleRight: 45,
+                angleLeft: angleLeft,
+                angleRight: angleRight,
               ),
             );
           }
@@ -397,19 +423,51 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
     final lang = Provider.of<AppSettingsProvider>(context).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = screenWidth < 850;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
-          Localization.translate('تحسين وتقطيع البروفيلات (Optimisation)', lang),
-          style: const TextStyle(
+          isMobile
+              ? Localization.translate('تحسين القص (Optimisation de Coupe)', lang)
+              : Localization.translate('تحسين وتقطيع البروفيلات (Optimisation)', lang),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
             fontFamily: 'Cairo',
             fontWeight: FontWeight.bold,
-            fontSize: 18,
+            fontSize: isMobile ? 14 : 18,
           ),
         ),
         centerTitle: true,
+        bottom: isMobile
+            ? TabBar(
+                controller: _mobileTabController,
+                indicatorColor: Colors.white,
+                indicatorWeight: 3,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                labelStyle: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12.5,
+                ),
+                tabs: [
+                  Tab(
+                    icon: const Icon(Icons.tune_rounded, size: 18),
+                    text: Localization.translate('الإعدادات', lang),
+                  ),
+                  Tab(
+                    icon: const Icon(Icons.analytics_rounded, size: 18),
+                    text: _report != null && _report!.groups.isNotEmpty
+                        ? '${Localization.translate('النتائج', lang)} (${_report!.totalBars})'
+                        : Localization.translate('النتائج', lang),
+                  ),
+                ],
+              )
+            : null,
         actions: [
           if (_report != null && _report!.groups.isNotEmpty)
             IconButton(
@@ -426,71 +484,129 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
       ),
       body: _isLoadingOrders
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Mode Selector Bar (4 Modes)
-                _buildModeSelector(lang, isDark),
-
-                // Main Content Area
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Left Configuration Sidebar
-                      SizedBox(
-                        width: 320,
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _buildScopeSelectorCard(lang, isDark),
-                              const SizedBox(height: 16),
-                              _buildCuttingParamsCard(lang, isDark),
-                              const SizedBox(height: 16),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: primaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                onPressed: _isOptimizing ? null : _runOptimization,
-                                icon: _isOptimizing
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation(Colors.white),
-                                        ),
-                                      )
-                                    : const Icon(Icons.play_arrow_rounded),
-                                label: Text(
-                                  Localization.translate('تشغيل خوارزمية التحسين', lang),
-                                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                ),
+          : isMobile
+              ? TabBarView(
+                  controller: _mobileTabController,
+                  children: [
+                    // تبويب الإعدادات واختيار الطلبيات على الهاتف
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildModeSelector(lang, isDark),
+                          const SizedBox(height: 12),
+                          _buildScopeSelectorCard(lang, isDark),
+                          const SizedBox(height: 14),
+                          _buildCuttingParamsCard(lang, isDark),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            ],
+                            ),
+                            onPressed: _isOptimizing ? null : _runOptimization,
+                            icon: _isOptimizing
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                                    ),
+                                  )
+                                : const Icon(Icons.play_arrow_rounded),
+                            label: Text(
+                              Localization.translate('تشغيل خوارزمية التحسين', lang),
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 24),
+                        ],
                       ),
+                    ),
 
-                      // Right Results Area
-                      Expanded(
-                        child: _isOptimizing
-                            ? const Center(child: CircularProgressIndicator())
-                            : (_report == null || _report!.groups.isEmpty)
-                                ? _buildEmptyState(lang, isDark)
-                                : _buildResultsDashboard(lang, isDark),
+                    // تبويب نتائج ومخططات التقطيع على الهاتف
+                    _isOptimizing
+                        ? const Center(child: CircularProgressIndicator())
+                        : (_report == null || _report!.groups.isEmpty)
+                            ? _buildEmptyState(lang, isDark)
+                            : _buildResultsDashboard(lang, isDark),
+                  ],
+                )
+              : Column(
+                  children: [
+                    // Mode Selector Bar (4 Modes)
+                    _buildModeSelector(lang, isDark),
+
+                    // Main Content Area (شاشات الكمبيوتر والتابلت الواسعة)
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Left Configuration Sidebar
+                          SizedBox(
+                            width: 320,
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildScopeSelectorCard(lang, isDark),
+                                  const SizedBox(height: 16),
+                                  _buildCuttingParamsCard(lang, isDark),
+                                  const SizedBox(height: 16),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    onPressed: _isOptimizing ? null : _runOptimization,
+                                    icon: _isOptimizing
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                                            ),
+                                          )
+                                        : const Icon(Icons.play_arrow_rounded),
+                                    label: Text(
+                                      Localization.translate('تشغيل خوارزمية التحسين', lang),
+                                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // Right Results Area
+                          Expanded(
+                            child: _isOptimizing
+                                ? const Center(child: CircularProgressIndicator())
+                                : (_report == null || _report!.groups.isEmpty)
+                                    ? _buildEmptyState(lang, isDark)
+                                    : _buildResultsDashboard(lang, isDark),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 
@@ -821,16 +937,20 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
 
   Widget _buildEmptyState(AppLanguage lang, bool isDark) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.content_cut_rounded, size: 64, color: Colors.grey.withOpacity(0.4)),
-          const SizedBox(height: 12),
-          Text(
-            Localization.translate('اضغط على "تشغيل خوارزمية التحسين" لبدء القص الأمثل', lang),
-            style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, color: Colors.grey),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.content_cut_rounded, size: 64, color: Colors.grey.withOpacity(0.4)),
+            const SizedBox(height: 12),
+            Text(
+              Localization.translate('اضغط على "تشغيل خوارزمية التحسين" لبدء القص الأمثل', lang),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -842,57 +962,81 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
         : report.groups.where((g) => g.profileName == _selectedProfileFilter).toList();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 650 ? 10 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Stat Badges
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricCard(
-                  title: Localization.translate('إجمالي البارات', lang),
-                  value: '${report.totalBars} ${Localization.translate('بار', lang)}',
-                  subtitle: '${Localization.translate('طول', lang)} ${_barLengthMm.toInt()} ${Localization.translate('مم', lang)}',
-                  color: const Color(0xFF2563EB),
-                  icon: Icons.view_column_rounded,
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricCard(
-                  title: Localization.translate('عدد القطع المطلوبة', lang),
-                  value: '${report.totalPieces} ${Localization.translate('قطعة', lang)}',
-                  subtitle: '${report.totalMetersUsed.toStringAsFixed(1)} ${Localization.translate('متر طولي', lang)}',
-                  color: const Color(0xFF0D9488),
-                  icon: Icons.straighten_rounded,
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricCard(
-                  title: Localization.translate('نسبة الوفر والكفاءة', lang),
-                  value: '${report.overallEfficiency.toStringAsFixed(1)}%',
-                  subtitle: Localization.translate('استغلال أمثل', lang),
-                  color: const Color(0xFF10B981),
-                  icon: Icons.trending_up_rounded,
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricCard(
-                  title: '${Localization.translate('الفواضل الصالحة', lang)} (≥${_chuteThresholdMm.toInt()}${Localization.translate('مم', lang)})',
-                  value: '${report.totalMetersUsableRemnants.toStringAsFixed(1)} ${Localization.translate('م', lang)}',
-                  subtitle: Localization.translate('تُحفظ لإعادة الاستخدام', lang),
-                  color: const Color(0xFFF59E0B),
-                  icon: Icons.inventory_2_rounded,
-                  isDark: isDark,
-                ),
-              ),
-            ],
+          Builder(
+            builder: (context) {
+              final isCompact = MediaQuery.sizeOf(context).width < 650;
+              final cardBars = _buildMetricCard(
+                title: Localization.translate('إجمالي البارات', lang),
+                value: '${report.totalBars} ${Localization.translate('بار', lang)}',
+                subtitle: '${Localization.translate('طول', lang)} ${_barLengthMm.toInt()} ${Localization.translate('مم', lang)}',
+                color: const Color(0xFF2563EB),
+                icon: Icons.view_column_rounded,
+                isDark: isDark,
+              );
+              final cardPieces = _buildMetricCard(
+                title: Localization.translate('عدد القطع المطلوبة', lang),
+                value: '${report.totalPieces} ${Localization.translate('قطعة', lang)}',
+                subtitle: '${report.totalMetersUsed.toStringAsFixed(1)} ${Localization.translate('متر طولي', lang)}',
+                color: const Color(0xFF0D9488),
+                icon: Icons.straighten_rounded,
+                isDark: isDark,
+              );
+              final cardEfficiency = _buildMetricCard(
+                title: Localization.translate('نسبة الوفر والكفاءة', lang),
+                value: '${report.overallEfficiency.toStringAsFixed(1)}%',
+                subtitle: Localization.translate('استغلال أمثل', lang),
+                color: const Color(0xFF10B981),
+                icon: Icons.trending_up_rounded,
+                isDark: isDark,
+              );
+              final cardRemnants = _buildMetricCard(
+                title: '${Localization.translate('الفواضل الصالحة', lang)} (≥${_chuteThresholdMm.toInt()}${Localization.translate('مم', lang)})',
+                value: '${report.totalMetersUsableRemnants.toStringAsFixed(1)} ${Localization.translate('م', lang)}',
+                subtitle: Localization.translate('تُحفظ لإعادة الاستخدام', lang),
+                color: const Color(0xFFF59E0B),
+                icon: Icons.inventory_2_rounded,
+                isDark: isDark,
+              );
+
+              if (isCompact) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: cardBars),
+                        const SizedBox(width: 8),
+                        Expanded(child: cardPieces),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: cardEfficiency),
+                        const SizedBox(width: 8),
+                        Expanded(child: cardRemnants),
+                      ],
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: cardBars),
+                  const SizedBox(width: 10),
+                  Expanded(child: cardPieces),
+                  const SizedBox(width: 10),
+                  Expanded(child: cardEfficiency),
+                  const SizedBox(width: 10),
+                  Expanded(child: cardRemnants),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
 
@@ -930,45 +1074,61 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
   }
 
   Widget _buildGroupCard(ProfileOptimizationGroup group, AppLanguage lang, bool isDark) {
+    final isMobile = MediaQuery.sizeOf(context).width < 650;
+    final groupTitle = Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2563EB).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.architecture_rounded, color: Color(0xFF2563EB), size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '${group.profileName} - ${Localization.translate('لون', lang)} (${group.color})',
+            maxLines: isMobile ? 2 : 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: isMobile ? 13 : 16,
+            ),
+          ),
+        ),
+      ],
+    );
+    final efficiencyChip = Chip(
+      backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
+      label: Text(
+        '${Localization.translate('كفاءة', lang)}: ${group.efficiencyPercentage.toStringAsFixed(1)}% | ${group.barsNeeded} ${Localization.translate('بار', lang)}',
+        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF059669), fontSize: 12),
+      ),
+    );
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: isDark ? const Color(0xFF1E293B) : Colors.white,
       elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2563EB).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.architecture_rounded, color: Color(0xFF2563EB), size: 20),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${group.profileName} - ${Localization.translate('لون', lang)} (${group.color})',
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                  ],
-                ),
-                Chip(
-                  backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
-                  label: Text(
-                    '${Localization.translate('كفاءة', lang)}: ${group.efficiencyPercentage.toStringAsFixed(1)}% | ${group.barsNeeded} ${Localization.translate('بار', lang)}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF059669), fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
+            if (isMobile) ...[
+              groupTitle,
+              const SizedBox(height: 8),
+              Align(alignment: AlignmentDirectional.centerStart, child: efficiencyChip),
+            ] else
+              Row(
+                children: [
+                  Expanded(child: groupTitle),
+                  const SizedBox(width: 12),
+                  efficiencyChip,
+                ],
+              ),
             const SizedBox(height: 14),
 
             // Bar Layouts
@@ -980,6 +1140,22 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
   }
 
   Widget _buildBarLayoutView(OptimizedBar bar, AppLanguage lang, bool isDark) {
+    final isMobile = MediaQuery.sizeOf(context).width < 650;
+    final barTitle = Text(
+      '${Localization.translate('بار رقم', lang)} #${bar.barNumber} (${bar.barLengthMm.toInt()} ${Localization.translate('مم', lang)})',
+      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+    );
+    final remnantText = Text(
+      bar.isUsableRemnant
+          ? '${Localization.translate('فضل متبقي صالح:', lang)} ${bar.remnantLengthMm.toInt()} ${Localization.translate('مم', lang)}'
+          : '${Localization.translate('رايش هدر:', lang)} ${bar.remnantLengthMm.toInt()} ${Localization.translate('مم', lang)}',
+      style: TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: bar.isUsableRemnant ? const Color(0xFF059669) : Colors.red,
+      ),
+    );
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -991,26 +1167,15 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${Localization.translate('بار رقم', lang)} #${bar.barNumber} (${bar.barLengthMm.toInt()} ${Localization.translate('مم', lang)})',
-                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-              Text(
-                bar.isUsableRemnant
-                    ? '${Localization.translate('فضل متبقي صالح:', lang)} ${bar.remnantLengthMm.toInt()} ${Localization.translate('مم', lang)}'
-                    : '${Localization.translate('رايش هدر:', lang)} ${bar.remnantLengthMm.toInt()} ${Localization.translate('مم', lang)}',
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: bar.isUsableRemnant ? const Color(0xFF059669) : Colors.red,
-                ),
-              ),
-            ],
-          ),
+          if (isMobile) ...[
+            barTitle,
+            const SizedBox(height: 2),
+            remnantText,
+          ] else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [barTitle, remnantText],
+            ),
           const SizedBox(height: 8),
 
           // Visual Bar Graphic
@@ -1026,7 +1191,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                       ...bar.cuts.map((cut) {
                         final cutPct = (cut.lengthMm / bar.barLengthMm).clamp(0.01, 1.0);
                         return Container(
-                          width: totalWidth * cutPct,
+                          width: math.max(1.0, (totalWidth * cutPct) - 1.5),
                           margin: const EdgeInsets.only(right: 1.5),
                           decoration: BoxDecoration(
                             color: const Color(0xFF2563EB),
@@ -1103,6 +1268,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
     required bool isDark,
   }) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 104),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
@@ -1120,13 +1286,35 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               Icon(icon, size: 16, color: color),
             ],
           ),
           const SizedBox(height: 6),
-          Text(value, style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-          Text(subtitle, style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: isDark ? Colors.grey[500] : Colors.grey[400])),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold, color: color),
+          ),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: isDark ? Colors.grey[500] : Colors.grey[400]),
+          ),
         ],
       ),
     );

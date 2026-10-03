@@ -23,7 +23,10 @@ class MapPickerScreen extends StatefulWidget {
 
 class _MapPickerScreenState extends State<MapPickerScreen> {
   final MapController _mapController = MapController();
-  LatLng _selectedPoint = const LatLng(36.7538, 3.0588); // Default centered on Algiers
+  LatLng _selectedPoint = const LatLng(
+    36.7538,
+    3.0588,
+  ); // Default centered on Algiers
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
   List<dynamic> _searchResults = [];
@@ -32,8 +35,17 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   void initState() {
     super.initState();
     if (widget.initialLatitude != null && widget.initialLongitude != null) {
-      _selectedPoint = LatLng(widget.initialLatitude!, widget.initialLongitude!);
+      _selectedPoint = LatLng(
+        widget.initialLatitude!,
+        widget.initialLongitude!,
+      );
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _searchPlaces(String query) async {
@@ -54,16 +66,12 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        setState(() {
-          _searchResults = data;
-        });
+        if (mounted) setState(() => _searchResults = data);
       }
     } catch (e) {
       debugPrint('Error searching places: $e');
     } finally {
-      setState(() {
-        _isSearching = false;
-      });
+      if (mounted) setState(() => _isSearching = false);
     }
   }
 
@@ -98,8 +106,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                userAgentPackageName: 'erp_aluminum_app',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.database_data',
+                maxZoom: 19,
               ),
               MarkerLayer(
                 markers: [
@@ -136,9 +145,15 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                       controller: _searchController,
                       style: const TextStyle(color: Colors.black),
                       decoration: InputDecoration(
-                        hintText: Localization.translate('بحث عن مكان...', lang),
+                        hintText: Localization.translate(
+                          'بحث عن مكان...',
+                          lang,
+                        ),
                         hintStyle: const TextStyle(color: Colors.grey),
-                        prefixIcon: const Icon(Icons.search, color: Colors.blue),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.blue,
+                        ),
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.clear, color: Colors.grey),
                           onPressed: () {
@@ -149,7 +164,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                           },
                         ),
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                       ),
                       onSubmitted: (value) => _searchPlaces(value),
                     ),
@@ -186,17 +204,25 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                                 place['display_name'] ?? '',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.black, fontSize: 13),
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 13,
+                                ),
                               ),
                               onTap: () {
-                                final lat = double.tryParse(place['lat'].toString());
-                                final lon = double.tryParse(place['lon'].toString());
+                                final lat = double.tryParse(
+                                  place['lat'].toString(),
+                                );
+                                final lon = double.tryParse(
+                                  place['lon'].toString(),
+                                );
                                 if (lat != null && lon != null) {
                                   final newPoint = LatLng(lat, lon);
                                   setState(() {
                                     _selectedPoint = newPoint;
                                     _searchResults = [];
-                                    _searchController.text = place['display_name'];
+                                    _searchController.text =
+                                        place['display_name'];
                                   });
                                   _mapController.move(newPoint, 15.0);
                                 }
@@ -220,7 +246,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 color: Colors.black87,
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 10.0,
+                  ),
                   child: Text(
                     Localization.translate(
                       'اضغط على أي مكان في الخريطة لتحديد الموقع بدقة، ثم اضغط على زر الصح بالأعلى للحفظ',

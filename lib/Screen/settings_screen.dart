@@ -11,6 +11,7 @@ import 'cutting_settings_screen.dart';
 import 'keyboard_shortcuts_screen.dart';
 import 'selected_systems_screen.dart';
 import 'notification_settings_screen.dart';
+import 'standard_sheets_screen.dart';
 import 'package:flutter/services.dart';
 import '../sql_database.dart';
 
@@ -495,6 +496,44 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
+
+            // Standard Sheets Formats & Prices
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(
+                  Icons.layers_outlined,
+                  color: Colors.blueAccent,
+                ),
+                title: Text(
+                  lang == AppLanguage.arabic
+                      ? 'أبعاد وأسعار الألواح والصفائح'
+                      : 'Formats et prix des feuilles & panneaux',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
+                  ),
+                ),
+                subtitle: Text(
+                  lang == AppLanguage.arabic
+                      ? 'مقاسات فايات الريزين، الأليكوبوند، البانو ساندويتش، البيكسي جلاس والزجاج.'
+                      : 'Tailles et prix des panneaux (Résine, Alucobond, Sandwich, Plexi, Verre).',
+                  style: TextStyle(
+                    fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
+                    fontSize: 12,
+                  ),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StandardSheetsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
 
           // Display Settings

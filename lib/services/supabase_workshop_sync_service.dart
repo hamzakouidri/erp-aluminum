@@ -98,6 +98,8 @@ class SupabaseWorkshopSyncService {
   bool _isApplyingRemoteData = false;
   String? _workshopUuid;
   String? _workshopCode;
+  DateTime? _lastMembershipVerifiedAt;
+  static const Duration _membershipCacheValidity = Duration(minutes: 15);
   String? _permissionsChannelName;
   RealtimeChannel? _workshopDataChannel;
   String? _workshopDataChannelName;
@@ -278,6 +280,7 @@ class SupabaseWorkshopSyncService {
     // the same phone after pressing "logout and return".
     _workshopUuid = null;
     _workshopCode = null;
+    _lastMembershipVerifiedAt = null;
     _deviceId = '';
   }
 
@@ -1028,20 +1031,27 @@ class SupabaseWorkshopSyncService {
   }
 
   Future<void> _runSerializedUpload() async {
+    Object? deferredError;
+    StackTrace? deferredStackTrace;
     try {
       do {
         _uploadQueued = false;
         try {
           await _performPendingUpload();
-        } catch (uploadError) {
-          debugPrint('Supabase pending upload deferred (offline/network): ');
+        } catch (uploadError, stackTrace) {
+          debugPrint(
+            'Supabase pending upload deferred (offline/network): $uploadError',
+          );
+          deferredError = uploadError;
+          deferredStackTrace = stackTrace;
           break;
         }
       } while (_uploadQueued);
-    } catch (e) {
-      debugPrint('Serialized upload error: ');
     } finally {
       _activeUpload = null;
+    }
+    if (deferredError != null) {
+      Error.throwWithStackTrace(deferredError, deferredStackTrace!);
     }
   }
 
@@ -1311,6 +1321,7 @@ class SupabaseWorkshopSyncService {
               (updatedAt.isEmpty || updatedAt == createdAt);
           unawaited(
             OrderNotificationService().showOrderNotificationFromSync(
+              orderId: (order['id'] as num?)?.toInt() ?? 0,
               clientName: clientName,
               orderCode: orderCode,
               author: author,
@@ -1427,6 +1438,19 @@ class SupabaseWorkshopSyncService {
         ? legacyCachedUuid
         : null;
     if (cachedUuid != null && cachedUuid.isNotEmpty) {
+      // إذا تم التحقق من العضوية مؤخراً (أقل من 15 دقيقة) وكانت الورشة الحالية مطابقة،
+      // نعتمد على الكاش المحلي دون إرسال طلب جديد لـ Supabase لتوفير الباندويث
+      final lastVerified = _lastMembershipVerifiedAt;
+      final isCacheValid =
+          lastVerified != null &&
+          DateTime.now().difference(lastVerified) < _membershipCacheValidity;
+
+      if (isCacheValid &&
+          _workshopUuid == cachedUuid &&
+          _workshopCode == code) {
+        return;
+      }
+
       // A UUID cached on this device is valid only when Supabase confirms
       // that the current user is still a member of that workshop.
       Map<String, dynamic>? membership;
@@ -1446,6 +1470,7 @@ class SupabaseWorkshopSyncService {
       if (membership != null || networkError) {
         _workshopUuid = cachedUuid;
         _workshopCode = code;
+        _lastMembershipVerifiedAt = DateTime.now();
         await prefs.setString('cached_workshop_uuid', cachedUuid);
         unawaited(_cacheWorkshopIdentity(cachedUuid, prefs));
         _subscribeToOrderNotifications();

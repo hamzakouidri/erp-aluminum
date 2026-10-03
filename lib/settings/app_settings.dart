@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -393,6 +393,11 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canViewSales() =>
       isManager || _isPermissionTrue(_workerPermissions['sales']);
 
+  bool canMaterialSales() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['material_sales']) ||
+      canViewSales();
+
   bool canViewGlobalConsumption() =>
       isManager || _isPermissionTrue(_workerPermissions['global_consumption']);
 
@@ -718,3 +723,4 @@ class AppSettingsProvider extends ChangeNotifier {
     await prefs.setInt('app_update_mode', mode.index);
   }
 }
+

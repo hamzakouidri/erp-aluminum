@@ -1549,6 +1549,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
         workspace.handleBackNavigation(onHome: () => _confirmHomeExit(context));
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: const Color(0xFFEAF1FB),
         drawer: isDesktop ? null : const AppDrawer(),
         body: Column(
@@ -1739,15 +1740,23 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                   key: const ValueKey('expanded_content'),
                   width: double.infinity,
                   color: const Color(0xFFEAF1FB),
-                  child: IndexedStack(
-                    index: workspace.activeIndex,
-                    children: workspace.entries.asMap().entries.map((mapped) {
-                      return _WorkspaceContentHost(
-                        key: ValueKey('tab_${mapped.value.id}'),
-                        entry: mapped.value,
-                        active: mapped.key == workspace.activeIndex,
-                      );
-                    }).toList(),
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    // The mobile workspace tabs already consume the system
+                    // top inset. Removing it here keeps each page AppBar
+                    // directly below the tabs instead of creating a second
+                    // blank toolbar strip.
+                    removeTop: !isDesktop,
+                    child: IndexedStack(
+                      index: workspace.activeIndex,
+                      children: workspace.entries.asMap().entries.map((mapped) {
+                        return _WorkspaceContentHost(
+                          key: ValueKey('tab_${mapped.value.id}'),
+                          entry: mapped.value,
+                          active: mapped.key == workspace.activeIndex,
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
               ),
@@ -1827,6 +1836,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
         workspace.handleBackNavigation(onHome: () => _confirmHomeExit(context));
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         drawer: isDesktop ? null : AppDrawer(),
         body: LayoutBuilder(
           builder: (context, constraints) {

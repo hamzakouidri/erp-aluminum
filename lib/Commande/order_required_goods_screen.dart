@@ -20,6 +20,7 @@ import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/Screen/achat_details_screen.dart';
+import 'package:database_data/Screen/sheet_optimization_screen.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart'
     show openAdaptiveScreen;
 
@@ -2936,17 +2937,21 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     return entries;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  String get _clientDisplay {
     final clientFirst = widget.orderData['firstname']?.toString() ?? '';
     final clientLast = widget.orderData['lastname']?.toString() ?? '';
     final clientNameJoined = '$clientFirst $clientLast'.trim();
-    final clientDisplay = clientNameJoined.isNotEmpty
+    return clientNameJoined.isNotEmpty
         ? clientNameJoined
         : (widget.orderData['client_name']?.toString() ??
               widget.orderData['client_display']?.toString() ??
               'عميل غير معروف');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final clientDisplay = _clientDisplay;
 
     return Scaffold(
       backgroundColor: isDark
@@ -3043,6 +3048,22 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       icon: const Icon(Icons.inventory_2_outlined, color: Colors.white),
                       tooltip: _t('اعتماد القص والبقايا'),
                       onPressed: _approveAndStoreCuttingRemainders,
+                    ),
+                  if (!_isLoading && _errorMessage == null)
+                    IconButton(
+                      icon: const Icon(Icons.dashboard_customize_rounded, color: Colors.white),
+                      tooltip: _t('تقطيع الألواح والصفائح (2D)'),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SheetOptimizationScreen(
+                              orderId: (widget.orderData['id'] as num?)?.toInt() ?? 0,
+                              orderName: clientDisplay,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   if (!_isLoading &&
                       _errorMessage == null &&
@@ -3476,6 +3497,30 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         fontSize: 12,
                       ),
                     ),
+                    if (category == 'panneau') ...[
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.dashboard_customize_rounded, size: 14),
+                        label: Text(_t('قص الألواح 2D'), style: const TextStyle(fontSize: 11)),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SheetOptimizationScreen(
+                                orderId: (widget.orderData['id'] as num?)?.toInt() ?? 0,
+                                orderName: _clientDisplay,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ),
               );
@@ -3758,7 +3803,32 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             fontSize: 12,
           ),
         ),
-        const SizedBox.shrink(),
+        category == 'panneau'
+            ? Tooltip(
+                message: _t('تقطيع الألواح والصفائح (2D)'),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.dashboard_customize_rounded, size: 14),
+                  label: Text(_t('قص 2D'), style: const TextStyle(fontSize: 11)),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SheetOptimizationScreen(
+                          orderId: (widget.orderData['id'] as num?)?.toInt() ?? 0,
+                          orderName: _clientDisplay,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              )
+            : const SizedBox.shrink(),
       ],
     );
   }

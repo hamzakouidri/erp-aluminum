@@ -416,4 +416,104 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Compte',
     AppLanguage.english: 'Account',
   },
+  'لوحة استهلاك التخزين والذاكرة': {
+    AppLanguage.arabic: 'لوحة استهلاك التخزين والذاكرة',
+    AppLanguage.french: 'Tableau de bord Stockage & Mémoire',
+    AppLanguage.english: 'Storage & Memory Dashboard',
+  },
+  'استهلاك الورشة الحالية': {
+    AppLanguage.arabic: 'استهلاك الورشة الحالية',
+    AppLanguage.french: 'Atelier actuel',
+    AppLanguage.english: 'Current Workshop',
+  },
+  'مقارنة كافة الورشات': {
+    AppLanguage.arabic: 'مقارنة كافة الورشات',
+    AppLanguage.french: 'Comparer tous les ateliers',
+    AppLanguage.english: 'Compare All Workshops',
+  },
+  'حجم قاعدة البيانات': {
+    AppLanguage.arabic: 'حجم قاعدة البيانات',
+    AppLanguage.french: 'Taille de la base de données',
+    AppLanguage.english: 'Database Size',
+  },
+  'الملف المحلي test.db': {
+    AppLanguage.arabic: 'الملف المحلي test.db',
+    AppLanguage.french: 'Fichier local test.db',
+    AppLanguage.english: 'Local file test.db',
+  },
+  'إجمالي السجلات': {
+    AppLanguage.arabic: 'إجمالي السجلات',
+    AppLanguage.french: 'Total des enregistrements',
+    AppLanguage.english: 'Total Records',
+  },
+  'سجل بيانات محلي': {
+    AppLanguage.arabic: 'سجل بيانات محلي',
+    AppLanguage.french: 'Enregistrements locaux',
+    AppLanguage.english: 'Local data records',
+  },
+  'توزيع استهلاك البيانات': {
+    AppLanguage.arabic: 'توزيع استهلاك البيانات',
+    AppLanguage.french: 'Répartition des données',
+    AppLanguage.english: 'Data Distribution',
+  },
+  'إلغاء التحديد': {
+    AppLanguage.arabic: 'إلغاء التحديد',
+    AppLanguage.french: 'Désélectionner',
+    AppLanguage.english: 'Deselect',
+  },
+  'المساحة الإجمالية': {
+    AppLanguage.arabic: 'المساحة الإجمالية',
+    AppLanguage.french: 'Espace Total',
+    AppLanguage.english: 'Total Space',
+  },
+  'تفاصيل الفئات والأقسام': {
+    AppLanguage.arabic: 'تفاصيل الفئات والأقسام',
+    AppLanguage.french: 'Détails des catégories & modules',
+    AppLanguage.english: 'Categories & Modules Details',
+  },
+  'صيانة وتحسين التخزين': {
+    AppLanguage.arabic: 'صيانة وتحسين التخزين',
+    AppLanguage.french: 'Maintenance & Optimisation',
+    AppLanguage.english: 'Storage Maintenance & Optimization',
+  },
+  'يساعد ضغط قاعدة البيانات (VACUUM) على استرجاع المساحات غير المستخدمة الناتجة عن عمليات الحذف والتعديل وتسريع أداء التطبيق.': {
+    AppLanguage.arabic: 'يساعد ضغط قاعدة البيانات (VACUUM) على استرجاع المساحات غير المستخدمة الناتجة عن عمليات الحذف والتعديل وتسريع أداء التطبيق.',
+    AppLanguage.french: 'La défragmentation (VACUUM) récupère l\'espace inutilisé libéré par les suppressions et accélère l\'application.',
+    AppLanguage.english: 'Database compaction (VACUUM) reclaims unused disk space freed by deletions and speeds up app performance.',
+  },
+  'ضغط وتحسين قاعدة البيانات': {
+    AppLanguage.arabic: 'ضغط وتحسين قاعدة البيانات',
+    AppLanguage.french: 'Compacter & Optimiser',
+    AppLanguage.english: 'Compact & Optimize Database',
+  },
+  'تم ضغط وتحسين مساحة قاعدة البيانات بنجاح': {
+    AppLanguage.arabic: 'تم ضغط وتحسين مساحة قاعدة البيانات بنجاح',
+    AppLanguage.french: 'Base de données compactée et optimisée avec succès',
+    AppLanguage.english: 'Database successfully compacted and optimized',
+  },
+  'لا توجد بيانات ورشات متاحة': {
+    AppLanguage.arabic: 'لا توجد بيانات ورشات متاحة',
+    AppLanguage.french: 'Aucune donnée d\'atelier disponible',
+    AppLanguage.english: 'No workshop data available',
+  },
+  'مقارنة نشاط وحجم الورشات المشتركة': {
+    AppLanguage.arabic: 'مقارنة نشاط وحجم الورشات المشتركة',
+    AppLanguage.french: 'Comparatif d\'activité des ateliers',
+    AppLanguage.english: 'Workshops Activity & Size Comparison',
+  },
+  'إجمالي الورشات المسجلة: ': {
+    AppLanguage.arabic: 'إجمالي الورشات المسجلة: ',
+    AppLanguage.french: 'Total des ateliers enregistrés : ',
+    AppLanguage.english: 'Total registered workshops: ',
+  },
+  'عدد المستخدمين المسجلين: ': {
+    AppLanguage.arabic: 'عدد المستخدمين المسجلين: ',
+    AppLanguage.french: 'Utilisateurs enregistrés : ',
+    AppLanguage.english: 'Registered users: ',
+  },
+  'نشط': {
+    AppLanguage.arabic: 'نشط',
+    AppLanguage.french: 'Actif',
+    AppLanguage.english: 'Active',
+  },
 };

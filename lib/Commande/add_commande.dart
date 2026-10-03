@@ -564,6 +564,28 @@ class _CommandePageState extends State<CommandePage> {
     return models;
   }
 
+  List<Map<String, dynamic>> _collectAllOrderGlassPayloads() {
+    final list = <Map<String, dynamic>>[];
+    for (final prod in addedProducts) {
+      if (prod.isGlassWork ||
+          prod.glassWorkPayload != null ||
+          (prod.manualNameOverride?.contains('Verre Trempé') == true) ||
+          (prod.manualNameOverride?.contains('فير ترومبي') == true)) {
+        if (prod.glassWorkPayload != null) {
+          final payload = Map<String, dynamic>.from(prod.glassWorkPayload!);
+          if (prod.manualNameOverride != null &&
+              prod.manualNameOverride!.isNotEmpty) {
+            payload['itemTitle'] = prod.manualNameOverride;
+          } else {
+            payload['itemTitle'] = payload['workTypeLabel'] ?? 'Verre trempé';
+          }
+          list.add(payload);
+        }
+      }
+    }
+    return list;
+  }
+
   List<WindowModel> _modelsFromGlassWorkPayload(Map<String, dynamic> payload) {
     final rawItems = payload['items'] as List?;
     final overallWidth = (payload['overallWidthMm'] as num?)?.toDouble() ??
@@ -4234,7 +4256,15 @@ class _CommandePageState extends State<CommandePage> {
                             ),
                           ),
                         ),
-                        Row(
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               icon: const Icon(
@@ -4376,6 +4406,14 @@ class _CommandePageState extends State<CommandePage> {
                                             TemperedGlassWorkScreen(
                                               initialPayload:
                                                   p.glassWorkPayload,
+                                              allOrderGlassPayloads:
+                                                  _collectAllOrderGlassPayloads(),
+                                              clientName:
+                                                  clientController.text.trim(),
+                                              orderNumber:
+                                                  widget.editCommandeId
+                                                      ?.toString() ??
+                                                  '',
                                             ),
                                       ),
                                     );
@@ -4572,7 +4610,7 @@ class _CommandePageState extends State<CommandePage> {
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
                     const Divider(),
                     Row(

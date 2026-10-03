@@ -17,6 +17,7 @@ import 'package:flutter/services.dart'
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/Commande/window_painter.dart';
+import 'package:database_data/Commande/decor_panel_designs.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/material_consumption_screen.dart';
@@ -109,9 +110,7 @@ class _WindowViewState extends State<WindowView> {
       spec.structure,
       sliding: true,
     );
-    if (series == null ||
-        capacity == null ||
-        spec.structure == GlassStructure.closed)
+    if (series == null || capacity == null)
       return const SizedBox.shrink();
     final glass = spec.totalThickness(widget.model.allGlassCache);
     return FutureBuilder<List<Map<String, dynamic>>>(
@@ -125,7 +124,9 @@ class _WindowViewState extends State<WindowView> {
           drawingMode: AccessoryDrawingMode.sliding,
           requireDialog: false,
           requireQuantity: true,
-          hasSimpleGlassForReducer: spec.structure == GlassStructure.simple,
+          hasSimpleGlassForReducer:
+              spec.structure == GlassStructure.simple ||
+              spec.structure == GlassStructure.closed,
           hasDoubleGlassForRules: spec.structure == GlassStructure.double,
         ),
       ),
@@ -6159,14 +6160,21 @@ class _WindowViewState extends State<WindowView> {
               spec.structure,
               sliding: false,
             );
-            if (maximum == null || spec.structure == GlassStructure.closed) {
+            if (maximum == null) {
               return null;
             }
 
             final glassTotal = spec.totalThickness(widget.model.allGlassCache);
-            final jointVitrage = widget.model.isPVC
+            final fittedJointThickness = spec.fittedJoints.fold<double>(
+              0.0,
+              (sum, joint) =>
+                  sum + (double.tryParse('${joint['thickness']}') ?? 0.0),
+            );
+            final jointVitrage = spec.fittedJoints.isNotEmpty
+                ? fittedJointThickness
+                : widget.model.isPVC
                 ? 0.0
-                : widget.model.selectedVitrageJointThickness(fallback: 3.0);
+                : widget.model.selectedVitrageJointThickness(fallback: 2.0);
             final totalPack = glassTotal + jointVitrage;
             final remainingGap = maximum - totalPack;
 
@@ -6209,13 +6217,14 @@ class _WindowViewState extends State<WindowView> {
               final gapStr = remainingGap.abs().toStringAsFixed(0);
 
               if (isAbove) {
-                message =
-                    openingPrefix +
-                    'تنبيه: سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
+                message = openingPrefix +
+                    'تنبيه: السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
               } else if (remainingGap < 2.0) {
-                message =
-                    openingPrefix +
-                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي لـ Joint Bourrage ضيق جداً ($gapStr مم).';
+                message = spec.fittedJoints.isNotEmpty && isExact
+                    ? openingPrefix +
+                        'السُمك ($glassStr مم) + الجوانات المختارة ($jointStr مم) = $packStr مم، مطابق لـ $capacityLabel ($maxStr مم).'
+                    : openingPrefix +
+                        'السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي ضيق جداً ($gapStr مم).';
               } else {
                 message =
                     openingPrefix +
@@ -7528,31 +7537,72 @@ class _WindowViewState extends State<WindowView> {
                           ? savedId
                           : products.first['id'].toString();
 
-                      return DropdownButtonFormField<String>(
-                        value: currentId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                        ),
-                        items: products.map((product) {
-                          final width = _catalogNumber(
-                            product,
-                            'visible_width',
-                          );
-                          final height = _catalogNumber(product, 'height');
-                          final name = (product['name'] ?? 'بانو ديكور')
-                              .toString();
-                          return DropdownMenuItem<String>(
-                            value: product['id'].toString(),
-                            child: Text(
-                              '$name - ${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} مم',
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 10),
+                      final currentProduct = uniqueProducts[currentId]!;
+                      final currentDesignCode =
+                          currentProduct['decor_design_code']?.toString();
+
+                      return Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: currentId,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: OutlineInputBorder(),
                             ),
-                          );
-                        }).toList(),
-                        onChanged: (value) async {
+                            selectedItemBuilder: (context) => products.map((product) {
+                              final name = (product['name'] ?? 'بانو ديكور')
+                                  .toString();
+                              return Row(
+                                children: [
+                                  DecorPanelDesignPreview(
+                                    designCode:
+                                        product['decor_design_code']?.toString(),
+                                    width: 24,
+                                    height: 38,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                            items: products.map((product) {
+                              final width = _catalogNumber(
+                                product,
+                                'visible_width',
+                              );
+                              final height = _catalogNumber(product, 'height');
+                              final name = (product['name'] ?? 'بانو ديكور')
+                                  .toString();
+                              return DropdownMenuItem<String>(
+                                value: product['id'].toString(),
+                                child: Row(
+                                  children: [
+                                    DecorPanelDesignPreview(
+                                      designCode: product['decor_design_code']
+                                          ?.toString(),
+                                      width: 30,
+                                      height: 48,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '$name - ${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} مم',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 10),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) async {
                           if (value == null) return;
                           final chosen = uniqueProducts[value]!;
                           final chosenId = int.tryParse(value);
@@ -7602,7 +7652,23 @@ class _WindowViewState extends State<WindowView> {
                             setState(() => _tempGlassSpec = newSpec);
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
-                        },
+                            },
+                          ),
+                          if (DecorPanelDesignCatalog.isSupported(
+                            currentDesignCode,
+                          )) ...[
+                            const SizedBox(height: 10),
+                            DecorPanelDesignPreview(
+                              designCode: currentDesignCode,
+                              panelColor: getEffectiveGradientColors(
+                                FrameColor.white,
+                                {'name': spec.panneauColor ?? 'أبيض'},
+                              )[1],
+                              width: 84,
+                              height: 140,
+                            ),
+                          ],
+                        ],
                       );
                     },
                   ),
@@ -17902,7 +17968,11 @@ class _WindowViewState extends State<WindowView> {
             return fallback;
           }
 
-          final integratedCover = profileHasIntegratedSideCover(item);
+          final integratedCover = readBool(
+            item['design_integrated_side_cover'] ??
+                item['integrated_side_cover'],
+            fallback: profileHasIntegratedSideCover(item),
+          );
           final allowsStandaloneCover = readBool(
             item['design_allows_side_cover'] ?? item['allows_side_cover'],
             fallback: true,
@@ -17912,22 +17982,9 @@ class _WindowViewState extends State<WindowView> {
             fallback: true,
           );
 
-          final selectedSeriesIsPvc = _seriesIsPvc(
-            sliding
-                ? (widget.model.effectiveSlidingSeries ??
-                      widget.model.activeSlidingSeries)
-                : widget.model.activeSeries,
-          );
-
           // 1. Shutter compatibility:
           if (widget.model.hasShutter) {
             if (!allowedWithShutter) return false;
-            if (!widget.model.isCaissonTunnel && !selectedSeriesIsPvc) {
-              if (integratedCover) return false;
-              if (!allowsStandaloneCover && widget.model.hasSideCovers) {
-                return false;
-              }
-            }
           }
 
           // 2. Side covers compatibility:
@@ -17938,7 +17995,11 @@ class _WindowViewState extends State<WindowView> {
             if (hasSeparateCover) {
               if (integratedCover || !allowsStandaloneCover) return false;
             } else {
-              if (!integratedCover && !allowsStandaloneCover) return false;
+              // An integrated-cover drawing must keep the same construction
+              // family. A plain frame that merely accepts a separate cover
+              // is available from per-side frame personalisation, but is not
+              // a valid global replacement here.
+              if (!integratedCover) return false;
             }
           }
 
@@ -17963,6 +18024,24 @@ class _WindowViewState extends State<WindowView> {
         final angleJunctionFrameIds = angleJunctionFrames.values
             .map((e) => e.section.id)
             .toSet();
+        final personalizedFrameProfiles = <({
+          Map<String, dynamic> profile,
+          bool sliding,
+        })>[];
+        final personalizedFrameIds = <int>{};
+        for (final frame in widget.model.getFrameRects()) {
+          final sliding = widget.model.frameUsesSlidingSeries(frame);
+          for (final side in const ['top', 'right', 'bottom', 'left']) {
+            final override = widget.model.frameSideOverrideForRect(frame, side);
+            if (override == null) continue;
+            final id = _catalogRowId(override);
+            if (id == null || !personalizedFrameIds.add(id)) continue;
+            personalizedFrameProfiles.add((
+              profile: override,
+              sliding: sliding,
+            ));
+          }
+        }
 
         List<Map<String, dynamic>> profilesForPickerMode(
           List<Map<String, dynamic>> profiles, {
@@ -17983,6 +18062,7 @@ class _WindowViewState extends State<WindowView> {
             final id = _catalogRowId(profile);
             if (id != null && id == currentId) return true;
             if (id != null && angleJunctionFrameIds.contains(id)) return true;
+            if (id != null && personalizedFrameIds.contains(id)) return true;
             return isFrameCompatibleWithCurrentDrawing(
               profile,
               sliding: sliding,
@@ -18031,6 +18111,15 @@ class _WindowViewState extends State<WindowView> {
             targetList.insert(0, secMap);
           }
         }
+        for (final entry in personalizedFrameProfiles) {
+          final targetList = entry.sliding
+              ? slidingProfiles
+              : openingProfiles;
+          final id = _catalogRowId(entry.profile);
+          if (id != null && !targetList.any((p) => _catalogRowId(p) == id)) {
+            targetList.insert(0, entry.profile);
+          }
+        }
 
         Future<void> selectFrameProfile(
           Map<String, dynamic> item, {
@@ -18058,7 +18147,11 @@ class _WindowViewState extends State<WindowView> {
             return fallback;
           }
 
-          final integratedCover = profileHasIntegratedSideCover(item);
+          final integratedCover = readBool(
+            item['design_integrated_side_cover'] ??
+                item['integrated_side_cover'],
+            fallback: profileHasIntegratedSideCover(item),
+          );
           final allowsStandaloneCover = readBool(
             item['design_allows_side_cover'] ?? item['allows_side_cover'],
             fallback: true,
@@ -18071,18 +18164,8 @@ class _WindowViewState extends State<WindowView> {
               widget.model.hasSideCovers &&
               !integratedCover &&
               !allowsStandaloneCover;
-          final selectedSeriesIsPvc = _seriesIsPvc(
-            sliding
-                ? (widget.model.effectiveSlidingSeries ??
-                      widget.model.activeSlidingSeries)
-                : widget.model.activeSeries,
-          );
           final removesShutter =
-              widget.model.hasShutter &&
-              (!allowedWithShutter ||
-                  (!widget.model.isCaissonTunnel &&
-                      !selectedSeriesIsPvc &&
-                      (integratedCover || !allowsStandaloneCover)));
+              widget.model.hasShutter && !allowedWithShutter;
 
           var removesProfileAngle = false;
           if (widget.model.usesProfileAngle && integratedCover) {
@@ -21344,33 +21427,32 @@ class AppWorkspacePainter extends CustomPainter {
     final bool hasAngleJunction = model.usesProfileAngle &&
         model.activeProfileAngleJunctions.isNotEmpty;
 
-    if (!hasAngleJunction) {
-      // Outer/Total width (only in flat single-plane mode)
-      _drawDimension(
-        canvas,
-        '${model.width.toInt()} mm',
-        Offset(pos.dx, widthY),
-        Offset(pos.dx + model.width, widthY),
-        isVerticalLine: false,
-      );
-      // Witness lines for total width
-      _drawWitnessLine(
-        canvas,
-        Offset(pos.dx, pos.dy),
-        Offset(pos.dx, widthY - 8.0),
-      );
-      _drawWitnessLine(
-        canvas,
-        Offset(pos.dx + model.width, pos.dy),
-        Offset(pos.dx + model.width, widthY - 8.0),
-      );
-    }
+    // Outer/total width is always shown on the top dimension layer, including
+    // when the opening is composed of multiple frames joined by an angle.
+    _drawDimension(
+      canvas,
+      '${model.width.toInt()} mm',
+      Offset(pos.dx, widthY),
+      Offset(pos.dx + model.width, widthY),
+      isVerticalLine: false,
+    );
+    // Witness lines for total width
+    _drawWitnessLine(
+      canvas,
+      Offset(pos.dx, pos.dy),
+      Offset(pos.dx, widthY - 8.0),
+    );
+    _drawWitnessLine(
+      canvas,
+      Offset(pos.dx + model.width, pos.dy),
+      Offset(pos.dx + model.width, widthY - 8.0),
+    );
 
     // If multi-frame, draw individual frame widths on Layer 1
     if (isMultiFrame) {
-      double layer1Y = hasAngleJunction
-          ? widthY
-          : (isSlantedOrArched ? widthY : widthY + 70.0);
+      // Keep individual frame dimensions close to the drawing, directly
+      // below the overall width dimension.
+      double layer1Y = widthY + 38.0;
       for (int fi = 0; fi < sortedFrames.length; fi++) {
         final f = sortedFrames[fi];
         final double x0 = pos.dx + f.rect.left;

@@ -2031,7 +2031,9 @@ class WindowPainter extends CustomPainter {
     final activeJunctions = model.activeProfileAngleJunctions;
 
     // Architectural Plan View (Vue de dessus 90°)
-    if (activeJunctions.isNotEmpty && junctions.isNotEmpty) {
+    if (model.viewAs90DegreeCorner &&
+        activeJunctions.isNotEmpty &&
+        junctions.isNotEmpty) {
       _drawArchitecturalPlanView(canvas, w, h);
     }
 
@@ -2045,122 +2047,28 @@ class WindowPainter extends CustomPainter {
       final frameH = jBottom - jTop;
       if (frameH <= 0) continue;
 
-      // Thickness of the frame profile (used for the wing thickness).
-      final t = model.profileThickness.clamp(20.0, 80.0).toDouble();
-
-      final fillPaint = _buildPaint(Rect.fromLTWH(edgeX - t, jTop, t, frameH));
-      final borderPaint = Paint()
-        ..color = _fb
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2;
-
-      // 1. Corner band on Frame 1 (right edge) — thin vertical strip showing
-      //    the frame end touching the corner.
-      final frame1End = Rect.fromLTRB(edgeX - t, jTop, edgeX, jBottom);
-      canvas.drawRect(frame1End, fillPaint);
-      canvas.drawRect(frame1End, borderPaint);
-
-      // 2. Perpendicular "depth wing" at the junction:
-      //    Short horizontal strips at top and bottom of Frame 1's right edge,
-      //    going to the RIGHT (perpendicular direction, into the corner).
-      //    This visually shows the frame turning at 90°.
-      final wingDepth = t * 1.2; // how far the wing extends
-      // Top wing
-      final topWing = Rect.fromLTWH(edgeX, jTop, wingDepth, t);
-      canvas.drawRect(topWing, fillPaint);
-      canvas.drawRect(topWing, borderPaint);
-      // Bottom wing
-      final bottomWing = Rect.fromLTWH(edgeX, jBottom - t, wingDepth, t);
-      canvas.drawRect(bottomWing, fillPaint);
-      canvas.drawRect(bottomWing, borderPaint);
-      // Closing edge of the perpendicular wing (right side)
-      final closingPaint = Paint()
-        ..color = _fb.withValues(alpha: 0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0;
-      canvas.drawLine(
-        Offset(edgeX + wingDepth, jTop),
-        Offset(edgeX + wingDepth, jTop + t),
-        closingPaint,
-      );
-      canvas.drawLine(
-        Offset(edgeX + wingDepth, jBottom - t),
-        Offset(edgeX + wingDepth, jBottom),
-        closingPaint,
-      );
-
-      // 3. 90° badge at the junction center.
+      // Draw only the 90° badge at the junction center.
+      // Do NOT draw overlapping rectangles or wings that cover the 45° frame miter joints.
       _draw90DegreeCornerBadge(canvas, Offset(edgeX, (jTop + jBottom) / 2));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // B.  Outer-edge mode (single frame with angle profile on right / left)
     // ─────────────────────────────────────────────────────────────────────────
-    // Draw a foreshortened "L-wing" AT the canvas edge (not beyond it) to
-    // show the frame turning at 90°.  The canvas width is NOT increased.
     if (model.profileAngleMode > 0) {
       final sides = <String>[];
-      if (model.profileAngleMode == 1 || model.profileAngleMode == 3)
+      if (model.profileAngleMode == 1 || model.profileAngleMode == 3) {
         sides.add('right');
-      if (model.profileAngleMode == 2 || model.profileAngleMode == 3)
+      }
+      if (model.profileAngleMode == 2 || model.profileAngleMode == 3) {
         sides.add('left');
+      }
 
       for (final side in sides) {
         final bool isRight = side == 'right';
-        // Thickness of the frame profile at the edge.
-        final t = model.profileThickness.clamp(20.0, 80.0).toDouble();
-        // Wing depth: how far it extends perpendicular (stays within canvas).
-        final wingDepth = math.min(t * 1.5, w * 0.12);
-
         final edgeX = isRight ? w : 0.0;
 
-        final fillPaint = _buildPaint(
-          Rect.fromLTWH(isRight ? edgeX - t : edgeX, top, t, h - top),
-        );
-        final borderPaint = Paint()
-          ..color = _fb
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5;
-        final closingPaint = Paint()
-          ..color = _fb.withValues(alpha: 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0;
-
-        // Frame edge strip (end of the frame, touching the corner).
-        final edgeStrip = isRight
-            ? Rect.fromLTRB(edgeX - t, top, edgeX, h)
-            : Rect.fromLTRB(edgeX, top, edgeX + t, h);
-        canvas.drawRect(edgeStrip, fillPaint);
-        canvas.drawRect(edgeStrip, borderPaint);
-
-        // Perpendicular top wing.
-        final topWingRect = isRight
-            ? Rect.fromLTWH(edgeX - t, top, wingDepth + t, t)
-            : Rect.fromLTWH(edgeX - wingDepth, top, wingDepth + t, t);
-        canvas.drawRect(topWingRect, fillPaint);
-        canvas.drawRect(topWingRect, borderPaint);
-
-        // Perpendicular bottom wing.
-        final bottomWingRect = isRight
-            ? Rect.fromLTWH(edgeX - t, h - t, wingDepth + t, t)
-            : Rect.fromLTWH(edgeX - wingDepth, h - t, wingDepth + t, t);
-        canvas.drawRect(bottomWingRect, fillPaint);
-        canvas.drawRect(bottomWingRect, borderPaint);
-
-        // Closing short edge of each wing.
-        final wingTip = isRight ? edgeX + wingDepth : edgeX - wingDepth;
-        canvas.drawLine(
-          Offset(wingTip, top),
-          Offset(wingTip, top + t),
-          closingPaint,
-        );
-        canvas.drawLine(
-          Offset(wingTip, h - t),
-          Offset(wingTip, h),
-          closingPaint,
-        );
-
-        // 90° badge at the center of the corner edge.
+        // 90° badge at the center of the corner edge without covering frame miters.
         _draw90DegreeCornerBadge(
           canvas,
           Offset(edgeX, (top + h) / 2),
@@ -2225,9 +2133,10 @@ class WindowPainter extends CustomPainter {
     final f1 = sortedFrames[0];
     final f2 = sortedFrames[1];
 
-    // Card dimensions and placement
-    const double cardW = 185.0;
-    const double cardH = 145.0;
+    // Keep the real 90-degree plan large enough to be unmistakable. The old
+    // fixed thumbnail looked like a legend instead of the selected view.
+    final double cardW = (w * 0.44).clamp(210.0, 340.0).toDouble();
+    final double cardH = (h * 0.34).clamp(165.0, 245.0).toDouble();
     final double cardX = math.max(10.0, w - cardW - 10.0);
     final double cardY = math.max(10.0, h - cardH - 10.0);
     final cardRect = RRect.fromRectAndRadius(
@@ -2268,11 +2177,11 @@ class WindowPainter extends CustomPainter {
     );
 
     // Corner vertex in plan view
-    final corner = Offset(cardX + cardW - 45, cardY + 45);
+    final corner = Offset(cardX + cardW - 55, cardY + 55);
 
     // Leg 1 (Frame 1): extends horizontally to the left
-    const double leg1Len = 95.0;
-    const double legThick = 9.0;
+    final double leg1Len = (cardW - 85.0).clamp(110.0, 230.0).toDouble();
+    const double legThick = 12.0;
     final leg1Rect = Rect.fromLTRB(
       corner.dx - leg1Len,
       corner.dy - legThick / 2,
@@ -2297,7 +2206,7 @@ class WindowPainter extends CustomPainter {
     );
 
     // Leg 2 (Frame 2): extends vertically downwards at 90°
-    const double leg2Len = 65.0;
+    final double leg2Len = (cardH - 85.0).clamp(75.0, 155.0).toDouble();
     final leg2Rect = Rect.fromLTRB(
       corner.dx - legThick / 2,
       corner.dy,
@@ -5033,11 +4942,19 @@ class WindowPainter extends CustomPainter {
           y += realSlatHeight;
         }
       }
-    } else if (activeFinish == GlassFinish.paneauSandwitchDecore) {
-      final designCode = DecorPanelDesignCatalog.resolveForProduct(
-        productId: effectiveSpec?.panneauProductId,
-        glassProducts: model.allGlassCache,
-      );
+    } else if (activeFinish == GlassFinish.paneauSandwitchDecore ||
+        isDecorPanelSubtype(effectiveSpec?.panneauSubtype)) {
+      final selectedProduct = effectiveSpec == null
+          ? null
+          : model.getPanneauProductForSpec(effectiveSpec);
+      final directDesignCode =
+          selectedProduct?['decor_design_code']?.toString().trim();
+      final designCode = DecorPanelDesignCatalog.isSupported(directDesignCode)
+          ? directDesignCode
+          : DecorPanelDesignCatalog.resolveForProduct(
+              productId: effectiveSpec?.panneauProductId,
+              glassProducts: model.allGlassCache,
+            );
       if (designCode != null) {
         DecorPanelDesignPainter.paintDesign(
           canvas,

@@ -47,6 +47,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     3.0588,
   ); // Start at workshop (Algiers)
   LatLng _clientPosition = const LatLng(36.7372, 3.0855); // Client location
+  bool _hasClientLocation = false;
   double _distanceRemaining = 5.2; // in km
   int _etaMinutes = 12;
   double _speedKmh = 0.0;
@@ -161,28 +162,41 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   }
 
   void _selectDelivery(Map<String, dynamic> delivery) {
+    final parsedLat = double.tryParse(delivery['latitude']?.toString() ?? '');
+    final parsedLng = double.tryParse(delivery['longitude']?.toString() ?? '');
+    final hasLocation =
+        parsedLat != null &&
+        parsedLng != null &&
+        parsedLat >= -90 &&
+        parsedLat <= 90 &&
+        parsedLng >= -180 &&
+        parsedLng <= 180;
     setState(() {
       _selectedDelivery = delivery;
-      double cLat = delivery['latitude'] != null
-          ? double.tryParse(delivery['latitude'].toString()) ?? 36.7372
-          : 36.7372;
-      double cLng = delivery['longitude'] != null
-          ? double.tryParse(delivery['longitude'].toString()) ?? 3.0855
-          : 3.0855;
-      _clientPosition = LatLng(cLat, cLng);
+      _hasClientLocation = hasLocation;
+      if (hasLocation) _clientPosition = LatLng(parsedLat!, parsedLng!);
       _driverPosition = _launchPosition;
       _speedKmh = 0.0;
       _isTracking = false;
       _simulationTimer?.cancel();
     });
 
-    _fetchRoadRoute(_launchPosition, _clientPosition);
+    if (hasLocation) {
+      _fetchRoadRoute(_launchPosition, _clientPosition);
+    } else {
+      setState(() {
+        _routePoints = [];
+        _distanceRemaining = 0;
+        _etaMinutes = 0;
+      });
+    }
 
     // Animate map camera to fit both launch position and client
     // Animate map camera to fit both launch position and client safely
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       try {
+        if (!hasLocation) return;
         _mapController.fitCamera(
           CameraFit.coordinates(
             coordinates: [_launchPosition, _clientPosition],
@@ -268,6 +282,9 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
           _launchPosition = LatLng(lat!, lng!);
           _driverPosition = LatLng(lat, lng);
         });
+        if (_selectedDelivery != null && _hasClientLocation) {
+          await _fetchRoadRoute(_launchPosition, _clientPosition);
+        }
       }
     } catch (e) {
       debugPrint("Error loading workshop location: $e");
@@ -340,6 +357,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         if (!mounted) return;
         setState(() {
           _clientPosition = point;
+          _hasClientLocation = true;
           _selectedDelivery = Map<String, dynamic>.from(_selectedDelivery!)
             ..['latitude'] = point.latitude
             ..['longitude'] = point.longitude;
@@ -538,6 +556,75 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     }
   }
 
+  Future<bool> _ensureLocationAccess(AppLanguage lang) async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localization.translate(
+                'الرجاء تفعيل خدمة الموقع GPS في الهاتف',
+                lang,
+              ),
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) {
+      await Geolocator.openAppSettings();
+      return false;
+    }
+    return permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always;
+  }
+
+  Future<void> _openSelectedRoute() async {
+    if (_selectedDelivery == null) return;
+    if (!_hasClientLocation) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('حدّد موقع الزبون على الخريطة أولاً.')),
+        );
+      }
+      return;
+    }
+    final destination = _clientPosition;
+    final googleNavigation = Uri.parse(
+      'google.navigation:q=${destination.latitude},${destination.longitude}&mode=d',
+    );
+    final webRoute = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&origin='
+      '${_launchPosition.latitude},${_launchPosition.longitude}'
+      '&destination=${destination.latitude},${destination.longitude}'
+      '&travelmode=driving',
+    );
+    try {
+      final opened = await launchUrl(
+        googleNavigation,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        await launchUrl(webRoute, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      final opened = await launchUrl(
+        webRoute,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح تطبيق الخرائط.')),
+        );
+      }
+    }
+  }
+
   void _markAsDelivered() async {
     if (_selectedDelivery == null) return;
     final lang = Provider.of<AppSettingsProvider>(
@@ -695,11 +782,47 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     }
   }
 
+  Future<void> _showMobileDeliveries(AppLanguage lang) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView.builder(
+          itemCount: _deliveries.length,
+          itemBuilder: (context, index) {
+            final delivery = _deliveries[index];
+            final selected = _selectedDelivery?['id'] == delivery['id'];
+            final clientName = delivery['firstname'] != null
+                ? '${delivery['firstname']} ${delivery['lastname'] ?? ''}'
+                : 'Client #${delivery['client_id']}';
+            return ListTile(
+              selected: selected,
+              leading: Icon(
+                Icons.local_shipping_outlined,
+                color: selected ? Colors.blue : null,
+              ),
+              title: Text(clientName),
+              subtitle: Text(
+                '${Localization.translate('رقم الطلبية:', lang)} #${delivery['id_commandes']}',
+              ),
+              trailing: selected ? const Icon(Icons.check_circle) : null,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _selectDelivery(delivery);
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
     final isAr = lang == AppLanguage.arabic;
+    final isCompact = MediaQuery.sizeOf(context).width < 700;
 
     return Scaffold(
       appBar: AppBar(
@@ -707,40 +830,58 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
           Localization.translate('خطط التوزيع والتتبع المباشر', lang),
         ),
         actions: [
-          ElevatedButton.icon(
-            onPressed: () => _confirmResetInstallationData(context, lang),
-            icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
-            label: const Text(
-              'تصفير التركيبات 🧹',
-              style: TextStyle(
-                fontFamily: 'Cairo',
+          if (!isCompact)
+            ElevatedButton.icon(
+              onPressed: () => _confirmResetInstallationData(context, lang),
+              icon: const Icon(
+                Icons.delete_sweep,
                 color: Colors.white,
-                fontWeight: FontWeight.bold,
+                size: 18,
+              ),
+              label: const Text(
+                'تصفير التركيبات 🧹',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                elevation: 0,
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              elevation: 0,
+          if (!isCompact) const SizedBox(width: 8),
+          if (isCompact)
+            IconButton(
+              tooltip: Localization.translate('خطط التوزيع', lang),
+              onPressed: () => _showMobileDeliveries(lang),
+              icon: const Icon(Icons.local_shipping_outlined),
             ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: _showCreatePlanDialog,
-            icon: Icon(Icons.add, color: Theme.of(context).cardColor),
-            label: Text(
-              Localization.translate('خطة جديدة', lang),
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                color: Theme.of(context).cardColor,
+          if (isCompact)
+            IconButton(
+              tooltip: Localization.translate('خطة جديدة', lang),
+              onPressed: _showCreatePlanDialog,
+              icon: const Icon(Icons.add),
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: _showCreatePlanDialog,
+              icon: Icon(Icons.add, color: Theme.of(context).cardColor),
+              label: Text(
+                Localization.translate('خطة جديدة', lang),
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Theme.of(context).cardColor,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? Theme.of(context).appBarTheme.backgroundColor
+                    : Colors.blue.shade700,
+                elevation: 0,
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).brightness == Brightness.dark
-                  ? Theme.of(context).appBarTheme.backgroundColor
-                  : Colors.blue.shade700,
-              elevation: 0,
-            ),
-          ),
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -797,7 +938,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
           : Row(
               children: [
                 // Left list panel: Active distributions (collapsable)
-                if (_isSidebarOpen)
+                if (_isSidebarOpen && !isCompact)
                   Container(
                     width: 320,
                     decoration: BoxDecoration(
@@ -861,41 +1002,42 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                   ),
 
                 // Side panel collapse/expand tab handle
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isSidebarOpen = !_isSidebarOpen;
-                    });
-                  },
-                  child: Container(
-                    width: 22,
-                    height: 70,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade800,
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(isAr ? 0 : 8),
-                        bottomRight: Radius.circular(isAr ? 0 : 8),
-                        topLeft: Radius.circular(isAr ? 8 : 0),
-                        bottomLeft: Radius.circular(isAr ? 8 : 0),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 4,
-                          offset: const Offset(1, 1),
+                if (!isCompact)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isSidebarOpen = !_isSidebarOpen;
+                      });
+                    },
+                    child: Container(
+                      width: 22,
+                      height: 70,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade800,
+                        borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(isAr ? 0 : 8),
+                          bottomRight: Radius.circular(isAr ? 0 : 8),
+                          topLeft: Radius.circular(isAr ? 8 : 0),
+                          bottomLeft: Radius.circular(isAr ? 8 : 0),
                         ),
-                      ],
-                    ),
-                    child: Icon(
-                      _isSidebarOpen
-                          ? (isAr ? Icons.chevron_right : Icons.chevron_left)
-                          : (isAr ? Icons.chevron_left : Icons.chevron_right),
-                      color: Theme.of(context).cardColor,
-                      size: 16,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 4,
+                            offset: const Offset(1, 1),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _isSidebarOpen
+                            ? (isAr ? Icons.chevron_right : Icons.chevron_left)
+                            : (isAr ? Icons.chevron_left : Icons.chevron_right),
+                        color: Theme.of(context).cardColor,
+                        size: 16,
+                      ),
                     ),
                   ),
-                ),
                 // Right panel: Map + Telemetry details
                 Expanded(
                   child: Column(
@@ -924,8 +1066,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                               children: [
                                 TileLayer(
                                   urlTemplate:
-                                      'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                                  userAgentPackageName: 'erp_aluminum_app',
+                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName:
+                                      'com.example.database_data',
+                                  maxZoom: 19,
                                 ),
                                 PolylineLayer(
                                   polylines: [
@@ -939,47 +1083,49 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                 MarkerLayer(
                                   markers: [
                                     // Starting / Launch Point
-                                    Marker(
-                                      point: _launchPosition,
-                                      width: 100,
-                                      height: 70,
-                                      alignment: Alignment.topCenter,
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green.shade800,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              Localization.translate(
-                                                'الانطلاق',
-                                                lang,
+                                    if (_hasClientLocation)
+                                      Marker(
+                                        point: _launchPosition,
+                                        width: 100,
+                                        height: 70,
+                                        alignment: Alignment.topCenter,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade800,
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
                                               ),
-                                              style: TextStyle(
-                                                color: Theme.of(
-                                                  context,
-                                                ).cardColor,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                fontFamily: 'Cairo',
+                                              child: Text(
+                                                Localization.translate(
+                                                  'الانطلاق',
+                                                  lang,
+                                                ),
+                                                style: TextStyle(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).cardColor,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontFamily: 'Cairo',
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const Icon(
-                                            Icons.location_on,
-                                            color: Colors.green,
-                                            size: 32,
-                                          ),
-                                        ],
+                                            const Icon(
+                                              Icons.location_on,
+                                              color: Colors.green,
+                                              size: 32,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
                                     // Client / Destination Location
                                     Marker(
                                       point: _clientPosition,
@@ -1068,25 +1214,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                   FloatingActionButton.small(
                                     heroTag: 'workshop_gps_btn',
                                     onPressed: () async {
-                                      bool serviceEnabled =
-                                          await Geolocator.isLocationServiceEnabled();
-                                      if (!serviceEnabled) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              Localization.translate(
-                                                'الرجاء تفعيل خدمة الموقع GPS في الهاتف',
-                                                lang,
-                                              ),
-                                              style: const TextStyle(
-                                                fontFamily: 'Cairo',
-                                              ),
-                                            ),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
+                                      if (!await _ensureLocationAccess(lang)) {
                                         return;
                                       }
                                       Position position =
@@ -1320,6 +1448,23 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                                       ),
                                                 ),
                                               ),
+                                            ElevatedButton.icon(
+                                              onPressed: _openSelectedRoute,
+                                              icon: const Icon(
+                                                Icons.navigation_outlined,
+                                                size: 14,
+                                              ),
+                                              label: Text(
+                                                Localization.translate(
+                                                  'فتح المسار',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                            ),
                                             ElevatedButton.icon(
                                               onPressed: _markAsDelivered,
                                               icon: const Icon(

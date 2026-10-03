@@ -38,6 +38,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'commandes',
       nameAr: 'طلبات الزبائن والمقاسات',
       nameFr: 'Commandes & Devis',
+      nameEn: 'Orders & Quotes',
       icon: Icons.assignment_outlined,
       color: Color(0xFF2563EB), // Blue
     ),
@@ -45,6 +46,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'achats',
       nameAr: 'فواتير ومواد الشراء',
       nameFr: 'Factures d\'achat',
+      nameEn: 'Purchase Invoices & Materials',
       icon: Icons.shopping_bag_outlined,
       color: Color(0xFFF59E0B), // Amber
     ),
@@ -52,6 +54,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'inventory',
       nameAr: 'حركات المخزون والمستودع',
       nameFr: 'Inventaire & Stock',
+      nameEn: 'Inventory & Stock Movements',
       icon: Icons.inventory_2_outlined,
       color: Color(0xFF0D9488), // Teal
     ),
@@ -59,6 +62,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'treasury',
       nameAr: 'الخزينة والمحاسبة المالية',
       nameFr: 'Trésorerie & Finances',
+      nameEn: 'Treasury & Finances',
       icon: Icons.account_balance_wallet_outlined,
       color: Color(0xFF10B981), // Emerald
     ),
@@ -66,6 +70,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'catalog',
       nameAr: 'الكتالوج ومقاطع الألمنيوم',
       nameFr: 'Catalogue & Profilés',
+      nameEn: 'Catalog & Aluminium Profiles',
       icon: Icons.view_sidebar_outlined,
       color: Color(0xFF8B5CF6), // Purple
     ),
@@ -73,6 +78,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'clients_suppliers',
       nameAr: 'بيانات العملاء والموردين',
       nameFr: 'Clients & Fournisseurs',
+      nameEn: 'Clients & Suppliers',
       icon: Icons.people_outline,
       color: Color(0xFF6366F1), // Indigo
     ),
@@ -80,6 +86,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       key: 'trash',
       nameAr: 'سلة المهملات والمحذوفات',
       nameFr: 'Corbeille',
+      nameEn: 'Recycle Bin & Deleted',
       icon: Icons.auto_delete_outlined,
       color: Color(0xFFEF4444), // Red
     ),
@@ -144,15 +151,18 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
       await _db.vacuumDatabase();
       await _loadStorageData();
       if (mounted) {
+        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
-              children: const [
-                Icon(Icons.check_circle_rounded, color: Colors.greenAccent),
-                SizedBox(width: 8),
-                Text(
-                  'تم ضغط وتحسين مساحة قاعدة البيانات بنجاح',
-                  style: TextStyle(fontFamily: 'Cairo'),
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.greenAccent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    Localization.translate('تم ضغط وتحسين مساحة قاعدة البيانات بنجاح', lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
                 ),
               ],
             ),
@@ -912,6 +922,7 @@ class _CategoryMeta {
   final String key;
   final String nameAr;
   final String nameFr;
+  final String nameEn;
   final IconData icon;
   final Color color;
 
@@ -919,9 +930,21 @@ class _CategoryMeta {
     required this.key,
     required this.nameAr,
     required this.nameFr,
+    required this.nameEn,
     required this.icon,
     required this.color,
   });
+
+  String localizedName(AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.french:
+        return nameFr;
+      case AppLanguage.english:
+        return nameEn;
+      case AppLanguage.arabic:
+        return nameAr;
+    }
+  }
 }
 
 class _DonutChartPainter extends CustomPainter {

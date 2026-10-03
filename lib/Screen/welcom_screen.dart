@@ -421,7 +421,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final lastCmdCount = prefs.getInt('last_seen_orders_count');
       final unreadOrders = lastCmdCount == null
           ? 0
-          : math.max(0, allCmds.length - lastCmdCount);
+          : math.max(0, allCmds.length - lastCmdCount).toInt();
 
       if (!mounted || loadToken != _statsLoadToken) return;
 

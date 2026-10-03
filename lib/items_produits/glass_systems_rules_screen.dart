@@ -9,7 +9,8 @@ class GlassSystemsRulesScreen extends StatefulWidget {
   const GlassSystemsRulesScreen({super.key, required this.db});
 
   @override
-  State<GlassSystemsRulesScreen> createState() => _GlassSystemsRulesScreenState();
+  State<GlassSystemsRulesScreen> createState() =>
+      _GlassSystemsRulesScreenState();
 }
 
 class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
@@ -21,14 +22,17 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
   List<Map<String, dynamic>> _systems = [];
   List<Map<String, dynamic>> _kits = [];
   List<Map<String, dynamic>> _allItems = [];
-  
+
   // Tab 3 state: selected system for rules
   String? _selectedSystemCode;
   List<Map<String, dynamic>> _systemRules = [];
   double _filterThickness = 0.0; // 0 = all
 
   String _tr(String ar, String fr, String en) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return switch (lang) {
       AppLanguage.french => fr,
       AppLanguage.english => en,
@@ -90,31 +94,58 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _tr('أنظمة وقواعد كيت الزجاج المقسّى', 'Systèmes & Règles de kits verre', 'Glass Systems & Kit Rules'),
+          _tr(
+            'أنظمة وقواعد كيت الزجاج المقسّى',
+            'Systèmes & Règles de kits verre',
+            'Glass Systems & Kit Rules',
+          ),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.cyanAccent,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: [
-            Tab(
-              icon: const Icon(Icons.dashboard_customize_outlined),
-              text: _tr('الأنظمة (Systèmes)', 'Systèmes', 'Systems'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(72),
+          child: Container(
+            color: Colors.white,
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: Colors.black,
+              indicatorWeight: 3.5,
+              labelColor: Colors.black,
+              unselectedLabelColor: Colors.black54,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                fontFamily: 'Cairo',
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.normal,
+                fontSize: 13,
+                fontFamily: 'Cairo',
+              ),
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.dashboard_customize_outlined),
+                  text: _tr('الأنظمة (Systèmes)', 'Systèmes', 'Systems'),
+                ),
+                Tab(
+                  icon: const Icon(Icons.architecture_outlined),
+                  text: _tr(
+                    'كيت الزجاج وقواعد الثقوب',
+                    'Kits & Perçages',
+                    'Kits & Holes',
+                  ),
+                ),
+                Tab(
+                  icon: const Icon(Icons.tune_outlined),
+                  text: _tr(
+                    'ربط النظام بالإكسسوارات',
+                    'Règles du système',
+                    'System Rules',
+                  ),
+                ),
+              ],
             ),
-            Tab(
-              icon: const Icon(Icons.architecture_outlined),
-              text: _tr('كيت الزجاج وقواعد الثقوب', 'Kits & Perçages', 'Kits & Holes'),
-            ),
-            Tab(
-              icon: const Icon(Icons.tune_outlined),
-              text: _tr('ربط النظام بالإكسسوارات', 'Règles du système', 'System Rules'),
-            ),
-          ],
+          ),
         ),
       ),
       body: _isLoading
@@ -146,7 +177,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
       body: _systems.isEmpty
           ? Center(
               child: Text(
-                _tr('لا توجد أنظمة حالياً', 'Aucun système trouvé', 'No systems found'),
+                _tr(
+                  'لا توجد أنظمة حالياً',
+                  'Aucun système trouvé',
+                  'No systems found',
+                ),
                 style: const TextStyle(fontSize: 16, color: Colors.grey),
               ),
             )
@@ -163,16 +198,25 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(
-                      color: isActive ? Colors.cyan.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.3),
+                      color: isActive
+                          ? Colors.cyan.withValues(alpha: 0.3)
+                          : Colors.grey.withValues(alpha: 0.3),
                       width: 1.2,
                     ),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     leading: CircleAvatar(
-                      backgroundColor: isActive ? Colors.cyan.shade700 : Colors.grey.shade600,
+                      backgroundColor: isActive
+                          ? Colors.cyan.shade700
+                          : Colors.grey.shade600,
                       foregroundColor: Colors.white,
-                      child: Icon(_getIconData(sys['icon_name'] as String? ?? 'shower')),
+                      child: Icon(
+                        _getIconData(sys['icon_name'] as String? ?? 'shower'),
+                      ),
                     ),
                     title: Row(
                       children: [
@@ -188,14 +232,20 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                         ),
                         if ((sys['name_fr'] as String? ?? '').isNotEmpty)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.blueGrey.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               sys['name_fr'] as String? ?? '',
-                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blueGrey.shade700,
+                              ),
                             ),
                           ),
                       ],
@@ -206,20 +256,31 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                         const SizedBox(height: 4),
                         Text(
                           sys['description'] as String? ?? '',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Row(
                           children: [
                             Text(
                               '${_tr('الكود', 'Code', 'Code')}: ${sys['code']}',
-                              style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.teal),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                color: Colors.teal,
+                              ),
                             ),
                             const SizedBox(width: 16),
-                            if ((sys['default_kit_code'] as String? ?? '').isNotEmpty)
+                            if ((sys['default_kit_code'] as String? ?? '')
+                                .isNotEmpty)
                               Text(
                                 '${_tr('الكيت الافتراضي', 'Kit défaut', 'Default Kit')}: ${sys['default_kit_code']}',
-                                style: TextStyle(fontSize: 11, color: Colors.cyan.shade800),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.cyan.shade800,
+                                ),
                               ),
                           ],
                         ),
@@ -229,7 +290,10 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.teal),
+                          icon: const Icon(
+                            Icons.edit_outlined,
+                            color: Colors.teal,
+                          ),
                           tooltip: _tr('تعديل', 'Modifier', 'Edit'),
                           onPressed: () => _openSystemDialog(system: sys),
                         ),
@@ -238,7 +302,9 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                             isActive ? Icons.visibility : Icons.visibility_off,
                             color: isActive ? Colors.green : Colors.grey,
                           ),
-                          tooltip: isActive ? _tr('مفعّل', 'Actif', 'Active') : _tr('معطّل', 'Inactif', 'Inactive'),
+                          tooltip: isActive
+                              ? _tr('مفعّل', 'Actif', 'Active')
+                              : _tr('معطّل', 'Inactif', 'Inactive'),
                           onPressed: () async {
                             await widget.db.updateTemperedGlassSystem(
                               sys['id'] as int,
@@ -258,10 +324,18 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
 
   void _openSystemDialog({Map<String, dynamic>? system}) {
     final isEdit = system != null;
-    final codeCtrl = TextEditingController(text: system?['code'] as String? ?? '');
-    final nameArCtrl = TextEditingController(text: system?['name_ar'] as String? ?? '');
-    final nameFrCtrl = TextEditingController(text: system?['name_fr'] as String? ?? '');
-    final descCtrl = TextEditingController(text: system?['description'] as String? ?? '');
+    final codeCtrl = TextEditingController(
+      text: system?['code'] as String? ?? '',
+    );
+    final nameArCtrl = TextEditingController(
+      text: system?['name_ar'] as String? ?? '',
+    );
+    final nameFrCtrl = TextEditingController(
+      text: system?['name_fr'] as String? ?? '',
+    );
+    final descCtrl = TextEditingController(
+      text: system?['description'] as String? ?? '',
+    );
     String category = system?['category'] as String? ?? 'douche';
     String iconName = system?['icon_name'] as String? ?? 'shower';
     String defaultKit = system?['default_kit_code'] as String? ?? '';
@@ -270,9 +344,13 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Text(
-            isEdit ? _tr('تعديل النظام', 'Modifier le système', 'Edit System') : _tr('إضافة نظام جديد', 'Nouveau système', 'Add System'),
+            isEdit
+                ? _tr('تعديل النظام', 'Modifier le système', 'Edit System')
+                : _tr('إضافة نظام جديد', 'Nouveau système', 'Add System'),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
@@ -285,7 +363,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   TextField(
                     controller: nameArCtrl,
                     decoration: InputDecoration(
-                      labelText: _tr('اسم النظام (بالعربية) *', 'Nom (arabe) *', 'Name (Arabic) *'),
+                      labelText: _tr(
+                        'اسم النظام (بالعربية) *',
+                        'Nom (arabe) *',
+                        'Name (Arabic) *',
+                      ),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.title),
                     ),
@@ -294,7 +376,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   TextField(
                     controller: nameFrCtrl,
                     decoration: InputDecoration(
-                      labelText: _tr('اسم النظام (بالفرنسية)', 'Nom (français)', 'Name (French)'),
+                      labelText: _tr(
+                        'اسم النظام (بالفرنسية)',
+                        'Nom (français)',
+                        'Name (French)',
+                      ),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.language),
                     ),
@@ -304,10 +390,20 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     controller: codeCtrl,
                     enabled: !isEdit,
                     decoration: InputDecoration(
-                      labelText: _tr('رمز النظام الفريد (Code) *', 'Code unique *', 'Unique Code *'),
+                      labelText: _tr(
+                        'رمز النظام الفريد (Code) *',
+                        'Code unique *',
+                        'Unique Code *',
+                      ),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.code),
-                      helperText: isEdit ? _tr('لا يمكن تغيير الرمز بعد الإنشاء', 'Non modifiable', 'Cannot change code') : 'e.g. coulissante_italienne',
+                      helperText: isEdit
+                          ? _tr(
+                              'لا يمكن تغيير الرمز بعد الإنشاء',
+                              'Non modifiable',
+                              'Cannot change code',
+                            )
+                          : 'e.g. coulissante_italienne',
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -321,12 +417,33 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                             border: const OutlineInputBorder(),
                           ),
                           items: [
-                            DropdownMenuItem(value: 'douche', child: Text(_tr('كابين دوش', 'Douche', 'Shower'))),
-                            DropdownMenuItem(value: 'vitrine', child: Text(_tr('واجهة / فيترين', 'Vitrine', 'Storefront'))),
-                            DropdownMenuItem(value: 'separation', child: Text(_tr('فاصل مكتبي / حاجز', 'Séparation', 'Partition'))),
-                            DropdownMenuItem(value: 'autre', child: Text(_tr('أخرى', 'Autre', 'Other'))),
+                            DropdownMenuItem(
+                              value: 'douche',
+                              child: Text(_tr('كابين دوش', 'Douche', 'Shower')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'vitrine',
+                              child: Text(
+                                _tr('واجهة / فيترين', 'Vitrine', 'Storefront'),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'separation',
+                              child: Text(
+                                _tr(
+                                  'فاصل مكتبي / حاجز',
+                                  'Séparation',
+                                  'Partition',
+                                ),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'autre',
+                              child: Text(_tr('أخرى', 'Autre', 'Other')),
+                            ),
                           ],
-                          onChanged: (v) => setDlgState(() => category = v ?? 'douche'),
+                          onChanged: (v) =>
+                              setDlgState(() => category = v ?? 'douche'),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -338,13 +455,59 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                             border: const OutlineInputBorder(),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'shower', child: Row(children: [Icon(Icons.shower), SizedBox(width: 8), Text('Shower')])),
-                            DropdownMenuItem(value: 'compare_arrows', child: Row(children: [Icon(Icons.compare_arrows), SizedBox(width: 8), Text('Sliding')])),
-                            DropdownMenuItem(value: 'storefront', child: Row(children: [Icon(Icons.storefront), SizedBox(width: 8), Text('Storefront')])),
-                            DropdownMenuItem(value: 'door_front_door_outlined', child: Row(children: [Icon(Icons.door_front_door_outlined), SizedBox(width: 8), Text('Door')])),
-                            DropdownMenuItem(value: 'crop_portrait', child: Row(children: [Icon(Icons.crop_portrait), SizedBox(width: 8), Text('Panel')])),
+                            DropdownMenuItem(
+                              value: 'shower',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.shower),
+                                  SizedBox(width: 8),
+                                  Text('Shower'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'compare_arrows',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.compare_arrows),
+                                  SizedBox(width: 8),
+                                  Text('Sliding'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'storefront',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.storefront),
+                                  SizedBox(width: 8),
+                                  Text('Storefront'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'door_front_door_outlined',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.door_front_door_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Door'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'crop_portrait',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.crop_portrait),
+                                  SizedBox(width: 8),
+                                  Text('Panel'),
+                                ],
+                              ),
+                            ),
                           ],
-                          onChanged: (v) => setDlgState(() => iconName = v ?? 'shower'),
+                          onChanged: (v) =>
+                              setDlgState(() => iconName = v ?? 'shower'),
                         ),
                       ),
                     ],
@@ -353,16 +516,29 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   DropdownButtonFormField<String>(
                     value: defaultKit.isEmpty ? null : defaultKit,
                     decoration: InputDecoration(
-                      labelText: _tr('الكيت الافتراضي للثقوب', 'Kit par défaut', 'Default Kit'),
+                      labelText: _tr(
+                        'الكيت الافتراضي للثقوب',
+                        'Kit par défaut',
+                        'Default Kit',
+                      ),
                       border: const OutlineInputBorder(),
-                      hintText: _tr('اختر كيت افتراضي (اختياري)', 'Optionnel', 'Optional'),
+                      hintText: _tr(
+                        'اختر كيت افتراضي (اختياري)',
+                        'Optionnel',
+                        'Optional',
+                      ),
                     ),
                     items: [
-                      DropdownMenuItem(value: null, child: Text(_tr('بدون كيت محدد', 'Aucun', 'None'))),
-                      ..._kits.map((k) => DropdownMenuItem(
-                            value: k['code'] as String,
-                            child: Text(k['name'] as String),
-                          )),
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text(_tr('بدون كيت محدد', 'Aucun', 'None')),
+                      ),
+                      ..._kits.map(
+                        (k) => DropdownMenuItem(
+                          value: k['code'] as String,
+                          child: Text(k['name'] as String),
+                        ),
+                      ),
                     ],
                     onChanged: (v) => setDlgState(() => defaultKit = v ?? ''),
                   ),
@@ -371,7 +547,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     controller: descCtrl,
                     maxLines: 2,
                     decoration: InputDecoration(
-                      labelText: _tr('الوصف وملاحظات الاستخدام', 'Description', 'Description'),
+                      labelText: _tr(
+                        'الوصف وملاحظات الاستخدام',
+                        'Description',
+                        'Description',
+                      ),
                       border: const OutlineInputBorder(),
                     ),
                   ),
@@ -392,7 +572,15 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                 final code = codeCtrl.text.trim();
                 if (nameAr.isEmpty || code.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(_tr('يرجى ملء الاسم والكود', 'Veuillez remplir le nom et le code', 'Please fill name and code'))),
+                    SnackBar(
+                      content: Text(
+                        _tr(
+                          'يرجى ملء الاسم والكود',
+                          'Veuillez remplir le nom et le code',
+                          'Please fill name and code',
+                        ),
+                      ),
+                    ),
                   );
                   return;
                 }
@@ -408,7 +596,10 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                 };
 
                 if (isEdit) {
-                  await widget.db.updateTemperedGlassSystem(system['id'] as int, row);
+                  await widget.db.updateTemperedGlassSystem(
+                    system['id'] as int,
+                    row,
+                  );
                 } else {
                   row['is_active'] = 1;
                   row['display_order'] = _systems.length + 1;
@@ -449,13 +640,19 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
         backgroundColor: Colors.cyan.shade800,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
-        label: Text(_tr('إنشاء كيت زجاج جديد', 'Nouveau kit verre', 'New Glass Kit')),
+        label: Text(
+          _tr('إنشاء كيت زجاج جديد', 'Nouveau kit verre', 'New Glass Kit'),
+        ),
         onPressed: () => _openKitDialog(),
       ),
       body: _kits.isEmpty
           ? Center(
               child: Text(
-                _tr('لا توجد كيتات زجاج مسجلة', 'Aucun kit trouvé', 'No kits found'),
+                _tr(
+                  'لا توجد كيتات زجاج مسجلة',
+                  'Aucun kit trouvé',
+                  'No kits found',
+                ),
                 style: const TextStyle(fontSize: 16, color: Colors.grey),
               ),
             )
@@ -476,24 +673,36 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                       margin: const EdgeInsets.only(bottom: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.cyan.withValues(alpha: 0.3), width: 1.2),
+                        side: BorderSide(
+                          color: Colors.cyan.withValues(alpha: 0.3),
+                          width: 1.2,
+                        ),
                       ),
                       child: ExpansionTile(
                         leading: CircleAvatar(
                           backgroundColor: Colors.teal.shade700,
                           foregroundColor: Colors.white,
-                          child: Text('${holes.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          child: Text(
+                            '${holes.length}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
                         title: Row(
                           children: [
                             Expanded(
                               child: Text(
                                 kit['name'] as String? ?? '',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.cyan.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(6),
@@ -515,12 +724,18 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                             const SizedBox(height: 3),
                             Text(
                               kit['description'] as String? ?? '',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
                             const SizedBox(height: 3),
                             Text(
                               '${_tr('الكود', 'Code', 'Code')}: ${kit['code']} | ${_tr('اللوح المستهدف', 'Cible', 'Target')}: ${_panelRoleLabel(kit['target_panel'] as String? ?? 'door')}',
-                              style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.blueGrey,
+                              ),
                             ),
                           ],
                         ),
@@ -533,48 +748,113 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      _tr('قواعد ومواقع الثقوب في هذا الكيت:', 'Règles de perçage pour ce kit :', 'Hole rules for this kit:'),
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                      _tr(
+                                        'قواعد ومواقع الثقوب في هذا الكيت:',
+                                        'Règles de perçage pour ce kit :',
+                                        'Hole rules for this kit:',
+                                      ),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                     Row(
                                       children: [
                                         TextButton.icon(
-                                          icon: const Icon(Icons.add_circle_outline, size: 18),
-                                          label: Text(_tr('إضافة ثقب', 'Ajouter trou', 'Add Hole')),
-                                          onPressed: () => _openHoleDialog(kitId: kitId, existingHoles: holes),
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            _tr(
+                                              'إضافة ثقب',
+                                              'Ajouter trou',
+                                              'Add Hole',
+                                            ),
+                                          ),
+                                          onPressed: () => _openHoleDialog(
+                                            kitId: kitId,
+                                            existingHoles: holes,
+                                          ),
                                         ),
                                         IconButton(
-                                          icon: const Icon(Icons.edit, size: 18, color: Colors.teal),
-                                          tooltip: _tr('تعديل الكيت', 'Modifier kit', 'Edit Kit'),
-                                          onPressed: () => _openKitDialog(kit: kit),
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            size: 18,
+                                            color: Colors.teal,
+                                          ),
+                                          tooltip: _tr(
+                                            'تعديل الكيت',
+                                            'Modifier kit',
+                                            'Edit Kit',
+                                          ),
+                                          onPressed: () =>
+                                              _openKitDialog(kit: kit),
                                         ),
                                         IconButton(
-                                          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                                          tooltip: _tr('حذف الكيت', 'Supprimer kit', 'Delete Kit'),
-                                          onPressed: () => _confirmDeleteKit(kitId, kit['name'] as String),
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 18,
+                                            color: Colors.red,
+                                          ),
+                                          tooltip: _tr(
+                                            'حذف الكيت',
+                                            'Supprimer kit',
+                                            'Delete Kit',
+                                          ),
+                                          onPressed: () => _confirmDeleteKit(
+                                            kitId,
+                                            kit['name'] as String,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 10),
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.inventory_2_outlined),
+                                  label: Text(
+                                    _tr(
+                                      'تحديد مكوّنات الكيت',
+                                      'Configurer les composants du kit',
+                                      'Configure kit components',
+                                    ),
+                                  ),
+                                  onPressed: () =>
+                                      _openKitComponentsDialog(kit),
+                                ),
+                                const SizedBox(height: 10),
+                                const SizedBox(height: 10),
                                 if (holes.isEmpty)
                                   Container(
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
-                                      color: Colors.amber.withValues(alpha: 0.08),
+                                      color: Colors.amber.withValues(
+                                        alpha: 0.08,
+                                      ),
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                                      border: Border.all(
+                                        color: Colors.amber.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                      ),
                                     ),
                                     child: Center(
                                       child: Text(
-                                        _tr('لا توجد ثقوب مضافة لهذا الكيت بعد. اضغط "إضافة ثقب" لتعريف قواعد الثقوب.',
-                                            'Aucun trou défini. Cliquez sur "Ajouter trou".',
-                                            'No holes defined. Click "Add Hole".'),
-                                        style: TextStyle(color: Colors.amber.shade900, fontSize: 12),
+                                        _tr(
+                                          'لا توجد ثقوب مضافة لهذا الكيت بعد. اضغط "إضافة ثقب" لتعريف قواعد الثقوب.',
+                                          'Aucun trou défini. Cliquez sur "Ajouter trou".',
+                                          'No holes defined. Click "Add Hole".',
+                                        ),
+                                        style: TextStyle(
+                                          color: Colors.amber.shade900,
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ),
                                   )
@@ -585,9 +865,13 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                                       SizedBox(
                                         height: 140,
                                         child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           child: CustomPaint(
-                                            painter: _KitHolesPreviewPainter(holes: holes),
+                                            painter: _KitHolesPreviewPainter(
+                                              holes: holes,
+                                            ),
                                             size: Size.infinite,
                                           ),
                                         ),
@@ -595,7 +879,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                                       const SizedBox(height: 12),
                                       // Table of holes
                                       Table(
-                                        border: TableBorder.all(color: Colors.grey.withValues(alpha: 0.25)),
+                                        border: TableBorder.all(
+                                          color: Colors.grey.withValues(
+                                            alpha: 0.25,
+                                          ),
+                                        ),
                                         columnWidths: const {
                                           0: FixedColumnWidth(42),
                                           1: FlexColumnWidth(1.2),
@@ -606,52 +894,121 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                                         },
                                         children: [
                                           TableRow(
-                                            decoration: BoxDecoration(color: Colors.cyan.withValues(alpha: 0.12)),
+                                            decoration: BoxDecoration(
+                                              color: Colors.cyan.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                            ),
                                             children: [
                                               _tableHead('#'),
-                                              _tableHead(_tr('القطر', 'Ø Diamètre', 'Ø Diameter')),
-                                              _tableHead(_tr('الموقع الأفقي X', 'Position X', 'Position X')),
-                                              _tableHead(_tr('الموقع الرأسي Y', 'Position Y', 'Position Y')),
-                                              _tableHead(_tr('الشرط', 'Condition', 'Condition')),
-                                              _tableHead(_tr('إجراء', 'Action', 'Action')),
+                                              _tableHead(
+                                                _tr(
+                                                  'القطر',
+                                                  'Ø Diamètre',
+                                                  'Ø Diameter',
+                                                ),
+                                              ),
+                                              _tableHead(
+                                                _tr(
+                                                  'الموقع الأفقي X',
+                                                  'Position X',
+                                                  'Position X',
+                                                ),
+                                              ),
+                                              _tableHead(
+                                                _tr(
+                                                  'الموقع الرأسي Y',
+                                                  'Position Y',
+                                                  'Position Y',
+                                                ),
+                                              ),
+                                              _tableHead(
+                                                _tr(
+                                                  'الشرط',
+                                                  'Condition',
+                                                  'Condition',
+                                                ),
+                                              ),
+                                              _tableHead(
+                                                _tr(
+                                                  'إجراء',
+                                                  'Action',
+                                                  'Action',
+                                                ),
+                                              ),
                                             ],
                                           ),
                                           for (var h in holes)
                                             TableRow(
                                               children: [
-                                                _tableCell('#${h['hole_index']}'),
-                                                _tableCell('Ø${(h['diameter_mm'] as num).toStringAsFixed(0)} مم'),
-                                                _tableCell(_formatPos(
-                                                  h['ref_x'] as String,
-                                                  (h['offset_x_mm'] as num).toDouble(),
-                                                  h['reference_mode'] as String? ?? 'edge',
-                                                )),
-                                                _tableCell(_formatPos(
-                                                  h['ref_y'] as String,
-                                                  (h['offset_y_mm'] as num).toDouble(),
-                                                  h['reference_mode'] as String? ?? 'edge',
-                                                )),
+                                                _tableCell(
+                                                  '#${h['hole_index']}',
+                                                ),
+                                                _tableCell(
+                                                  'Ø${(h['diameter_mm'] as num).toStringAsFixed(0)} مم',
+                                                ),
+                                                _tableCell(
+                                                  _formatPos(
+                                                    h['ref_x'] as String,
+                                                    (h['offset_x_mm'] as num)
+                                                        .toDouble(),
+                                                    h['reference_mode']
+                                                            as String? ??
+                                                        'edge',
+                                                  ),
+                                                ),
+                                                _tableCell(
+                                                  _formatPos(
+                                                    h['ref_y'] as String,
+                                                    (h['offset_y_mm'] as num)
+                                                        .toDouble(),
+                                                    h['reference_mode']
+                                                            as String? ??
+                                                        'edge',
+                                                  ),
+                                                ),
                                                 _tableCell(_formatCondition(h)),
                                                 TableCell(
                                                   child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
                                                     children: [
                                                       IconButton(
-                                                        icon: const Icon(Icons.edit, size: 16, color: Colors.teal),
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                        onPressed: () => _openHoleDialog(
-                                                          kitId: kitId,
-                                                          existingHoles: holes,
-                                                          holeToEdit: h,
+                                                        icon: const Icon(
+                                                          Icons.edit,
+                                                          size: 16,
+                                                          color: Colors.teal,
                                                         ),
+                                                        padding:
+                                                            EdgeInsets.zero,
+                                                        constraints:
+                                                            const BoxConstraints(),
+                                                        onPressed: () =>
+                                                            _openHoleDialog(
+                                                              kitId: kitId,
+                                                              existingHoles:
+                                                                  holes,
+                                                              holeToEdit: h,
+                                                            ),
                                                       ),
                                                       const SizedBox(width: 8),
                                                       IconButton(
-                                                        icon: const Icon(Icons.delete, size: 16, color: Colors.red),
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                        onPressed: () => _deleteHole(kitId, holes, h),
+                                                        icon: const Icon(
+                                                          Icons.delete,
+                                                          size: 16,
+                                                          color: Colors.red,
+                                                        ),
+                                                        padding:
+                                                            EdgeInsets.zero,
+                                                        constraints:
+                                                            const BoxConstraints(),
+                                                        onPressed: () =>
+                                                            _deleteHole(
+                                                              kitId,
+                                                              holes,
+                                                              h,
+                                                            ),
                                                       ),
                                                     ],
                                                   ),
@@ -698,7 +1055,9 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
   }
 
   String _formatPos(String ref, double offset, String mode) {
-    final modeLabel = mode == 'edge' ? _tr('حافة', 'Bord', 'Edge') : _tr('مركز', 'Centre', 'Center');
+    final modeLabel = mode == 'edge'
+        ? _tr('حافة', 'Bord', 'Edge')
+        : _tr('مركز', 'Centre', 'Center');
     final refLabel = switch (ref) {
       'left' => _tr('اليسار', 'Gauche', 'Left'),
       'right' => _tr('اليمين', 'Droite', 'Right'),
@@ -715,10 +1074,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
 
   String _formatCondition(Map<String, dynamic> hole) {
     final minW = (hole['min_panel_width_mm'] as num? ?? 0).toDouble();
+    final target = _panelRoleLabel(hole['target_panel']?.toString() ?? 'door');
     if (minW > 0) {
-      return '${_tr('إذا كان العرض ≥', 'Si largeur ≥', 'If width ≥')} ${minW.toStringAsFixed(0)} مم';
+      return '$target · ${_tr('إذا كان العرض ≥', 'Si largeur ≥', 'If width ≥')} ${minW.toStringAsFixed(0)} مم';
     }
-    return _tr('دائماً', 'Toujours', 'Always');
+    return '$target · ${_tr('دائماً', 'Toujours', 'Always')}';
   }
 
   String _panelRoleLabel(String role) {
@@ -729,19 +1089,275 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
     };
   }
 
+  String _componentTypeForCategory(String category) {
+    return switch (category) {
+      'joint' => 'joint',
+      'profile' => 'profile',
+      'poignee' => 'handle',
+      'charniere' => 'hinge',
+      'fixation' => 'fixation',
+      'serrure' => 'lock',
+      _ => 'accessory',
+    };
+  }
+
+  String _defaultTargetForCategory(String category) {
+    return switch (category) {
+      'poignee' || 'charniere' || 'serrure' => 'door',
+      'profile' => 'fixed',
+      _ => 'all',
+    };
+  }
+
+  Future<void> _openKitComponentsDialog(Map<String, dynamic> kit) async {
+    final kitId = kit['id'] as int;
+    final saved = await widget.db.getTemperedGlassKitComponents(kitId);
+    if (!mounted) return;
+    final selected = <int, Map<String, dynamic>>{
+      for (final row in saved)
+        (row['item_id'] as num).toInt(): Map<String, dynamic>.from(row),
+    };
+    final categories = <String>[
+      'joint',
+      'profile',
+      'poignee',
+      'charniere',
+      'fixation',
+      'serrure',
+      'autre',
+    ];
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          title: Text(
+            '${_tr('مكوّنات الكيت', 'Composants du kit', 'Kit components')} - ${kit['name']}',
+          ),
+          content: SizedBox(
+            width: 620,
+            height: MediaQuery.sizeOf(ctx).height * .72,
+            child: ListView(
+              children: categories.expand((category) {
+                final items = _allItems
+                    .where((item) => item['category'] == category)
+                    .toList();
+                if (items.isEmpty) return <Widget>[];
+                return <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: Text(
+                      category == 'joint'
+                          ? _tr('الجوانات', 'Joints', 'Gaskets')
+                          : category == 'profile'
+                          ? _tr(
+                              'الرايلات والبروفيلات',
+                              'Rails et profilés',
+                              'Rails and profiles',
+                            )
+                          : category == 'poignee'
+                          ? _tr('المقابض', 'Poignées', 'Handles')
+                          : category == 'charniere'
+                          ? _tr('المفصلات', 'Charnières', 'Hinges')
+                          : _tr(
+                              'ملحقات أخرى',
+                              'Autres accessoires',
+                              'Other accessories',
+                            ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.cyan.shade800,
+                      ),
+                    ),
+                  ),
+                  ...items.map((item) {
+                    final itemId = (item['id'] as num).toInt();
+                    final row = selected[itemId];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      child: Column(
+                        children: [
+                          CheckboxListTile(
+                            dense: true,
+                            value: row != null,
+                            title: Text(item['name']?.toString() ?? ''),
+                            subtitle: Text(
+                              item['notes']?.toString() ?? '',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onChanged: (value) => setDlgState(() {
+                              if (value == true) {
+                                selected[itemId] = {
+                                  'item_id': itemId,
+                                  'component_type': _componentTypeForCategory(
+                                    category,
+                                  ),
+                                  'target_panel': _defaultTargetForCategory(
+                                    category,
+                                  ),
+                                  'quantity': 1.0,
+                                  'glass_thickness_mm': 0.0,
+                                  'is_default': 1,
+                                  'notes': '',
+                                };
+                              } else {
+                                selected.remove(itemId);
+                              }
+                            }),
+                          ),
+                          if (row != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value:
+                                          row['target_panel']?.toString() ??
+                                          'all',
+                                      decoration: InputDecoration(
+                                        labelText: _tr(
+                                          'مكان التركيب',
+                                          'Panneau cible',
+                                          'Target panel',
+                                        ),
+                                        isDense: true,
+                                      ),
+                                      items: [
+                                        DropdownMenuItem(
+                                          value: 'door',
+                                          child: Text(_panelRoleLabel('door')),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'fixed',
+                                          child: Text(_panelRoleLabel('fixed')),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'all',
+                                          child: Text(_panelRoleLabel('all')),
+                                        ),
+                                      ],
+                                      onChanged: (value) => setDlgState(
+                                        () => row['target_panel'] =
+                                            value ?? 'all',
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 105,
+                                    child: TextFormField(
+                                      initialValue:
+                                          (row['quantity'] as num? ?? 1)
+                                              .toString(),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: InputDecoration(
+                                        labelText: _tr(
+                                          'الكمية',
+                                          'Quantité',
+                                          'Quantity',
+                                        ),
+                                        isDense: true,
+                                      ),
+                                      onChanged: (value) => row['quantity'] =
+                                          double.tryParse(
+                                            value.replaceAll(',', '.'),
+                                          ) ??
+                                          1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 115,
+                                    child: TextFormField(
+                                      initialValue:
+                                          (row['glass_thickness_mm'] as num? ??
+                                                  0)
+                                              .toString(),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: InputDecoration(
+                                        labelText: _tr(
+                                          'سمك الزجاج',
+                                          'Épaisseur',
+                                          'Thickness',
+                                        ),
+                                        suffixText: 'mm',
+                                        isDense: true,
+                                      ),
+                                      onChanged: (value) =>
+                                          row['glass_thickness_mm'] =
+                                              double.tryParse(
+                                                value.replaceAll(',', '.'),
+                                              ) ??
+                                              0.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                ];
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.save_outlined),
+              label: Text(_tr('حفظ', 'Enregistrer', 'Save')),
+              onPressed: () async {
+                await widget.db.saveTemperedGlassKitComponents(
+                  kitId,
+                  selected.values.toList(),
+                );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) setState(() {});
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openKitDialog({Map<String, dynamic>? kit}) {
     final isEdit = kit != null;
     final nameCtrl = TextEditingController(text: kit?['name'] as String? ?? '');
     final codeCtrl = TextEditingController(text: kit?['code'] as String? ?? '');
-    final descCtrl = TextEditingController(text: kit?['description'] as String? ?? '');
+    final descCtrl = TextEditingController(
+      text: kit?['description'] as String? ?? '',
+    );
     String targetPanel = kit?['target_panel'] as String? ?? 'door';
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(isEdit ? _tr('تعديل الكيت', 'Modifier kit', 'Edit Kit') : _tr('إنشاء كيت زجاج جديد', 'Nouveau kit verre', 'New Glass Kit')),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            isEdit
+                ? _tr('تعديل الكيت', 'Modifier kit', 'Edit Kit')
+                : _tr(
+                    'إنشاء كيت زجاج جديد',
+                    'Nouveau kit verre',
+                    'New Glass Kit',
+                  ),
+          ),
           content: SingleChildScrollView(
             child: SizedBox(
               width: 440,
@@ -752,7 +1368,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   TextField(
                     controller: nameCtrl,
                     decoration: InputDecoration(
-                      labelText: _tr('اسم الكيت *', 'Nom du kit *', 'Kit Name *'),
+                      labelText: _tr(
+                        'اسم الكيت *',
+                        'Nom du kit *',
+                        'Kit Name *',
+                      ),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.hardware),
                       hintText: 'e.g. كيت ألفا (Kit Alfa)',
@@ -763,7 +1383,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     controller: codeCtrl,
                     enabled: !isEdit,
                     decoration: InputDecoration(
-                      labelText: _tr('رمز الكيت الفريد (Code) *', 'Code unique *', 'Kit Code *'),
+                      labelText: _tr(
+                        'رمز الكيت الفريد (Code) *',
+                        'Code unique *',
+                        'Kit Code *',
+                      ),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.qr_code),
                       hintText: 'kit_alfa',
@@ -771,17 +1395,39 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: targetPanel,
+                    value: const {'door', 'fixed', 'all'}.contains(targetPanel)
+                        ? targetPanel
+                        : 'door',
                     decoration: InputDecoration(
-                      labelText: _tr('اللوح المستهدف للثقب', 'Panneau cible', 'Target Panel'),
+                      labelText: _tr(
+                        'اللوح المستهدف للثقب',
+                        'Panneau cible',
+                        'Target Panel',
+                      ),
                       border: const OutlineInputBorder(),
                     ),
                     items: [
-                      DropdownMenuItem(value: 'door', child: Text(_tr('لوح الباب (Door)', 'Porte', 'Door panel'))),
-                      DropdownMenuItem(value: 'fixed', child: Text(_tr('اللوح الثابت (Fixed)', 'Fixe', 'Fixed panel'))),
-                      DropdownMenuItem(value: 'all', child: Text(_tr('جميع الألواح', 'Tous panneaux', 'All panels'))),
+                      DropdownMenuItem(
+                        value: 'door',
+                        child: Text(
+                          _tr('لوح الباب (Door)', 'Porte', 'Door panel'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'fixed',
+                        child: Text(
+                          _tr('اللوح الثابت (Fixed)', 'Fixe', 'Fixed panel'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text(
+                          _tr('جميع الألواح', 'Tous panneaux', 'All panels'),
+                        ),
+                      ),
                     ],
-                    onChanged: (v) => setDlgState(() => targetPanel = v ?? 'door'),
+                    onChanged: (v) =>
+                        setDlgState(() => targetPanel = v ?? 'door'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -859,15 +1505,46 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
     String refX = holeToEdit?['ref_x'] as String? ?? 'left';
     String refY = holeToEdit?['ref_y'] as String? ?? 'top';
     String refMode = holeToEdit?['reference_mode'] as String? ?? 'edge';
-    String purpose = holeToEdit?['purpose'] as String? ?? 'kit_roller';
+    String targetPanel = holeToEdit?['target_panel'] as String? ?? 'door';
+    String rawPurpose = holeToEdit?['purpose'] as String? ?? 'kit_roller';
+
+    // Normalize or map specific purposes (e.g. door_top_center, door_top_left, etc.) to valid dropdown keys
+    String purpose = rawPurpose;
+    const standardPurposes = {
+      'kit_roller',
+      'hinge',
+      'clamp',
+      'handle',
+      'pivot',
+      'other',
+    };
+    if (!standardPurposes.contains(purpose)) {
+      if (purpose.contains('door_top') || purpose.contains('roller')) {
+        purpose = 'kit_roller';
+      } else if (purpose.contains('hinge')) {
+        purpose = 'hinge';
+      } else if (purpose.contains('clamp')) {
+        purpose = 'clamp';
+      } else if (purpose.contains('handle')) {
+        purpose = 'handle';
+      } else if (purpose.contains('pivot')) {
+        purpose = 'pivot';
+      } else {
+        purpose = 'other';
+      }
+    }
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Text(
-            isEdit ? _tr('تعديل قاعدة الثقب', 'Modifier trou', 'Edit Hole Rule') : _tr('إضافة ثقب جديد للكيت', 'Nouveau trou', 'Add Hole Rule'),
+            isEdit
+                ? _tr('تعديل قاعدة الثقب', 'Modifier trou', 'Edit Hole Rule')
+                : _tr('إضافة ثقب جديد للكيت', 'Nouveau trou', 'Add Hole Rule'),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
@@ -882,12 +1559,53 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     controller: diameterCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: _tr('قطر الثقب (Ø مم) *', 'Diamètre (mm) *', 'Diameter (mm) *'),
+                      labelText: _tr(
+                        'قطر الثقب (Ø مم) *',
+                        'Diamètre (mm) *',
+                        'Diameter (mm) *',
+                      ),
                       border: const OutlineInputBorder(),
                       suffixText: 'مم',
                       prefixIcon: const Icon(Icons.circle_outlined),
                       helperText: 'e.g. 20 مم للرولمان أو 12 مم للمقبض',
                     ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  DropdownButtonFormField<String>(
+                    value: const {'door', 'fixed', 'all'}.contains(targetPanel)
+                        ? targetPanel
+                        : 'door',
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'اللوح الذي يستقبل الثقب',
+                        'Panneau recevant le trou',
+                        'Hole target panel',
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'door',
+                        child: Text(_tr('الباب', 'Porte', 'Door')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'fixed',
+                        child: Text(_tr('الثابت', 'Fixe', 'Fixed panel')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text(
+                          _tr(
+                            'الباب والثابت',
+                            'Porte et fixe',
+                            'Door and fixed',
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setDlgState(() => targetPanel = value ?? 'door'),
                   ),
                   const SizedBox(height: 14),
 
@@ -897,14 +1615,23 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     decoration: BoxDecoration(
                       color: Colors.cyan.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.cyan.withValues(alpha: 0.2)),
+                      border: Border.all(
+                        color: Colors.cyan.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _tr('طريقة حساب المسافة:', 'Mode de mesure :', 'Measurement reference mode:'),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          _tr(
+                            'طريقة حساب المسافة:',
+                            'Mode de mesure :',
+                            'Measurement reference mode:',
+                          ),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Row(
@@ -913,20 +1640,36 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                               child: RadioListTile<String>(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
-                                title: Text(_tr('من حافة الزجاج إلى حافة الثقب', 'Bord à bord', 'Edge to edge'), style: const TextStyle(fontSize: 12)),
+                                title: Text(
+                                  _tr(
+                                    'من حافة الزجاج إلى حافة الثقب',
+                                    'Bord à bord',
+                                    'Edge to edge',
+                                  ),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                                 value: 'edge',
                                 groupValue: refMode,
-                                onChanged: (v) => setDlgState(() => refMode = v!),
+                                onChanged: (v) =>
+                                    setDlgState(() => refMode = v!),
                               ),
                             ),
                             Expanded(
                               child: RadioListTile<String>(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
-                                title: Text(_tr('إلى مركز الثقب (Axes)', 'Au centre', 'To hole center'), style: const TextStyle(fontSize: 12)),
+                                title: Text(
+                                  _tr(
+                                    'إلى مركز الثقب (Axes)',
+                                    'Au centre',
+                                    'To hole center',
+                                  ),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                                 value: 'center',
                                 groupValue: refMode,
-                                onChanged: (v) => setDlgState(() => refMode = v!),
+                                onChanged: (v) =>
+                                    setDlgState(() => refMode = v!),
                               ),
                             ),
                           ],
@@ -941,17 +1684,40 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: refX,
+                          value:
+                              const {'left', 'right', 'center'}.contains(refX)
+                              ? refX
+                              : 'left',
                           decoration: InputDecoration(
-                            labelText: _tr('المرجع الأفقي X', 'Référence X', 'X Reference'),
+                            labelText: _tr(
+                              'المرجع الأفقي X',
+                              'Référence X',
+                              'X Reference',
+                            ),
                             border: const OutlineInputBorder(),
                           ),
                           items: [
-                            DropdownMenuItem(value: 'left', child: Text(_tr('من اليسار', 'Gauche', 'From Left'))),
-                            DropdownMenuItem(value: 'right', child: Text(_tr('من اليمين', 'Droite', 'From Right'))),
-                            DropdownMenuItem(value: 'center', child: Text(_tr('في المنتصف', 'Au centre', 'Center'))),
+                            DropdownMenuItem(
+                              value: 'left',
+                              child: Text(
+                                _tr('من اليسار', 'Gauche', 'From Left'),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'right',
+                              child: Text(
+                                _tr('من اليمين', 'Droite', 'From Right'),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'center',
+                              child: Text(
+                                _tr('في المنتصف', 'Au centre', 'Center'),
+                              ),
+                            ),
                           ],
-                          onChanged: (v) => setDlgState(() => refX = v ?? 'left'),
+                          onChanged: (v) =>
+                              setDlgState(() => refX = v ?? 'left'),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -961,7 +1727,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                           enabled: refX != 'center',
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
-                            labelText: _tr('المسافة الأفقية (مم)', 'Distance X (mm)', 'X Offset (mm)'),
+                            labelText: _tr(
+                              'المسافة الأفقية (مم)',
+                              'Distance X (mm)',
+                              'X Offset (mm)',
+                            ),
                             border: const OutlineInputBorder(),
                             suffixText: 'مم',
                           ),
@@ -976,17 +1746,40 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: refY,
+                          value:
+                              const {'top', 'bottom', 'center'}.contains(refY)
+                              ? refY
+                              : 'top',
                           decoration: InputDecoration(
-                            labelText: _tr('المرجع الرأسي Y', 'Référence Y', 'Y Reference'),
+                            labelText: _tr(
+                              'المرجع الرأسي Y',
+                              'Référence Y',
+                              'Y Reference',
+                            ),
                             border: const OutlineInputBorder(),
                           ),
                           items: [
-                            DropdownMenuItem(value: 'top', child: Text(_tr('من الأعلى', 'Du haut', 'From Top'))),
-                            DropdownMenuItem(value: 'bottom', child: Text(_tr('من الأسفل', 'Du bas', 'From Bottom'))),
-                            DropdownMenuItem(value: 'center', child: Text(_tr('في المنتصف', 'Au centre', 'Center'))),
+                            DropdownMenuItem(
+                              value: 'top',
+                              child: Text(
+                                _tr('من الأعلى', 'Du haut', 'From Top'),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'bottom',
+                              child: Text(
+                                _tr('من الأسفل', 'Du bas', 'From Bottom'),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'center',
+                              child: Text(
+                                _tr('في المنتصف', 'Au centre', 'Center'),
+                              ),
+                            ),
                           ],
-                          onChanged: (v) => setDlgState(() => refY = v ?? 'top'),
+                          onChanged: (v) =>
+                              setDlgState(() => refY = v ?? 'top'),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -996,7 +1789,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                           enabled: refY != 'center',
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
-                            labelText: _tr('المسافة الرأسية (مم)', 'Distance Y (mm)', 'Y Offset (mm)'),
+                            labelText: _tr(
+                              'المسافة الرأسية (مم)',
+                              'Distance Y (mm)',
+                              'Y Offset (mm)',
+                            ),
                             border: const OutlineInputBorder(),
                             suffixText: 'مم',
                           ),
@@ -1011,32 +1808,79 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                     controller: minWidthCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: _tr('شرط العرض الأدنى للوح (مم) - اختياري', 'Largeur min du panneau (mm)', 'Min panel width condition (mm)'),
+                      labelText: _tr(
+                        'شرط العرض الأدنى للوح (مم) - اختياري',
+                        'Largeur min du panneau (mm)',
+                        'Min panel width condition (mm)',
+                      ),
                       border: const OutlineInputBorder(),
                       suffixText: 'مم',
-                      helperText: _tr('مثال: 1200 مم لإضافة ثقب ثالث فقط إذا كان الباب كبيراً',
-                          'Ex: 1200 mm pour ajouter un 3ème trou si la porte est large',
-                          'Ex: 1200 mm to add a 3rd hole only for wide panels'),
+                      helperText: _tr(
+                        'مثال: 1200 مم لإضافة ثقب ثالث فقط إذا كان الباب كبيراً',
+                        'Ex: 1200 mm pour ajouter un 3ème trou si la porte est large',
+                        'Ex: 1200 mm to add a 3rd hole only for wide panels',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
 
                   // Purpose
                   DropdownButtonFormField<String>(
-                    value: purpose,
+                    value:
+                        const {
+                          'kit_roller',
+                          'hinge',
+                          'clamp',
+                          'handle',
+                          'pivot',
+                          'other',
+                        }.contains(purpose)
+                        ? purpose
+                        : 'other',
                     decoration: InputDecoration(
-                      labelText: _tr('الغرض من الثقب', 'Fonction du trou', 'Hole purpose'),
+                      labelText: _tr(
+                        'الغرض من الثقب',
+                        'Fonction du trou',
+                        'Hole purpose',
+                      ),
                       border: const OutlineInputBorder(),
                     ),
                     items: [
-                      DropdownMenuItem(value: 'kit_roller', child: Text(_tr('رولمان / سكة الكيت', 'Roulette de kit', 'Kit roller'))),
-                      DropdownMenuItem(value: 'hinge', child: Text(_tr('مفصلة باب', 'Charnière', 'Hinge'))),
-                      DropdownMenuItem(value: 'clamp', child: Text(_tr('مشبك تثبيت', 'Pince de fixation', 'Clamp'))),
-                      DropdownMenuItem(value: 'handle', child: Text(_tr('مقبض يدوي', 'Poignée', 'Handle'))),
-                      DropdownMenuItem(value: 'pivot', child: Text(_tr('محور دوران', 'Pivot', 'Pivot'))),
-                      DropdownMenuItem(value: 'other', child: Text(_tr('أخرى', 'Autre', 'Other'))),
+                      DropdownMenuItem(
+                        value: 'kit_roller',
+                        child: Text(
+                          _tr(
+                            'رولمان / سكة الكيت',
+                            'Roulette de kit',
+                            'Kit roller',
+                          ),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'hinge',
+                        child: Text(_tr('مفصلة باب', 'Charnière', 'Hinge')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'clamp',
+                        child: Text(
+                          _tr('مشبك تثبيت', 'Pince de fixation', 'Clamp'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'handle',
+                        child: Text(_tr('مقبض يدوي', 'Poignée', 'Handle')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'pivot',
+                        child: Text(_tr('محور دوران', 'Pivot', 'Pivot')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'other',
+                        child: Text(_tr('أخرى', 'Autre', 'Other')),
+                      ),
                     ],
-                    onChanged: (v) => setDlgState(() => purpose = v ?? 'kit_roller'),
+                    onChanged: (v) =>
+                        setDlgState(() => purpose = v ?? 'kit_roller'),
                   ),
                 ],
               ),
@@ -1066,11 +1910,16 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                   'min_panel_width_mm': minW,
                   'max_panel_width_mm': 0.0,
                   'purpose': purpose,
+                  'target_panel': targetPanel,
                 };
 
-                final updatedHoles = List<Map<String, dynamic>>.from(existingHoles);
+                final updatedHoles = List<Map<String, dynamic>>.from(
+                  existingHoles,
+                );
                 if (isEdit) {
-                  final idx = updatedHoles.indexWhere((h) => h['id'] == holeToEdit['id']);
+                  final idx = updatedHoles.indexWhere(
+                    (h) => h['id'] == holeToEdit['id'],
+                  );
                   if (idx != -1) {
                     updatedHoles[idx] = newHole;
                   }
@@ -1091,8 +1940,14 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
     );
   }
 
-  Future<void> _deleteHole(int kitId, List<Map<String, dynamic>> holes, Map<String, dynamic> holeToDelete) async {
-    final updatedHoles = holes.where((h) => h['id'] != holeToDelete['id']).toList();
+  Future<void> _deleteHole(
+    int kitId,
+    List<Map<String, dynamic>> holes,
+    Map<String, dynamic> holeToDelete,
+  ) async {
+    final updatedHoles = holes
+        .where((h) => h['id'] != holeToDelete['id'])
+        .toList();
     await widget.db.saveTemperedGlassKitHoles(kitId, updatedHoles);
     setState(() {});
   }
@@ -1101,10 +1956,17 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_tr('تأكيد الحذف', 'Confirmer la suppression', 'Confirm Deletion')),
-        content: Text('${_tr('هل تريد حذف الكيت', 'Supprimer le kit', 'Delete kit')} "$name"؟'),
+        title: Text(
+          _tr('تأكيد الحذف', 'Confirmer la suppression', 'Confirm Deletion'),
+        ),
+        content: Text(
+          '${_tr('هل تريد حذف الكيت', 'Supprimer le kit', 'Delete kit')} "$name"؟',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(_tr('إلغاء', 'Annuler', 'Cancel'))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -1126,7 +1988,9 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
 
   Widget _buildRulesTab(bool isDark) {
     if (_systems.isEmpty) {
-      return Center(child: Text(_tr('لا توجد أنظمة', 'Aucun système', 'No systems')));
+      return Center(
+        child: Text(_tr('لا توجد أنظمة', 'Aucun système', 'No systems')),
+      );
     }
 
     final selectedSys = _systems.firstWhere(
@@ -1143,7 +2007,9 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             // System Selector Header Card
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -1152,7 +2018,11 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                       backgroundColor: Colors.cyan.shade800,
                       foregroundColor: Colors.white,
                       radius: 22,
-                      child: Icon(_getIconData(selectedSys['icon_name'] as String? ?? 'shower')),
+                      child: Icon(
+                        _getIconData(
+                          selectedSys['icon_name'] as String? ?? 'shower',
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -1160,8 +2030,15 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _tr('النظام المحدد للتهيئة والقواعد:', 'Système sélectionné :', 'Configuring rules for:'),
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            _tr(
+                              'النظام المحدد للتهيئة والقواعد:',
+                              'Système sélectionné :',
+                              'Configuring rules for:',
+                            ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
                           DropdownButton<String>(
                             value: _selectedSystemCode,
@@ -1197,10 +2074,16 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             // Section 1: Active Kits for this System
             _buildRuleSectionHeader(
               icon: Icons.architecture,
-              title: _tr('الكيتات المتاحة لهذا النظام', 'Kits compatibles avec ce système', 'Compatible Kits'),
-              subtitle: _tr('حدد ما إذا كان كيت ألفا، بيتا، إلخ يظهر عند اختيار هذا النظام',
-                  'Activez les kits qui seront proposés pour ce système',
-                  'Select kits offered when this system is chosen'),
+              title: _tr(
+                'الكيتات المتاحة لهذا النظام',
+                'Kits compatibles avec ce système',
+                'Compatible Kits',
+              ),
+              subtitle: _tr(
+                'حدد ما إذا كان كيت ألفا، بيتا، إلخ يظهر عند اختيار هذا النظام',
+                'Activez les kits qui seront proposés pour ce système',
+                'Select kits offered when this system is chosen',
+              ),
             ),
             _buildKitsLinkingList(),
             const SizedBox(height: 20),
@@ -1208,10 +2091,16 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             // Section 2: Active Handles (Door & Towel)
             _buildRuleSectionHeader(
               icon: Icons.pan_tool_alt_outlined,
-              title: _tr('المقابض ومقابض المناشف المتاحة', 'Poignées et porte-serviettes actifs', 'Active Handles & Towel Bars'),
-              subtitle: _tr('المقابض المفعلة هنا ستظهر في واجهة كابينة الدوش/الفيترين لاختيارها مباشرة',
-                  'Les poignées cochées apparaîtront dans le tiroir d\'accessoires',
-                  'Checked handles will appear in the screen drawer for quick selection'),
+              title: _tr(
+                'المقابض ومقابض المناشف المتاحة',
+                'Poignées et porte-serviettes actifs',
+                'Active Handles & Towel Bars',
+              ),
+              subtitle: _tr(
+                'المقابض المفعلة هنا ستظهر في واجهة كابينة الدوش/الفيترين لاختيارها مباشرة',
+                'Les poignées cochées apparaîtront dans le tiroir d\'accessoires',
+                'Checked handles will appear in the screen drawer for quick selection',
+              ),
             ),
             _buildItemsLinkingList(category: 'poignee', ruleType: 'handle'),
             const SizedBox(height: 20),
@@ -1219,10 +2108,16 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             // Section 3: Profiles & Rails (by Glass Thickness: 8mm, 10mm, 12mm)
             _buildRuleSectionHeader(
               icon: Icons.view_sidebar_outlined,
-              title: _tr('القطاعات والسكك حسب سمك الزجاج', 'Profilés & Rails selon l\'épaisseur de verre', 'Profiles & Rails by Glass Thickness'),
-              subtitle: _tr('تحديد قطاعات U والسكك التي تعتمد حصرياً على سمك الزجاج المختار (8 مم، 10 مم، 12 مم)',
-                  'Profilés adaptés à chaque épaisseur (8mm, 10mm, 12mm)',
-                  'Profiles tailored to glass thickness (8mm, 10mm, 12mm)'),
+              title: _tr(
+                'القطاعات والسكك حسب سمك الزجاج',
+                'Profilés & Rails selon l\'épaisseur de verre',
+                'Profiles & Rails by Glass Thickness',
+              ),
+              subtitle: _tr(
+                'تحديد قطاعات U والسكك التي تعتمد حصرياً على سمك الزجاج المختار (8 مم، 10 مم، 12 مم)',
+                'Profilés adaptés à chaque épaisseur (8mm, 10mm, 12mm)',
+                'Profiles tailored to glass thickness (8mm, 10mm, 12mm)',
+              ),
             ),
             _buildThicknessFilterChips(),
             const SizedBox(height: 8),
@@ -1232,12 +2127,21 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             // Section 4: Hinges, Clamps & Gaskets
             _buildRuleSectionHeader(
               icon: Icons.handyman_outlined,
-              title: _tr('المفصلات والمشابك والجوانات', 'Charnières, fixations & joints', 'Hinges, Clamps & Seals'),
-              subtitle: _tr('المشابك والجوانات التابعة لهذا النظام',
-                  'Accessoires de fixation et joints pour ce système',
-                  'Mounting clamps and sealing gaskets for this system'),
+              title: _tr(
+                'المفصلات والمشابك والجوانات',
+                'Charnières, fixations & joints',
+                'Hinges, Clamps & Seals',
+              ),
+              subtitle: _tr(
+                'المشابك والجوانات التابعة لهذا النظام',
+                'Accessoires de fixation et joints pour ce système',
+                'Mounting clamps and sealing gaskets for this system',
+              ),
             ),
-            _buildItemsLinkingList(category: 'charniere', ruleType: 'charniere'),
+            _buildItemsLinkingList(
+              category: 'charniere',
+              ruleType: 'charniere',
+            ),
             const SizedBox(height: 8),
             _buildItemsLinkingList(category: 'joint', ruleType: 'joint'),
             const SizedBox(height: 30),
@@ -1280,7 +2184,9 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
       spacing: 8,
       children: [
         FilterChip(
-          label: Text(_tr('جميع السماكات', 'Toutes épaisseurs', 'All thicknesses')),
+          label: Text(
+            _tr('جميع السماكات', 'Toutes épaisseurs', 'All thicknesses'),
+          ),
           selected: _filterThickness == 0.0,
           onSelected: (val) {
             setState(() => _filterThickness = 0.0);
@@ -1326,12 +2232,20 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
       child: Column(
         children: _kits.map((kit) {
           final kitId = kit['id'] as int;
-          final isLinked = _systemRules.any((r) => r['kit_id'] == kitId && (r['is_active'] as int? ?? 1) == 1);
+          final isLinked = _systemRules.any(
+            (r) => r['kit_id'] == kitId && (r['is_active'] as int? ?? 1) == 1,
+          );
 
           return CheckboxListTile(
             dense: true,
-            title: Text(kit['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text('${kit['code']} - ${kit['description'] ?? ''}', style: const TextStyle(fontSize: 11)),
+            title: Text(
+              kit['name'] as String,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${kit['code']} - ${kit['description'] ?? ''}',
+              style: const TextStyle(fontSize: 11),
+            ),
             value: isLinked,
             activeColor: Colors.teal.shade700,
             onChanged: (val) async {
@@ -1349,12 +2263,21 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
     );
   }
 
-  Widget _buildItemsLinkingList({required String category, required String ruleType}) {
+  Widget _buildItemsLinkingList({
+    required String category,
+    required String ruleType,
+  }) {
     final items = _allItems.where((i) => i['category'] == category).toList();
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text(_tr('لا توجد عناصر مسجلة في هذا التصنيف', 'Aucun élément trouvé', 'No items found')),
+        child: Text(
+          _tr(
+            'لا توجد عناصر مسجلة في هذا التصنيف',
+            'Aucun élément trouvé',
+            'No items found',
+          ),
+        ),
       );
     }
 
@@ -1364,11 +2287,16 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
       child: Column(
         children: items.map((item) {
           final itemId = item['id'] as int;
-          final isLinked = _systemRules.any((r) => r['item_id'] == itemId && (r['is_active'] as int? ?? 1) == 1);
+          final isLinked = _systemRules.any(
+            (r) => r['item_id'] == itemId && (r['is_active'] as int? ?? 1) == 1,
+          );
 
           return CheckboxListTile(
             dense: true,
-            title: Text(item['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(
+              item['name'] as String,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: Text(
               '${(item['price'] as num? ?? 0).toStringAsFixed(0)} DZD | ${item['notes'] ?? ''}',
               style: const TextStyle(fontSize: 11),
@@ -1391,11 +2319,15 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
   }
 
   Widget _buildProfilesLinkingList() {
-    final profiles = _allItems.where((i) => i['category'] == 'profile').toList();
+    final profiles = _allItems
+        .where((i) => i['category'] == 'profile')
+        .toList();
     if (profiles.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text(_tr('لا توجد قطاعات مسجلة', 'Aucun profilé', 'No profiles found')),
+        child: Text(
+          _tr('لا توجد قطاعات مسجلة', 'Aucun profilé', 'No profiles found'),
+        ),
       );
     }
 
@@ -1409,12 +2341,17 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             (r) => r['item_id'] == itemId,
             orElse: () => <String, dynamic>{},
           );
-          final isLinked = rule.isNotEmpty && (rule['is_active'] as int? ?? 1) == 1;
-          final thickness = (rule['glass_thickness_mm'] as num? ?? 0.0).toDouble();
+          final isLinked =
+              rule.isNotEmpty && (rule['is_active'] as int? ?? 1) == 1;
+          final thickness = (rule['glass_thickness_mm'] as num? ?? 0.0)
+              .toDouble();
 
           return ListTile(
             dense: true,
-            title: Text(item['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(
+              item['name'] as String,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: Text(
               '${(item['price'] as num? ?? 0).toStringAsFixed(0)} DZD | ${item['notes'] ?? ''}',
               style: const TextStyle(fontSize: 11),
@@ -1435,14 +2372,23 @@ class _GlassSystemsRulesScreenState extends State<GlassSystemsRulesScreen>
             ),
             trailing: isLinked
                 ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.teal.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      thickness > 0 ? '${thickness.toStringAsFixed(0)} مم' : _tr('جميع السماكات', 'Toutes', 'All'),
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
+                      thickness > 0
+                          ? '${thickness.toStringAsFixed(0)} مم'
+                          : _tr('جميع السماكات', 'Toutes', 'All'),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade800,
+                      ),
                     ),
                   )
                 : null,
@@ -1477,16 +2423,26 @@ class _KitHolesPreviewPainter extends CustomPainter {
     final glassPaint = Paint()
       ..color = Colors.cyan.withValues(alpha: 0.22)
       ..style = PaintingStyle.fill;
-    canvas.drawRRect(RRect.fromRectAndRadius(panelRect, const Radius.circular(4)), glassPaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(panelRect, const Radius.circular(4)),
+      glassPaint,
+    );
 
     final borderPaint = Paint()
       ..color = Colors.cyan.shade300
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
-    canvas.drawRRect(RRect.fromRectAndRadius(panelRect, const Radius.circular(4)), borderPaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(panelRect, const Radius.circular(4)),
+      borderPaint,
+    );
 
     // Draw reference dimensions
-    final textStyle = const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold);
+    final textStyle = const TextStyle(
+      color: Colors.white70,
+      fontSize: 10,
+      fontWeight: FontWeight.bold,
+    );
 
     // Assume simulated panel width = 800mm, height = 2000mm
     const simWidth = 800.0;
@@ -1537,7 +2493,10 @@ class _KitHolesPreviewPainter extends CustomPainter {
 
       // Label
       final tp = TextPainter(
-        text: TextSpan(text: '#${h['hole_index']} Ø${diamMm.toStringAsFixed(0)}', style: textStyle),
+        text: TextSpan(
+          text: '#${h['hole_index']} Ø${diamMm.toStringAsFixed(0)}',
+          style: textStyle,
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       tp.paint(canvas, Offset(px - tp.width / 2, py + r + 2));

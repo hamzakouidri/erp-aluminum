@@ -3196,6 +3196,12 @@ class WindowModel extends ChangeNotifier {
     GlassSpecification specification, {
     bool? sliding,
   }) {
+    if (specification.fittedJoints.isNotEmpty) {
+      return specification.fittedJoints.fold<double>(
+        0.0,
+        (sum, joint) => sum + _readPositiveDouble(joint['thickness']),
+      );
+    }
     final jointThickness = selectedVitrageJointThickness();
     if (jointThickness <= 0) return 0.0;
     final usesSliding = sliding ?? systemMode == 'sliding';
@@ -17253,6 +17259,7 @@ class WindowModel extends ChangeNotifier {
         enabled ?? !profileAngleJunctions.contains(junctionIndex);
     if (shouldEnable) {
       profileAngleJunctions.add(junctionIndex);
+      viewAs90DegreeCorner = true;
     } else {
       profileAngleJunctions.remove(junctionIndex);
       if (profileAngleJunctions.isEmpty) {
@@ -17269,6 +17276,7 @@ class WindowModel extends ChangeNotifier {
       profileAngleJunctionsDisabled = false;
       final junctions = getAdjacentFrameJunctions();
       profileAngleJunctions = List.generate(junctions.length, (i) => i).toSet();
+      if (profileAngleJunctions.isNotEmpty) viewAs90DegreeCorner = true;
     } else {
       profileAngleJunctionsDisabled = true;
       profileAngleJunctions.clear();
@@ -17290,6 +17298,7 @@ class WindowModel extends ChangeNotifier {
     final next = mode.clamp(0, 3).toInt();
     _saveSnapshot();
     profileAngleMode = next;
+    if (next > 0) viewAs90DegreeCorner = true;
     adaptFramesForProfileAngle();
     notifyListeners();
   }
@@ -19626,7 +19635,6 @@ class WindowModel extends ChangeNotifier {
     GlassSpecification spec, {
     required bool sliding,
   }) async {
-    if (spec.structure == GlassStructure.closed) return spec;
     final capacity = glazingCapacityForStructure(
       spec.structure,
       sliding: sliding,
@@ -19652,7 +19660,9 @@ class WindowModel extends ChangeNotifier {
                 : AccessoryDrawingMode.opening,
             requireDialog: false,
             requireQuantity: true,
-            hasSimpleGlassForReducer: spec.structure == GlassStructure.simple,
+            hasSimpleGlassForReducer:
+                spec.structure == GlassStructure.simple ||
+                spec.structure == GlassStructure.closed,
             hasDoubleGlassForRules: spec.structure == GlassStructure.double,
           ),
         );
@@ -19668,7 +19678,7 @@ class WindowModel extends ChangeNotifier {
     } else if (!spec.jointTwoSides) {
       choices.addAll((vitrage.isNotEmpty ? vitrage : bourrage).map((r) => [r]));
     } else {
-      final firstSide = vitrage.isNotEmpty ? [vitrage.first] : bourrage;
+      final firstSide = vitrage.isNotEmpty ? vitrage : bourrage;
       final secondSide = bourrage.isNotEmpty ? bourrage : vitrage;
       for (final first in firstSide) {
         for (final second in secondSide) {
@@ -19683,21 +19693,30 @@ class WindowModel extends ChangeNotifier {
       spacer: spec.intercallThickness.toDouble(),
       doubleGlass: spec.structure == GlassStructure.double,
       jointChoices: choices,
-      spacers: availableIntercalls
-          .map((r) => _readPositiveDouble(r['thickness']))
-          .where((v) => v > 0)
-          .toList(),
-      outerPanes: getAvailableThicknesses(spec.finishOuter, spec.colorOuter),
-      innerPanes: getAvailableThicknesses(spec.finishInner, spec.colorInner),
+      spacers: spec.structure == GlassStructure.closed
+          ? const [0.0]
+          : availableIntercalls
+                .map((r) => _readPositiveDouble(r['thickness']))
+                .where((v) => v > 0)
+                .toList(),
+      outerPanes: spec.structure == GlassStructure.closed
+          ? [spec.thicknessOuter ?? kDefaultGlassPaneThickness]
+          : getAvailableThicknesses(spec.finishOuter, spec.colorOuter),
+      innerPanes: spec.structure == GlassStructure.closed
+          ? const [0.0]
+          : getAvailableThicknesses(spec.finishInner, spec.colorInner),
     );
     if (result == null) {
       glazingFitMessage =
           'تركيب غير متوافق مع السعة $capacity مم. لا توجد تركيبة مسموحة من القواعد؛ النقص ممنوع والزيادة القصوى 1 مم.';
       return spec.copyWith(fittedJoints: const [], glazingFitValid: false);
     }
+    final glazingDescription = spec.structure == GlassStructure.closed
+        ? 'البانو: ${result.outer} مم. '
+        : 'الاختيار: ${spec.thicknessOuter ?? 5} / ${spec.intercallThickness} / ${spec.thicknessInner ?? 5} مم. '
+              'التركيب المعتمد: ${result.outer}${spec.structure == GlassStructure.double ? ' + ${result.spacer} + ${result.inner}' : ''} مم؛ ';
     glazingFitMessage =
-        'الاختيار: ${spec.thicknessOuter ?? 5} / ${spec.intercallThickness} / ${spec.thicknessInner ?? 5} مم. '
-        'التركيب المعتمد: ${result.outer}${spec.structure == GlassStructure.double ? ' + ${result.spacer} + ${result.inner}' : ''} مم؛ '
+        glazingDescription +
         '${result.joints.map((r) => '${r['name']} (${r['thickness']} مم)').join(' + ')}. '
         'المجموع ${result.total} مم / السعة $capacity مم. أولوية التعديل: الجوانات ثم الأنتركال ثم الزجاج.';
     return spec.copyWith(

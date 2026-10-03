@@ -7,6 +7,7 @@ import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
 import 'inventory_item_history_screen.dart';
 import 'inventory_adjustment_screen.dart';
+import 'material_remnants_screen.dart';
 
 class InventoryScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -459,6 +460,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
               }
             },
           ),
+        IconButton(
+          icon: const Icon(Icons.recycling_rounded, color: Colors.white),
+          tooltip: lang == AppLanguage.arabic
+              ? 'إدارة فضلات الألواح والمقاطع (Chutes)'
+              : 'Gestion des chutes (Panneaux & Profilés)',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const MaterialRemnantsScreen(),
+              ),
+            );
+          },
+        ),
         if (canAdjustInventory)
           IconButton(
             icon: const Icon(Icons.inventory, color: Colors.white),

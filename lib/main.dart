@@ -27,6 +27,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
+import 'package:database_data/Commande/commande.dart';
+import 'package:database_data/Screen/treasury_screen.dart';
+import 'package:database_data/sql_database.dart';
 
 import 'package:window_manager/window_manager.dart';
 
@@ -248,6 +251,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   /// الوقت الذي دخل فيه التطبيق إلى الخلفية.
   /// يُستخدم لحساب مدة الغياب قبل السماح بالمزامنة عند الرجوع.
@@ -262,6 +266,38 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WorkerPushNotificationService.instance.setNotificationTapHandler((data) {
+      final eventType = data['type']?.toString() ?? '';
+      final rawTreasuryId = data['treasury_id'];
+      final treasuryId = rawTreasuryId is num
+          ? rawTreasuryId.toInt()
+          : int.tryParse(rawTreasuryId?.toString() ?? '');
+      final rawOrderId = data['order_id'];
+      final orderId = rawOrderId is num
+          ? rawOrderId.toInt()
+          : int.tryParse(rawOrderId?.toString() ?? '');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final navigator = _navigatorKey.currentState;
+        if (navigator == null || AppAuthService().currentUser == null) return;
+        if ((eventType == 'payments' || eventType == 'cashbox') &&
+            treasuryId != null &&
+            treasuryId > 0) {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => TreasuryScreen(
+                db: SqlDatabase(),
+                initialTransactionId: treasuryId,
+              ),
+            ),
+          );
+          return;
+        }
+        if (orderId == null || orderId <= 0) return;
+        navigator.push(
+          MaterialPageRoute(builder: (_) => Commande(initialOrderId: orderId)),
+        );
+      });
+    });
 
     // [إضافة هامة]: تهيئة خدمة المزامنة السحابية وبدء الاستماع بمجرد فتح التطبيق مع حماية ضد الانهيار
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -316,8 +352,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ? null
           : DateTime.now().difference(backgroundedAt);
 
-      final shouldSync = timeInBackground == null ||
-          timeInBackground >= _resumeSyncCooldown;
+      final shouldSync =
+          timeInBackground == null || timeInBackground >= _resumeSyncCooldown;
 
       if (!shouldSync) {
         debugPrint(
@@ -380,6 +416,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       authStateChanges: AppAuthService().authStateChanges,
       initialUser: AppAuthService().currentUser,
       builder: (context, user) => MaterialApp(
+        navigatorKey: _navigatorKey,
         scaffoldMessengerKey: _scaffoldMessengerKey,
         debugShowCheckedModeBanner: false,
         title: Localization.translate('ورشتي', settings.language),

@@ -34,6 +34,8 @@ class BomItem {
   final bool isActive;
   final String? exclusionGroup;
   final List<double>? pieces;
+  /// Cutting angles aligned with [pieces], stored as `left/right` degrees.
+  final List<String>? pieceCutAngles;
   final String? cuttingList;
   final String? kitGroupName; // اسم Kit التابع له (مثال: System OB)
   final double? exactQuantity;
@@ -132,6 +134,7 @@ class BomItem {
     this.isActive = true,
     this.exclusionGroup,
     this.pieces,
+    this.pieceCutAngles,
     this.cuttingList,
     this.kitGroupName,
     this.exactQuantity,
@@ -668,6 +671,7 @@ class BomItem {
     String? materialType,
     int? pieceCount,
     String? cuttingList,
+    List<String>? pieceCutAngles,
   }) {
     return BomItem(
       category: category,
@@ -687,6 +691,7 @@ class BomItem {
       isActive: isActive ?? this.isActive,
       exclusionGroup: exclusionGroup,
       pieces: pieces,
+      pieceCutAngles: pieceCutAngles ?? this.pieceCutAngles,
       cuttingList: cuttingList ?? this.cuttingList,
       kitGroupName: kitGroupName ?? this.kitGroupName,
       exactQuantity: exactQuantity,
@@ -2149,6 +2154,7 @@ class ComponentCalculator {
       double qty = 0,
       double? length,
       List<double>? pieces,
+      List<String>? pieceCutAngles,
       Map<String, dynamic>? overrideMap,
       bool preferOverrideMap = false,
       bool priceByWholeBar = false,
@@ -2197,10 +2203,15 @@ class ComponentCalculator {
         );
       }
       List<double>? multipliedPieces;
+      List<String>? multipliedPieceCutAngles;
       if (pieces != null && pieces.isNotEmpty) {
         multipliedPieces = [];
+        if (pieceCutAngles != null && pieceCutAngles.length == pieces.length) {
+          multipliedPieceCutAngles = [];
+        }
         for (int q = 0; q < window.quantity; q++) {
           multipliedPieces.addAll(pieces);
+          multipliedPieceCutAngles?.addAll(pieceCutAngles!);
         }
       }
       return _createProfile(
@@ -2212,6 +2223,7 @@ class ComponentCalculator {
         qty: qty * window.quantity,
         length: length,
         pieces: multipliedPieces,
+        pieceCutAngles: multipliedPieceCutAngles,
         overrideMap: selectedOverride,
         preferOverrideMap: selectedOverride != null,
         priceByWholeBar: priceByWholeBar,
@@ -2530,6 +2542,8 @@ class ComponentCalculator {
     final double seriesSashOverlap = window.openingSashOverlap;
 
     List<BomItem> items = [];
+    List<String> uniformAngles(List<double> pieces, String angles) =>
+        List<String>.filled(pieces.length, angles);
 
     int doubleSashCount = window.zones
         .where((z) => z.content == ZoneContent.doubleSash)
@@ -3410,9 +3424,12 @@ class ComponentCalculator {
         ? 0.0
         : frameRects.map((rect) => rect.bottom).reduce(math.max);
     List<double> framePieces = [];
+    List<String> framePieceAngles = [];
     List<double> slidingOuterFramePieces = [];
+    List<String> slidingOuterFramePieceAngles = [];
     final frameCutsByRect = <Rect, List<double>>{};
     final customFrameSidePieces = <String, List<double>>{};
+    final customFrameSideAngles = <String, List<String>>{};
     final customFrameSideProfiles = <String, Map<String, dynamic>>{};
     final customFrameSideNames = <String, Set<String>>{};
     List<double> renfortFramePieces = [];
@@ -3470,12 +3487,16 @@ class ComponentCalculator {
           : <double>[wPiece, hPiece, hPiece];
       frameCutsByRect[r] = frameCuts;
 
-      void addFrameSide(String side, double length) {
+      void addFrameSide(String side, double length, String angles) {
         final override = window.frameSideOverrideForRect(r, side);
         final baseId = (window.frameSectionForRect(r)?.id)?.toString();
         final overrideId = override?['id']?.toString();
         if (override == null || overrideId == null || overrideId == baseId) {
           targetFramePieces.add(length);
+          (useSlidingOuterFrame
+                  ? slidingOuterFramePieceAngles
+                  : framePieceAngles)
+              .add(angles);
           return;
         }
         final rawCustomCover = override['couvre_joint_width'];
@@ -3495,13 +3516,15 @@ class ComponentCalculator {
         customFrameSidePieces
             .putIfAbsent(key, () => <double>[])
             .add(adjustedLength);
+        customFrameSideAngles.putIfAbsent(key, () => <String>[]).add(angles);
         customFrameSideNames.putIfAbsent(key, () => <String>{}).add(side);
       }
 
-      addFrameSide('top', wPiece);
-      if (window.hasBottomFrameForRect(r)) addFrameSide('bottom', wPiece);
-      addFrameSide('left', hPiece);
-      addFrameSide('right', hPiece);
+      final hasBottom = window.hasBottomFrameForRect(r);
+      addFrameSide('top', wPiece, '45/45');
+      if (hasBottom) addFrameSide('bottom', wPiece, '45/45');
+      addFrameSide('left', hPiece, hasBottom ? '45/45' : '45/90');
+      addFrameSide('right', hPiece, hasBottom ? '45/45' : '45/90');
 
       if (isOuterFramePvc) {
         double rw = r.width - renfortFrameDeduction;
@@ -3551,12 +3574,14 @@ class ComponentCalculator {
             fixedPlinthePieces.add(length / 1000.0);
           } else {
             framePieces.add(length / 1000.0);
+            framePieceAngles.add('90/90');
           }
         }
       }
     }
 
     final angleJunctionFramePieces = <String, List<double>>{};
+    final angleJunctionFrameAngles = <String, List<String>>{};
     final angleJunctionFrames = <String, AluminumSection>{};
     final angleJunctionSliding = <String, bool>{};
     if (window.usesProfileAngle &&
@@ -3578,15 +3603,22 @@ class ComponentCalculator {
         if (cuts == null || cuts.length < 3) return;
         final verticalCut = cuts.last;
         final sourcePieces = sliding ? slidingOuterFramePieces : framePieces;
+        final sourceAngles = sliding
+            ? slidingOuterFramePieceAngles
+            : framePieceAngles;
         final sourceIndex = sourcePieces.indexOf(verticalCut);
         if (sourceIndex < 0) return;
         sourcePieces.removeAt(sourceIndex);
+        final removedAngles = sourceAngles.removeAt(sourceIndex);
         final itemKey = '${sliding ? 'sliding' : 'opening'}:${compatible.id}';
         angleJunctionFrames[itemKey] = compatible;
         angleJunctionSliding[itemKey] = sliding;
         angleJunctionFramePieces
             .putIfAbsent(itemKey, () => <double>[])
             .add(verticalCut);
+        angleJunctionFrameAngles
+            .putIfAbsent(itemKey, () => <String>[])
+            .add(removedAngles);
       }
 
       final junctions = window.getAdjacentFrameJunctions();
@@ -3618,6 +3650,7 @@ class ComponentCalculator {
           'الإطار (Frame)',
           colorName,
           pieces: framePieces,
+          pieceCutAngles: framePieceAngles,
           unit: 'قطاع',
           overrideMap: outerFrameOverride,
           // The frame selected in the drawing is authoritative. A stale table
@@ -3644,6 +3677,7 @@ class ComponentCalculator {
           'إطار جهة $label (Frame side)',
           colorName,
           pieces: entry.value,
+          pieceCutAngles: customFrameSideAngles[entry.key],
           unit: 'قطاع',
           overrideMap: override,
           preferOverrideMap: true,
@@ -3662,6 +3696,7 @@ class ComponentCalculator {
               : 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)',
           colorName,
           pieces: entry.value,
+          pieceCutAngles: angleJunctionFrameAngles[entry.key],
           unit: 'قطاع',
           overrideMap: angleJunctionFrame.toMap(),
           preferOverrideMap: true,
@@ -3675,6 +3710,7 @@ class ComponentCalculator {
           'إطار منزلق (Cadre Coulissant)',
           colorName,
           pieces: slidingOuterFramePieces,
+          pieceCutAngles: slidingOuterFramePieceAngles,
           unit: 'قطاع',
           overrideMap: getSlidingFrameSection(),
           preferOverrideMap: true,
@@ -4018,6 +4054,7 @@ class ComponentCalculator {
           'حديد الإطار (Renfort Frame)',
           null,
           pieces: renfortFramePieces,
+          pieceCutAngles: uniformAngles(renfortFramePieces, '90/90'),
           unit: 'قطاع',
         ),
       );
@@ -4296,6 +4333,7 @@ class ComponentCalculator {
       }
 
       List<double> sashPieces = [];
+      List<String> sashPieceAngles = [];
       List<double> slidingSashPieces = [];
       List<double> slidingSashTraversePieces = [];
       List<double> slidingSashLateralPieces = [];
@@ -4348,6 +4386,7 @@ class ComponentCalculator {
           math.max(0.0, sashOuterWidth - (plintheSashVisibleWidth * 2.0));
 
       final Map<String, List<double>> sashPiecesByProfile = {};
+      final Map<String, List<String>> sashAnglesByProfile = {};
       final Map<String, Map<String, dynamic>> sashOverrideByProfile = {};
 
       for (var zone in window.zones) {
@@ -4374,6 +4413,8 @@ class ComponentCalculator {
         }
         final zoneSashPieces =
             sashPiecesByProfile.putIfAbsent(profileKey, () => <double>[]);
+        final zoneSashAngles =
+            sashAnglesByProfile.putIfAbsent(profileKey, () => <String>[]);
 
         if (zone.content == ZoneContent.singleSash) {
           double sashW = clearW + overlap * 2;
@@ -4382,6 +4423,9 @@ class ComponentCalculator {
             final cuts = [sashW / 1000.0, sashH / 1000.0, sashH / 1000.0];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
+            const angles = ['45/45', '45/90', '45/90'];
+            sashPieceAngles.addAll(angles);
+            zoneSashAngles.addAll(angles);
             sashPlinthePieces.add(plintheCutWidth(sashW) / 1000.0);
           } else {
             final cuts = [
@@ -4392,6 +4436,9 @@ class ComponentCalculator {
             ];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
+            final angles = List<String>.filled(4, '45/45');
+            sashPieceAngles.addAll(angles);
+            zoneSashAngles.addAll(angles);
           }
         } else if (zone.content == ZoneContent.doubleSash) {
           // The overlap belongs to the complete clear opening first.  Only
@@ -4413,6 +4460,12 @@ class ComponentCalculator {
             ];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
+            const angles = [
+              '45/45', '45/90', '45/90',
+              '45/45', '45/90', '45/90',
+            ];
+            sashPieceAngles.addAll(angles);
+            zoneSashAngles.addAll(angles);
             sashPlinthePieces.add(plintheCutWidth(sashWLeft) / 1000.0);
             sashPlinthePieces.add(plintheCutWidth(sashWRight) / 1000.0);
           } else {
@@ -4428,6 +4481,9 @@ class ComponentCalculator {
             ];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
+            final angles = List<String>.filled(8, '45/45');
+            sashPieceAngles.addAll(angles);
+            zoneSashAngles.addAll(angles);
           }
         } else if (zone.content == ZoneContent.slidingSash) {
           final slidingSashOverride = window.slidingSashOverride;
@@ -4882,6 +4938,7 @@ class ComponentCalculator {
               'الظلفة (Sash)',
               colorName,
               pieces: entry.value,
+              pieceCutAngles: sashAnglesByProfile[entry.key],
               unit: 'قطاع',
               overrideMap:
                   sashOverrideByProfile[entry.key] ?? openingSashOverride,
@@ -4899,6 +4956,7 @@ class ComponentCalculator {
                 'الظلفة (Sash) - $profileName',
                 colorName,
                 pieces: entry.value,
+                pieceCutAngles: sashAnglesByProfile[entry.key],
                 unit: 'قطاع',
                 overrideMap: profileMap ?? openingSashOverride,
                 preferOverrideMap: true,
@@ -4913,6 +4971,7 @@ class ComponentCalculator {
             'الظلفة (Sash)',
             colorName,
             pieces: sashPieces,
+            pieceCutAngles: sashPieceAngles,
             unit: 'قطاع',
             overrideMap: openingSashOverride,
           ),
@@ -4929,6 +4988,7 @@ class ComponentCalculator {
             'بلانت (Plinthe)',
             colorName,
             pieces: plinthePieces,
+            pieceCutAngles: uniformAngles(plinthePieces, '90/90'),
             unit: 'متر',
             // Plinthe is its own catalogue role. Never fall back to the
             // selected sash profile, otherwise a thick sash can replace the
@@ -4943,6 +5003,7 @@ class ComponentCalculator {
             'حامل الجوان (Porte-joint)',
             colorName,
             pieces: plinthePieces,
+            pieceCutAngles: uniformAngles(plinthePieces, '90/90'),
             unit: 'متر',
             overrideMap: window.componentOverrides['حامل الجوان (Porte-joint)'],
             selectorType: 'porte_joint',
@@ -4969,6 +5030,7 @@ class ComponentCalculator {
             'الظلفة المنزلقة (Sliding Sash)',
             colorName,
             pieces: slidingSashPieces,
+            pieceCutAngles: uniformAngles(slidingSashPieces, '90/90'),
             unit: 'قطاع',
             overrideMap:
                 window.slidingSashOverride ??
@@ -4993,6 +5055,7 @@ class ComponentCalculator {
             'عارضة الضلفة المنزلقة 45°/90° (Traverse Sash 45°/90°)',
             colorName,
             pieces: slidingSashTraverse4590Pieces,
+            pieceCutAngles: uniformAngles(slidingSashTraverse4590Pieces, '45/90'),
             unit: 'قطاع',
             overrideMap: traverseOverride,
             preferOverrideMap: true,
@@ -5017,6 +5080,7 @@ class ComponentCalculator {
             'عارضة الضلفة المنزلقة 90°/90° (Traverse Sash 90°/90°)',
             colorName,
             pieces: slidingSashTraverse9090Pieces,
+            pieceCutAngles: uniformAngles(slidingSashTraverse9090Pieces, '90/90'),
             unit: 'قطاع',
             overrideMap: traverseOverride,
             preferOverrideMap: true,
@@ -5032,6 +5096,7 @@ class ComponentCalculator {
             'سكة الظلفة (Sash Traverse)',
             colorName,
             pieces: slidingSashTraversePieces,
+            pieceCutAngles: uniformAngles(slidingSashTraversePieces, '90/90'),
             unit: 'قطاع',
             overrideMap:
                 slidingOverrideFor(['عرضي (Traverse)']) ??
@@ -5067,6 +5132,7 @@ class ComponentCalculator {
             lateralName,
             colorName,
             pieces: slidingSashLateralNormalPieces,
+            pieceCutAngles: uniformAngles(slidingSashLateralNormalPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: baseLateral,
             preferOverrideMap: true,
@@ -5095,6 +5161,7 @@ class ComponentCalculator {
             'قائم جانبي معزز (Sash Lateral Renforcé)',
             colorName,
             pieces: slidingSashLateralReinforcedPieces,
+            pieceCutAngles: uniformAngles(slidingSashLateralReinforcedPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: reinforcedLateral,
             preferOverrideMap: true,
@@ -5134,6 +5201,7 @@ class ComponentCalculator {
             centralName,
             colorName,
             pieces: slidingSashCentralPieces,
+            pieceCutAngles: uniformAngles(slidingSashCentralPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: baseCentral,
             preferOverrideMap: true,
@@ -5166,6 +5234,7 @@ class ComponentCalculator {
             'قائم وسطي معزز (Sash Central Renforcé)',
             colorName,
             pieces: slidingSashCentralReinforcedPieces,
+            pieceCutAngles: uniformAngles(slidingSashCentralReinforcedPieces, '90/90'),
             overrideMap: reinforcedCentral,
             preferOverrideMap: true,
             selectorType: 'sash_central_reinforced',
@@ -5196,6 +5265,7 @@ class ComponentCalculator {
             'قائم وسطي سليم (Montant Slim)',
             colorName,
             pieces: slidingSashCentralSlimPieces,
+            pieceCutAngles: uniformAngles(slidingSashCentralSlimPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: slimOverride,
             preferOverrideMap: true,
@@ -5219,6 +5289,7 @@ class ComponentCalculator {
               'قائم Face to Face (Face-to-Face)',
               colorName,
               pieces: slidingFaceToFacePieces,
+              pieceCutAngles: uniformAngles(slidingFaceToFacePieces, '90/90'),
               unit: 'قطاع',
               overrideMap: faceOverride,
               preferOverrideMap: true,
@@ -5263,6 +5334,7 @@ class ComponentCalculator {
             'قطاع وصلة مكمل علوي وسفلي للمونتوسليم 10 سم (Taquet / Complément haut et bas)',
             colorName,
             pieces: slidingSlimCleatPieces,
+            pieceCutAngles: uniformAngles(slidingSlimCleatPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: cleatOverride,
             preferOverrideMap: true,
@@ -5303,6 +5375,7 @@ class ComponentCalculator {
             'الشيكان (Chicane)',
             colorName,
             pieces: slidingChicanePieces,
+            pieceCutAngles: uniformAngles(slidingChicanePieces, '90/90'),
             unit: 'قطاع',
             overrideMap: baseChicane,
             preferOverrideMap: true,
@@ -5323,6 +5396,7 @@ class ComponentCalculator {
             'شيكان معزز (Chicane Renforcée)',
             colorName,
             pieces: slidingChicaneRenforceePieces,
+            pieceCutAngles: uniformAngles(slidingChicaneRenforceePieces, '90/90'),
             unit: 'قطاع',
             overrideMap: reinforcedChicane,
             preferOverrideMap: true,
@@ -5349,6 +5423,7 @@ class ComponentCalculator {
             'عمود تدعيم مستقل (Profilé de Renfort Rapporté)',
             colorName,
             pieces: slidingIndependentRenfortPieces,
+            pieceCutAngles: uniformAngles(slidingIndependentRenfortPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: renfortOverride,
             preferOverrideMap: true,
@@ -5391,6 +5466,7 @@ class ComponentCalculator {
               'الري (Rail)',
               colorName,
               pieces: slidingRailPieces,
+              pieceCutAngles: uniformAngles(slidingRailPieces, '90/90'),
               unit: 'قطاع',
               overrideMap: railOverride,
               preferOverrideMap: true,
@@ -5412,6 +5488,7 @@ class ComponentCalculator {
               'كومبليمو دورمو (Complément Dormant)',
               colorName,
               pieces: slidingMonorailPieces,
+              pieceCutAngles: uniformAngles(slidingMonorailPieces, '90/90'),
               unit: 'قطاع',
               overrideMap: extensionSection.toMap(),
               preferOverrideMap: true,
@@ -5428,6 +5505,7 @@ class ComponentCalculator {
             'غطاء إطار منزلق داخلي (Couvre-joint Coulissant)',
             colorName,
             pieces: internalSlidingSideCoverPieces,
+            pieceCutAngles: uniformAngles(internalSlidingSideCoverPieces, '90/90'),
             unit: 'قطاع',
             overrideMap: window.effectiveInternalSlidingSideCoverMap,
             preferOverrideMap: true,
@@ -5478,6 +5556,7 @@ class ComponentCalculator {
               'حديد الظلفة (Renfort Sash)',
               null,
               pieces: renfortSashPieces,
+              pieceCutAngles: uniformAngles(renfortSashPieces, '90/90'),
               unit: 'قطاع',
             ),
           );
@@ -5509,6 +5588,7 @@ class ComponentCalculator {
               'حديد الظلفة الخاص بالمفاصل',
               null,
               pieces: renfortSashMifsalPieces,
+              pieceCutAngles: uniformAngles(renfortSashMifsalPieces, '90/90'),
               unit: 'قطاع',
             ),
           );
@@ -7621,6 +7701,7 @@ class ComponentCalculator {
             'تقسيم الزجاج (Mullion)',
             colorName,
             pieces: mullionPieces,
+            pieceCutAngles: uniformAngles(mullionPieces, '90/90'),
             unit: 'قطاع',
           ),
         );
@@ -7636,6 +7717,7 @@ class ComponentCalculator {
             label,
             colorName,
             pieces: entry.value,
+            pieceCutAngles: uniformAngles(entry.value, '90/90'),
             unit: 'قطاع',
             overrideMap: section,
             preferOverrideMap: true,
@@ -7649,6 +7731,7 @@ class ComponentCalculator {
             'حديد التقسيم (Renfort Mullion)',
             null,
             pieces: allMullionPieces,
+            pieceCutAngles: uniformAngles(allMullionPieces, '90/90'),
             unit: 'قطاع',
           ),
         );
@@ -8201,23 +8284,32 @@ class ComponentCalculator {
                     (cellGlass.thicknessInner ?? 4.0) +
                     cellGlass.intercallThickness
               : (cellGlass.thicknessOuter ?? 4.0);
+          // A closed/decorative panel is not "simple glass". Select its
+          // parclose from the real installed pack thickness, otherwise a
+          // 20 mm panel is incorrectly sent to the 12 mm/simple bead while
+          // the compatibility message is checking the 24 mm pocket.
           final bool needsDoubleParclose =
-              cellGlass.structure == GlassStructure.double;
+              cellGlass.structure == GlassStructure.double ||
+              (cellGlass.structure == GlassStructure.closed &&
+                  cellThick > 14.0);
           final bool isPvcSlidingSystem =
               isSlidingSystem && window.isSlidingPVC;
-          if (cellGlass.fittedJoints.isNotEmpty && !isPanneau) {
+          if (cellGlass.fittedJoints.isNotEmpty) {
             final perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
             for (var side = 0; side < cellGlass.fittedJoints.length; side++) {
               final joint = cellGlass.fittedJoints[side];
               final rule = joint['catalog_rule'] as Map?;
-              final role = rule?['role_key']?.toString();
-              if (role == null) continue;
+              final role = rule?['role_key']?.toString() ??
+                  (side == 0 ? 'joint_vitrage' : 'joint_bourrage');
+              final jointLabel = role == 'joint_vitrage'
+                  ? 'جوان الزجاج (Joint Vitrage)'
+                  : 'جوان البوراج (Joint Bourrage)';
               final key =
                   'fitted-glass:${rule?['series_id']}:${joint['id']}:$side';
               window.componentOverrides[key] = Map<String, dynamic>.from(joint);
               items.add(
                 createJoint(
-                  '${joint['name']} — ${side == 0 ? 'خارجي' : 'داخلي'}',
+                  '$jointLabel — ${side == 0 ? 'خارجي' : 'داخلي'}',
                   qty: perimeter * totalPieces / window.quantity,
                   unit: 'متر',
                   sliding: isSlidingSystem,
@@ -9225,7 +9317,7 @@ class ComponentCalculator {
 
     final double vitrageJointThick = window.isPVC
         ? 0.0
-        : window.selectedVitrageJointThickness(fallback: 3.0);
+        : window.selectedVitrageJointThickness(fallback: 2.0);
 
     double bourrageThicknessNeed({
       required Map<String, dynamic>? parclose,
@@ -10080,6 +10172,15 @@ class ComponentCalculator {
     for (final group in groups.values.where((group) => group.length > 1)) {
       final first = group.first;
       final pieces = <double>[for (final item in group) ...?item.pieces];
+      final pieceCutAngles = <String>[
+        for (final item in group)
+          for (var i = 0; i < (item.pieces?.length ?? 0); i++)
+            if (item.pieceCutAngles != null &&
+                i < item.pieceCutAngles!.length)
+              item.pieceCutAngles![i]
+            else
+              '',
+      ];
       final roles = <String>[];
       for (final item in group) {
         final label = item.originalName.trim();
@@ -10125,6 +10226,7 @@ class ComponentCalculator {
         isInteractive: first.isInteractive,
         isActive: group.any((item) => item.isActive),
         pieces: pieces.isEmpty ? null : pieces,
+        pieceCutAngles: pieces.isEmpty ? null : pieceCutAngles,
         cuttingList: cuttingList,
         exactQuantity: exact,
         catalogItemId: first.catalogItemId,
@@ -10187,6 +10289,15 @@ class ComponentCalculator {
     for (final group in groups.values.where((group) => group.length > 1)) {
       final first = group.first;
       final pieces = <double>[for (final item in group) ...?item.pieces];
+      final pieceCutAngles = <String>[
+        for (final item in group)
+          for (var i = 0; i < (item.pieces?.length ?? 0); i++)
+            if (item.pieceCutAngles != null &&
+                i < item.pieceCutAngles!.length)
+              item.pieceCutAngles![i]
+            else
+              '',
+      ];
       final roles = <String>[];
       for (final item in group) {
         final lines = item.name.split('\n');
@@ -10242,6 +10353,7 @@ class ComponentCalculator {
         isInteractive: first.isInteractive,
         isActive: group.any((item) => item.isActive),
         pieces: pieces.isEmpty ? null : pieces,
+        pieceCutAngles: pieces.isEmpty ? null : pieceCutAngles,
         cuttingList: cuttingList,
         exactQuantity: exact,
         catalogItemId: first.catalogItemId,
@@ -10543,12 +10655,18 @@ class ComponentCalculator {
       if (maxG > 0) {
         final bool isClosed = glass.structure == GlassStructure.closed;
         final String label = isClosed ? 'البانو' : 'الزجاج';
-        if (totalT > maxG) {
+        final fittedJointThickness = glass.fittedJoints.fold<double>(
+          0.0,
+          (sum, joint) =>
+              sum + (double.tryParse('${joint['thickness']}') ?? 0.0),
+        );
+        final installedThickness = totalT + fittedJointThickness;
+        if (installedThickness > maxG + 1.01) {
           result +=
-              '\n⚠️ تنبيه: سمك $label ($totalT مم) أكبر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
-        } else if (totalT < maxG - 0.01) {
+              '\n⚠️ تنبيه: سماكة $label مع الجوانات ($installedThickness مم) أكبر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
+        } else if (glass.glazingFitValid == false) {
           result +=
-              '\n⚠️ تنبيه: سمك $label ($totalT مم) أصغر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
+              '\n⚠️ تنبيه: لا توجد جوانات متوافقة لملء الفرق بين سماكة $label ($totalT مم) وسعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
         }
       }
     }
@@ -10564,6 +10682,7 @@ class ComponentCalculator {
     double qty = 0,
     double? length,
     List<double>? pieces,
+    List<String>? pieceCutAngles,
     Map<String, dynamic>? overrideMap,
     bool preferOverrideMap = false,
     bool priceByWholeBar = false,
@@ -10685,6 +10804,7 @@ class ComponentCalculator {
       unitPrice: price,
       isMissing: !isLinked,
       pieces: pieces,
+      pieceCutAngles: pieceCutAngles,
       cuttingList: cuttingListText,
     );
   }

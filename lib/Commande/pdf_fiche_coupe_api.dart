@@ -1094,8 +1094,13 @@ class PdfFicheCoupeApi {
         ),
       );
 
-      final angles = _anglesFor(bom);
-      for (final pM in pieces) {
+      for (var pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
+        final pM = pieces[pieceIndex];
+        final angles = bom.pieceCutAngles != null &&
+                pieceIndex < bom.pieceCutAngles!.length &&
+                bom.pieceCutAngles![pieceIndex].trim().isNotEmpty
+            ? _formatExplicitAngles(bom.pieceCutAngles![pieceIndex])
+            : _anglesFor(bom);
         final mm = (pM * 1000).round();
         if (mm <= 0) continue;
         final cutKey = '$mm|$angles';
@@ -1325,6 +1330,15 @@ class PdfFicheCoupeApi {
         text.contains('المحور') ||
         text.contains('الصندوق')) return '90° / 90°';
     return '45° / 45°';
+  }
+
+  static String _formatExplicitAngles(String value) {
+    final numbers = RegExp(r'\d+')
+        .allMatches(value)
+        .map((match) => match.group(0))
+        .toList();
+    if (numbers.length >= 2) return '${numbers[0]}° / ${numbers[1]}°';
+    return value;
   }
 
   static String anglesFor(BomItem item) => _anglesFor(item);

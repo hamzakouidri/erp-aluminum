@@ -49,7 +49,13 @@ Deno.serve(async (req) => {
     const { data: tokenRows } = await admin.from("device_push_tokens")
       .select("token").eq("workshop_id", workshopId).in("user_id", allowed);
 
-    const serviceAccount = JSON.parse(Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON")!);
+    const rawServiceAccount = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") ?? "";
+    if (!rawServiceAccount.trim().startsWith("{")) {
+      return json({
+        error: "FIREBASE_SERVICE_ACCOUNT_JSON must contain the full Firebase service-account JSON, not an API key",
+      }, 500);
+    }
+    const serviceAccount = JSON.parse(rawServiceAccount);
     const auth = new GoogleAuth({
       credentials: serviceAccount,
       scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
@@ -57,14 +63,18 @@ Deno.serve(async (req) => {
     const accessToken = await auth.getAccessToken();
     const endpoint = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
     const orderNumber = Number(input.order_number ?? 0);
+    const orderId = Number(input.order_id ?? 0);
     const quantity = Number(input.quantity ?? 0);
     const title = audience === "managers"
       ? String(input.title ?? "تنبيه جديد") : "مهمة جديدة";
     const body = audience === "managers"
       ? String(input.body ?? "حدث جديد في الورشة")
       : `تم إسناد ${quantity} عنصر لك من الطلبية #${orderNumber}`;
-    const results = await Promise.allSettled((tokenRows ?? []).map(({ token }) =>
-      fetch(endpoint, {
+    const data = Object.fromEntries(
+      Object.entries(input.data ?? {}).map(([key, value]) => [key, String(value ?? "")]),
+    );
+    const results = await Promise.all((tokenRows ?? []).map(async ({ token }) => {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           authorization: `Bearer ${accessToken}`,
@@ -79,14 +89,18 @@ Deno.serve(async (req) => {
           data: {
             type: eventType,
             workshop_id: workshopId,
+            order_id: String(orderId),
             order_number: String(orderNumber),
-            ...(input.data ?? {}),
+            ...data,
           },
           android: {
             priority: "high",
+            ttl: "86400s",
             notification: {
               channel_id: "erp_orders_alert_channel_v2",
               sound: "default",
+              default_vibrate_timings: true,
+              visibility: "PUBLIC",
             },
           },
           apns: {
@@ -94,9 +108,19 @@ Deno.serve(async (req) => {
             payload: { aps: { sound: "default" } },
           },
         } }),
-      })
-    ));
-    return json({ sent: results.filter((r) => r.status === "fulfilled").length });
+      });
+      const responseBody = await response.text();
+      if (!response.ok) {
+        return { ok: false, token, status: response.status, error: responseBody };
+      }
+      return { ok: true, token };
+    }));
+    const failed = results.filter((result) => !result.ok);
+    return json({
+      sent: results.length - failed.length,
+      failed: failed.length,
+      errors: failed.slice(0, 5).map(({ status, error }) => ({ status, error })),
+    }, failed.length === results.length && results.length > 0 ? 502 : 200);
   } catch (error) {
     return json({ error: String(error) }, 500);
   }

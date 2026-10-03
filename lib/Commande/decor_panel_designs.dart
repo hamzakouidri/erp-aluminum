@@ -88,6 +88,7 @@ class DecorPanelDesignPreview extends StatelessWidget {
 }
 
 class DecorPanelDesignPainter extends CustomPainter {
+  static const double _designAspectRatio = 0.6;
   final String? designCode;
   final Color panelColor;
 
@@ -138,8 +139,24 @@ class DecorPanelDesignPainter extends CustomPainter {
         bounds.height <= 0) {
       return;
     }
-    final inset = math.min(bounds.width, bounds.height) * 0.07;
-    final rect = bounds.deflate(inset);
+    // Every catalogue preview is authored on the same 90 x 150 panel. Scale
+    // that canvas uniformly inside the real door panel so circles, arches and
+    // diamonds keep exactly the selected shape instead of being stretched by
+    // a wide or unusually tall opening.
+    final availableAspect = bounds.width / bounds.height;
+    final fittedBounds = availableAspect > _designAspectRatio
+        ? Rect.fromCenter(
+            center: bounds.center,
+            width: bounds.height * _designAspectRatio,
+            height: bounds.height,
+          )
+        : Rect.fromCenter(
+            center: bounds.center,
+            width: bounds.width,
+            height: bounds.width / _designAspectRatio,
+          );
+    final inset = math.min(fittedBounds.width, fittedBounds.height) * 0.07;
+    final rect = fittedBounds.deflate(inset);
     if (rect.width <= 0 || rect.height <= 0) return;
 
     final dark = Color.lerp(panelColor, Colors.black, 0.38)!;
