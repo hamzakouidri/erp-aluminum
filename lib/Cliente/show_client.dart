@@ -1976,7 +1976,7 @@ class _ShowClientState extends State<ShowClient> {
     }
 
     return _SectionCard(
-      title: tr('متابعة تسليم النوافذ والعناصر (أخذ / لم يأخذ)', 'Suivi de livraison des fenêtres (Prises / En attente)'),
+      title: tr('متابعة تسليم النوافذ والعناصر', 'Suivi de livraison des fenêtres'),
       icon: Icons.window_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2144,6 +2144,7 @@ class _ShowClientState extends State<ShowClient> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Expanded(
                                   child: Text(
@@ -2152,8 +2153,11 @@ class _ShowClientState extends State<ShowClient> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
@@ -2305,11 +2309,13 @@ class _SectionCard extends StatelessWidget {
             children: [
               Icon(icon, color: Colors.blue, size: 20),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],

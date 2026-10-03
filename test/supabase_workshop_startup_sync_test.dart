@@ -29,5 +29,20 @@ void main() {
         isTrue,
       );
     });
+
+    test('catalog-only download never completes the business bootstrap', () {
+      expect(
+        SupabaseWorkshopSyncService.shouldCompleteFullBootstrap(
+          downloadedBusinessRows: 0,
+        ),
+        isFalse,
+      );
+      expect(
+        SupabaseWorkshopSyncService.shouldCompleteFullBootstrap(
+          downloadedBusinessRows: 1,
+        ),
+        isTrue,
+      );
+    });
   });
 }

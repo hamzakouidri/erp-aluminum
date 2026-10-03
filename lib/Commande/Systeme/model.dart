@@ -5543,6 +5543,9 @@ class WindowModel extends ChangeNotifier {
   /// Junction indices between adjacent frames where 90° angle profile is installed.
   Set<int> profileAngleJunctions = <int>{};
   bool profileAngleJunctionsDisabled = false;
+
+  /// Whether to render the drawing with a 90° corner 3D perspective when angle junctions are active.
+  bool viewAs90DegreeCorner = true;
   Map<String, dynamic>? _preProfileAngleFrameOverride;
   Map<String, dynamic>? _preProfileAngleSlidingOverride;
   bool _frameSwitchedForProfileAngle = false;
@@ -5605,7 +5608,27 @@ class WindowModel extends ChangeNotifier {
 
   /// يعيد أقسام الصناديق الفعالة (إما الصناديق المقسمة أو صندوق واحد موحد)
   List<ShutterSplitSection> get effectiveShutterSplits {
-    if (!hasShutter || !isShutterSplit || shutterSplits.isEmpty) {
+    if (!hasShutter) return const [];
+    if (!isShutterSplit || shutterSplits.isEmpty) {
+      if (usesProfileAngle && activeProfileAngleJunctions.isNotEmpty) {
+        final frames = getFrameRects();
+        if (frames.length > 1) {
+          final sortedFrames = List<Rect>.from(frames)
+            ..sort((a, b) => a.left.compareTo(b.left));
+          return List.generate(sortedFrames.length, (i) {
+            final f = sortedFrames[i];
+            return ShutterSplitSection(
+              width: f.width,
+              leftOffset: f.left,
+              customHeight: null,
+              label: 'صندوق إطار ${i + 1}',
+              frameIndex: i,
+              mechanism: shutterMechanism,
+              driveSide: shutterDriveSide,
+            );
+          });
+        }
+      }
       return [
         ShutterSplitSection(
           width: width.toDouble(),
@@ -17282,6 +17305,12 @@ class WindowModel extends ChangeNotifier {
     } else {
       setProfileAngleMode((profileAngleMode + 1) % 4);
     }
+  }
+
+  /// Toggles between the 3D 90° corner perspective view and the flat developed 2D view.
+  void toggle90DegreeCornerView() {
+    viewAs90DegreeCorner = !viewAs90DegreeCorner;
+    notifyListeners();
   }
 
   /// Searches for a compatible frame section without integrated side cover (couvre-joint)

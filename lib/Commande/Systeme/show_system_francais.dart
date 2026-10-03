@@ -5579,6 +5579,38 @@ class _WindowViewState extends State<WindowView> {
                                             onPressed: _resetDrawingZoom,
                                           ),
                                         ),
+                                        if (widget.model.usesProfileAngle &&
+                                            widget.model.activeProfileAngleJunctions.isNotEmpty) ...[
+                                          Container(
+                                            width: 26,
+                                            height: 1,
+                                            color: Theme.of(context).dividerColor,
+                                          ),
+                                          Semantics(
+                                            button: true,
+                                            label: widget.model.viewAs90DegreeCorner
+                                                ? 'منظور 90°'
+                                                : 'مسقط مسطح 2D',
+                                            child: IconButton(
+                                              tooltip: widget.model.viewAs90DegreeCorner
+                                                  ? Localization.translate('التبديل إلى المسقط المسطح 2D', lang)
+                                                  : Localization.translate('التبديل إلى منظور الزاوية 90° (3D)', lang),
+                                              icon: Icon(
+                                                widget.model.viewAs90DegreeCorner
+                                                    ? Icons.view_in_ar_rounded
+                                                    : Icons.crop_square_rounded,
+                                                color: widget.model.viewAs90DegreeCorner
+                                                    ? Colors.blue
+                                                    : null,
+                                              ),
+                                              onPressed: () {
+                                                setState(() {
+                                                  widget.model.toggle90DegreeCornerView();
+                                                });
+                                              },
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -14191,6 +14223,40 @@ class _WindowViewState extends State<WindowView> {
                             setState(() {});
                           },
                         ),
+                        const SizedBox(height: 10),
+                        SwitchListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                          secondary: Icon(
+                            Icons.view_in_ar_rounded,
+                            color: widget.model.viewAs90DegreeCorner
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          title: Text(
+                            Localization.translate(
+                              'عرض الرسم بزاوية 90° (منظور ثلاثي الأبعاد)',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          subtitle: Text(
+                            Localization.translate(
+                              'يُظهر الإطار الثاني ملتفاً بزاوية 90° في الرسم مع مسقط أفقي معماري',
+                              lang,
+                            ),
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          value: widget.model.viewAs90DegreeCorner,
+                          activeColor: Colors.blue,
+                          onChanged: (val) {
+                            widget.model.viewAs90DegreeCorner = val;
+                            setModalState(() {});
+                            setState(() {});
+                          },
+                        ),
                         const Divider(height: 24),
                       ],
                       Text(
@@ -21275,35 +21341,45 @@ class AppWorkspacePainter extends CustomPainter {
     }
 
     // --- Width Dimensions ---
-    // Outer/Total width
-    _drawDimension(
-      canvas,
-      '${model.width.toInt()} mm',
-      Offset(pos.dx, widthY),
-      Offset(pos.dx + model.width, widthY),
-      isVerticalLine: false,
-    );
-    // Witness lines for total width
-    _drawWitnessLine(
-      canvas,
-      Offset(pos.dx, pos.dy),
-      Offset(pos.dx, widthY - 8.0),
-    );
-    _drawWitnessLine(
-      canvas,
-      Offset(pos.dx + model.width, pos.dy),
-      Offset(pos.dx + model.width, widthY - 8.0),
-    );
+    final bool hasAngleJunction = model.usesProfileAngle &&
+        model.activeProfileAngleJunctions.isNotEmpty;
+
+    if (!hasAngleJunction) {
+      // Outer/Total width (only in flat single-plane mode)
+      _drawDimension(
+        canvas,
+        '${model.width.toInt()} mm',
+        Offset(pos.dx, widthY),
+        Offset(pos.dx + model.width, widthY),
+        isVerticalLine: false,
+      );
+      // Witness lines for total width
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx, pos.dy),
+        Offset(pos.dx, widthY - 8.0),
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx + model.width, pos.dy),
+        Offset(pos.dx + model.width, widthY - 8.0),
+      );
+    }
 
     // If multi-frame, draw individual frame widths on Layer 1
     if (isMultiFrame) {
-      double layer1Y = isSlantedOrArched ? widthY : widthY + 70.0;
-      for (final f in sortedFrames) {
+      double layer1Y = hasAngleJunction
+          ? widthY
+          : (isSlantedOrArched ? widthY : widthY + 70.0);
+      for (int fi = 0; fi < sortedFrames.length; fi++) {
+        final f = sortedFrames[fi];
         final double x0 = pos.dx + f.rect.left;
         final double x1 = pos.dx + f.rect.right;
         _drawDimension(
           canvas,
-          '${f.rect.width.toInt()} mm',
+          hasAngleJunction
+              ? 'إطار ${fi + 1}: ${f.rect.width.toInt()} mm'
+              : '${f.rect.width.toInt()} mm',
           Offset(x0, layer1Y),
           Offset(x1, layer1Y),
           isVerticalLine: false,
@@ -21320,6 +21396,26 @@ class AppWorkspacePainter extends CustomPainter {
           Offset(x1, pos.dy + f.rect.top),
           Offset(x1, layer1Y - 6.0),
         );
+
+        if (hasAngleJunction && fi < sortedFrames.length - 1) {
+          // Draw 90° angle symbol at the junction point
+          final jX = x1;
+          final angleTextPainter = TextPainter(
+            text: const TextSpan(
+              text: '∟ 90°',
+              style: TextStyle(
+                color: Color(0xFF1E88E5),
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          angleTextPainter.paint(
+            canvas,
+            Offset(jX - angleTextPainter.width / 2, layer1Y - 24),
+          );
+        }
       }
     }
 

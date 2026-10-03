@@ -89,6 +89,10 @@ class OrderNotificationService {
             event: 'edit_order',
             callback: (payload) => _handleIncomingEvent(payload, isNew: false),
           )
+          .onBroadcast(
+            event: 'delete_order',
+            callback: (payload) => _handleDeletedOrderEvent(payload),
+          )
           .subscribe((status, [error]) {
             if (error != null) {
               debugPrint('OrderNotif channel error: $error');
@@ -205,6 +209,37 @@ class OrderNotificationService {
     );
   }
 
+  Future<void> broadcastOrderDeleted({
+    required String workshopUuid,
+    required String clientName,
+    required String orderCode,
+    String authorName = '',
+  }) async {
+    final cleanUuid = workshopUuid.trim();
+    if (cleanUuid.isEmpty) return;
+    if (_channel == null || _currentWorkshopUuid != cleanUuid) {
+      await subscribeToWorkshop(cleanUuid);
+    }
+    final payload = {
+      'client_name': clientName,
+      'order_code': orderCode,
+      'author': authorName,
+      'sender_device_id': _myDeviceId,
+      'sender_user_id': Supabase.instance.client.auth.currentUser?.id ?? '',
+      'ts': DateTime.now().toUtc().toIso8601String(),
+    };
+    await (_channel ??
+            Supabase.instance.client.channel('order_events_$cleanUuid'))
+        .sendBroadcastMessage(event: 'delete_order', payload: payload);
+  }
+
+  Future<void> showAssignmentNotification({
+    required String title,
+    required String body,
+  }) async {
+    await _showLocalNotification(title: title, body: body);
+  }
+
   // ── private helpers ────────────────────────────────────────────────────────
 
   Future<void> _initLocalNotifications() async {
@@ -272,6 +307,25 @@ class OrderNotificationService {
       author: author,
       isNew: isNew,
     );
+  }
+
+  void _handleDeletedOrderEvent(Map<String, dynamic> payload) {
+    final senderDeviceId = payload['sender_device_id']?.toString() ?? '';
+    if (senderDeviceId.isNotEmpty && senderDeviceId == _myDeviceId) return;
+    final orderCode = payload['order_code']?.toString() ?? '';
+    final clientName = payload['client_name']?.toString() ?? '';
+    final author = payload['author']?.toString() ?? '';
+    final dedupeKey = '$orderCode:delete';
+    if (_recentNotifications.contains(dedupeKey)) return;
+    _recentNotifications.add(dedupeKey);
+    Timer(
+      const Duration(seconds: 25),
+      () => _recentNotifications.remove(dedupeKey),
+    );
+    var body = clientName.isEmpty ? 'عميل' : clientName;
+    if (orderCode.isNotEmpty) body += '  |  #$orderCode';
+    if (author.isNotEmpty) body += '\nبواسطة: $author';
+    unawaited(_showLocalNotification(title: 'تم حذف طلبية', body: body));
   }
 
   void _dispatchNotification({

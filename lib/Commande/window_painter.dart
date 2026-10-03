@@ -2029,6 +2029,12 @@ class WindowPainter extends CustomPainter {
     // 90° turn, then a small "depth wing" going perpendicular.
     final junctions = model.getAdjacentFrameJunctions();
     final activeJunctions = model.activeProfileAngleJunctions;
+
+    // Architectural Plan View (Vue de dessus 90°)
+    if (activeJunctions.isNotEmpty && junctions.isNotEmpty) {
+      _drawArchitecturalPlanView(canvas, w, h);
+    }
+
     for (final j in junctions) {
       if (!activeJunctions.contains(j.index)) continue;
 
@@ -2208,6 +2214,193 @@ class WindowPainter extends CustomPainter {
         badgeRect.left + (badgeRect.width - textPainter.width) / 2,
         badgeRect.top + (badgeRect.height - textPainter.height) / 2,
       ),
+    );
+  }
+
+  void _drawArchitecturalPlanView(Canvas canvas, double w, double h) {
+    final frames = model.getFrameRects();
+    if (frames.length < 2) return;
+    final sortedFrames = List<Rect>.from(frames)
+      ..sort((a, b) => a.left.compareTo(b.left));
+    final f1 = sortedFrames[0];
+    final f2 = sortedFrames[1];
+
+    // Card dimensions and placement
+    const double cardW = 185.0;
+    const double cardH = 145.0;
+    final double cardX = math.max(10.0, w - cardW - 10.0);
+    final double cardY = math.max(10.0, h - cardH - 10.0);
+    final cardRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(cardX, cardY, cardW, cardH),
+      const Radius.circular(8.0),
+    );
+
+    // Card background with subtle shadow
+    canvas.drawRRect(
+      cardRect,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.94)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawRRect(
+      cardRect,
+      Paint()
+        ..color = const Color(0xFF1E88E5).withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+
+    // Title: مسقط أفقي 90°
+    final titlePainter = TextPainter(
+      text: const TextSpan(
+        text: '📐 مسقط أفقي (Plan 90°)',
+        style: TextStyle(
+          color: Color(0xFF0F172A),
+          fontSize: 10.5,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.rtl,
+    )..layout();
+    titlePainter.paint(
+      canvas,
+      Offset(cardX + cardW - titlePainter.width - 10, cardY + 8),
+    );
+
+    // Corner vertex in plan view
+    final corner = Offset(cardX + cardW - 45, cardY + 45);
+
+    // Leg 1 (Frame 1): extends horizontally to the left
+    const double leg1Len = 95.0;
+    const double legThick = 9.0;
+    final leg1Rect = Rect.fromLTRB(
+      corner.dx - leg1Len,
+      corner.dy - legThick / 2,
+      corner.dx,
+      corner.dy + legThick / 2,
+    );
+    canvas.drawRect(leg1Rect, _buildPaint(leg1Rect));
+    canvas.drawRect(
+      leg1Rect,
+      Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+    // Glass line inside leg 1
+    canvas.drawLine(
+      Offset(corner.dx - leg1Len + 4, corner.dy),
+      Offset(corner.dx - 2, corner.dy),
+      Paint()
+        ..color = const Color(0xFF64B5F6)
+        ..strokeWidth = 2.0,
+    );
+
+    // Leg 2 (Frame 2): extends vertically downwards at 90°
+    const double leg2Len = 65.0;
+    final leg2Rect = Rect.fromLTRB(
+      corner.dx - legThick / 2,
+      corner.dy,
+      corner.dx + legThick / 2,
+      corner.dy + leg2Len,
+    );
+    canvas.drawRect(leg2Rect, _buildPaint(leg2Rect));
+    canvas.drawRect(
+      leg2Rect,
+      Paint()
+        ..color = _fb
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+    // Glass line inside leg 2
+    canvas.drawLine(
+      Offset(corner.dx, corner.dy + 2),
+      Offset(corner.dx, corner.dy + leg2Len - 4),
+      Paint()
+        ..color = const Color(0xFF64B5F6)
+        ..strokeWidth = 2.0,
+    );
+
+    // Corner profile: square tube at vertex
+    final tubeRect = Rect.fromCenter(
+      center: corner,
+      width: legThick + 3,
+      height: legThick + 3,
+    );
+    canvas.drawRect(
+      tubeRect,
+      Paint()
+        ..color = const Color(0xFF37474F)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawRect(
+      tubeRect,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+
+    // 90° angle arc between leg 1 and leg 2
+    final arcPaint = Paint()
+      ..color = const Color(0xFF1E88E5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawArc(
+      Rect.fromCircle(center: corner, radius: 20),
+      math.pi / 2,
+      math.pi / 2,
+      false,
+      arcPaint,
+    );
+
+    // Badge 90°
+    final badgePainter = TextPainter(
+      text: const TextSpan(
+        text: '90°',
+        style: TextStyle(
+          color: Color(0xFF1E88E5),
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    badgePainter.paint(canvas, Offset(corner.dx - 18, corner.dy + 7));
+
+    // Dimension labels
+    final l1Text = '${f1.width.toInt()} mm';
+    final l1Painter = TextPainter(
+      text: TextSpan(
+        text: 'إطار 1: $l1Text',
+        style: const TextStyle(
+          color: Color(0xFF334155),
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.rtl,
+    )..layout();
+    l1Painter.paint(
+      canvas,
+      Offset(corner.dx - leg1Len, corner.dy - legThick / 2 - 13),
+    );
+
+    final l2Text = '${f2.width.toInt()} mm';
+    final l2Painter = TextPainter(
+      text: TextSpan(
+        text: 'إطار 2: $l2Text',
+        style: const TextStyle(
+          color: Color(0xFF334155),
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.rtl,
+    )..layout();
+    l2Painter.paint(
+      canvas,
+      Offset(corner.dx - l2Painter.width - 8, corner.dy + leg2Len - 12),
     );
   }
 

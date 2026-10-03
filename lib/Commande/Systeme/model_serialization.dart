@@ -564,6 +564,7 @@ extension WindowModelSerialization on WindowModel {
       'optionalBavetteMode': optionalBavetteMode,
       'profileAngleMode': profileAngleMode,
       'profileAngleJunctions': profileAngleJunctions.toList(),
+      'viewAs90DegreeCorner': viewAs90DegreeCorner,
       'cacheRailLeftCount': cacheRailLeftCount,
       'cacheRailRightCount': cacheRailRightCount,
       'useOptionalCacheRail': useOptionalCacheRail,
@@ -702,6 +703,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
           ?.map((e) => (e as num).toInt())
           .toSet() ??
       <int>{};
+  model.viewAs90DegreeCorner = map['viewAs90DegreeCorner'] as bool? ?? true;
   model.cacheRailLeftCount = (map['cacheRailLeftCount'] as num?)?.toInt() ?? 0;
   model.cacheRailRightCount =
       (map['cacheRailRightCount'] as num?)?.toInt() ?? 0;

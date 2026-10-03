@@ -26,6 +26,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/order_notification_service.dart';
+import 'package:database_data/services/worker_push_notification_service.dart';
 
 import 'package:window_manager/window_manager.dart';
 
@@ -98,6 +99,11 @@ class _AppBootstrapState extends State<AppBootstrap> {
             .catchError((e) {
               debugPrint('OrderNotificationService init warning: $e');
             }),
+      );
+      unawaited(
+        WorkerPushNotificationService.instance.initialize().catchError((e) {
+          debugPrint('Worker push notification init warning: $e');
+        }),
       );
 
       // This is a small local read. It is needed before calculations can run,
@@ -243,6 +249,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
+  /// الوقت الذي دخل فيه التطبيق إلى الخلفية.
+  /// يُستخدم لحساب مدة الغياب قبل السماح بالمزامنة عند الرجوع.
+  DateTime? _backgroundedAt;
+
+  /// الحد الأدنى من الوقت في الخلفية قبل إعادة المزامنة عند الرجوع.
+  /// 3 دقائق: كافية لتغطية انقطاع الشبكة الحقيقي دون إزعاج المستخدم
+  /// عند تبديل التطبيقات للثوانٍ.
+  static const Duration _resumeSyncCooldown = Duration(minutes: 3);
+
   @override
   void initState() {
     super.initState();
@@ -292,6 +307,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // حساب مدة الغياب في الخلفية.
+      // إذا لم يكن في الخلفية مدةً كافية، نتجاهل الـ sync لأن
+      // المستمعين في الوقت الحقيقي (Realtime) ما زالوا نشطين.
+      final backgroundedAt = _backgroundedAt;
+      _backgroundedAt = null;
+      final timeInBackground = backgroundedAt == null
+          ? null
+          : DateTime.now().difference(backgroundedAt);
+
+      final shouldSync = timeInBackground == null ||
+          timeInBackground >= _resumeSyncCooldown;
+
+      if (!shouldSync) {
+        debugPrint(
+          'App resumed after ${timeInBackground.inSeconds}s — '
+          'skipping resume sync (cooldown: ${_resumeSyncCooldown.inSeconds}s). '
+          'Realtime listeners are still active.',
+        );
+        return;
+      }
+
+      debugPrint(
+        'App resumed after ${timeInBackground?.inSeconds ?? "?"}s — '
+        'triggering resume sync.',
+      );
+
+      // أعد تشغيل الـ background sync timer الذي تم إيقافه عند الدخول للخلفية.
+      SupabaseWorkshopSyncService().resumeBackgroundSync();
+
       // Re-check the server after a device returns from the background. This
       // covers operating systems that suspend Firestore listeners.
       CloudSyncService().refreshFromCloudIfChanged();
@@ -308,13 +352,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             }),
       );
     } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.inactive) {
-      // [تم الإصلاح]: تم إيقاف عملية الرفع الثقيلة هنا لأنها ستُقتل بواسطة النظام.
-      // الاعتماد الآن كلياً على الرفع التلقائي (notifyChange) الذي يعمل أثناء تشغيل التطبيق.
+        state == AppLifecycleState.detached) {
+      // سجّل الوقت الذي دخل فيه التطبيق إلى الخلفية.
+      // inactive يحدث بشكل عابر (نافذة تنبيه، مكالمة...) لذا نتجاهله
+      // ونبدأ العد فقط عند paused/detached الحقيقي.
+      _backgroundedAt = DateTime.now();
+      // أوقف الـ background sync timer حتى لا يبقي العملية مستيقظة.
+      SupabaseWorkshopSyncService().pauseBackgroundSync();
       debugPrint(
-        "App went to background. Sync is handled silently during active use.",
+        'App went to background at $_backgroundedAt. '
+        'Resume sync will fire after ${_resumeSyncCooldown.inMinutes} minutes.',
       );
+    } else if (state == AppLifecycleState.inactive) {
+      // inactive عابر — لا نفعل شيئاً، المستمعون ما زالوا يعملون.
+      debugPrint('App inactive (transient) — no sync change.');
     }
   }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +8,8 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../widgets/lazy_window_image.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_workshop_sync_service.dart';
+import '../services/worker_push_notification_service.dart';
 
 class OrderAllocationScreen extends StatefulWidget {
   final Map<String, dynamic> orderData;
@@ -714,6 +717,20 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         unitHeight: unitHeight,
       );
       CloudSyncService().notifyChange(); // ⚡ رفع في الخلفية
+      final workshopId =
+          SupabaseWorkshopSyncService().currentWorkshopUuid;
+      unawaited(
+        WorkerPushNotificationService.instance
+            .sendAssignment(
+              workshopId: workshopId,
+              workerUid: workerUid,
+              orderNumber: _displayOrderNumber(),
+              quantity: quantity,
+            )
+            .catchError((error) {
+              debugPrint('Assignment push notification failed: $error');
+            }),
+      );
       await _refreshAllocationsOnly(); // لا يعود للأعلى
       if (mounted)
         Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم

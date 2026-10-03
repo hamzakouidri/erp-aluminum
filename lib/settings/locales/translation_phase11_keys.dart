@@ -1303,6 +1303,48 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'Dimension par défaut',
     AppLanguage.english: 'Default dimension',
   },
+
+  // ── إعدادات الإشعارات (Notification Settings) ──
+  'إعدادات الإشعارات': {
+    AppLanguage.arabic: 'إعدادات الإشعارات',
+    AppLanguage.french: 'Paramètres des notifications',
+    AppLanguage.english: 'Notification Settings',
+  },
+  'إسناد مهمة جديدة': {
+    AppLanguage.arabic: 'إسناد مهمة جديدة',
+    AppLanguage.french: 'Attribution d\'une nouvelle tâche',
+    AppLanguage.english: 'New task assignment',
+  },
+  'حركة صندوق الورشة': {
+    AppLanguage.arabic: 'حركة صندوق الورشة',
+    AppLanguage.french: 'Mouvements de caisse d\'atelier',
+    AppLanguage.english: 'Workshop cashbox activity',
+  },
+  'المقبوضات والمدفوعات': {
+    AppLanguage.arabic: 'المقبوضات والمدفوعات',
+    AppLanguage.french: 'Encaissements et paiements',
+    AppLanguage.english: 'Receipts and payments',
+  },
+  'الفواتير': {
+    AppLanguage.arabic: 'الفواتير',
+    AppLanguage.french: 'Factures',
+    AppLanguage.english: 'Invoices',
+  },
+  'التسليمات ووصول السلع': {
+    AppLanguage.arabic: 'التسليمات ووصول السلع',
+    AppLanguage.french: 'Livraisons et arrivées de marchandises',
+    AppLanguage.english: 'Deliveries and goods arrival',
+  },
+  'دخول المواد إلى الورشة': {
+    AppLanguage.arabic: 'دخول المواد إلى الورشة',
+    AppLanguage.french: 'Entrée des matières à l\'atelier',
+    AppLanguage.english: 'Material entry to workshop',
+  },
+  'تلقي التنبيهات الفورية عند حدوث أي نشاط': {
+    AppLanguage.arabic: 'تلقي التنبيهات الفورية عند حدوث أي نشاط',
+    AppLanguage.french: 'Recevoir des alertes instantanées lors de toute activité',
+    AppLanguage.english: 'Receive instant alerts for any activity',
+  },
 };
 
 

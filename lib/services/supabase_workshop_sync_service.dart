@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/services/order_notification_service.dart';
+import 'package:database_data/services/worker_push_notification_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 
 class WorkshopDataDiagnostics {
@@ -51,6 +52,13 @@ class SupabaseWorkshopSyncService {
     return !bootstrapComplete || !hasSyncCursor;
   }
 
+  @visibleForTesting
+  static bool shouldCompleteFullBootstrap({
+    required int downloadedBusinessRows,
+  }) {
+    return downloadedBusinessRows > 0;
+  }
+
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
 
   // Realtime handles normal changes. This slow pass only repairs a missed
@@ -85,6 +93,7 @@ class SupabaseWorkshopSyncService {
   Future<void>? _activeUpload;
   Future<void>? _activeDownload;
   bool _activeDownloadIsFull = false;
+  bool _lastFullDownloadHadBusinessRows = false;
   bool _uploadQueued = false;
   bool _isApplyingRemoteData = false;
   String? _workshopUuid;
@@ -699,22 +708,43 @@ class SupabaseWorkshopSyncService {
       } else {
         await downloadWorkshopData();
       }
-      if (needsFullBootstrap) {
+      if (needsFullBootstrap && _lastFullDownloadHadBusinessRows) {
         await _markFullBootstrapComplete();
       }
       // تحميل قواعد الإكسسوارات لضمان وجودها دائماً في هاتف العامل
       await loadAndApplyWorkshopCatalogConfiguration();
       await uploadPendingChanges();
       await uploadPendingShortcutBindings();
-      // Do not call uploadLocalWorkshopDataMerge here. It scans every remote
-      // workshop key and exported every local table on every launch. Pending
-      // local changes are already uploaded above; the full merge is reserved
-      // for explicit repair/migration flows.
+      await _seedLegacyLocalDataOnce();
     } catch (error) {
       // Supabase sync is optional until the account/workshop is configured.
       // Keep the app usable and let the manual Settings buttons show the error.
       print('Supabase workshop sync not started: $error');
       // تجنب rethrow هنا لأن الدالة تعمل كـ unawaited في الخلفية وأي استثناء غير ملتقط يغلق التطبيق
+    }
+  }
+
+  /// هل التطبيق في الخلفية حالياً؟
+  /// يُستخدم لمنع دورة الـ background sync من العمل أثناء وجود التطبيق في الخلفية،
+  /// مما يُقلل من استهلاك البطارية ويمنع استيقاظ العملية بشكل غير ضروري.
+  bool _isInBackground = false;
+
+  /// يُستدعى من main.dart عند انتقال التطبيق للخلفية (paused/detached).
+  /// يوقف الـ timer تماماً حتى لا يُبقي العملية مستيقظة.
+  void pauseBackgroundSync() {
+    _isInBackground = true;
+    _backgroundSyncTimer?.cancel();
+    _backgroundSyncTimer = null;
+    debugPrint('SupabaseWorkshopSyncService: background sync paused.');
+  }
+
+  /// يُستدعى من main.dart عند رجوع التطبيق للمقدمة (resumed).
+  /// يعيد تشغيل الـ timer إذا كانت الخدمة جاهزة.
+  void resumeBackgroundSync() {
+    _isInBackground = false;
+    if (isReady && _backgroundSyncTimer == null) {
+      _startBackgroundSync();
+      debugPrint('SupabaseWorkshopSyncService: background sync resumed.');
     }
   }
 
@@ -729,18 +759,22 @@ class SupabaseWorkshopSyncService {
     // Realtime and explicit local-write notifications are the primary sync
     // triggers. This pass is only a recovery mechanism and must never overlap
     // an upload/download already in progress.
-    if (!isReady ||
+    if (_isInBackground ||
+        !isReady ||
         _isApplyingRemoteData ||
         _activeDownload != null ||
         _activeUpload != null) {
       return;
     }
     try {
-      await refreshWorkshopIdentity();
       // Realtime normally triggers this immediately. The periodic pass is a
       // recovery path for sleeping devices, dropped channels, and failed
       // uploads whose local change log must remain retryable.
-      await downloadWorkshopData();
+      final needsFullBootstrap = await _needsFullBootstrapDownload();
+      await downloadWorkshopData(full: needsFullBootstrap);
+      if (needsFullBootstrap && _lastFullDownloadHadBusinessRows) {
+        await _markFullBootstrapComplete();
+      }
       try {
         await loadAndApplyWorkshopCatalogConfiguration();
       } catch (e) {
@@ -942,6 +976,13 @@ class SupabaseWorkshopSyncService {
         debugPrint('OrderNotif subscription skipped: $e');
       }),
     );
+    unawaited(
+      WorkerPushNotificationService.instance.refreshRegistration().catchError((
+        e,
+      ) {
+        debugPrint('Worker push token registration skipped: $e');
+      }),
+    );
   }
 
   Future<void> updateMemberPermissionsByEmail({
@@ -1045,6 +1086,7 @@ class SupabaseWorkshopSyncService {
     var catalogConfigurationChanged = false;
     var start = 0;
     var downloadedRows = 0;
+    var downloadedBusinessRows = 0;
     String? newestUpdate;
 
     void processRow(Map<String, dynamic> row) {
@@ -1099,6 +1141,7 @@ class SupabaseWorkshopSyncService {
                 as List<Map<String, dynamic>>;
         list.add(Map<String, dynamic>.from(payload));
         downloadedRows++;
+        downloadedBusinessRows++;
       }
     }
 
@@ -1173,6 +1216,7 @@ class SupabaseWorkshopSyncService {
             );
             if (isHeavy) {
               // Fallback: fetch single rows for this batch range to isolate any timeout
+              Object? fallbackError;
               for (
                 var single = offset;
                 single < offset + tableBatchSize;
@@ -1193,15 +1237,21 @@ class SupabaseWorkshopSyncService {
                     Map<String, dynamic>.from(singleRows.first as Map),
                   );
                 } catch (singleError) {
+                  fallbackError ??= singleError;
                   debugPrint(
                     'Single row fetch error on $table at $single: $singleError',
                   );
                 }
               }
+              if (fallbackError != null) {
+                throw Exception(
+                  'تعذر استرجاع جدول $table بالكامل: $fallbackError',
+                );
+              }
               offset += tableBatchSize;
               continue;
             } else {
-              break;
+              throw Exception('تعذر استرجاع جدول $table: $batchError');
             }
           }
 
@@ -1238,6 +1288,11 @@ class SupabaseWorkshopSyncService {
       final orders = data['Commandes'] as List<Map<String, dynamic>>?;
       if (orders != null && orders.isNotEmpty) {
         for (final order in orders) {
+          final deleted =
+              order['is_deleted'] == true ||
+              order['is_deleted'] == 1 ||
+              order['deleted_at']?.toString().trim().isNotEmpty == true;
+          if (deleted) continue;
           final orderDeviceId = order['device_id']?.toString() ?? '';
           if (orderDeviceId.isNotEmpty && orderDeviceId == _deviceId) continue;
           final clientName = ' '.trim();
@@ -1249,12 +1304,17 @@ class SupabaseWorkshopSyncService {
               order['created_by']?.toString() ??
               order['updated_by']?.toString() ??
               '';
+          final createdAt = order['created_at']?.toString() ?? '';
+          final updatedAt = order['updated_at']?.toString() ?? '';
+          final isNewOrder =
+              createdAt.isNotEmpty &&
+              (updatedAt.isEmpty || updatedAt == createdAt);
           unawaited(
             OrderNotificationService().showOrderNotificationFromSync(
               clientName: clientName,
               orderCode: orderCode,
               author: author,
-              isNew: true,
+              isNew: isNewOrder,
             ),
           );
         }
@@ -1311,17 +1371,20 @@ class SupabaseWorkshopSyncService {
       _onDataChanged?.call();
     }
 
-    if (newestUpdate != null) {
+    if (full) {
+      _lastFullDownloadHadBusinessRows = shouldCompleteFullBootstrap(
+        downloadedBusinessRows: downloadedBusinessRows,
+      );
+    }
+
+    if (newestUpdate != null && (!full || downloadedBusinessRows > 0)) {
       await _saveLastSyncAt(newestUpdate!);
-    } else if (full) {
-      // An empty workshop still completed its bootstrap. Seed the incremental
-      // cursor so the next launch does not repeat the full download merely
-      // because there were no remote business rows carrying updated_at.
-      await _saveLastSyncAt(DateTime.now().toUtc().toIso8601String());
     }
 
     lastDownloadSummary = downloadedRows == 0
         ? 'لا توجد تغييرات جديدة في Supabase.'
+        : full && downloadedBusinessRows == 0
+        ? 'تم تنزيل إعدادات الورشة فقط؛ لا توجد بيانات أعمال في Supabase بعد.'
         : 'تم تنزيل $downloadedRows تغيير من Supabase.';
   }
 
@@ -2011,6 +2074,32 @@ class SupabaseWorkshopSyncService {
     final key = _bootstrapKey();
     if (key == null) return;
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, true);
+  }
+
+  Future<void> _seedLegacyLocalDataOnce() async {
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null || workshopUuid.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'supabase_legacy_seed_v1_$workshopUuid';
+    if (prefs.getBool(key) ?? false) return;
+
+    final role = (prefs.getString('user_role') ?? '').trim().toLowerCase();
+    if (!{'owner', 'manager', 'co_manager', 'admin'}.contains(role)) {
+      await prefs.setBool(key, true);
+      return;
+    }
+
+    final data = await _db.exportWorkshopData();
+    final localRows = SqlDatabase.workshopTables.fold<int>(
+      0,
+      (total, table) => total + _countRows(data, table),
+    );
+    if (localRows > 0) {
+      // This migration runs once on an existing manager device. It uploads
+      // only rows missing remotely, preserving newer cloud copies.
+      await uploadLocalWorkshopDataMerge();
+    }
     await prefs.setBool(key, true);
   }
 

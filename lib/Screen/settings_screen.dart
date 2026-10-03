@@ -10,6 +10,7 @@ import 'workshop_profile_screen.dart';
 import 'cutting_settings_screen.dart';
 import 'keyboard_shortcuts_screen.dart';
 import 'selected_systems_screen.dart';
+import 'notification_settings_screen.dart';
 import 'package:flutter/services.dart';
 import '../sql_database.dart';
 
@@ -398,25 +399,7 @@ class SettingsScreen extends StatelessWidget {
     );
 
     if (!isAllowed) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(Localization.translate('settings', lang)),
-          centerTitle: true,
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Text(
-              Localization.translate(
-                'عذراً، ليس لديك صلاحية للوصول إلى هذه الشاشة.',
-                lang,
-              ),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 16),
-            ),
-          ),
-        ),
-      );
+      return const NotificationSettingsScreen();
     }
 
     return Scaffold(
@@ -430,6 +413,27 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          Card(
+            elevation: 2,
+            child: ListTile(
+              leading: const Icon(Icons.notifications_active_outlined),
+              title: Text(
+                Localization.translate('إعدادات الإشعارات', settings.language),
+                style: TextStyle(
+                  fontFamily: settings.language == AppLanguage.arabic ? 'Cairo' : null,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           // Workshop Profile Settings
           if (settings.isManager) ...[
             Card(
@@ -1861,7 +1865,8 @@ class SettingsScreen extends StatelessWidget {
                   Localization.translate('التحقق من وجود تحديثات الآن', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                 ),
-                onPressed: () => _checkForUpdates(context, lang, settings.appVersion),
+                onPressed: () =>
+                    _checkForUpdates(context, lang, settings.appVersion),
               ),
             ),
             const SizedBox(height: 6),
@@ -1910,7 +1915,10 @@ class SettingsScreen extends StatelessWidget {
           title: Text(
             Localization.translate('التطبيق محدّث', lang),
             textAlign: TextAlign.center,
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
           ),
           content: Text(
             '${Localization.translate('أنت تستخدم أحدث إصدار من التطبيق', lang)} (v$version).',

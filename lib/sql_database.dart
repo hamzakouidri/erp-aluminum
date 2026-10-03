@@ -21,6 +21,7 @@ import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/order_status_order.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/order_notification_service.dart';
+import 'package:database_data/services/worker_push_notification_service.dart';
 
 class CloudChangeAcknowledgement {
   const CloudChangeAcknowledgement({
@@ -4296,11 +4297,14 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return {};
     await _ensureSeriesDesignTables(myDb);
-    final rows = await myDb.rawQuery('''
+    final rows = await myDb.rawQuery(
+      '''
       SELECT section_a_id, section_b_id FROM FrameJoinRules
       WHERE is_active = 1
         AND (section_a_id = ? OR section_b_id = ?)
-    ''', [sectionId, sectionId]);
+    ''',
+      [sectionId, sectionId],
+    );
     final result = <int>{};
     for (final row in rows) {
       final a = (row['section_a_id'] as num?)?.toInt();
@@ -4318,12 +4322,15 @@ class SqlDatabase {
     final lo = sectionAId < sectionBId ? sectionAId : sectionBId;
     final hi = sectionAId < sectionBId ? sectionBId : sectionAId;
     final now = DateTime.now().toUtc().toIso8601String();
-    await myDb.rawInsert('''
+    await myDb.rawInsert(
+      '''
       INSERT INTO FrameJoinRules (section_a_id, section_b_id, is_active, updated_at)
       VALUES (?, ?, 1, ?)
       ON CONFLICT(section_a_id, section_b_id)
       DO UPDATE SET is_active = 1, updated_at = excluded.updated_at
-    ''', [lo, hi, now]);
+    ''',
+      [lo, hi, now],
+    );
     await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
     final rows = await myDb.rawQuery(
       'SELECT id FROM FrameJoinRules WHERE section_a_id = ? AND section_b_id = ? LIMIT 1',
@@ -4345,7 +4352,10 @@ class SqlDatabase {
     await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
-  Future<void> deleteFrameJoinRuleBetween(int sectionAId, int sectionBId) async {
+  Future<void> deleteFrameJoinRuleBetween(
+    int sectionAId,
+    int sectionBId,
+  ) async {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureSeriesDesignTables(myDb);
@@ -8652,6 +8662,16 @@ class SqlDatabase {
       isNew: idCommande == null,
       author: editor,
     );
+    unawaited(
+      WorkerPushNotificationService.instance
+          .sendManagerEvent(
+            eventType: 'invoices',
+            title: idCommande == null ? 'فاتورة جديدة' : 'تعديل فاتورة',
+            body: 'الطلبية #$savedId${editor.isEmpty ? '' : ' بواسطة $editor'}',
+            data: {'order_id': savedId.toString()},
+          )
+          .catchError((_) {}),
+    );
     return savedId;
   }
 
@@ -8836,6 +8856,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureOrderTrashInfrastructure(myDb);
+    final notificationRow = await readCommandeWithClientById(id);
     final order = await myDb.query(
       'Commandes',
       columns: ['client_id'],
@@ -8851,13 +8872,51 @@ class SqlDatabase {
       whereArgs: [id],
     );
     if (res > 0) {
-      final clientId = _paymentRecordId(order.isEmpty ? null : order.first['client_id']);
+      final clientId = _paymentRecordId(
+        order.isEmpty ? null : order.first['client_id'],
+      );
       if (clientId != null) await reconcileClientPayments(clientId);
       try {
         CloudSyncService().notifyChangeImmediate();
       } catch (_) {}
+      if (notificationRow != null) {
+        _notifyOrderDeletedSafe(notificationRow);
+        unawaited(
+          WorkerPushNotificationService.instance
+              .sendManagerEvent(
+                eventType: 'invoices',
+                title: 'تم حذف طلبية',
+                body:
+                    'تم حذف الطلبية #${notificationRow['order_code'] ?? notificationRow['display_number'] ?? id}',
+                data: {'order_id': id.toString(), 'action': 'deleted'},
+              )
+              .catchError((_) {}),
+        );
+      }
     }
     return res;
+  }
+
+  void _notifyOrderDeletedSafe(Map<String, dynamic> row) {
+    unawaited(() async {
+      try {
+        final workshopUuid = await OrderNotificationService.readWorkshopUuid();
+        if (workshopUuid.isEmpty) return;
+        final clientName = '${row['firstname'] ?? ''} ${row['lastname'] ?? ''}'
+            .trim();
+        final orderCode =
+            row['order_code']?.toString() ??
+            row['display_number']?.toString() ??
+            row['id']?.toString() ??
+            '';
+        await OrderNotificationService().broadcastOrderDeleted(
+          workshopUuid: workshopUuid,
+          clientName: clientName.isEmpty ? 'عميل' : clientName,
+          orderCode: orderCode,
+          authorName: await _currentOrderEditor(),
+        );
+      } catch (_) {}
+    }());
   }
 
   Future<int> restoreCommande(int id) {
@@ -8882,7 +8941,9 @@ class SqlDatabase {
       whereArgs: [id],
     );
     if (res > 0) {
-      final clientId = _paymentRecordId(order.isEmpty ? null : order.first['client_id']);
+      final clientId = _paymentRecordId(
+        order.isEmpty ? null : order.first['client_id'],
+      );
       if (clientId != null) await reconcileClientPayments(clientId);
       try {
         CloudSyncService().notifyChangeImmediate();
@@ -9720,6 +9781,16 @@ class SqlDatabase {
       }),
     );
     CloudSyncService().notifyChange();
+    unawaited(
+      WorkerPushNotificationService.instance
+          .sendManagerEvent(
+            eventType: 'deliveries',
+            title: 'عملية تسليم جديدة',
+            body: 'تم تسجيل تسليم للطلبية #$idCommande',
+            data: {'order_id': idCommande.toString()},
+          )
+          .catchError((_) {}),
+    );
     return res;
   }
 
@@ -12646,6 +12717,20 @@ class SqlDatabase {
     }
 
     CloudSyncService().notifyChangeImmediate();
+    final isPayment = entityType == 'Client' || entityType == 'Supplier';
+    unawaited(
+      WorkerPushNotificationService.instance
+          .sendManagerEvent(
+            eventType: isPayment ? 'payments' : 'cashbox',
+            title: isPayment ? 'حركة دفع جديدة' : 'حركة صندوق جديدة',
+            body: '$description - ${amount.toStringAsFixed(2)} د.ج',
+            data: {
+              'transaction_type': transactionType,
+              'amount': amount.toString(),
+            },
+          )
+          .catchError((_) {}),
+    );
     return res;
   }
 
