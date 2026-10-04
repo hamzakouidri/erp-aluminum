@@ -151,15 +151,21 @@ bool storedOrderDetailColorDiffersFromModel(
 }
 
 Map<String, dynamic> savedWindowModelMap(Object? raw) {
-  if (raw is Map<String, dynamic>) return raw;
-  if (raw is Map) return Map<String, dynamic>.from(raw);
-  final text = raw?.toString().trim() ?? '';
-  if (text.length < 5) return const <String, dynamic>{};
-  try {
-    final decoded = jsonDecode(text);
-    if (decoded is Map<String, dynamic>) return decoded;
-    if (decoded is Map) return Map<String, dynamic>.from(decoded);
-  } catch (_) {}
+  Object? value = raw;
+  // Old/cloud rows can contain a JSON string inside another JSON string.
+  // Decode a few layers so the durable drawing model is not silently lost.
+  for (var depth = 0; depth < 4; depth++) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is! String) break;
+    final text = value.trim();
+    if (text.length < 2) break;
+    try {
+      value = jsonDecode(text);
+    } catch (_) {
+      break;
+    }
+  }
   return const <String, dynamic>{};
 }
 

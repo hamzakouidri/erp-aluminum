@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -60,6 +61,8 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
 
   // Mode 4: Custom Elements
   final Set<int> _selectedDetailIds = {};
+  final Map<int, int> _detailBatchQuantities = {};
+  int _optimizationGeneration = 0;
 
   // Optimization Parameters
   double _barLengthMm = 6000.0;
@@ -133,6 +136,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
   }
 
   Future<void> _runOptimization() async {
+    final generation = ++_optimizationGeneration;
     setState(() => _isOptimizing = true);
 
     try {
@@ -144,7 +148,15 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             final details = await _loadDetailsForOrder(_selectedOrderId!);
             final orderName = _getOrderName(_selectedOrderId!);
             for (final d in details) {
-              pieces.addAll(_extractPiecesFromDetail(d, _selectedOrderId!, orderName));
+              pieces.addAll(
+                _extractPiecesFromDetail(
+                  d,
+                  _selectedOrderId!,
+                  orderName,
+                  quantityOverride: _batchQuantityForDetail(d),
+                ),
+              );
+              await Future<void>.delayed(Duration.zero);
             }
           }
           break;
@@ -154,7 +166,15 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             final details = await _loadDetailsForOrder(oId);
             final orderName = _getOrderName(oId);
             for (final d in details) {
-              pieces.addAll(_extractPiecesFromDetail(d, oId, orderName));
+              pieces.addAll(
+                _extractPiecesFromDetail(
+                  d,
+                  oId,
+                  orderName,
+                  quantityOverride: _batchQuantityForDetail(d),
+                ),
+              );
+              await Future<void>.delayed(Duration.zero);
             }
           }
           break;
@@ -170,7 +190,15 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
 
             for (int i = start; i < end; i++) {
               if (i >= 0 && i < details.length) {
-                pieces.addAll(_extractPiecesFromDetail(details[i], _rangeOrderId!, orderName));
+                pieces.addAll(
+                  _extractPiecesFromDetail(
+                    details[i],
+                    _rangeOrderId!,
+                    orderName,
+                    quantityOverride: _batchQuantityForDetail(details[i]),
+                  ),
+                );
+                await Future<void>.delayed(Duration.zero);
               }
             }
           }
@@ -184,21 +212,34 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             for (final d in details) {
               final dId = (d['id'] as num?)?.toInt() ?? 0;
               if (_selectedDetailIds.contains(dId)) {
-                pieces.addAll(_extractPiecesFromDetail(d, oId, orderName));
+                pieces.addAll(
+                  _extractPiecesFromDetail(
+                    d,
+                    oId,
+                    orderName,
+                    quantityOverride: _batchQuantityForDetail(d),
+                  ),
+                );
+                await Future<void>.delayed(Duration.zero);
               }
             }
           }
           break;
       }
 
-      final report = CuttingOptimizerEngine.optimize(
-        pieces: pieces,
-        barLengthMm: _barLengthMm,
-        sawKerfMm: _sawKerfMm,
-        usableRemnantThresholdMm: _chuteThresholdMm,
+      final barLengthMm = _barLengthMm;
+      final sawKerfMm = _sawKerfMm;
+      final chuteThresholdMm = _chuteThresholdMm;
+      final report = await Isolate.run(
+        () => CuttingOptimizerEngine.optimize(
+          pieces: pieces,
+          barLengthMm: barLengthMm,
+          sawKerfMm: sawKerfMm,
+          usableRemnantThresholdMm: chuteThresholdMm,
+        ),
       );
 
-      if (mounted) {
+      if (mounted && generation == _optimizationGeneration) {
         setState(() {
           _report = report;
           _selectedProfileFilter = 'الكل';
@@ -207,10 +248,23 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
         if (report.groups.isNotEmpty) {
           _mobileTabController.animateTo(1);
         }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localization.translate(
+                'اكتملت خطة القص في الخلفية وأصبحت جاهزة',
+                context.read<AppSettingsProvider>().language,
+              ),
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e, st) {
       debugPrint('Optimization error: $e\n$st');
-      if (mounted) setState(() => _isOptimizing = false);
+      if (mounted && generation == _optimizationGeneration) {
+        setState(() => _isOptimizing = false);
+      }
     }
   }
 
@@ -227,8 +281,9 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
   List<CuttingPiece> _extractPiecesFromDetail(
     Map<String, dynamic> detail,
     int orderId,
-    String orderName,
-  ) {
+    String orderName, {
+    int? quantityOverride,
+  }) {
     final pieces = <CuttingPiece>[];
     final rawJson = detail['partitions_json']?.toString() ?? '';
     if (rawJson.trim().isEmpty) return pieces;
@@ -241,7 +296,14 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
       applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
 
       final rawQty = detail['quantity'] ?? detail['quantite'] ?? 1;
-      final quantity = (rawQty is num ? rawQty.toInt() : int.tryParse('$rawQty') ?? 1).clamp(1, 1000);
+      final orderedQuantity = (rawQty is num
+              ? rawQty.toInt()
+              : int.tryParse('$rawQty') ?? 1)
+          .clamp(1, 1000);
+      final quantity = (quantityOverride ?? orderedQuantity).clamp(
+        1,
+        orderedQuantity,
+      );
       final detailId = (detail['id'] as num?)?.toInt() ?? 0;
       final windowName = detail['window_type'] ?? detail['type'] ?? 'عنصر $detailId';
 
@@ -299,6 +361,14 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
       debugPrint('Error parsing detail for cutting: $e');
     }
     return pieces;
+  }
+
+  int _batchQuantityForDetail(Map<String, dynamic> detail) {
+    final detailId = (detail['id'] as num?)?.toInt() ?? 0;
+    final raw = detail['quantity'] ?? detail['quantite'] ?? 1;
+    final ordered = (raw is num ? raw.toInt() : int.tryParse('$raw') ?? 1)
+        .clamp(1, 1000);
+    return (_detailBatchQuantities[detailId] ?? ordered).clamp(1, ordered);
   }
 
   Future<void> _exportPdfReport() async {
@@ -718,6 +788,35 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                   if (val != null) _loadDetailsForOrder(val);
                 },
               ),
+              if (_selectedOrderId != null) ...[
+                const SizedBox(height: 10),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _loadDetailsForOrder(_selectedOrderId!),
+                  builder: (context, snapshot) {
+                    final details = snapshot.data ?? const [];
+                    if (details.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          Localization.translate(
+                            'كمية دفعة القص الحالية لكل عنصر',
+                            lang,
+                          ),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        for (final detail in details)
+                          _buildDetailBatchQuantityField(detail, lang),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ] else if (_selectedMode == OptimizationMode.multipleOrders) ...[
               Text(
                 '${Localization.translate('حدد الطلبيات المراد دمجها', lang)} (${_selectedOrderIds.length}):',
@@ -832,16 +931,64 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                           children: items.map((d) {
                             final dId = (d['id'] as num?)?.toInt() ?? 0;
                             final wName = d['window_type'] ?? '${Localization.translate('إطار', lang)} #$dId';
-                            final qty = d['quantity'] ?? 1;
+                            final rawQty = d['quantity'] ?? d['quantite'] ?? 1;
+                            final qty = (rawQty is num
+                                    ? rawQty.toInt()
+                                    : int.tryParse('$rawQty') ?? 1)
+                                .clamp(1, 1000);
                             final isChecked = _selectedDetailIds.contains(dId);
                             return CheckboxListTile(
                               dense: true,
                               value: isChecked,
-                              title: Text('$wName (${Localization.translate('الكمية', lang)}: $qty)', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10)),
+                              title: Text(
+                                wName,
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 10,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${Localization.translate('المطلوب', lang)}: $qty  •  '
+                                '${Localization.translate('دفعة القص', lang)}: '
+                                '${_detailBatchQuantities[dId] ?? qty}',
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 9,
+                                ),
+                              ),
+                              secondary: SizedBox(
+                                width: 58,
+                                child: TextFormField(
+                                  key: ValueKey(
+                                    'cut-batch-$dId',
+                                  ),
+                                  initialValue:
+                                      '${_detailBatchQuantities[dId] ?? qty}',
+                                  enabled: isChecked,
+                                  keyboardType: TextInputType.number,
+                                  textAlign: TextAlign.center,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onChanged: (value) {
+                                    final parsed = int.tryParse(value);
+                                    if (parsed == null) return;
+                                    _detailBatchQuantities[dId] = parsed.clamp(
+                                      1,
+                                      qty,
+                                    );
+                                  },
+                                ),
+                              ),
                               onChanged: (c) {
                                 setState(() {
                                   if (c == true) {
                                     _selectedDetailIds.add(dId);
+                                    _detailBatchQuantities.putIfAbsent(
+                                      dId,
+                                      () => qty,
+                                    );
                                   } else {
                                     _selectedDetailIds.remove(dId);
                                   }
@@ -858,6 +1005,52 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDetailBatchQuantityField(
+    Map<String, dynamic> detail,
+    AppLanguage lang,
+  ) {
+    final detailId = (detail['id'] as num?)?.toInt() ?? 0;
+    final raw = detail['quantity'] ?? detail['quantite'] ?? 1;
+    final ordered = (raw is num ? raw.toInt() : int.tryParse('$raw') ?? 1)
+        .clamp(1, 1000);
+    final name = detail['window_type'] ?? detail['type'] ?? 'عنصر $detailId';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$name (${Localization.translate('المطلوب', lang)}: $ordered)',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 10),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 62,
+            child: TextFormField(
+              key: ValueKey('single-cut-batch-$detailId'),
+              initialValue: '${_detailBatchQuantities[detailId] ?? ordered}',
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                final parsed = int.tryParse(value);
+                if (parsed != null) {
+                  _detailBatchQuantities[detailId] = parsed.clamp(1, ordered);
+                }
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

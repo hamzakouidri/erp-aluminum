@@ -20,6 +20,21 @@ class PdfInvoiceApi {
 
   static const PdfColor _blue = PdfColor.fromInt(0xFF1976D2);
 
+  // The pdf package decodes PNG and JPEG reliably. Passing WebP/SVG bytes to
+  // pw.MemoryImage fails later during document layout and used to abort the
+  // entire invoice because of one incompatible product preview.
+  static bool _isPdfCompatibleImage(Uint8List bytes) {
+    if (bytes.length < 4) return false;
+    final isPng =
+        bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47;
+    final isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
+    return isPng || isJpeg;
+  }
+
   // ── Font cache (Amiri: full Arabic + Latin support) ──────────────────────
   // Cairo-Regular.ttf in this project is Latin-ONLY (0 Arabic glyphs).
   // Amiri supports Arabic block (0600-06FF), Pres Forms-A (FB50) & -B (FE70).
@@ -159,7 +174,9 @@ class PdfInvoiceApi {
               ]);
             }
 
-            return bytes == null ? null : MapEntry(i, pw.MemoryImage(bytes));
+            return bytes == null || !_isPdfCompatibleImage(bytes)
+                ? null
+                : MapEntry(i, pw.MemoryImage(bytes));
           }(),
       ]);
 
@@ -184,7 +201,8 @@ class PdfInvoiceApi {
               data.documentTitleKey == 'doc_bon_livraison_sans_prix' ||
               data.documentTitleKey == 'doc_bon_livraison_partiel' ||
               data.documentTitleKey == 'doc_bon_livraison_partiel_sans_prix' ||
-              (data.documentTitleKey?.toLowerCase().contains('livraison') ?? false)) ...[
+              (data.documentTitleKey?.toLowerCase().contains('livraison') ??
+                  false)) ...[
             _buildBonLivraisonBannerPdf(data),
           ],
           if (data.chequeNumber.isNotEmpty) ...[
@@ -436,7 +454,10 @@ class PdfInvoiceApi {
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
                 _metaLine(t('N°:'), _formatDocumentNumber(data)),
-                _metaLine(_ar(_orderMetaLabel()), '#${data.orderDisplayNumber}'),
+                _metaLine(
+                  _ar(_orderMetaLabel()),
+                  '#${data.orderDisplayNumber}',
+                ),
                 _metaLine(t('Date:'), data.orderDate),
                 if (data.isProForma && data.validUntil.isNotEmpty)
                   _metaLine(t('Valide jusqu\'au:'), data.validUntil),
@@ -502,9 +523,12 @@ class PdfInvoiceApi {
                 data.documentTitleKey == 'doc_bon_livraison' ||
                 data.documentTitleKey == 'doc_bon_livraison_sans_prix' ||
                 data.documentTitleKey == 'doc_bon_livraison_partiel' ||
-                data.documentTitleKey == 'doc_bon_livraison_partiel_sans_prix' ||
-                (data.documentTitleKey?.toLowerCase().contains('livraison') ?? false) ||
-                (data.documentTitleKey?.toLowerCase().contains('bl') ?? false)) ...[
+                data.documentTitleKey ==
+                    'doc_bon_livraison_partiel_sans_prix' ||
+                (data.documentTitleKey?.toLowerCase().contains('livraison') ??
+                    false) ||
+                (data.documentTitleKey?.toLowerCase().contains('bl') ??
+                    false)) ...[
               if (data.workshop.rc.isNotEmpty) 'RC: ${data.workshop.rc}',
               if (data.workshop.nif.isNotEmpty) 'NIF: ${data.workshop.nif}',
               if (data.workshop.nis.isNotEmpty) 'NIS: ${data.workshop.nis}',
@@ -574,7 +598,10 @@ class PdfInvoiceApi {
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 2,
+                ),
                 decoration: const pw.BoxDecoration(
                   color: PdfColors.green700,
                   borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),

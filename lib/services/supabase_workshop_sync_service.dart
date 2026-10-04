@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
+import 'package:database_data/services/app_admin_status_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 
 class WorkshopDataDiagnostics {
@@ -59,11 +60,29 @@ class SupabaseWorkshopSyncService {
     return downloadedBusinessRows > 0;
   }
 
+  @visibleForTesting
+  static bool shouldApplyWorkshopCatalogConfiguration({
+    required bool hasPendingLocalChanges,
+  }) {
+    // A pending local snapshot is the user's newest known edit. Applying a
+    // remote whole-table snapshot first can erase it before the retry uploads
+    // it, so defer the download until the durable pending upload succeeds.
+    return !hasPendingLocalChanges;
+  }
+
+  Future<bool> _canApplyRemoteWorkshopCatalogConfiguration() async {
+    final prefs = await SharedPreferences.getInstance();
+    return shouldApplyWorkshopCatalogConfiguration(
+      hasPendingLocalChanges:
+          prefs.getBool('has_pending_workshop_catalog_configuration') ?? false,
+    );
+  }
+
   static const Duration _uploadDebounce = Duration(milliseconds: 250);
 
   // Realtime handles normal changes. This slow pass only repairs a missed
   // event after sleep/network loss and must not behave like a UI refresh loop.
-  static const Duration _backgroundSyncInterval = Duration(seconds: 45);
+  static const Duration _backgroundSyncInterval = Duration(minutes: 3);
 
   // A workshop row contains a complete JSON payload.  A 200-row PostgREST
   // upsert can exceed the server statement timeout even though the row count
@@ -487,6 +506,12 @@ class SupabaseWorkshopSyncService {
 
       final payload = row?['payload'];
       if (payload is Map && payload['tables'] is Map) {
+        if (!await _canApplyRemoteWorkshopCatalogConfiguration()) {
+          debugPrint(
+            'Skipping remote workshop rules while a newer local upload is pending.',
+          );
+          return;
+        }
         final config = Map<String, dynamic>.from(payload['tables'] as Map);
         _isApplyingRemoteData = true;
         try {
@@ -747,6 +772,7 @@ class SupabaseWorkshopSyncService {
     _isInBackground = false;
     if (isReady && _backgroundSyncTimer == null) {
       _startBackgroundSync();
+      unawaited(_runBackgroundSyncCycle());
       debugPrint('SupabaseWorkshopSyncService: background sync resumed.');
     }
   }
@@ -806,11 +832,8 @@ class SupabaseWorkshopSyncService {
 
     if (row == null) return;
 
-    final adminRow = await _client
-        .from('app_admins')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    final isApplicationAdmin = await AppAdminStatusService.instance
+        .isCurrentUserAdmin();
 
     final rawPermissions = row['permissions'];
     final permissions = rawPermissions is Map
@@ -820,7 +843,7 @@ class SupabaseWorkshopSyncService {
       permissions['isBlocked'] = true;
     }
 
-    final appRole = adminRow != null || isApplicationAdminEmail(user.email)
+    final appRole = isApplicationAdmin
         ? 'admin'
         : _mapSupabaseRoleToAppRole(
             row['role']?.toString() ?? 'worker',
@@ -1314,18 +1337,24 @@ class SupabaseWorkshopSyncService {
               order['created_by']?.toString() ??
               order['updated_by']?.toString() ??
               '';
-          final createdAt = order['created_at']?.toString() ?? '';
-          final updatedAt = order['updated_at']?.toString() ?? '';
-          final isNewOrder =
-              createdAt.isNotEmpty &&
-              (updatedAt.isEmpty || updatedAt == createdAt);
+          final orderId =
+              (order['id'] as num?)?.toInt() ??
+              int.tryParse(order['id']?.toString() ?? '') ??
+              0;
+          // Creation is determined by whether this device already has the
+          // order. Comparing created_at with updated_at incorrectly marked a
+          // newly-created order as edited whenever its business date differed
+          // from the cloud upload timestamp.
+          final existedLocally =
+              orderId != 0 &&
+              await _db.readCommandeWithClientById(orderId) != null;
           unawaited(
             OrderNotificationService().showOrderNotificationFromSync(
-              orderId: (order['id'] as num?)?.toInt() ?? 0,
+              orderId: orderId,
               clientName: clientName,
               orderCode: orderCode,
               author: author,
-              isNew: isNewOrder,
+              isNew: !existedLocally,
             ),
           );
         }
@@ -1337,7 +1366,8 @@ class SupabaseWorkshopSyncService {
     }
 
     final finalCatalogConfig = catalogConfiguration;
-    if (finalCatalogConfig != null) {
+    if (finalCatalogConfig != null &&
+        await _canApplyRemoteWorkshopCatalogConfiguration()) {
       _isApplyingRemoteData = true;
       try {
         await _db.importWorkshopCatalogConfiguration(finalCatalogConfig);

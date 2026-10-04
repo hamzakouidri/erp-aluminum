@@ -372,7 +372,7 @@ class CloudSyncService {
     _debounceTimer?.cancel();
   }
 
-  void endLocalWrite() {
+  Future<void> endLocalWrite() async {
     if (_localWriteDepth > 0) _localWriteDepth--;
     if (_localWriteDepth != 0) return;
 
@@ -381,23 +381,31 @@ class CloudSyncService {
     _refreshQueuedAfterLocalWrite = false;
     _backupQueuedAfterLocalWrite = false;
 
-    scheduleMicrotask(() async {
-      if (shouldRefresh) {
-        await refreshFromCloudIfChanged();
-      }
-      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
-      if (supabaseWorkshopSync.isSignedIn) {
-        if (shouldBackup || await _db.hasPendingCloudChanges()) {
+    if (shouldRefresh) {
+      await refreshFromCloudIfChanged();
+    }
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      if (shouldBackup || await _db.hasPendingCloudChanges()) {
+        try {
+          // An order save must not report success while its rows are merely
+          // queued. Await the actual Supabase upsert so other devices can
+          // download the order as soon as its notification arrives.
+          await supabaseWorkshopSync.uploadPendingChanges().timeout(
+            const Duration(seconds: 20),
+          );
+        } catch (error) {
+          debugPrint('Immediate Supabase upload deferred: $error');
           supabaseWorkshopSync.notifyLocalChange(immediate: true);
         }
-        await _clearFirebaseTransactionalPendingFlag();
-        return;
       }
-      if (shouldBackup || await _hasPendingTransactions()) {
-        _queueImmediateLiveEventUpload();
-        await _silentBackup();
-      }
-    });
+      await _clearFirebaseTransactionalPendingFlag();
+      return;
+    }
+    if (shouldBackup || await _hasPendingTransactions()) {
+      _queueImmediateLiveEventUpload();
+      await _silentBackup();
+    }
   }
 
   DocumentReference<Map<String, dynamic>> _catalogDocument() {
@@ -2735,7 +2743,9 @@ class CloudSyncService {
       // Series roles and catalogue rules are workshop configuration. Mirror
       // them to the workshop before applying the central-catalog permission
       // check, so a manager's saved rules reach the other workshop phones.
-      await _syncWorkshopCatalogConfiguration();
+      await _syncWorkshopCatalogConfiguration(
+        throwOnFailure: uploadImmediately,
+      );
       final prefs = await SharedPreferences.getInstance();
       if (!_canPublishGlobalCatalog(prefs.getString('user_role') ?? 'worker')) {
         // A non-admin must not leave catalog rows in the local generic change
@@ -2753,6 +2763,7 @@ class CloudSyncService {
       }
     } catch (e) {
       print('Failed to schedule catalog sync: $e');
+      if (uploadImmediately) rethrow;
       return;
     }
 
@@ -4857,14 +4868,21 @@ class CloudSyncService {
     _lastHandledCatalogFingerprint = _catalogFingerprint(payload);
   }
 
-  Future<void> _syncWorkshopCatalogConfiguration() async {
+  Future<void> _syncWorkshopCatalogConfiguration({
+    bool throwOnFailure = false,
+  }) async {
     final sync = SupabaseWorkshopSyncService();
     if (!sync.isSignedIn) return;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_pending_workshop_catalog_configuration', true);
     try {
-      if (!sync.isReady && !await sync.ensureStarted()) return;
+      if (!sync.isReady && !await sync.ensureStarted()) {
+        if (throwOnFailure) {
+          throw StateError('تعذر بدء مزامنة إعدادات وقواعد الورشة.');
+        }
+        return;
+      }
       final configuration = await _db.exportWorkshopCatalogConfiguration();
       if (configuration.isEmpty) return;
       await sync.saveWorkshopCatalogConfiguration(configuration);
@@ -4873,6 +4891,7 @@ class CloudSyncService {
       // Keep the durable flag so the next successful Supabase start retries
       // the local configuration instead of losing a saved edit silently.
       print('Workshop catalog configuration sync failed: $error');
+      if (throwOnFailure) rethrow;
     }
   }
 

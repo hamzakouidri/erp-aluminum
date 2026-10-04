@@ -197,7 +197,8 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -243,15 +244,19 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
           ? TabBarView(
               controller: _tabController,
               children: [
-                _buildCurrentWorkshopTab(lang, isDark),
+                _buildCurrentWorkshopTab(lang, isDark, settings),
                 _buildAllWorkshopsTab(lang, isDark),
               ],
             )
-          : _buildCurrentWorkshopTab(lang, isDark),
+          : _buildCurrentWorkshopTab(lang, isDark, settings),
     );
   }
 
-  Widget _buildCurrentWorkshopTab(AppLanguage lang, bool isDark) {
+  Widget _buildCurrentWorkshopTab(
+    AppLanguage lang,
+    bool isDark,
+    AppSettingsProvider settings,
+  ) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -359,9 +364,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
                                 if (_selectedCategoryIndex != -1 &&
                                     _selectedCategoryIndex < _categories.length) ...[
                                   Text(
-                                    lang == AppLanguage.french
-                                        ? _categories[_selectedCategoryIndex].nameFr
-                                        : _categories[_selectedCategoryIndex].nameAr,
+                                    _categories[_selectedCategoryIndex].localizedName(lang),
                                     style: TextStyle(
                                       fontFamily: 'Cairo',
                                       fontSize: 12,
@@ -460,7 +463,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                lang == AppLanguage.french ? cat.nameFr : cat.nameAr,
+                                cat.localizedName(lang),
                                 style: TextStyle(
                                   fontFamily: 'Cairo',
                                   fontSize: 11,
@@ -540,7 +543,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  lang == AppLanguage.french ? cat.nameFr : cat.nameAr,
+                                  cat.localizedName(lang),
                                   style: TextStyle(
                                     fontFamily: 'Cairo',
                                     fontWeight: FontWeight.bold,
@@ -689,30 +692,32 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFFEF4444),
-                          side: const BorderSide(color: Color(0xFFEF4444)),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                      if (settings.canAccessTrash()) ...[
+                        const SizedBox(width: 10),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFEF4444),
+                            side: const BorderSide(color: Color(0xFFEF4444)),
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => TrashScreen(db: _db),
+                              ),
+                            ).then((_) => _loadStorageData());
+                          },
+                          icon: const Icon(Icons.auto_delete_rounded, size: 18),
+                          label: Text(
+                            Localization.translate('سلة المهملات', lang),
+                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                           ),
                         ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => TrashScreen(db: _db),
-                            ),
-                          ).then((_) => _loadStorageData());
-                        },
-                        icon: const Icon(Icons.auto_delete_rounded, size: 18),
-                        label: Text(
-                          Localization.translate('سلة المهملات', lang),
-                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ],
@@ -832,7 +837,7 @@ class _StorageDashboardScreenState extends State<StorageDashboardScreen>
               trailing: Chip(
                 backgroundColor: wsColor.withOpacity(0.12),
                 label: Text(
-                  'نشط',
+                  Localization.translate('نشط', lang),
                   style: TextStyle(
                     fontFamily: 'Cairo',
                     fontSize: 11,

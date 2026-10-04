@@ -47,6 +47,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   // The visual Devis is already available from DevisData. PDF bytes are
   // prepared in the background and must not block opening the preview.
   bool _isLoading = false;
+  bool _isPdfGenerating = false;
+  bool _isActionInProgress = false;
+  String? _pdfError;
   Uint8List? _pdfBytes;
   Future<Uint8List?>? _pdfBuildFuture;
 
@@ -130,16 +133,16 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     // Generate the PDF in the background. The visual preview must remain
     // usable while PDF bytes are being prepared; putting a full-screen loader
     // here made partial delivery previews look stuck indefinitely.
-    _isLoading = true;
     unawaited(_checkExistingDelivery());
-    unawaited(_initPdfGeneration());
     unawaited(_initializePreviewLanguage());
   }
 
   Future<void> _checkExistingDelivery() async {
     if (!_isBonLivraison || data.orderId <= 0) return;
     try {
-      final deliveries = await SqlDatabase().readCommandeDeliveries(data.orderId);
+      final deliveries = await SqlDatabase().readCommandeDeliveries(
+        data.orderId,
+      );
       if (deliveries.isNotEmpty) {
         final loadedRecord = _activeDeliveryId != null
             ? deliveries.firstWhere(
@@ -223,16 +226,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       if (data.rawItems != null && data.rawItems!.isNotEmpty) {
         itemsList = data.rawItems!;
       } else {
-        itemsList = data.items.map((it) => {
-          'id': it.detailId,
-          'name': it.title,
-          'quantity': it.quantity,
-          'price': it.unitPrice,
-          'width': it.width,
-          'height': it.height,
-          'description': it.details.join('\n'),
-          'drawing_image_path': it.imagePath,
-        }).toList();
+        itemsList = data.items
+            .map(
+              (it) => {
+                'id': it.detailId,
+                'name': it.title,
+                'quantity': it.quantity,
+                'price': it.unitPrice,
+                'width': it.width,
+                'height': it.height,
+                'description': it.details.join('\n'),
+                'drawing_image_path': it.imagePath,
+              },
+            )
+            .toList();
       }
 
       if (_activeDeliveryId != null) {
@@ -264,10 +271,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
       // 🚚 تحديث حالة الطلبية مباشرة إلى توزيع جزئي أو توزيع كلي
       final bool isFull = !data.isPartial;
-      final targetStatus = isFull ? 'Full Distribution' : 'Partial Distribution';
+      final targetStatus = isFull
+          ? 'Full Distribution'
+          : 'Partial Distribution';
       if (orderId > 0) {
-        await db.updateCommandeStatus(orderId, targetStatus, skipAllocationSync: true);
-        await db.markItemsAllocationsTransferred(orderId, itemsList, isFullOrder: isFull);
+        await db.updateCommandeStatus(
+          orderId,
+          targetStatus,
+          skipAllocationSync: true,
+        );
+        await db.markItemsAllocationsTransferred(
+          orderId,
+          itemsList,
+          isFullOrder: isFull,
+        );
         await db.syncOrderAndAllocationsStatus(orderId);
       }
       CloudSyncService().notifyChange();
@@ -320,7 +337,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           documentTitleKey: widget.data.documentTitleKey,
           overrideLang: _invoiceLanguage,
           chequeNumber: _chequeNumber,
-        );
+        ).timeout(const Duration(seconds: 10));
         if (mounted) _currentDevisData = rebuilt;
       }
     } catch (error) {
@@ -339,35 +356,40 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Future<void> _initPdfGeneration() async {
     if (_pdfBuildFuture != null) return;
+    if (mounted) {
+      setState(() {
+        _isPdfGenerating = true;
+        _pdfError = null;
+      });
+    }
     _pdfBuildFuture = _buildPdfBytes(showErrors: false);
     try {
       final bytes = await _pdfBuildFuture;
       if (mounted) {
         setState(() {
           _pdfBytes = bytes;
-          _isLoading = false;
+          if (bytes == null) {
+            _pdfError = _pdfGenerationErrorMessage;
+          }
         });
       }
     } catch (e) {
       debugPrint('PDF generation error: $e');
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _pdfError = _pdfGenerationErrorMessage;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'خطأ في توليد PDF: $e',
-              style: const TextStyle(fontFamily: 'Cairo'),
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     } finally {
       _pdfBuildFuture = null;
+      if (mounted) setState(() => _isPdfGenerating = false);
     }
   }
+
+  String get _pdfGenerationErrorMessage =>
+      _invoiceLanguage == AppLanguage.french
+      ? 'La génération du document a échoué. Réessayez.'
+      : 'تعذر توليد الوثيقة. اضغط لإعادة المحاولة.';
 
   Future<Uint8List?> _buildPdfBytes({bool showErrors = true}) async {
     try {
@@ -376,7 +398,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         _currentDevisData,
         overrideLang: _invoiceLanguage,
         imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 20));
     } catch (e) {
       debugPrint('PDF generation error: $e');
       if (showErrors && mounted) {
@@ -397,21 +419,24 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Future<Uint8List?> _ensurePdfBytes() async {
     if (_pdfBytes != null) return _pdfBytes;
 
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isPdfGenerating = true;
+        _pdfError = null;
+      });
+    }
     try {
       _pdfBuildFuture ??= _buildPdfBytes();
-      var bytes = await _pdfBuildFuture;
-      if (bytes == null) {
-        _pdfBuildFuture = _buildPdfBytes();
-        bytes = await _pdfBuildFuture;
-      }
+      final bytes = await _pdfBuildFuture;
       if (mounted && bytes != null) {
         setState(() => _pdfBytes = bytes);
+      } else if (mounted) {
+        setState(() => _pdfError = _pdfGenerationErrorMessage);
       }
       return bytes;
     } finally {
       _pdfBuildFuture = null;
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isPdfGenerating = false);
     }
   }
 
@@ -439,7 +464,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         rebuiltData,
         overrideLang: newLang,
         imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(const Duration(seconds: 20));
 
       if (mounted) {
         setState(() {
@@ -497,7 +522,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         rebuiltData,
         overrideLang: _invoiceLanguage,
         imageMode: _imageMode,
-      );
+      ).timeout(const Duration(seconds: 20));
 
       if (mounted) {
         setState(() {
@@ -562,64 +587,64 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                    GestureDetector(
-                      onTap: () {
-                        if (_invoiceLanguage != AppLanguage.arabic) {
-                          _changeInvoiceLanguage(AppLanguage.arabic);
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isArabic ? _blue : Colors.transparent,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          'العربية',
-                          style: TextStyle(
-                            color: isArabic ? Colors.white : Colors.black87,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            fontFamily: 'Cairo',
+                      GestureDetector(
+                        onTap: () {
+                          if (_invoiceLanguage != AppLanguage.arabic) {
+                            _changeInvoiceLanguage(AppLanguage.arabic);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isArabic ? _blue : Colors.transparent,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Text(
+                            'العربية',
+                            style: TextStyle(
+                              color: isArabic ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontFamily: 'Cairo',
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        if (_invoiceLanguage != AppLanguage.french) {
-                          _changeInvoiceLanguage(AppLanguage.french);
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: !isArabic ? _blue : Colors.transparent,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          'Français',
-                          style: TextStyle(
-                            color: !isArabic ? Colors.white : Colors.black87,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            fontFamily: 'Cairo',
+                      GestureDetector(
+                        onTap: () {
+                          if (_invoiceLanguage != AppLanguage.french) {
+                            _changeInvoiceLanguage(AppLanguage.french);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: !isArabic ? _blue : Colors.transparent,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Text(
+                            'Français',
+                            style: TextStyle(
+                              color: !isArabic ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontFamily: 'Cairo',
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
           if (!_isOfficial) ...[
             const SizedBox(height: 10),
             SingleChildScrollView(
@@ -1121,12 +1146,67 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           Column(
             children: [
               _buildLanguageSelector(),
+              if (_isPdfGenerating || _pdfError != null)
+                Material(
+                  color: _pdfError == null
+                      ? Colors.blue.shade50
+                      : Colors.red.shade50,
+                  child: InkWell(
+                    onTap: _pdfError == null
+                        ? null
+                        : () {
+                            _pdfBytes = null;
+                            unawaited(_initPdfGeneration());
+                          },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          if (_isPdfGenerating)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            const Icon(
+                              Icons.refresh,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _isPdfGenerating
+                                  ? (_invoiceLanguage == AppLanguage.french
+                                        ? 'Préparation du PDF en arrière-plan…'
+                                        : 'يتم تجهيز ملف PDF في الخلفية…')
+                                  : _pdfError!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Cairo',
+                                color: _pdfError == null
+                                    ? Colors.blue.shade900
+                                    : Colors.red.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(12),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      // A document is paper: keep it white in dark mode too.
+                      // Most invoice text intentionally uses print-safe black.
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
@@ -1362,7 +1442,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 _metaLine('N°:', _formatDocumentNumber(data)),
                 _metaLine(_orderMetaLabel, '#${data.orderDisplayNumber}'),
                 _metaLine('Date:', data.orderDate),
-                if (_isBonLivraison && (_activeDeliveryDate != null || _isLoaded))
+                if (_isBonLivraison &&
+                    (_activeDeliveryDate != null || _isLoaded))
                   _metaLine(
                     _invoiceLanguage == AppLanguage.french
                         ? 'Date sortie / livraison:'
@@ -1500,7 +1581,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             children: [
               Icon(
                 _isLoaded ? Icons.verified : Icons.info_outline,
-                color: _isLoaded ? Colors.green.shade800 : Colors.amber.shade900,
+                color: _isLoaded
+                    ? Colors.green.shade800
+                    : Colors.amber.shade900,
                 size: 20,
               ),
               const SizedBox(width: 8),
@@ -1512,15 +1595,22 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
-                    color: _isLoaded ? Colors.green.shade900 : Colors.amber.shade900,
+                    color: _isLoaded
+                        ? Colors.green.shade900
+                        : Colors.amber.shade900,
                     fontFamily: 'Cairo',
                   ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
                 decoration: BoxDecoration(
-                  color: _isLoaded ? Colors.green.shade700 : Colors.amber.shade700,
+                  color: _isLoaded
+                      ? Colors.green.shade700
+                      : Colors.amber.shade700,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -1549,7 +1639,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               ),
               _bannerInfoItem(
                 icon: Icons.outbox,
-                label: isFr ? 'Date de sortie / livraison :' : 'تاريخ الخروج والتسليم :',
+                label: isFr
+                    ? 'Date de sortie / livraison :'
+                    : 'تاريخ الخروج والتسليم :',
                 value: exitDate,
                 isHighlight: true,
               ),
@@ -1564,8 +1656,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 icon: isSoldOut ? Icons.check_circle : Icons.pending_actions,
                 label: isFr ? 'Règlement / Solde :' : 'حالة الحساب الباقي :',
                 value: isSoldOut
-                    ? (isFr ? 'Compte soldé (Payé intégralement)' : 'أكمل الحساب بالكامل (Soldé)')
-                    : (isFr ? 'Reste: ${remaining.toStringAsFixed(2)} DZD' : 'المتبقي: ${remaining.toStringAsFixed(2)} دج'),
+                    ? (isFr
+                          ? 'Compte soldé (Payé intégralement)'
+                          : 'أكمل الحساب بالكامل (Soldé)')
+                    : (isFr
+                          ? 'Reste: ${remaining.toStringAsFixed(2)} DZD'
+                          : 'المتبقي: ${remaining.toStringAsFixed(2)} دج'),
                 isSuccess: isSoldOut,
               ),
               _bannerInfoItem(
@@ -1676,7 +1772,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   /// زر تبديل وضع الصورة (A=0 / B=1 / C=2)
   Widget _modeButton(int mode, String labelFr, String labelAr) {
     final bool active = _imageMode == mode;
-    final String label = _invoiceLanguage == AppLanguage.french ? labelFr : labelAr;
+    final String label = _invoiceLanguage == AppLanguage.french
+        ? labelFr
+        : labelAr;
     return GestureDetector(
       onTap: () {
         if (!active && !_isLoading) {
@@ -2262,7 +2360,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildBottomActions(BuildContext context) {
-    final bool ready = !_isLoading;
+    final bool ready = !_isActionInProgress;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: BoxDecoration(
@@ -2283,21 +2381,27 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isLoaded ? Colors.grey.shade600 : Colors.green.shade700,
+                    backgroundColor: _isLoaded
+                        ? Colors.grey.shade600
+                        : Colors.green.shade700,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: _isLoaded ? null : () => _validateDelivery(context),
+                  onPressed: _isLoaded
+                      ? null
+                      : () => _validateDelivery(context),
                   icon: Icon(
                     _isLoaded ? Icons.check_circle : Icons.verified_outlined,
                     size: 16,
                   ),
                   label: Text(
                     _isLoaded
-                        ? (_invoiceLanguage == AppLanguage.french ? 'Livré ✓' : 'مُسلَّم ✓')
+                        ? (_invoiceLanguage == AppLanguage.french
+                              ? 'Livré ✓'
+                              : 'مُسلَّم ✓')
                         : 'Validé',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
@@ -2320,7 +2424,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   ),
                 ),
                 onPressed: ready ? () => _savePdf(context) : null,
-                icon: const Icon(Icons.save, size: 16),
+                icon: Icon(
+                  _isActionInProgress ? Icons.hourglass_top : Icons.save,
+                  size: 16,
+                ),
                 label: Text(
                   t('حفظ'),
                   style: const TextStyle(
@@ -2429,11 +2536,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     if (confirmedName == null || confirmedName.isEmpty) return;
     if (!context.mounted) return;
 
-    final bytes = _pdfBytes ?? await _ensurePdfBytes();
-    if (bytes == null) return;
-
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isActionInProgress = true);
     try {
+      final bytes = _pdfBytes ?? await _ensurePdfBytes();
+      if (bytes == null) return;
       String filename = confirmedName.toLowerCase().endsWith('.pdf')
           ? confirmedName
           : '$confirmedName.pdf';
@@ -2497,16 +2603,15 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
 
   Future<void> _printPdf(BuildContext context) async {
-    final bytes = _pdfBytes ?? await _ensurePdfBytes();
-    if (bytes == null) return;
-
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isActionInProgress = true);
     try {
+      final bytes = _pdfBytes ?? await _ensurePdfBytes();
+      if (bytes == null) return;
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'devis_${data.orderId}.pdf',
@@ -2524,16 +2629,15 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
 
   Future<void> _sharePdf(BuildContext context) async {
-    final bytes = _pdfBytes ?? await _ensurePdfBytes();
-    if (bytes == null) return;
-
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isActionInProgress = true);
     try {
+      final bytes = _pdfBytes ?? await _ensurePdfBytes();
+      if (bytes == null) return;
       final cleanName = data.clientName.trim().replaceAll(
         RegExp(r'[\\/:*?"<>|]'),
         '_',
@@ -2581,7 +2685,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
 

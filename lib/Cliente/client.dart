@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/Cliente/show_client.dart';
 import '../Screen/client_ledger_screen.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +16,9 @@ import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
+import 'package:database_data/Screen/map_picker_screen.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
@@ -36,6 +38,7 @@ class _CustomersState extends State<Customers> {
   final ScrollController _clientsScrollController = ScrollController();
   final TextEditingController searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isSearching = false;
   StreamSubscription<String>? _dbUpdateSubscription;
   Timer? _syncRefreshDebounce;
 
@@ -322,6 +325,8 @@ class _CustomersState extends State<Customers> {
     });
   }
 
+
+
   /// Result lists received from SQLite/FutureBuilder may be read-only.
   /// Keep the current page and scroll position by replacing the displayed
   /// list with a new list instead of mutating the database result in place.
@@ -345,7 +350,7 @@ class _CustomersState extends State<Customers> {
         return ClientFormDialog(
           onSubmit: (values) async {
             try {
-              await db.insertClient(
+              final clientId = await db.insertClient(
                 values['firstname']!,
                 values['lastname']!,
                 values['phone1']!,
@@ -357,6 +362,9 @@ class _CustomersState extends State<Customers> {
                 values['rc']!,
                 values['ai']!,
               );
+              final latitude = values['latitude'] as double?;
+              final longitude = values['longitude'] as double?;
+              await db.updateClientCoordinates(clientId, latitude, longitude);
             } catch (e) {
               debugPrint('Error inserting client: $e');
             }
@@ -416,6 +424,9 @@ class _CustomersState extends State<Customers> {
               values['rc']!,
               values['ai']!,
             );
+            final latitude = values['latitude'] as double?;
+            final longitude = values['longitude'] as double?;
+            await db.updateClientCoordinates(id, latitude, longitude);
             if (dialogContext.mounted) {
               Navigator.pop(dialogContext);
             }
@@ -436,12 +447,51 @@ class _CustomersState extends State<Customers> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(Localization.translate("Customers", lang)),
-        centerTitle: !isDesktop,
+        title: _isSearching
+            ? TextField(
+                controller: searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                cursorColor: Colors.white,
+                decoration: InputDecoration(
+                  hintText: Localization.translate(
+                    "Search by name or phone",
+                    lang,
+                  ),
+                  hintStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                  border: InputBorder.none,
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    _searchQuery = val;
+                    _data = val.isEmpty
+                        ? db.readClientsForDisplay()
+                        : db.searchClientsForDisplay(val);
+                  });
+                },
+              )
+            : Text(Localization.translate("Customers", lang)),
+        centerTitle: !isDesktop && !_isSearching,
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
         actions: [
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
+            tooltip: Localization.translate("Search", lang),
+            onPressed: () {
+              setState(() {
+                if (_isSearching) {
+                  _isSearching = false;
+                  searchController.clear();
+                  _searchQuery = '';
+                  _data = db.readClientsForDisplay();
+                } else {
+                  _isSearching = true;
+                }
+              });
+            },
+          ),
           if (isDesktop && settings.canCreateClients())
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -472,58 +522,7 @@ class _CustomersState extends State<Customers> {
         controller: _clientsScrollController,
         child: Column(
           children: [
-          // 🔍 Filter section — shown only on Mobile
-          if (!(MediaQuery.of(context).size.width >= 900 || Platform.isWindows))
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              margin: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(width: 1, color: Colors.grey),
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.filter_alt_outlined, color: Colors.blue),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          Localization.translate("Filters Clients", lang),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: searchController,
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                        _data = val.isEmpty
-                            ? db.readClientsForDisplay()
-                            : db.searchClientsForDisplay(val);
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: Localization.translate(
-                        "Search by name or phone",
-                        lang,
-                      ),
-                      prefixIcon: const Icon(Icons.search),
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+
 
           // 📋 List section
           Expanded(
@@ -864,6 +863,7 @@ class _CustomersState extends State<Customers> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+
                               if (settings.canEditClients())
                                 IconButton(
                                   icon: const Icon(
@@ -1207,79 +1207,6 @@ class _CustomersState extends State<Customers> {
     );
   }
 
-  Widget _buildFilterInputCell({
-    required int flex,
-    required TextEditingController controller,
-    required String hintText,
-    required BuildContext context,
-  }) {
-    return Expanded(
-      flex: flex,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: SizedBox(
-          height: 42,
-          child: TextField(
-            controller: controller,
-            onChanged: (_) => setState(() {}),
-            style: TextStyle(
-              fontSize: 13,
-              fontFamily: 'Cairo',
-              color: Theme.of(context).textTheme.bodyLarge?.color,
-            ),
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade400,
-                fontFamily: 'Cairo',
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 7,
-              ),
-              filled: true,
-              fillColor: Theme.of(context).cardColor,
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                  color: Colors.grey.withValues(alpha: 0.2),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(
-                  color: Color(0xFF0EA5E9),
-                  width: 1.5,
-                ),
-              ),
-              suffixIcon: controller.text.isNotEmpty
-                  ? InkWell(
-                      onTap: () {
-                        controller.clear();
-                        setState(() {});
-                      },
-                      child: const Icon(
-                        Icons.close,
-                        size: 17,
-                        color: Colors.red,
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDesktopClientsTableView(
     BuildContext context,
     List<Map<String, dynamic>> rawData,
@@ -1587,6 +1514,7 @@ class _CustomersState extends State<Customers> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+
                 IconButton(
                   icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.blue),
                   onPressed: () => _showUpdateClientDialog(context, client),
@@ -1700,7 +1628,7 @@ class _CustomersState extends State<Customers> {
 
 class ClientFormDialog extends StatefulWidget {
   final Map<String, dynamic>? client;
-  final void Function(Map<String, String> values) onSubmit;
+  final void Function(Map<String, dynamic> values) onSubmit;
 
   const ClientFormDialog({super.key, this.client, required this.onSubmit});
 
@@ -1720,6 +1648,8 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
   late final TextEditingController _nisController;
   late final TextEditingController _rcController;
   late final TextEditingController _aiController;
+  double? _latitude;
+  double? _longitude;
 
   bool _showCompanyDetails = false;
 
@@ -1741,6 +1671,8 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
     _nisController = TextEditingController(text: c['nis'] ?? '');
     _rcController = TextEditingController(text: c['rc'] ?? '');
     _aiController = TextEditingController(text: c['ai'] ?? '');
+    _latitude = (c['latitude'] as num?)?.toDouble();
+    _longitude = (c['longitude'] as num?)?.toDouble();
 
     if (widget.client != null ||
         _nifController.text.isNotEmpty ||
@@ -1764,6 +1696,32 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
     _rcController.dispose();
     _aiController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickLocation() async {
+    final point = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => MapPickerScreen(
+          initialLatitude: _latitude,
+          initialLongitude: _longitude,
+        ),
+      ),
+    );
+    if (!mounted || point == null) return;
+    setState(() {
+      _latitude = point.latitude;
+      _longitude = point.longitude;
+    });
+  }
+
+  Future<void> _openSelectedLocation() async {
+    final latitude = _latitude;
+    final longitude = _longitude;
+    if (latitude == null || longitude == null) return;
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -1902,6 +1860,59 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickLocation,
+                        icon: Icon(
+                          _latitude == null
+                              ? Icons.add_location_alt_outlined
+                              : Icons.edit_location_alt_outlined,
+                        ),
+                        label: Text(
+                          Localization.translate(
+                            _latitude == null
+                                ? 'تحديد موقع العميل بدقة'
+                                : 'تعديل موقع العميل',
+                            lang,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_latitude != null && _longitude != null) ...[
+                      const SizedBox(width: 6),
+                      IconButton(
+                        onPressed: _openSelectedLocation,
+                        tooltip: Localization.translate(
+                          'فتح الموقع في تطبيق GPS',
+                          lang,
+                        ),
+                        icon: const Icon(Icons.navigation_rounded),
+                        color: Colors.blue,
+                      ),
+                      IconButton(
+                        onPressed: () => setState(() {
+                          _latitude = null;
+                          _longitude = null;
+                        }),
+                        tooltip: Localization.translate('حذف الموقع', lang),
+                        icon: const Icon(Icons.close_rounded),
+                        color: Colors.red,
+                      ),
+                    ],
+                  ],
+                ),
+                if (_latitude != null && _longitude != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Text(
+                      '${_latitude!.toStringAsFixed(6)}, '
+                      '${_longitude!.toStringAsFixed(6)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
 
                 if (_showCompanyDetails) ...[
                   const SizedBox(height: 16),
@@ -1997,6 +2008,8 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                 'nis': _nisController.text.trim(),
                 'rc': _rcController.text.trim(),
                 'ai': _aiController.text.trim(),
+                'latitude': _latitude,
+                'longitude': _longitude,
               });
             }
           },

@@ -2257,36 +2257,42 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           final roleKeys = seriesRoleKeysForProfileSelectorType(t);
           if (widget.seriesId != null && roleKeys.isNotEmpty) {
             final roleRows = await db.getSeriesDesignRoles(widget.seriesId!);
-            if (roleRows.isEmpty) {
-              data = <Map<String, dynamic>>[];
-            } else if (widget.accessoryDrawingMode != null) {
-              // A frame extension is a sliding track addition, never an
-              // opening-frame choice. The role scope is authoritative for all
-              // other profile replacements as well.
-              final isBaseFrameSelector =
-                  t == 'frame' || t == 'cadre' || t == 'إطار';
-              final isBaseSashSelector =
-                  t == 'sash' || t == 'ouvrant' || t == 'ضلفة';
-              final scopedRoleKeys = isBaseFrameSelector
-                  ? const ['frame']
-                  : isBaseSashSelector
-                  ? const ['sash']
-                  : roleKeys;
-              data = await db.getDesignSectionsForScopedDialogRoles(
-                widget.seriesId!,
-                scopedRoleKeys,
-                usageScope:
-                    widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
-                    ? 'sliding'
-                    : 'opening',
-                requireDialog: true,
-                requireQuantity: true,
-              );
-            } else {
-              data = await db.getDesignSectionsForRoles(
-                widget.seriesId!,
-                roleKeys,
-              );
+            if (roleRows.isNotEmpty) {
+              if (widget.accessoryDrawingMode != null) {
+                // A frame extension is a sliding track addition, never an
+                // opening-frame choice. The role scope is authoritative for all
+                // other profile replacements as well.
+                final isBaseFrameSelector =
+                    t == 'frame' || t == 'cadre' || t == 'إطار';
+                final isBaseSashSelector =
+                    t == 'sash' || t == 'ouvrant' || t == 'ضلفة';
+                final scopedRoleKeys = isBaseFrameSelector
+                    ? const ['frame']
+                    : isBaseSashSelector
+                    ? const ['sash']
+                    : roleKeys;
+                final configured = await db.getDesignSectionsForScopedDialogRoles(
+                  widget.seriesId!,
+                  scopedRoleKeys,
+                  usageScope:
+                      widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
+                      ? 'sliding'
+                      : 'opening',
+                  requireDialog: true,
+                  requireQuantity: true,
+                );
+                if (configured.isNotEmpty) {
+                  data = configured;
+                }
+              } else {
+                final configured = await db.getDesignSectionsForRoles(
+                  widget.seriesId!,
+                  roleKeys,
+                );
+                if (configured.isNotEmpty) {
+                  data = configured;
+                }
+              }
             }
           }
           final isFrameSelector = t == 'frame' || t == 'cadre' || t == 'إطار';

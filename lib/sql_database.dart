@@ -258,15 +258,6 @@ class SqlDatabase {
     'Profile',
     'Series',
     'Sections',
-    'SeriesTableConfig',
-    'SeriesDesignConfig',
-    'SeriesDesignRoles',
-    'SectionSharingRules',
-    'FrameJoinRules',
-    'CatalogItemRules',
-    'ProfileCalculationRules',
-    'SectionJointLinks',
-    'SeriesShutterRules',
     'Colors',
     'Accessories',
     'Joints',
@@ -336,7 +327,9 @@ class SqlDatabase {
 
   // These rows describe how a workshop uses the shared catalogue. The base
   // catalogue remains global, while these workshop configuration rows are
-  // also mirrored to the other phones in the same workshop.
+  // mirrored only to the other phones in the same workshop. Keep them out of
+  // [catalogTables]: otherwise a central-catalog refresh can replace a
+  // workshop's rules with another snapshot.
   static const List<String> workshopCatalogConfigurationTables = [
     'SeriesTableConfig',
     'SeriesDesignConfig',
@@ -3849,7 +3842,7 @@ class SqlDatabase {
       'exclude_from_pricing': excludeFromPricing ? 1 : 0,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-    await CloudSyncService().notifyCatalogChange();
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   Future<double> getSectionColorPrice(int sectionId, int colorId) async {
@@ -4641,6 +4634,13 @@ class SqlDatabase {
     } catch (_) {
       // Column already exists
     }
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN deleted_by TEXT;',
+      );
+    } catch (_) {
+      // Column already exists
+    }
     _orderTrashInfrastructureReady = true;
   }
 
@@ -4972,8 +4972,8 @@ class SqlDatabase {
 
   Future<int> updateClientCoordinates(
     int id,
-    double latitude,
-    double longitude,
+    double? latitude,
+    double? longitude,
   ) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
@@ -8498,6 +8498,7 @@ class SqlDatabase {
     final editor = updatedBy?.trim().isNotEmpty == true
         ? updatedBy!.trim()
         : await _currentOrderEditor();
+    var createdNewOrder = idCommande == null;
     final savedId = await myDb.transaction<int>((txn) async {
       final now = DateTime.now().toUtc().toIso8601String();
       late final int orderId;
@@ -8541,6 +8542,7 @@ class SqlDatabase {
           limit: 1,
         );
         if (existing.isEmpty) {
+          createdNewOrder = true;
           final orderCode = orderId > 0 && orderId < 100000
               ? orderId
               : await _reserveNextOrderCode(txn);
@@ -8676,17 +8678,17 @@ class SqlDatabase {
     if (uploaded) {
       _notifyOrderEventSafe(
         orderId: savedId,
-        isNew: idCommande == null,
+        isNew: createdNewOrder,
         author: editor,
       );
       unawaited(
         WorkerPushNotificationService.instance
-            .sendManagerEvent(
-              eventType: 'invoices',
-              title: idCommande == null ? 'فاتورة جديدة' : 'تعديل فاتورة',
-              body:
-                  'الطلبية #$savedId${editor.isEmpty ? '' : ' بواسطة $editor'}',
-              data: {'order_id': savedId.toString()},
+            .sendOrderEvent(
+              action: createdNewOrder ? 'created' : 'updated',
+              orderId: savedId,
+              orderCode: await _orderCodeForNotification(savedId),
+              clientName: await _clientNameForOrderNotification(savedId),
+              author: editor,
             )
             .catchError((_) {}),
       );
@@ -8752,8 +8754,13 @@ class SqlDatabase {
         createdAt: orderDate,
       );
     }
-    CloudSyncService().notifyChange();
+    await CloudSyncService().notifyChangeImmediate();
     _notifyOrderEventSafe(orderId: distributedId, isNew: true, author: editor);
+    _sendOrderPushEventSafe(
+      orderId: distributedId,
+      action: 'created',
+      author: editor,
+    );
     return res;
   }
 
@@ -8797,10 +8804,15 @@ class SqlDatabase {
         where: 'id = ?',
         whereArgs: [idCommande],
       );
-      CloudSyncService().notifyChange();
+      await CloudSyncService().notifyChangeImmediate();
       _notifyOrderEventSafe(
         orderId: idCommande,
         isNew: false,
+        author: data['updated_by']?.toString() ?? '',
+      );
+      _sendOrderPushEventSafe(
+        orderId: idCommande,
+        action: 'updated',
         author: data['updated_by']?.toString() ?? '',
       );
       return res;
@@ -8838,6 +8850,40 @@ class SqlDatabase {
         );
       } catch (_) {
         // Ignored safely in test environments or offline
+      }
+    }());
+  }
+
+  Future<String> _orderCodeForNotification(int orderId) async {
+    final row = await readCommandeWithClientById(orderId);
+    return row?['order_code']?.toString() ??
+        row?['display_number']?.toString() ??
+        orderId.toString();
+  }
+
+  Future<String> _clientNameForOrderNotification(int orderId) async {
+    final row = await readCommandeWithClientById(orderId);
+    if (row == null) return 'عميل';
+    final name = '${row['firstname'] ?? ''} ${row['lastname'] ?? ''}'.trim();
+    return name.isEmpty ? 'عميل' : name;
+  }
+
+  void _sendOrderPushEventSafe({
+    required int orderId,
+    required String action,
+    required String author,
+  }) {
+    unawaited(() async {
+      try {
+        await WorkerPushNotificationService.instance.sendOrderEvent(
+          action: action,
+          orderId: orderId,
+          orderCode: await _orderCodeForNotification(orderId),
+          clientName: await _clientNameForOrderNotification(orderId),
+          author: author,
+        );
+      } catch (error) {
+        debugPrint('Order push notification skipped: $error');
       }
     }());
   }
@@ -8885,9 +8931,10 @@ class SqlDatabase {
       limit: 1,
     );
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    final deletedBy = await _currentOrderEditor();
     final res = await myDb.update(
       'Commandes',
-      {'is_deleted': 1, 'deleted_at': nowIso},
+      {'is_deleted': 1, 'deleted_at': nowIso, 'deleted_by': deletedBy},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -8897,20 +8944,48 @@ class SqlDatabase {
       );
       if (clientId != null) await reconcileClientPayments(clientId);
       try {
-        CloudSyncService().notifyChangeImmediate();
+        await CloudSyncService().notifyChangeImmediate();
       } catch (_) {}
       if (notificationRow != null) {
+        final orderCodeStr =
+            notificationRow['order_code']?.toString() ??
+            notificationRow['display_number']?.toString() ??
+            id.toString();
+        final clientNameStr =
+            '${notificationRow['firstname'] ?? ''} ${notificationRow['lastname'] ?? ''}'
+                .trim();
+        final totalAmount =
+            notificationRow['net_payable'] ?? notificationRow['total'] ?? 0;
+        unawaited(
+          logAuditAction(
+            actionType: 'DELETE',
+            entityType: 'order',
+            entityId: id.toString(),
+            entityTitle: 'طلبية #$orderCodeStr للزبون $clientNameStr',
+            details: 'المبلغ: $totalAmount دج - تم نقلها إلى سلة المحذوفات',
+          ),
+        );
         _notifyOrderDeletedSafe(notificationRow);
         unawaited(
           WorkerPushNotificationService.instance
-              .sendManagerEvent(
-                eventType: 'invoices',
-                title: 'تم حذف طلبية',
-                body:
-                    'تم حذف الطلبية #${notificationRow['order_code'] ?? notificationRow['display_number'] ?? id}',
-                data: {'order_id': id.toString(), 'action': 'deleted'},
+              .sendOrderEvent(
+                action: 'deleted',
+                orderId: id,
+                orderCode: orderCodeStr,
+                clientName: clientNameStr,
+                author: deletedBy,
               )
               .catchError((_) {}),
+        );
+      } else {
+        unawaited(
+          logAuditAction(
+            actionType: 'DELETE',
+            entityType: 'order',
+            entityId: id.toString(),
+            entityTitle: 'طلبية #$id',
+            details: 'تم نقلها إلى سلة المحذوفات',
+          ),
         );
       }
     }
@@ -8956,11 +9031,20 @@ class SqlDatabase {
     );
     final res = await myDb.update(
       'Commandes',
-      {'is_deleted': 0, 'deleted_at': null},
+      {'is_deleted': 0, 'deleted_at': null, 'deleted_by': null},
       where: 'id = ?',
       whereArgs: [id],
     );
     if (res > 0) {
+      unawaited(
+        logAuditAction(
+          actionType: 'RESTORE',
+          entityType: 'order',
+          entityId: id.toString(),
+          entityTitle: 'طلبية #$id',
+          details: 'تم استرجاع الطلبية من سلة المحذوفات',
+        ),
+      );
       final clientId = _paymentRecordId(
         order.isEmpty ? null : order.first['client_id'],
       );
@@ -9740,6 +9824,19 @@ class SqlDatabase {
         "ALTER TABLE Commandes_deliveries ADD COLUMN is_loaded INTEGER DEFAULT 0;",
       );
     } catch (_) {}
+    for (final statement in const [
+      "ALTER TABLE Commandes_deliveries ADD COLUMN delivery_status TEXT NOT NULL DEFAULT 'planned'",
+      'ALTER TABLE Commandes_deliveries ADD COLUMN assigned_worker_uid TEXT',
+      'ALTER TABLE Commandes_deliveries ADD COLUMN assigned_worker_name TEXT',
+      'ALTER TABLE Commandes_deliveries ADD COLUMN started_at TEXT',
+      'ALTER TABLE Commandes_deliveries ADD COLUMN delivered_at TEXT',
+      'ALTER TABLE Commandes_deliveries ADD COLUMN delivery_note TEXT',
+      'ALTER TABLE Commandes_deliveries ADD COLUMN updated_at TEXT',
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
   }
 
   Future<void> _ensureAccessoryRulesColumns(Database db) async {
@@ -9770,6 +9867,8 @@ class SqlDatabase {
     String itemsJson,
     double totalAmount, {
     int isLoaded = 0,
+    String? assignedWorkerUid,
+    String? assignedWorkerName,
   }) async {
     Database? myDb = await db;
     await _ensureDeliveriesLoadedColumn(myDb!);
@@ -9798,20 +9897,153 @@ class SqlDatabase {
         'items_json': itemsJson,
         'total_amount': totalAmount,
         'is_loaded': isLoaded,
+        'delivery_status': 'planned',
+        'assigned_worker_uid': assignedWorkerUid,
+        'assigned_worker_name': assignedWorkerName,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       }),
     );
     CloudSyncService().notifyChange();
+    final workerUid = assignedWorkerUid?.trim() ?? '';
+    if (workerUid.isNotEmpty) {
+      final quantity =
+          (jsonDecode(itemsJson) as List?)?.fold<int>(
+            0,
+            (sum, item) =>
+                sum +
+                (int.tryParse(
+                      item is Map ? item['quantity']?.toString() ?? '' : '',
+                    ) ??
+                    0),
+          ) ??
+          0;
+      unawaited(
+        WorkerPushNotificationService.instance
+            .sendAssignmentToCurrentWorkshop(
+              workerUid: workerUid,
+              orderId: idCommande,
+              orderNumber: idCommande,
+              quantity: quantity,
+            )
+            .catchError((_) {}),
+      );
+    }
     unawaited(
       WorkerPushNotificationService.instance
           .sendManagerEvent(
             eventType: 'deliveries',
-            title: 'عملية تسليم جديدة',
-            body: 'تم تسجيل تسليم للطلبية #$idCommande',
+            title: 'خطة توزيع جديدة',
+            body: 'تم إنشاء خطة توزيع للطلبية #$idCommande',
             data: {'order_id': idCommande.toString()},
           )
           .catchError((_) {}),
     );
     return res;
+  }
+
+  Future<int> updateCommandeDeliveryStatus(
+    int deliveryId,
+    String status, {
+    String? note,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureDeliveriesLoadedColumn(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final values = <String, dynamic>{
+      'delivery_status': status,
+      'updated_at': now,
+      if (status == 'en_route') 'started_at': now,
+      if (note != null) 'delivery_note': note.trim(),
+    };
+    final result = await myDb.update(
+      'Commandes_deliveries',
+      values,
+      where: 'id = ?',
+      whereArgs: [deliveryId],
+    );
+    CloudSyncService().notifyChangeImmediate();
+    return result;
+  }
+
+  Future<bool> completeCommandeDelivery(int deliveryId) async {
+    final myDb = await db;
+    if (myDb == null) return false;
+    await _ensureDeliveriesLoadedColumn(myDb);
+    var completed = false;
+    await myDb.transaction((txn) async {
+      final rows = await txn.query(
+        'Commandes_deliveries',
+        where: 'id = ?',
+        whereArgs: [deliveryId],
+        limit: 1,
+      );
+      if (rows.isEmpty || rows.first['delivery_status'] == 'delivered') return;
+      final delivery = rows.first;
+      final orderId = (delivery['id_commandes'] as num?)?.toInt() ?? 0;
+      final decoded = jsonDecode(delivery['items_json']?.toString() ?? '[]');
+      if (decoded is List) {
+        for (final raw in decoded) {
+          if (raw is! Map) continue;
+          final itemId = int.tryParse(raw['id']?.toString() ?? '') ?? 0;
+          final quantity = int.tryParse(raw['quantity']?.toString() ?? '') ?? 0;
+          if (itemId <= 0 || quantity <= 0) continue;
+          await txn.rawUpdate(
+            '''
+            UPDATE Commandes_details
+            SET delivered_qty = MIN(
+              COALESCE(quantity, 0),
+              COALESCE(delivered_qty, 0) + ?
+            )
+            WHERE id = ? AND id_commandes = ?
+          ''',
+            [quantity, itemId, orderId],
+          );
+        }
+      }
+      final pending = await txn.rawQuery(
+        '''
+        SELECT COUNT(*) AS count
+        FROM Commandes_details
+        WHERE id_commandes = ?
+          AND COALESCE(delivered_qty, 0) < COALESCE(quantity, 0)
+      ''',
+        [orderId],
+      );
+      final hasPending = ((pending.first['count'] as num?)?.toInt() ?? 0) > 0;
+      final now = DateTime.now().toUtc().toIso8601String();
+      await txn.update(
+        'Commandes_deliveries',
+        {
+          'delivery_status': 'delivered',
+          'delivered_at': now,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [deliveryId],
+      );
+      await txn.update(
+        'Commandes',
+        {'status': hasPending ? 'Partial Distribution' : 'Full Distribution'},
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+      completed = true;
+    });
+    if (completed) {
+      CloudSyncService().notifyChangeImmediate();
+      unawaited(
+        WorkerPushNotificationService.instance
+            .sendManagerEvent(
+              eventType: 'deliveries',
+              title: 'تم تسليم الطلبية',
+              body: 'تم تأكيد خطة التوزيع بنجاح',
+              data: {'delivery_id': deliveryId.toString()},
+            )
+            .catchError((_) {}),
+      );
+    }
+    return completed;
   }
 
   Future<List<Map<String, dynamic>>> readCommandeDeliveries(
@@ -9824,6 +10056,33 @@ class SqlDatabase {
       whereArgs: [idCommande],
       orderBy: 'id DESC',
     );
+  }
+
+  Future<Map<int, int>> readPendingDeliveryQuantities(int orderId) async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureDeliveriesLoadedColumn(myDb);
+    final rows = await myDb.query(
+      'Commandes_deliveries',
+      columns: ['items_json'],
+      where:
+          "id_commandes = ? AND COALESCE(delivery_status, 'planned') NOT IN ('delivered', 'cancelled', 'failed')",
+      whereArgs: [orderId],
+    );
+    final totals = <int, int>{};
+    for (final row in rows) {
+      final decoded = jsonDecode(row['items_json']?.toString() ?? '[]');
+      if (decoded is! List) continue;
+      for (final raw in decoded) {
+        if (raw is! Map) continue;
+        final id = int.tryParse(raw['id']?.toString() ?? '') ?? 0;
+        final quantity = int.tryParse(raw['quantity']?.toString() ?? '') ?? 0;
+        if (id > 0 && quantity > 0) {
+          totals[id] = (totals[id] ?? 0) + quantity;
+        }
+      }
+    }
+    return totals;
   }
 
   Future<int> updateCommandeDeliveryIsLoaded(
@@ -10308,6 +10567,9 @@ class SqlDatabase {
     try {
       await executor.execute('ALTER TABLE Achats ADD COLUMN deleted_at TEXT;');
     } catch (_) {}
+    try {
+      await executor.execute('ALTER TABLE Achats ADD COLUMN deleted_by TEXT;');
+    } catch (_) {}
     _achatTrashInfrastructureReady = true;
   }
 
@@ -10316,9 +10578,10 @@ class SqlDatabase {
     if (myDb == null) return 0;
     await _ensureAchatTrashInfrastructure(myDb);
     final now = DateTime.now().toUtc().toIso8601String();
+    final deletedBy = await _currentOrderEditor();
     final res = await myDb.update(
       'Achats',
-      {'is_deleted': 1, 'deleted_at': now},
+      {'is_deleted': 1, 'deleted_at': now, 'deleted_by': deletedBy},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -11436,7 +11699,11 @@ class SqlDatabase {
     return res;
   }
 
-  Future<int> updateAccessory(int id, Map<String, dynamic> data) async {
+  Future<int> updateAccessory(
+    int id,
+    Map<String, dynamic> data, {
+    bool notifySync = true,
+  }) async {
     Database? myDb = await db;
     if (myDb != null) {
       await _ensureAccessoryRulesColumns(myDb);
@@ -11447,7 +11714,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyCatalogChange();
+    if (notifySync) CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -12103,6 +12370,12 @@ class SqlDatabase {
       );
       await txn.update(
         'Commandes_details',
+        {'assigned_worker_uid': newUid},
+        where: 'assigned_worker_uid = ?',
+        whereArgs: [localUid],
+      );
+      await txn.update(
+        'Commandes_deliveries',
         {'assigned_worker_uid': newUid},
         where: 'assigned_worker_uid = ?',
         whereArgs: [localUid],
@@ -16851,10 +17124,57 @@ class SqlDatabase {
     }
   }
 
-  Future<List<Map<String, dynamic>>> readAuditLogs({int limit = 50}) async {
+  static bool _auditLogsInfrastructureReady = false;
+
+  Future<void> _ensureAuditLogsInfrastructure(DatabaseExecutor executor) async {
+    if (_auditLogsInfrastructureReady) return;
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS AuditLogs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_type TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        entity_title TEXT,
+        user_name TEXT,
+        details TEXT,
+        timestamp TEXT NOT NULL
+      )
+    ''');
+    _auditLogsInfrastructureReady = true;
+  }
+
+  Future<void> logAuditAction({
+    required String actionType,
+    required String entityType,
+    required String entityId,
+    String? entityTitle,
+    String? details,
+  }) async {
+    try {
+      final database = await db;
+      if (database == null) return;
+      await _ensureAuditLogsInfrastructure(database);
+      final author = await _currentOrderEditor();
+      final nowUtc = DateTime.now().toUtc().toIso8601String();
+      await database.insert('AuditLogs', {
+        'action_type': actionType,
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'entity_title': entityTitle ?? '',
+        'user_name': author,
+        'details': details ?? '',
+        'timestamp': nowUtc,
+      });
+    } catch (e) {
+      debugPrint('Error writing audit log: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> readAuditLogs({int limit = 100}) async {
     final database = await db;
     if (database == null) return [];
     try {
+      await _ensureAuditLogsInfrastructure(database);
       return await database.query(
         'AuditLogs',
         orderBy: 'timestamp DESC',

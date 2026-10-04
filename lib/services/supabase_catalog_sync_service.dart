@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:database_data/sql_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'app_admin_status_service.dart';
+
 class SupabaseCatalogSyncService {
   SupabaseCatalogSyncService._internal();
 
@@ -34,18 +36,7 @@ class SupabaseCatalogSyncService {
   /// locally edited preference is not sufficient to publish the shared
   /// catalogue.
   Future<bool> isCurrentUserAppAdmin() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return false;
-    final row = await _client
-        .from('app_admins')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-    // Keep the client-side check aligned with public.is_app_admin() in
-    // supabase/catalog_sync.sql. The bootstrap application-admin email is
-    // accepted by the database policy even before its app_admins row exists.
-    final email = user.email?.trim().toLowerCase() ?? '';
-    return row != null || email == 'kouidrihamza45@gmail.com';
+    return AppAdminStatusService.instance.isCurrentUserAdmin();
   }
 
   Future<void> signInWithPassword({

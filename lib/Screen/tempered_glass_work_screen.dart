@@ -352,6 +352,7 @@ class TemperedGlassWorkScreen extends StatefulWidget {
 
 class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   final ScrollController _toolbarScrollController = ScrollController();
+  final ScrollController _appBarActionsScrollController = ScrollController();
   // Initial workshop values. Keep these in one place so they can later be
   // moved to the workshop settings screen without changing the drawing code.
   static const _defaultHoleDiameterMm = 20.0;
@@ -362,7 +363,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   static const _slidingVisualGapPx = 2.0;
   double _doorTopHoleSideOffsetMm = 80.0;
   double _doorTopHoleTopOffsetMm = 35.0;
-  static const _handleHoleEdgeOffsetMm = 50.0;
+  // 54 mm to the hole centre keeps a Ø20 handle hole at least 44 mm from glass.
+  static const _handleHoleEdgeOffsetMm = 54.0;
   static const _handleHoleSpacingMm = 200.0;
   static const _towelHoleSpacingMm = 450.0;
 
@@ -406,6 +408,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   _SablageMode _sablageMode = _SablageMode.none;
   bool _sablageRangeMode = false;
   bool _sablageFromBottom = false;
+  bool _sablageDrawingActive = false;
   double _glassThicknessMm = 10.0;
   String _glassType = 'شفاف';
   bool _glassTempered = true;
@@ -519,6 +522,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   @override
   void dispose() {
     _toolbarScrollController.dispose();
+    _appBarActionsScrollController.dispose();
     _doorWidthController.dispose();
     _sablageBandWidthController.dispose();
     _sablageTransparentWidthController.dispose();
@@ -1498,8 +1502,15 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             : (_handleSpacingMm > 0 ? _handleSpacingMm : 200.0);
         final diam = math.max(hTop.diameterMm, hBottom.diameterMm);
 
+        final minimumHandleCenter = 44.0 + diam / 2;
         final newX = (hTop.xMm + dxMm)
-            .clamp(diam / 2, panel.widthMm - diam / 2)
+            .clamp(
+              minimumHandleCenter,
+              math.max(
+                minimumHandleCenter,
+                panel.widthMm - minimumHandleCenter,
+              ),
+            )
             .toDouble();
 
         final minY = diam / 2;
@@ -2099,11 +2110,12 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     // Decorative frosting is edited as measured bands.  A double tap on the
     // drawing is the fast entry point to the same precise editor used by the
     // toolbar, so the user can draw first and enter exact dimensions after.
-    if (_sablageMode != _SablageMode.decorative) return;
+    if (!_sablageEnabled) return;
     _editSablageOptions();
   }
 
-  bool get _sablageEnabled => _sablageMode == _SablageMode.decorative;
+  bool get _sablageEnabled =>
+      _sablageMode == _SablageMode.decorative && _sablageDrawingActive;
 
   double _number(TextEditingController controller, double fallback) =>
       _parseMillimeters(controller.text) ?? fallback;
@@ -2610,8 +2622,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         .clamp(1.0, math.min(widthMm, heightMm))
         .toDouble();
     hole.diameterMm = diameter;
+    final minimumX = hole.purpose.startsWith('handle_')
+        ? 44.0 + diameter / 2
+        : diameter / 2;
     hole.xMm = override.xMm
-        .clamp(diameter / 2, math.max(diameter / 2, widthMm - diameter / 2))
+        .clamp(minimumX, math.max(minimumX, widthMm - minimumX))
         .toDouble();
     hole.yMm = override.yMm
         .clamp(diameter / 2, math.max(diameter / 2, heightMm - diameter / 2))
@@ -5601,6 +5616,35 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             ],
           ),
         ),
+        PopupMenuItem<String>(
+          value: 'draw_bands',
+          height: 38,
+          child: Row(
+            children: [
+              Icon(
+                _sablageDrawingActive ? Icons.touch_app : Icons.gesture,
+                size: 19,
+                color: Colors.indigo,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _sablageDrawingActive
+                      ? _tr(
+                          'إيقاف رسم شرائط الصابلاج',
+                          'Arrêter le dessin des bandes',
+                          'Stop drawing frosting bands',
+                        )
+                      : _tr(
+                          'رسم شرائط الصابلاج يدويًا',
+                          'Dessiner les bandes manuellement',
+                          'Draw frosting bands manually',
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
         if (hasActiveSablage)
           PopupMenuItem<String>(
             value: 'clear_all',
@@ -5626,7 +5670,15 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     );
     if (selected == null) return;
     if (selected == 'add_region') {
+      setState(() => _sablageDrawingActive = false);
       await _addSablageRegion();
+      return;
+    }
+    if (selected == 'draw_bands') {
+      setState(() {
+        _sablageMode = _SablageMode.decorative;
+        _sablageDrawingActive = !_sablageDrawingActive;
+      });
       return;
     }
     if (selected == 'clear_all') {
@@ -5635,6 +5687,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         _sablageMode = _SablageMode.none;
         _sablageBands.clear();
         _sablageRegions.clear();
+        _sablageDrawingActive = false;
       });
       return;
     }
@@ -5645,14 +5698,19 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         _sablageMode = _SablageMode.none;
         _sablageBands.clear();
         _sablageRegions.clear();
+        _sablageDrawingActive = false;
       });
     } else if (selected == 'full') {
       setState(() {
         _sablageMode = _SablageMode.full;
         _sablageBands.clear();
+        _sablageDrawingActive = false;
       });
     } else if (selected == 'decorative') {
-      setState(() => _sablageMode = _SablageMode.decorative);
+      setState(() {
+        _sablageMode = _SablageMode.decorative;
+        _sablageDrawingActive = false;
+      });
       await _editSablageOptions();
     }
   }
@@ -7031,11 +7089,16 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           }
 
           // Automatically suggest / calculate appropriate seals (جوان مغناطيسي 90° أو 180° أو جوان حرف F)
-          final is90DegCorner = _panels.any((p) => p.isFixed) && _panels.any((p) => p.isDoor);
-          if (_workType == GlassWorkType.showerCabin || _workType == GlassWorkType.slidingShowerCabin) {
+          final is90DegCorner =
+              _panels.any((p) => p.isFixed) && _panels.any((p) => p.isDoor);
+          if (_workType == GlassWorkType.showerCabin ||
+              _workType == GlassWorkType.slidingShowerCabin) {
             // Check if user hasn't explicitly picked a joint yet
             final hasExplicitJoint = _selectedAccessories.keys.any((id) {
-              final a = _catalogAccessories.firstWhere((x) => x['id'] == id, orElse: () => <String, dynamic>{});
+              final a = _catalogAccessories.firstWhere(
+                (x) => x['id'] == id,
+                orElse: () => <String, dynamic>{},
+              );
               return a['category'] == 'joint';
             });
 
@@ -7043,19 +7106,31 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               // 1. Magnetic joint for 90° corner or straight 180°
               final jointNameKeyword = is90DegCorner ? '90°' : '180°';
               final magnetJointItem = _catalogAccessories.firstWhere(
-                (a) => a['category'] == 'joint' && a['name']?.toString().contains('مغناطيسي') == true && a['name']?.toString().contains(jointNameKeyword) == true,
+                (a) =>
+                    a['category'] == 'joint' &&
+                    a['name']?.toString().contains('مغناطيسي') == true &&
+                    a['name']?.toString().contains(jointNameKeyword) == true,
                 orElse: () => _catalogAccessories.firstWhere(
-                  (a) => a['category'] == 'joint' && a['name']?.toString().contains('مغناطيسي') == true,
+                  (a) =>
+                      a['category'] == 'joint' &&
+                      a['name']?.toString().contains('مغناطيسي') == true,
                   orElse: () => <String, dynamic>{
-                    'name': is90DegCorner ? 'جوان مغناطيسي 90° (Joint magnétique 90°)' : 'جوان مغناطيسي 180° (Joint magnétique 180°)',
+                    'name': is90DegCorner
+                        ? 'جوان مغناطيسي 90° (Joint magnétique 90°)'
+                        : 'جوان مغناطيسي 180° (Joint magnétique 180°)',
                     'price': is90DegCorner ? 2100.0 : 1900.0,
                     'unit': 'piece',
                   },
                 ),
               );
-              final jPrice = (magnetJointItem['price'] as num?)?.toDouble() ?? 2000.0;
+              final jPrice =
+                  (magnetJointItem['price'] as num?)?.toDouble() ?? 2000.0;
               appliedAccessories.add({
-                'name': magnetJointItem['name'] ?? (is90DegCorner ? 'جوان مغناطيسي 90°' : 'جوان مغناطيسي 180°'),
+                'name':
+                    magnetJointItem['name'] ??
+                    (is90DegCorner
+                        ? 'جوان مغناطيسي 90°'
+                        : 'جوان مغناطيسي 180°'),
                 'qty': 1,
                 'unit': 'piece',
                 'price': jPrice,
@@ -7065,14 +7140,18 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
               // 2. Joint profil F for side water sealing
               final fJointItem = _catalogAccessories.firstWhere(
-                (a) => a['category'] == 'joint' && (a['name']?.toString().contains('حرف F') == true || a['name']?.toString().contains('profil F') == true),
+                (a) =>
+                    a['category'] == 'joint' &&
+                    (a['name']?.toString().contains('حرف F') == true ||
+                        a['name']?.toString().contains('profil F') == true),
                 orElse: () => <String, dynamic>{
                   'name': 'جوان حرف F مانع تسرب الماء (Joint profil F)',
                   'price': 1600.0,
                   'unit': 'piece',
                 },
               );
-              final fPrice = (fJointItem['price'] as num?)?.toDouble() ?? 1600.0;
+              final fPrice =
+                  (fJointItem['price'] as num?)?.toDouble() ?? 1600.0;
               appliedAccessories.add({
                 'name': fJointItem['name'] ?? 'جوان حرف F مانع تسرب الماء',
                 'qty': 1,
@@ -8048,17 +8127,31 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         backgroundColor: Colors.cyan.shade800,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
+          SizedBox(
+            width: compact
+                ? (MediaQuery.sizeOf(context).width * 0.58).clamp(170.0, 300.0)
+                : (MediaQuery.sizeOf(context).width * 0.72).clamp(420.0, 760.0),
+            child: Scrollbar(
+              controller: _appBarActionsScrollController,
+              thumbVisibility: compact,
+              scrollbarOrientation: ScrollbarOrientation.bottom,
+              child: SingleChildScrollView(
+                controller: _appBarActionsScrollController,
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
             tooltip: _tr('تراجع', 'Annuler', 'Undo'),
             onPressed: _undoStack.isEmpty ? null : _undo,
             icon: const Icon(Icons.undo),
           ),
-          IconButton(
+                    IconButton(
             tooltip: _tr('إعادة', 'Rétablir', 'Redo'),
             onPressed: _redoStack.isEmpty ? null : _redo,
             icon: const Icon(Icons.redo),
           ),
-          Builder(
+                    Builder(
             builder: (btnCtx) => IconButton(
               tooltip: _tr(
                 'خيارات النظام',
@@ -8069,7 +8162,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               icon: const Icon(Icons.dashboard_customize_outlined),
             ),
           ),
-          IconButton(
+                    IconButton(
             tooltip: _tr(
               'كيت الزجاج وقواعد الثقوب',
               'Kit verre & perçages',
@@ -8078,7 +8171,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             onPressed: _showKitSelectionDialog,
             icon: const Icon(Icons.architecture_outlined),
           ),
-          Padding(
+                    Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: FilledButton.icon(
               onPressed: _panels.isEmpty
@@ -8100,7 +8193,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               ),
             ),
           ),
-          Padding(
+                    Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: FilledButton.icon(
               onPressed: _panels.isEmpty ? null : _showCostAndQuantityDialog,
@@ -8119,7 +8212,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               ),
             ),
           ),
-          Padding(
+                    Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: FilledButton.tonalIcon(
               onPressed: _showManufacturingSheet,
@@ -8134,10 +8227,15 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               ),
             ),
           ),
-          IconButton(
+                    IconButton(
             tooltip: _tr('مسح الرسم', 'Effacer le dessin', 'Clear drawing'),
             onPressed: _confirmClearDrawing,
             icon: const Icon(Icons.delete_sweep_outlined),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -9023,7 +9121,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       }
       _paintHoleDimensions(canvas, panel);
     }
-    _paintOuterAndPanelDimensions(canvas);
+    _paintOuterAndPanelDimensions(canvas, size);
     if (selectedPanelIndex != null &&
         selectedPanelIndex! >= 0 &&
         selectedPanelIndex! < panels.length) {
@@ -9691,9 +9789,10 @@ class _GlassPanelDrawingPainter extends CustomPainter {
         panel.rect.left + _safeHoleXMm(panel, hole, diameterMm) * scaleX,
         panel.rect.top + _safeHoleYMm(panel, hole, diameterMm) * scaleY,
       );
-      final radius = math
-          .max(4.0, diameterMm * math.min(scaleX, scaleY) / 2)
-          .toDouble();
+      final scaledRadius = diameterMm * math.min(scaleX, scaleY) / 2;
+      final radius = hole.purpose.startsWith('handle_')
+          ? scaledRadius.clamp(2.0, 5.0).toDouble()
+          : math.max(3.0, scaledRadius).toDouble();
       canvas.drawCircle(center, radius, fill);
       canvas.drawCircle(center, radius, border);
 
@@ -10455,7 +10554,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     }
   }
 
-  void _paintOuterAndPanelDimensions(Canvas canvas) {
+  void _paintOuterAndPanelDimensions(Canvas canvas, Size canvasSize) {
     if (panels.isEmpty) return;
 
     final dimensionPaint = Paint()
@@ -10466,10 +10565,13 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     if (panels.length == 1) {
       final panel = panels.first;
       // Top width
+      final topY = panel.rect.top - 18 < 4
+          ? panel.rect.top + 14
+          : panel.rect.top - 18;
       _drawDimension(
         canvas,
-        start: Offset(panel.rect.left, panel.rect.top - 18),
-        end: Offset(panel.rect.right, panel.rect.top - 18),
+        start: Offset(panel.rect.left, topY),
+        end: Offset(panel.rect.right, topY),
         label: panel.widthMm.toStringAsFixed(0),
         horizontal: true,
         paint: dimensionPaint,
@@ -10477,27 +10579,29 @@ class _GlassPanelDrawingPainter extends CustomPainter {
 
       // Pick the side that has no handles so it stays completely clear
       final hasLeftHoles = panel.holes.any((h) => h.xMm < panel.widthMm / 2);
-      if (hasLeftHoles) {
+      if (hasLeftHoles && panel.rect.right + 44 < canvasSize.width) {
         // Height on RIGHT side only
         _drawDimension(
           canvas,
-          start: Offset(panel.rect.right + 34, panel.rect.top),
-          end: Offset(panel.rect.right + 34, panel.rect.bottom),
+          start: Offset(panel.rect.right + 24, panel.rect.top),
+          end: Offset(panel.rect.right + 24, panel.rect.bottom),
           label: panel.heightMm.toStringAsFixed(0),
           horizontal: false,
           paint: dimensionPaint,
           textOnLeft: false,
         );
       } else {
-        // Height on LEFT side only
+        final dimensionX = panel.rect.left - 44 > 0
+            ? panel.rect.left - 24
+            : panel.rect.left + 16;
         _drawDimension(
           canvas,
-          start: Offset(panel.rect.left - 34, panel.rect.top),
-          end: Offset(panel.rect.left - 34, panel.rect.bottom),
+          start: Offset(dimensionX, panel.rect.top),
+          end: Offset(dimensionX, panel.rect.bottom),
           label: panel.heightMm.toStringAsFixed(0),
           horizontal: false,
           paint: dimensionPaint,
-          textOnLeft: true,
+          textOnLeft: dimensionX < panel.rect.left,
         );
       }
       return;
@@ -10513,10 +10617,11 @@ class _GlassPanelDrawingPainter extends CustomPainter {
 
     // 1. Overall outer dimensions:
     // Outer total width (above panels)
+    final outerTopY = minTop - 34 < 4 ? minTop + 12 : minTop - 34;
     _drawDimension(
       canvas,
-      start: Offset(minLeft, minTop - 34),
-      end: Offset(maxRight, minTop - 34),
+      start: Offset(minLeft, outerTopY),
+      end: Offset(maxRight, outerTopY),
       label: totalWidth.toStringAsFixed(0),
       horizontal: true,
       paint: dimensionPaint,
@@ -10526,28 +10631,32 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     final leftPanel = panels.reduce(
       (a, b) => a.rect.left < b.rect.left ? a : b,
     );
+    final leftDimensionX = minLeft - 44 > 0 ? minLeft - 24 : minLeft + 14;
     _drawDimension(
       canvas,
-      start: Offset(minLeft - 34, leftPanel.rect.top),
-      end: Offset(minLeft - 34, leftPanel.rect.bottom),
+      start: Offset(leftDimensionX, leftPanel.rect.top),
+      end: Offset(leftDimensionX, leftPanel.rect.bottom),
       label: leftPanel.heightMm.toStringAsFixed(0),
       horizontal: false,
       paint: dimensionPaint,
-      textOnLeft: true,
+      textOnLeft: leftDimensionX < minLeft,
     );
 
     // Outer height on RIGHT: use rightmost panel's height, 34px away with text outside (on right)
     final rightPanel = panels.reduce(
       (a, b) => a.rect.right > b.rect.right ? a : b,
     );
+    final rightDimensionX = maxRight + 44 < canvasSize.width
+        ? maxRight + 24
+        : maxRight - 14;
     _drawDimension(
       canvas,
-      start: Offset(maxRight + 34, rightPanel.rect.top),
-      end: Offset(maxRight + 34, rightPanel.rect.bottom),
+      start: Offset(rightDimensionX, rightPanel.rect.top),
+      end: Offset(rightDimensionX, rightPanel.rect.bottom),
       label: rightPanel.heightMm.toStringAsFixed(0),
       horizontal: false,
       paint: dimensionPaint,
-      textOnLeft: false,
+      textOnLeft: rightDimensionX < maxRight,
     );
 
     // 2. Individual panel width dimensions (above each panel):

@@ -15,7 +15,6 @@ import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../sql_database.dart';
 import 'achat_screen.dart';
-import 'material_sales_screen.dart';
 import 'trash_screen.dart';
 import 'suppliers_screen.dart';
 import 'settings_screen.dart';
@@ -31,6 +30,7 @@ import 'client_chrono_search_screen.dart';
 import '../login_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'inventory_screen.dart';
+import 'material_sales_screen.dart';
 import 'material_remnants_screen.dart';
 import 'worker_archive_screen.dart';
 import 'package:flutter/gestures.dart';
@@ -102,8 +102,8 @@ class _AppDrawerState extends State<AppDrawer> {
         final authUser = AppAuthService().currentUser;
         final email = authUser?.email?.trim() ?? '';
         final authName = authUser?.displayName?.trim() ?? '';
-        final storedUserName =
-            (prefs.getString('user_display_name') ?? '').trim();
+        final storedUserName = (prefs.getString('user_display_name') ?? '')
+            .trim();
         _savedUserDisplayName = storedUserName.isNotEmpty
             ? storedUserName
             : (authName.isNotEmpty
@@ -488,7 +488,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 french: 'Responsable atelier',
                 english: 'Workshop manager',
               )
-              : _desktopLabel(
+            : _desktopLabel(
                 lang,
                 arabic: 'عامل',
                 french: 'Employé',
@@ -496,8 +496,8 @@ class _AppDrawerState extends State<AppDrawer> {
               );
         final userEmail = AppAuthService().currentUser?.email?.trim() ?? '';
         final savedUserName = _savedUserDisplayName?.trim() ?? '';
-        final userName = savedUserName.isNotEmpty &&
-                savedUserName != workshopName
+        final userName =
+            savedUserName.isNotEmpty && savedUserName != workshopName
             ? savedUserName
             : (userEmail.contains('@')
                   ? userEmail.split('@').first
@@ -782,19 +782,21 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         ),
       );
-      orderItems.add(
-        _desktopMenuItem(
-          title: Localization.translate('orders_trash', lang),
-          icon: Icons.auto_delete_rounded,
-          onTap: () => _openScreen(
-            'orders_trash',
-            Icons.auto_delete_rounded,
-            TrashScreen(db: db),
-            titleKey: 'orders_trash',
+      if (settings.canAccessTrash()) {
+        orderItems.add(
+          _desktopMenuItem(
+            title: Localization.translate('orders_trash', lang),
+            icon: Icons.auto_delete_rounded,
+            onTap: () => _openScreen(
+              'orders_trash',
+              Icons.auto_delete_rounded,
+              TrashScreen(db: db),
+              titleKey: 'orders_trash',
+            ),
+            color: Colors.redAccent,
           ),
-          color: Colors.redAccent,
-        ),
-      );
+        );
+      }
       orderItems.add(
         _desktopMenuItem(
           title: _desktopLabel(
@@ -817,7 +819,12 @@ class _AppDrawerState extends State<AppDrawer> {
     if (settings.canViewSales()) {
       orderItems.add(
         _desktopMenuItem(
-          title: Localization.translate('vente', lang),
+          title: _desktopLabel(
+            lang,
+            arabic: 'مبيعات الورشة',
+            french: 'Ventes atelier',
+            english: 'Workshop sales',
+          ),
           icon: Icons.point_of_sale_rounded,
           onTap: () => _openScreen(
             Localization.translate('vente', lang),
@@ -828,23 +835,22 @@ class _AppDrawerState extends State<AppDrawer> {
           color: Colors.teal,
         ),
       );
-      // بيع المواد والمستلزمات – Material Sales
       orderItems.add(
         _desktopMenuItem(
           title: _desktopLabel(
             lang,
-            arabic: 'بيع المواد والمستلزمات',
+            arabic: 'بيع المواد',
             french: 'Vente Matériaux',
-            english: 'Material Sales',
+            english: 'Material sales',
           ),
-          icon: Icons.store_mall_directory_rounded,
+          icon: Icons.storefront_rounded,
           onTap: () => _openScreen(
             'material_sales',
-            Icons.store_mall_directory_rounded,
+            Icons.storefront_rounded,
             MaterialSalesScreen(db: db),
             titleKey: 'material_sales',
           ),
-          color: const Color(0xFF06B6D4),
+          color: Colors.deepOrange,
         ),
       );
     }
@@ -1492,7 +1498,8 @@ class _AppDrawerState extends State<AppDrawer> {
       child: _buildScrollableDrawerList(
         children: [
           StreamBuilder<DocumentSnapshot>(
-            stream: AppAuthService().currentUser != null &&
+            stream:
+                AppAuthService().currentUser != null &&
                     !AppAuthService().usesSupabase
                 ? FirebaseFirestore.instance
                       .collection('users')
@@ -1828,9 +1835,12 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.canViewOrders())
+          if (settings.canAccessTrash())
             ListTile(
-              leading: const Icon(Icons.auto_delete_rounded, color: Colors.redAccent),
+              leading: const Icon(
+                Icons.auto_delete_rounded,
+                color: Colors.redAccent,
+              ),
               title: Text(Localization.translate('orders_trash', lang)),
               onTap: () {
                 _openScreen(
@@ -1843,7 +1853,10 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
           if (settings.canViewOrders())
             ListTile(
-              leading: const Icon(Icons.architecture_rounded, color: Colors.indigo),
+              leading: const Icon(
+                Icons.architecture_rounded,
+                color: Colors.indigo,
+              ),
               title: Text(
                 _desktopLabel(
                   lang,
@@ -1905,6 +1918,50 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
+          if (settings.canViewSales())
+            ListTile(
+              leading: const Icon(
+                Icons.monetization_on_rounded,
+                color: Colors.teal,
+              ),
+              title: Text(
+                lang == AppLanguage.arabic
+                    ? 'مبيعات الورشة'
+                    : lang == AppLanguage.french
+                    ? 'Ventes atelier'
+                    : 'Workshop sales',
+              ),
+              onTap: () {
+                _openScreen(
+                  Localization.translate('vente', lang),
+                  Icons.monetization_on_rounded,
+                  SalesScreen(db: db),
+                  titleKey: 'vente',
+                );
+              },
+            ),
+          if (settings.canViewSales())
+            ListTile(
+              leading: const Icon(
+                Icons.storefront_rounded,
+                color: Colors.deepOrange,
+              ),
+              title: Text(
+                lang == AppLanguage.arabic
+                    ? 'بيع المواد'
+                    : lang == AppLanguage.french
+                    ? 'Vente Matériaux'
+                    : 'Material sales',
+              ),
+              onTap: () {
+                _openScreen(
+                  'material_sales',
+                  Icons.storefront_rounded,
+                  MaterialSalesScreen(db: db),
+                  titleKey: 'material_sales',
+                );
+              },
+            ),
           if (settings.canAccessDistributionTracking())
             ListTile(
               leading: const Icon(
@@ -1931,45 +1988,6 @@ class _AppDrawerState extends State<AppDrawer> {
                   Icons.shopping_bag_rounded,
                   AchatScreen(db: SqlDatabase()),
                   titleKey: 'achat',
-                );
-              },
-            ),
-          if (settings.canViewSales())
-            ListTile(
-              leading: const Icon(
-                Icons.monetization_on_rounded,
-                color: Colors.teal,
-              ),
-              title: Text(Localization.translate('vente', lang)),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('vente', lang),
-                  Icons.monetization_on_rounded,
-                  SalesScreen(db: db),
-                  titleKey: 'vente',
-                );
-              },
-            ),
-          if (settings.canViewSales())
-            ListTile(
-              leading: const Icon(
-                Icons.store_mall_directory_rounded,
-                color: Color(0xFF06B6D4),
-              ),
-              title: Text(
-                lang == AppLanguage.french
-                    ? 'Vente Matériaux'
-                    : lang == AppLanguage.english
-                        ? 'Material Sales'
-                        : 'بيع المواد والمستلزمات',
-                style: const TextStyle(fontFamily: 'Cairo'),
-              ),
-              onTap: () {
-                _openScreen(
-                  'material_sales',
-                  Icons.store_mall_directory_rounded,
-                  MaterialSalesScreen(db: db),
-                  titleKey: 'material_sales',
                 );
               },
             ),
@@ -2004,10 +2022,7 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
           if (settings.canAccessInventory())
             ListTile(
-              leading: const Icon(
-                Icons.recycling_rounded,
-                color: Colors.teal,
-              ),
+              leading: const Icon(Icons.recycling_rounded, color: Colors.teal),
               title: Text(
                 lang == AppLanguage.arabic
                     ? 'إدارة فضلات الألواح والمقاطع (Chutes)'
@@ -2171,7 +2186,10 @@ class _AppDrawerState extends State<AppDrawer> {
               },
             ),
           ListTile(
-            leading: const Icon(Icons.pie_chart_outline_rounded, color: Color(0xFF0D9488)),
+            leading: const Icon(
+              Icons.pie_chart_outline_rounded,
+              color: Color(0xFF0D9488),
+            ),
             title: Text(
               _desktopLabel(
                 lang,
@@ -2198,7 +2216,10 @@ class _AppDrawerState extends State<AppDrawer> {
                 color: Colors.teal,
               ),
               title: Text(
-                Localization.translate('الدفع الإلكتروني وتجديد الاشتراك', lang),
+                Localization.translate(
+                  'الدفع الإلكتروني وتجديد الاشتراك',
+                  lang,
+                ),
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               onTap: () {

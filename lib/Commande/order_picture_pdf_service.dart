@@ -315,16 +315,7 @@ class OrderPicturePdfService {
   }
 
   static Map<String, dynamic> _decodeModelMap(dynamic raw) {
-    if (raw is Map<String, dynamic>) return raw;
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    final text = raw?.toString().trim() ?? '';
-    if (text.length < 5) return const {};
-    try {
-      final decoded = jsonDecode(text);
-      if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    } catch (_) {}
-    return const {};
+    return savedWindowModelMap(raw);
   }
 
   static pw.Widget _buildHeader(

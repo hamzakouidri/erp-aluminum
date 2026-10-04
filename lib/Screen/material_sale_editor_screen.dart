@@ -7,8 +7,14 @@ import '../services/material_sale_pdf_service.dart';
 class MaterialSaleEditorScreen extends StatefulWidget {
   final SqlDatabase db;
   final int? saleId; // null = create new
+  final String? initialDocType;
 
-  const MaterialSaleEditorScreen({super.key, required this.db, this.saleId});
+  const MaterialSaleEditorScreen({
+    super.key,
+    required this.db,
+    this.saleId,
+    this.initialDocType,
+  });
 
   @override
   State<MaterialSaleEditorScreen> createState() =>
@@ -25,7 +31,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
   // ── Sale header fields ────────────────────────────────────────────────────
   String _saleCode = '';
-  String _docType = 'bon_livraison';
+  String _docType = 'bon_commande';
   String _status = 'draft';
   int? _clientId;
   String _clientName = '';
@@ -57,6 +63,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.saleId == null && widget.initialDocType != null) {
+      _docType = widget.initialDocType!;
+    }
     _loadData();
   }
 
@@ -78,13 +87,14 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         final sale = await widget.db.readMaterialSaleById(widget.saleId!);
         if (sale != null) {
           _saleCode = sale['sale_code'] ?? '';
-          _docType = sale['doc_type'] ?? 'bon_livraison';
+          _docType = sale['doc_type'] ?? 'bon_commande';
           _status = sale['status'] ?? 'draft';
           _clientId = sale['client_id'] as int?;
           _clientName = sale['client_name'] ?? '';
           _clientPhone = sale['client_phone'] ?? '';
           _notes = sale['notes'] ?? '';
-          _discountAmount = (sale['discount_amount'] as num?)?.toDouble() ?? 0.0;
+          _discountAmount =
+              (sale['discount_amount'] as num?)?.toDouble() ?? 0.0;
           _paidAmount = (sale['paid_amount'] as num?)?.toDouble() ?? 0.0;
           final saleDateStr = sale['sale_date'] as String? ?? '';
           if (saleDateStr.isNotEmpty) {
@@ -108,19 +118,29 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   }
 
   // ── Calculations ─────────────────────────────────────────────────────────
-  double get _subtotal =>
-      _items.fold(0.0, (s, i) => s + ((i['total_price'] as num?)?.toDouble() ?? 0.0));
+  double get _subtotal => _items.fold(
+    0.0,
+    (s, i) => s + ((i['total_price'] as num?)?.toDouble() ?? 0.0),
+  );
 
-  double get _netTotal => (_subtotal - _discountAmount).clamp(0.0, double.infinity);
+  double get _netTotal =>
+      (_subtotal - _discountAmount).clamp(0.0, double.infinity);
 
-  double get _remainingAmount => (_netTotal - _paidAmount).clamp(0.0, double.infinity);
+  double get _remainingAmount =>
+      (_netTotal - _paidAmount).clamp(0.0, double.infinity);
+
+  bool get _shouldDeductStock {
+    if (_status != 'confirmed' && _status != 'delivered') return false;
+    return _docType == 'bon_livraison' ||
+        _docType == 'bon_route' ||
+        _docType == 'facture';
+  }
 
   void _recalc() => setState(() {
-        _discountAmount =
-            double.tryParse(_discountCtrl.text.replaceAll(',', '.')) ?? 0.0;
-        _paidAmount =
-            double.tryParse(_paidCtrl.text.replaceAll(',', '.')) ?? 0.0;
-      });
+    _discountAmount =
+        double.tryParse(_discountCtrl.text.replaceAll(',', '.')) ?? 0.0;
+    _paidAmount = double.tryParse(_paidCtrl.text.replaceAll(',', '.')) ?? 0.0;
+  });
 
   // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> _save() async {
@@ -158,7 +178,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
             netTotal: _netTotal,
             paidAmount: _paidAmount,
           );
-          if (_status == 'confirmed' || _status == 'delivered') {
+          if (_shouldDeductStock) {
             await widget.db.deductStockForMaterialSale(newId);
           }
         }
@@ -187,7 +207,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           netTotal: _netTotal,
           paidAmount: _paidAmount,
         );
-        if (_status == 'confirmed' || _status == 'delivered') {
+        if (_shouldDeductStock) {
           await widget.db.deductStockForMaterialSale(widget.saleId!);
         }
       }
@@ -225,7 +245,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       'sale_date': _saleDate.toIso8601String(),
     };
     try {
-      final bytes = await MaterialSalePdfService.generate(sale: sale, items: _items);
+      final bytes = await MaterialSalePdfService.generate(
+        sale: sale,
+        items: _items,
+      );
       await MaterialSalePdfService.printOrShare(bytes, _saleCode);
     } catch (e) {
       _showSnack('خطأ في الطباعة: $e', isError: true);
@@ -234,10 +257,12 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
   void _showSnack(String msg, {required bool isError}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
-      backgroundColor: isError ? _red : _green,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: isError ? _red : _green,
+      ),
+    );
   }
 
   // ── Add item ──────────────────────────────────────────────────────────────
@@ -282,7 +307,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           children: [
             TextField(
               controller: qtyCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Quantité / الكمية',
                 labelStyle: TextStyle(fontFamily: 'Cairo'),
@@ -291,7 +318,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: priceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Prix unitaire / السعر',
                 labelStyle: TextStyle(fontFamily: 'Cairo'),
@@ -307,8 +336,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _blue),
             onPressed: () {
-              final qty = double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 1.0;
-              final price = double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
+              final qty =
+                  double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 1.0;
+              final price =
+                  double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
               setState(() {
                 _items[index]['quantity'] = qty;
                 _items[index]['unit_price'] = price;
@@ -316,7 +347,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
               });
               Navigator.pop(context);
             },
-            child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+            child: const Text(
+              'حفظ',
+              style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -330,64 +364,81 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       builder: (_) {
         final search = TextEditingController();
         List<Map<String, dynamic>> filtered = List.from(_clients);
-        return StatefulBuilder(builder: (ctx, setS) {
-          return AlertDialog(
-            title: const Text('اختر العميل / Choisir client',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 14)),
-            content: SizedBox(
-              width: 350,
-              height: 400,
-              child: Column(children: [
-                TextField(
-                  controller: search,
-                  decoration: const InputDecoration(
-                    hintText: 'بحث...',
-                    hintStyle: TextStyle(fontFamily: 'Cairo'),
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onChanged: (v) {
-                    setS(() {
-                      final q = v.toLowerCase();
-                      filtered = _clients.where((c) {
-                        final name = (c['name'] ?? '').toString().toLowerCase();
-                        return name.contains(q);
-                      }).toList();
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) {
-                      final c = filtered[i];
-                      return ListTile(
-                        title: Text(c['name'] ?? '', style: const TextStyle(fontFamily: 'Cairo')),
-                        subtitle: Text(c['phone'] ?? '', style: const TextStyle(fontFamily: 'Cairo')),
-                        onTap: () {
-                          setState(() {
-                            _clientId = c['id'] as int?;
-                            _clientName = c['name'] ?? '';
-                            _clientPhone = c['phone'] ?? '';
-                            _clientCtrl.text = _clientName;
-                            _clientPhoneCtrl.text = _clientPhone;
-                          });
-                          Navigator.pop(context);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ]),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+        return StatefulBuilder(
+          builder: (ctx, setS) {
+            return AlertDialog(
+              title: const Text(
+                'اختر العميل / Choisir client',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
               ),
-            ],
-          );
-        });
+              content: SizedBox(
+                width: 350,
+                height: 400,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: search,
+                      decoration: const InputDecoration(
+                        hintText: 'بحث...',
+                        hintStyle: TextStyle(fontFamily: 'Cairo'),
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (v) {
+                        setS(() {
+                          final q = v.toLowerCase();
+                          filtered = _clients.where((c) {
+                            final name = (c['name'] ?? '')
+                                .toString()
+                                .toLowerCase();
+                            return name.contains(q);
+                          }).toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) {
+                          final c = filtered[i];
+                          return ListTile(
+                            title: Text(
+                              c['name'] ?? '',
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            subtitle: Text(
+                              c['phone'] ?? '',
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _clientId = c['id'] as int?;
+                                _clientName = c['name'] ?? '';
+                                _clientPhone = c['phone'] ?? '';
+                                _clientCtrl.text = _clientName;
+                                _clientPhoneCtrl.text = _clientPhone;
+                              });
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'إلغاء',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
       },
     );
   }
@@ -403,7 +454,11 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         foregroundColor: Colors.white,
         title: Text(
           isNew ? 'وصل بيع جديد / Nouveau document' : 'تعديل / $_saleCode',
-          style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, color: Colors.white),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 15,
+            color: Colors.white,
+          ),
         ),
         actions: [
           IconButton(
@@ -414,7 +469,14 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           if (_isSaving)
             const Padding(
               padding: EdgeInsets.all(12),
-              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
             )
           else
             IconButton(
@@ -455,115 +517,208 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Row 1: sale code + date
-          Row(children: [
-            Expanded(
-              child: Text(
-                _saleCode,
-                style: const TextStyle(
-                    fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16, color: _blue),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: sale code + date
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _saleCode,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: _blue,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _saleDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) setState(() => _saleDate = picked);
+                  },
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 16,
+                        color: _blue,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('dd/MM/yyyy').format(_saleDate),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Row 2: doc type + status
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _docType,
+                    decoration: const InputDecoration(
+                      labelText: 'نوع الوثيقة / Type',
+                      labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'bon_commande',
+                        child: Text(
+                          'Commande Matériaux',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'bon_livraison',
+                        child: Text(
+                          'Bon de livraison Matériaux',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'bon_route',
+                        child: Text(
+                          'Bon de route Matériaux',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'facture',
+                        child: Text(
+                          'Facture Matériaux',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'devis',
+                        child: Text(
+                          'Proforma Matériaux',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _docType = v ?? _docType),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _status,
+                    decoration: const InputDecoration(
+                      labelText: 'الحالة / Statut',
+                      labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'draft',
+                        child: Text(
+                          'مسودة',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'reserved',
+                        child: Text(
+                          'محجوز',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'confirmed',
+                        child: Text(
+                          'مؤكد',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'delivered',
+                        child: Text(
+                          'تم التسليم',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'paid',
+                        child: Text(
+                          'مدفوع',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cancelled',
+                        child: Text(
+                          'ملغى',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _status = v ?? _status),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Row 3: client
+            GestureDetector(
+              onTap: _openClientPicker,
+              child: AbsorbPointer(
+                child: TextField(
+                  controller: _clientCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'العميل / Client',
+                    labelStyle: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                    ),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: const Icon(
+                      Icons.person_search_rounded,
+                      color: _blue,
+                    ),
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                  onChanged: (v) => setState(() => _clientName = v),
+                ),
               ),
             ),
-            InkWell(
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _saleDate,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2030),
-                );
-                if (picked != null) setState(() => _saleDate = picked);
-              },
-              child: Row(children: [
-                const Icon(Icons.calendar_today_rounded, size: 16, color: _blue),
-                const SizedBox(width: 4),
-                Text(
-                  DateFormat('dd/MM/yyyy').format(_saleDate),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                ),
-              ]),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          // Row 2: doc type + status
-          Row(children: [
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _docType,
-                decoration: const InputDecoration(
-                  labelText: 'نوع الوثيقة / Type',
-                  labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                items: const [
-                  DropdownMenuItem(value: 'bon_livraison', child: Text('وصل تسليم', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'bon_commande', child: Text('طلب بيع', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'facture', child: Text('فاتورة', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'bon_route', child: Text('وصل شحن', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'devis', child: Text('عرض سعر', style: TextStyle(fontFamily: 'Cairo'))),
-                ],
-                onChanged: (v) => setState(() => _docType = v ?? _docType),
+            const SizedBox(height: 8),
+            // Row 4: phone + notes
+            TextField(
+              controller: _notesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'ملاحظات / Notes',
+                labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                isDense: true,
+                border: OutlineInputBorder(),
               ),
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              onChanged: (v) => _notes = v,
+              maxLines: 1,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _status,
-                decoration: const InputDecoration(
-                  labelText: 'الحالة / Statut',
-                  labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                items: const [
-                  DropdownMenuItem(value: 'draft', child: Text('مسودة', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'confirmed', child: Text('مؤكد', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'delivered', child: Text('تم التسليم', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'paid', child: Text('مدفوع', style: TextStyle(fontFamily: 'Cairo'))),
-                  DropdownMenuItem(value: 'cancelled', child: Text('ملغى', style: TextStyle(fontFamily: 'Cairo'))),
-                ],
-                onChanged: (v) => setState(() => _status = v ?? _status),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          // Row 3: client
-          GestureDetector(
-            onTap: _openClientPicker,
-            child: AbsorbPointer(
-              child: TextField(
-                controller: _clientCtrl,
-                decoration: InputDecoration(
-                  labelText: 'العميل / Client',
-                  labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                  suffixIcon: const Icon(Icons.person_search_rounded, color: _blue),
-                ),
-                style: const TextStyle(fontFamily: 'Cairo'),
-                onChanged: (v) => setState(() => _clientName = v),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Row 4: phone + notes
-          TextField(
-            controller: _notesCtrl,
-            decoration: const InputDecoration(
-              labelText: 'ملاحظات / Notes',
-              labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-            onChanged: (v) => _notes = v,
-            maxLines: 1,
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -573,14 +728,70 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       color: _blue.withOpacity(0.08),
-      child: Row(children: const [
-        Expanded(flex: 4, child: Text('المنتج / Article', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold))),
-        SizedBox(width: 60, child: Text('الوحدة', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-        SizedBox(width: 60, child: Text('الكمية', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-        SizedBox(width: 80, child: Text('السعر', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
-        SizedBox(width: 90, child: Text('المجموع', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
-        SizedBox(width: 40),
-      ]),
+      child: Row(
+        children: const [
+          Expanded(
+            flex: 4,
+            child: Text(
+              'المنتج / Article',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 60,
+            child: Text(
+              'الوحدة',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: 60,
+            child: Text(
+              'الكمية',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: 80,
+            child: Text(
+              'السعر',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+          SizedBox(
+            width: 90,
+            child: Text(
+              'المجموع',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+          SizedBox(width: 40),
+        ],
+      ),
     );
   }
 
@@ -588,12 +799,22 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   Widget _buildItemsList() {
     if (_items.isEmpty) {
       return Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade300),
-          const SizedBox(height: 12),
-          const Text('لا توجد عناصر\nأضف منتجات من الزر في الأسفل',
-              textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
-        ]),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'لا توجد عناصر\nأضف منتجات من الزر في الأسفل',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+            ),
+          ],
+        ),
       );
     }
     return ListView.builder(
@@ -607,47 +828,98 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         final colorName = item['color_name'] as String? ?? '';
         return Container(
           decoration: BoxDecoration(
-            color: i.isEven ? Colors.white : const Color(0xFFF8FAFF),
-            border: const Border(bottom: BorderSide(color: Color(0xFFE5E7EB), width: 0.5)),
+            color: i.isEven
+                ? Theme.of(context).colorScheme.surface
+                : Theme.of(context).colorScheme.surfaceContainerLow,
+            border: Border(
+              bottom: BorderSide(
+                color: Theme.of(context).dividerColor,
+                width: 0.5,
+              ),
+            ),
           ),
           child: InkWell(
             onTap: () => _editItemDialog(i),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(children: [
-                Expanded(
-                  flex: 4,
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(item['item_name'] ?? '', style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w600)),
-                    if (colorName.isNotEmpty)
-                      Text(colorName, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blueGrey)),
-                  ]),
-                ),
-                SizedBox(
-                  width: 60,
-                  child: Text(item['unit'] ?? '', textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
-                ),
-                SizedBox(
-                  width: 60,
-                  child: Text(_fmt.format(qty), textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: Text(_fmt.format(price), textAlign: TextAlign.right, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
-                ),
-                SizedBox(
-                  width: 90,
-                  child: Text('${_fmt.format(total)} DA', textAlign: TextAlign.right, style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold, color: _blue)),
-                ),
-                SizedBox(
-                  width: 40,
-                  child: IconButton(
-                    icon: const Icon(Icons.remove_circle_outline_rounded, color: _red, size: 20),
-                    onPressed: () => _removeItem(i),
-                    padding: EdgeInsets.zero,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item['item_name'] ?? '',
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (colorName.isNotEmpty)
+                          Text(
+                            colorName,
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Colors.blueGrey,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ]),
+                  SizedBox(
+                    width: 60,
+                    child: Text(
+                      item['unit'] ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 60,
+                    child: Text(
+                      _fmt.format(qty),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 80,
+                    child: Text(
+                      _fmt.format(price),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 90,
+                    child: Text(
+                      '${_fmt.format(total)} DA',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: _blue,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 40,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.remove_circle_outline_rounded,
+                        color: _red,
+                        size: 20,
+                      ),
+                      onPressed: () => _removeItem(i),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -660,58 +932,93 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, -2))],
+        color: Theme.of(context).colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Discount + paid
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _discountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Remise / خصم (DA)',
-                labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                isDense: true,
-                border: OutlineInputBorder(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Discount + paid
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _discountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Remise / خصم (DA)',
+                    labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                  onChanged: (_) => _recalc(),
+                ),
               ),
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-              onChanged: (_) => _recalc(),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _paidCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'المبلغ المدفوع / Versé',
-                labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                isDense: true,
-                border: OutlineInputBorder(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _paidCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'المبلغ المدفوع / Versé',
+                    labelStyle: TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                  onChanged: (_) => _recalc(),
+                ),
               ),
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-              onChanged: (_) => _recalc(),
-            ),
+            ],
           ),
-        ]),
-        const SizedBox(height: 8),
-        // Totals display
-        Row(children: [
-          _totalChip('Sous-total', _fmt.format(_subtotal), Colors.grey.shade700),
-          const SizedBox(width: 8),
-          _totalChip('Remise', _fmt.format(_discountAmount), _red),
-          const SizedBox(width: 8),
-          _totalChip('Net à payer', _fmt.format(_netTotal), _blue, isBold: true),
-          const SizedBox(width: 8),
-          _totalChip('Reste', _fmt.format(_remainingAmount), _remainingAmount > 0 ? _red : _green),
-        ]),
-      ]),
+          const SizedBox(height: 8),
+          // Totals display
+          Row(
+            children: [
+              _totalChip(
+                'Sous-total',
+                _fmt.format(_subtotal),
+                Colors.grey.shade700,
+              ),
+              const SizedBox(width: 8),
+              _totalChip('Remise', _fmt.format(_discountAmount), _red),
+              const SizedBox(width: 8),
+              _totalChip(
+                'Net à payer',
+                _fmt.format(_netTotal),
+                _blue,
+                isBold: true,
+              ),
+              const SizedBox(width: 8),
+              _totalChip(
+                'Reste',
+                _fmt.format(_remainingAmount),
+                _remainingAmount > 0 ? _red : _green,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _totalChip(String label, String value, Color color, {bool isBold = false}) {
+  Widget _totalChip(
+    String label,
+    String value,
+    Color color, {
+    bool isBold = false,
+  }) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -720,18 +1027,24 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: color.withOpacity(0.3)),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Text(label, style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: color)),
-          Text(
-            '$value DA',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: isBold ? 13 : 12,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
-              color: color,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              label,
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: color),
             ),
-          ),
-        ]),
+            Text(
+              '$value DA',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: isBold ? 13 : 12,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -755,8 +1068,10 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   static const _blue = Color(0xFF1E3A8A);
 
   String _selectedCategory = 'Sections';
+  String _selectedProfile = '';
   final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _items = [];
+  List<String> _profileNames = [];
   bool _loading = false;
 
   final List<Map<String, String>> _categories = [
@@ -787,11 +1102,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
       List<Map<String, dynamic>> items = [];
       switch (_selectedCategory) {
         case 'Sections':
-          if (q.isNotEmpty) {
-            items = await widget.db.searchSectionsWithProfile(q);
-          } else {
-            items = await widget.db.searchSectionsWithProfile('');
-          }
+          items = await widget.db.searchSectionsWithProfile('');
           break;
         case 'Accessories':
           items = await widget.db.readAccessories();
@@ -809,16 +1120,47 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
           items = await widget.db.readStandardSheets();
           break;
       }
-      if (q.isNotEmpty && _selectedCategory != 'Sections') {
+      if (_selectedCategory == 'Sections') {
+        final profiles =
+            items
+                .map((item) => item['profile_name']?.toString().trim() ?? '')
+                .where((name) => name.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
+        _profileNames = profiles;
+        if (_selectedProfile.isNotEmpty &&
+            !_profileNames.contains(_selectedProfile)) {
+          _selectedProfile = '';
+        }
+        if (_selectedProfile.isNotEmpty) {
+          items = items
+              .where(
+                (item) => item['profile_name']?.toString() == _selectedProfile,
+              )
+              .toList();
+        }
+      } else {
+        _selectedProfile = '';
+        _profileNames = [];
+      }
+      if (q.isNotEmpty) {
         items = items.where((item) {
-          final name = (item['name'] ?? item['type'] ?? '').toString().toLowerCase();
+          final name = (item['name'] ?? item['type'] ?? '')
+              .toString()
+              .toLowerCase();
           final code = (item['code'] ?? '').toString().toLowerCase();
-          return name.contains(q) || code.contains(q);
+          final profile = (item['profile_name'] ?? '').toString().toLowerCase();
+          final series = (item['series_name'] ?? '').toString().toLowerCase();
+          return name.contains(q) ||
+              code.contains(q) ||
+              profile.contains(q) ||
+              series.contains(q);
         }).toList();
       }
-      setState(() => _items = items);
+      if (mounted) setState(() => _items = items);
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -845,7 +1187,9 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
           children: [
             TextField(
               controller: qtyCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Quantité / الكمية',
                 labelStyle: TextStyle(fontFamily: 'Cairo'),
@@ -855,7 +1199,9 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
             const SizedBox(height: 8),
             TextField(
               controller: priceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Prix unitaire / السعر',
                 labelStyle: TextStyle(fontFamily: 'Cairo'),
@@ -872,8 +1218,10 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _blue),
             onPressed: () {
-              final qty = double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 1.0;
-              final price = double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
+              final qty =
+                  double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 1.0;
+              final price =
+                  double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
               widget.onItemSelected({
                 'item_type': _selectedCategory,
                 'item_id': item['id'] ?? 0,
@@ -892,7 +1240,10 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
               Navigator.pop(context); // close dialog
               Navigator.pop(context); // close bottom sheet
             },
-            child: const Text('إضافة', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+            child: const Text(
+              'إضافة',
+              style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -900,19 +1251,30 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   }
 
   double _getDefaultPrice(Map<String, dynamic> item) {
-    final p = item['price'] ?? item['price_per_sqm'] ?? item['price_per_sheet'] ?? 0.0;
+    final p =
+        item['price'] ??
+        item['price_per_sqm'] ??
+        item['price_per_sheet'] ??
+        0.0;
     return (p as num?)?.toDouble() ?? 0.0;
   }
 
   String _getUnit() {
     switch (_selectedCategory) {
-      case 'Sections': return 'barre';
-      case 'Accessories': return 'pcs';
-      case 'Glass': return 'm²';
-      case 'Joints': return 'm';
-      case 'ShutterComponents': return 'pcs';
-      case 'Sheets': return 'feuille';
-      default: return 'pcs';
+      case 'Sections':
+        return 'barre';
+      case 'Accessories':
+        return 'pcs';
+      case 'Glass':
+        return 'm²';
+      case 'Joints':
+        return 'm';
+      case 'ShutterComponents':
+        return 'pcs';
+      case 'Sheets':
+        return 'feuille';
+      default:
+        return 'pcs';
     }
   }
 
@@ -920,112 +1282,194 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(children: [
-        // Handle
-        Center(
-          child: Container(
-            margin: const EdgeInsets.only(top: 10, bottom: 6),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
-          ),
-        ),
-        // Title
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(children: [
-            const Text('اختر منتجاً / Choisir article',
-                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16, color: _blue)),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
+      child: Column(
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ]),
-        ),
-        // Category tabs
-        SizedBox(
-          height: 44,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: _categories.length,
-            itemBuilder: (_, i) {
-              final cat = _categories[i];
-              final selected = _selectedCategory == cat['id'];
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(cat['label']!, style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: selected ? Colors.white : _blue)),
-                  selected: selected,
-                  selectedColor: _blue,
-                  backgroundColor: Colors.transparent,
-                  side: const BorderSide(color: _blue),
-                  onSelected: (_) {
-                    setState(() => _selectedCategory = cat['id']!);
-                    _loadItems();
-                  },
-                  showCheckmark: false,
+          ),
+          // Title
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  'اختر منتجاً / Choisir article',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
-              );
-            },
-          ),
-        ),
-        // Search
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: TextField(
-            controller: _searchCtrl,
-            decoration: InputDecoration(
-              hintText: 'بحث... / Rechercher...',
-              hintStyle: const TextStyle(fontFamily: 'Cairo'),
-              prefixIcon: const Icon(Icons.search, color: _blue),
-              isDense: true,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
             ),
-            onChanged: (_) => _loadItems(),
           ),
-        ),
-        // Items
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _items.isEmpty
-                  ? const Center(child: Text('لا توجد نتائج', style: TextStyle(fontFamily: 'Cairo')))
-                  : ListView.separated(
-                      itemCount: _items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final item = _items[i];
-                        final name = item['name'] ?? item['type'] ?? '';
-                        final code = item['code'] ?? '';
-                        final price = _getDefaultPrice(item);
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _blue.withOpacity(0.1),
-                            child: Text(
-                              _selectedCategory.substring(0, 1),
-                              style: const TextStyle(color: _blue, fontWeight: FontWeight.bold),
+          // Category tabs
+          SizedBox(
+            height: 44,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: _categories.length,
+              itemBuilder: (_, i) {
+                final cat = _categories[i];
+                final selected = _selectedCategory == cat['id'];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(
+                      cat['label']!,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: selected ? Colors.white : _blue,
+                      ),
+                    ),
+                    selected: selected,
+                    selectedColor: _blue,
+                    backgroundColor: Colors.transparent,
+                    side: const BorderSide(color: _blue),
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedCategory = cat['id']!;
+                        _selectedProfile = '';
+                      });
+                      _loadItems();
+                    },
+                    showCheckmark: false,
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_selectedCategory == 'Sections' && _profileNames.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: DropdownButtonFormField<String>(
+                value: _selectedProfile,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Famille profil / عائلة البروفيل',
+                  prefixIcon: Icon(Icons.account_tree_outlined),
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: '',
+                    child: Text('Toutes les familles / كل العائلات'),
+                  ),
+                  ..._profileNames.map(
+                    (name) => DropdownMenuItem(value: name, child: Text(name)),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() => _selectedProfile = value ?? '');
+                  _loadItems();
+                },
+              ),
+            ),
+          // Search
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'بحث... / Rechercher...',
+                hintStyle: const TextStyle(fontFamily: 'Cairo'),
+                prefixIcon: const Icon(Icons.search, color: _blue),
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onChanged: (_) => _loadItems(),
+            ),
+          ),
+          // Items
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _items.isEmpty
+                ? const Center(
+                    child: Text(
+                      'لا توجد نتائج',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _items.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final item = _items[i];
+                      final name = item['name'] ?? item['type'] ?? '';
+                      final code = item['code'] ?? '';
+                      final family = item['profile_name']?.toString() ?? '';
+                      final series = item['series_name']?.toString() ?? '';
+                      final price = _getDefaultPrice(item);
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: _blue.withOpacity(0.1),
+                          child: Text(
+                            _selectedCategory.substring(0, 1),
+                            style: const TextStyle(
+                              color: _blue,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          title: Text(name, style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-                          subtitle: code.isNotEmpty ? Text(code, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)) : null,
-                          trailing: price > 0
-                              ? Text(
-                                  NumberFormat('#,##0.00').format(price),
-                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: _blue, fontWeight: FontWeight.bold),
-                                )
-                              : null,
-                          onTap: () => _selectItem(item),
-                        );
-                      },
-                    ),
-        ),
-      ]),
+                        ),
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
+                          ),
+                        ),
+                        subtitle: Text(
+                          [code, family, series]
+                              .where((value) => value.toString().isNotEmpty)
+                              .join(' · '),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                          ),
+                        ),
+                        trailing: price > 0
+                            ? Text(
+                                NumberFormat('#,##0.00').format(price),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  color: _blue,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                        onTap: () => _selectItem(item),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

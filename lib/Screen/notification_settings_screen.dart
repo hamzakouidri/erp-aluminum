@@ -22,8 +22,10 @@ class _NotificationSettingsScreenState
 
   static const _workerTypes = <String, String>{
     'worker_assignment': 'إسناد مهمة جديدة',
+    'orders': 'إضافة وتعديل وحذف الطلبيات',
   };
   static const _managerTypes = <String, String>{
+    'orders': 'إضافة وتعديل وحذف الطلبيات',
     'cashbox': 'حركة صندوق الورشة',
     'payments': 'المقبوضات والمدفوعات',
     'invoices': 'الفواتير',

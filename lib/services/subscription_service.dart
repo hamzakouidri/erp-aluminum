@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../settings/app_settings.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
@@ -216,18 +217,55 @@ class SubscriptionService {
     return null;
   }
 
-  /// Stream subscription details for the currently logged in user
-  Stream<SubscriptionDetails> getSubscriptionStream() {
-    return Stream.fromFuture(_loadSupabaseSubscription());
-  }
-
-  Future<SubscriptionDetails> _loadSupabaseSubscription() async {
+  /// Streams the subscription owned by the current workshop.
+  ///
+  /// Workers never have an independent subscription: once the manager grants
+  /// `view_subscription`, every member reads the same workshop row and gets
+  /// its changes through Supabase Realtime.
+  Stream<SubscriptionDetails> getSubscriptionStream() async* {
     final user = AppAuthService().currentUser;
-    if (user == null) return _createDefaultFallback('');
+    if (user == null) return;
 
-    final account = await SupabaseAccountService().loadCurrentAccount();
-    if (account == null) return _createDefaultFallback(user.email ?? '');
-    return _parseSubscriptionData(account.subscriptionData, account.email);
+    // Always begin with the current workshop row. A cached account snapshot
+    // may legitimately be a couple of minutes old on another phone.
+    final account = await SupabaseAccountService().loadCurrentAccount(
+      forceRefresh: true,
+    );
+    if (account == null) return;
+
+    // The synthetic application-administrator account has no workshop row.
+    if (account.isApplicationAdminWorkspace) {
+      yield _parseSubscriptionData(account.subscriptionData, account.email);
+      return;
+    }
+
+    if (account.workshopId.isEmpty) return;
+
+    if (account.subscription.isNotEmpty) {
+      yield _parseSubscriptionData(account.subscriptionData, account.email);
+    }
+
+    final rows = Supabase.instance.client
+        .from('workshop_subscriptions')
+        .stream(primaryKey: ['workshop_id'])
+        .eq('workshop_id', account.workshopId);
+
+    await for (final result in rows) {
+      if (result.isEmpty) continue;
+      final subscription = Map<String, dynamic>.from(result.first);
+      final sharedWorkshopData = <String, dynamic>{
+        ...account.subscriptionData,
+        ...subscription,
+        'subscriptionStatus': subscription['status'],
+        'subscriptionType': subscription['plan_type'],
+        'subscriptionStartDate': subscription['starts_at'],
+        'subscriptionEndDate': subscription['ends_at'],
+        'maxUsers': subscription['max_users'],
+        'maxSystems': subscription['max_systems'],
+        'maxProfiles': subscription['max_profiles'],
+      };
+      yield _parseSubscriptionData(sharedWorkshopData, account.email);
+    }
   }
 
   SubscriptionDetails _parseSubscriptionData(
@@ -240,6 +278,8 @@ class SubscriptionService {
     final isAppAdmin =
         isApplicationAdminEmail(userEmail) ||
         isApplicationAdminEmail(AppAuthService().currentUser?.email);
+    final isApplicationAdminWorkspace =
+        data['isApplicationAdminWorkspace'] == true;
 
     final workshopName =
         (data['workshopName']?.toString() ?? '').trim().isNotEmpty
@@ -266,9 +306,10 @@ class SubscriptionService {
         rawPlan == 'lifetime' ||
         rawPlan == 'دائم' ||
         rawPlan == 'مدى الحياة' ||
-        isAppAdmin;
+        isApplicationAdminWorkspace;
 
-    // إذا كانت باقة الورشة دائمة (أو مدير التطبيق): تُعرض كاشتراك دائم للورشة ولجميع عمالها
+    // A lifetime workshop plan is shared by all members. The global admin
+    // workspace is lifetime too, but an admin's real workshop is not.
     if (isLifetime) {
       return SubscriptionDetails(
         planType: SubscriptionPlanType.lifetime,
@@ -390,48 +431,6 @@ class SubscriptionService {
       userEmail: userEmail,
       joinCode: joinCode,
       role: role,
-      isLifetime: false,
-    );
-  }
-
-  SubscriptionDetails _createDefaultFallback(String email) {
-    final now = DateTime.now();
-    final isAppAdmin = isApplicationAdminEmail(email);
-    if (isAppAdmin) {
-      return SubscriptionDetails(
-        planType: SubscriptionPlanType.lifetime,
-        status: 'active',
-        startDate: now.subtract(const Duration(days: 30)),
-        endDate: DateTime(2099, 12, 31),
-        totalDays: 36500,
-        daysRemaining: 36500,
-        isExpired: false,
-        canRenew: false,
-        renewalAvailableFromDate: DateTime(2099, 12, 31),
-        workshopName: 'إدارة التطبيق',
-        userEmail: email,
-        joinCode: '',
-        role: 'admin',
-        isLifetime: true,
-      );
-    }
-
-    final startDate = now;
-    final endDate = now.add(const Duration(days: 30));
-    return SubscriptionDetails(
-      planType: SubscriptionPlanType.monthly,
-      status: 'active',
-      startDate: startDate,
-      endDate: endDate,
-      totalDays: 30,
-      daysRemaining: 30,
-      isExpired: false,
-      canRenew: false,
-      renewalAvailableFromDate: endDate.subtract(const Duration(days: 7)),
-      workshopName: 'الورشة',
-      userEmail: email,
-      joinCode: '',
-      role: 'manager',
       isLifetime: false,
     );
   }

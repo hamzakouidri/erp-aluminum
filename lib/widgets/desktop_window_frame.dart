@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 
@@ -23,14 +21,13 @@ class DesktopWindowFrame extends StatefulWidget {
 class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     with WindowListener {
   bool _isMaximized = false;
-  ImageProvider? _workshopLogo;
+  bool _isFullScreen = false;
 
   @override
   void initState() {
     super.initState();
     windowManager.addListener(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _readWindowState());
-    _loadWorkshopLogo();
   }
 
   @override
@@ -59,35 +56,12 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     _readWindowState();
   }
 
-  Future<void> _loadWorkshopLogo() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final rawLogo = prefs.getString('workshop_logo_base64')?.trim() ?? '';
-      if (rawLogo.isEmpty) return;
-
-      ImageProvider? logo;
-      if (rawLogo.startsWith('http')) {
-        logo = NetworkImage(rawLogo);
-      } else {
-        final encoded = rawLogo.contains(',')
-            ? rawLogo.substring(rawLogo.indexOf(',') + 1)
-            : rawLogo;
-        final bytes = base64Decode(encoded);
-        if (bytes.isNotEmpty) logo = MemoryImage(bytes);
-      }
-
-      if (mounted && logo != null) setState(() => _workshopLogo = logo);
-    } catch (_) {
-      // Keep the application icon as a safe fallback when no workshop logo
-      // has been saved yet or when an old value is not valid image data.
-    }
-  }
-
   Future<void> _readWindowState() async {
     try {
       final bounds = await windowManager.getBounds();
       final isMax = await windowManager.isMaximized();
-      final effectivelyMax = isMax && (bounds.width >= 1400 || bounds.height >= 900);
+      final effectivelyMax =
+          isMax && (bounds.width >= 1400 || bounds.height >= 900);
       if (mounted && _isMaximized != effectivelyMax) {
         setState(() => _isMaximized = effectivelyMax);
       }
@@ -98,7 +72,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     try {
       final bounds = await windowManager.getBounds();
       final isMax = await windowManager.isMaximized();
-      final effectivelyMax = isMax && (bounds.width >= 1400 || bounds.height >= 900);
+      final effectivelyMax =
+          isMax && (bounds.width >= 1400 || bounds.height >= 900);
       if (effectivelyMax) {
         await windowManager.unmaximize();
         if (mounted) setState(() => _isMaximized = false);
@@ -126,6 +101,32 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     exit(0);
   }
 
+  Future<void> _toggleFullScreen() async {
+    final next = !_isFullScreen;
+    await windowManager.setFullScreen(next);
+    if (mounted) setState(() => _isFullScreen = next);
+  }
+
+  void _showAbout() {
+    showAboutDialog(
+      context: context,
+      applicationName: Localization.translate(
+        'ورشتي',
+        Provider.of<AppSettingsProvider>(context, listen: false).language,
+      ),
+      applicationVersion: Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).appVersion,
+      applicationIcon: Image.asset(
+        'web/favicon.png',
+        width: 54,
+        height: 54,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
@@ -135,109 +136,167 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
     return Column(
       children: [
-        Container(
-          height: 42,
-          decoration: BoxDecoration(
-            color: background,
-            border: Border(
-              bottom: BorderSide(
-                color: isDark
-                    ? const Color(0xFF334155)
-                    : const Color(0xFFE2E8F0),
+        Material(
+          color: background,
+          child: Container(
+            height: 42,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
+                ),
               ),
             ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 132,
-                child: DragToMoveArea(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onDoubleTap: _toggleMaximize,
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 14),
-                      child: Row(
-                        children: [
-                          if (_workshopLogo != null)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: Image(
-                                image: _workshopLogo!,
-                                width: 20,
-                                height: 20,
-                                fit: BoxFit.contain,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 142,
+                  child: DragToMoveArea(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onDoubleTap: _toggleMaximize,
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.only(start: 14),
+                        child: Row(
+                          children: [
+                            Image.asset(
+                              'web/favicon.png',
+                              width: 23,
+                              height: 23,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.window_rounded,
+                                size: 18,
+                                color: Color(0xFF2563EB),
                               ),
-                            )
-                          else
-                            const Icon(
-                              Icons.window_rounded,
-                              size: 18,
-                              color: Color(0xFF2563EB),
                             ),
-                          const SizedBox(width: 8),
-                          Text(
-                            Localization.translate('ورشتي', lang),
-                            style: TextStyle(
-                              color: foreground,
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
+                            const SizedBox(width: 8),
+                            Text(
+                              Localization.translate('ورشتي', lang),
+                              style: TextStyle(
+                                color: foreground,
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              // Keep the whole remaining caption area draggable. Interactive
-              // tabs are rendered in their own row below it so a tab click can
-              // never be interpreted as a native window command.
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onDoubleTap: _toggleMaximize,
-                  child: DragToMoveArea(child: const SizedBox.expand()),
+                _DesktopMenu(
+                  label: 'Fichier',
+                  items: [
+                    _DesktopMenuItem(
+                      label: Localization.translate('إغلاق التطبيق', lang),
+                      icon: Icons.logout_rounded,
+                      onSelected: _closeApp,
+                    ),
+                  ],
                 ),
-              ),
-              _CaptionButton(
-                tooltip: Localization.translate('تصغير', lang),
-                iconBuilder: (_) => Container(
-                  width: 10,
-                  height: 1.2,
-                  color: foreground,
+                _DesktopMenu(
+                  label: 'Modifier',
+                  items: [
+                    _DesktopMenuItem(
+                      label: Localization.translate('تراجع', lang),
+                      icon: Icons.undo_rounded,
+                      onSelected: () => Actions.maybeInvoke(
+                        context,
+                        const UndoTextIntent(SelectionChangedCause.keyboard),
+                      ),
+                    ),
+                    _DesktopMenuItem(
+                      label: Localization.translate('إعادة', lang),
+                      icon: Icons.redo_rounded,
+                      onSelected: () => Actions.maybeInvoke(
+                        context,
+                        const RedoTextIntent(SelectionChangedCause.keyboard),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () => windowManager.minimize(),
-              ),
-              _CaptionButton(
-                tooltip: Localization.translate(
-                  _isMaximized ? 'استعادة الحجم' : 'تكبير',
-                  lang,
+                _DesktopMenu(
+                  label: 'Affichage',
+                  items: [
+                    _DesktopMenuItem(
+                      label: isDark ? 'Mode clair' : 'Mode sombre',
+                      icon: isDark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      onSelected: () => Provider.of<AppSettingsProvider>(
+                        context,
+                        listen: false,
+                      ).setTheme(isDark ? ThemeMode.light : ThemeMode.dark),
+                    ),
+                    _DesktopMenuItem(
+                      label: _isFullScreen
+                          ? 'Quitter le plein écran'
+                          : 'Plein écran',
+                      icon: _isFullScreen
+                          ? Icons.fullscreen_exit_rounded
+                          : Icons.fullscreen_rounded,
+                      onSelected: _toggleFullScreen,
+                    ),
+                  ],
                 ),
-                iconBuilder: (_) => _isMaximized
-                    ? _buildRestoreIcon(foreground, isDark)
-                    : _buildMaximizeIcon(foreground),
-                onPressed: _toggleMaximize,
-              ),
-              _CaptionButton(
-                tooltip: Localization.translate('إغلاق', lang),
-                closeButton: true,
-                iconBuilder: (hovered) => Icon(
-                  Icons.close_rounded,
-                  size: 17,
-                  color: hovered ? Colors.white : const Color(0xFFDC2626),
+                _DesktopMenu(
+                  label: 'Aide',
+                  items: [
+                    _DesktopMenuItem(
+                      label: 'À propos',
+                      icon: Icons.info_outline_rounded,
+                      onSelected: _showAbout,
+                    ),
+                  ],
                 ),
-                onPressed: _closeApp,
-              ),
-            ],
+                // Keep the whole remaining caption area draggable. Interactive
+                // tabs are rendered in their own row below it so a tab click can
+                // never be interpreted as a native window command.
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onDoubleTap: _toggleMaximize,
+                    child: DragToMoveArea(child: const SizedBox.expand()),
+                  ),
+                ),
+                _CaptionButton(
+                  tooltip: Localization.translate('تصغير', lang),
+                  iconBuilder: (_) =>
+                      Container(width: 10, height: 1.2, color: foreground),
+                  onPressed: () => windowManager.minimize(),
+                ),
+                _CaptionButton(
+                  tooltip: Localization.translate(
+                    _isMaximized ? 'استعادة الحجم' : 'تكبير',
+                    lang,
+                  ),
+                  iconBuilder: (_) => _isMaximized
+                      ? _buildRestoreIcon(foreground, isDark)
+                      : _buildMaximizeIcon(foreground),
+                  onPressed: _toggleMaximize,
+                ),
+                _CaptionButton(
+                  tooltip: Localization.translate('إغلاق', lang),
+                  closeButton: true,
+                  iconBuilder: (hovered) => Icon(
+                    Icons.close_rounded,
+                    size: 17,
+                    color: hovered ? Colors.white : const Color(0xFFDC2626),
+                  ),
+                  onPressed: _closeApp,
+                ),
+              ],
+            ),
           ),
         ),
         if (widget.topBar != null)
-          Container(
-            height: 42,
+          Material(
             color: background,
-            child: widget.topBar!,
+            child: SizedBox(height: 42, child: widget.topBar!),
           ),
         Expanded(child: widget.child),
       ],
@@ -248,9 +307,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     return Container(
       width: 10,
       height: 10,
-      decoration: BoxDecoration(
-        border: Border.all(color: color, width: 1.2),
-      ),
+      decoration: BoxDecoration(border: Border.all(color: color, width: 1.2)),
     );
   }
 
@@ -284,6 +341,69 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DesktopMenuItem {
+  const _DesktopMenuItem({
+    required this.label,
+    required this.icon,
+    required this.onSelected,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onSelected;
+}
+
+class _DesktopMenu extends StatelessWidget {
+  const _DesktopMenu({required this.label, required this.items});
+
+  final String label;
+  final List<_DesktopMenuItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : const Color(0xFF475569);
+    return PopupMenuButton<int>(
+      tooltip: label,
+      position: PopupMenuPosition.under,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 190),
+      onSelected: (index) => items[index].onSelected(),
+      itemBuilder: (context) => List.generate(items.length, (index) {
+        final item = items[index];
+        return PopupMenuItem<int>(
+          value: index,
+          height: 42,
+          child: Row(
+            children: [
+              Icon(item.icon, size: 18),
+              const SizedBox(width: 12),
+              Expanded(child: Text(item.label)),
+            ],
+          ),
+        );
+      }),
+      child: SizedBox(
+        height: 42,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -329,9 +449,7 @@ class _CaptionButtonState extends State<_CaptionButton> {
             child: SizedBox(
               width: 46,
               height: double.infinity,
-              child: Center(
-                child: widget.iconBuilder(_isHovered),
-              ),
+              child: Center(child: widget.iconBuilder(_isHovered)),
             ),
           ),
         ),

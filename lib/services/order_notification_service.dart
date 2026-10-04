@@ -251,6 +251,32 @@ class OrderNotificationService {
     );
   }
 
+  /// Displays an FCM order event through the same deduplication path used by
+  /// Supabase Realtime. This prevents two alerts while the app is foreground.
+  Future<void> showOrderPushNotification({
+    required Map<String, dynamic> data,
+  }) async {
+    final action = data['action']?.toString() ?? '';
+    final orderCode = data['order_code']?.toString() ?? '';
+    final orderId = int.tryParse(data['order_id']?.toString() ?? '');
+    if (action == 'deleted') {
+      _handleDeletedOrderEvent({
+        'order_code': orderCode,
+        'client_name': data['client_name']?.toString() ?? '',
+        'author': data['author']?.toString() ?? '',
+      });
+      return;
+    }
+    if (action != 'created' && action != 'updated') return;
+    _dispatchNotification(
+      clientName: data['client_name']?.toString() ?? '',
+      orderCode: orderCode,
+      author: data['author']?.toString() ?? '',
+      isNew: action == 'created',
+      orderId: orderId,
+    );
+  }
+
   // ── private helpers ────────────────────────────────────────────────────────
 
   Future<void> _initLocalNotifications() async {
@@ -326,6 +352,11 @@ class OrderNotificationService {
     final orderCode = payload['order_code']?.toString() ?? '';
     final author = payload['author']?.toString() ?? '';
 
+    // The broadcast and the row upsert travel through separate realtime
+    // paths. Pull immediately, then retry briefly in case the notification
+    // arrived a fraction before the database commit became visible.
+    unawaited(_refreshOrdersAfterEvent());
+
     _dispatchNotification(
       clientName: clientName,
       orderCode: orderCode,
@@ -333,6 +364,23 @@ class OrderNotificationService {
       isNew: isNew,
       orderId: int.tryParse(payload['order_id']?.toString() ?? ''),
     );
+  }
+
+  Future<void> _refreshOrdersAfterEvent() async {
+    const delays = <Duration>[
+      Duration.zero,
+      Duration(milliseconds: 800),
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+    ];
+    for (final delay in delays) {
+      if (delay > Duration.zero) await Future<void>.delayed(delay);
+      try {
+        await SupabaseWorkshopSyncService().downloadWorkshopData();
+      } catch (error) {
+        debugPrint('Order event refresh deferred: $error');
+      }
+    }
   }
 
   void _handleDeletedOrderEvent(Map<String, dynamic> payload) {

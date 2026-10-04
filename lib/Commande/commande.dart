@@ -1198,21 +1198,22 @@ class _CommandeState extends State<Commande> {
             tooltip: Localization.translate('import_order', lang),
             onPressed: _isImportPicking ? null : _importOrder,
           ),
-          IconButton(
-            icon: const Icon(Icons.auto_delete_rounded, color: Colors.white),
-            tooltip: Localization.translate('orders_trash', lang),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      TrashScreen(db: db, onOrderRestored: _fetchCommandes),
-                ),
-              ).then((_) {
-                if (mounted) _fetchCommandes();
-              });
-            },
-          ),
+          if (settings.canAccessTrash())
+            IconButton(
+              icon: const Icon(Icons.auto_delete_rounded, color: Colors.white),
+              tooltip: Localization.translate('orders_trash', lang),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        TrashScreen(db: db, onOrderRestored: _fetchCommandes),
+                  ),
+                ).then((_) {
+                  if (mounted) _fetchCommandes();
+                });
+              },
+            ),
           if (isDesktop && settings.canCreateOrders())
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -5536,14 +5537,14 @@ class _CommandeState extends State<Commande> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 8),
               persist: false,
               dismissDirection: DismissDirection.horizontal,
               showCloseIcon: true,
-              closeIconColor: Colors.white70,
+              closeIconColor: Colors.white,
               action: SnackBarAction(
                 label: _t('undo'),
-                textColor: Colors.amber,
+                textColor: Colors.amberAccent,
                 onPressed: () async {
                   ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   await db.restoreCommande(id);
@@ -7171,15 +7172,7 @@ class _OrderPicturePdfPreviewPageState
   }
 
   Future<Uint8List?> _readPreviewImageBytes(Map<String, dynamic> item) async {
-    Map<String, dynamic> modelMap = const <String, dynamic>{};
-    final jsonRaw = item['partitions_json'];
-    if (jsonRaw != null) {
-      try {
-        modelMap = jsonRaw is Map
-            ? Map<String, dynamic>.from(jsonRaw)
-            : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
-      } catch (_) {}
-    }
+    final modelMap = savedWindowModelMap(item['partitions_json']);
 
     // An old image can carry a different colour than the durable detail row.
     // Repair that image before returning it; otherwise the preview keeps

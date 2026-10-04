@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../utils/real_color_resolver.dart';
+import '../widgets/section_image.dart';
 
 class GlassDisplayItem {
   final Map<String, dynamic> glass;
@@ -3491,26 +3492,77 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            section['name'].toString(),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              color: Colors.blue,
+                          InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () => _showSectionImage(section),
+                            child: Container(
+                              width: MediaQuery.sizeOf(context).width < 600
+                                  ? 72
+                                  : 92,
+                              height: MediaQuery.sizeOf(context).width < 600
+                                  ? 72
+                                  : 92,
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                              child: SectionImageWidget(
+                                code: section['code']?.toString(),
+                                name: section['name']?.toString(),
+                                imagePath: section['image_path']?.toString(),
+                                size: MediaQuery.sizeOf(context).width < 600
+                                    ? 60
+                                    : 80,
+                                fallbackIcon: Icons.view_in_ar_rounded,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  section['name'].toString(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "${Localization.translate('الرمز', lang)}: ${section['code']}",
+                                ),
+                                if (section['type'] != null)
+                                  Text(
+                                    section['type'].toString(),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                           if (canChangePrices)
                             IconButton(
-                              icon: Icon(Icons.edit, color: Colors.grey),
+                              tooltip: Localization.translate('تعديل', lang),
+                              icon: const Icon(Icons.edit, color: Colors.grey),
                               onPressed: () =>
                                   _showEditBarLengthDialog(section),
                             ),
                         ],
-                      ),
-                      Text(
-                        "${Localization.translate('الرمز', lang)}: ${section['code']}",
                       ),
                       SizedBox(height: 10),
                       if (validColors.isNotEmpty)
@@ -3546,6 +3598,51 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showSectionImage(Map<String, dynamic> section) async {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final imageSize = screenWidth < 600 ? screenWidth - 96 : 360.0;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${section['code'] ?? ''} - ${section['name'] ?? ''}',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+            IconButton(
+              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              onPressed: () => Navigator.pop(dialogContext),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ],
+        ),
+        content: SizedBox.square(
+          dimension: imageSize.clamp(180.0, 360.0).toDouble(),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SectionImageWidget(
+                code: section['code']?.toString(),
+                name: section['name']?.toString(),
+                imagePath: section['image_path']?.toString(),
+                size: imageSize.clamp(160.0, 336.0).toDouble(),
+                fallbackIcon: Icons.view_in_ar_rounded,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

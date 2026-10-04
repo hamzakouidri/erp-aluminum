@@ -6793,6 +6793,37 @@ This action cannot be undone!''',
     AppLanguage.french: 'Enregistrer et ajouter',
     AppLanguage.english: 'Save and Add',
   },
+  'إضافة واحتساب السعر': {
+    AppLanguage.arabic: 'إضافة واحتساب السعر',
+    AppLanguage.french: 'Ajouter et calculer le prix',
+    AppLanguage.english: 'Add and calculate price',
+  },
+  'جاري احتساب سعر العنصر...': {
+    AppLanguage.arabic: 'جاري احتساب سعر العنصر...',
+    AppLanguage.french: 'Calcul du prix de l’article...',
+    AppLanguage.english: 'Calculating item price...',
+  },
+  'تعذر احتساب سعر العنصر': {
+    AppLanguage.arabic: 'تعذر احتساب سعر العنصر',
+    AppLanguage.french: 'Impossible de calculer le prix de l’article',
+    AppLanguage.english: 'Unable to calculate item price',
+  },
+  'لم تتم إضافة العنصر لأن سعره يساوي صفرًا. راجع أسعار البروفيلات والزجاج والستار ثم أعد المحاولة.': {
+    AppLanguage.arabic:
+        'لم تتم إضافة العنصر لأن سعره يساوي صفرًا. راجع أسعار البروفيلات والزجاج والستار ثم أعد المحاولة.',
+    AppLanguage.french:
+        'L’article n’a pas été ajouté car son prix est nul. Vérifiez les prix des profilés, du verre et du volet, puis réessayez.',
+    AppLanguage.english:
+        'The item was not added because its price is zero. Check profile, glass, and shutter prices, then try again.',
+  },
+  'تعذر الحفظ: يوجد عنصر بسعر صفر. راجع أسعار البروفيلات والزجاج والستار ثم أعد المحاولة.': {
+    AppLanguage.arabic:
+        'تعذر الحفظ: يوجد عنصر بسعر صفر. راجع أسعار البروفيلات والزجاج والستار ثم أعد المحاولة.',
+    AppLanguage.french:
+        'Enregistrement impossible : un article a un prix nul. Vérifiez les prix des profilés, du verre et du volet, puis réessayez.',
+    AppLanguage.english:
+        'Cannot save: an item has a zero price. Check profile, glass, and shutter prices, then try again.',
+  },
   'سعر الوحدة': {
     AppLanguage.arabic: 'سعر الوحدة',
     AppLanguage.french: 'Prix unitaire',

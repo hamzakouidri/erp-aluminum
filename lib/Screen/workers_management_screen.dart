@@ -661,6 +661,7 @@ class _WorkerCardState extends State<WorkerCard> {
       'edit_orders': false,
       'change_order_dates': false,
       'delete_orders': false,
+      'access_trash': false,
       'view_client_details': false,
       'view_order_details': false,
       'view_order_documents': false,
@@ -1874,6 +1875,7 @@ class _WorkerCardState extends State<WorkerCard> {
                     'edit_orders',
                     'change_order_dates',
                     'delete_orders',
+                    'access_trash',
                     'view_order_details',
                     'view_order_documents',
                     'fiche_de_coupe',
@@ -2021,6 +2023,32 @@ class _WorkerCardState extends State<WorkerCard> {
                   ),
                   value: perms['delete_orders'] ?? false,
                   onChanged: (val) => _updatePermission('delete_orders', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'الوصول لسلة المحذوفات والرقابة',
+                      'Accès à la corbeille & audit',
+                      'Access trash & audit logs',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'حساس: يسمح للعامل بفتح سلة المحذوفات ورؤية السجلات المحذوفة واسترجاعها',
+                      'Sensible: Permet à l\'ouvrier d\'accéder à la corbeille et de restaurer des éléments',
+                      'Sensitive: Allows worker to view trash and restore deleted items',
+                      lang,
+                    ),
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 11,
+                      fontFamily: 'Cairo',
+                    ),
+                  ),
+                  value: perms['access_trash'] ?? false,
+                  onChanged: (val) => _updatePermission('access_trash', val),
                 ),
                 SwitchListTile(
                   title: Text(

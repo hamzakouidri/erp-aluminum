@@ -44,5 +44,23 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+      'does not overwrite workshop rules while a local upload is pending',
+      () {
+        expect(
+          SupabaseWorkshopSyncService.shouldApplyWorkshopCatalogConfiguration(
+            hasPendingLocalChanges: true,
+          ),
+          isFalse,
+        );
+        expect(
+          SupabaseWorkshopSyncService.shouldApplyWorkshopCatalogConfiguration(
+            hasPendingLocalChanges: false,
+          ),
+          isTrue,
+        );
+      },
+    );
   });
 }

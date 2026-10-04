@@ -46,6 +46,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
   bool _isChargilyLive = false;
   bool _obscureChargilyKey = true;
   bool _isSavingPaymentSettings = false;
+  final Map<String, Future<List<Map<String, dynamic>>>> _adminWorkshopMembersFutures = {};
 
   String _t(String key) => Localization.translate(
     key,
@@ -1477,22 +1478,26 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
 
   Future<List<Map<String, dynamic>>> _loadAdminWorkshopMembers(
     List<Map<String, dynamic>> rows,
-  ) async {
-    final members = <Map<String, dynamic>>[];
-    final seen = <String>{};
-    for (final code in _supabaseWorkshopCodes(rows)) {
-      final loaded = await SupabaseAccountService().fetchAdminWorkshopMembers(
-        code,
-      );
-      for (final member in loaded) {
-        final email = member['email']?.toString().trim().toLowerCase() ?? '';
-        final userId = member['user_id']?.toString().trim() ?? '';
-        final key = userId.isNotEmpty ? 'uid:$userId' : 'email:$email';
-        if (key == 'email:' || !seen.add(key)) continue;
-        members.add({...member, '_sourceCode': code});
+  ) {
+    final key = _supabaseWorkshopCodes(rows).join(',');
+    if (key.isEmpty) return Future.value(<Map<String, dynamic>>[]);
+    return _adminWorkshopMembersFutures.putIfAbsent(key, () async {
+      final members = <Map<String, dynamic>>[];
+      final seen = <String>{};
+      for (final code in _supabaseWorkshopCodes(rows)) {
+        final loaded = await SupabaseAccountService().fetchAdminWorkshopMembers(
+          code,
+        );
+        for (final member in loaded) {
+          final email = member['email']?.toString().trim().toLowerCase() ?? '';
+          final userId = member['user_id']?.toString().trim() ?? '';
+          final itemKey = userId.isNotEmpty ? 'uid:$userId' : 'email:$email';
+          if (itemKey == 'email:' || !seen.add(itemKey)) continue;
+          members.add({...member, '_sourceCode': code});
+        }
       }
-    }
-    return members;
+      return members;
+    });
   }
 
   Future<void> _showSupabaseMemberDialog(
@@ -1604,6 +1609,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
       ),
     );
     if (updated == true && ctx.mounted) {
+      _adminWorkshopMembersFutures.clear();
       ScaffoldMessenger.of(ctx).showSnackBar(
         SnackBar(
           content: Text(_t('تم حفظ إعدادات العامل.')),

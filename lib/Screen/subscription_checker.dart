@@ -576,7 +576,8 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
       debugPrint('Cached Supabase account could not be read: $error');
     }
     try {
-      final account = await SupabaseAccountService().loadCurrentAccount()
+      final account = await SupabaseAccountService()
+          .loadCurrentAccount()
           .timeout(const Duration(seconds: 15));
       if (account != null) await _cacheAccount(account);
       return account;
@@ -623,7 +624,8 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
   Future<void> _refreshAccountInBackground() async {
     final userId = _currentUserId;
     try {
-      final account = await SupabaseAccountService().loadCurrentAccount()
+      final account = await SupabaseAccountService()
+          .loadCurrentAccount(forceRefresh: true)
           .timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (userId != _currentUserId) return;
@@ -732,7 +734,7 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
       Localization.translate(key, context.read<AppSettingsProvider>().language);
 
   bool _isActive(SupabaseAccountSnapshot account) {
-    if (account.role == 'admin') return true;
+    if (account.isApplicationAdminWorkspace) return true;
     final status = account.subscription['status']
         ?.toString()
         .toLowerCase()

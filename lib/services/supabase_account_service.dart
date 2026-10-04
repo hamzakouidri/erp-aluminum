@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'dart:math' as math;
 
+import 'app_admin_status_service.dart';
+
 /// The account/workshop record used by the application gate.
 ///
 /// Authentication, membership and subscription are intentionally read from
@@ -31,6 +33,14 @@ class SupabaseAccountSnapshot {
   final bool blocked;
   final Map<String, dynamic> subscription;
 
+  /// The global application-admin workspace is not a customer workshop and
+  /// therefore has no row in `workshop_subscriptions`.
+  bool get isApplicationAdminWorkspace =>
+      role == 'admin' &&
+      workshopCode.isEmpty &&
+      workshopId.isNotEmpty &&
+      workshopId == userId;
+
   Map<String, dynamic> get subscriptionData => {
     ...subscription,
     'subscriptionStatus': subscription['status'],
@@ -46,6 +56,7 @@ class SupabaseAccountSnapshot {
     'joinCode': workshopCode,
     'email': email,
     'isBlocked': blocked,
+    'isApplicationAdminWorkspace': isApplicationAdminWorkspace,
   };
 }
 
@@ -57,6 +68,19 @@ class SupabaseAccountService {
   factory SupabaseAccountService() => _instance;
 
   SupabaseClient get _client => Supabase.instance.client;
+
+  static const Duration _accountCacheDuration = Duration(minutes: 2);
+  SupabaseAccountSnapshot? _cachedAccount;
+  String? _cachedAccountUserId;
+  DateTime? _cachedAccountAt;
+  Future<SupabaseAccountSnapshot?>? _accountLoadInFlight;
+  String? _accountLoadUserId;
+
+  void invalidateCurrentAccountCache() {
+    _cachedAccount = null;
+    _cachedAccountUserId = null;
+    _cachedAccountAt = null;
+  }
 
   /// Removes an OAuth account created by Auth when workshop registration was
   /// not completed. The RPC refuses deletion for configured users.
@@ -226,17 +250,50 @@ class SupabaseAccountService {
     );
   }
 
-  Future<SupabaseAccountSnapshot?> loadCurrentAccount() async {
+  Future<SupabaseAccountSnapshot?> loadCurrentAccount({
+    bool forceRefresh = false,
+  }) async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
-    final admin = await _client
-        .from('app_admins')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-    final isApplicationAdmin =
-        admin != null || isApplicationAdminEmail(user.email);
+    final cachedAt = _cachedAccountAt;
+    if (!forceRefresh &&
+        _cachedAccountUserId == user.id &&
+        _cachedAccount != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _accountCacheDuration) {
+      return _cachedAccount;
+    }
+
+    final activeLoad = _accountLoadInFlight;
+    // A forced refresh bypasses stale cached data, but it should still join an
+    // identical request that is already running instead of duplicating it.
+    if (activeLoad != null && _accountLoadUserId == user.id) return activeLoad;
+
+    final load = _loadCurrentAccountFromServer(user);
+    _accountLoadInFlight = load;
+    _accountLoadUserId = user.id;
+    try {
+      final account = await load;
+      if (_client.auth.currentUser?.id == user.id) {
+        _cachedAccount = account;
+        _cachedAccountUserId = user.id;
+        _cachedAccountAt = DateTime.now();
+      }
+      return account;
+    } finally {
+      if (identical(_accountLoadInFlight, load)) {
+        _accountLoadInFlight = null;
+        _accountLoadUserId = null;
+      }
+    }
+  }
+
+  Future<SupabaseAccountSnapshot?> _loadCurrentAccountFromServer(
+    User user,
+  ) async {
+    final isApplicationAdmin = await AppAdminStatusService.instance
+        .isCurrentUserAdmin();
 
     final memberships = await _client
         .from('workshop_members')
@@ -686,13 +743,6 @@ class SupabaseAccountService {
   }
 
   Future<bool> _isCurrentUserApplicationAdmin() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return false;
-    final row = await _client
-        .from('app_admins')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-    return row != null;
+    return AppAdminStatusService.instance.isCurrentUserAdmin();
   }
 }

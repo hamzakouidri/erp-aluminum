@@ -25,6 +25,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
   bool _isLoading = true;
   List<Map<String, dynamic>> _trashOrders = [];
   List<Map<String, dynamic>> _trashAchats = [];
+  List<Map<String, dynamic>> _auditLogs = [];
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription<String>? _syncSubscription;
@@ -34,9 +35,9 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     super.initState();
     _db = widget.db ?? SqlDatabase();
     _tabController = TabController(
-      length: 2,
+      length: 3,
       vsync: this,
-      initialIndex: widget.initialIndex.clamp(0, 1),
+      initialIndex: widget.initialIndex.clamp(0, 2),
     );
     _tabController.addListener(() {
       if (mounted) setState(() {});
@@ -62,10 +63,12 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     try {
       final orders = await _db.readTrashCommandesWithClients();
       final achats = await _db.readTrashAchats();
+      final logs = await _db.readAuditLogs(limit: 100);
       if (mounted) {
         setState(() {
           _trashOrders = orders;
           _trashAchats = achats;
+          _auditLogs = logs;
           _isLoading = false;
         });
       }
@@ -471,6 +474,10 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
               icon: const Icon(Icons.receipt_long_outlined, size: 18),
               text: '${Localization.translate('achats', lang)} (${_trashAchats.length})',
             ),
+            Tab(
+              icon: const Icon(Icons.history_edu_rounded, size: 18),
+              text: '${lang == AppLanguage.arabic ? "سجل التدقيق والرقابة" : "Journal d\'audit"} (${_auditLogs.length})',
+            ),
           ],
         ),
         actions: [
@@ -526,6 +533,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
               children: [
                 _buildOrdersTab(context, filteredOrders, lang, isDark),
                 _buildAchatsTab(context, filteredAchats, lang, isDark),
+                _buildAuditLogsTab(context, lang, isDark),
               ],
             ),
           ),
@@ -635,6 +643,18 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                         Text(
                           '${_t('deleted_date', lang)}: ${_formatDate(deletedAt)}',
                           style: TextStyle(color: Colors.red.shade400, fontSize: 11),
+                        ),
+                      ],
+                      if (achat['deleted_by'] != null &&
+                          achat['deleted_by'].toString().trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${lang == AppLanguage.arabic ? "حُذفت بواسطة" : "Supprimé par"}: ${achat['deleted_by']}',
+                          style: const TextStyle(
+                            color: Colors.deepOrangeAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ],
@@ -890,6 +910,28 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                                         ],
                                       ),
                                     ],
+                                    if (order['deleted_by'] != null &&
+                                        order['deleted_by'].toString().trim().isNotEmpty) ...[
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.person_outline_rounded,
+                                            size: 13,
+                                            color: Colors.deepOrangeAccent,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${lang == AppLanguage.arabic ? "حُذفت بواسطة" : "Supprimé par"}: ${order['deleted_by']}',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.deepOrangeAccent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const Divider(height: 16),
@@ -1021,6 +1063,191 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                     ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAuditLogsTab(BuildContext context, AppLanguage lang, bool isDark) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final filtered = _auditLogs.where((log) {
+      if (_searchQuery.trim().isEmpty) return true;
+      final q = _searchQuery.trim().toLowerCase();
+      final title = (log['entity_title'] ?? '').toString().toLowerCase();
+      final user = (log['user_name'] ?? '').toString().toLowerCase();
+      final details = (log['details'] ?? '').toString().toLowerCase();
+      final action = (log['action_type'] ?? '').toString().toLowerCase();
+      return title.contains(q) || user.contains(q) || details.contains(q) || action.contains(q);
+    }).toList();
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.history_edu_rounded,
+              size: 72,
+              color: Colors.grey.withAlpha(120),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              lang == AppLanguage.arabic ? 'لا توجد سجلات تدقيق' : 'Aucun journal d\'audit',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+                fontFamily: 'Cairo',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              lang == AppLanguage.arabic
+                  ? 'يتم تسجيل أي حذف أو تعديل أو استرجاع هنا تلقائياً'
+                  : 'Toutes les suppressions et restaurations sont enregistrées ici',
+              style: const TextStyle(fontSize: 13, color: Colors.grey, fontFamily: 'Cairo'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: filtered.length,
+      itemBuilder: (context, index) {
+        final log = filtered[index];
+        final actionType = (log['action_type'] ?? '').toString().toUpperCase();
+        final entityTitle = log['entity_title']?.toString() ?? '';
+        final userName = log['user_name']?.toString() ?? 'مستخدم';
+        final details = log['details']?.toString() ?? '';
+        final timestamp = log['timestamp'];
+
+        Color badgeColor;
+        IconData actionIcon;
+        String actionLabel;
+
+        switch (actionType) {
+          case 'DELETE':
+            badgeColor = Colors.redAccent;
+            actionIcon = Icons.delete_outline_rounded;
+            actionLabel = lang == AppLanguage.arabic ? 'حذف' : 'Suppression';
+            break;
+          case 'RESTORE':
+            badgeColor = Colors.teal;
+            actionIcon = Icons.restore_from_trash_rounded;
+            actionLabel = lang == AppLanguage.arabic ? 'استرجاع' : 'Restauration';
+            break;
+          case 'UPDATE':
+            badgeColor = Colors.amber.shade800;
+            actionIcon = Icons.edit_note_rounded;
+            actionLabel = lang == AppLanguage.arabic ? 'تعديل' : 'Modification';
+            break;
+          default:
+            badgeColor = Colors.blue;
+            actionIcon = Icons.info_outline_rounded;
+            actionLabel = actionType;
+        }
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 1,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withAlpha(28),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(actionIcon, color: badgeColor, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: badgeColor.withAlpha(30),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              actionLabel,
+                              style: TextStyle(
+                                color: badgeColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              entityTitle,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                fontFamily: 'Cairo',
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_rounded, size: 14, color: Colors.blueGrey),
+                          const SizedBox(width: 4),
+                          Text(
+                            userName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blueGrey,
+                              fontFamily: 'Cairo',
+                            ),
+                          ),
+                          if (timestamp != null) ...[
+                            const SizedBox(width: 12),
+                            const Icon(Icons.access_time_rounded, size: 13, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatDate(timestamp),
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (details.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          details,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[400] : Colors.grey[700],
+                            fontFamily: 'Cairo',
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

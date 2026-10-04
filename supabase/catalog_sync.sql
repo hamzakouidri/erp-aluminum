@@ -17,9 +17,9 @@ as $$
   select exists (
     select 1
     from public.app_admins
-    where user_id = auth.uid()
+    where user_id = (select auth.uid())
   ) or lower(coalesce((
-    select email from auth.users where id = auth.uid()
+    select email from auth.users where id = (select auth.uid())
   ), '')) = 'kouidrihamza45@gmail.com';
 $$;
 
@@ -262,7 +262,7 @@ as $$
       select 1
       from public.workshop_members
       where workshop_id = target_workshop_id
-        and user_id = auth.uid()
+        and user_id = (select auth.uid())
     );
 $$;
 
@@ -525,7 +525,7 @@ begin
       select 1
       from public.workshop_members
       where workshop_id = target_workshop_id
-        and user_id = auth.uid()
+        and user_id = (select auth.uid())
         and role in ('owner', 'manager', 'co_manager', 'admin')
         and blocked = false
     )
@@ -1051,7 +1051,7 @@ begin
     on public.app_admins
     for select
     to authenticated
-    using (user_id = auth.uid() or public.is_app_admin())
+    using (user_id = (select auth.uid()) or (select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1059,7 +1059,7 @@ begin
     on public.app_admins
     for insert
     to authenticated
-    with check (public.is_app_admin())
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1067,8 +1067,8 @@ begin
     on public.app_admins
     for update
     to authenticated
-    using (public.is_app_admin())
-    with check (public.is_app_admin())
+    using ((select public.is_app_admin()))
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1076,7 +1076,7 @@ begin
     on public.app_admins
     for delete
     to authenticated
-    using (public.is_app_admin())
+    using ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1092,7 +1092,7 @@ begin
     on public.catalog_manifest
     for insert
     to authenticated
-    with check (public.is_app_admin())
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1100,8 +1100,8 @@ begin
     on public.catalog_manifest
     for update
     to authenticated
-    using (public.is_app_admin())
-    with check (public.is_app_admin())
+    using ((select public.is_app_admin()))
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1109,7 +1109,7 @@ begin
     on public.catalog_manifest
     for delete
     to authenticated
-    using (public.is_app_admin())
+    using ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1125,7 +1125,7 @@ begin
     on public.catalog_chunks
     for insert
     to authenticated
-    with check (public.is_app_admin())
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1133,7 +1133,7 @@ begin
     on public.catalog_chunks
     for delete
     to authenticated
-    using (public.is_app_admin())
+    using ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1149,7 +1149,7 @@ begin
     on public.workshops
     for insert
     to authenticated
-    with check (public.is_app_admin())
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1157,8 +1157,8 @@ begin
     on public.workshops
     for update
     to authenticated
-    using (public.is_app_admin())
-    with check (public.is_app_admin())
+    using ((select public.is_app_admin()))
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1166,7 +1166,7 @@ begin
     on public.workshops
     for delete
     to authenticated
-    using (public.is_app_admin())
+    using ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1174,7 +1174,7 @@ begin
     on public.workshop_members
     for select
     to authenticated
-    using (user_id = auth.uid() or public.is_app_admin())
+    using (user_id = (select auth.uid()) or (select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1182,7 +1182,7 @@ begin
     on public.workshop_members
     for insert
     to authenticated
-    with check (public.is_app_admin())
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1190,8 +1190,8 @@ begin
     on public.workshop_members
     for update
     to authenticated
-    using (public.is_app_admin())
-    with check (public.is_app_admin())
+    using ((select public.is_app_admin()))
+    with check ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1199,7 +1199,7 @@ begin
     on public.workshop_members
     for delete
     to authenticated
-    using (public.is_app_admin())
+    using ((select public.is_app_admin()))
   $policy$;
 
   execute $policy$
@@ -1207,7 +1207,14 @@ begin
     on public.workshop_sync_rows
     for select
     to authenticated
-    using (public.is_workshop_member(workshop_id))
+    using (
+      (select public.is_app_admin())
+      or workshop_id in (
+        select m.workshop_id
+        from public.workshop_members m
+        where m.user_id = (select auth.uid())
+      )
+    )
   $policy$;
 
   execute $policy$
@@ -1215,7 +1222,14 @@ begin
     on public.workshop_sync_rows
     for insert
     to authenticated
-    with check (public.is_workshop_member(workshop_id))
+    with check (
+      (select public.is_app_admin())
+      or workshop_id in (
+        select m.workshop_id
+        from public.workshop_members m
+        where m.user_id = (select auth.uid())
+      )
+    )
   $policy$;
 
   execute $policy$
@@ -1223,8 +1237,22 @@ begin
     on public.workshop_sync_rows
     for update
     to authenticated
-    using (public.is_workshop_member(workshop_id))
-    with check (public.is_workshop_member(workshop_id))
+    using (
+      (select public.is_app_admin())
+      or workshop_id in (
+        select m.workshop_id
+        from public.workshop_members m
+        where m.user_id = (select auth.uid())
+      )
+    )
+    with check (
+      (select public.is_app_admin())
+      or workshop_id in (
+        select m.workshop_id
+        from public.workshop_members m
+        where m.user_id = (select auth.uid())
+      )
+    )
   $policy$;
 
   execute $policy$
@@ -1232,7 +1260,14 @@ begin
     on public.workshop_sync_rows
     for delete
     to authenticated
-    using (public.is_workshop_member(workshop_id))
+    using (
+      (select public.is_app_admin())
+      or workshop_id in (
+        select m.workshop_id
+        from public.workshop_members m
+        where m.user_id = (select auth.uid())
+      )
+    )
   $policy$;
 end
 $$;

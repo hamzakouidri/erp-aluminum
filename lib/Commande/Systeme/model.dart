@@ -19199,14 +19199,28 @@ class WindowModel extends ChangeNotifier {
       series = activeSeries;
     }
     if (series == null) {
-      for (final profileSystem in availableSystems) {
-        for (final candidate in profileSystem.series) {
+      final currentSys = system ??
+          (activeSeries != null
+              ? profileSystemForSeries(availableSystems, activeSeries!)
+              : null);
+      if (currentSys != null) {
+        for (final candidate in currentSys.series) {
           if (isSlidingSeriesForDrawing(candidate)) {
             series = candidate;
             break;
           }
         }
-        if (series != null) break;
+      }
+      if (series == null) {
+        for (final profileSystem in availableSystems) {
+          for (final candidate in profileSystem.series) {
+            if (isSlidingSeriesForDrawing(candidate)) {
+              series = candidate;
+              break;
+            }
+          }
+          if (series != null) break;
+        }
       }
     }
     if (series == null) return;
@@ -21695,6 +21709,23 @@ class WindowModel extends ChangeNotifier {
     if (activeSeries != null && !isSlidingSeriesForDrawing(activeSeries!)) {
       return;
     }
+    final currentSys = system ??
+        (activeSlidingSeries != null
+            ? profileSystemForSeries(availableSystems, activeSlidingSeries!)
+            : null);
+    if (currentSys != null) {
+      for (final candidate in currentSys.series) {
+        if (!isSlidingSeriesForDrawing(candidate)) {
+          activeSeries = candidate;
+          return;
+        }
+      }
+      if (currentSys.series.isNotEmpty &&
+          (activeSeries == null || activeSeries!.profileId != currentSys.id)) {
+        activeSeries = currentSys.series.first;
+        return;
+      }
+    }
     for (final profileSystem in availableSystems) {
       for (final candidate in profileSystem.series) {
         if (!isSlidingSeriesForDrawing(candidate)) {
@@ -21715,44 +21746,69 @@ class WindowModel extends ChangeNotifier {
   Future<void> _loadDoorKeyLockAccessories() async {
     final d = await db.db;
     if (d == null) return;
-    if (!componentOverrides.containsKey('مقبض الباب (Poignée Porte à Clé)')) {
+    final seriesId = activeSeries?.id;
+
+    Future<Map<String, dynamic>?> findAccessory(
+      List<String> keywords,
+      String roleKey,
+    ) async {
       try {
-        final res = await d.rawQuery('''
-          SELECT a.*, c.name as category_name FROM Accessory a
-          JOIN AccessoryCategories c ON a.category_id = c.id
-          WHERE a.name LIKE '%مقبض بمفتاح%' OR a.name LIKE '%مقبض باب%' OR a.name LIKE '%poignée porte%' OR a.name LIKE '%poignee porte%'
-          LIMIT 1
-        ''');
-        if (res.isNotEmpty) {
-          componentOverrides['مقبض الباب (Poignée Porte à Clé)'] = res.first;
+        if (seriesId != null) {
+          final ruleRows = await d.rawQuery('''
+            SELECT a.*, c.name as category_name FROM CatalogItemRules r
+            JOIN Accessory a ON r.item_id = a.id
+            LEFT JOIN AccessoryCategories c ON a.category_id = c.id
+            WHERE r.target_table = 'Accessories' AND r.series_id = ? AND r.role_key = ? AND r.is_active = 1
+            LIMIT 1
+          ''', [seriesId, roleKey]);
+          if (ruleRows.isNotEmpty) return ruleRows.first;
+
+          final keywordConditions = keywords.map((k) => 'a.name LIKE ?').join(' OR ');
+          final keywordArgs = keywords.map((k) => '%$k%').toList();
+          final seriesRows = await d.rawQuery('''
+            SELECT a.*, c.name as category_name FROM Accessory a
+            LEFT JOIN AccessoryCategories c ON a.category_id = c.id
+            WHERE ($keywordConditions)
+              AND (a.series_id = ? OR (a.series_ids IS NOT NULL AND ',' || REPLACE(a.series_ids, ' ', '') || ',' LIKE ?))
+              AND (a.is_active = 1 OR a.is_active IS NULL)
+            LIMIT 1
+          ''', [...keywordArgs, seriesId, '%,$seriesId,%']);
+          if (seriesRows.isNotEmpty) return seriesRows.first;
         }
+
+        final keywordConditions = keywords.map((k) => 'a.name LIKE ?').join(' OR ');
+        final keywordArgs = keywords.map((k) => '%$k%').toList();
+        final fallbackRows = await d.rawQuery('''
+          SELECT a.*, c.name as category_name FROM Accessory a
+          LEFT JOIN AccessoryCategories c ON a.category_id = c.id
+          WHERE ($keywordConditions) AND (a.is_active = 1 OR a.is_active IS NULL)
+          LIMIT 1
+        ''', keywordArgs);
+        if (fallbackRows.isNotEmpty) return fallbackRows.first;
       } catch (_) {}
+      return null;
+    }
+
+    if (!componentOverrides.containsKey('مقبض الباب (Poignée Porte à Clé)')) {
+      final acc = await findAccessory(
+        ['مقبض بمفتاح', 'مقبض باب', 'poignée porte', 'poignee porte'],
+        'door_handle_key',
+      );
+      if (acc != null) componentOverrides['مقبض الباب (Poignée Porte à Clé)'] = acc;
     }
     if (!componentOverrides.containsKey('قفل الباب (Serrure)')) {
-      try {
-        final res = await d.rawQuery('''
-          SELECT a.*, c.name as category_name FROM Accessory a
-          JOIN AccessoryCategories c ON a.category_id = c.id
-          WHERE a.name LIKE '%قفل%' OR a.name LIKE '%serrure%'
-          LIMIT 1
-        ''');
-        if (res.isNotEmpty) {
-          componentOverrides['قفل الباب (Serrure)'] = res.first;
-        }
-      } catch (_) {}
+      final acc = await findAccessory(
+        ['قفل', 'serrure', 'سرير', 'verrou'],
+        'lock_clef',
+      );
+      if (acc != null) componentOverrides['قفل الباب (Serrure)'] = acc;
     }
     if (!componentOverrides.containsKey('الأسطوانة (Canon)')) {
-      try {
-        final res = await d.rawQuery('''
-          SELECT a.*, c.name as category_name FROM Accessory a
-          JOIN AccessoryCategories c ON a.category_id = c.id
-          WHERE a.name LIKE '%canon%' OR a.name LIKE '%الأسطوانة%' OR a.name LIKE '%الاسطوانة%' OR a.name LIKE '%barillet%'
-          LIMIT 1
-        ''');
-        if (res.isNotEmpty) {
-          componentOverrides['الأسطوانة (Canon)'] = res.first;
-        }
-      } catch (_) {}
+      final acc = await findAccessory(
+        ['canon', 'الأسطوانة', 'الاسطوانة', 'barillet'],
+        'canon',
+      );
+      if (acc != null) componentOverrides['الأسطوانة (Canon)'] = acc;
     }
   }
 
@@ -21869,7 +21925,22 @@ class WindowModel extends ChangeNotifier {
       case WindowPresetType.singleDoor:
         paintZoneContent(zone.id, ZoneContent.singleSash);
         zone.isSash105 = true;
-        zone.sashThickness = _calculateSashThickness(true);
+        if (activeSeries != null) {
+          AluminumSection? doorSashSec;
+          for (final sec in activeSeries!.sections) {
+            final lwr = '${sec.code} ${sec.name}'.toLowerCase();
+            if (sec.type.toLowerCase() == 'sash' &&
+                (lwr.contains('105') || lwr.contains('port') || lwr.contains('باب'))) {
+              doorSashSec = sec;
+              break;
+            }
+          }
+          if (doorSashSec != null) {
+            zone.sashOverride = doorSashSec.toMap();
+            sashOverride = doorSashSec.toMap();
+          }
+        }
+        zone.sashThickness = _calculateSashThickness(true, override: zone.sashOverride);
         zone.lockType = LockType.clef;
         _hideBottomCoverWhenBottomFrameIsMissing();
         updateBottomZoneBoundaries();
@@ -21879,7 +21950,22 @@ class WindowModel extends ChangeNotifier {
       case WindowPresetType.doubleDoor:
         paintZoneContent(zone.id, ZoneContent.doubleSash);
         zone.isSash105 = true;
-        zone.sashThickness = _calculateSashThickness(true);
+        if (activeSeries != null) {
+          AluminumSection? doorSashSec;
+          for (final sec in activeSeries!.sections) {
+            final lwr = '${sec.code} ${sec.name}'.toLowerCase();
+            if (sec.type.toLowerCase() == 'sash' &&
+                (lwr.contains('105') || lwr.contains('port') || lwr.contains('باب'))) {
+              doorSashSec = sec;
+              break;
+            }
+          }
+          if (doorSashSec != null) {
+            zone.sashOverride = doorSashSec.toMap();
+            sashOverride = doorSashSec.toMap();
+          }
+        }
+        zone.sashThickness = _calculateSashThickness(true, override: zone.sashOverride);
         zone.lockType = LockType.clef;
         _hideBottomCoverWhenBottomFrameIsMissing();
         updateBottomZoneBoundaries();

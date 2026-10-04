@@ -10,6 +10,7 @@ import '../widgets/lazy_window_image.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import '../services/worker_push_notification_service.dart';
+import '../Commande/Systeme/model_serialization.dart';
 
 class OrderAllocationScreen extends StatefulWidget {
   final Map<String, dynamic> orderData;
@@ -214,17 +215,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     }
 
     try {
-      final jsonRaw = item['partitions_json'];
-      if (jsonRaw != null) {
-        Map<String, dynamic> map = {};
-        if (jsonRaw is Map<String, dynamic>) {
-          map = jsonRaw;
-        } else {
-          final str = jsonRaw.toString().trim();
-          if (str.length >= 5) {
-            map = jsonDecode(str) as Map<String, dynamic>;
-          }
-        }
+      final map = savedWindowModelMap(item['partitions_json']);
+      if (map.isNotEmpty) {
         if (map.containsKey('poignee')) {
           buffer.writeln('*نوع المقبض / Poignée:* ${map['poignee']}');
         }

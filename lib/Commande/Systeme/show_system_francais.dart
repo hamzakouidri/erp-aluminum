@@ -63,8 +63,7 @@ class _WindowViewState extends State<WindowView> {
       'drawing_frame_picker_show_all_profiles';
   bool _showAllFrameProfiles = false;
 
-  static const _hidePresetCardPreferenceKey =
-      'drawing_hide_preset_quick_card';
+  static const _hidePresetCardPreferenceKey = 'drawing_hide_preset_quick_card';
   bool _hidePresetCard = false;
 
   Future<void> _setShowAllFrameProfiles(bool value) async {
@@ -110,8 +109,7 @@ class _WindowViewState extends State<WindowView> {
       spec.structure,
       sliding: true,
     );
-    if (series == null || capacity == null)
-      return const SizedBox.shrink();
+    if (series == null || capacity == null) return const SizedBox.shrink();
     final glass = spec.totalThickness(widget.model.allGlassCache);
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: CatalogCandidateResolver(database: SqlDatabase()).resolve(
@@ -5214,11 +5212,13 @@ class _WindowViewState extends State<WindowView> {
 
                                   final scaleFactor =
                                       _userScale * widget.model.canvasScale;
-                                  final deltaX = (moveLeft || moveRight) &&
+                                  final deltaX =
+                                      (moveLeft || moveRight) &&
                                           scaleFactor > 0.0001
                                       ? details.focalPointDelta.dx / scaleFactor
                                       : 0.0;
-                                  final deltaY = (moveTop || moveBottom) &&
+                                  final deltaY =
+                                      (moveTop || moveBottom) &&
                                           scaleFactor > 0.0001
                                       ? details.focalPointDelta.dy / scaleFactor
                                       : 0.0;
@@ -5581,32 +5581,55 @@ class _WindowViewState extends State<WindowView> {
                                           ),
                                         ),
                                         if (widget.model.usesProfileAngle &&
-                                            widget.model.activeProfileAngleJunctions.isNotEmpty) ...[
+                                            widget
+                                                .model
+                                                .activeProfileAngleJunctions
+                                                .isNotEmpty) ...[
                                           Container(
                                             width: 26,
                                             height: 1,
-                                            color: Theme.of(context).dividerColor,
+                                            color: Theme.of(
+                                              context,
+                                            ).dividerColor,
                                           ),
                                           Semantics(
                                             button: true,
-                                            label: widget.model.viewAs90DegreeCorner
+                                            label:
+                                                widget
+                                                    .model
+                                                    .viewAs90DegreeCorner
                                                 ? 'منظور 90°'
                                                 : 'مسقط مسطح 2D',
                                             child: IconButton(
-                                              tooltip: widget.model.viewAs90DegreeCorner
-                                                  ? Localization.translate('التبديل إلى المسقط المسطح 2D', lang)
-                                                  : Localization.translate('التبديل إلى منظور الزاوية 90° (3D)', lang),
+                                              tooltip:
+                                                  widget
+                                                      .model
+                                                      .viewAs90DegreeCorner
+                                                  ? Localization.translate(
+                                                      'التبديل إلى المسقط المسطح 2D',
+                                                      lang,
+                                                    )
+                                                  : Localization.translate(
+                                                      'التبديل إلى منظور الزاوية 90° (3D)',
+                                                      lang,
+                                                    ),
                                               icon: Icon(
-                                                widget.model.viewAs90DegreeCorner
+                                                widget
+                                                        .model
+                                                        .viewAs90DegreeCorner
                                                     ? Icons.view_in_ar_rounded
                                                     : Icons.crop_square_rounded,
-                                                color: widget.model.viewAs90DegreeCorner
+                                                color:
+                                                    widget
+                                                        .model
+                                                        .viewAs90DegreeCorner
                                                     ? Colors.blue
                                                     : null,
                                               ),
                                               onPressed: () {
                                                 setState(() {
-                                                  widget.model.toggle90DegreeCornerView();
+                                                  widget.model
+                                                      .toggle90DegreeCornerView();
                                                 });
                                               },
                                             ),
@@ -5729,10 +5752,12 @@ class _WindowViewState extends State<WindowView> {
                                     Row(
                                       children: [
                                         _PresetThumbnailWidget(
-                                          preset: WindowPresetType.slidingNoShutter,
+                                          preset:
+                                              WindowPresetType.slidingNoShutter,
                                           width: 32,
                                           height: 32,
-                                          isDark: Theme.of(context).brightness ==
+                                          isDark:
+                                              Theme.of(context).brightness ==
                                               Brightness.dark,
                                           accentColor: Colors.blue.shade700,
                                         ),
@@ -5753,15 +5778,17 @@ class _WindowViewState extends State<WindowView> {
                                         ),
                                         InkWell(
                                           onTap: () => _setHidePresetCard(true),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           child: Padding(
                                             padding: const EdgeInsets.all(4),
                                             child: Icon(
                                               Icons.close_rounded,
                                               size: 18,
-                                              color: Theme.of(context)
-                                                  .hintColor,
+                                              color: Theme.of(
+                                                context,
+                                              ).hintColor,
                                             ),
                                           ),
                                         ),
@@ -5775,7 +5802,8 @@ class _WindowViewState extends State<WindowView> {
                                       ),
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: Theme.of(context).brightness ==
+                                        color:
+                                            Theme.of(context).brightness ==
                                                 Brightness.dark
                                             ? Colors.white60
                                             : Colors.black54,
@@ -5793,8 +5821,9 @@ class _WindowViewState extends State<WindowView> {
                                           vertical: 8,
                                         ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                       ),
                                       onPressed: () =>
@@ -6217,14 +6246,15 @@ class _WindowViewState extends State<WindowView> {
               final gapStr = remainingGap.abs().toStringAsFixed(0);
 
               if (isAbove) {
-                message = openingPrefix +
+                message =
+                    openingPrefix +
                     'تنبيه: السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
               } else if (remainingGap < 2.0) {
                 message = spec.fittedJoints.isNotEmpty && isExact
                     ? openingPrefix +
-                        'السُمك ($glassStr مم) + الجوانات المختارة ($jointStr مم) = $packStr مم، مطابق لـ $capacityLabel ($maxStr مم).'
+                          'السُمك ($glassStr مم) + الجوانات المختارة ($jointStr مم) = $packStr مم، مطابق لـ $capacityLabel ($maxStr مم).'
                     : openingPrefix +
-                        'السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي ضيق جداً ($gapStr مم).';
+                          'السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي ضيق جداً ($gapStr مم).';
               } else {
                 message =
                     openingPrefix +
@@ -6341,6 +6371,13 @@ class _WindowViewState extends State<WindowView> {
           final parcloseThicknessInfo = buildParcloseThicknessInfo();
           final slidingParcloseThicknessInfo =
               buildSlidingParcloseThicknessInfo();
+          final showSlidingJointSideSelector =
+              !widget.model.isSlidingPVC &&
+              (widget.systemMode == 'sliding' ||
+                  widget.model.systemMode == 'sliding' ||
+                  widget.model.zones.any(
+                    (candidate) => candidate.content == ZoneContent.slidingSash,
+                  ));
           final fallbackIntercallChoices = <Map<String, dynamic>>[
             {'thickness': 6, 'name': '6 مم'},
             {'thickness': 8, 'name': '8 مم'},
@@ -6803,6 +6840,48 @@ class _WindowViewState extends State<WindowView> {
               if (parcloseThicknessInfo != null) parcloseThicknessInfo,
               if (slidingParcloseThicknessInfo != null)
                 slidingParcloseThicknessInfo,
+              if (showSlidingJointSideSelector) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    _tr('جهة جوان البوراج للزجاج'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark
+                          ? Colors.blue.shade200
+                          : Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: Text(_tr('جهة واحدة')),
+                      selected: !spec.jointTwoSides,
+                      onSelected: (_) {
+                        widget.model.updateAllSlidingJointSides(false);
+                        setState(() {
+                          _tempGlassSpec = spec.copyWith(jointTwoSides: false);
+                        });
+                      },
+                    ),
+                    ChoiceChip(
+                      label: Text(_tr('جهتين')),
+                      selected: spec.jointTwoSides,
+                      onSelected: (_) {
+                        widget.model.updateAllSlidingJointSides(true);
+                        setState(() {
+                          _tempGlassSpec = spec.copyWith(jointTwoSides: true);
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
               if (targetZone != null &&
                   targetZone.content == ZoneContent.doubleSash) ...[
                 Row(
@@ -7550,28 +7629,29 @@ class _WindowViewState extends State<WindowView> {
                               isDense: true,
                               border: OutlineInputBorder(),
                             ),
-                            selectedItemBuilder: (context) => products.map((product) {
-                              final name = (product['name'] ?? 'بانو ديكور')
-                                  .toString();
-                              return Row(
-                                children: [
-                                  DecorPanelDesignPreview(
-                                    designCode:
-                                        product['decor_design_code']?.toString(),
-                                    width: 24,
-                                    height: 38,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      name,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 10),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
+                            selectedItemBuilder: (context) =>
+                                products.map((product) {
+                                  final name = (product['name'] ?? 'بانو ديكور')
+                                      .toString();
+                                  return Row(
+                                    children: [
+                                      DecorPanelDesignPreview(
+                                        designCode: product['decor_design_code']
+                                            ?.toString(),
+                                        width: 24,
+                                        height: 38,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 10),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
                             items: products.map((product) {
                               final width = _catalogNumber(
                                 product,
@@ -7603,55 +7683,62 @@ class _WindowViewState extends State<WindowView> {
                               );
                             }).toList(),
                             onChanged: (value) async {
-                          if (value == null) return;
-                          final chosen = uniqueProducts[value]!;
-                          final chosenId = int.tryParse(value);
-                          final thickness = _catalogNumber(chosen, 'thickness');
-                          final colorsForProduct = widget.model.allGlassCache
-                              .where(
-                                (row) =>
-                                    row['id']?.toString() == value &&
-                                    (row['color'] ?? '')
-                                        .toString()
-                                        .trim()
-                                        .isNotEmpty,
-                              )
-                              .map(
-                                (row) => (row['color'] ?? '').toString().trim(),
-                              )
-                              .toList();
-                          final selectedColor =
-                              colorsForProduct.any(
-                                (color) =>
-                                    color.toLowerCase() ==
-                                    (spec.panneauColor ?? '').toLowerCase(),
-                              )
-                              ? spec.panneauColor
-                              : (colorsForProduct.isEmpty
-                                    ? spec.panneauColor
-                                    : colorsForProduct.first);
-                          final newSpec = spec.copyWith(
-                            panneauProductId: chosenId,
-                            panneauColor: selectedColor,
-                            thicknessOuter: thickness,
-                          );
-                          if (zone != null) {
-                            final placement = await _prepareDecorPanelPlacement(
-                              zone: zone,
-                              cellId: widget.model.activeSubZone,
-                              spec: newSpec,
-                            );
-                            if (!placement.allowed) return;
-                            widget.model.activeSubZone = placement.cellId;
-                            await widget.model.updateSelectedZoneGlass(
-                              panneauProductId: chosenId,
-                              panneauColor: selectedColor,
-                              thicknessOuter: thickness,
-                            );
-                          } else {
-                            setState(() => _tempGlassSpec = newSpec);
-                          }
-                          _startPaintbrushMode(glassSpec: newSpec);
+                              if (value == null) return;
+                              final chosen = uniqueProducts[value]!;
+                              final chosenId = int.tryParse(value);
+                              final thickness = _catalogNumber(
+                                chosen,
+                                'thickness',
+                              );
+                              final colorsForProduct = widget
+                                  .model
+                                  .allGlassCache
+                                  .where(
+                                    (row) =>
+                                        row['id']?.toString() == value &&
+                                        (row['color'] ?? '')
+                                            .toString()
+                                            .trim()
+                                            .isNotEmpty,
+                                  )
+                                  .map(
+                                    (row) =>
+                                        (row['color'] ?? '').toString().trim(),
+                                  )
+                                  .toList();
+                              final selectedColor =
+                                  colorsForProduct.any(
+                                    (color) =>
+                                        color.toLowerCase() ==
+                                        (spec.panneauColor ?? '').toLowerCase(),
+                                  )
+                                  ? spec.panneauColor
+                                  : (colorsForProduct.isEmpty
+                                        ? spec.panneauColor
+                                        : colorsForProduct.first);
+                              final newSpec = spec.copyWith(
+                                panneauProductId: chosenId,
+                                panneauColor: selectedColor,
+                                thicknessOuter: thickness,
+                              );
+                              if (zone != null) {
+                                final placement =
+                                    await _prepareDecorPanelPlacement(
+                                      zone: zone,
+                                      cellId: widget.model.activeSubZone,
+                                      spec: newSpec,
+                                    );
+                                if (!placement.allowed) return;
+                                widget.model.activeSubZone = placement.cellId;
+                                await widget.model.updateSelectedZoneGlass(
+                                  panneauProductId: chosenId,
+                                  panneauColor: selectedColor,
+                                  thicknessOuter: thickness,
+                                );
+                              } else {
+                                setState(() => _tempGlassSpec = newSpec);
+                              }
+                              _startPaintbrushMode(glassSpec: newSpec);
                             },
                           ),
                           if (DecorPanelDesignCatalog.isSupported(
@@ -8311,24 +8398,38 @@ class _WindowViewState extends State<WindowView> {
                   runSpacing: 6,
                   children: intercallChoices.map((g) {
                     int val = (g['thickness'] as num?)?.toInt() ?? 0;
-                    final isSliding = widget.systemMode == 'sliding' ||
+                    final isSliding =
+                        widget.systemMode == 'sliding' ||
                         widget.model.systemMode == 'sliding' ||
-                        (zone != null && zone.content == ZoneContent.slidingSash);
+                        (zone != null &&
+                            zone.content == ZoneContent.slidingSash);
                     final double tOuter =
                         spec.thicknessOuter ?? kDefaultGlassPaneThickness;
                     final double tInner =
                         spec.thicknessInner ?? kDefaultGlassPaneThickness;
                     final double jointAllowance = isSliding
-                        ? (widget.model.selectedVitrageJointThickness(fallback: 2.0) * (spec.jointTwoSides ? 2 : 1))
-                        : (widget.model.selectedVitrageJointThickness(fallback: 2.0) +
-                            widget.model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0));
-                    final maxCapacity = widget.model.glazingCapacityForStructure(
-                      GlassStructure.double,
-                      sliding: isSliding,
-                    );
-                    final totalWithJoint = tOuter + val + tInner + jointAllowance;
-                    final bool exceedsCapacity = maxCapacity != null && totalWithJoint > maxCapacity;
-                    final bool hasGlazingBead = widget.model.hasGlazingBeadForContext(sliding: isSliding);
+                        ? (widget.model.selectedVitrageJointThickness(
+                                fallback: 2.0,
+                              ) *
+                              (spec.jointTwoSides ? 2 : 1))
+                        : (widget.model.selectedVitrageJointThickness(
+                                fallback: 2.0,
+                              ) +
+                              widget.model.selectedBourrageJointThickness(
+                                doubleGlass: true,
+                                fallback: 2.0,
+                              ));
+                    final maxCapacity = widget.model
+                        .glazingCapacityForStructure(
+                          GlassStructure.double,
+                          sliding: isSliding,
+                        );
+                    final totalWithJoint =
+                        tOuter + val + tInner + jointAllowance;
+                    final bool exceedsCapacity =
+                        maxCapacity != null && totalWithJoint > maxCapacity;
+                    final bool hasGlazingBead = widget.model
+                        .hasGlazingBeadForContext(sliding: isSliding);
 
                     return _IntercallButton(
                       thickness: val,
@@ -11955,8 +12056,9 @@ class _WindowViewState extends State<WindowView> {
                                             ? const Color(0xFF262638)
                                             : Colors.white,
                                         border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -11989,8 +12091,9 @@ class _WindowViewState extends State<WindowView> {
                                             ? const Color(0xFF262638)
                                             : Colors.white,
                                         border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -14291,7 +14394,9 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         const SizedBox(height: 10),
                         SwitchListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                          ),
                           secondary: Icon(
                             Icons.view_in_ar_rounded,
                             color: widget.model.viewAs90DegreeCorner
@@ -14477,12 +14582,13 @@ class _WindowViewState extends State<WindowView> {
           .toString()
           .toLowerCase();
       if (role == 'sliding_frame' || role == 'frame_sliding') return true;
-      final uScope = (row['usage_scope'] ??
-              row['design_usage_scope'] ??
-              row['sharing_usage_scope'] ??
-              '')
-          .toString()
-          .toLowerCase();
+      final uScope =
+          (row['usage_scope'] ??
+                  row['design_usage_scope'] ??
+                  row['sharing_usage_scope'] ??
+                  '')
+              .toString()
+              .toLowerCase();
       if (uScope == 'sliding') return true;
       if (uScope == 'opening' || uScope == 'ouvrant') return false;
       final text =
@@ -14496,10 +14602,10 @@ class _WindowViewState extends State<WindowView> {
     final raw = sliding
         ? _slidingFrameProfiles.where((r) => isRowSliding(r)).toList()
         : (_openingFrameProfiles.isNotEmpty
-                ? _openingFrameProfiles
-                : _frameProfiles)
-            .where((r) => !isRowSliding(r))
-            .toList();
+                  ? _openingFrameProfiles
+                  : _frameProfiles)
+              .where((r) => !isRowSliding(r))
+              .toList();
 
     final allRows = <Map<String, dynamic>>[...raw];
     if (widget.model.hasFrameJoinRules) {
@@ -15400,49 +15506,58 @@ class _WindowViewState extends State<WindowView> {
                             widget.systemMode == 'sliding';
                         final activeSashOverride = isSliding
                             ? (zone.slidingSashOverride ??
-                                widget.model.slidingSashOverride)
-                            : (zone.sashOverride ??
-                                widget.model.sashOverride);
+                                  widget.model.slidingSashOverride)
+                            : (zone.sashOverride ?? widget.model.sashOverride);
                         return _ContentButton(
                           label: activeSashOverride != null
                               ? '${activeSashOverride['name']}'
-                              : Localization.translate('اختر الظلفة (Sash)', lang),
+                              : Localization.translate(
+                                  'اختر الظلفة (Sash)',
+                                  lang,
+                                ),
                           icon: Icons.format_paint_rounded,
                           selected: activeSashOverride != null,
                           onPressed: () async {
                             final useSlidingProfiles = isSliding;
                             final selected =
                                 await showDialog<Map<String, dynamic>>(
-                              context: context,
-                              builder: (context) => ProfileSelectorDialog(
-                                profileType: 'sash',
-                                seriesId: useSlidingProfiles
-                                    ? (widget.model.effectiveSlidingSeries?.id ??
-                                          widget.model.activeSlidingSeries?.id)
-                                    : widget.model.activeSeries?.id,
-                                materialType: useSlidingProfiles
-                                    ? (widget.model.isSlidingPVC
-                                          ? 'PVC'
-                                          : 'Aluminium')
-                                    : (widget.model.isPVC
-                                          ? 'PVC'
-                                          : 'Aluminium'),
-                                accessoryDrawingMode: useSlidingProfiles
-                                    ? AccessoryDrawingMode.sliding
-                                    : AccessoryDrawingMode.opening,
-                                hasSimpleGlassForReducer:
-                                    widget.model.hasSimpleGlassForReducer,
-                                hasDoubleGlassForRules:
-                                    widget.model.hasDoubleGlassForRules,
-                              ),
-                            );
+                                  context: context,
+                                  builder: (context) => ProfileSelectorDialog(
+                                    profileType: 'sash',
+                                    seriesId: useSlidingProfiles
+                                        ? (widget
+                                                  .model
+                                                  .effectiveSlidingSeries
+                                                  ?.id ??
+                                              widget
+                                                  .model
+                                                  .activeSlidingSeries
+                                                  ?.id)
+                                        : widget.model.activeSeries?.id,
+                                    materialType: useSlidingProfiles
+                                        ? (widget.model.isSlidingPVC
+                                              ? 'PVC'
+                                              : 'Aluminium')
+                                        : (widget.model.isPVC
+                                              ? 'PVC'
+                                              : 'Aluminium'),
+                                    accessoryDrawingMode: useSlidingProfiles
+                                        ? AccessoryDrawingMode.sliding
+                                        : AccessoryDrawingMode.opening,
+                                    hasSimpleGlassForReducer:
+                                        widget.model.hasSimpleGlassForReducer,
+                                    hasDoubleGlassForRules:
+                                        widget.model.hasDoubleGlassForRules,
+                                  ),
+                                );
                             if (selected != null) {
-                              final mutableSelected =
-                                  Map<String, dynamic>.from(selected);
+                              final mutableSelected = Map<String, dynamic>.from(
+                                selected,
+                              );
                               mutableSelected['calculated_price'] =
                                   await _sectionPriceForSelectedColor(
-                                mutableSelected,
-                              );
+                                    mutableSelected,
+                                  );
 
                               setState(() {
                                 widget.model.applySashOverride(
@@ -15464,8 +15579,16 @@ class _WindowViewState extends State<WindowView> {
                         builder: (context) {
                           bool isCur105 = zone.isSash105;
                           if (zone.sashOverride != null) {
-                            final code = zone.sashOverride!['code']?.toString().toLowerCase() ?? '';
-                            final name = zone.sashOverride!['name']?.toString().toLowerCase() ?? '';
+                            final code =
+                                zone.sashOverride!['code']
+                                    ?.toString()
+                                    .toLowerCase() ??
+                                '';
+                            final name =
+                                zone.sashOverride!['name']
+                                    ?.toString()
+                                    .toLowerCase() ??
+                                '';
                             if (code.contains('104') || name.contains('104')) {
                               isCur105 = false;
                             } else if (code.contains('105') ||
@@ -15480,7 +15603,8 @@ class _WindowViewState extends State<WindowView> {
                           }
                           bool has104105Option = false;
                           if (widget.model.activeSeries != null) {
-                            for (var sec in widget.model.activeSeries!.sections) {
+                            for (var sec
+                                in widget.model.activeSeries!.sections) {
                               if (sec.type.toLowerCase() == 'sash' &&
                                   (sec.code.contains('105') ||
                                       sec.code.contains('porte') ||
@@ -15498,12 +15622,20 @@ class _WindowViewState extends State<WindowView> {
                               const SizedBox(width: 8),
                               _ContentButton(
                                 label: isCur105
-                                    ? Localization.translate('الظلفة 105 (صندوق باب)', lang)
-                                    : Localization.translate('الظلفة 104 (نافذة)', lang),
+                                    ? Localization.translate(
+                                        'الظلفة 105 (صندوق باب)',
+                                        lang,
+                                      )
+                                    : Localization.translate(
+                                        'الظلفة 104 (نافذة)',
+                                        lang,
+                                      ),
                                 icon: Icons.door_front_door_outlined,
                                 selected: isCur105,
                                 onPressed: () async {
-                                  await widget.model.toggleSashType104105(targetZone: zone);
+                                  await widget.model.toggleSashType104105(
+                                    targetZone: zone,
+                                  );
                                   setState(() {});
                                 },
                               ),
@@ -16570,6 +16702,48 @@ class _WindowViewState extends State<WindowView> {
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Material(
+                      color: Colors.blue.shade700,
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => _addDrawingAndCalculate(context),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 7,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.add_shopping_cart_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  Localization.translate(
+                                    'إضافة واحتساب السعر',
+                                    lang,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w800,
                                     color: Colors.white,
                                   ),
@@ -18024,10 +18198,8 @@ class _WindowViewState extends State<WindowView> {
         final angleJunctionFrameIds = angleJunctionFrames.values
             .map((e) => e.section.id)
             .toSet();
-        final personalizedFrameProfiles = <({
-          Map<String, dynamic> profile,
-          bool sliding,
-        })>[];
+        final personalizedFrameProfiles =
+            <({Map<String, dynamic> profile, bool sliding})>[];
         final personalizedFrameIds = <int>{};
         for (final frame in widget.model.getFrameRects()) {
           final sliding = widget.model.frameUsesSlidingSeries(frame);
@@ -18112,9 +18284,7 @@ class _WindowViewState extends State<WindowView> {
           }
         }
         for (final entry in personalizedFrameProfiles) {
-          final targetList = entry.sliding
-              ? slidingProfiles
-              : openingProfiles;
+          final targetList = entry.sliding ? slidingProfiles : openingProfiles;
           final id = _catalogRowId(entry.profile);
           if (id != null && !targetList.any((p) => _catalogRowId(p) == id)) {
             targetList.insert(0, entry.profile);
@@ -18164,8 +18334,7 @@ class _WindowViewState extends State<WindowView> {
               widget.model.hasSideCovers &&
               !integratedCover &&
               !allowsStandaloneCover;
-          final removesShutter =
-              widget.model.hasShutter && !allowedWithShutter;
+          final removesShutter = widget.model.hasShutter && !allowedWithShutter;
 
           var removesProfileAngle = false;
           if (widget.model.usesProfileAngle && integratedCover) {
@@ -20222,6 +20391,32 @@ class _WindowViewState extends State<WindowView> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade700,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () => _addDrawingAndCalculate(context),
+                          icon: const Icon(
+                            Icons.add_shopping_cart_rounded,
+                            size: 17,
+                          ),
+                          label: Text(
+                            Localization.translate('إضافة واحتساب السعر', lang),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -20318,6 +20513,59 @@ class _WindowViewState extends State<WindowView> {
     if (result == true && context.mounted) {
       Navigator.pop(context, widget.model);
     }
+  }
+
+  void _addDrawingAndCalculate(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final hasInvalidGlazing = widget.model.zones.any(
+      (zone) =>
+          zone.glass.glazingFitValid == false ||
+          zone.cellGlassSpec.values.any(
+            (spec) => spec.glazingFitValid == false,
+          ),
+    );
+    if (hasInvalidGlazing) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              'تركيب الزجاج غير متوافق. راجع السماكات والجوانات قبل الإضافة.',
+              lang,
+            ),
+          ),
+          backgroundColor: Colors.orange.shade800,
+        ),
+      );
+      return;
+    }
+
+    final hasWindowContent = widget.model.zones.any(
+      (zone) => zone.content != ZoneContent.empty,
+    );
+    final hasReadyShutterOnly =
+        widget.model.isShutterOnly &&
+        widget.model.width > 0 &&
+        widget.model.height > 0;
+    if (!hasReadyShutterOnly && !hasWindowContent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              'الرجاء رسم أو إضافة جزء في النافذة أولاً قبل حساب التكلفة!',
+              lang,
+            ),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    widget.model.clearSelection();
+    Navigator.pop(context, widget.model);
   }
 
   void _showParcloseSelectorDialog(BuildContext context) async {
@@ -20520,15 +20768,17 @@ class _IntercallButton extends StatelessWidget {
                     ? Colors.blue.shade900.withValues(alpha: 0.3)
                     : Colors.blue.shade50)
               : exceedsCapacity
-                  ? (isDark ? Colors.red.shade900.withValues(alpha: 0.15) : Colors.red.shade50)
-                  : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
+              ? (isDark
+                    ? Colors.red.shade900.withValues(alpha: 0.15)
+                    : Colors.red.shade50)
+              : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: selected
                 ? Colors.blue
                 : exceedsCapacity
-                    ? (isDark ? Colors.red.shade400 : Colors.red.shade300)
-                    : (isDark ? Colors.white24 : Colors.grey.shade300),
+                ? (isDark ? Colors.red.shade400 : Colors.red.shade300)
+                : (isDark ? Colors.white24 : Colors.grey.shade300),
             width: selected ? 1.5 : (exceedsCapacity ? 1.2 : 1.0),
           ),
         ),
@@ -20541,10 +20791,10 @@ class _IntercallButton extends StatelessWidget {
                 color: isDark
                     ? (exceedsCapacity ? Colors.red.shade300 : Colors.white)
                     : (selected
-                        ? Colors.blue.shade900
-                        : exceedsCapacity
-                            ? Colors.red.shade700
-                            : Colors.grey.shade800),
+                          ? Colors.blue.shade900
+                          : exceedsCapacity
+                          ? Colors.red.shade700
+                          : Colors.grey.shade800),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -20559,10 +20809,10 @@ class _IntercallButton extends StatelessWidget {
                   color: isDark
                       ? (exceedsCapacity ? Colors.red.shade400 : Colors.white)
                       : (selected
-                          ? Colors.blue
-                          : exceedsCapacity
-                              ? Colors.red.shade400
-                              : Colors.grey.shade500),
+                            ? Colors.blue
+                            : exceedsCapacity
+                            ? Colors.red.shade400
+                            : Colors.grey.shade500),
                 ),
                 Text(
                   thickness.toString(),
@@ -20570,10 +20820,10 @@ class _IntercallButton extends StatelessWidget {
                     color: isDark
                         ? Colors.white
                         : (selected
-                            ? Colors.blue.shade700
-                            : exceedsCapacity
-                                ? Colors.red.shade900
-                                : Colors.black87),
+                              ? Colors.blue.shade700
+                              : exceedsCapacity
+                              ? Colors.red.shade900
+                              : Colors.black87),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -20587,10 +20837,10 @@ class _IntercallButton extends StatelessWidget {
                 color: isDark
                     ? (exceedsCapacity ? Colors.red.shade300 : Colors.white)
                     : (selected
-                        ? Colors.blue.shade900
-                        : exceedsCapacity
-                            ? Colors.red.shade700
-                            : Colors.grey.shade800),
+                          ? Colors.blue.shade900
+                          : exceedsCapacity
+                          ? Colors.red.shade700
+                          : Colors.grey.shade800),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -21424,8 +21674,8 @@ class AppWorkspacePainter extends CustomPainter {
     }
 
     // --- Width Dimensions ---
-    final bool hasAngleJunction = model.usesProfileAngle &&
-        model.activeProfileAngleJunctions.isNotEmpty;
+    final bool hasAngleJunction =
+        model.usesProfileAngle && model.activeProfileAngleJunctions.isNotEmpty;
 
     // Outer/total width is always shown on the top dimension layer, including
     // when the opening is composed of multiple frames joined by an angle.
@@ -21980,9 +22230,13 @@ bool isGlassThicknessValid(
     final double j = model.selectedVitrageJointThickness(fallback: 2.0);
     jointAllowance = spec.jointTwoSides ? (j * 2) : j;
   } else {
-    jointAllowance = model.selectedVitrageJointThickness(fallback: 2.0) +
+    jointAllowance =
+        model.selectedVitrageJointThickness(fallback: 2.0) +
         (spec.structure == GlassStructure.double
-            ? model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0)
+            ? model.selectedBourrageJointThickness(
+                doubleGlass: true,
+                fallback: 2.0,
+              )
             : 0.0);
   }
   final maxCapacity = model.glazingCapacityForStructure(
@@ -22012,7 +22266,8 @@ bool isDoubleGlassValid(
     final double j = model.selectedVitrageJointThickness(fallback: 2.0);
     jointAllowance = jointTwoSides ? (j * 2) : j;
   } else {
-    jointAllowance = model.selectedVitrageJointThickness(fallback: 2.0) +
+    jointAllowance =
+        model.selectedVitrageJointThickness(fallback: 2.0) +
         model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0);
   }
   final maxCapacity = model.glazingCapacityForStructure(
@@ -22055,12 +22310,14 @@ class _PresetThumbnailWidget extends StatelessWidget {
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: CustomPaint(
-        size: Size(width, height),
-        painter: _PresetThumbnailPainter(
-          preset: preset,
-          isDark: isDark,
-          accentColor: accentColor ?? Colors.blue,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size(width, height),
+          painter: _PresetThumbnailPainter(
+            preset: preset,
+            isDark: isDark,
+            accentColor: accentColor ?? Colors.blue,
+          ),
         ),
       ),
     );
@@ -22082,25 +22339,34 @@ class _PresetThumbnailPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.width <= 0 || size.height <= 0) return;
 
-    final frameBorderColor =
-        isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155);
-    final frameFillColor =
-        isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-    final glassFillColor =
-        isDark ? const Color(0xFF0F2B48) : const Color(0xFFE0F2FE);
-    final glassSheenColor =
-        Colors.white.withValues(alpha: isDark ? 0.15 : 0.45);
-    final sashBorderColor =
-        isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
-    final sashFillColor =
-        isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+    final frameBorderColor = isDark
+        ? const Color(0xFFCBD5E1)
+        : const Color(0xFF334155);
+    final frameFillColor = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFE2E8F0);
+    final glassFillColor = isDark
+        ? const Color(0xFF0F2B48)
+        : const Color(0xFFE0F2FE);
+    final glassSheenColor = Colors.white.withValues(
+      alpha: isDark ? 0.15 : 0.45,
+    );
+    final sashBorderColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF475569);
+    final sashFillColor = isDark
+        ? const Color(0xFF1E293B)
+        : const Color(0xFFF8FAFC);
     final openLineColor = accentColor.withValues(alpha: 0.85);
-    final shutterBoxColor =
-        isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1);
-    final shutterBladeColor =
-        isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
-    final handleColor =
-        isDark ? Colors.amber.shade300 : const Color(0xFFD97706);
+    final shutterBoxColor = isDark
+        ? const Color(0xFF475569)
+        : const Color(0xFFCBD5E1);
+    final shutterBladeColor = isDark
+        ? const Color(0xFF64748B)
+        : const Color(0xFF94A3B8);
+    final handleColor = isDark
+        ? Colors.amber.shade300
+        : const Color(0xFFD97706);
 
     final framePaint = Paint()
       ..color = frameFillColor
@@ -22135,15 +22401,23 @@ class _PresetThumbnailPainter extends CustomPainter {
         ..color = glassSheenColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.9;
-      final p1 = Offset(glassRect.left + glassRect.width * 0.15,
-          glassRect.bottom - glassRect.height * 0.15);
-      final p2 = Offset(glassRect.left + glassRect.width * 0.45,
-          glassRect.top + glassRect.height * 0.15);
+      final p1 = Offset(
+        glassRect.left + glassRect.width * 0.15,
+        glassRect.bottom - glassRect.height * 0.15,
+      );
+      final p2 = Offset(
+        glassRect.left + glassRect.width * 0.45,
+        glassRect.top + glassRect.height * 0.15,
+      );
       canvas.drawLine(p1, p2, sheenPaint);
-      final p3 = Offset(glassRect.left + glassRect.width * 0.5,
-          glassRect.bottom - glassRect.height * 0.15);
-      final p4 = Offset(glassRect.left + glassRect.width * 0.8,
-          glassRect.top + glassRect.height * 0.15);
+      final p3 = Offset(
+        glassRect.left + glassRect.width * 0.5,
+        glassRect.bottom - glassRect.height * 0.15,
+      );
+      final p4 = Offset(
+        glassRect.left + glassRect.width * 0.8,
+        glassRect.top + glassRect.height * 0.15,
+      );
       canvas.drawLine(p3, p4, sheenPaint);
     }
 
@@ -22182,17 +22456,29 @@ class _PresetThumbnailPainter extends CustomPainter {
         final endX = rect.center.dx + arrowW / 2;
         canvas.drawLine(Offset(startX, cy), Offset(endX, cy), arrowPaint);
         canvas.drawLine(
-            Offset(endX - 2.5, cy - 2.5), Offset(endX, cy), arrowPaint);
+          Offset(endX - 2.5, cy - 2.5),
+          Offset(endX, cy),
+          arrowPaint,
+        );
         canvas.drawLine(
-            Offset(endX - 2.5, cy + 2.5), Offset(endX, cy), arrowPaint);
+          Offset(endX - 2.5, cy + 2.5),
+          Offset(endX, cy),
+          arrowPaint,
+        );
       } else {
         final startX = rect.center.dx + arrowW / 2;
         final endX = rect.center.dx - arrowW / 2;
         canvas.drawLine(Offset(startX, cy), Offset(endX, cy), arrowPaint);
         canvas.drawLine(
-            Offset(endX + 2.5, cy - 2.5), Offset(endX, cy), arrowPaint);
+          Offset(endX + 2.5, cy - 2.5),
+          Offset(endX, cy),
+          arrowPaint,
+        );
         canvas.drawLine(
-            Offset(endX + 2.5, cy + 2.5), Offset(endX, cy), arrowPaint);
+          Offset(endX + 2.5, cy + 2.5),
+          Offset(endX, cy),
+          arrowPaint,
+        );
       }
     }
 
@@ -22205,10 +22491,13 @@ class _PresetThumbnailPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2;
       canvas.drawRRect(
-          RRect.fromRectAndRadius(boxRect, const Radius.circular(2)), boxPaint);
+        RRect.fromRectAndRadius(boxRect, const Radius.circular(2)),
+        boxPaint,
+      );
       canvas.drawRRect(
-          RRect.fromRectAndRadius(boxRect, const Radius.circular(2)),
-          boxBorder);
+        RRect.fromRectAndRadius(boxRect, const Radius.circular(2)),
+        boxBorder,
+      );
 
       final bladePaint = Paint()
         ..color = shutterBladeColor
@@ -22218,8 +22507,11 @@ class _PresetThumbnailPainter extends CustomPainter {
       final step = boxRect.height / (count + 1);
       for (var i = 1; i <= count; i++) {
         final y = boxRect.top + i * step;
-        canvas.drawLine(Offset(boxRect.left + 2, y),
-            Offset(boxRect.right - 2, y), bladePaint);
+        canvas.drawLine(
+          Offset(boxRect.left + 2, y),
+          Offset(boxRect.right - 2, y),
+          bladePaint,
+        );
       }
     }
 
@@ -22232,8 +22524,12 @@ class _PresetThumbnailPainter extends CustomPainter {
         final railY = boxRect.bottom;
         final railH = size.height - railY - 2;
         final leftRail = Rect.fromLTWH(2, railY, railW, railH);
-        final rightRail =
-            Rect.fromLTWH(size.width - 2 - railW, railY, railW, railH);
+        final rightRail = Rect.fromLTWH(
+          size.width - 2 - railW,
+          railY,
+          railW,
+          railH,
+        );
         canvas.drawRect(leftRail, framePaint);
         canvas.drawRect(leftRail, frameBorderPaint);
         canvas.drawRect(rightRail, framePaint);
@@ -22248,11 +22544,16 @@ class _PresetThumbnailPainter extends CustomPainter {
         for (var i = 1; i <= bladeCount; i++) {
           final y = railY + i * bladeStep;
           canvas.drawLine(
-              Offset(2 + railW, y), Offset(size.width - 2 - railW, y), bladePaint);
+            Offset(2 + railW, y),
+            Offset(size.width - 2 - railW, y),
+            bladePaint,
+          );
         }
         canvas.drawRect(
           Rect.fromLTWH(2 + railW, railY + railH - 3.5, innerW, 3.5),
-          Paint()..color = frameBorderColor..style = PaintingStyle.fill,
+          Paint()
+            ..color = frameBorderColor
+            ..style = PaintingStyle.fill,
         );
         break;
 
@@ -22297,11 +22598,22 @@ class _PresetThumbnailPainter extends CustomPainter {
         final handleX = sashRect.right - 4.5;
         final handleY = sashRect.top + sashRect.height * 0.52;
         canvas.drawCircle(
-            Offset(handleX, handleY), 1.8, Paint()..color = handleColor);
-        canvas.drawLine(Offset(handleX, handleY), Offset(handleX - 4, handleY),
-            Paint()..color = handleColor..strokeWidth = 1.3);
+          Offset(handleX, handleY),
+          1.8,
+          Paint()..color = handleColor,
+        );
+        canvas.drawLine(
+          Offset(handleX, handleY),
+          Offset(handleX - 4, handleY),
+          Paint()
+            ..color = handleColor
+            ..strokeWidth = 1.3,
+        );
         canvas.drawCircle(
-            Offset(handleX, handleY + 3.5), 0.9, Paint()..color = handleColor);
+          Offset(handleX, handleY + 3.5),
+          0.9,
+          Paint()..color = handleColor,
+        );
         drawOpenTriangles(sashRect, hingesLeft: true);
         break;
 
@@ -22321,47 +22633,73 @@ class _PresetThumbnailPainter extends CustomPainter {
         const sashPad = 3.0;
         final innerW = doorRect.width - 2 * sashPad;
         final leafW = innerW / 2;
-        final leftSash = Rect.fromLTWH(doorRect.left + sashPad,
-            doorRect.top + sashPad, leafW - 0.5, doorRect.height - sashPad - 1.5);
+        final leftSash = Rect.fromLTWH(
+          doorRect.left + sashPad,
+          doorRect.top + sashPad,
+          leafW - 0.5,
+          doorRect.height - sashPad - 1.5,
+        );
         canvas.drawRect(leftSash, sashFillPaint);
         canvas.drawRect(leftSash, sashBorderPaint);
-        final leftGlass = Rect.fromLTRB(leftSash.left + 2.5, leftSash.top + 2.5,
-            leftSash.right - 2.5, leftSash.top + leftSash.height * 0.62);
+        final leftGlass = Rect.fromLTRB(
+          leftSash.left + 2.5,
+          leftSash.top + 2.5,
+          leftSash.right - 2.5,
+          leftSash.top + leftSash.height * 0.62,
+        );
         drawGlass(leftGlass);
         canvas.drawRect(leftGlass, sashBorderPaint);
-        final leftPanel = Rect.fromLTRB(leftSash.left + 2.5,
-            leftGlass.bottom + 2.0, leftSash.right - 2.5, leftSash.bottom - 3.5);
+        final leftPanel = Rect.fromLTRB(
+          leftSash.left + 2.5,
+          leftGlass.bottom + 2.0,
+          leftSash.right - 2.5,
+          leftSash.bottom - 3.5,
+        );
         canvas.drawRect(leftPanel, framePaint);
         canvas.drawRect(leftPanel, sashBorderPaint);
         drawOpenTriangles(leftSash, hingesLeft: true);
         final rightSash = Rect.fromLTWH(
-            doorRect.left + sashPad + leafW + 0.5,
-            doorRect.top + sashPad,
-            leafW - 0.5,
-            doorRect.height - sashPad - 1.5);
+          doorRect.left + sashPad + leafW + 0.5,
+          doorRect.top + sashPad,
+          leafW - 0.5,
+          doorRect.height - sashPad - 1.5,
+        );
         canvas.drawRect(rightSash, sashFillPaint);
         canvas.drawRect(rightSash, sashBorderPaint);
-        final rightGlass = Rect.fromLTRB(rightSash.left + 2.5,
-            rightSash.top + 2.5, rightSash.right - 2.5, rightSash.top + rightSash.height * 0.62);
+        final rightGlass = Rect.fromLTRB(
+          rightSash.left + 2.5,
+          rightSash.top + 2.5,
+          rightSash.right - 2.5,
+          rightSash.top + rightSash.height * 0.62,
+        );
         drawGlass(rightGlass);
         canvas.drawRect(rightGlass, sashBorderPaint);
-        final rightPanel = Rect.fromLTRB(rightSash.left + 2.5,
-            rightGlass.bottom + 2.0, rightSash.right - 2.5, rightSash.bottom - 3.5);
+        final rightPanel = Rect.fromLTRB(
+          rightSash.left + 2.5,
+          rightGlass.bottom + 2.0,
+          rightSash.right - 2.5,
+          rightSash.bottom - 3.5,
+        );
         canvas.drawRect(rightPanel, framePaint);
         canvas.drawRect(rightPanel, sashBorderPaint);
         drawOpenTriangles(rightSash, hingesLeft: false);
         final midY = leftSash.top + leftSash.height * 0.52;
         canvas.drawCircle(
-            Offset(leftSash.right - 2.0, midY), 1.5, Paint()..color = handleColor);
-        canvas.drawCircle(Offset(rightSash.left + 2.0, midY), 1.5,
-            Paint()..color = handleColor);
+          Offset(leftSash.right - 2.0, midY),
+          1.5,
+          Paint()..color = handleColor,
+        );
+        canvas.drawCircle(
+          Offset(rightSash.left + 2.0, midY),
+          1.5,
+          Paint()..color = handleColor,
+        );
         break;
 
       case WindowPresetType.topOpeningSmallWindow:
         final winW = size.width - 6;
         final winH = size.height * 0.58;
-        final winRect =
-            Rect.fromLTWH(3, (size.height - winH) / 2, winW, winH);
+        final winRect = Rect.fromLTWH(3, (size.height - winH) / 2, winW, winH);
         canvas.drawRect(winRect, framePaint);
         canvas.drawRect(winRect, frameBorderPaint);
         const sashPad = 3.2;
@@ -22374,9 +22712,10 @@ class _PresetThumbnailPainter extends CustomPainter {
         drawTopOpenTriangle(sashRect);
         canvas.drawRect(
           Rect.fromCenter(
-              center: Offset(sashRect.center.dx, sashRect.top + 2.5),
-              width: 5,
-              height: 2),
+            center: Offset(sashRect.center.dx, sashRect.top + 2.5),
+            width: 5,
+            height: 2,
+          ),
           Paint()..color = handleColor,
         );
         break;
@@ -22389,7 +22728,11 @@ class _PresetThumbnailPainter extends CustomPainter {
         final innerRect = winRect.deflate(sashPad);
         final leafW = innerRect.width / 2;
         final leftSash = Rect.fromLTWH(
-            innerRect.left, innerRect.top, leafW - 0.5, innerRect.height);
+          innerRect.left,
+          innerRect.top,
+          leafW - 0.5,
+          innerRect.height,
+        );
         canvas.drawRect(leftSash, sashFillPaint);
         canvas.drawRect(leftSash, sashBorderPaint);
         final leftGlass = leftSash.deflate(2.8);
@@ -22397,7 +22740,11 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(leftGlass, sashBorderPaint);
         drawOpenTriangles(leftSash, hingesLeft: true);
         final rightSash = Rect.fromLTWH(
-            innerRect.left + leafW + 0.5, innerRect.top, leafW - 0.5, innerRect.height);
+          innerRect.left + leafW + 0.5,
+          innerRect.top,
+          leafW - 0.5,
+          innerRect.height,
+        );
         canvas.drawRect(rightSash, sashFillPaint);
         canvas.drawRect(rightSash, sashBorderPaint);
         final rightGlass = rightSash.deflate(2.8);
@@ -22405,8 +22752,10 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(rightGlass, sashBorderPaint);
         drawOpenTriangles(rightSash, hingesLeft: false);
         canvas.drawCircle(
-            Offset(leftSash.right, innerRect.center.dy), 1.8,
-            Paint()..color = handleColor);
+          Offset(leftSash.right, innerRect.center.dy),
+          1.8,
+          Paint()..color = handleColor,
+        );
         break;
 
       case WindowPresetType.windowWithShutter:
@@ -22414,14 +22763,22 @@ class _PresetThumbnailPainter extends CustomPainter {
         final boxRect = Rect.fromLTWH(2, 2, size.width - 4, boxH);
         drawShutterBox(boxRect);
         final winRect = Rect.fromLTWH(
-            2, boxRect.bottom, size.width - 4, size.height - boxRect.bottom - 2);
+          2,
+          boxRect.bottom,
+          size.width - 4,
+          size.height - boxRect.bottom - 2,
+        );
         canvas.drawRect(winRect, framePaint);
         canvas.drawRect(winRect, frameBorderPaint);
         const sashPad = 2.8;
         final innerRect = winRect.deflate(sashPad);
         final leafW = innerRect.width / 2;
         final leftSash = Rect.fromLTWH(
-            innerRect.left, innerRect.top, leafW - 0.5, innerRect.height);
+          innerRect.left,
+          innerRect.top,
+          leafW - 0.5,
+          innerRect.height,
+        );
         canvas.drawRect(leftSash, sashFillPaint);
         canvas.drawRect(leftSash, sashBorderPaint);
         final leftGlass = leftSash.deflate(2.4);
@@ -22429,7 +22786,11 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(leftGlass, sashBorderPaint);
         drawOpenTriangles(leftSash, hingesLeft: true);
         final rightSash = Rect.fromLTWH(
-            innerRect.left + leafW + 0.5, innerRect.top, leafW - 0.5, innerRect.height);
+          innerRect.left + leafW + 0.5,
+          innerRect.top,
+          leafW - 0.5,
+          innerRect.height,
+        );
         canvas.drawRect(rightSash, sashFillPaint);
         canvas.drawRect(rightSash, sashBorderPaint);
         final rightGlass = rightSash.deflate(2.4);
@@ -22446,8 +22807,12 @@ class _PresetThumbnailPainter extends CustomPainter {
         final innerRect = winRect.deflate(sashPad);
         const overlap = 4.0;
         final sashW = (innerRect.width + overlap) / 2;
-        final leftSash =
-            Rect.fromLTWH(innerRect.left, innerRect.top, sashW, innerRect.height);
+        final leftSash = Rect.fromLTWH(
+          innerRect.left,
+          innerRect.top,
+          sashW,
+          innerRect.height,
+        );
         canvas.drawRect(leftSash, sashFillPaint);
         canvas.drawRect(leftSash, sashBorderPaint);
         final leftGlass = leftSash.deflate(2.8);
@@ -22455,7 +22820,11 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(leftGlass, sashBorderPaint);
         drawSlidingArrows(leftSash, isLeftSash: true);
         final rightSash = Rect.fromLTWH(
-            innerRect.right - sashW, innerRect.top, sashW, innerRect.height);
+          innerRect.right - sashW,
+          innerRect.top,
+          sashW,
+          innerRect.height,
+        );
         canvas.drawRect(rightSash, sashFillPaint);
         canvas.drawRect(rightSash, sashBorderPaint);
         final rightGlass = rightSash.deflate(2.8);
@@ -22463,9 +22832,10 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(rightGlass, sashBorderPaint);
         drawSlidingArrows(rightSash, isLeftSash: false);
         canvas.drawLine(
-            Offset(leftSash.right, innerRect.top),
-            Offset(leftSash.right, innerRect.bottom),
-            sashBorderPaint);
+          Offset(leftSash.right, innerRect.top),
+          Offset(leftSash.right, innerRect.bottom),
+          sashBorderPaint,
+        );
         break;
 
       case WindowPresetType.slidingWithShutter:
@@ -22473,15 +22843,23 @@ class _PresetThumbnailPainter extends CustomPainter {
         final boxRect = Rect.fromLTWH(2, 2, size.width - 4, boxH);
         drawShutterBox(boxRect);
         final winRect = Rect.fromLTWH(
-            2, boxRect.bottom, size.width - 4, size.height - boxRect.bottom - 2);
+          2,
+          boxRect.bottom,
+          size.width - 4,
+          size.height - boxRect.bottom - 2,
+        );
         canvas.drawRect(winRect, framePaint);
         canvas.drawRect(winRect, frameBorderPaint);
         const sashPad = 2.8;
         final innerRect = winRect.deflate(sashPad);
         const overlap = 4.0;
         final sashW = (innerRect.width + overlap) / 2;
-        final leftSash =
-            Rect.fromLTWH(innerRect.left, innerRect.top, sashW, innerRect.height);
+        final leftSash = Rect.fromLTWH(
+          innerRect.left,
+          innerRect.top,
+          sashW,
+          innerRect.height,
+        );
         canvas.drawRect(leftSash, sashFillPaint);
         canvas.drawRect(leftSash, sashBorderPaint);
         final leftGlass = leftSash.deflate(2.4);
@@ -22489,7 +22867,11 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(leftGlass, sashBorderPaint);
         drawSlidingArrows(leftSash, isLeftSash: true);
         final rightSash = Rect.fromLTWH(
-            innerRect.right - sashW, innerRect.top, sashW, innerRect.height);
+          innerRect.right - sashW,
+          innerRect.top,
+          sashW,
+          innerRect.height,
+        );
         canvas.drawRect(rightSash, sashFillPaint);
         canvas.drawRect(rightSash, sashBorderPaint);
         final rightGlass = rightSash.deflate(2.4);
@@ -22497,9 +22879,10 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawRect(rightGlass, sashBorderPaint);
         drawSlidingArrows(rightSash, isLeftSash: false);
         canvas.drawLine(
-            Offset(leftSash.right, innerRect.top),
-            Offset(leftSash.right, innerRect.bottom),
-            sashBorderPaint);
+          Offset(leftSash.right, innerRect.top),
+          Offset(leftSash.right, innerRect.bottom),
+          sashBorderPaint,
+        );
         break;
     }
   }

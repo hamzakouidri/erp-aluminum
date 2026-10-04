@@ -655,8 +655,9 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       ),
     );
 
-    final orderId = _selectedDelivery!['id_commandes'];
-    await _db.updateCommandeStatus(orderId, 'Full Distribution');
+    final deliveryId =
+        int.tryParse(_selectedDelivery!['id']?.toString() ?? '') ?? 0;
+    final completed = await _db.completeCommandeDelivery(deliveryId);
 
     if (mounted)
       Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
@@ -665,13 +666,36 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            Localization.translate('تم تحديث حالة التوزيع بنجاح!', lang),
+            Localization.translate(
+              completed
+                  ? 'تم تأكيد التسليم واحتساب الكميات بنجاح'
+                  : 'هذه الخطة مؤكدة من قبل',
+              lang,
+            ),
           ),
           backgroundColor: Colors.green,
         ),
       );
     }
     _loadDeliveries();
+  }
+
+  Future<void> _startSelectedDelivery() async {
+    if (_selectedDelivery == null) return;
+    final deliveryId =
+        int.tryParse(_selectedDelivery!['id']?.toString() ?? '') ?? 0;
+    await _db.updateCommandeDeliveryStatus(deliveryId, 'en_route');
+    if (!mounted) return;
+    await _loadDeliveries();
+    if (_hasClientLocation && !_isTracking) await _toggleGPSTracking();
+  }
+
+  Future<void> _setSelectedDeliveryStatus(String status) async {
+    if (_selectedDelivery == null) return;
+    final deliveryId =
+        int.tryParse(_selectedDelivery!['id']?.toString() ?? '') ?? 0;
+    await _db.updateCommandeDeliveryStatus(deliveryId, status);
+    if (mounted) await _loadDeliveries();
   }
 
   void _showCreatePlanDialog() async {
@@ -803,7 +827,9 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
               ),
               title: Text(clientName),
               subtitle: Text(
-                '${Localization.translate('رقم الطلبية:', lang)} #${delivery['id_commandes']}',
+                '${Localization.translate('رقم الطلبية:', lang)} #${delivery['id_commandes']}\n'
+                '${_deliveryStatusLabel(delivery['delivery_status'])}'
+                '${delivery['assigned_worker_name'] == null ? '' : ' • ${delivery['assigned_worker_name']}'}',
               ),
               trailing: selected ? const Icon(Icons.check_circle) : null,
               onTap: () {
@@ -815,6 +841,21 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         ),
       ),
     );
+  }
+
+  String _deliveryStatusLabel(dynamic value) {
+    switch (value?.toString() ?? 'planned') {
+      case 'en_route':
+        return 'في الطريق / En route';
+      case 'delivered':
+        return 'تم التسليم / Livrée';
+      case 'cancelled':
+        return 'ملغاة / Annulée';
+      case 'failed':
+        return 'فشل التسليم / Échec';
+      default:
+        return 'مخططة / Planifiée';
+    }
   }
 
   @override
@@ -988,6 +1029,11 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                 Text(
                                   '${Localization.translate('تاريخ التوزيع:', lang)} $dateStr',
                                   style: TextStyle(fontSize: 11),
+                                ),
+                                Text(
+                                  '${_deliveryStatusLabel(del['delivery_status'])}'
+                                  '${del['assigned_worker_name'] == null ? '' : ' • ${del['assigned_worker_name']}'}',
+                                  style: const TextStyle(fontSize: 11),
                                 ),
                               ],
                             ),
@@ -1465,8 +1511,55 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                                 ),
                                               ),
                                             ),
+                                            PopupMenuButton<String>(
+                                              tooltip: 'حالة الخطة',
+                                              onSelected:
+                                                  _setSelectedDeliveryStatus,
+                                              itemBuilder: (_) => const [
+                                                PopupMenuItem(
+                                                  value: 'planned',
+                                                  child: Text(
+                                                    'إعادة إلى مخططة',
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  value: 'failed',
+                                                  child: Text('فشل التسليم'),
+                                                ),
+                                                PopupMenuItem(
+                                                  value: 'cancelled',
+                                                  child: Text('إلغاء الخطة'),
+                                                ),
+                                              ],
+                                              icon: const Icon(
+                                                Icons.more_vert_rounded,
+                                              ),
+                                            ),
+                                            if ((_selectedDelivery?['delivery_status'] ??
+                                                    'planned') !=
+                                                'delivered')
+                                              ElevatedButton.icon(
+                                                onPressed:
+                                                    _startSelectedDelivery,
+                                                icon: const Icon(
+                                                  Icons.play_arrow_rounded,
+                                                  size: 14,
+                                                ),
+                                                label: const Text(
+                                                  'بدء الرحلة',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ),
                                             ElevatedButton.icon(
-                                              onPressed: _markAsDelivered,
+                                              onPressed:
+                                                  (_selectedDelivery?['delivery_status'] ??
+                                                          'planned') ==
+                                                      'delivered'
+                                                  ? null
+                                                  : _markAsDelivered,
                                               icon: const Icon(
                                                 Icons.check_circle_outline,
                                                 size: 14,
@@ -1693,7 +1786,10 @@ class CreatePlanDialogContent extends StatefulWidget {
 class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
   Map<String, dynamic>? _selectedOrder;
   List<Map<String, dynamic>> _orderItems = [];
+  List<Map<String, dynamic>> _workers = [];
   bool _loadingItems = false;
+  String? _selectedWorkerUid;
+  String? _selectedWorkerName;
 
   // Track delivery quantities for each item ID
   Map<int, int> _deliveryQuantities = {};
@@ -1705,6 +1801,16 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
   void initState() {
     super.initState();
     _workshopLocation = widget.workshopLocation;
+    _loadWorkers();
+  }
+
+  Future<void> _loadWorkers() async {
+    try {
+      final workers = await widget.db.readEmployees();
+      if (mounted) setState(() => _workers = workers);
+    } catch (error) {
+      debugPrint('Error loading delivery workers: $error');
+    }
   }
 
   double? _coordinate(dynamic value) {
@@ -1730,9 +1836,13 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
     });
 
     try {
-      final items = await widget.db.readCommandeDetails(
-        int.tryParse(order['id']?.toString() ?? '') ?? 0,
-      );
+      final orderId = int.tryParse(order['id']?.toString() ?? '') ?? 0;
+      final results = await Future.wait([
+        widget.db.readCommandeDetails(orderId),
+        widget.db.readPendingDeliveryQuantities(orderId),
+      ]);
+      final items = results[0] as List<Map<String, dynamic>>;
+      final planned = results[1] as Map<int, int>;
       setState(() {
         _orderItems = items;
         for (var item in items) {
@@ -1740,7 +1850,7 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
           int totalQty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
           int delQty =
               int.tryParse(item['delivered_qty']?.toString() ?? '') ?? 0;
-          int remaining = totalQty - delQty;
+          int remaining = totalQty - delQty - (planned[itemId] ?? 0);
           _deliveryQuantities[itemId] = remaining > 0 ? remaining : 0;
         }
         _loadingItems = false;
@@ -1898,9 +2008,6 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
     }
 
     try {
-      final dbInstance = await widget.db.db;
-      if (dbInstance == null) return;
-
       final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(_deliveryDate);
       final itemsStr = jsonEncode(partialItems);
 
@@ -1916,39 +2023,9 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
         dateStr,
         itemsStr,
         totalAmount,
+        assignedWorkerUid: _selectedWorkerUid,
+        assignedWorkerName: _selectedWorkerName,
       );
-
-      // 2. Update delivered quantities in Commandes_details
-      for (var item in partialItems) {
-        int itemId = int.tryParse(item['id']?.toString() ?? '') ?? 0;
-        int qty = int.tryParse(item['quantity']?.toString() ?? '') ?? 0;
-        await dbInstance.rawUpdate(
-          '''
-          UPDATE Commandes_details 
-          SET delivered_qty = COALESCE(delivered_qty, 0) + ? 
-          WHERE id = ?
-        ''',
-          [qty, itemId],
-        );
-      }
-
-      // 3. Update order status to partial/full distribution
-      final updatedDetails = await widget.db.readCommandeDetails(orderId);
-      bool allDelivered = true;
-      for (var detail in updatedDetails) {
-        int totalQty = int.tryParse(detail['quantity']?.toString() ?? '') ?? 0;
-        int delQty =
-            int.tryParse(detail['delivered_qty']?.toString() ?? '') ?? 0;
-        if (delQty < totalQty) {
-          allDelivered = false;
-          break;
-        }
-      }
-
-      String newStatus = allDelivered
-          ? 'Full Distribution'
-          : 'Partial Distribution';
-      await widget.db.updateCommandeStatus(orderId, newStatus);
 
       widget.onSuccess();
     } catch (e) {
@@ -1978,6 +2055,7 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
           // Select Order dropdown
           DropdownButtonFormField<int>(
             value: selectedOrderId,
+            isExpanded: true,
             hint: Text(
               Localization.translate('اختر الطلبية', widget.lang),
               style: const TextStyle(fontFamily: 'Cairo'),
@@ -2008,6 +2086,45 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
                 );
                 _onOrderSelected(order);
               }
+            },
+          ),
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<String>(
+            initialValue: _selectedWorkerUid,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: widget.lang == AppLanguage.arabic
+                  ? 'العامل / السائق المكلف'
+                  : 'Employé / chauffeur assigné',
+              prefixIcon: const Icon(Icons.badge_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            items: _workers.map((worker) {
+              final uid = (worker['uid'] ?? worker['id']).toString();
+              final name = (worker['name'] ?? worker['email'] ?? uid)
+                  .toString();
+              return DropdownMenuItem<String>(
+                value: uid,
+                child: Text(name, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (uid) {
+              Map<String, dynamic>? worker;
+              for (final row in _workers) {
+                if ((row['uid'] ?? row['id']).toString() == uid) {
+                  worker = row;
+                  break;
+                }
+              }
+              setState(() {
+                _selectedWorkerUid = uid;
+                _selectedWorkerName = worker == null
+                    ? null
+                    : (worker['name'] ?? worker['email'] ?? uid).toString();
+              });
             },
           ),
           const SizedBox(height: 16),

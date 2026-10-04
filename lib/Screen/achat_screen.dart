@@ -8,6 +8,7 @@ import 'achat_details_screen.dart';
 import 'achat_return_screen.dart';
 import 'ai_scanner_screen.dart';
 import 'trash_screen.dart';
+import '../widgets/home_back_boundary.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 
@@ -124,14 +125,14 @@ class _AchatScreenState extends State<AchatScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: _bg,
-        body: CustomScrollView(
-          slivers: [
-            _buildAppBar(),
-            SliverToBoxAdapter(
+    return Scaffold(
+      backgroundColor: _bg,
+      body: CustomScrollView(
+        slivers: [
+          _buildAppBar(),
+          SliverToBoxAdapter(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _achatsFuture,
                 builder: (context, snapshot) {
@@ -226,30 +227,30 @@ class _AchatScreenState extends State<AchatScreen>
                 },
               ),
             ),
-          ],
-        ),
-        floatingActionButton:
-            (!widget.readOnly &&
-                Provider.of<AppSettingsProvider>(context).canAddPurchases())
-            ? FloatingActionButton.extended(
-                onPressed: _showAddAchatDialog,
-                backgroundColor: _blue,
-                elevation: 4,
-                icon: Icon(Icons.add_rounded, color: Colors.white),
-                label: Text(
-                  Localization.translate(
-                    'فاتورة جديدة',
-                    Provider.of<AppSettingsProvider>(context).language,
-                  ),
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              )
-            : null,
+          ),
+        ],
       ),
+      floatingActionButton:
+          (!widget.readOnly &&
+              Provider.of<AppSettingsProvider>(context).canAddPurchases())
+          ? FloatingActionButton.extended(
+              onPressed: _showAddAchatDialog,
+              backgroundColor: _blue,
+              elevation: 4,
+              icon: Icon(Icons.add_rounded, color: Colors.white),
+              label: Text(
+                Localization.translate(
+                  'فاتورة جديدة',
+                  Provider.of<AppSettingsProvider>(context).language,
+                ),
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            )
+          : null,
     );
   }
 
@@ -266,12 +267,12 @@ class _AchatScreenState extends State<AchatScreen>
             ? Colors.white
             : Colors.white,
       ),
-      leading: Navigator.canPop(context)
-          ? IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded),
-              onPressed: () => Navigator.pop(context),
-            )
-          : null,
+      automaticallyImplyLeading: false,
+      leading: HomeBackScope.of(context) != null
+          ? const SizedBox(width: kToolbarHeight)
+          : (Navigator.canPop(context)
+              ? const BackButton(color: Colors.white)
+              : null),
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
@@ -292,25 +293,26 @@ class _AchatScreenState extends State<AchatScreen>
           ),
           onPressed: _openAiScanner,
         ),
-        IconButton(
-          icon: const Icon(Icons.auto_delete_rounded),
-          tooltip: Localization.translate(
-            'سلة مهملات فواتير الشراء',
-            Provider.of<AppSettingsProvider>(context, listen: false).language,
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TrashScreen(
-                  db: widget.db,
-                  initialIndex: 1,
-                  onOrderRestored: _refreshList,
+        if (Provider.of<AppSettingsProvider>(context, listen: false).canAccessTrash())
+          IconButton(
+            icon: const Icon(Icons.auto_delete_rounded),
+            tooltip: Localization.translate(
+              'سلة مهملات فواتير الشراء',
+              Provider.of<AppSettingsProvider>(context, listen: false).language,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TrashScreen(
+                    db: widget.db,
+                    initialIndex: 1,
+                    onOrderRestored: _refreshList,
+                  ),
                 ),
-              ),
-            ).then((_) => _refreshList());
-          },
-        ),
+              ).then((_) => _refreshList());
+            },
+          ),
         SizedBox(width: 8),
       ],
       flexibleSpace: FlexibleSpaceBar(
@@ -357,7 +359,7 @@ class _AchatScreenState extends State<AchatScreen>
             color: Colors.white,
           ),
         ),
-        titlePadding: EdgeInsets.only(right: 56, bottom: 16),
+        titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 16),
         centerTitle: false,
       ),
     );

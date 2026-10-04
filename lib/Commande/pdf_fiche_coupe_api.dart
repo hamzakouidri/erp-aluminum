@@ -17,6 +17,8 @@ import 'package:database_data/Commande/order_date_utils.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/services/pdf_font_cache.dart';
+import 'package:bidi/bidi.dart' as bidi;
+import 'package:database_data/arabic_reshaper/arabic_reshaper.dart';
 
 // ─── ألوان التصميم ────────────────────────────────────────────────────────────
 const _kBlue = PdfColor(0.051, 0.278, 0.631); // #0D47A1
@@ -25,6 +27,70 @@ const _kRowAlt = PdfColor(0.950, 0.960, 0.980);
 const _kBorder = PdfColor(0.788, 0.812, 0.843);
 
 class PdfFicheCoupeApi {
+  static bool _hasArabic(String text) {
+    return text.runes.any(
+      (r) => (r >= 0x0600 && r <= 0x06FF) || (r >= 0xFB50 && r <= 0xFEFF),
+    );
+  }
+
+  static String _shapeText(String text) {
+    if (!_hasArabic(text)) return text;
+    return text
+        .replaceAll('\r\n', '\n')
+        .split('\n')
+        .map((line) {
+          if (!_hasArabic(line)) return line;
+          final reshaped = ArabicReshaper.instance.reshape(line);
+          return String.fromCharCodes(bidi.logicalToVisual(reshaped));
+        })
+        .join('\n');
+  }
+
+  static Future<
+    ({
+      Map<String, List<Map<String, dynamic>>> data,
+      Map<String, bool> perLeaf,
+      Map<String, Map<String, dynamic>> metadata,
+      Map<String, double> prices,
+    })
+  >
+  _loadKitBundleCache(SqlDatabase db) async {
+    final data = <String, List<Map<String, dynamic>>>{};
+    final perLeaf = <String, bool>{};
+    final metadata = <String, Map<String, dynamic>>{};
+    final prices = <String, double>{};
+    try {
+      final kits = await db.readKitBundles();
+      await Future.wait(
+        kits.map((kit) async {
+          final name = kit['name']?.toString().trim() ?? '';
+          final rawId = kit['id'];
+          final id = rawId is num
+              ? rawId.toInt()
+              : int.tryParse(rawId?.toString() ?? '');
+          if (name.isEmpty || id == null) return;
+          final details = await db.readKitBundleItemsWithDetails(
+            id,
+            topLevelOnly: true,
+          );
+          data[name] = details
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList();
+          perLeaf[name] = (kit['per_leaf'] ?? 0) == 1;
+          metadata[name] = Map<String, dynamic>.from(kit);
+          final rawPrice = kit['price'];
+          if (rawPrice is num && rawPrice > 0) {
+            prices[name] = rawPrice.toDouble();
+          }
+        }),
+      );
+    } catch (_) {
+      // The cutting sheet can still be generated for installations created
+      // before configurable kits existed.
+    }
+    return (data: data, perLeaf: perLeaf, metadata: metadata, prices: prices);
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // نقطة الدخول الرئيسية — تُرجع Uint8List
   // ──────────────────────────────────────────────────────────────────────────
@@ -43,49 +109,50 @@ class PdfFicheCoupeApi {
     final address = prefs.getString('workshop_address') ?? '';
     final phone = prefs.getString('workshop_phone') ?? '';
 
-    final resolvedLanguage = language ?? () {
-      final langIndex = prefs.getInt('app_language');
-      if (langIndex != null &&
-          langIndex >= 0 &&
-          langIndex < AppLanguage.values.length) {
-        return AppLanguage.values[langIndex];
-      }
-      final savedLanguage = prefs.getString('app_language');
-      if (savedLanguage == 'french') return AppLanguage.french;
-      if (savedLanguage == 'english') return AppLanguage.english;
-      if (savedLanguage == 'arabic') return AppLanguage.arabic;
-      return AppLanguage.french;
-    }();
+    final resolvedLanguage =
+        language ??
+        () {
+          final langIndex = prefs.getInt('app_language');
+          if (langIndex != null &&
+              langIndex >= 0 &&
+              langIndex < AppLanguage.values.length) {
+            return AppLanguage.values[langIndex];
+          }
+          final savedLanguage = prefs.getString('app_language');
+          if (savedLanguage == 'french') return AppLanguage.french;
+          if (savedLanguage == 'english') return AppLanguage.english;
+          if (savedLanguage == 'arabic') return AppLanguage.arabic;
+          return AppLanguage.french;
+        }();
 
     final tr = _Tr(resolvedLanguage);
 
     // تصفية المنتجات غير المحذوفة
     final activeItems = items.where((item) {
-      try {
-        final jsonRaw = item['partitions_json'];
-        Map<String, dynamic> map = {};
-        if (jsonRaw is Map<String, dynamic>) {
-          map = jsonRaw;
-        } else if (jsonRaw is Map) {
-          map = Map<String, dynamic>.from(jsonRaw);
-        } else {
-          final str = jsonRaw?.toString().trim() ?? '';
-          if (str.length >= 5) map = jsonDecode(str) as Map<String, dynamic>;
-        }
-        return !(map['isReplaced'] == true ||
-            map['isReplaced']?.toString().toLowerCase() == 'true');
-      } catch (_) {
-        return true;
-      }
+      final map = savedWindowModelMap(item['partitions_json']);
+      return !(map['isReplaced'] == true ||
+          map['isReplaced']?.toString().toLowerCase() == 'true');
     }).toList();
 
     // كاش لصور المقاطع لتجنب إعادة التحميل المتكررة
     final imageCache = <String, pw.Widget?>{};
+    final kitBundles = await _loadKitBundleCache(db);
 
     // تحميل بيانات كل منتج مع دمج القطع وصور المقاطع
     final articles = <_ArticleData>[];
     for (final item in activeItems) {
-      articles.add(await _loadArticle(db, item, resolvedLanguage, imageCache));
+      articles.add(
+        await _loadArticle(
+          db,
+          item,
+          resolvedLanguage,
+          imageCache,
+          kitBundleData: kitBundles.data,
+          kitPerLeafMap: kitBundles.perLeaf,
+          kitBundleMetadata: kitBundles.metadata,
+          kitBundlePrices: kitBundles.prices,
+        ),
+      );
     }
 
     // شعار الورشة
@@ -105,8 +172,8 @@ class PdfFicheCoupeApi {
       fallback: order['updated_at'],
       emptyLabel: Localization.translate('غير محدد', resolvedLanguage),
     );
-    final clientName =
-        '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}'.trim();
+    final clientName = '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}'
+        .trim();
     final commandeId = order['id']?.toString() ?? '';
     final enteredBy = order['username']?.toString() ?? '';
 
@@ -115,7 +182,7 @@ class PdfFicheCoupeApi {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(20, 20, 20, 24),
-        textDirection: tr.isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+        textDirection: pw.TextDirection.ltr,
         theme: pw.ThemeData.withFont(base: font, bold: fontBold),
         // ── رأس الصفحة ── يظهر اسم المؤسسة وتفاصيلها في بداية الورقة فقط
         header: (ctx) {
@@ -127,11 +194,19 @@ class PdfFicheCoupeApi {
                 children: [
                   pw.Text(
                     ' - ',
-                    style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey600),
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: 8,
+                      color: PdfColors.grey600,
+                    ),
                   ),
                   pw.Text(
-                    tr.page(ctx.pageNumber, ctx.pagesCount),
-                    style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey600),
+                    _shapeText(tr.page(ctx.pageNumber, ctx.pagesCount)),
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: 8,
+                      color: PdfColors.grey600,
+                    ),
                   ),
                 ],
               ),
@@ -201,7 +276,7 @@ class PdfFicheCoupeApi {
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   pw.Text(
-                    workshopName,
+                    _shapeText(workshopName),
                     style: pw.TextStyle(
                       font: fontBold,
                       fontSize: 18,
@@ -210,7 +285,7 @@ class PdfFicheCoupeApi {
                     textAlign: pw.TextAlign.center,
                   ),
                   pw.Text(
-                    tr.ficheDeCoupe,
+                    _shapeText(tr.ficheDeCoupe),
                     style: pw.TextStyle(
                       font: fontBold,
                       fontSize: 12,
@@ -221,10 +296,12 @@ class PdfFicheCoupeApi {
                   ),
                   if (address.isNotEmpty || phone.isNotEmpty)
                     pw.Text(
-                      [
-                        if (address.isNotEmpty) address,
-                        if (phone.isNotEmpty) 'Tél: $phone',
-                      ].join(' | '),
+                      _shapeText(
+                        [
+                          if (address.isNotEmpty) address,
+                          if (phone.isNotEmpty) 'Tél: $phone',
+                        ].join(' | '),
+                      ),
                       style: const pw.TextStyle(
                         fontSize: 7.5,
                         color: PdfColors.grey700,
@@ -249,28 +326,29 @@ class PdfFicheCoupeApi {
             children: [
               pw.Expanded(
                 child: pw.Text(
-                  '${tr.date} $orderDate',
+                  _shapeText('${tr.date} $orderDate'),
                   style: const pw.TextStyle(fontSize: 8.5),
+                  textAlign: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
                 ),
               ),
               if (enteredBy.isNotEmpty)
                 pw.Expanded(
                   child: pw.Text(
-                    '${tr.saisiPar} $enteredBy',
+                    _shapeText('${tr.saisiPar} $enteredBy'),
                     style: const pw.TextStyle(fontSize: 8.5),
                     textAlign: pw.TextAlign.center,
                   ),
                 ),
               pw.Expanded(
                 child: pw.Text(
-                  '${tr.client} $clientName',
+                  _shapeText('${tr.client} $clientName'),
                   style: const pw.TextStyle(fontSize: 8.5),
                   textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Expanded(
                 child: pw.Text(
-                  '${tr.commande}$commandeId',
+                  _shapeText('${tr.commande}$commandeId'),
                   style: const pw.TextStyle(fontSize: 8.5),
                   textAlign: tr.isRtl ? pw.TextAlign.left : pw.TextAlign.right,
                 ),
@@ -292,7 +370,11 @@ class PdfFicheCoupeApi {
     pw.Font font,
     _Tr tr,
   ) {
-    final style = pw.TextStyle(font: font, fontSize: 7.5, color: PdfColors.grey600);
+    final style = pw.TextStyle(
+      font: font,
+      fontSize: 7.5,
+      color: PdfColors.grey600,
+    );
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 4),
       padding: const pw.EdgeInsets.only(top: 3),
@@ -304,10 +386,10 @@ class PdfFicheCoupeApi {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(workshopName, style: style),
+          pw.Text(_shapeText(workshopName), style: style),
           pw.Text('ERP Aluminum', style: style),
           pw.Text(
-            tr.page(ctx.pageNumber, ctx.pagesCount),
+            _shapeText(tr.page(ctx.pageNumber, ctx.pagesCount)),
             style: style.copyWith(color: _kBlue),
           ),
         ],
@@ -328,7 +410,9 @@ class PdfFicheCoupeApi {
     final widgets = <pw.Widget>[];
 
     // ── 1. شريط عنوان المنتج ──
-    widgets.add(_blueBar(tr.article(index), fontBold, fontSize: 10.5));
+    widgets.add(
+      _blueBar(tr.article(index), fontBold, fontSize: 10.5, isRtl: tr.isRtl),
+    );
     widgets.add(pw.SizedBox(height: 3));
 
     // ── 2. سطر مواصفات المنتج بالترتيب المطلوب:
@@ -339,31 +423,49 @@ class PdfFicheCoupeApi {
     if (data.configuration.isNotEmpty) parts.add(data.configuration);
     if (data.shutterInfo.isNotEmpty) parts.add(data.shutterInfo);
     if (data.colorName.isNotEmpty) parts.add('${tr.couleur} ${data.colorName}');
-    parts.add('${data.width.toStringAsFixed(0)} × ${data.height.toStringAsFixed(0)} mm');
+    parts.add(
+      '${data.width.toStringAsFixed(0)} × ${data.height.toStringAsFixed(0)} mm',
+    );
     parts.add('${tr.qte} ${data.qty}');
 
     widgets.add(
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
         color: _kRowAlt,
+        alignment: tr.isRtl
+            ? pw.Alignment.centerRight
+            : pw.Alignment.centerLeft,
         child: pw.Text(
-          parts.join('   |   '),
+          _shapeText(parts.join('   |   ')),
           style: pw.TextStyle(font: font, fontSize: 8.5),
+          textAlign: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
         ),
       ),
     );
     widgets.add(pw.SizedBox(height: 8));
 
-    // ── 3+4+5+6. رسم العنصر جنباً إلى جنب مع جداول التفاصيل ──────────────
-    // العمود الأيسر : الرسم (≈42% من العرض)
-    // العمود الأيمن : جداول الـ Profils والإكسسوارات والـ Joints (≈58%)
+    // ── 3. الرسم وصور المقاطع ─────────────────────────────────────────────
+    // الرسم يأخذ أكبر مساحة ممكنة يساراً، وصور المقاطع فقط تكون يمينه.
+    // جداول القطع وباقي التفاصيل تأتي أسفل الاثنين بعرض الصفحة كاملاً.
     final accessories = data.bomItems
         .where(
           (b) =>
               b.isActive &&
               b.purchaseQuantity > 0 &&
-              (b.pieces == null || b.pieces!.isEmpty) &&
-              b.category.toLowerCase() != 'joint',
+              !_isShutterComponent(b) &&
+              !(b.category.toLowerCase().trim() == 'profile' &&
+                  b.pieces != null &&
+                  b.pieces!.isNotEmpty) &&
+              b.category.toLowerCase().trim() != 'joint',
+        )
+        .toList();
+    final shutterAccessories = data.bomItems
+        .where(
+          (b) =>
+              b.isActive &&
+              b.purchaseQuantity > 0 &&
+              _isShutterComponent(b) &&
+              (b.pieces == null || b.pieces!.isEmpty),
         )
         .toList();
     final joints = data.bomItems
@@ -375,15 +477,9 @@ class PdfFicheCoupeApi {
         )
         .toList();
 
-    final hasDetails =
-        data.profiles.isNotEmpty || accessories.isNotEmpty || joints.isNotEmpty;
-
     // عمود الرسم
     final pw.Widget drawingWidget = data.drawing != null
-        ? pw.Image(
-            pw.MemoryImage(data.drawing!),
-            fit: pw.BoxFit.contain,
-          )
+        ? pw.Image(pw.MemoryImage(data.drawing!), fit: pw.BoxFit.contain)
         : pw.Container(
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: _kBorder),
@@ -401,79 +497,61 @@ class PdfFicheCoupeApi {
             ),
           );
 
-    // عمود الجداول (Profils + Accessories + Joints)
-    final detailColumn = <pw.Widget>[];
-    if (data.profiles.isNotEmpty) {
-      detailColumn.add(
-        _blueBar(tr.profils, fontBold, color: _kBlueSub, fontSize: 9),
-      );
-      detailColumn.add(pw.SizedBox(height: 2));
-      detailColumn.add(
-        _buildProfilesTable(data.profiles, font, fontBold, tr),
-      );
-      detailColumn.add(pw.SizedBox(height: 6));
-    }
+    // Keep the technical drawing large, while using its side column for the
+    // complete accessory list. Profile images belong to the profile table.
     if (accessories.isNotEmpty) {
-      detailColumn.add(
-        _blueBar(tr.accessoires, fontBold, color: _kBlueSub, fontSize: 9),
-      );
-      detailColumn.add(pw.SizedBox(height: 2));
-      detailColumn.add(
-        _buildAccessoriesTable(accessories, font, fontBold, tr),
-      );
-      detailColumn.add(pw.SizedBox(height: 6));
-    }
-    if (joints.isNotEmpty) {
-      detailColumn.add(
-        _blueBar(tr.joints, fontBold, color: _kBlueSub, fontSize: 9),
-      );
-      detailColumn.add(pw.SizedBox(height: 2));
-      detailColumn.add(_buildJointsTable(joints, font, fontBold, tr));
-    }
-
-    if (hasDetails) {
-      // تخطيط عمودين: رسم أكبر قليلاً (48%) تحت الفراغ وأمام التفاصيل | فراغ فاصل | جداول (52%)
       widgets.add(
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            // عمود الرسم
             pw.Expanded(
-              flex: 48,
+              flex: 55,
+              child: pw.Container(
+                height: 255,
+                padding: const pw.EdgeInsets.all(4),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: _kBorder, width: 0.5),
+                  borderRadius: const pw.BorderRadius.all(
+                    pw.Radius.circular(4),
+                  ),
+                ),
+                child: drawingWidget,
+              ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.Expanded(
+              flex: 45,
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
-                  pw.SizedBox(height: 6),
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(5),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: _kBorder, width: 0.5),
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    ),
-                    child: drawingWidget,
+                  _blueBar(
+                    tr.accessoires,
+                    fontBold,
+                    color: _kBlueSub,
+                    fontSize: 9,
+                    isRtl: tr.isRtl,
+                  ),
+                  pw.SizedBox(height: 2),
+                  _buildAccessoriesTable(
+                    accessories,
+                    font,
+                    fontBold,
+                    tr,
+                    data.itemImages,
+                    compact: true,
                   ),
                 ],
-              ),
-            ),
-            pw.SizedBox(width: 10),
-            // عمود الجداول
-            pw.Expanded(
-              flex: 52,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                children: detailColumn,
               ),
             ),
           ],
         ),
       );
     } else {
-      // لا توجد تفاصيل: يظهر الرسم بعرض كامل
       widgets.add(
         pw.Center(
           child: pw.Container(
             width: PdfPageFormat.a4.availableWidth - 10,
-            height: 310,
+            height: 300,
             padding: const pw.EdgeInsets.all(4),
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: _kBorder, width: 0.5),
@@ -484,6 +562,91 @@ class PdfFicheCoupeApi {
       );
     }
 
+    final tablesBelow = <pw.Widget>[];
+    if (data.profiles.isNotEmpty) {
+      tablesBelow.add(
+        _blueBar(
+          tr.profils,
+          fontBold,
+          color: _kBlueSub,
+          fontSize: 9,
+          isRtl: tr.isRtl,
+        ),
+      );
+      tablesBelow.add(pw.SizedBox(height: 2));
+      tablesBelow.add(_buildProfilesTable(data.profiles, font, fontBold, tr));
+      tablesBelow.add(pw.SizedBox(height: 6));
+    }
+    if (data.shutterProfiles.isNotEmpty) {
+      tablesBelow.add(
+        _blueBar(
+          tr.voletRoulant,
+          fontBold,
+          color: _kBlueSub,
+          fontSize: 9,
+          isRtl: tr.isRtl,
+        ),
+      );
+      tablesBelow.add(pw.SizedBox(height: 2));
+      tablesBelow.add(
+        _buildProfilesTable(data.shutterProfiles, font, fontBold, tr),
+      );
+      if (shutterAccessories.isNotEmpty) {
+        tablesBelow.add(pw.SizedBox(height: 3));
+        tablesBelow.add(
+          _buildAccessoriesTable(
+            shutterAccessories,
+            font,
+            fontBold,
+            tr,
+            data.itemImages,
+          ),
+        );
+      }
+      tablesBelow.add(pw.SizedBox(height: 6));
+    } else if (shutterAccessories.isNotEmpty) {
+      tablesBelow.add(
+        _blueBar(
+          tr.voletRoulant,
+          fontBold,
+          color: _kBlueSub,
+          fontSize: 9,
+          isRtl: tr.isRtl,
+        ),
+      );
+      tablesBelow.add(pw.SizedBox(height: 2));
+      tablesBelow.add(
+        _buildAccessoriesTable(
+          shutterAccessories,
+          font,
+          fontBold,
+          tr,
+          data.itemImages,
+        ),
+      );
+      tablesBelow.add(pw.SizedBox(height: 6));
+    }
+    if (joints.isNotEmpty) {
+      tablesBelow.add(
+        _blueBar(
+          tr.joints,
+          fontBold,
+          color: _kBlueSub,
+          fontSize: 9,
+          isRtl: tr.isRtl,
+        ),
+      );
+      tablesBelow.add(pw.SizedBox(height: 2));
+      tablesBelow.add(
+        _buildJointsTable(joints, font, fontBold, tr, data.itemImages),
+      );
+    }
+
+    if (tablesBelow.isNotEmpty) {
+      widgets.add(pw.SizedBox(height: 8));
+      widgets.addAll(tablesBelow);
+    }
+
     return widgets;
   }
 
@@ -491,7 +654,7 @@ class PdfFicheCoupeApi {
   // جدول الـ Profils:
   // لا نكرر العنصر مرتين! المرجع والوصف والصورة في سطر واحد،
   // والقياسات (العرض والارتفاع) تكون سطوراً فرعية داخل نفس السطر.
-  // الأعمدة: [صورة] | المرجع | الوصف | الكمية | الطول | زاوية القطع
+  // الأعمدة: المرجع | الوصف | الكمية | الطول | زاوية القطع
   // ──────────────────────────────────────────────────────────────────────────
   static pw.Widget _buildProfilesTable(
     List<_ProfileCutRow> rows,
@@ -500,12 +663,12 @@ class PdfFicheCoupeApi {
     _Tr tr,
   ) {
     const colWidths = <int, pw.TableColumnWidth>{
-      0: pw.FixedColumnWidth(32), // صورة المقطع
-      1: pw.FixedColumnWidth(70), // المرجع
-      2: pw.FlexColumnWidth(3.0), // الوصف
-      3: pw.FixedColumnWidth(32), // الكمية
-      4: pw.FixedColumnWidth(65), // الطول
-      5: pw.FixedColumnWidth(95), // زاوية القطع
+      0: pw.FixedColumnWidth(50), // الصورة
+      1: pw.FixedColumnWidth(68), // المرجع
+      2: pw.FlexColumnWidth(2.5), // الوصف
+      3: pw.FixedColumnWidth(34), // الكمية
+      4: pw.FixedColumnWidth(64), // الطول
+      5: pw.FixedColumnWidth(104), // زاوية القطع
     };
 
     final tableRows = <pw.TableRow>[];
@@ -516,8 +679,16 @@ class PdfFicheCoupeApi {
         decoration: const pw.BoxDecoration(color: _kBlue),
         children: [
           _hdr(tr.image, fontBold, align: pw.TextAlign.center),
-          _hdr(tr.reference, fontBold),
-          _hdr(tr.designation, fontBold),
+          _hdr(
+            tr.reference,
+            fontBold,
+            align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
+          _hdr(
+            tr.designation,
+            fontBold,
+            align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
           _hdr(tr.quantite, fontBold, align: pw.TextAlign.center),
           _hdr(tr.longueur, fontBold, align: pw.TextAlign.center),
           _hdr(tr.coupe, fontBold, align: pw.TextAlign.center),
@@ -538,34 +709,52 @@ class PdfFicheCoupeApi {
             color: isAlt ? _kRowAlt : PdfColors.white,
           ),
           children: [
-            // [0] صورة المقطع الحقيقية
+            // [0] صورة المقطع ضمن صفه في الجدول.
             pw.Container(
               height: totalRowHeight,
               alignment: pw.Alignment.center,
-              padding: const pw.EdgeInsets.all(2),
-              child: row.imageWidget ?? _defaultProfileIcon(),
+              padding: const pw.EdgeInsets.all(3),
+              child: pw.Container(
+                width: 40,
+                height: 40,
+                alignment: pw.Alignment.center,
+                child: row.imageWidget ?? _defaultProfileIcon(size: 36),
+              ),
             ),
             // [1] المرجع — يُكتب مرة واحدة فقط
             pw.Container(
               height: totalRowHeight,
-              alignment: tr.isRtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
-              padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              alignment: tr.isRtl
+                  ? pw.Alignment.centerRight
+                  : pw.Alignment.centerLeft,
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 2,
+              ),
               child: pw.Text(
-                row.reference,
+                _shapeText(row.reference.isNotEmpty ? row.reference : '-'),
                 style: pw.TextStyle(font: fontBold, fontSize: 8.5),
+                textAlign: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
               ),
             ),
-            // [2] الوصف — يُكتب مرة واحدة فقط
+            // [1] الوصف — يُكتب مرة واحدة فقط
             pw.Container(
               height: totalRowHeight,
-              alignment: tr.isRtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
-              padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              child: pw.Text(
+              alignment: tr.isRtl
+                  ? pw.Alignment.centerRight
+                  : pw.Alignment.centerLeft,
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 2,
+              ),
+              child: _designationCell(
                 row.description,
-                style: pw.TextStyle(font: font, fontSize: 8.5),
+                font,
+                fontBold,
+                align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
               ),
             ),
-            // [3] الكمية — سطر لكل قياس داخل نفس الخلية
+            // [2] الكمية — سطر لكل قياس داخل نفس الخلية
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
@@ -582,7 +771,7 @@ class PdfFicheCoupeApi {
                 ],
               ],
             ),
-            // [4] الطول — سطر لكل قياس داخل نفس الخلية
+            // [3] الطول — سطر لكل قياس داخل نفس الخلية
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
@@ -599,7 +788,7 @@ class PdfFicheCoupeApi {
                 ],
               ],
             ),
-            // [5] زاوية القطع مع المخطط — سطر لكل قياس داخل نفس الخلية
+            // [4] زاوية القطع مع المخطط — سطر لكل قياس داخل نفس الخلية
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
@@ -649,7 +838,9 @@ class PdfFicheCoupeApi {
     pw.Font font,
     pw.Font fontBold,
     _Tr tr,
-  ) {
+    Map<String, pw.Widget?> itemImages, {
+    bool compact = false,
+  }) {
     final langCode = tr.lang == AppLanguage.french
         ? 'fr'
         : (tr.lang == AppLanguage.english ? 'en' : 'ar');
@@ -657,8 +848,17 @@ class PdfFicheCoupeApi {
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
         children: [
-          _hdr(tr.reference, fontBold),
-          _hdr(tr.designation, fontBold),
+          _hdr(tr.image, fontBold, align: pw.TextAlign.center),
+          _hdr(
+            tr.reference,
+            fontBold,
+            align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
+          _hdr(
+            tr.designation,
+            fontBold,
+            align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
           _hdr(tr.quantite, fontBold, align: pw.TextAlign.center),
           _hdr(tr.unite, fontBold, align: pw.TextAlign.center),
         ],
@@ -673,8 +873,25 @@ class PdfFicheCoupeApi {
             color: i.isOdd ? _kRowAlt : PdfColors.white,
           ),
           children: [
-            _cell(b.profileCode ?? '-', font),
-            _cell(_shortName(localizedName, tr.lang), font),
+            pw.Container(
+              height: compact ? 28 : 34,
+              alignment: pw.Alignment.center,
+              padding: const pw.EdgeInsets.all(2),
+              child:
+                  itemImages[_bomImageKey(b)] ??
+                  _defaultItemIcon(size: compact ? 22 : 28),
+            ),
+            _cell(
+              b.profileCode ?? '-',
+              font,
+              align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+            ),
+            _designationCell(
+              _accessoryTableDisplayName(b, localizedName, tr.lang),
+              font,
+              fontBold,
+              align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+            ),
             _cell(
               _qty(b.purchaseQuantity),
               font,
@@ -688,11 +905,12 @@ class PdfFicheCoupeApi {
       );
     }
     return pw.Table(
-      columnWidths: const {
-        0: pw.FixedColumnWidth(70),
-        1: pw.FlexColumnWidth(3),
-        2: pw.FixedColumnWidth(40),
-        3: pw.FixedColumnWidth(45),
+      columnWidths: {
+        0: pw.FixedColumnWidth(compact ? 28 : 38),
+        1: pw.FixedColumnWidth(compact ? 48 : 70),
+        2: const pw.FlexColumnWidth(3),
+        3: pw.FixedColumnWidth(compact ? 30 : 40),
+        4: pw.FixedColumnWidth(compact ? 34 : 45),
       },
       border: pw.TableBorder.all(color: _kBorder, width: 0.4),
       children: tableRows,
@@ -707,6 +925,7 @@ class PdfFicheCoupeApi {
     pw.Font font,
     pw.Font fontBold,
     _Tr tr,
+    Map<String, pw.Widget?> itemImages,
   ) {
     final langCode = tr.lang == AppLanguage.french
         ? 'fr'
@@ -715,8 +934,17 @@ class PdfFicheCoupeApi {
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
         children: [
-          _hdr(tr.reference, fontBold),
-          _hdr(tr.designation, fontBold),
+          _hdr(tr.image, fontBold, align: pw.TextAlign.center),
+          _hdr(
+            tr.reference,
+            fontBold,
+            align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
+          _hdr(
+            tr.designation,
+            fontBold,
+            align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
           _hdr(tr.longueurTotale, fontBold, align: pw.TextAlign.center),
         ],
       ),
@@ -730,8 +958,23 @@ class PdfFicheCoupeApi {
             color: i.isOdd ? _kRowAlt : PdfColors.white,
           ),
           children: [
-            _cell(b.profileCode ?? '-', font),
-            _cell(_shortName(localizedName, tr.lang), font),
+            pw.Container(
+              height: 34,
+              alignment: pw.Alignment.center,
+              padding: const pw.EdgeInsets.all(2),
+              child: itemImages[_bomImageKey(b)] ?? _defaultItemIcon(size: 28),
+            ),
+            _cell(
+              b.profileCode ?? '-',
+              font,
+              align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+            ),
+            _designationCell(
+              _jointDisplayName(b, localizedName, tr.lang),
+              font,
+              fontBold,
+              align: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+            ),
             _cell(
               '${b.purchaseQuantity.toStringAsFixed(2)} m',
               font,
@@ -743,9 +986,10 @@ class PdfFicheCoupeApi {
     }
     return pw.Table(
       columnWidths: const {
-        0: pw.FixedColumnWidth(70),
-        1: pw.FlexColumnWidth(3),
-        2: pw.FixedColumnWidth(80),
+        0: pw.FixedColumnWidth(38),
+        1: pw.FixedColumnWidth(70),
+        2: pw.FlexColumnWidth(3),
+        3: pw.FixedColumnWidth(80),
       },
       border: pw.TableBorder.all(color: _kBorder, width: 0.4),
       children: tableRows,
@@ -766,7 +1010,8 @@ class PdfFicheCoupeApi {
     final ri = rightIs45 ? 6 : 0;
 
     return pw.SvgImage(
-      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 14">'
+      svg:
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 14">'
           '<path d="M1 1 L45 1 L${45 - ri} 13 L${1 + li} 13 Z" '
           'fill="#dbeafe" stroke="#1d4ed8" stroke-width="0.8"/>'
           '<line x1="${1 + li}" y1="7" x2="${45 - ri}" y2="7" '
@@ -787,6 +1032,7 @@ class PdfFicheCoupeApi {
     required SqlDatabase db,
     required int? catalogItemId,
     required Map<String, pw.Widget?> imageCache,
+    String? inventoryItemType,
     double size = 26,
   }) async {
     final cacheKey = '${code ?? ''}|${name ?? ''}|${imagePath ?? ''}';
@@ -806,9 +1052,18 @@ class PdfFicheCoupeApi {
     if (catalogItemId != null && catalogItemId > 0) {
       try {
         final database = await db.initDb();
+        final normalizedType = (inventoryItemType ?? '').toLowerCase();
+        final table = normalizedType.contains('accessory')
+            ? 'Accessories'
+            : normalizedType.contains('shutter')
+            ? 'ShutterComponents'
+            : normalizedType.contains('joint')
+            ? 'Joints'
+            : normalizedType.contains('kit')
+            ? 'KitBundles'
+            : 'Sections';
         final rows = await database.query(
-          'Sections',
-          columns: ['image_path', 'code'],
+          table,
           where: 'id = ?',
           whereArgs: [catalogItemId],
           limit: 1,
@@ -923,13 +1178,33 @@ class PdfFicheCoupeApi {
     return loaded;
   }
 
+  static String _bomImageKey(BomItem item) =>
+      '${item.inventoryItemType ?? ''}|${item.catalogItemId ?? ''}|'
+      '${item.profileCode ?? ''}|${item.name}|${item.imagePath ?? ''}';
+
   /// أيقونة بديلة للمقطع عند عدم توفر الصورة
   static pw.Widget _defaultProfileIcon({double size = 24}) {
     return pw.SvgImage(
-      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+      svg:
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
           '<rect x="2" y="2" width="20" height="20" rx="2" fill="#edf2f9" stroke="#0d47a1" stroke-width="1.2"/>'
           '<rect x="6" y="6" width="12" height="12" rx="1" fill="#ffffff" stroke="#5c7ca8" stroke-width="0.8"/>'
           '<line x1="6" y1="12" x2="18" y2="12" stroke="#5c7ca8" stroke-width="0.6"/>'
+          '</svg>',
+      width: size,
+      height: size,
+    );
+  }
+
+  /// Neutral placeholder for accessories, glass and joints. It deliberately
+  /// does not resemble an aluminium section when an item has no saved image.
+  static pw.Widget _defaultItemIcon({double size = 24}) {
+    return pw.SvgImage(
+      svg:
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+          '<rect x="2" y="3" width="20" height="18" rx="2" fill="#f7f9fc" stroke="#8aa0bd" stroke-width="1"/>'
+          '<circle cx="8" cy="9" r="2" fill="#b7c6d9"/>'
+          '<path d="M4 18l5-5 3 3 3-4 5 6z" fill="#dce5f0" stroke="#8aa0bd" stroke-width=".6"/>'
           '</svg>',
       width: size,
       height: size,
@@ -943,8 +1218,12 @@ class PdfFicheCoupeApi {
     SqlDatabase db,
     Map<String, dynamic> item,
     AppLanguage lang,
-    Map<String, pw.Widget?> imageCache,
-  ) async {
+    Map<String, pw.Widget?> imageCache, {
+    required Map<String, List<Map<String, dynamic>>> kitBundleData,
+    required Map<String, bool> kitPerLeafMap,
+    required Map<String, Map<String, dynamic>> kitBundleMetadata,
+    required Map<String, double> kitBundlePrices,
+  }) async {
     final width = _num(item['largeur']);
     final height = _num(item['hauteur']);
     final qty = _num(item['quantity'], fb: 1).round();
@@ -976,23 +1255,113 @@ class PdfFicheCoupeApi {
       model.quantity = qty.clamp(1, 999999);
       await model.updateShutterDefaultsIfNeeded();
 
-      var bom = ComponentCalculator.generateBom(model, _activeVariants(model));
+      List<BomItem> generateBom() => ComponentCalculator.generateBom(
+        model,
+        _activeVariants(model),
+        kitBundleData: kitBundleData,
+        kitPerLeafMap: kitPerLeafMap,
+        kitBundleMetadata: kitBundleMetadata,
+        kitBundlePrices: kitBundlePrices,
+      );
+
+      var bom = generateBom();
       final engine = BomEngineV2(database: db);
+      await engine.stabilizeSelections(window: model, items: bom);
+      bom = generateBom();
       await engine.stabilizeSelections(window: model, items: bom);
       bom = await engine.filterItemsByAvailableCandidates(
         window: model,
-        items: bom,
+        items: generateBom(),
       );
-      final active = bom.where((r) => r.isActive && r.purchaseQuantity > 0).toList();
+      final active = bom
+          .where((r) => r.isActive && r.purchaseQuantity > 0)
+          .toList();
+
+      // The quantity table treats a configured shutter Kit as one collapsible
+      // commercial row. The cutting sheet uses the same collapsed view: show
+      // the exact selected Kit (including its selected caisson size), without
+      // duplicating all of its internal children underneath it.
+      final ficheItems = <BomItem>[];
+      final collapsedShutterKits = <String>{};
+      for (final bomItem in active) {
+        final groupName = bomItem.kitGroupName?.trim() ?? '';
+        final isShutterKit =
+            bomItem.category.toLowerCase().trim() == 'shutter' &&
+            groupName.isNotEmpty;
+        if (!isShutterKit) {
+          ficheItems.add(bomItem);
+          continue;
+        }
+        if (!collapsedShutterKits.add(groupName)) continue;
+
+        final metadata = kitBundleMetadata[groupName];
+        final sizeMm =
+            kitBundleSizeMm(metadata ?? {'name': groupName}) ??
+            model.shutterBoxHeight;
+        final hasSize = RegExp(
+          r'(?<!\d)\d{2,3}(?:[.,]\d+)?(?!\d)',
+        ).hasMatch(groupName);
+        final sizeCm = sizeMm / 10.0;
+        final sizeLabel = sizeCm == sizeCm.roundToDouble()
+            ? sizeCm.toStringAsFixed(0)
+            : sizeCm.toStringAsFixed(1);
+        final exactKitName = hasSize ? groupName : '$groupName - $sizeLabel cm';
+        ficheItems.add(
+          BomItem(
+            category: 'shutter',
+            originalName: exactKitName,
+            profileCode: metadata?['code']?.toString(),
+            name: exactKitName,
+            imagePath: metadata?['image_path']?.toString(),
+            quantity: qty.toDouble(),
+            unit: 'kit',
+            unitPrice: kitBundlePrices[groupName] ?? 0,
+            kitGroupName: groupName,
+            catalogItemId: metadata?['id'] is num
+                ? (metadata!['id'] as num).toInt()
+                : int.tryParse('${metadata?['id'] ?? ''}'),
+            inventoryItemType: 'KitBundle',
+            selectorCategory: 'shutter',
+            selectorType: 'كيت',
+            roleKey: 'kit',
+            materialType: 'shutter',
+          ),
+        );
+      }
+
+      final itemImages = <String, pw.Widget?>{};
+      for (final bomItem in ficheItems) {
+        itemImages[_bomImageKey(bomItem)] = await _loadSectionImage(
+          code: bomItem.profileCode,
+          name: bomItem.name,
+          imagePath: bomItem.imagePath,
+          db: db,
+          catalogItemId: bomItem.catalogItemId,
+          imageCache: imageCache,
+          inventoryItemType: bomItem.inventoryItemType,
+          size: 30,
+        );
+      }
 
       Uint8List? drawing;
+      final storedShutterPosition = model.shutterPosition;
       try {
+        // A fully lowered shutter hides the actual construction and turns the
+        // cutting-sheet preview into a flat colour block. Keep the stored
+        // value intact, but raise it for this technical preview so the slats,
+        // frame and opening remain identifiable.
+        if (model.hasShutter && model.shutterPosition > 0.42) {
+          model.shutterPosition = 0.42;
+        }
         drawing = await captureWindowImage(
           model,
           maxSide: 2400,
           showDrawingDimensions: true,
         );
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        model.shutterPosition = storedShutterPosition;
+      }
 
       // استخراج معلومات النظام والفتح والشكل واللون ومركب الستار
       final resolved = _resolveTypeAndConfig(
@@ -1001,25 +1370,90 @@ class PdfFicheCoupeApi {
         model: model,
         lang: lang,
       );
-      final rawGamme = model.activeSeries?.name ??
+      final rawGamme =
+          model.activeSeries?.name ??
           model.activeSlidingSeries?.name ??
           item['game']?.toString() ??
           '';
-      final gamme = Localization.translate(rawGamme, lang);
+      var gamme = Localization.translate(rawGamme, lang);
+      if (lang != AppLanguage.arabic && _hasArabic(gamme)) {
+        gamme = gamme
+            .replaceAll(
+              'سلسلة',
+              lang == AppLanguage.french ? 'Gamme' : 'Series',
+            )
+            .replaceAll(
+              'سلسله',
+              lang == AppLanguage.french ? 'Gamme' : 'Series',
+            )
+            .replaceAll(
+              'الستار',
+              lang == AppLanguage.french ? 'Volet' : 'Shutter',
+            )
+            .trim();
+        if (_hasArabic(gamme)) {
+          final nonAr = gamme
+              .replaceAll(RegExp(r'[\u0600-\u06FF\uFB50-\uFEFF]'), '')
+              .trim();
+          gamme = nonAr.isNotEmpty
+              ? (lang == AppLanguage.french ? 'Gamme $nonAr' : 'Series $nonAr')
+              : (lang == AppLanguage.french ? 'Standard' : 'Standard');
+        }
+      }
+
       final modelColor = model.selectedDbColor != null
           ? (model.selectedDbColor!['name']?.toString() ?? '')
           : model.frameColor.toString().split('.').last;
       final rawColor = item['color']?.toString().trim().isNotEmpty == true
           ? item['color'].toString().trim()
           : modelColor;
-      final color = Localization.translate(rawColor, lang);
+      var color = Localization.translate(rawColor, lang);
+      if (lang != AppLanguage.arabic && _hasArabic(color)) {
+        if (rawColor.contains('أبيض') || rawColor.contains('ابيض')) {
+          color = lang == AppLanguage.french ? 'Blanc' : 'White';
+        } else if (rawColor.contains('رمادي') || rawColor.contains('غري')) {
+          color = lang == AppLanguage.french ? 'Gris' : 'Grey';
+        } else if (rawColor.contains('أسود') || rawColor.contains('اسود')) {
+          color = lang == AppLanguage.french ? 'Noir' : 'Black';
+        } else if (rawColor.contains('بني') || rawColor.contains('مارو')) {
+          color = lang == AppLanguage.french ? 'Marron' : 'Brown';
+        } else if (rawColor.contains('بيج') || rawColor.contains('باج')) {
+          color = lang == AppLanguage.french ? 'Beige' : 'Beige';
+        } else if (rawColor.contains('خشب') || rawColor.contains('شين')) {
+          color = lang == AppLanguage.french ? 'Chêne faux bois' : 'Wood grain';
+        } else {
+          final nonAr = color
+              .replaceAll(RegExp(r'[\u0600-\u06FF\uFB50-\uFEFF]'), '')
+              .trim();
+          color = nonAr.isNotEmpty
+              ? nonAr
+              : (lang == AppLanguage.french ? 'Standard' : 'Standard');
+        }
+      }
+
+      // فصل عناصر الستار عن قطاعات النوافذ
+      final shutterBomItems = ficheItems.where(_isShutterComponent).toList();
+
+      final nonShutterBomItems = ficheItems
+          .where((b) => !shutterBomItems.contains(b))
+          .toList();
 
       // تجميع القطاعات بدون تكرار السطر
       final profileRows = await _buildGroupedProfileRows(
-        active,
+        nonShutterBomItems
+            .where((b) => b.category.toLowerCase().trim() == 'profile')
+            .toList(),
         db,
         imageCache,
         lang,
+      );
+
+      final shutterProfileRows = await _buildGroupedProfileRows(
+        shutterBomItems,
+        db,
+        imageCache,
+        lang,
+        isShutter: true,
       );
 
       return _ArticleData(
@@ -1031,25 +1465,58 @@ class PdfFicheCoupeApi {
         width: model.width > 0 ? model.width : width,
         height: model.height > 0 ? model.height : height,
         qty: qty,
-        bomItems: active,
+        bomItems: ficheItems,
         profiles: profileRows,
+        shutterProfiles: shutterProfileRows,
+        itemImages: itemImages,
         drawing: drawing,
       );
     } catch (_) {
+      final rawGamme = item['game']?.toString() ?? '';
+      var fallbackGamme = Localization.translate(rawGamme, lang);
+      if (lang != AppLanguage.arabic && _hasArabic(fallbackGamme)) {
+        fallbackGamme = lang == AppLanguage.french ? 'Standard' : 'Standard';
+      }
+      final rawColor = item['color']?.toString() ?? '';
+      var fallbackColor = Localization.translate(rawColor, lang);
+      if (lang != AppLanguage.arabic && _hasArabic(fallbackColor)) {
+        fallbackColor = lang == AppLanguage.french ? 'Standard' : 'Standard';
+      }
       return _ArticleData(
-        gamme: item['game']?.toString() ?? '',
+        gamme: fallbackGamme,
         openingType: '',
         configuration: '',
         shutterInfo: '',
-        colorName: item['color']?.toString() ?? '',
+        colorName: fallbackColor,
         width: width,
         height: height,
         qty: qty,
         bomItems: const [],
         profiles: const [],
+        shutterProfiles: const [],
+        itemImages: const {},
         drawing: null,
       );
     }
+  }
+
+  static bool _isShutterComponent(BomItem item) {
+    final category = item.category.toLowerCase().trim();
+    final inventoryType = (item.inventoryItemType ?? '').toLowerCase().trim();
+    final selectorCategory = (item.selectorCategory ?? '').toLowerCase().trim();
+    final materialType = (item.materialType ?? '').toLowerCase().trim();
+    // Use BOM/catalog identity, not words contained in the visible name.
+    // Name matching (lame/axe/caisson...) classified unrelated content rows
+    // as shutter components when their selected database name happened to
+    // contain one of those fragments.
+    return category == 'shutter' ||
+        category.contains('volet') ||
+        inventoryType.contains('shutter') ||
+        inventoryType.contains('volet') ||
+        selectorCategory == 'shutter' ||
+        selectorCategory.contains('volet') ||
+        materialType == 'shutter' ||
+        materialType.contains('volet');
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1059,20 +1526,25 @@ class PdfFicheCoupeApi {
     List<BomItem> bomItems,
     SqlDatabase db,
     Map<String, pw.Widget?> imageCache,
-    AppLanguage lang,
-  ) async {
+    AppLanguage lang, {
+    bool isShutter = false,
+  }) async {
     final langCode = lang == AppLanguage.french
         ? 'fr'
         : (lang == AppLanguage.english ? 'en' : 'ar');
 
     // تجميع القطع حسب القطاع: (المرجع + الاسم)
-    final profileMap = <String, ({
-      String reference,
-      String description,
-      String? imagePath,
-      int? catalogItemId,
-      Map<String, ({int qty, int lengthMm, String angles})> cuts,
-    })>{};
+    final profileMap =
+        <
+          String,
+          ({
+            String reference,
+            String description,
+            String? imagePath,
+            int? catalogItemId,
+            Map<String, ({int qty, int lengthMm, String angles})> cuts,
+          })
+        >{};
 
     for (final bom in bomItems) {
       final pieces = bom.pieces;
@@ -1080,7 +1552,39 @@ class PdfFicheCoupeApi {
 
       final ref = bom.profileCode ?? '';
       final localizedName = bom.getLocalizedName(langCode);
-      final desc = _shortName(localizedName, lang);
+      var desc = _shortName(localizedName, lang);
+      final roleLabel = desc;
+      final catalogLines = bom.name
+          .split('\n')
+          .map((line) => line.trim())
+          .where(
+            (line) =>
+                line.isNotEmpty &&
+                !line.contains('المطلوب الفعلي') &&
+                !line.contains('Besoin réel') &&
+                !line.contains('Actual required'),
+          )
+          .toList();
+      if (catalogLines.length > 1) {
+        var exactCatalogName = catalogLines[1];
+        if (ref.trim().isNotEmpty) {
+          exactCatalogName = exactCatalogName.replaceFirst(
+            RegExp('^${RegExp.escape(ref.trim())}\\s*[-–—:]\\s*'),
+            '',
+          );
+        }
+        if (exactCatalogName.isNotEmpty && exactCatalogName != roleLabel) {
+          desc = '$roleLabel\n$exactCatalogName';
+        }
+      }
+      if (isShutter) {
+        final color = (bom.colorName ?? '').trim();
+        if (color.isNotEmpty &&
+            color.toLowerCase() != 'null' &&
+            !desc.toLowerCase().contains(color.toLowerCase())) {
+          desc = '$desc\n${_colorDetailLabel(color, lang)}';
+        }
+      }
       final key = '${ref.trim()}|${desc.trim()}';
 
       final existing = profileMap.putIfAbsent(
@@ -1096,9 +1600,11 @@ class PdfFicheCoupeApi {
 
       for (var pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
         final pM = pieces[pieceIndex];
-        final angles = bom.pieceCutAngles != null &&
-                pieceIndex < bom.pieceCutAngles!.length &&
-                bom.pieceCutAngles![pieceIndex].trim().isNotEmpty
+        final angles = isShutter
+            ? '90° / 90°'
+            : bom.pieceCutAngles != null &&
+                  pieceIndex < bom.pieceCutAngles!.length &&
+                  bom.pieceCutAngles![pieceIndex].trim().isNotEmpty
             ? _formatExplicitAngles(bom.pieceCutAngles![pieceIndex])
             : _anglesFor(bom);
         final mm = (pM * 1000).round();
@@ -1106,7 +1612,11 @@ class PdfFicheCoupeApi {
         final cutKey = '$mm|$angles';
         final cur = existing.cuts[cutKey];
         if (cur != null) {
-          existing.cuts[cutKey] = (qty: cur.qty + 1, lengthMm: mm, angles: angles);
+          existing.cuts[cutKey] = (
+            qty: cur.qty + 1,
+            lengthMm: mm,
+            angles: angles,
+          );
         } else {
           existing.cuts[cutKey] = (qty: 1, lengthMm: mm, angles: angles);
         }
@@ -1126,10 +1636,17 @@ class PdfFicheCoupeApi {
         imageCache: imageCache,
       );
 
-      final sortedCuts = entry.cuts.values
-          .map((c) => _CutPiece(qty: c.qty, lengthMm: c.lengthMm, angles: c.angles))
-          .toList()
-        ..sort((a, b) => b.lengthMm.compareTo(a.lengthMm));
+      final sortedCuts =
+          entry.cuts.values
+              .map(
+                (c) => _CutPiece(
+                  qty: c.qty,
+                  lengthMm: c.lengthMm,
+                  angles: c.angles,
+                ),
+              )
+              .toList()
+            ..sort((a, b) => b.lengthMm.compareTo(a.lengthMm));
 
       result.add(
         _ProfileCutRow(
@@ -1141,42 +1658,75 @@ class PdfFicheCoupeApi {
       );
     }
 
-    result.sort((a, b) => a.reference.compareTo(b.reference));
+    if (isShutter) {
+      int shutterRank(String text) {
+        final t = text.toLowerCase();
+        if (t.contains('caisson') || t.contains('صندوق')) return 1;
+        if (t.contains('axe') || t.contains('محور')) return 2;
+        if (t.contains('lame finale') || t.contains('نهائية')) return 4;
+        if (t.contains('lame') || t.contains('شريحة') || t.contains('شرائح'))
+          return 3;
+        if (t.contains('coulisse') ||
+            t.contains('gliss') ||
+            t.contains('سكة') ||
+            t.contains('سكك'))
+          return 5;
+        return 6;
+      }
+
+      result.sort((a, b) {
+        final rA = shutterRank('${a.reference} ${a.description}');
+        final rB = shutterRank('${b.reference} ${b.description}');
+        if (rA != rB) return rA.compareTo(rB);
+        return a.reference.compareTo(b.reference);
+      });
+    } else {
+      result.sort((a, b) => a.reference.compareTo(b.reference));
+    }
     return result;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
   // تحديد الصنف وطريقة الفتح والشكل حسب اللغة المختارة
   // ──────────────────────────────────────────────────────────────────────────
-  static ({String type, String config, String shutterInfo}) _resolveTypeAndConfig({
+  static ({String type, String config, String shutterInfo})
+  _resolveTypeAndConfig({
     required Map<String, dynamic> item,
     required Map<String, dynamic> decodedMap,
     required WindowModel model,
     required AppLanguage lang,
   }) {
     final rawType = item['window_type']?.toString().trim() ?? '';
-    final isShutterOnly = decodedMap['isShutterOnly'] == true ||
+    final isShutterOnly =
+        decodedMap['isShutterOnly'] == true ||
         rawType.toLowerCase().contains('volet') ||
         rawType.toLowerCase().contains('shutter') ||
         rawType.contains('ستار');
 
     final isMotor = model.shutterMechanism == 'محرك';
-    final isCrank = model.shutterMechanism == 'منايفال' ||
+    final isCrank =
+        model.shutterMechanism == 'منايفال' ||
         model.shutterMechanism == 'مانيفال' ||
         model.shutterMechanism == 'مانيفر';
     final mechLabel = isMotor
-        ? (lang == AppLanguage.french ? 'Moteur' : (lang == AppLanguage.english ? 'Motor' : 'محرك'))
+        ? (lang == AppLanguage.french
+              ? 'Moteur'
+              : (lang == AppLanguage.english ? 'Motor' : 'محرك'))
         : (isCrank
-            ? (lang == AppLanguage.french ? 'Manivelle' : (lang == AppLanguage.english ? 'Crank' : 'منايفال'))
-            : (lang == AppLanguage.french ? 'Sangle' : (lang == AppLanguage.english ? 'Belt' : 'حزام')));
+              ? (lang == AppLanguage.french
+                    ? 'Manivelle'
+                    : (lang == AppLanguage.english ? 'Crank' : 'منايفال'))
+              : (lang == AppLanguage.french
+                    ? 'Sangle'
+                    : (lang == AppLanguage.english ? 'Belt' : 'حزام')));
 
     final hasShutter = model.hasShutter || isShutterOnly;
     final shutterInfo = hasShutter
         ? (lang == AppLanguage.french
-            ? 'Volet : $mechLabel'
-            : (lang == AppLanguage.english
-                ? 'Shutter: $mechLabel'
-                : 'مركب الستار : $mechLabel'))
+              ? 'Volet : $mechLabel'
+              : (lang == AppLanguage.english
+                    ? 'Shutter: $mechLabel'
+                    : 'مركب الستار : $mechLabel'))
         : '';
 
     if (isShutterOnly) {
@@ -1203,9 +1753,12 @@ class PdfFicheCoupeApi {
     String typeStr = '';
     String configStr = '';
 
-    final smartComp =
-        DevisBuilder.generateSmartCompositionDescription(decodedMap, lang);
-    if (smartComp.isNotEmpty) {
+    final smartComp = DevisBuilder.generateSmartCompositionDescription(
+      decodedMap,
+      lang,
+    );
+    if (smartComp.isNotEmpty &&
+        (lang == AppLanguage.arabic || !_hasArabic(smartComp))) {
       typeStr = smartComp;
       configStr = '';
     } else if (hasSlidingSash) {
@@ -1216,19 +1769,26 @@ class PdfFicheCoupeApi {
           .where((z) => z is Map && z['content']?.toString() == 'slidingSash')
           .map((z) => (z as Map)['slidingSashesCount'] as num?)
           .whereType<num>()
-          .fold<int>(0, (max, count) => count.toInt() > max ? count.toInt() : max);
+          .fold<int>(
+            0,
+            (max, count) => count.toInt() > max ? count.toInt() : max,
+          );
       final effectiveSlidingSashes = sashesCount > 0 ? sashesCount : 2;
       configStr = switch (lang) {
         AppLanguage.french =>
-          effectiveSlidingSashes == 1 ? '1 vantail' : '$effectiveSlidingSashes vantaux',
+          effectiveSlidingSashes == 1
+              ? '1 vantail'
+              : '$effectiveSlidingSashes vantaux',
         AppLanguage.english =>
-          effectiveSlidingSashes == 1 ? '1 sash' : '$effectiveSlidingSashes sashes',
+          effectiveSlidingSashes == 1
+              ? '1 sash'
+              : '$effectiveSlidingSashes sashes',
         AppLanguage.arabic =>
           effectiveSlidingSashes == 1
               ? 'ضلفة واحدة'
               : effectiveSlidingSashes == 2
-                  ? 'ضلفتين'
-                  : '$effectiveSlidingSashes درفات',
+              ? 'ضلفتين'
+              : '$effectiveSlidingSashes درفات',
       };
     } else if (hasDoubleSash) {
       typeStr = lang == AppLanguage.french
@@ -1245,9 +1805,41 @@ class PdfFicheCoupeApi {
           ? '1 vantail'
           : (lang == AppLanguage.english ? 'Single sash' : 'ضلفة واحدة');
     } else {
-      typeStr = rawType.isNotEmpty
-          ? (lang != AppLanguage.arabic ? Localization.translate(rawType, lang) : rawType)
-          : (lang == AppLanguage.french ? 'Fenêtre' : (lang == AppLanguage.english ? 'Window' : 'نافذة'));
+      if (rawType.isNotEmpty) {
+        if (lang == AppLanguage.french) {
+          final translated = Localization.translate(rawType, lang);
+          if (!_hasArabic(translated)) {
+            typeStr = translated;
+          } else if (rawType.contains('نافذة') || rawType.contains('شباك')) {
+            typeStr = 'Fenêtre';
+          } else if (rawType.contains('باب')) {
+            typeStr = 'Porte';
+          } else if (rawType.contains('ستار')) {
+            typeStr = 'Volet roulant';
+          } else {
+            typeStr = 'Fenêtre';
+          }
+        } else if (lang == AppLanguage.english) {
+          final translated = Localization.translate(rawType, lang);
+          if (!_hasArabic(translated)) {
+            typeStr = translated;
+          } else if (rawType.contains('نافذة') || rawType.contains('شباك')) {
+            typeStr = 'Window';
+          } else if (rawType.contains('باب')) {
+            typeStr = 'Door';
+          } else if (rawType.contains('ستار')) {
+            typeStr = 'Roller shutter';
+          } else {
+            typeStr = 'Window';
+          }
+        } else {
+          typeStr = rawType;
+        }
+      } else {
+        typeStr = lang == AppLanguage.french
+            ? 'Fenêtre'
+            : (lang == AppLanguage.english ? 'Window' : 'نافذة');
+      }
     }
 
     return (type: typeStr, config: configStr, shutterInfo: shutterInfo);
@@ -1260,15 +1852,14 @@ class PdfFicheCoupeApi {
     String text,
     pw.Font fontBold, {
     pw.TextAlign align = pw.TextAlign.left,
-  }) =>
-      pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3.5),
-        child: pw.Text(
-          text,
-          style: pw.TextStyle(font: fontBold, fontSize: 8, color: PdfColors.white),
-          textAlign: align,
-        ),
-      );
+  }) => pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3.5),
+    child: pw.Text(
+      _shapeText(text),
+      style: pw.TextStyle(font: fontBold, fontSize: 8, color: PdfColors.white),
+      textAlign: align,
+    ),
+  );
 
   static pw.Widget _cell(
     String text,
@@ -1277,44 +1868,88 @@ class PdfFicheCoupeApi {
     bool bold = false,
     pw.TextAlign align = pw.TextAlign.left,
     double fontSize = 8,
-  }) =>
-      pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-        child: pw.Text(
-          text,
-          style: pw.TextStyle(
-            font: bold ? (boldFont ?? font) : font,
-            fontSize: fontSize,
+  }) => pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+    child: pw.Text(
+      _shapeText(text),
+      style: pw.TextStyle(
+        font: bold ? (boldFont ?? font) : font,
+        fontSize: fontSize,
+      ),
+      textAlign: align,
+    ),
+  );
+
+  static pw.Widget _designationCell(
+    String text,
+    pw.Font font,
+    pw.Font fontBold, {
+    pw.TextAlign align = pw.TextAlign.left,
+  }) {
+    final lines = text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    final title = lines.isEmpty ? '-' : lines.first;
+    final detail = lines.length > 1 ? lines.skip(1).join(' · ') : '';
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: pw.Column(
+        crossAxisAlignment: align == pw.TextAlign.right
+            ? pw.CrossAxisAlignment.end
+            : pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            _shapeText(title),
+            style: pw.TextStyle(font: fontBold, fontSize: 8),
+            textAlign: align,
           ),
-          textAlign: align,
-        ),
-      );
+          if (detail.isNotEmpty) ...[
+            pw.SizedBox(height: 1.5),
+            pw.Text(
+              _shapeText(detail),
+              style: pw.TextStyle(
+                font: font,
+                fontSize: 6.8,
+                color: PdfColors.grey600,
+              ),
+              textAlign: align,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   static pw.Widget _blueBar(
     String title,
     pw.Font fontBold, {
     PdfColor color = _kBlue,
     double fontSize = 10,
-  }) =>
-      pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 8),
-        decoration: pw.BoxDecoration(color: color),
-        child: pw.Text(
-          title,
-          style: pw.TextStyle(
-            font: fontBold,
-            fontSize: fontSize,
-            color: PdfColors.white,
-            letterSpacing: 1.2,
-          ),
-        ),
-      );
+    bool isRtl = false,
+  }) => pw.Container(
+    padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 8),
+    alignment: isRtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
+    decoration: pw.BoxDecoration(color: color),
+    child: pw.Text(
+      _shapeText(title),
+      style: pw.TextStyle(
+        font: fontBold,
+        fontSize: fontSize,
+        color: PdfColors.white,
+        letterSpacing: 1.2,
+      ),
+      textAlign: isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+    ),
+  );
 
   static String _anglesFor(BomItem item) {
     final text = '${item.originalName} ${item.name}'.toLowerCase();
     if (text.contains('45°/90°') ||
         text.contains('45° / 90°') ||
-        text.contains('45/90')) return '45° / 90°';
+        text.contains('45/90'))
+      return '45° / 90°';
     if (text.contains('90°/90°') ||
         text.contains('90° / 90°') ||
         text.contains('90/90') ||
@@ -1328,15 +1963,15 @@ class PdfFicheCoupeApi {
         text.contains('gliss') ||
         text.contains('الشرائح') ||
         text.contains('المحور') ||
-        text.contains('الصندوق')) return '90° / 90°';
+        text.contains('الصندوق'))
+      return '90° / 90°';
     return '45° / 45°';
   }
 
   static String _formatExplicitAngles(String value) {
-    final numbers = RegExp(r'\d+')
-        .allMatches(value)
-        .map((match) => match.group(0))
-        .toList();
+    final numbers = RegExp(
+      r'\d+',
+    ).allMatches(value).map((match) => match.group(0)).toList();
     if (numbers.length >= 2) return '${numbers[0]}° / ${numbers[1]}°';
     return value;
   }
@@ -1346,12 +1981,14 @@ class PdfFicheCoupeApi {
   static Map<String, bool> _activeVariants(WindowModel model) {
     final isTunnel = model.isCaissonTunnel;
     final isMotor = model.shutterMechanism == 'محرك';
-    final isCrank = model.shutterMechanism == 'منايفال' ||
+    final isCrank =
+        model.shutterMechanism == 'منايفال' ||
         model.shutterMechanism == 'مانيفال' ||
         model.shutterMechanism == 'مانيفر';
     final isBelt = !isMotor && !isCrank;
     return {
-      'Verrou Central': model.canUseOpeningOnlyOptions && model.useVerrouCentral,
+      'Verrou Central':
+          model.canUseOpeningOnlyOptions && model.useVerrouCentral,
       'System OB': model.effectiveUseSystemOB,
       'Demi System OB': model.effectiveUseDemiOB,
       'كيت (Kit)': true,
@@ -1359,8 +1996,9 @@ class PdfFicheCoupeApi {
       'الامبو (Embout)': isMotor,
       'سيبور رولمو (Support Roulement)': isMotor,
       'سيبور موتور (Support Moteur)': isMotor || isTunnel,
-      'أغطية الشفرات (Bouchons Lames)':
-          model.componentOverrides.containsKey('أغطية الشفرات (Bouchons Lames)'),
+      'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
+        'أغطية الشفرات (Bouchons Lames)',
+      ),
       'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
       'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
       'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
@@ -1372,74 +2010,597 @@ class PdfFicheCoupeApi {
   static String _unit(String unit, AppLanguage lang) {
     final u = unit.trim().toLowerCase();
     if (lang == AppLanguage.french) {
-      if (u == 'قطعة' || u == 'piece' || u == 'pièce') return 'U';
-      if (u == 'قطاع' || u == 'بارة' || u == 'barre') return 'Barre';
-      if (u == 'متر' || u == 'mètre' || u == 'metre' || u == 'm') return 'm';
-      if (u == 'متر مربع' || u == 'm²') return 'm²';
-      if (u == 'طقم' || u == 'jeu' || u == 'kit') return 'Jeu';
+      if (u == 'قطعة' ||
+          u == 'حبة' ||
+          u == 'piece' ||
+          u == 'pièce' ||
+          u == 'u' ||
+          u == 'unité' ||
+          u == 'unite')
+        return 'U';
+      if (u == 'قطاع' ||
+          u == 'بارة' ||
+          u == 'قضيب' ||
+          u == 'barre' ||
+          u == 'bar')
+        return 'Barre';
+      if (u == 'متر' ||
+          u == 'متر طولي' ||
+          u == 'متر خطي' ||
+          u == 'mètre' ||
+          u == 'metre' ||
+          u == 'ml' ||
+          u == 'm')
+        return 'm';
+      if (u == 'متر مربع' || u == 'm²' || u == 'm2' || u == 'sqm') return 'm²';
+      if (u == 'طقم' ||
+          u == 'علبة' ||
+          u == 'مجموعة' ||
+          u == 'jeu' ||
+          u == 'kit' ||
+          u == 'set' ||
+          u == 'paquet' ||
+          u == 'boite' ||
+          u == 'boîte')
+        return 'Jeu';
+      if (u == 'كغ' ||
+          u == 'كلغ' ||
+          u == 'كيلو' ||
+          u == 'كيلوغرام' ||
+          u == 'kg')
+        return 'kg';
+      if (u == 'لتر' || u == 'l' || u == 'litre') return 'L';
+      if (_hasArabic(unit)) return 'U';
       return unit;
     } else if (lang == AppLanguage.english) {
-      if (u == 'قطعة' || u == 'piece' || u == 'pièce') return 'Pcs';
-      if (u == 'قطاع' || u == 'بارة' || u == 'bar') return 'Bar';
-      if (u == 'متر' || u == 'mètre' || u == 'metre' || u == 'm') return 'm';
-      if (u == 'متر مربع' || u == 'm²') return 'sqm';
-      if (u == 'طقم' || u == 'jeu' || u == 'kit') return 'Set';
+      if (u == 'قطعة' || u == 'حبة' || u == 'piece' || u == 'pièce' || u == 'u')
+        return 'Pcs';
+      if (u == 'قطاع' ||
+          u == 'بارة' ||
+          u == 'قضيب' ||
+          u == 'bar' ||
+          u == 'barre')
+        return 'Bar';
+      if (u == 'متر' ||
+          u == 'متر طولي' ||
+          u == 'mètre' ||
+          u == 'metre' ||
+          u == 'm')
+        return 'm';
+      if (u == 'متر مربع' || u == 'm²' || u == 'm2' || u == 'sqm') return 'sqm';
+      if (u == 'طقم' || u == 'مجموعة' || u == 'jeu' || u == 'kit' || u == 'set')
+        return 'Set';
+      if (u == 'علبة' || u == 'box' || u == 'boite' || u == 'paquet')
+        return 'Box';
+      if (u == 'كغ' || u == 'كلغ' || u == 'kg') return 'kg';
+      if (_hasArabic(unit)) return 'Pcs';
+      return unit;
+    } else {
+      if (u == 'piece' || u == 'pièce' || u == 'u' || u == 'pcs') return 'قطعة';
+      if (u == 'barre' || u == 'bar') return 'بارة';
+      if (u == 'mètre' || u == 'metre' || u == 'm' || u == 'ml') return 'متر';
+      if (u == 'm²' || u == 'm2' || u == 'sqm') return 'م²';
+      if (u == 'jeu' || u == 'kit' || u == 'set') return 'طقم';
+      if (u == 'box' || u == 'boite' || u == 'paquet') return 'علبة';
+      if (u == 'kg') return 'كلغ';
       return unit;
     }
-    return unit;
+  }
+
+  static String _accessoryDisplayName(
+    BomItem item,
+    String localizedName,
+    AppLanguage lang,
+  ) {
+    final primary = _shortName(localizedName, lang);
+    final sourceLines = item.name
+        .split('\n')
+        .map((line) => line.trim())
+        .where(
+          (line) =>
+              line.isNotEmpty &&
+              !line.contains('المطلوب الفعلي') &&
+              !line.contains('Besoin réel') &&
+              !line.contains('Actual required'),
+        )
+        .toList();
+
+    // Accessory BOM rows store the selected catalogue item on the second
+    // line as "code - exact database name".  The cutting sheet must show
+    // that selected name, just like the quantity/cost table, rather than
+    // replacing it with a generic role label such as Paumelles or Vis.
+    String? catalogueDetail;
+    for (final line in sourceLines.skip(1)) {
+      if (line != item.originalName && line != localizedName) {
+        catalogueDetail = line;
+        break;
+      }
+    }
+
+    if (catalogueDetail != null && catalogueDetail.isNotEmpty) {
+      var exactName = catalogueDetail.trim();
+      final reference = item.profileCode?.trim() ?? '';
+      if (reference.isNotEmpty) {
+        exactName = exactName.replaceFirst(
+          RegExp('^${RegExp.escape(reference)}\\s*[-–—:]\\s*'),
+          '',
+        );
+      }
+      final searchable = '${item.originalName} ${item.name}'.toLowerCase();
+      final isScrew =
+          searchable.contains('vis') ||
+          searchable.contains('براغ') ||
+          searchable.contains('بلاغ');
+      if (isScrew) {
+        final dimension = RegExp(
+          r'\d+(?:[.,]\d+)?\s*[x×*]\s*\d+(?:[.,]\d+)?',
+          caseSensitive: false,
+        ).firstMatch('${item.originalName} ${item.name}')?.group(0);
+        if (dimension != null &&
+            !exactName
+                .replaceAll(' ', '')
+                .contains(dimension.replaceAll(' ', ''))) {
+          exactName = '$exactName $dimension';
+        }
+      }
+      if (exactName.isNotEmpty) {
+        return exactName == primary ? primary : '$primary\n$exactName';
+      }
+    }
+
+    // Kit bundles already carry their exact configured database name as the
+    // visible BOM name. Preserve it even when it contains words such as
+    // "Kit Volet", which _shortName would otherwise collapse to a generic
+    // translation.
+    if (item.kitGroupName != null && sourceLines.isNotEmpty) {
+      final exactName = sourceLines.first;
+      return exactName == primary ? primary : '$primary\n$exactName';
+    }
+
+    // The localized BomItem label is intentionally generic for several
+    // families. Keep the calculated size that identifies the actual row.
+    final original = item.originalName.trim();
+    final sizeMatch = RegExp(
+      r'(?<!\d)(\d+(?:[.,]\d+)?)(?:\s*(?:mm|cm))?(?!\d)',
+      caseSensitive: false,
+    ).allMatches(original).map((m) => m.group(1)!).toList();
+    var label = primary;
+    if (sizeMatch.isNotEmpty &&
+        (original.toLowerCase().contains('espagnolette') ||
+            original.contains('إسبانيوليت') ||
+            original.contains('اسبانيولات'))) {
+      final size = sizeMatch.last.replaceAll(',', '.');
+      if (!label.contains(size)) label = '$label $size';
+    }
+
+    final category = item.category.toLowerCase().trim();
+    if (category == 'glass' || category == 'panneau') {
+      final glassName =
+          catalogueDetail ??
+          sourceLines.firstWhere(
+            (line) => line != item.originalName,
+            orElse: () => '',
+          );
+      final glassPrefix = lang == AppLanguage.french
+          ? 'Vitrage'
+          : (lang == AppLanguage.english ? 'Glazing' : 'الزجاج');
+      return glassName.isEmpty ? glassPrefix : '$glassPrefix - $glassName';
+    }
+
+    return label;
+  }
+
+  static String _colorDetailLabel(String color, AppLanguage lang) {
+    return switch (lang) {
+      AppLanguage.french => 'Couleur : $color',
+      AppLanguage.english => 'Color: $color',
+      AppLanguage.arabic => 'اللون: $color',
+    };
+  }
+
+  static String _accessoryTableDisplayName(
+    BomItem item,
+    String localizedName,
+    AppLanguage lang,
+  ) {
+    var label = _accessoryDisplayName(item, localizedName, lang);
+    if (!_isShutterComponent(item)) return label;
+    final color = (item.colorName ?? '').trim();
+    if (color.isEmpty ||
+        color.toLowerCase() == 'null' ||
+        label.toLowerCase().contains(color.toLowerCase())) {
+      return label;
+    }
+    return '$label\n${_colorDetailLabel(color, lang)}';
+  }
+
+  static String _jointDisplayName(
+    BomItem item,
+    String localizedName,
+    AppLanguage lang,
+  ) {
+    final role = _shortName(localizedName, lang);
+    final lines = item.name
+        .split('\n')
+        .map((line) => line.trim())
+        .where(
+          (line) =>
+              line.isNotEmpty &&
+              !line.contains('المطلوب الفعلي') &&
+              !line.contains('Besoin réel') &&
+              !line.contains('Actual required'),
+        )
+        .toList();
+    if (lines.length < 2) return role;
+    var exactName = lines[1];
+    final reference = item.profileCode?.trim() ?? '';
+    if (reference.isNotEmpty) {
+      exactName = exactName.replaceFirst(
+        RegExp('^${RegExp.escape(reference)}\\s*[-–—:]\\s*'),
+        '',
+      );
+    }
+    if (exactName.isEmpty || exactName == role) return role;
+    return '$role\n$exactName';
   }
 
   static String _shortName(String name, [AppLanguage? lang]) {
+    final targetLang = lang ?? AppLanguage.french;
     final lines = name
         .split('\n')
-        .where((l) =>
-            l.isNotEmpty &&
-            !l.contains('المطلوب الفعلي') &&
-            !l.contains('Besoin réel') &&
-            !l.contains('Actual required'))
+        .map((l) => l.trim())
+        .where(
+          (l) =>
+              l.isNotEmpty &&
+              !l.contains('المطلوب الفعلي') &&
+              !l.contains('Besoin réel') &&
+              !l.contains('Actual required'),
+        )
         .toList();
-    var clean = lines.length >= 2
-        ? lines[1].trim()
-        : (lines.isNotEmpty ? lines[0].trim() : name.trim());
 
-    if (clean.contains('براغي الباتمو') ||
-        clean.contains('Vis Meneau') ||
-        clean.contains('Batmo Screws')) {
-      if (lang == AppLanguage.french) {
+    String clean;
+    if (targetLang == AppLanguage.arabic) {
+      clean = lines.firstWhere(
+        (l) => _hasArabic(l),
+        orElse: () => lines.isNotEmpty ? lines.first : name.trim(),
+      );
+    } else {
+      clean = lines.firstWhere(
+        (l) => !_hasArabic(l),
+        orElse: () => lines.isNotEmpty ? lines.first : name.trim(),
+      );
+    }
+
+    if (targetLang != AppLanguage.arabic && _hasArabic(clean)) {
+      final parenMatch = RegExp(r'\(([^)]+)\)').firstMatch(clean);
+      if (parenMatch != null) {
+        final inside = parenMatch.group(1)!.trim();
+        if (!_hasArabic(inside)) {
+          clean = inside;
+        }
+      }
+    }
+
+    final lowerClean = clean.toLowerCase();
+
+    // ── 1. براغي ومثبتات ──
+    if (lowerClean.contains('vis meneau') ||
+        clean.contains('براغي الباتمو') ||
+        lowerClean.contains('batmo screw')) {
+      if (targetLang == AppLanguage.french) {
         return clean.contains('3.9')
             ? clean
-                .replaceAll('براغي الباتمو', 'Vis Meneau')
-                .replaceAll('Batmo Screws', 'Vis Meneau')
+                  .replaceAll('براغي الباتمو', 'Vis Meneau')
+                  .replaceAll('Batmo Screws', 'Vis Meneau')
+                  .replaceAll('batmo screw', 'Vis Meneau')
             : 'Vis Meneau 3.9×50';
-      } else if (lang == AppLanguage.english) {
+      } else if (targetLang == AppLanguage.english) {
         return clean.contains('3.9')
             ? clean
-                .replaceAll('براغي الباتمو', 'Batmo Screws')
-                .replaceAll('Vis Meneau', 'Batmo Screws')
+                  .replaceAll('براغي الباتمو', 'Batmo Screws')
+                  .replaceAll('Vis Meneau', 'Batmo Screws')
             : 'Batmo Screws 3.9×50';
       } else {
         return clean.contains('3.9') ? clean : 'براغي الباتمو 3.9*50';
       }
     }
 
-    if (clean.contains('براغي التجميع') ||
-        clean.contains("vis d'assemblage") ||
-        clean.contains('Assembly screws')) {
-      if (lang == AppLanguage.french) {
-        return "Vis d'assemblage";
-      } else if (lang == AppLanguage.english) {
-        return 'Assembly screws';
-      } else {
-        return 'براغي التجميع';
-      }
+    if (lowerClean.contains("vis d'assemblage") ||
+        clean.contains('براغي التجميع') ||
+        lowerClean.contains('assembly screw')) {
+      if (targetLang == AppLanguage.french) return "Vis d'assemblage";
+      if (targetLang == AppLanguage.english) return 'Assembly screws';
+      return 'براغي التجميع';
     }
 
-    if (lang != null) {
-      final translated = Localization.translate(clean, lang);
-      if (translated.isNotEmpty && translated != clean) {
+    if (clean.contains('براغي حديد الدعم') ||
+        clean.contains('براغي التدعيم') ||
+        lowerClean.contains('vis renfort')) {
+      if (targetLang == AppLanguage.french) return 'Vis Renfort 3.9×38';
+      if (targetLang == AppLanguage.english)
+        return 'Reinforcement Screws 3.9×38';
+      return 'براغي تدعيم 3.9×38';
+    }
+
+    if (clean.contains('براغي الصندوق') || lowerClean.contains('vis caisson')) {
+      if (targetLang == AppLanguage.french) return 'Vis Caisson';
+      if (targetLang == AppLanguage.english) return 'Box Screws';
+      return 'براغي الصندوق';
+    }
+
+    if (clean.contains('براغي الإكسسوارات') ||
+        lowerClean.contains('vis accessoire')) {
+      if (targetLang == AppLanguage.french) return 'Vis Accessoires';
+      if (targetLang == AppLanguage.english) return 'Accessory Screws';
+      return 'براغي الإكسسوارات';
+    }
+
+    // ── 2. مركبات الستار الدوار (Caisson, Axe, Lames, Coulisses, Attache, etc.) ──
+    if (lowerClean.contains('caisson') ||
+        clean.contains('الصندوق') ||
+        clean.contains('كيسون')) {
+      return targetLang == AppLanguage.french
+          ? 'Caisson'
+          : (targetLang == AppLanguage.english
+                ? 'Box / Caisson'
+                : 'الكيسون (الصندوق)');
+    }
+    if (lowerClean.contains('lame finale') ||
+        clean.contains('الشريحة النهائية') ||
+        clean.contains('لام فينال')) {
+      return targetLang == AppLanguage.french
+          ? 'Lame finale'
+          : (targetLang == AppLanguage.english
+                ? 'Bottom slat'
+                : 'اللام فينال (الشريحة النهائية)');
+    }
+    if (lowerClean.contains('lame') ||
+        clean.contains('الشرائح') ||
+        clean.contains('الشفرات') ||
+        clean.contains('اللام')) {
+      return targetLang == AppLanguage.french
+          ? 'Lames'
+          : (targetLang == AppLanguage.english ? 'Slats' : 'اللام (الشرائح)');
+    }
+    if (lowerClean.contains('axe') ||
+        clean.contains('المحور') ||
+        clean.contains('لاكس')) {
+      return targetLang == AppLanguage.french
+          ? 'Axe'
+          : (targetLang == AppLanguage.english
+                ? 'Tube / Axle'
+                : 'اللاكس (المحور)');
+    }
+    if (lowerClean.contains('coulisse') ||
+        (lowerClean.contains('gliss') && !lowerClean.contains('coulissant')) ||
+        clean.contains('السكك') ||
+        clean.contains('كليسير') ||
+        clean.contains('غليسير')) {
+      return targetLang == AppLanguage.french
+          ? 'Coulisses / Glissières'
+          : (targetLang == AppLanguage.english
+                ? 'Guide rails'
+                : 'الڭليسيرات (السكك)');
+    }
+    if (lowerClean.contains('attache') || clean.contains('أطاش')) {
+      return targetLang == AppLanguage.french
+          ? 'Attache tablier'
+          : (targetLang == AppLanguage.english
+                ? 'Shutter clip'
+                : 'أطاش (Attache)');
+    }
+    if (lowerClean.contains('embout') || clean.contains('الامبو')) {
+      return targetLang == AppLanguage.french
+          ? 'Embout'
+          : (targetLang == AppLanguage.english ? 'End cap' : 'الامبو (Embout)');
+    }
+    if (lowerClean.contains('tandem') || clean.contains('طانديم')) {
+      return targetLang == AppLanguage.french
+          ? 'Tandem'
+          : (targetLang == AppLanguage.english ? 'Tandem' : 'طانديم (Tandem)');
+    }
+    if (lowerClean.contains('support moteur') ||
+        clean.contains('سيبور موتور')) {
+      return targetLang == AppLanguage.french
+          ? 'Support Moteur'
+          : (targetLang == AppLanguage.english
+                ? 'Motor Support'
+                : 'سيبور موتور');
+    }
+    if (lowerClean.contains('support roulement') ||
+        clean.contains('سيبور رولمو')) {
+      return targetLang == AppLanguage.french
+          ? 'Support Roulement'
+          : (targetLang == AppLanguage.english
+                ? 'Bearing Support'
+                : 'سيبور رولمو');
+    }
+    if (lowerClean.contains('bouchon lame') ||
+        clean.contains('أغطية الشفرات')) {
+      return targetLang == AppLanguage.french
+          ? 'Bouchons Lames'
+          : (targetLang == AppLanguage.english
+                ? 'Slat End Caps'
+                : 'أغطية الشفرات');
+    }
+    if (lowerClean.contains('kit volet moteur') ||
+        clean.contains('كيت فولي موتور')) {
+      return targetLang == AppLanguage.french
+          ? 'Kit Volet Moteur'
+          : (targetLang == AppLanguage.english
+                ? 'Motorized Shutter Kit'
+                : 'كيت فولي موتور');
+    }
+    if (lowerClean.contains('kit volet manivelle') ||
+        clean.contains('كيت فولي مانيفر') ||
+        clean.contains('كيت مانيفر')) {
+      return targetLang == AppLanguage.french
+          ? 'Kit Volet Manivelle'
+          : (targetLang == AppLanguage.english
+                ? 'Crank Shutter Kit'
+                : 'كيت فولي مانيفر');
+    }
+    if (lowerClean.contains('kit volet') || clean.contains('كيت فولي')) {
+      return targetLang == AppLanguage.french
+          ? 'Kit Volet'
+          : (targetLang == AppLanguage.english ? 'Shutter Kit' : 'كيت فولي');
+    }
+    if (lowerClean.contains('kit sangle') || clean.contains('كيت حزام')) {
+      return targetLang == AppLanguage.french
+          ? 'Kit Sangle'
+          : (targetLang == AppLanguage.english ? 'Belt Kit' : 'كيت حزام');
+    }
+
+    // ── 3. قطاعات النوافذ والأبواب ──
+    if (lowerClean.contains('cache dormant') ||
+        clean.contains('كاش دورمو') ||
+        clean.contains('كاش الإطار')) {
+      return targetLang == AppLanguage.french
+          ? 'Cache dormant'
+          : (targetLang == AppLanguage.english ? 'Frame Cover' : 'كاش دورمو');
+    }
+    if (lowerClean.contains('seuil') ||
+        clean.contains('سوي') ||
+        clean.contains('عتبة')) {
+      return targetLang == AppLanguage.french
+          ? 'Seuil'
+          : (targetLang == AppLanguage.english ? 'Threshold' : 'سوي');
+    }
+    if (lowerClean.contains('cache-rail') ||
+        lowerClean.contains('cache rail') ||
+        clean.contains('كاش راي')) {
+      return targetLang == AppLanguage.french
+          ? 'Cache-rail'
+          : (targetLang == AppLanguage.english ? 'Rail Cover' : 'كاش راي');
+    }
+    if (lowerClean.contains('chicane') || clean.contains('شيكان')) {
+      final isReinf = lowerClean.contains('renforc') || clean.contains('معزز');
+      if (isReinf) {
+        return targetLang == AppLanguage.french
+            ? 'Chicane Renforcée'
+            : (targetLang == AppLanguage.english
+                  ? 'Reinforced Chicane'
+                  : 'شيكان معزز');
+      }
+      return targetLang == AppLanguage.french
+          ? 'Chicane'
+          : (targetLang == AppLanguage.english ? 'Chicane' : 'شيكان');
+    }
+    if (lowerClean.contains('dormant') || clean.contains('إطار')) {
+      return targetLang == AppLanguage.french
+          ? 'Dormant'
+          : (targetLang == AppLanguage.english ? 'Frame' : 'إطار');
+    }
+    if (lowerClean.contains('ouvrant') ||
+        clean.contains('ضلفة') ||
+        clean.contains('ظلفة')) {
+      return targetLang == AppLanguage.french
+          ? 'Ouvrant'
+          : (targetLang == AppLanguage.english ? 'Sash' : 'ضلفة');
+    }
+    if (lowerClean.contains('parclose') ||
+        clean.contains('باركلوز') ||
+        clean.contains('بارك لوز')) {
+      return targetLang == AppLanguage.french
+          ? 'Parclose'
+          : (targetLang == AppLanguage.english ? 'Glazing bead' : 'باركلوز');
+    }
+    if (lowerClean.contains('battement') || clean.contains('باتمو')) {
+      return targetLang == AppLanguage.french
+          ? 'Battement'
+          : (targetLang == AppLanguage.english ? 'Meeting stile' : 'باتمو');
+    }
+
+    // ── 4. الإكسسوارات والمفاصل ──
+    if (lowerClean.contains('poignée') ||
+        lowerClean.contains('handle') ||
+        clean.contains('مقبض')) {
+      if (lowerClean.contains('couliss') || clean.contains('منزلق')) {
+        return targetLang == AppLanguage.french
+            ? 'Poignée Coulissante'
+            : (targetLang == AppLanguage.english
+                  ? 'Sliding Handle'
+                  : 'مقبض منزلق');
+      }
+      if (lowerClean.contains('porte') || clean.contains('باب')) {
+        return targetLang == AppLanguage.french
+            ? 'Poignée Porte'
+            : (targetLang == AppLanguage.english ? 'Door Handle' : 'مقبض باب');
+      }
+      return targetLang == AppLanguage.french
+          ? 'Poignée Fenêtre'
+          : (targetLang == AppLanguage.english ? 'Window Handle' : 'مقبض');
+    }
+    if (lowerClean.contains('serrure') || clean.contains('قفل')) {
+      return targetLang == AppLanguage.french
+          ? 'Serrure'
+          : (targetLang == AppLanguage.english ? 'Lock' : 'قفل');
+    }
+    if (lowerClean.contains('canon') || clean.contains('أسطوانة')) {
+      return targetLang == AppLanguage.french
+          ? 'Canon'
+          : (targetLang == AppLanguage.english ? 'Cylinder' : 'الأسطوانة');
+    }
+    if (lowerClean.contains('paumelle') ||
+        lowerClean.contains('hinge') ||
+        clean.contains('مفصل')) {
+      return targetLang == AppLanguage.french
+          ? 'Paumelles'
+          : (targetLang == AppLanguage.english ? 'Hinges' : 'مفصلات');
+    }
+    if (lowerClean.contains('roulette') || clean.contains('عجلات')) {
+      return targetLang == AppLanguage.french
+          ? 'Roulettes'
+          : (targetLang == AppLanguage.english ? 'Rollers' : 'عجلات');
+    }
+    if (lowerClean.contains('verrou') || clean.contains('فيرو')) {
+      return targetLang == AppLanguage.french
+          ? 'Verrou'
+          : (targetLang == AppLanguage.english ? 'Flush bolt' : 'فيرو');
+    }
+    if (lowerClean.contains('crémone') ||
+        lowerClean.contains('cremone') ||
+        clean.contains('كريمون')) {
+      return targetLang == AppLanguage.french
+          ? 'Crémone'
+          : (targetLang == AppLanguage.english ? 'Cremone' : 'كريمون');
+    }
+    if (lowerClean.contains('tringle') || clean.contains('تراينغل')) {
+      return targetLang == AppLanguage.french
+          ? 'Tringle crémone'
+          : (targetLang == AppLanguage.english ? 'Cremone rod' : 'قضيب كريمون');
+    }
+    if (lowerClean.contains('joint brosse') || clean.contains('جوان بروس')) {
+      return targetLang == AppLanguage.french
+          ? 'Joint brosse'
+          : (targetLang == AppLanguage.english ? 'Brush gasket' : 'جوان بروس');
+    }
+    if (lowerClean.contains('joint') || clean.contains('جوان')) {
+      return targetLang == AppLanguage.french
+          ? 'Joint'
+          : (targetLang == AppLanguage.english ? 'Gasket' : 'جوان');
+    }
+
+    final translated = Localization.translate(clean, targetLang);
+    if (translated.isNotEmpty && translated != clean) {
+      if (targetLang != AppLanguage.arabic && _hasArabic(translated)) {
+        final nonAr = translated
+            .replaceAll(RegExp(r'[\u0600-\u06FF\uFB50-\uFEFF]'), '')
+            .trim();
+        if (nonAr.isNotEmpty) return nonAr;
+      } else {
         return translated;
       }
     }
+
+    if (targetLang != AppLanguage.arabic && _hasArabic(clean)) {
+      final nonAr = clean
+          .replaceAll(RegExp(r'[\u0600-\u06FF\uFB50-\uFEFF\(\)]'), '')
+          .trim();
+      if (nonAr.isNotEmpty) return nonAr;
+      return targetLang == AppLanguage.french ? 'Accessoire' : 'Accessory';
+    }
+
     return clean;
   }
 
@@ -1487,130 +2648,136 @@ class _Tr {
   bool get isRtl => lang == AppLanguage.arabic;
 
   String get ficheDeCoupe => switch (lang) {
-        AppLanguage.french => 'FICHE DE COUPE',
-        AppLanguage.english => 'CUTTING SHEET',
-        AppLanguage.arabic => 'ورقة التقطيع',
-      };
+    AppLanguage.french => 'FICHE DE COUPE',
+    AppLanguage.english => 'CUTTING SHEET',
+    AppLanguage.arabic => 'ورقة التقطيع',
+  };
 
   String get date => switch (lang) {
-        AppLanguage.french => 'Date :',
-        AppLanguage.english => 'Date:',
-        AppLanguage.arabic => 'التاريخ :',
-      };
+    AppLanguage.french => 'Date :',
+    AppLanguage.english => 'Date:',
+    AppLanguage.arabic => 'التاريخ :',
+  };
 
   String get client => switch (lang) {
-        AppLanguage.french => 'Client :',
-        AppLanguage.english => 'Customer:',
-        AppLanguage.arabic => 'العميل :',
-      };
+    AppLanguage.french => 'Client :',
+    AppLanguage.english => 'Customer:',
+    AppLanguage.arabic => 'العميل :',
+  };
 
   String get commande => switch (lang) {
-        AppLanguage.french => 'Commande : #',
-        AppLanguage.english => 'Order: #',
-        AppLanguage.arabic => 'رقم الطلبية : #',
-      };
+    AppLanguage.french => 'Commande : #',
+    AppLanguage.english => 'Order: #',
+    AppLanguage.arabic => 'رقم الطلبية : #',
+  };
 
   String get saisiPar => switch (lang) {
-        AppLanguage.french => 'Saisi par :',
-        AppLanguage.english => 'Entered by:',
-        AppLanguage.arabic => 'حرر من طرف :',
-      };
+    AppLanguage.french => 'Saisi par :',
+    AppLanguage.english => 'Entered by:',
+    AppLanguage.arabic => 'حرر من طرف :',
+  };
 
   String article(int n) => switch (lang) {
-        AppLanguage.french => 'ARTICLE $n',
-        AppLanguage.english => 'ITEM $n',
-        AppLanguage.arabic => 'عنصر $n',
-      };
+    AppLanguage.french => 'ARTICLE $n',
+    AppLanguage.english => 'ITEM $n',
+    AppLanguage.arabic => 'عنصر $n',
+  };
 
   String get gamme => switch (lang) {
-        AppLanguage.french => 'Gamme :',
-        AppLanguage.english => 'Series:',
-        AppLanguage.arabic => 'السلسلة :',
-      };
+    AppLanguage.french => 'Gamme :',
+    AppLanguage.english => 'Series:',
+    AppLanguage.arabic => 'السلسلة :',
+  };
 
   String get couleur => switch (lang) {
-        AppLanguage.french => 'Couleur :',
-        AppLanguage.english => 'Color:',
-        AppLanguage.arabic => 'اللون :',
-      };
+    AppLanguage.french => 'Couleur :',
+    AppLanguage.english => 'Color:',
+    AppLanguage.arabic => 'اللون :',
+  };
 
   String get qte => switch (lang) {
-        AppLanguage.french => 'Qté :',
-        AppLanguage.english => 'Qty:',
-        AppLanguage.arabic => 'العدد :',
-      };
+    AppLanguage.french => 'Qté :',
+    AppLanguage.english => 'Qty:',
+    AppLanguage.arabic => 'العدد :',
+  };
 
   String get profils => switch (lang) {
-        AppLanguage.french => 'PROFILS',
-        AppLanguage.english => 'PROFILES',
-        AppLanguage.arabic => 'القطاعات',
-      };
+    AppLanguage.french => 'PROFILS',
+    AppLanguage.english => 'PROFILES',
+    AppLanguage.arabic => 'القطاعات',
+  };
 
   String get accessoires => switch (lang) {
-        AppLanguage.french => 'ACCESSOIRES',
-        AppLanguage.english => 'ACCESSORIES',
-        AppLanguage.arabic => 'الإكسسوارات',
-      };
+    AppLanguage.french => 'ACCESSOIRES',
+    AppLanguage.english => 'ACCESSORIES',
+    AppLanguage.arabic => 'الإكسسوارات',
+  };
 
   String get joints => switch (lang) {
-        AppLanguage.french => 'JOINTS',
-        AppLanguage.english => 'GASKETS',
-        AppLanguage.arabic => 'المفاصل',
-      };
+    AppLanguage.french => 'JOINTS',
+    AppLanguage.english => 'GASKETS',
+    AppLanguage.arabic => 'المفاصل',
+  };
 
   String get image => switch (lang) {
-        AppLanguage.french => 'Image',
-        AppLanguage.english => 'Image',
-        AppLanguage.arabic => 'الصورة',
-      };
+    AppLanguage.french => 'Image',
+    AppLanguage.english => 'Image',
+    AppLanguage.arabic => 'الصورة',
+  };
 
   String get reference => switch (lang) {
-        AppLanguage.french => 'Référence',
-        AppLanguage.english => 'Reference',
-        AppLanguage.arabic => 'المرجع',
-      };
+    AppLanguage.french => 'Référence',
+    AppLanguage.english => 'Reference',
+    AppLanguage.arabic => 'المرجع',
+  };
 
   String get designation => switch (lang) {
-        AppLanguage.french => 'Désignation',
-        AppLanguage.english => 'Description',
-        AppLanguage.arabic => 'الوصف / التعيين',
-      };
+    AppLanguage.french => 'Désignation',
+    AppLanguage.english => 'Description',
+    AppLanguage.arabic => 'الوصف / التعيين',
+  };
 
   String get quantite => switch (lang) {
-        AppLanguage.french => 'Qté',
-        AppLanguage.english => 'Qty',
-        AppLanguage.arabic => 'الكمية',
-      };
+    AppLanguage.french => 'Qté',
+    AppLanguage.english => 'Qty',
+    AppLanguage.arabic => 'الكمية',
+  };
 
   String get longueur => switch (lang) {
-        AppLanguage.french => 'Longueur',
-        AppLanguage.english => 'Length',
-        AppLanguage.arabic => 'الطول',
-      };
+    AppLanguage.french => 'Longueur',
+    AppLanguage.english => 'Length',
+    AppLanguage.arabic => 'الطول',
+  };
 
   String get coupe => switch (lang) {
-        AppLanguage.french => 'Coupe',
-        AppLanguage.english => 'Cut Angle',
-        AppLanguage.arabic => 'زاوية القطع',
-      };
+    AppLanguage.french => 'Coupe',
+    AppLanguage.english => 'Cut Angle',
+    AppLanguage.arabic => 'زاوية القطع',
+  };
 
   String get unite => switch (lang) {
-        AppLanguage.french => 'Unité',
-        AppLanguage.english => 'Unit',
-        AppLanguage.arabic => 'الوحدة',
-      };
+    AppLanguage.french => 'Unité',
+    AppLanguage.english => 'Unit',
+    AppLanguage.arabic => 'الوحدة',
+  };
 
   String get longueurTotale => switch (lang) {
-        AppLanguage.french => 'Longueur totale',
-        AppLanguage.english => 'Total length',
-        AppLanguage.arabic => 'الطول الإجمالي',
-      };
+    AppLanguage.french => 'Longueur totale',
+    AppLanguage.english => 'Total length',
+    AppLanguage.arabic => 'الطول الإجمالي',
+  };
+
+  String get voletRoulant => switch (lang) {
+    AppLanguage.french => 'VOLET ROULANT',
+    AppLanguage.english => 'ROLLER SHUTTER',
+    AppLanguage.arabic => 'مركبات الستار',
+  };
 
   String page(int p, int t) => switch (lang) {
-        AppLanguage.french => 'Page $p / $t',
-        AppLanguage.english => 'Page $p of $t',
-        AppLanguage.arabic => 'صفحة $p من $t',
-      };
+    AppLanguage.french => 'Page $p / $t',
+    AppLanguage.english => 'Page $p of $t',
+    AppLanguage.arabic => 'صفحة $p من $t',
+  };
 }
 
 // ─── نماذج بيانات داخلية ──────────────────────────────────────────────────────
@@ -1626,6 +2793,8 @@ class _ArticleData {
   final int qty;
   final List<BomItem> bomItems;
   final List<_ProfileCutRow> profiles;
+  final List<_ProfileCutRow> shutterProfiles;
+  final Map<String, pw.Widget?> itemImages;
   final Uint8List? drawing;
 
   const _ArticleData({
@@ -1639,6 +2808,8 @@ class _ArticleData {
     required this.qty,
     required this.bomItems,
     required this.profiles,
+    this.shutterProfiles = const [],
+    this.itemImages = const {},
     required this.drawing,
   });
 }

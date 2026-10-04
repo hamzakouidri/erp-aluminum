@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -575,6 +575,9 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool canDeleteOrders() =>
       isManager || _isPermissionTrue(_workerPermissions['delete_orders']);
+
+  bool canAccessTrash() =>
+      isManager || _isPermissionTrue(_workerPermissions['access_trash']);
 
   bool canViewSuppliers() =>
       isManager || _isPermissionTrue(_workerPermissions['view_suppliers']);

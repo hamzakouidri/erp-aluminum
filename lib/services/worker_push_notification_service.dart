@@ -67,6 +67,15 @@ class WorkerPushNotificationService {
 
     FirebaseMessaging.onMessage.listen((message) {
       unawaited(_downloadLatestWorkshopData());
+      final type = message.data['type']?.toString() ?? '';
+      if (type.startsWith('order_')) {
+        unawaited(
+          OrderNotificationService().showOrderPushNotification(
+            data: message.data,
+          ),
+        );
+        return;
+      }
       final notification = message.notification;
       OrderNotificationService().showAssignmentNotification(
         title: notification?.title ?? 'مهمة جديدة',
@@ -168,6 +177,23 @@ class WorkerPushNotificationService {
     _verifyPushResponse(response.data);
   }
 
+  Future<void> sendAssignmentToCurrentWorkshop({
+    required String workerUid,
+    required int orderId,
+    required int orderNumber,
+    required int quantity,
+  }) async {
+    final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
+    if (workshopId.isEmpty) return;
+    await sendAssignment(
+      workshopId: workshopId,
+      workerUid: workerUid,
+      orderId: orderId,
+      orderNumber: orderNumber,
+      quantity: quantity,
+    );
+  }
+
   Future<Map<String, bool>> loadPreferences(Iterable<String> eventTypes) async {
     final user = Supabase.instance.client.auth.currentUser;
     final defaults = {for (final type in eventTypes) type: true};
@@ -211,6 +237,60 @@ class WorkerPushNotificationService {
         'title': title,
         'body': body,
         'data': data,
+      },
+    );
+    _verifyPushResponse(response.data);
+  }
+
+  /// Sends an authoritative order event to every workshop member allowed to
+  /// view orders, excluding the user who performed the operation.
+  Future<void> sendOrderEvent({
+    required String action,
+    required int orderId,
+    required String orderCode,
+    required String clientName,
+    String author = '',
+  }) async {
+    final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
+    if (workshopId.isEmpty) return;
+    final normalizedAction = switch (action) {
+      'created' || 'updated' || 'deleted' => action,
+      _ => throw ArgumentError.value(action, 'action'),
+    };
+    final eventType = 'order_$normalizedAction';
+    final title = switch (normalizedAction) {
+      'created' => 'طلبية جديدة في الورشة',
+      'updated' => 'تم تعديل طلبية',
+      _ => 'تم حذف طلبية',
+    };
+    final displayCode = orderCode.trim().isEmpty
+        ? orderId.toString()
+        : orderCode.trim();
+    final cleanClient = clientName.trim().isEmpty ? 'عميل' : clientName.trim();
+    final body =
+        '$cleanClient | #$displayCode'
+        '${author.trim().isEmpty ? '' : '\nبواسطة: ${author.trim()}'}';
+    final eventId =
+        '${eventType}_${orderId}_${DateTime.now().microsecondsSinceEpoch}';
+    final response = await Supabase.instance.client.functions.invoke(
+      'send-worker-assignment',
+      body: {
+        'workshop_id': workshopId,
+        'audience': 'order_viewers',
+        'event_type': eventType,
+        'preference_type': 'orders',
+        'title': title,
+        'body': body,
+        'order_id': orderId,
+        'order_number': int.tryParse(displayCode) ?? 0,
+        'data': {
+          'event_id': eventId,
+          'action': normalizedAction,
+          'order_id': orderId.toString(),
+          'order_code': displayCode,
+          'client_name': cleanClient,
+          'author': author.trim(),
+        },
       },
     );
     _verifyPushResponse(response.data);

@@ -9,6 +9,7 @@ import '../settings/localization.dart';
 import '../settings/app_settings.dart';
 import 'order_date_utils.dart';
 import 'Systeme/sliding_montant_counts.dart';
+import 'Systeme/model_serialization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:flutter/foundation.dart';
@@ -737,22 +738,7 @@ class DevisBuilder {
     final double unitPrice = isOfficialInvoice ? (rawPrice / 1.19) : rawPrice;
 
     // Parse JSON
-    final jsonRaw = item['partitions_json'];
-    Map<String, dynamic> map = {};
-    if (jsonRaw != null) {
-      if (jsonRaw is Map<String, dynamic>) {
-        map = jsonRaw;
-      } else if (jsonRaw is Map) {
-        map = Map<String, dynamic>.from(jsonRaw);
-      } else {
-        final str = jsonRaw.toString().trim();
-        if (str.length >= 5) {
-          try {
-            map = jsonDecode(str) as Map<String, dynamic>;
-          } catch (_) {}
-        }
-      }
-    }
+    final map = savedWindowModelMap(item['partitions_json']);
 
     final itemColor = item['color']?.toString().trim() ?? '';
     final itemRawProfColor = itemColor.isNotEmpty

@@ -26,11 +26,11 @@ class MaterialSalePdfService {
 
   /// Maps doc_type codes to their bilingual display title.
   static const Map<String, String> _docTitles = {
-    'bon_livraison': 'BON DE LIVRAISON / وصل تسليم',
-    'bon_commande': 'BON DE COMMANDE / طلب بيع',
-    'facture': 'FACTURE DE VENTE / فاتورة بيع',
-    'bon_route': 'BON DE ROUTE / وصل شحن',
-    'devis': 'DEVIS / عرض سعر',
+    'bon_livraison': 'BON DE LIVRAISON MATÉRIAUX / وصل تسليم مواد',
+    'bon_commande': 'COMMANDE MATÉRIAUX / طلب مواد',
+    'facture': 'FACTURE MATÉRIAUX / فاتورة مواد',
+    'bon_route': 'BON DE ROUTE MATÉRIAUX / وصل طريق المواد',
+    'devis': 'PROFORMA MATÉRIAUX / فاتورة أولية للمواد',
   };
 
   // ---------------------------------------------------------------------------

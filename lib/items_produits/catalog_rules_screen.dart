@@ -1,9 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
@@ -68,12 +65,30 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   bool _loading = false;
   bool _saving = false;
   int? _loadedRulesSeriesId;
-  bool get _canSaveRules => !_saving && !_loading &&
-      !_loadingProfiles && !_loadingSeries &&
+  bool _isAllowedToManage(BuildContext ctx) {
+    final s = ctx.read<AppSettingsProvider>();
+    return s.isAdmin || s.isManager;
+  }
+
+  bool get _canSaveRules =>
+      !_saving &&
+      !_loading &&
+      !_loadingProfiles &&
+      !_loadingSeries &&
       _selectedSeriesId != null &&
       _loadedRulesSeriesId == _selectedSeriesId;
   bool _isInspectorOpen = false;
+  VoidCallback? _refreshMobileInspector;
   String? _inspectedItemKey;
+
+  // A modal bottom sheet owns a separate widget tree. Refresh it together
+  // with the page so role/profile/quantity selections become visible on the
+  // first tap instead of only after closing and reopening the sheet.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _refreshMobileInspector?.call();
+  }
 
   String _t(String ar, String fr) {
     final language = context.read<AppSettingsProvider>().language;
@@ -258,17 +273,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         final key = _itemKey(table, itemId);
         if (_rulesByItem.containsKey(key)) {
           final existing = _rulesByItem[key]!;
-          final extra = (existing['extra_roles'] as Set<String>?) ?? <String>{
-            if (existing['role_key']?.toString().isNotEmpty ?? false)
-              existing['role_key'].toString(),
-          };
-          if (storedRole.isNotEmpty) extra.add(storedRole);
+          final extra =
+              (existing['extra_roles'] as Set<String>?) ??
+              <String>{
+                if (existing['role_key']?.toString().isNotEmpty ?? false)
+                  existing['role_key'].toString(),
+              };
+          if (storedRole.isNotEmpty &&
+              (table != 'Accessories' || extra.length < 4)) {
+            extra.add(storedRole);
+          }
           existing['extra_roles'] = extra;
           if (_truthy(rule['is_active'])) existing['is_active'] = true;
         } else {
-          rule['extra_roles'] = <String>{
-            if (storedRole.isNotEmpty) storedRole,
-          };
+          rule['extra_roles'] = <String>{if (storedRole.isNotEmpty) storedRole};
           _rulesByItem[key] = rule;
         }
       }
@@ -281,18 +299,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             final rule = _ruleFor(table, itemId);
             rule['series_id'] = seriesId;
             if (table == 'Accessories' && _isScrewItem(item)) {
-              final extra = (rule['extra_roles'] as Set<String>?) ?? <String>{};
-              if (extra.isEmpty) {
-                final fromItem = _screwRolesFromItem(item);
-                if (fromItem.isNotEmpty) {
-                  extra.addAll(fromItem);
-                  rule['extra_roles'] = extra;
-                  if (rule['role_key']?.toString().isEmpty ?? true) {
-                    rule['role_key'] = fromItem.first;
-                  }
-                  rule['is_active'] = true;
-                }
-              }
+              // The flags stored on an accessory suggest possible screw
+              // roles, but must not activate every screw in the catalogue.
+              // Only rows explicitly saved in CatalogItemRules are active.
               rule['show_in_drawing'] = false;
               rule['show_in_quantity'] = true;
             }
@@ -373,10 +382,14 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('gache_simple', 'قاش بسيط', 'Gâche simple'),
           _RuleRole('gache_double', 'قاش مزدوج', 'Gâche double'),
           _RuleRole('gache_door', 'قاش باب', 'Gâche porte'),
-          _RuleRole('lock_clef', 'قفل بمفتاح', 'Serrure à clé'),
+          _RuleRole(
+            'lock_clef',
+            'قفل بمفتاح (سرير / Serrure)',
+            'Serrure à clé',
+          ),
           _RuleRole(
             'lock_condamnation',
-            'قفل كونداناسيون',
+            'قفل كونداناسيون (سرير / Serrure)',
             'Serrure condamnation',
           ),
           _RuleRole('sliding_lock', 'قفل/قاش منزلق', 'Gâche coulissant'),
@@ -581,7 +594,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   void _toggleItem(String table, Map<String, dynamic> item, bool enabled) {
-    if (!context.read<AppSettingsProvider>().isAdmin) return;
+    if (!_isAllowedToManage(context)) return;
     final itemId = _itemId(item);
     if (itemId == null) return;
     final rule = _ruleFor(table, itemId);
@@ -590,20 +603,19 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       rule['is_active'] = enabled;
       if (enabled) {
         if (table == 'Accessories' && _isScrewItem(item)) {
+          // Activate only the screw that was clicked. That one screw may
+          // still carry up to four roles, configured in its inspector.
           final extra = (rule['extra_roles'] as Set<String>?) ?? <String>{};
+          final fromItem = _screwRolesFromItem(item);
           if (extra.isEmpty) {
-            final fromItem = _screwRolesFromItem(item);
-            if (fromItem.isNotEmpty) {
-              extra.addAll(fromItem);
-            } else {
+            extra.addAll(fromItem.take(4));
+            if (extra.isEmpty) {
               final guessed = _guessRole(table, item);
               extra.add(_isScrewRole(guessed) ? guessed : 'accessory_screw');
             }
           }
           rule['extra_roles'] = extra;
-          if (extra.isNotEmpty) {
-            rule['role_key'] = extra.first;
-          }
+          rule['role_key'] = extra.first;
           rule['show_in_quantity'] = true;
           rule['show_in_drawing'] = false;
         } else {
@@ -707,7 +719,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       ),
       _CatalogGroup(
         key: 'locks',
-        ar: 'الأقفال',
+        ar: 'الأقفال (سرير / Serrure)',
         fr: 'Serrures',
         icon: Icons.lock_outline,
         roleKeys: {'lock_clef', 'lock_condamnation', 'canon'},
@@ -917,10 +929,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   ) {
     if (table == 'Accessories') {
       final itemId = _itemId(item);
-      final rule =
-          itemId != null ? _rulesByItem[_itemKey(table, itemId)] : null;
-      final extraRoles =
-          (rule?['extra_roles'] as Set<String>?) ?? <String>{};
+      final rule = itemId != null
+          ? _rulesByItem[_itemKey(table, itemId)]
+          : null;
+      final extraRoles = (rule?['extra_roles'] as Set<String>?) ?? <String>{};
       final mainRole = rule?['role_key']?.toString() ?? '';
       final activeRoles = <String>{
         if (mainRole.isNotEmpty) mainRole,
@@ -1041,6 +1053,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (flag('is_gache_porte')) return 'gache_door';
       if (flag('is_lock_clef')) return 'lock_clef';
       if (flag('is_lock_condamnation')) return 'lock_condamnation';
+      if (text.contains('serrure') ||
+          text.contains('قفل') ||
+          text.contains('سرير') ||
+          text.contains('verrou')) {
+        if (text.contains('condamnation') ||
+            text.contains('كونداناسيون') ||
+            text.contains('حمام')) {
+          return 'lock_condamnation';
+        }
+        if (text.contains('verrou') || text.contains('فيرو')) {
+          return 'verrou';
+        }
+        return 'lock_clef';
+      }
       if (text.contains('kit') && isScrew) {
         return 'kit_screw';
       }
@@ -1188,10 +1214,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _save() async {
-    if (!context.read<AppSettingsProvider>().isAdmin) return;
+    if (!_isAllowedToManage(context)) return;
     final seriesId = _selectedSeriesId;
     if (!_canSaveRules || seriesId == null) return;
     setState(() => _saving = true);
+    var localSaveComplete = false;
     try {
       for (final table in _tables) {
         final rulesToSave = <Map<String, dynamic>>[];
@@ -1234,15 +1261,19 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 'is_caisson_screw': allRoles.contains('box_screw') ? 1 : 0,
                 'is_moteur_screw': allRoles.contains('motor_screw') ? 1 : 0,
                 'is_renfort_screw': allRoles.contains('renfort_screw') ? 1 : 0,
-                'is_manivelle_screw':
-                    allRoles.contains('manivelle_screw') ? 1 : 0,
-                'is_assembly_screw':
-                    allRoles.contains('assembly_screw') ? 1 : 0,
-                'is_installation_screw':
-                    allRoles.contains('installation_screw') ? 1 : 0,
-                'is_accessory_screw':
-                    allRoles.contains('accessory_screw') ? 1 : 0,
-              });
+                'is_manivelle_screw': allRoles.contains('manivelle_screw')
+                    ? 1
+                    : 0,
+                'is_assembly_screw': allRoles.contains('assembly_screw')
+                    ? 1
+                    : 0,
+                'is_installation_screw': allRoles.contains('installation_screw')
+                    ? 1
+                    : 0,
+                'is_accessory_screw': allRoles.contains('accessory_screw')
+                    ? 1
+                    : 0,
+              }, notifySync: false);
             }
           } else {
             if (mainRole.isNotEmpty) {
@@ -1262,21 +1293,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       for (final sourceId in _dirtyAccessoryLinkIds.toList()) {
         await _saveAccessoryLinksFor(sourceId, syncCatalog: false);
       }
-      // رفع قواعد الورشة فوراً للسحابة لتصل لكل هواتف العمال
-      () async {
-        try {
-          final sync = SupabaseWorkshopSyncService();
-          if (sync.isReady || await sync.ensureStarted()) {
-            final config = await widget.db.exportWorkshopCatalogConfiguration();
-            if (config.isNotEmpty) {
-              await sync.saveWorkshopCatalogConfiguration(config);
-            }
-          }
-        } catch (e) {
-          debugPrint('Error uploading workshop catalog configuration: $e');
-        }
-      }();
-      unawaited(CloudSyncService().notifyCatalogChange());
+      localSaveComplete = true;
+      // Use one awaited sync path. The previous direct upload plus an
+      // unawaited notification could race two whole-configuration snapshots
+      // and reported success before Supabase accepted either of them.
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
@@ -1291,7 +1312,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text(
-              '${_t('تعذر حفظ قواعد الكتالوج', 'Enregistrement impossible')}: $error',
+              '${localSaveComplete ? _t('حُفظت القواعد محليًا، لكن تعذرت مزامنتها الآن', 'Règles enregistrées localement, mais synchronisation impossible') : _t('تعذر حفظ قواعد الكتالوج', 'Enregistrement impossible')}: $error',
             ),
             backgroundColor: Colors.red.shade700,
           ),
@@ -1327,17 +1348,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           ],
         ),
         actions: [
-          if (context.watch<AppSettingsProvider>().isAdmin)
-          IconButton(
-            tooltip: _t('حفظ', 'Enregistrer'),
-            onPressed: _canSaveRules ? _save : null,
-            icon: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_rounded),
+          Builder(
+            builder: (ctx) {
+              final s = ctx.watch<AppSettingsProvider>();
+              if (!(s.isAdmin || s.isManager)) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: _t('حفظ', 'Enregistrer'),
+                onPressed: _canSaveRules ? _save : null,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_rounded),
+              );
+            },
           ),
         ],
       ),
@@ -1372,8 +1398,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 _tableView('Joints'),
               ],
             ),
-      floatingActionButton: (_selectedSeriesId == null ||
-              !context.watch<AppSettingsProvider>().isAdmin)
+      floatingActionButton:
+          (_selectedSeriesId == null ||
+              !(() {
+                final s = context.watch<AppSettingsProvider>();
+                return s.isAdmin || s.isManager;
+              })())
           ? null
           : FloatingActionButton.extended(
               onPressed: _canSaveRules ? _save : null,
@@ -1650,7 +1680,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 ),
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ExpansionTile(
-                  key: ValueKey(
+                  key: PageStorageKey(
                     'role-group:$_selectedSeriesId:$table:${group.key}:$enabled',
                   ),
                   initiallyExpanded: enabled,
@@ -1660,21 +1690,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                     '${groupItems.length} ${_t('عنصر', 'article(s)')}',
                   ),
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: groupItems
-                            .map(
-                              (item) =>
-                                  _itemToggleChip(table, item, isWideScreen),
-                            )
-                            .toList(growable: false),
+                    if (!(table == 'Accessories' && enabled))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: groupItems
+                              .map(
+                                (item) =>
+                                    _itemToggleChip(table, item, isWideScreen),
+                              )
+                              .toList(growable: false),
+                        ),
                       ),
-                    ),
                     if (enabled) ...[
-                      const Divider(height: 1),
+                      if (table != 'Accessories') const Divider(height: 1),
                       ...groupItems.map(
                         (item) => _activeItemTile(table, item, isWideScreen),
                       ),
@@ -1784,7 +1815,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       child: _buildItemInspector(
                         table,
                         inspectedItem,
-                        readOnly: !context.watch<AppSettingsProvider>().isAdmin,
+                        readOnly: !(() {
+                          final s = context.watch<AppSettingsProvider>();
+                          return s.isAdmin || s.isManager;
+                        })(),
                       ),
                     )
                   : Center(
@@ -1859,21 +1893,24 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       ),
       child: ListTile(
         dense: true,
-        leading: SectionImageWidget(
-          code: item['code']?.toString(),
-          name: item['name']?.toString(),
-          imagePath: item['image_path']?.toString(),
-          size: 38,
-          fallbackIcon: Icons.inventory_2_outlined,
-        ),
+        leading: table == 'Accessories'
+            ? null
+            : RepaintBoundary(
+                child: SectionImageWidget(
+                  code: item['code']?.toString(),
+                  name: item['name']?.toString(),
+                  imagePath: item['image_path']?.toString(),
+                  size: 38,
+                  fallbackIcon: Icons.inventory_2_outlined,
+                ),
+              ),
         title: Text(
           _itemTitle(item),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         subtitle: Builder(
           builder: (context) {
-            final extra =
-                (rule['extra_roles'] as Set<String>?) ?? <String>{};
+            final extra = (rule['extra_roles'] as Set<String>?) ?? <String>{};
             final allRoleKeys = <String>{
               if (rule['role_key']?.toString().isNotEmpty ?? false)
                 rule['role_key'].toString(),
@@ -1882,9 +1919,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             if (allRoleKeys.length > 1) {
               final labels = allRoleKeys
                   .map((k) {
-                    final r = _rolesForTable(table)
-                        .where((cand) => cand.key == k)
-                        .firstOrNull;
+                    final r = _rolesForTable(
+                      table,
+                    ).where((cand) => cand.key == k).firstOrNull;
                     return r != null ? _t(r.ar, r.fr) : k;
                   })
                   .join(' • ');
@@ -1926,12 +1963,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 }
               },
             ),
-            if (context.read<AppSettingsProvider>().isAdmin)
-            IconButton(
-              icon: const Icon(Icons.close_rounded, size: 18),
-              tooltip: _t('تعطيل من هذه السلسلة', 'Désactiver'),
-              onPressed: () => _toggleItem(table, item, false),
-            ),
+            if (_isAllowedToManage(context))
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                tooltip: _t('تعطيل من هذه السلسلة', 'Désactiver'),
+                onPressed: () => _toggleItem(table, item, false),
+              ),
           ],
         ),
         onTap: () {
@@ -1962,16 +1999,20 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     return FilterChip(
       avatar: enabled
           ? const Icon(Icons.check_rounded, size: 17)
-          : SectionImageWidget(
-              code: item['code']?.toString(),
-              name: item['name']?.toString(),
-              imagePath: item['image_path']?.toString(),
-              size: 24,
-              fallbackIcon: Icons.inventory_2_outlined,
+          : table == 'Accessories'
+          ? null
+          : RepaintBoundary(
+              child: SectionImageWidget(
+                code: item['code']?.toString(),
+                name: item['name']?.toString(),
+                imagePath: item['image_path']?.toString(),
+                size: 24,
+                fallbackIcon: Icons.inventory_2_outlined,
+              ),
             ),
       label: Text(_itemTitle(item)),
       selected: enabled,
-      onSelected: context.read<AppSettingsProvider>().isAdmin
+      onSelected: _isAllowedToManage(context)
           ? (value) {
               _toggleItem(table, item, value);
               if (value && !isWideScreen) {
@@ -1985,7 +2026,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     );
   }
 
-  Widget _assemblyRuleEditor(Map<String, dynamic> rule, {bool readOnly = false}) {
+  Widget _assemblyRuleEditor(
+    Map<String, dynamic> rule, {
+    bool readOnly = false,
+  }) {
     final role = rule['role_key'].toString();
     final isClamp = const {
       'clam',
@@ -2032,7 +2076,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               child: Text(_t('الإطار والظلفة', 'Dormant et ouvrant')),
             ),
           ],
-          onChanged: readOnly ? null : (value) => setState(() => rule['assembly_target'] = value),
+          onChanged: readOnly
+              ? null
+              : (value) => setState(() => rule['assembly_target'] = value),
         ),
         const SizedBox(height: 8),
         Align(
@@ -2055,24 +2101,28 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                 '${section['code'] ?? ''} — ${section['name'] ?? ''}',
               ),
               selected: selectedSectionIds.contains(id),
-              onSelected: readOnly ? null : (selected) => setState(() {
-                final next = {...selectedSectionIds};
-                selected ? next.add(id) : next.remove(id);
-                final nextQuantities = {...assemblySectionSideQuantities(rule)};
-                if (selected) {
-                  nextQuantities.putIfAbsent(id, () => (1, 1));
-                } else {
-                  nextQuantities.remove(id);
-                }
-                saveSectionQuantities(nextQuantities);
-                final sorted = next.toList()..sort();
-                rule['assembly_section_ids'] = sorted.join(',');
-                // Keep old databases/readers compatible when exactly one
-                // profile is linked. The CSV field remains authoritative.
-                rule['assembly_section_id'] = sorted.length == 1
-                    ? sorted.first
-                    : null;
-              }),
+              onSelected: readOnly
+                  ? null
+                  : (selected) => setState(() {
+                      final next = {...selectedSectionIds};
+                      selected ? next.add(id) : next.remove(id);
+                      final nextQuantities = {
+                        ...assemblySectionSideQuantities(rule),
+                      };
+                      if (selected) {
+                        nextQuantities.putIfAbsent(id, () => (1, 1));
+                      } else {
+                        nextQuantities.remove(id);
+                      }
+                      saveSectionQuantities(nextQuantities);
+                      final sorted = next.toList()..sort();
+                      rule['assembly_section_ids'] = sorted.join(',');
+                      // Keep old databases/readers compatible when exactly one
+                      // profile is linked. The CSV field remains authoritative.
+                      rule['assembly_section_id'] = sorted.length == 1
+                          ? sorted.first
+                          : null;
+                    }),
             );
           }).toList(),
         ),
@@ -2107,7 +2157,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                             final count = int.tryParse(value);
                             if (count != null && count >= 0) {
                               final id = (section['id'] as num).toInt();
-                              final next = {...assemblySectionSideQuantities(rule)};
+                              final next = {
+                                ...assemblySectionSideQuantities(rule),
+                              };
                               final current = next[id] ?? (1, 1);
                               next[id] = isClamp
                                   ? (count, count)
@@ -2158,7 +2210,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         table == 'Accessories' && selectedRole == 'espagnolette';
     final isAssemblyScrewRule =
         table == 'Accessories' && selectedRole == 'assembly_screw';
-    final isScrew = table == 'Accessories' &&
+    final isScrew =
+        table == 'Accessories' &&
         (_isScrewItem(item) ||
             _isScrewRole(storedRole ?? '') ||
             ((rule['extra_roles'] as Set<String>?)?.isNotEmpty ?? false));
@@ -2177,14 +2230,16 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           children: [
             Row(
               children: [
-                SectionImageWidget(
-                  code: item['code']?.toString(),
-                  name: item['name']?.toString(),
-                  imagePath: item['image_path']?.toString(),
-                  size: 56,
-                  fallbackIcon: Icons.inventory_2_outlined,
-                ),
-                const SizedBox(width: 12),
+                if (table != 'Accessories') ...[
+                  SectionImageWidget(
+                    code: item['code']?.toString(),
+                    name: item['name']?.toString(),
+                    imagePath: item['image_path']?.toString(),
+                    size: 56,
+                    fallbackIcon: Icons.inventory_2_outlined,
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2214,106 +2269,77 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               ],
             ),
             const Divider(height: 24),
-            if (isScrew) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withAlpha(20),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.shade300),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.build_circle_outlined,
-                          size: 20,
-                          color: Colors.blue.shade700,
+            if (isScrew)
+              Builder(
+                builder: (context) {
+                  final roles =
+                      (rule['extra_roles'] as Set<String>?) ??
+                      <String>{
+                        if (storedRole?.isNotEmpty ?? false) storedRole!,
+                      };
+                  final screwRoles = itemRoles
+                      .where((role) => _isScrewRole(role.key))
+                      .toList(growable: false);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _t(
+                          'أدوار البرغي — اختر حتى 4 أدوار',
+                          'Rôles de la vis — jusqu’à 4 rôles',
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _t(
-                              'أدوار هذا البرغي (يمكن اختيار عدة أدوار)',
-                              'Rôles de cette vis (choix multiple)',
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Colors.blue.shade900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _t(
-                        'يمكن للبرغي أن يؤدي عدة أدوار معاً (باتمو، صندوق، كيت...). وسيتم دمج أعداده تلقائياً في الكميات المطلوبة.',
-                        'Cette vis peut avoir plusieurs rôles (batmo, caisson, kit...). Ses quantités seront combinées automatiquement.',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      style:
-                          TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                    ),
-                    const SizedBox(height: 10),
-                    Builder(
-                      builder: (context) {
-                        final extra = (rule['extra_roles'] as Set<String>?) ??
-                            <String>{
-                              if (rule['role_key']?.toString().isNotEmpty ??
-                                  false)
-                                rule['role_key'].toString(),
-                            };
-                        final screwRoleList = itemRoles
-                            .where((r) => _isScrewRole(r.key))
-                            .toList();
-                        return Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: screwRoleList.map((role) {
-                            final isSelected = extra.contains(role.key);
-                            return FilterChip(
-                              avatar: isSelected
-                                  ? const Icon(Icons.check, size: 16)
-                                  : null,
-                              label: Text(_t(role.ar, role.fr)),
-                              selected: isSelected,
-                              onSelected: readOnly
-                                  ? null
-                                  : (selected) {
-                                      setState(() {
-                                        if (selected) {
-                                          extra.add(role.key);
-                                          rule['is_active'] = true;
-                                        } else {
-                                          extra.remove(role.key);
-                                          if (extra.isEmpty) {
-                                            rule['is_active'] = false;
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: screwRoles
+                            .map((role) {
+                              final selected = roles.contains(role.key);
+                              return FilterChip(
+                                label: Text(_t(role.ar, role.fr)),
+                                selected: selected,
+                                onSelected: readOnly
+                                    ? null
+                                    : (value) {
+                                        if (value && roles.length >= 4) {
+                                          ScaffoldMessenger.maybeOf(
+                                            context,
+                                          )?.showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                _t(
+                                                  'يمكن اختيار أربعة أدوار كحد أقصى.',
+                                                  'Quatre rôles maximum.',
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        setState(() {
+                                          if (value) {
+                                            roles.add(role.key);
+                                          } else if (roles.length > 1) {
+                                            roles.remove(role.key);
                                           }
-                                        }
-                                        rule['extra_roles'] = extra;
-                                        if (extra.isNotEmpty) {
-                                          rule['role_key'] = extra.first;
-                                        } else {
-                                          rule['role_key'] = '';
-                                        }
-                                        rule['show_in_drawing'] = false;
-                                        rule['show_in_quantity'] = true;
-                                      });
-                                    },
-                              selectedColor: Colors.blue.shade100,
-                              checkmarkColor: Colors.blue.shade800,
-                            );
-                          }).toList(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ] else ...[
+                                          rule['extra_roles'] = roles;
+                                          rule['role_key'] = roles.first;
+                                          rule['is_active'] = true;
+                                          rule['show_in_drawing'] = false;
+                                          rule['show_in_quantity'] = true;
+                                        });
+                                      },
+                              );
+                            })
+                            .toList(growable: false),
+                      ),
+                    ],
+                  );
+                },
+              )
+            else
               DropdownButtonFormField<String>(
                 key: ValueKey('role-select:$itemId:$selectedRole'),
                 initialValue: selectedRole,
@@ -2338,7 +2364,6 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                         setState(() => rule['role_key'] = value);
                       },
               ),
-            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _validUsageScope(rule['usage_scope']),
@@ -2394,8 +2419,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       ),
                       onChanged: readOnly
                           ? null
-                          : (value) => rule['min_height_mm'] =
-                              double.tryParse(value.trim().replaceAll(',', '.')),
+                          : (value) => rule['min_height_mm'] = double.tryParse(
+                              value.trim().replaceAll(',', '.'),
+                            ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2416,8 +2442,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       ),
                       onChanged: readOnly
                           ? null
-                          : (value) => rule['max_height_mm'] =
-                              double.tryParse(value.trim().replaceAll(',', '.')),
+                          : (value) => rule['max_height_mm'] = double.tryParse(
+                              value.trim().replaceAll(',', '.'),
+                            ),
                     ),
                   ),
                 ],
@@ -2442,16 +2469,31 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               spacing: 8,
               runSpacing: 6,
               children: [
-                _ruleChip(rule, 'is_default', _t('افتراضي', 'Défaut'), readOnly: readOnly),
+                _ruleChip(
+                  rule,
+                  'is_default',
+                  _t('افتراضي', 'Défaut'),
+                  readOnly: readOnly,
+                ),
                 _ruleChip(
                   rule,
                   'show_in_quantity',
                   _t('جدول الكمية', 'Quantité'),
                   readOnly: readOnly,
                 ),
-                _ruleChip(rule, 'show_in_dialog', _t('نافذة التغيير', 'Choix'), readOnly: readOnly),
+                _ruleChip(
+                  rule,
+                  'show_in_dialog',
+                  _t('نافذة التغيير', 'Choix'),
+                  readOnly: readOnly,
+                ),
                 if (!isAssemblyScrewRule && !isScrew)
-                  _ruleChip(rule, 'show_in_drawing', _t('الرسم', 'Dessin'), readOnly: readOnly),
+                  _ruleChip(
+                    rule,
+                    'show_in_drawing',
+                    _t('الرسم', 'Dessin'),
+                    readOnly: readOnly,
+                  ),
               ],
             ),
           ],
@@ -2475,27 +2517,31 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        builder: (ctx) {
-          return DraggableScrollableSheet(
-            initialChildSize: 0.85,
-            maxChildSize: 0.95,
-            minChildSize: 0.5,
-            expand: false,
-            builder: (context, scrollController) {
-              return SingleChildScrollView(
-                controller: scrollController,
-                padding: const EdgeInsets.all(16),
-                child: _buildItemInspector(
-                  table,
-                  item,
-                  onClose: () => Navigator.of(ctx).pop(),
-                  readOnly: !context.read<AppSettingsProvider>().isAdmin,
-                ),
-              );
-            },
-          );
-        },
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, modalSetState) {
+            _refreshMobileInspector = () => modalSetState(() {});
+            return DraggableScrollableSheet(
+              initialChildSize: 0.85,
+              maxChildSize: 0.95,
+              minChildSize: 0.5,
+              expand: false,
+              builder: (context, scrollController) {
+                return SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(16),
+                  child: _buildItemInspector(
+                    table,
+                    item,
+                    onClose: () => Navigator.of(ctx).pop(),
+                    readOnly: !_isAllowedToManage(context),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ).whenComplete(() {
+        _refreshMobileInspector = null;
         _isInspectorOpen = false;
         if (mounted) setState(() {});
       });
@@ -2519,7 +2565,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     Map<String, dynamic> item,
     Map<String, dynamic> values,
   ) async {
-    if (!context.read<AppSettingsProvider>().isAdmin) return;
+    if (!_isAllowedToManage(context)) return;
     final itemId = _itemId(item);
     if (itemId == null) return;
     try {
@@ -2544,7 +2590,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     int sourceId, {
     bool syncCatalog = true,
   }) async {
-    if (!context.read<AppSettingsProvider>().isAdmin) return;
+    if (!_isAllowedToManage(context)) return;
     try {
       await widget.db.saveAccessoryLinks(
         sourceId,
@@ -2560,8 +2606,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     }
   }
 
-  Widget _accessoryRelationEditor(Map<String, dynamic> item, {bool readOnly = false}) {
-    final screwItems = _accessoriesForRoles(const {
+  Widget _accessoryRelationEditor(
+    Map<String, dynamic> item, {
+    bool readOnly = false,
+  }) {
+    final rawScrewItems = _accessoriesForRoles(const {
       'kit_screw',
       'box_screw',
       'motor_screw',
@@ -2573,6 +2622,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       'installation_screw',
       'accessory_screw',
     });
+    // One accessory may legitimately carry several screw roles. The role
+    // lookup then returns the same catalogue row more than once, while a
+    // DropdownButton requires every value to be unique.
+    final screwItemsById = <int, Map<String, dynamic>>{};
+    for (final screw in rawScrewItems) {
+      final id = _itemId(screw);
+      if (id != null) screwItemsById.putIfAbsent(id, () => screw);
+    }
+    final screwItems = screwItemsById.values.toList(growable: false);
     final linkableRoles = _rolesForTable(
       'Accessories',
     ).where((role) => role.key != 'other').toList(growable: false);
@@ -2764,14 +2822,14 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       tooltip: _t('حذف الرابط', 'Supprimer le lien'),
                       icon: const Icon(Icons.delete_outline_rounded),
                       onPressed: readOnly
-                        ? null
-                        : () {
-                            setState(() {
-                              links.removeAt(index);
-                              _dirtyAccessoryLinkIds.add(itemId);
-                            });
-                            _saveAccessoryLinksFor(itemId);
-                          },
+                          ? null
+                          : () {
+                              setState(() {
+                                links.removeAt(index);
+                                _dirtyAccessoryLinkIds.add(itemId);
+                              });
+                              _saveAccessoryLinksFor(itemId);
+                            },
                     ),
                   ],
                 ),
@@ -2793,7 +2851,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     return FilterChip(
       label: Text(label),
       selected: selected,
-      onSelected: readOnly ? null : (value) => setState(() => rule[key] = value),
+      onSelected: readOnly
+          ? null
+          : (value) => setState(() => rule[key] = value),
     );
   }
 }

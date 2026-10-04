@@ -23,7 +23,9 @@ Deno.serve(async (req) => {
     const workerUids = [...new Set((input.worker_uids ?? []).map(String))];
     const audience = String(input.audience ?? "workers");
     const eventType = String(input.event_type ?? "worker_assignment");
-    if (!workshopId || (audience !== "managers" && workerUids.length === 0))
+    const supportedAudience = ["managers", "order_viewers", "workers"];
+    if (!workshopId || !supportedAudience.includes(audience) ||
+      (audience === "workers" && workerUids.length === 0))
       return json({ error: "Missing workshop or recipients" }, 400);
 
     const admin = createClient(supabaseUrl, serviceKey);
@@ -35,14 +37,26 @@ Deno.serve(async (req) => {
     }
 
     let recipientsQuery = admin.from("workshop_members")
-      .select("user_id").eq("workshop_id", workshopId);
-    recipientsQuery = audience === "managers"
-      ? recipientsQuery.in("role", ["owner", "manager", "co_manager", "admin"])
-      : recipientsQuery.in("user_id", workerUids);
+      .select("user_id,role,permissions,blocked").eq("workshop_id", workshopId)
+      .eq("blocked", false);
+    if (audience === "managers") {
+      recipientsQuery = recipientsQuery.in(
+        "role",
+        ["owner", "manager", "co_manager", "admin"],
+      );
+    } else if (audience === "workers") {
+      recipientsQuery = recipientsQuery.in("user_id", workerUids);
+    }
     const { data: recipients } = await recipientsQuery;
-    let allowed = (recipients ?? []).map((row) => row.user_id);
+    let allowed = (recipients ?? [])
+      .filter((row) => audience !== "order_viewers" ||
+        ["owner", "manager", "co_manager", "admin"].includes(row.role) ||
+        row.permissions?.view_orders === true)
+      .map((row) => row.user_id)
+      .filter((userId) => userId !== user.id);
+    const preferenceType = String(input.preference_type ?? eventType);
     const { data: disabled } = await admin.from("notification_preferences")
-      .select("user_id").eq("event_type", eventType).eq("enabled", false)
+      .select("user_id").eq("event_type", preferenceType).eq("enabled", false)
       .in("user_id", allowed);
     const disabledUsers = new Set((disabled ?? []).map((row) => row.user_id));
     allowed = allowed.filter((userId) => !disabledUsers.has(userId));
@@ -65,9 +79,9 @@ Deno.serve(async (req) => {
     const orderNumber = Number(input.order_number ?? 0);
     const orderId = Number(input.order_id ?? 0);
     const quantity = Number(input.quantity ?? 0);
-    const title = audience === "managers"
+    const title = audience !== "workers"
       ? String(input.title ?? "تنبيه جديد") : "مهمة جديدة";
-    const body = audience === "managers"
+    const body = audience !== "workers"
       ? String(input.body ?? "حدث جديد في الورشة")
       : `تم إسناد ${quantity} عنصر لك من الطلبية #${orderNumber}`;
     const data = Object.fromEntries(

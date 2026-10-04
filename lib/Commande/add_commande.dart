@@ -88,17 +88,20 @@ class _CommandePageState extends State<CommandePage> {
     if (product.isGlassWork) {
       seriesName = 'فير ترومبي';
     } else if (hasSliding && !hasOpening) {
-      seriesName = product.activeSlidingSeries?.name ??
+      seriesName =
+          product.activeSlidingSeries?.name ??
           product.loadedSlidingSeriesName ??
           product.activeFrameSeries?.name ??
           '';
     } else if (hasOpening && !hasSliding) {
-      seriesName = product.activeSeries?.name ??
+      seriesName =
+          product.activeSeries?.name ??
           product.loadedSeriesName ??
           product.activeFrameSeries?.name ??
           '';
     } else {
-      seriesName = product.activeFrameSeries?.name ??
+      seriesName =
+          product.activeFrameSeries?.name ??
           product.loadedSeriesName ??
           product.activeSlidingSeries?.name ??
           product.loadedSlidingSeriesName ??
@@ -588,17 +591,23 @@ class _CommandePageState extends State<CommandePage> {
 
   List<WindowModel> _modelsFromGlassWorkPayload(Map<String, dynamic> payload) {
     final rawItems = payload['items'] as List?;
-    final overallWidth = (payload['overallWidthMm'] as num?)?.toDouble() ??
+    final overallWidth =
+        (payload['overallWidthMm'] as num?)?.toDouble() ??
         (payload['widthMm'] as num?)?.toDouble() ??
         1000.0;
-    final overallHeight = (payload['overallHeightMm'] as num?)?.toDouble() ??
+    final overallHeight =
+        (payload['overallHeightMm'] as num?)?.toDouble() ??
         (payload['heightMm'] as num?)?.toDouble() ??
         2000.0;
 
-    double totalArea = (payload['grandTotalAreaSqm'] as num?)?.toDouble() ?? 0.0;
+    double totalArea =
+        (payload['grandTotalAreaSqm'] as num?)?.toDouble() ?? 0.0;
     double totalPrice = (payload['grandTotalPrice'] as num?)?.toDouble() ?? 0.0;
 
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final glassBaseName = switch (lang) {
       AppLanguage.french => 'Verre trempé',
       AppLanguage.english => 'Tempered glass',
@@ -654,24 +663,32 @@ class _CommandePageState extends State<CommandePage> {
             AppLanguage.arabic => 'لوح ${i + 1}',
           },
         };
-        final area = (item['areaSqm'] as num?)?.toDouble() ?? ((w / 1000) * (h / 1000));
+        final area =
+            (item['areaSqm'] as num?)?.toDouble() ?? ((w / 1000) * (h / 1000));
         if (totalArea == 0.0) totalArea += area;
         final up = (item['unitPrice'] as num?)?.toDouble() ?? 0.0;
         if (totalPrice == 0.0) totalPrice += up;
-        panelDescriptions.add('$roleLabel: ${w.toStringAsFixed(0)} × ${h.toStringAsFixed(0)} $mmUnit');
+        panelDescriptions.add(
+          '$roleLabel: ${w.toStringAsFixed(0)} × ${h.toStringAsFixed(0)} $mmUnit',
+        );
       }
     }
 
-    final workLabel = payload['workTypeLabel']?.toString() ??
+    final workLabel =
+        payload['workTypeLabel']?.toString() ??
         (lang == AppLanguage.french
             ? 'Cabine de douche'
             : (lang == AppLanguage.english ? 'Shower cabin' : 'كابين دوش'));
-    final finishLabel = payload['glassTypeLabel']?.toString() ??
+    final finishLabel =
+        payload['glassTypeLabel']?.toString() ??
         payload['glassFinishLabel']?.toString() ??
         (lang == AppLanguage.french
             ? 'Transparent'
             : (lang == AppLanguage.english ? 'Clear' : 'شفاف'));
-    final thickness = (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)?.toDouble() ?? 10.0;
+    final thickness =
+        (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)
+            ?.toDouble() ??
+        10.0;
     final sablageMode = payload['sablageMode']?.toString() ?? 'none';
     final sablageLabel = switch (sablageMode) {
       'full' => switch (lang) {
@@ -998,24 +1015,7 @@ class _CommandePageState extends State<CommandePage> {
         final savedHeight = readDouble(row['hauteur']);
         final jsonRaw = row['partitions_json'];
         if (jsonRaw != null) {
-          Map<String, dynamic> map = {};
-          if (jsonRaw is Map<String, dynamic>) {
-            map = jsonRaw;
-          } else if (jsonRaw is Map) {
-            map = Map<String, dynamic>.from(jsonRaw);
-          } else {
-            final str = jsonRaw.toString().trim();
-            if (str.length > 5) {
-              try {
-                final decoded = jsonDecode(str);
-                if (decoded is Map) {
-                  map = Map<String, dynamic>.from(decoded);
-                }
-              } catch (e) {
-                debugPrint('Error parsing partitions JSON: $e');
-              }
-            }
-          }
+          final map = savedWindowModelMap(jsonRaw);
           if (map.isNotEmpty) {
             try {
               // Restore the saved drawing synchronously.  Loading the full
@@ -1445,6 +1445,33 @@ class _CommandePageState extends State<CommandePage> {
       // Final safety net for users who save/reserve the order without ever
       // opening the quantity-and-cost table.
       await _ensureAutomaticProductPrices(addedProducts, onlyMissing: true);
+      final zeroPricedProducts = addedProducts
+          .where((product) {
+            if (product.isReplaced) return false;
+            final price = product.manualPriceOverride ?? product.totalCost;
+            return !price.isFinite || price <= 0;
+          })
+          .toList(growable: false);
+      if (zeroPricedProducts.isNotEmpty) {
+        if (dialogShown && mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+          dialogShown = false;
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                t(
+                  'تعذر الحفظ: يوجد عنصر بسعر صفر. راجع أسعار البروفيلات والزجاج والستار ثم أعد المحاولة.',
+                ),
+              ),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
+        return;
+      }
       await syncService.beginLocalWrite().timeout(
         const Duration(seconds: 3),
         onTimeout: () {
@@ -1543,8 +1570,8 @@ class _CommandePageState extends State<CommandePage> {
           'game': p.isGlassWork
               ? 'فير ترومبي'
               : (p.isShutterOnly
-                  ? 'Volet roulant'
-                  : (p.manualNameOverride ?? '')),
+                    ? 'Volet roulant'
+                    : (p.manualNameOverride ?? '')),
           'quantity': p.quantity,
           'glass': p.isGlassWork
               ? '${p.glassWorkPayload?['glassTypeLabel'] ?? p.glassWorkPayload?['glassFinishLabel'] ?? 'شفاف'} '
@@ -1557,10 +1584,11 @@ class _CommandePageState extends State<CommandePage> {
               ? selectedColorName
               : (p.isGlassWork
                     ? (p.glassWorkPayload?['sablageMode']?.toString() == 'full'
-                        ? 'سابلاج كامل'
-                        : (p.glassWorkPayload?['sablageMode']?.toString() == 'decorative'
-                            ? 'سابلاج ديكور'
-                            : 'بدون سابلاج'))
+                          ? 'سابلاج كامل'
+                          : (p.glassWorkPayload?['sablageMode']?.toString() ==
+                                    'decorative'
+                                ? 'سابلاج ديكور'
+                                : 'بدون سابلاج'))
                     : p.frameColor.toString().split('.').last),
           'volet': p.hasShutter ? 'Yes' : 'No',
           'accessories': '',
@@ -1601,6 +1629,11 @@ class _CommandePageState extends State<CommandePage> {
         projectId: (selectedProject?['id'] as num?)?.toInt(),
         details: preparedDetails,
       );
+
+      // Flush the complete order and all of its detail rows before reporting
+      // success. Previously the upload was only scheduled after this screen
+      // closed, which could leave another phone waiting for a recovery cycle.
+      await syncService.endLocalWrite();
 
       if (widget.editCommandeId != null && mounted) {
         final fresh = await widget.db.readCommandeWithClientById(
@@ -1658,7 +1691,7 @@ class _CommandePageState extends State<CommandePage> {
         ),
       );
     } finally {
-      syncService.endLocalWrite();
+      await syncService.endLocalWrite();
       if (mounted) setState(() => _isSaving = false);
     }
   }
@@ -3818,11 +3851,7 @@ class _CommandePageState extends State<CommandePage> {
     if (!mounted) return;
 
     if (result is WindowModel) {
-      // Calculate the selling price before publishing the card. Previously
-      // this happened only after opening the quantity/cost table, so saving
-      // the order directly could persist a zero-priced item.
-      await _ensureAutomaticProductPrices([result]);
-      if (!mounted) return;
+      if (!await _priceNewProductsAndValidate([result])) return;
       _saveLastSettings(result);
       setState(() {
         addedProducts.add(result);
@@ -3830,14 +3859,78 @@ class _CommandePageState extends State<CommandePage> {
       });
       _scrollToHighlightedProduct();
     } else if (result is List<WindowModel> && result.isNotEmpty) {
-      await _ensureAutomaticProductPrices(result);
-      if (!mounted) return;
+      if (!await _priceNewProductsAndValidate(result)) return;
       _saveLastSettings(result.last);
       setState(() {
         addedProducts.addAll(result);
         _highlightedProduct = result.last;
       });
       _scrollToHighlightedProduct();
+    }
+  }
+
+  Future<bool> _priceNewProductsAndValidate(List<WindowModel> products) async {
+    var dialogOpen = false;
+    if (mounted) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(t('جاري احتساب سعر العنصر...'))),
+            ],
+          ),
+        ),
+      );
+      dialogOpen = true;
+    }
+
+    try {
+      await _ensureAutomaticProductPrices(products);
+      final zeroPriced = products
+          .where((product) {
+            final price = product.manualPriceOverride ?? product.totalCost;
+            return !price.isFinite || price <= 0;
+          })
+          .toList(growable: false);
+      if (zeroPriced.isEmpty) return true;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              t(
+                'لم تتم إضافة العنصر لأن سعره يساوي صفرًا. راجع أسعار البروفيلات والزجاج والستار ثم أعد المحاولة.',
+              ),
+            ),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+      return false;
+    } catch (error, stackTrace) {
+      debugPrint('Automatic product pricing failed: $error\n$stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${t('تعذر احتساب سعر العنصر')}: $error'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+      return false;
+    } finally {
+      if (dialogOpen && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     }
   }
 
@@ -4408,8 +4501,8 @@ class _CommandePageState extends State<CommandePage> {
                                                   p.glassWorkPayload,
                                               allOrderGlassPayloads:
                                                   _collectAllOrderGlassPayloads(),
-                                              clientName:
-                                                  clientController.text.trim(),
+                                              clientName: clientController.text
+                                                  .trim(),
                                               orderNumber:
                                                   widget.editCommandeId
                                                       ?.toString() ??
@@ -4514,42 +4607,70 @@ class _CommandePageState extends State<CommandePage> {
                                     p.availableSystems,
                                   );
                                   cloned.activeSeries = p.activeSeries;
-                cloned.activeSlidingSeries = p.activeSlidingSeries;
-                cloned.loadedSlidingSeriesId =
-                    p.loadedSlidingSeriesId ?? p.activeSlidingSeries?.id;
-                cloned.loadedSlidingSeriesName =
-                    p.loadedSlidingSeriesName ?? p.activeSlidingSeries?.name;
-                cloned.slidingFrameOverride = p.slidingFrameOverride != null
-                    ? Map<String, dynamic>.from(p.slidingFrameOverride!)
-                    : null;
-                cloned.slidingSashOverride = p.slidingSashOverride != null
-                    ? Map<String, dynamic>.from(p.slidingSashOverride!)
-                    : null;
-                cloned.frameOverride = p.frameOverride != null
-                    ? Map<String, dynamic>.from(p.frameOverride!)
-                    : null;
-                cloned.sashOverride = p.sashOverride != null
-                    ? Map<String, dynamic>.from(p.sashOverride!)
-                    : null;
-                cloned.reinforcementMode = p.reinforcementMode;
-                                  cloned.activeSlidingSeries = p.activeSlidingSeries;
+                                  cloned.activeSlidingSeries =
+                                      p.activeSlidingSeries;
                                   cloned.loadedSlidingSeriesId =
-                                      p.loadedSlidingSeriesId ?? p.activeSlidingSeries?.id;
+                                      p.loadedSlidingSeriesId ??
+                                      p.activeSlidingSeries?.id;
                                   cloned.loadedSlidingSeriesName =
-                                      p.loadedSlidingSeriesName ?? p.activeSlidingSeries?.name;
-                                  cloned.slidingFrameOverride = p.slidingFrameOverride != null
-                                      ? Map<String, dynamic>.from(p.slidingFrameOverride!)
+                                      p.loadedSlidingSeriesName ??
+                                      p.activeSlidingSeries?.name;
+                                  cloned.slidingFrameOverride =
+                                      p.slidingFrameOverride != null
+                                      ? Map<String, dynamic>.from(
+                                          p.slidingFrameOverride!,
+                                        )
                                       : null;
-                                  cloned.slidingSashOverride = p.slidingSashOverride != null
-                                      ? Map<String, dynamic>.from(p.slidingSashOverride!)
+                                  cloned.slidingSashOverride =
+                                      p.slidingSashOverride != null
+                                      ? Map<String, dynamic>.from(
+                                          p.slidingSashOverride!,
+                                        )
                                       : null;
                                   cloned.frameOverride = p.frameOverride != null
-                                      ? Map<String, dynamic>.from(p.frameOverride!)
+                                      ? Map<String, dynamic>.from(
+                                          p.frameOverride!,
+                                        )
                                       : null;
                                   cloned.sashOverride = p.sashOverride != null
-                                      ? Map<String, dynamic>.from(p.sashOverride!)
+                                      ? Map<String, dynamic>.from(
+                                          p.sashOverride!,
+                                        )
                                       : null;
-                                  cloned.reinforcementMode = p.reinforcementMode;
+                                  cloned.reinforcementMode =
+                                      p.reinforcementMode;
+                                  cloned.activeSlidingSeries =
+                                      p.activeSlidingSeries;
+                                  cloned.loadedSlidingSeriesId =
+                                      p.loadedSlidingSeriesId ??
+                                      p.activeSlidingSeries?.id;
+                                  cloned.loadedSlidingSeriesName =
+                                      p.loadedSlidingSeriesName ??
+                                      p.activeSlidingSeries?.name;
+                                  cloned.slidingFrameOverride =
+                                      p.slidingFrameOverride != null
+                                      ? Map<String, dynamic>.from(
+                                          p.slidingFrameOverride!,
+                                        )
+                                      : null;
+                                  cloned.slidingSashOverride =
+                                      p.slidingSashOverride != null
+                                      ? Map<String, dynamic>.from(
+                                          p.slidingSashOverride!,
+                                        )
+                                      : null;
+                                  cloned.frameOverride = p.frameOverride != null
+                                      ? Map<String, dynamic>.from(
+                                          p.frameOverride!,
+                                        )
+                                      : null;
+                                  cloned.sashOverride = p.sashOverride != null
+                                      ? Map<String, dynamic>.from(
+                                          p.sashOverride!,
+                                        )
+                                      : null;
+                                  cloned.reinforcementMode =
+                                      p.reinforcementMode;
                                   cloned.availableColors = List.from(
                                     p.availableColors,
                                   );

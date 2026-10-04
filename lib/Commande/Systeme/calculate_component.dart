@@ -34,6 +34,7 @@ class BomItem {
   final bool isActive;
   final String? exclusionGroup;
   final List<double>? pieces;
+
   /// Cutting angles aligned with [pieces], stored as `left/right` degrees.
   final List<String>? pieceCutAngles;
   final String? cuttingList;
@@ -388,14 +389,14 @@ class BomItem {
             .replaceAll('حديد الإطار', 'Renfort Dormant')
             .replaceAll('Renfort Frame', 'Renfort Dormant');
       }
+      if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
+        return 'Renfort Ouvrant (Paumelles)';
+      }
       if (original.contains('حديد الظلفة') ||
           original.contains('Renfort Sash')) {
         return original
             .replaceAll('حديد الظلفة', 'Renfort Ouvrant')
             .replaceAll('Renfort Sash', 'Renfort Ouvrant');
-      }
-      if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
-        return 'Renfort Ouvrant (Paumelles)';
       }
       if (original.contains('براغي حديد الدعم')) {
         return 'Vis pour Renfort';
@@ -414,8 +415,15 @@ class BomItem {
       if (original == 'System OB') return 'Système OB';
       if (original == 'Demi System OB') return 'Demi Système OB';
       if (original.contains('إسبانيوليت') ||
+          original.contains('اسبانيولات') ||
           original.contains('Espagnolette')) {
-        return 'Espagnolette';
+        final sizes = RegExp(
+          r'(?<!\d)(\d+(?:[.,]\d+)?)(?:\s*(?:mm|cm))?(?!\d)',
+          caseSensitive: false,
+        ).allMatches(original).map((m) => m.group(1)!).toList();
+        final suffix = sizes.isEmpty ? '' : ' ${sizes.last}';
+        final sliding = original.contains('منزلق') ? ' Coulissant' : '';
+        return 'Espagnolette$sliding$suffix';
       }
       if (original == 'المقبض (Handle)') return 'Poignée Fenêtre';
       if (original == 'مقبض منزلق (Poignée Coulissante)') {
@@ -429,9 +437,6 @@ class BomItem {
       if (original == 'قاش بورت (Gache Porte)') return 'Gâche Porte';
       if (original == 'المفاصل (Hinges)') return 'Paumelles';
       if (original == 'عجلات المنزلق (Roulettes)') return 'Roulettes';
-      if (original == 'اسبانيولات المنزلق (Espagnolette)') {
-        return 'Espagnolette Coulissant';
-      }
       if (original == 'كاش كوليسون (Gache coulissant)') {
         return 'Gâche Coulissante';
       }
@@ -508,12 +513,12 @@ class BomItem {
           original.contains('Renfort Frame')) {
         return 'Renfort Frame';
       }
+      if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
+        return 'Renfort Sash (Hinges)';
+      }
       if (original.contains('حديد الظلفة') ||
           original.contains('Renfort Sash')) {
         return 'Renfort Sash';
-      }
-      if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
-        return 'Renfort Sash (Hinges)';
       }
       if (original.contains('براغي حديد الدعم')) {
         return 'Renfort Screws';
@@ -532,8 +537,15 @@ class BomItem {
       if (original == 'System OB') return 'System OB';
       if (original == 'Demi System OB') return 'Demi System OB';
       if (original.contains('إسبانيوليت') ||
+          original.contains('اسبانيولات') ||
           original.contains('Espagnolette')) {
-        return 'Espagnolette';
+        final sizes = RegExp(
+          r'(?<!\d)(\d+(?:[.,]\d+)?)(?:\s*(?:mm|cm))?(?!\d)',
+          caseSensitive: false,
+        ).allMatches(original).map((m) => m.group(1)!).toList();
+        final suffix = sizes.isEmpty ? '' : ' ${sizes.last}';
+        final sliding = original.contains('منزلق') ? ' Sliding' : '';
+        return 'Espagnolette$sliding$suffix';
       }
       if (original == 'المقبض (Handle)') return 'Window Handle';
       if (original == 'مقبض منزلق (Poignée Coulissante)') {
@@ -545,9 +557,6 @@ class BomItem {
       if (original == 'قاش بورت (Gache Porte)') return 'Door Strike Plate';
       if (original == 'المفاصل (Hinges)') return 'Hinges';
       if (original == 'عجلات المنزلق (Roulettes)') return 'Roulettes';
-      if (original == 'اسبانيولات المنزلق (Espagnolette)') {
-        return 'Espagnolette';
-      }
       if (original == 'كاش كوليسون (Gache coulissant)') return 'Strike Plate';
       if (original == 'Gâche coulissant TPR') return 'Strike Plate TPR';
       if (original == 'كريمون (Cremone)') return 'Cremone';
@@ -2265,12 +2274,14 @@ class ComponentCalculator {
     }) {
       final selectorType =
           selectorTypeOverride ?? _selectorTypeForAccessory(originalName);
-      final roleKey = roleKeyOverride ?? _roleKeyForAccessorySelector(selectorType);
-      final overrideItem = window.componentOverrides[originalName] ??
+      final roleKey =
+          roleKeyOverride ?? _roleKeyForAccessorySelector(selectorType);
+      final overrideItem =
+          window.componentOverrides[originalName] ??
           (roleKey != null ? window.componentOverrides[roleKey] : null) ??
           (originalName.contains('براغي الباتمو')
               ? (window.componentOverrides['براغي الباتمو'] ??
-                  window.componentOverrides['براغي الباتمو 3.9*50'])
+                    window.componentOverrides['براغي الباتمو 3.9*50'])
               : null) ??
           (originalName.contains('براغي بوشون باتمو')
               ? window.componentOverrides['براغي بوشون باتمو']
@@ -2457,7 +2468,12 @@ class ComponentCalculator {
       return BomItem(
         category: 'shutter',
         originalName: logicalKey,
+        profileCode:
+            savedOverride?['code']?.toString() ?? metadata?['code']?.toString(),
         name: bundleName,
+        imagePath:
+            savedOverride?['image_path']?.toString() ??
+            metadata?['image_path']?.toString(),
         quantity: qty * window.quantity,
         unit: 'kit',
         unitPrice: kitBundlePrices[bundleName] ?? 0,
@@ -2835,6 +2851,7 @@ class ComponentCalculator {
     // `slidingOuterFramePieces`; counting only a global copy number therefore
     // made a valid extension vanish from the quantity table.
     List<double> slidingFrameExtensionPieces = [];
+    List<String> slidingFrameExtensionAngles = [];
     List<double> internalSlidingSideCoverPieces = [];
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
@@ -3732,10 +3749,18 @@ class ComponentCalculator {
         );
         if (section == null) continue;
         final pieces = <double>[];
+        final pieceAngles = <String>[];
         for (final frame in scopedFrames) {
           if (role == 'cache_dormant') {
             // Reuse the actual frame cuts, including deductions and welding.
-            pieces.addAll(frameCutsByRect[frame] ?? const []);
+            final frameCuts = frameCutsByRect[frame] ?? const <double>[];
+            pieces.addAll(frameCuts);
+            final hasBottom = window.hasBottomFrameForRect(frame);
+            pieceAngles.addAll(
+              hasBottom
+                  ? List<String>.filled(frameCuts.length, '45/45')
+                  : const <String>['45/45', '45/90', '45/90'],
+            );
           } else if (role == 'seuil') {
             final count = sliding
                 ? window.slidingSeuilPieceCount(
@@ -3743,11 +3768,12 @@ class ComponentCalculator {
                   )
                 : 1;
             pieces.addAll(List.filled(count, frame.width / 1000.0));
+            pieceAngles.addAll(List<String>.filled(count, '90/90'));
           } else {
             final counts = window.cacheRailCountsForRect(frame);
-            pieces.addAll(
-              List.filled(counts.$1 + counts.$2, frame.height / 1000.0),
-            );
+            final count = counts.$1 + counts.$2;
+            pieces.addAll(List.filled(count, frame.height / 1000.0));
+            pieceAngles.addAll(List<String>.filled(count, '90/90'));
           }
         }
         if (pieces.isEmpty) continue;
@@ -3762,6 +3788,7 @@ class ComponentCalculator {
             '$label ($scope)',
             colorName,
             pieces: pieces,
+            pieceCutAngles: pieceAngles,
             overrideMap: section.toMap(),
             preferOverrideMap: true,
             selectorType: role,
@@ -3817,6 +3844,7 @@ class ComponentCalculator {
         'Cache-rainure (${sliding ? 'Coulissant' : 'Ouvrant'})',
         colorName,
         pieces: pieces,
+        pieceCutAngles: uniformAngles(pieces, '90/90'),
         unit: 'قطاع',
         overrideMap: section.toMap(),
         preferOverrideMap: true,
@@ -3946,6 +3974,7 @@ class ComponentCalculator {
             "بروفيل الزاوية 90° (Profil d'angle / Tube carré)",
             colorName,
             pieces: anglePieces,
+            pieceCutAngles: uniformAngles(anglePieces, '90/90'),
             unit: 'قطاع',
             overrideMap: override,
             preferOverrideMap: true,
@@ -4004,6 +4033,7 @@ class ComponentCalculator {
           'Caniveau ($scope)',
           colorName,
           pieces: channel,
+          pieceCutAngles: uniformAngles(channel, '90/90'),
           unit: 'قطاع',
           overrideMap: caniveau.toMap(),
           preferOverrideMap: true,
@@ -4023,6 +4053,7 @@ class ComponentCalculator {
           'Cache-caniveau ($scope)',
           colorName,
           pieces: cacheCaniveauPieces[sliding],
+          pieceCutAngles: uniformAngles(cacheCaniveauPieces[sliding]!, '90/90'),
           unit: 'قطاع',
           overrideMap: cache.toMap(),
           preferOverrideMap: true,
@@ -4067,6 +4098,16 @@ class ComponentCalculator {
     if (showSideCover) {
       final double pvcWeldingAllowance = isOuterFramePvc ? 5.0 : 0.0;
       List<double> sideCoverPieces = [];
+      List<String> sideCoverAngles = [];
+
+      void addSideCoverPiece(
+        double lengthMeters, {
+        required bool startMiter,
+        required bool endMiter,
+      }) {
+        sideCoverPieces.add(lengthMeters);
+        sideCoverAngles.add('${startMiter ? 45 : 90}/${endMiter ? 45 : 90}');
+      }
 
       if (customSideCoverLayout) {
         if (frameRects.length > 1) {
@@ -4132,9 +4173,15 @@ class ComponentCalculator {
                   ((end - edge.end).abs() <= 2.0 && hasMiterAt(edge, end)
                       ? 1
                       : 0);
-              sideCoverPieces.add(
+              final startMiter =
+                  (start - edge.start).abs() <= 2.0 && hasMiterAt(edge, start);
+              final endMiter =
+                  (end - edge.end).abs() <= 2.0 && hasMiterAt(edge, end);
+              addSideCoverPiece(
                 ((end - start) + visible * miterCount + pvcWeldingAllowance) /
                     1000.0,
+                startMiter: startMiter,
+                endMiter: endMiter,
               );
             }
           }
@@ -4161,7 +4208,18 @@ class ComponentCalculator {
               visibleWidth: visible,
               weldingAllowance: pvcWeldingAllowance,
             );
-            sideCoverPieces.add(cutLength / 1000.0);
+            final reachesStart = start <= 0.01;
+            final reachesEnd = (end - sideLength).abs() <= 0.01;
+            final verticalSide =
+                segment.side == 'left' || segment.side == 'right';
+            final startMiter = reachesStart;
+            final endMiter =
+                reachesEnd && (!verticalSide || window.hasBottomFrame);
+            addSideCoverPiece(
+              cutLength / 1000.0,
+              startMiter: startMiter,
+              endMiter: endMiter,
+            );
           }
         }
       } else {
@@ -4197,18 +4255,41 @@ class ComponentCalculator {
             return activeEdges.any(
               (other) =>
                   isHorizontal(other.side) != isHorizontal(edge.side) &&
-                  (((isHorizontal(other.side) ? other.start : other.coordinate) - x).abs() <= 5.0 &&
-                   ((isHorizontal(other.side) ? other.coordinate : other.start) - y).abs() <= 5.0 ||
-                   ((isHorizontal(other.side) ? other.end : other.coordinate) - x).abs() <= 5.0 &&
-                   ((isHorizontal(other.side) ? other.coordinate : other.end) - y).abs() <= 5.0),
+                  (((isHorizontal(other.side)
+                                          ? other.start
+                                          : other.coordinate) -
+                                      x)
+                                  .abs() <=
+                              5.0 &&
+                          ((isHorizontal(other.side)
+                                          ? other.coordinate
+                                          : other.start) -
+                                      y)
+                                  .abs() <=
+                              5.0 ||
+                      ((isHorizontal(other.side)
+                                          ? other.end
+                                          : other.coordinate) -
+                                      x)
+                                  .abs() <=
+                              5.0 &&
+                          ((isHorizontal(other.side)
+                                          ? other.coordinate
+                                          : other.end) -
+                                      y)
+                                  .abs() <=
+                              5.0),
             );
           }
 
           for (final edge in activeEdges) {
-            final miterCount = (hasActiveMiterAt(edge, edge.start) ? 1 : 0) +
+            final miterCount =
+                (hasActiveMiterAt(edge, edge.start) ? 1 : 0) +
                 (hasActiveMiterAt(edge, edge.end) ? 1 : 0);
-            sideCoverPieces.add(
+            addSideCoverPiece(
               (edge.length + (miterCount * w) + pvcWeldingAllowance) / 1000.0,
+              startMiter: hasActiveMiterAt(edge, edge.start),
+              endMiter: hasActiveMiterAt(edge, edge.end),
             );
           }
         } else {
@@ -4222,27 +4303,35 @@ class ComponentCalculator {
               (hasSeparateCoverLeft ? 1 : 0) + (hasSeparateCoverRight ? 1 : 0);
 
           if (hasSeparateCoverLeft) {
-            sideCoverPieces.add(
+            addSideCoverPiece(
               (window.height + (leftMiterCount * w) + pvcWeldingAllowance) /
                   1000.0,
+              startMiter: hasSeparateCoverTop,
+              endMiter: hasSeparateCoverBottom && window.hasBottomFrame,
             );
           }
           if (hasSeparateCoverRight) {
-            sideCoverPieces.add(
+            addSideCoverPiece(
               (window.height + (rightMiterCount * w) + pvcWeldingAllowance) /
                   1000.0,
+              startMiter: hasSeparateCoverTop,
+              endMiter: hasSeparateCoverBottom && window.hasBottomFrame,
             );
           }
           if (hasSeparateCoverTop) {
-            sideCoverPieces.add(
+            addSideCoverPiece(
               (window.width + (topMiterCount * w) + pvcWeldingAllowance) /
                   1000.0,
+              startMiter: true,
+              endMiter: true,
             );
           }
           if (hasSeparateCoverBottom) {
-            sideCoverPieces.add(
+            addSideCoverPiece(
               (window.width + (bottomMiterCount * w) + pvcWeldingAllowance) /
                   1000.0,
+              startMiter: window.hasBottomFrame,
+              endMiter: window.hasBottomFrame,
             );
           }
         }
@@ -4254,6 +4343,7 @@ class ComponentCalculator {
             'الغطاء الجانبي (Side Cover)',
             colorName,
             pieces: sideCoverPieces,
+            pieceCutAngles: sideCoverAngles,
             unit: 'قطاع',
             overrideMap: selectedSeparateCoverMap,
             preferOverrideMap: true,
@@ -4405,16 +4495,21 @@ class ComponentCalculator {
         }
 
         final zoneSashOverride = zone.sashOverride ?? openingSashOverride;
-        final profileKey = zoneSashOverride?['id']?.toString() ??
+        final profileKey =
+            zoneSashOverride?['id']?.toString() ??
             zoneSashOverride?['code']?.toString() ??
             (zone.isSash105 ? '105' : '104');
         if (zoneSashOverride != null) {
           sashOverrideByProfile[profileKey] = zoneSashOverride;
         }
-        final zoneSashPieces =
-            sashPiecesByProfile.putIfAbsent(profileKey, () => <double>[]);
-        final zoneSashAngles =
-            sashAnglesByProfile.putIfAbsent(profileKey, () => <String>[]);
+        final zoneSashPieces = sashPiecesByProfile.putIfAbsent(
+          profileKey,
+          () => <double>[],
+        );
+        final zoneSashAngles = sashAnglesByProfile.putIfAbsent(
+          profileKey,
+          () => <String>[],
+        );
 
         if (zone.content == ZoneContent.singleSash) {
           double sashW = clearW + overlap * 2;
@@ -4461,8 +4556,12 @@ class ComponentCalculator {
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
             const angles = [
-              '45/45', '45/90', '45/90',
-              '45/45', '45/90', '45/90',
+              '45/45',
+              '45/90',
+              '45/90',
+              '45/45',
+              '45/90',
+              '45/90',
             ];
             sashPieceAngles.addAll(angles);
             zoneSashAngles.addAll(angles);
@@ -4925,6 +5024,11 @@ class ComponentCalculator {
             }
             for (var copy = 0; copy < additionalTracks; copy++) {
               slidingFrameExtensionPieces.addAll(extensionBaseCuts);
+              slidingFrameExtensionAngles.addAll(
+                extensionBaseCuts.length >= 4
+                    ? List<String>.filled(extensionBaseCuts.length, '45/45')
+                    : const <String>['45/45', '45/90', '45/90'],
+              );
             }
           }
         }
@@ -4948,7 +5052,8 @@ class ComponentCalculator {
         } else {
           for (final entry in sashPiecesByProfile.entries) {
             final profileMap = sashOverrideByProfile[entry.key];
-            final profileName = profileMap?['name']?.toString() ??
+            final profileName =
+                profileMap?['name']?.toString() ??
                 profileMap?['code']?.toString() ??
                 entry.key;
             items.add(
@@ -5030,7 +5135,7 @@ class ComponentCalculator {
             'الظلفة المنزلقة (Sliding Sash)',
             colorName,
             pieces: slidingSashPieces,
-            pieceCutAngles: uniformAngles(slidingSashPieces, '90/90'),
+            pieceCutAngles: uniformAngles(slidingSashPieces, '45/45'),
             unit: 'قطاع',
             overrideMap:
                 window.slidingSashOverride ??
@@ -5055,7 +5160,10 @@ class ComponentCalculator {
             'عارضة الضلفة المنزلقة 45°/90° (Traverse Sash 45°/90°)',
             colorName,
             pieces: slidingSashTraverse4590Pieces,
-            pieceCutAngles: uniformAngles(slidingSashTraverse4590Pieces, '45/90'),
+            pieceCutAngles: uniformAngles(
+              slidingSashTraverse4590Pieces,
+              '45/90',
+            ),
             unit: 'قطاع',
             overrideMap: traverseOverride,
             preferOverrideMap: true,
@@ -5080,7 +5188,10 @@ class ComponentCalculator {
             'عارضة الضلفة المنزلقة 90°/90° (Traverse Sash 90°/90°)',
             colorName,
             pieces: slidingSashTraverse9090Pieces,
-            pieceCutAngles: uniformAngles(slidingSashTraverse9090Pieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingSashTraverse9090Pieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: traverseOverride,
             preferOverrideMap: true,
@@ -5132,7 +5243,10 @@ class ComponentCalculator {
             lateralName,
             colorName,
             pieces: slidingSashLateralNormalPieces,
-            pieceCutAngles: uniformAngles(slidingSashLateralNormalPieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingSashLateralNormalPieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: baseLateral,
             preferOverrideMap: true,
@@ -5161,7 +5275,10 @@ class ComponentCalculator {
             'قائم جانبي معزز (Sash Lateral Renforcé)',
             colorName,
             pieces: slidingSashLateralReinforcedPieces,
-            pieceCutAngles: uniformAngles(slidingSashLateralReinforcedPieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingSashLateralReinforcedPieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: reinforcedLateral,
             preferOverrideMap: true,
@@ -5234,7 +5351,10 @@ class ComponentCalculator {
             'قائم وسطي معزز (Sash Central Renforcé)',
             colorName,
             pieces: slidingSashCentralReinforcedPieces,
-            pieceCutAngles: uniformAngles(slidingSashCentralReinforcedPieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingSashCentralReinforcedPieces,
+              '90/90',
+            ),
             overrideMap: reinforcedCentral,
             preferOverrideMap: true,
             selectorType: 'sash_central_reinforced',
@@ -5265,7 +5385,10 @@ class ComponentCalculator {
             'قائم وسطي سليم (Montant Slim)',
             colorName,
             pieces: slidingSashCentralSlimPieces,
-            pieceCutAngles: uniformAngles(slidingSashCentralSlimPieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingSashCentralSlimPieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: slimOverride,
             preferOverrideMap: true,
@@ -5396,7 +5519,10 @@ class ComponentCalculator {
             'شيكان معزز (Chicane Renforcée)',
             colorName,
             pieces: slidingChicaneRenforceePieces,
-            pieceCutAngles: uniformAngles(slidingChicaneRenforceePieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingChicaneRenforceePieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: reinforcedChicane,
             preferOverrideMap: true,
@@ -5423,7 +5549,10 @@ class ComponentCalculator {
             'عمود تدعيم مستقل (Profilé de Renfort Rapporté)',
             colorName,
             pieces: slidingIndependentRenfortPieces,
-            pieceCutAngles: uniformAngles(slidingIndependentRenfortPieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              slidingIndependentRenfortPieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: renfortOverride,
             preferOverrideMap: true,
@@ -5488,7 +5617,11 @@ class ComponentCalculator {
               'كومبليمو دورمو (Complément Dormant)',
               colorName,
               pieces: slidingMonorailPieces,
-              pieceCutAngles: uniformAngles(slidingMonorailPieces, '90/90'),
+              pieceCutAngles:
+                  slidingFrameExtensionAngles.length ==
+                      slidingMonorailPieces.length
+                  ? slidingFrameExtensionAngles
+                  : uniformAngles(slidingMonorailPieces, '45/45'),
               unit: 'قطاع',
               overrideMap: extensionSection.toMap(),
               preferOverrideMap: true,
@@ -5505,7 +5638,10 @@ class ComponentCalculator {
             'غطاء إطار منزلق داخلي (Couvre-joint Coulissant)',
             colorName,
             pieces: internalSlidingSideCoverPieces,
-            pieceCutAngles: uniformAngles(internalSlidingSideCoverPieces, '90/90'),
+            pieceCutAngles: uniformAngles(
+              internalSlidingSideCoverPieces,
+              '90/90',
+            ),
             unit: 'قطاع',
             overrideMap: window.effectiveInternalSlidingSideCoverMap,
             preferOverrideMap: true,
@@ -5654,6 +5790,7 @@ class ComponentCalculator {
           'الباتمو (Batmo)',
           colorName,
           pieces: batmoPieces,
+          pieceCutAngles: uniformAngles(batmoPieces, '90/90'),
           unit: 'قطاع',
           overrideMap: batmoSectionMap,
           preferOverrideMap: true,
@@ -7921,7 +8058,8 @@ class ComponentCalculator {
 
       // baseGw and baseGh are now calculated below after retrieving glassDeduction for casement windows
       double glassDeduction = 0.0;
-      final activeZoneSash = (zone.content == ZoneContent.slidingSash ||
+      final activeZoneSash =
+          (zone.content == ZoneContent.slidingSash ||
               window.usesSlidingPrimaryProfiles)
           ? (zone.slidingSashOverride ?? window.slidingSashOverride)
           : (zone.sashOverride ?? window.sashOverride);
@@ -7939,7 +8077,8 @@ class ComponentCalculator {
         }
       }
 
-      double zoneSw = zone.sashThickness ??
+      double zoneSw =
+          zone.sashThickness ??
           (activeZoneSash != null
               ? ((activeZoneSash['visible_width'] as num?)?.toDouble() ?? sw)
               : sw);
@@ -8299,7 +8438,8 @@ class ComponentCalculator {
             for (var side = 0; side < cellGlass.fittedJoints.length; side++) {
               final joint = cellGlass.fittedJoints[side];
               final rule = joint['catalog_rule'] as Map?;
-              final role = rule?['role_key']?.toString() ??
+              final role =
+                  rule?['role_key']?.toString() ??
                   (side == 0 ? 'joint_vitrage' : 'joint_bourrage');
               final jointLabel = role == 'joint_vitrage'
                   ? 'جوان الزجاج (Joint Vitrage)'
@@ -10175,8 +10315,7 @@ class ComponentCalculator {
       final pieceCutAngles = <String>[
         for (final item in group)
           for (var i = 0; i < (item.pieces?.length ?? 0); i++)
-            if (item.pieceCutAngles != null &&
-                i < item.pieceCutAngles!.length)
+            if (item.pieceCutAngles != null && i < item.pieceCutAngles!.length)
               item.pieceCutAngles![i]
             else
               '',
@@ -10256,7 +10395,9 @@ class ComponentCalculator {
 
     bool isMergeableProfile(BomItem item) {
       if (item.category != 'profile') return false;
-      final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
+      final role = (item.roleKey ?? item.selectorType ?? '')
+          .trim()
+          .toLowerCase();
       final name = '${item.originalName} ${item.name}'.toLowerCase();
       if (role == 'side_cover' ||
           name.contains('couvre-joint') ||
@@ -10292,8 +10433,7 @@ class ComponentCalculator {
       final pieceCutAngles = <String>[
         for (final item in group)
           for (var i = 0; i < (item.pieces?.length ?? 0); i++)
-            if (item.pieceCutAngles != null &&
-                i < item.pieceCutAngles!.length)
+            if (item.pieceCutAngles != null && i < item.pieceCutAngles!.length)
               item.pieceCutAngles![i]
             else
               '',
@@ -10301,7 +10441,9 @@ class ComponentCalculator {
       final roles = <String>[];
       for (final item in group) {
         final lines = item.name.split('\n');
-        final role = lines.isNotEmpty ? lines[0].trim() : item.originalName.trim();
+        final role = lines.isNotEmpty
+            ? lines[0].trim()
+            : item.originalName.trim();
         if (role.isNotEmpty && !roles.contains(role)) roles.add(role);
       }
 
@@ -10309,7 +10451,8 @@ class ComponentCalculator {
       final optimization = barLength > 0 && pieces.isNotEmpty
           ? optimizeCutting(pieces: pieces, barLength: barLength)
           : null;
-      final exact = optimization?['exactBars'] as double? ??
+      final exact =
+          optimization?['exactBars'] as double? ??
           group.fold<double>(
             0.0,
             (total, item) => total + (item.exactQuantity ?? item.quantity),
@@ -10345,7 +10488,8 @@ class ComponentCalculator {
         imagePath: first.imagePath,
         colorName: first.colorName,
         length: first.length,
-        quantity: quantity?.toDouble() ??
+        quantity:
+            quantity?.toDouble() ??
             group.fold<double>(0.0, (total, item) => total + item.quantity),
         unit: first.unit,
         unitPrice: first.unitPrice,
@@ -11060,7 +11204,21 @@ class ComponentCalculator {
     int? sourceSeriesId,
     String? materialType,
   }) {
-    bool isLinked = overrides.containsKey(originalName);
+    Map<String, dynamic>? selectedOverride;
+    final direct = overrides[originalName];
+    if (direct is Map) {
+      selectedOverride = Map<String, dynamic>.from(direct);
+    } else {
+      final targetSelector = _selectorTypeForShutter(originalName);
+      for (final entry in overrides.entries) {
+        if (entry.value is! Map) continue;
+        if (_selectorTypeForShutter(entry.key) == targetSelector) {
+          selectedOverride = Map<String, dynamic>.from(entry.value as Map);
+          break;
+        }
+      }
+    }
+    final bool isLinked = selectedOverride != null;
     String name = originalName;
     double price = 0.0;
     double finalQty = qty;
@@ -11071,11 +11229,12 @@ class ComponentCalculator {
     String? imagePath;
 
     if (isLinked) {
-      final ov = overrides[originalName];
+      final ov = selectedOverride!;
       profileCode = ov['code']?.toString();
       imagePath = ov['image_path']?.toString();
-      name = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
-      if (name.startsWith('- ')) name = name.substring(2);
+      var details = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
+      if (details.startsWith('- ')) details = details.substring(2);
+      name = '$originalName\n$details';
       final rawPrice =
           ov['calculated_price'] ?? ov['price_dzd'] ?? ov['price'] ?? 0.0;
       price = rawPrice is num
@@ -11084,16 +11243,14 @@ class ComponentCalculator {
     }
     final linkedCatalogueId =
         catalogItemId ??
-        (isLinked && overrides[originalName]['id'] is num
-            ? (overrides[originalName]['id'] as num).toInt()
-            : int.tryParse(
-                '${isLinked ? overrides[originalName]['id'] ?? '' : ''}',
-              ));
+        (isLinked && selectedOverride!['id'] is num
+            ? (selectedOverride['id'] as num).toInt()
+            : int.tryParse('${isLinked ? selectedOverride!['id'] ?? '' : ''}'));
 
     bool isSqmOrLinear = false;
     String finalUnit = unit;
     if (isLinked) {
-      final ov = overrides[originalName];
+      final ov = selectedOverride!;
       final dbUnit = (ov['unit'] ?? '').toString().toLowerCase().trim();
 
       if (dbUnit == 'sqm') {
@@ -11118,10 +11275,13 @@ class ComponentCalculator {
     if (pieces != null && pieces.isNotEmpty) {
       double barLength = 0.0;
       if (isLinked) {
-        final ov = overrides[originalName];
+        final ov = selectedOverride!;
         double? dbLen =
             (ov['bar_length_m'] as num?)?.toDouble() ??
             (ov['bar_length'] as num?)?.toDouble();
+        if ((dbLen == null || dbLen <= 0) && ov['max_width_mm'] is num) {
+          dbLen = (ov['max_width_mm'] as num).toDouble() / 1000.0;
+        }
         if (dbLen != null && dbLen > 0) barLength = dbLen;
       }
 
@@ -11155,7 +11315,7 @@ class ComponentCalculator {
       cuttingListText = 'قطع القص: ${parts.join(' ، ')}';
     }
     if (isLinked && (finalLength == null || finalLength == 0.0)) {
-      final ov = overrides[originalName];
+      final ov = selectedOverride!;
       finalLength =
           (ov['bar_length_m'] as num?)?.toDouble() ??
           (ov['bar_length'] as num?)?.toDouble() ??
@@ -11177,16 +11337,15 @@ class ComponentCalculator {
       name =
           '$name\n(المطلوب الفعلي: ${finalExactQuantity.toStringAsFixed(2)} $finalUnit)';
     }
-    final linkedOverride = isLinked ? overrides[originalName] : null;
+    final linkedOverride = selectedOverride;
     final isAccessoryOverride =
-        linkedOverride is Map &&
-        (linkedOverride.containsKey('material_type') ||
-            linkedOverride.containsKey('screw_count') ||
-            linkedOverride.containsKey('is_kit_screw') ||
-            linkedOverride.containsKey('is_caisson_screw') ||
-            linkedOverride.containsKey('is_moteur_screw')) &&
-        !linkedOverride.containsKey('component_type');
-
+        linkedOverride != null &&
+        (linkedOverride['material_type'] != null ||
+            linkedOverride['screw_count'] != null ||
+            linkedOverride['is_kit_screw'] != null ||
+            linkedOverride['is_caisson_screw'] != null ||
+            linkedOverride['is_moteur_screw'] != null) &&
+        linkedOverride['component_type'] == null;
     return BomItem(
       category: 'shutter',
       originalName: originalName,
