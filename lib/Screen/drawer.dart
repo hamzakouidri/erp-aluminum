@@ -19,7 +19,6 @@ import 'trash_screen.dart';
 import 'suppliers_screen.dart';
 import 'settings_screen.dart';
 import 'storage_dashboard_screen.dart';
-import 'cutting_optimization_screen.dart';
 import 'selected_systems_screen.dart';
 import 'price_management_screen.dart';
 import 'global_consumption_report_screen.dart';
@@ -93,7 +92,8 @@ class _AppDrawerState extends State<AppDrawer> {
     );
     if (mounted) {
       setState(() {
-        _savedLogoBase64 = prefs.getString('workshop_logo_base64');
+        _savedLogoBase64 = prefs.getString('workshop_logo_base64') ??
+            prefs.getString('workshop_logo');
         _savedWorkshopName = localWorkshopName.isEmpty
             ? null
             : localWorkshopName;
@@ -384,24 +384,34 @@ class _AppDrawerState extends State<AppDrawer> {
     required IconData icon,
     required VoidCallback onTap,
     Color? color,
+    bool isDesktop = true,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDesktop
+        ? Colors.white
+        : (isDark ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF334155));
+    final iconColor = isDesktop
+        ? Colors.white
+        : (color ?? (isDark ? Colors.lightBlueAccent : const Color(0xFF2563EB)));
+
     return ListTile(
       dense: true,
       minVerticalPadding: 2,
-      contentPadding: const EdgeInsetsDirectional.only(start: 44, end: 14),
-      leading: Icon(icon, color: Colors.white),
+      contentPadding: EdgeInsetsDirectional.only(
+        start: isDesktop ? 44 : 32,
+        end: 14,
+      ),
+      leading: Icon(icon, color: iconColor, size: isDesktop ? 20 : 21),
       title: Text(
         title,
-        // Drawer labels can be long in French (for example sales/distribution
-        // descriptions). Let them use a second line instead of overflowing
-        // the fixed-width desktop sidebar.
         maxLines: 2,
         softWrap: true,
         overflow: TextOverflow.visible,
-        style: const TextStyle(
-          color: Colors.white,
-          fontFamily: 'Arial',
+        style: TextStyle(
+          color: textColor,
+          fontFamily: 'Cairo',
           fontWeight: FontWeight.w600,
+          fontSize: isDesktop ? 12.5 : 13,
         ),
       ),
       onTap: onTap,
@@ -414,29 +424,63 @@ class _AppDrawerState extends State<AppDrawer> {
     required IconData icon,
     required List<Widget> children,
     Color? color,
+    bool isDesktop = true,
   }) {
-    return ExpansionTile(
-      initiallyExpanded: widget.expandedGroup == groupKey,
-      leading: Icon(icon, color: Colors.white),
-      title: Text(
-        title,
-        maxLines: 2,
-        softWrap: true,
-        overflow: TextOverflow.visible,
-        style: const TextStyle(
-          color: Colors.white,
-          fontFamily: 'Arial',
-          fontWeight: FontWeight.w700,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDesktop
+        ? Colors.white
+        : (isDark ? Colors.white : const Color(0xFF0F172A));
+    final iconColor = isDesktop
+        ? Colors.white
+        : (color ?? (isDark ? Colors.lightBlueAccent : const Color(0xFF2563EB)));
+    final collapsedBg = isDesktop
+        ? Colors.transparent
+        : (isDark ? Colors.transparent : Colors.grey.withValues(alpha: 0.03));
+    final expandedBg = isDesktop
+        ? Colors.white.withValues(alpha: 0.07)
+        : (isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : const Color(0xFF2563EB).withValues(alpha: 0.05));
+
+    return Container(
+      margin: isDesktop
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: widget.expandedGroup == groupKey,
+          leading: Icon(icon, color: iconColor, size: 22),
+          title: Text(
+            title,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.visible,
+            style: TextStyle(
+              color: titleColor,
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w700,
+              fontSize: isDesktop ? 13 : 13.5,
+            ),
+          ),
+          iconColor: isDesktop
+              ? Colors.white
+              : (isDark ? Colors.white70 : const Color(0xFF2563EB)),
+          collapsedIconColor: isDesktop
+              ? Colors.white70
+              : (isDark ? Colors.white54 : Colors.blueGrey),
+          textColor: titleColor,
+          collapsedTextColor: titleColor,
+          backgroundColor: expandedBg,
+          collapsedBackgroundColor: collapsedBg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          childrenPadding: const EdgeInsets.only(bottom: 4),
+          children: children,
         ),
       ),
-      iconColor: Colors.white,
-      collapsedIconColor: Colors.white,
-      textColor: Colors.white,
-      collapsedTextColor: Colors.white,
-      backgroundColor: Colors.white.withValues(alpha: 0.07),
-      collapsedBackgroundColor: Colors.transparent,
-      childrenPadding: const EdgeInsets.only(bottom: 4),
-      children: children,
     );
   }
 
@@ -758,15 +802,16 @@ class _AppDrawerState extends State<AppDrawer> {
     }
   }
 
-  Widget _buildWindowsDrawer(
+  List<Widget> _buildGroupedMenuItems(
     BuildContext context,
     AppSettingsProvider settings,
-    AppLanguage lang,
-  ) {
+    AppLanguage lang, {
+    required bool isDesktop,
+  }) {
     final orderItems = <Widget>[];
     if (settings.canViewOrders()) {
       orderItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'طلبيات الزبائن',
@@ -784,8 +829,13 @@ class _AppDrawerState extends State<AppDrawer> {
       );
       if (settings.canAccessTrash()) {
         orderItems.add(
-          _desktopMenuItem(
-            title: Localization.translate('orders_trash', lang),
+          _desktopMenuItem(isDesktop: isDesktop, 
+            title: _desktopLabel(
+            lang,
+            arabic: 'سلة المحذوفات',
+            french: 'Corbeille des commandes',
+            english: 'Orders trash',
+          ),
             icon: Icons.auto_delete_rounded,
             onTap: () => _openScreen(
               'orders_trash',
@@ -797,28 +847,11 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         );
       }
-      orderItems.add(
-        _desktopMenuItem(
-          title: _desktopLabel(
-            lang,
-            arabic: 'تحسين القص (Optimisation)',
-            french: 'Optimisation de coupe',
-            english: 'Cutting Optimization',
-          ),
-          icon: Icons.architecture_rounded,
-          onTap: () => _openScreen(
-            'cutting_optimization',
-            Icons.architecture_rounded,
-            CuttingOptimizationScreen(db: db),
-            titleKey: 'cutting_optimization',
-          ),
-          color: Colors.indigo,
-        ),
-      );
+
     }
     if (settings.canViewSales()) {
       orderItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'مبيعات الورشة',
@@ -836,7 +869,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
       orderItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'بيع المواد',
@@ -856,7 +889,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canAccessDistributionTracking()) {
       orderItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'التوزيع والتتبع',
@@ -878,7 +911,7 @@ class _AppDrawerState extends State<AppDrawer> {
     final purchaseItems = <Widget>[];
     if (settings.canRegisterPurchases()) {
       purchaseItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'المشتريات',
@@ -898,7 +931,7 @@ class _AppDrawerState extends State<AppDrawer> {
 
     if (settings.canViewSuppliers()) {
       purchaseItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'الموردون',
@@ -919,8 +952,13 @@ class _AppDrawerState extends State<AppDrawer> {
     final inventoryItems = <Widget>[];
     if (settings.canViewMyAccreditations()) {
       inventoryItems.add(
-        _desktopMenuItem(
-          title: Localization.translate('produits', lang),
+        _desktopMenuItem(isDesktop: isDesktop, 
+          title: _desktopLabel(
+            lang,
+            arabic: 'الأنظمة والمنتجات',
+            french: 'Produits et systèmes',
+            english: 'Products and systems',
+          ),
           icon: Icons.category_rounded,
           onTap: () => _openScreen(
             'produits',
@@ -933,7 +971,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canAccessInventory()) {
       inventoryItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'المخزون',
@@ -951,7 +989,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
       inventoryItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'إدارة فضلات الألواح والمقاطع',
@@ -971,7 +1009,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canViewGlobalConsumption()) {
       inventoryItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'تقرير النواقص الشامل',
@@ -993,7 +1031,7 @@ class _AppDrawerState extends State<AppDrawer> {
     final financeItems = <Widget>[];
     if (settings.canAccessTreasury()) {
       financeItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'الصندوق والخزينة',
@@ -1010,10 +1048,46 @@ class _AppDrawerState extends State<AppDrawer> {
           color: Colors.green,
         ),
       );
+      financeItems.add(
+        _desktopMenuItem(isDesktop: isDesktop,
+          title: _desktopLabel(
+            lang,
+            arabic: 'قبض جديد (Encaissement)',
+            french: 'Nouvel Encaissement',
+            english: 'New Income (Encaissement)',
+          ),
+          icon: Icons.arrow_downward_rounded,
+          onTap: () {
+            TreasuryScreen.showQuickTransactionDialog(
+              context,
+              initialType: 'Encaissement',
+            );
+          },
+          color: const Color(0xFF10B981),
+        ),
+      );
+      financeItems.add(
+        _desktopMenuItem(isDesktop: isDesktop,
+          title: _desktopLabel(
+            lang,
+            arabic: 'دفع جديد (Décaissement)',
+            french: 'Nouveau Décaissement',
+            english: 'New Expense (Décaissement)',
+          ),
+          icon: Icons.arrow_upward_rounded,
+          onTap: () {
+            TreasuryScreen.showQuickTransactionDialog(
+              context,
+              initialType: 'Décaissement',
+            );
+          },
+          color: const Color(0xFFF59E0B),
+        ),
+      );
     }
     if (settings.canViewWorkerFinances()) {
       financeItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'شؤون وأجور العمال',
@@ -1032,7 +1106,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canViewWorkerWeeklySettlement()) {
       financeItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'المحاسبة الأسبوعية للعمال',
@@ -1053,8 +1127,13 @@ class _AppDrawerState extends State<AppDrawer> {
     final clientItems = <Widget>[];
     if (settings.canViewClients()) {
       clientItems.add(
-        _desktopMenuItem(
-          title: Localization.translate('clients', lang),
+        _desktopMenuItem(isDesktop: isDesktop, 
+          title: _desktopLabel(
+            lang,
+            arabic: 'قائمة الزبائن',
+            french: 'Liste des clients',
+            english: 'Customer list',
+          ),
           icon: Icons.groups_rounded,
           onTap: () => _openScreen(
             'clients',
@@ -1067,7 +1146,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canViewClientLedger()) {
       clientItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'كشف حساب الزبائن',
@@ -1089,7 +1168,7 @@ class _AppDrawerState extends State<AppDrawer> {
     final taskItems = <Widget>[];
     if (settings.canViewMyTasks()) {
       taskItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'مهامي وتصنيعاتي',
@@ -1107,7 +1186,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
       taskItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'أرشيف التوزيع والمهام',
@@ -1127,7 +1206,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canAccessExternalOperations()) {
       taskItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'الأعمال والمهام الخارجية',
@@ -1147,10 +1226,10 @@ class _AppDrawerState extends State<AppDrawer> {
     }
 
     final managementItems = <Widget>[];
-    managementItems.add(_buildWindowsWorkshopCode(lang));
+    if (isDesktop) managementItems.add(_buildWindowsWorkshopCode(lang));
     if (settings.canManageWorkers()) {
       managementItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'إدارة صلاحيات المستخدمين',
@@ -1169,8 +1248,13 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canChangePrices()) {
       managementItems.add(
-        _desktopMenuItem(
-          title: Localization.translate('Manage Prices', lang),
+        _desktopMenuItem(isDesktop: isDesktop, 
+          title: _desktopLabel(
+            lang,
+            arabic: 'إدارة الأسعار',
+            french: 'Gestion des prix',
+            english: 'Price management',
+          ),
           icon: Icons.monetization_on_rounded,
           onTap: () => _openScreen(
             'Manage Prices',
@@ -1183,7 +1267,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canSelectSystems()) {
       managementItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'الأنظمة المستعملة',
@@ -1202,7 +1286,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (isAdmin) {
       managementItems.add(
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'المستخدمون والاشتراكات',
@@ -1220,23 +1304,10 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    if (settings.canAccessSettings()) {
-      managementItems.add(
-        _desktopMenuItem(
-          title: Localization.translate('settings', lang),
-          icon: Icons.settings_rounded,
-          onTap: () => _openScreen(
-            'settings',
-            Icons.settings_rounded,
-            const SettingsScreen(),
-            titleKey: 'settings',
-          ),
-        ),
-      );
-    }
+
 
     managementItems.add(
-      _desktopMenuItem(
+      _desktopMenuItem(isDesktop: isDesktop, 
         title: _desktopLabel(
           lang,
           arabic: 'استهلاك التخزين والذاكرة',
@@ -1256,7 +1327,7 @@ class _AppDrawerState extends State<AppDrawer> {
 
     final accountItems = <Widget>[
       if (settings.canViewSubscription()) ...[
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'الدفع الإلكتروني وتجديد الاشتراك',
@@ -1273,7 +1344,7 @@ class _AppDrawerState extends State<AppDrawer> {
           },
           color: Colors.teal,
         ),
-        _desktopMenuItem(
+        _desktopMenuItem(isDesktop: isDesktop, 
           title: _desktopLabel(
             lang,
             arabic: 'مراجعة الاشتراك',
@@ -1285,7 +1356,7 @@ class _AppDrawerState extends State<AppDrawer> {
           color: Colors.amber,
         ),
       ],
-      _desktopMenuItem(
+      _desktopMenuItem(isDesktop: isDesktop, 
         title: _desktopLabel(
           lang,
           arabic: 'مراسلة الإدارة وتقييم التطبيق',
@@ -1296,18 +1367,24 @@ class _AppDrawerState extends State<AppDrawer> {
         onTap: _openSupportDialog,
         color: Colors.green,
       ),
-      _desktopMenuItem(
-        title: Localization.translate('deconnexion', lang),
+      _desktopMenuItem(isDesktop: isDesktop, 
+        title: _desktopLabel(
+          lang,
+          arabic: 'تسجيل الخروج',
+          french: 'Déconnexion',
+          english: 'Sign out',
+        ),
         icon: Icons.logout_rounded,
         onTap: _signOut,
         color: Colors.red,
       ),
     ];
 
-    final menu = <Widget>[_buildWindowsHeader(lang), const Divider(height: 1)];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final menu = <Widget>[];
     if (orderItems.isNotEmpty) {
       menu.add(
-        _desktopGroup(
+        _desktopGroup(isDesktop: isDesktop, 
           groupKey: 'orders',
           title: _desktopLabel(
             lang,
@@ -1323,7 +1400,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (purchaseItems.isNotEmpty) {
       menu.add(
-        _desktopGroup(
+        _desktopGroup(isDesktop: isDesktop, 
           groupKey: 'purchases',
           title: _desktopLabel(
             lang,
@@ -1339,7 +1416,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (inventoryItems.isNotEmpty) {
       menu.add(
-        _desktopGroup(
+        _desktopGroup(isDesktop: isDesktop, 
           groupKey: 'inventory',
           title: _desktopLabel(
             lang,
@@ -1355,7 +1432,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (financeItems.isNotEmpty) {
       menu.add(
-        _desktopGroup(
+        _desktopGroup(isDesktop: isDesktop, 
           groupKey: 'finance',
           title: _desktopLabel(
             lang,
@@ -1371,7 +1448,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (clientItems.isNotEmpty) {
       menu.add(
-        _desktopGroup(
+        _desktopGroup(isDesktop: isDesktop, 
           groupKey: 'clients',
           title: _desktopLabel(
             lang,
@@ -1387,32 +1464,61 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (settings.canViewProjects()) {
       menu.add(
-        ListTile(
-          leading: const Icon(Icons.folder_shared_rounded, color: Colors.white),
-          title: Text(
-            _desktopLabel(
-              lang,
-              arabic: 'المشاريع',
-              french: 'Projets',
-              english: 'Projects',
-            ),
-            maxLines: 2,
-            softWrap: true,
-            overflow: TextOverflow.visible,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          onTap: () => _openScreen(
-            'projects',
-            Icons.folder_shared_rounded,
-            ProjectsScreen(db: db),
-            titleKey: 'projects',
-          ),
-        ),
+        isDesktop
+            ? ListTile(
+                leading: const Icon(Icons.folder_shared_rounded, color: Colors.white),
+                title: Text(
+                  _desktopLabel(
+                    lang,
+                    arabic: 'المشاريع',
+                    french: 'Projets',
+                    english: 'Projects',
+                  ),
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onTap: () => _openScreen(
+                  'projects',
+                  Icons.folder_shared_rounded,
+                  ProjectsScreen(db: db),
+                  titleKey: 'projects',
+                ),
+              )
+            : Container(
+                margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  tileColor: isDark ? Colors.transparent : Colors.grey.withValues(alpha: 0.03),
+                  leading: const Icon(Icons.folder_shared_rounded, color: Colors.amber),
+                  title: Text(
+                    _desktopLabel(
+                      lang,
+                      arabic: 'المشاريع',
+                      french: 'Projets',
+                      english: 'Projects',
+                    ),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                  onTap: () => _openScreen(
+                    'projects',
+                    Icons.folder_shared_rounded,
+                    ProjectsScreen(db: db),
+                    titleKey: 'projects',
+                  ),
+                ),
+              ),
       );
     }
     if (taskItems.isNotEmpty) {
       menu.add(
-        _desktopGroup(
+        _desktopGroup(isDesktop: isDesktop, 
           groupKey: 'tasks',
           title: _desktopLabel(
             lang,
@@ -1427,27 +1533,81 @@ class _AppDrawerState extends State<AppDrawer> {
       );
     }
     menu.add(
-      _desktopGroup(
+      _desktopGroup(isDesktop: isDesktop, 
         groupKey: 'management',
         title: _desktopLabel(
           lang,
-          arabic: 'الإعدادات والإدارة',
-          french: 'Paramètres et gestion',
-          english: 'Settings and management',
+          arabic: 'الإدارة والتهيئة',
+          french: 'Gestion et configuration',
+          english: 'Management and configuration',
         ),
         icon: Icons.settings_suggest_rounded,
         color: Colors.blueGrey,
         children: managementItems,
       ),
     );
+    if (settings.canAccessSettings()) {
+      menu.add(
+        isDesktop
+            ? ListTile(
+                leading: const Icon(Icons.settings_rounded, color: Colors.white),
+                title: Text(
+                  _desktopLabel(
+                    lang,
+                    arabic: 'الإعدادات',
+                    french: 'Paramètres',
+                    english: 'Settings',
+                  ),
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onTap: () => _openScreen(
+                  'settings',
+                  Icons.settings_rounded,
+                  const SettingsScreen(),
+                  titleKey: 'settings',
+                ),
+              )
+            : Container(
+                margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  tileColor: isDark ? Colors.transparent : Colors.grey.withValues(alpha: 0.03),
+                  leading: const Icon(Icons.settings_rounded, color: Colors.blueGrey),
+                  title: Text(
+                    _desktopLabel(
+                      lang,
+                      arabic: 'الإعدادات',
+                      french: 'Paramètres',
+                      english: 'Settings',
+                    ),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                  onTap: () => _openScreen(
+                    'settings',
+                    Icons.settings_rounded,
+                    const SettingsScreen(),
+                    titleKey: 'settings',
+                  ),
+                ),
+              ),
+      );
+    }
     menu.add(
-      _desktopGroup(
+      _desktopGroup(isDesktop: isDesktop, 
         groupKey: 'account',
         title: _desktopLabel(
           lang,
-          arabic: 'الحساب',
-          french: 'Compte',
-          english: 'Account',
+          arabic: 'الحساب والدعم',
+          french: 'Compte et assistance',
+          english: 'Account & Support',
         ),
         icon: Icons.account_circle_rounded,
         color: const Color(0xFF6366F1),
@@ -1455,6 +1615,20 @@ class _AppDrawerState extends State<AppDrawer> {
       ),
     );
 
+
+    return menu;
+  }
+
+  Widget _buildWindowsDrawer(
+    BuildContext context,
+    AppSettingsProvider settings,
+    AppLanguage lang,
+  ) {
+    final menu = <Widget>[
+      _buildWindowsHeader(lang),
+      const Divider(height: 1),
+      ..._buildGroupedMenuItems(context, settings, lang, isDesktop: true),
+    ];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Drawer(
       width: 290,
@@ -1512,10 +1686,10 @@ class _AppDrawerState extends State<AppDrawer> {
                 workshopName = Localization.translate('اسم الورشة', lang);
               }
               String userEmail = AppAuthService().currentUser?.email ?? '';
-              String? logoBase64;
-              String? joinCode;
-              String? role;
-              String displayName = '';
+              String? logoBase64 = _savedLogoBase64;
+              String? joinCode = _savedWorkshopCode;
+              String? role = _savedUserRole;
+              String displayName = _savedUserDisplayName?.trim() ?? '';
 
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -1532,9 +1706,9 @@ class _AppDrawerState extends State<AppDrawer> {
                 logoBase64 =
                     (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
                     ? data['workshopLogoUrl']
-                    : _savedLogoBase64;
-                joinCode = data['joinCode'];
-                role = data['role'];
+                    : (_savedLogoBase64 ?? logoBase64);
+                joinCode = data['joinCode'] ?? joinCode;
+                role = data['role'] ?? role;
                 final legacyDisplayName =
                     data['displayName']?.toString().trim() ?? '';
                 final savedUserName = _savedUserDisplayName?.trim() ?? '';
@@ -1756,548 +1930,14 @@ class _AppDrawerState extends State<AppDrawer> {
               return const SizedBox.shrink();
             },
           ),
-          if (settings.canViewMyTasks())
-            ListTile(
-              leading: const Icon(
-                Icons.engineering_rounded,
-                color: Colors.indigo,
-              ),
-              title: Text(Localization.translate('مهامي وتصنيعاتي', lang)),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('مهامي وتصنيعاتي', lang),
-                  Icons.engineering_rounded,
-                  WorkerTasksScreen(db: db),
-                  titleKey: 'مهامي وتصنيعاتي',
-                );
-              },
-            ),
-          if (settings.canViewMyTasks())
-            ListTile(
-              leading: const Icon(
-                Icons.archive_rounded,
-                color: Colors.deepOrange,
-              ),
-              title: Text(
-                lang == AppLanguage.arabic
-                    ? 'أرشيف التوزيع والمهام'
-                    : (lang == AppLanguage.french
-                          ? 'Archives & Distribution'
-                          : 'Tasks & Distribution Archive'),
-              ),
-              onTap: () {
-                _openScreen(
-                  lang == AppLanguage.arabic
-                      ? 'أرشيف التوزيع والمهام'
-                      : (lang == AppLanguage.french
-                            ? 'Archives & Distribution'
-                            : 'Tasks & Distribution Archive'),
-                  Icons.archive_rounded,
-                  WorkerArchiveScreen(db: db),
-                  titleKey: 'worker_archive',
-                );
-              },
-            ),
-          if (settings.canAccessExternalOperations())
-            ListTile(
-              leading: const Icon(
-                Icons.construction_rounded,
-                color: Colors.teal,
-              ),
-              title: Text(
-                lang == AppLanguage.arabic
-                    ? 'الأعمال والمهمات الخارجية'
-                    : (lang == AppLanguage.french
-                          ? 'Opérations Externe'
-                          : 'External Operations'),
-              ),
-              onTap: () {
-                _openScreen(
-                  lang == AppLanguage.arabic
-                      ? 'الأعمال والمهمات الخارجية'
-                      : 'Opérations Externe',
-                  Icons.construction_rounded,
-                  ExternalOperationsHubScreen(db: db),
-                  titleKey: 'external_operations',
-                );
-              },
-            ),
-          if (settings.canViewOrders())
-            ListTile(
-              leading: const Icon(Icons.list),
-              title: Text(Localization.translate('commandes', lang)),
-              onTap: () {
-                _openScreen(
-                  'commandes',
-                  Icons.list,
-                  Commande(),
-                  titleKey: 'commandes',
-                );
-              },
-            ),
-          if (settings.canAccessTrash())
-            ListTile(
-              leading: const Icon(
-                Icons.auto_delete_rounded,
-                color: Colors.redAccent,
-              ),
-              title: Text(Localization.translate('orders_trash', lang)),
-              onTap: () {
-                _openScreen(
-                  'orders_trash',
-                  Icons.auto_delete_rounded,
-                  TrashScreen(db: db),
-                  titleKey: 'orders_trash',
-                );
-              },
-            ),
-          if (settings.canViewOrders())
-            ListTile(
-              leading: const Icon(
-                Icons.architecture_rounded,
-                color: Colors.indigo,
-              ),
-              title: Text(
-                _desktopLabel(
-                  lang,
-                  arabic: 'تحسين القص (Optimisation)',
-                  french: 'Optimisation de coupe',
-                  english: 'Cutting Optimization',
-                ),
-              ),
-              onTap: () {
-                _openScreen(
-                  'cutting_optimization',
-                  Icons.architecture_rounded,
-                  CuttingOptimizationScreen(db: db),
-                  titleKey: 'cutting_optimization',
-                );
-              },
-            ),
-
-          if (settings.canViewProjects())
-            ListTile(
-              leading: const Icon(Icons.folder_shared_rounded),
-              title: Text(Localization.translate('المشاريع', lang)),
-              onTap: () {
-                _openScreen(
-                  'المشاريع',
-                  Icons.folder_shared_rounded,
-                  ProjectsScreen(db: db),
-                  titleKey: 'المشاريع',
-                );
-              },
-            ),
-
-          if (settings.canViewClients())
-            ListTile(
-              leading: const Icon(Icons.groups),
-              title: Text(Localization.translate('clients', lang)),
-              onTap: () {
-                _openScreen(
-                  'clients',
-                  Icons.groups,
-                  Customers(),
-                  titleKey: 'clients',
-                );
-              },
-            ),
-          if (settings.canViewClientLedger())
-            ListTile(
-              leading: const Icon(
-                Icons.history_edu_rounded,
-                color: Colors.blue,
-              ),
-              title: Text(Localization.translate('كشف حساب الزبائن', lang)),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('كشف حساب الزبائن', lang),
-                  Icons.history_edu_rounded,
-                  const ClientChronoSearchScreen(),
-                  titleKey: 'كشف حساب الزبائن',
-                );
-              },
-            ),
-          if (settings.canViewSales())
-            ListTile(
-              leading: const Icon(
-                Icons.monetization_on_rounded,
-                color: Colors.teal,
-              ),
-              title: Text(
-                lang == AppLanguage.arabic
-                    ? 'مبيعات الورشة'
-                    : lang == AppLanguage.french
-                    ? 'Ventes atelier'
-                    : 'Workshop sales',
-              ),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('vente', lang),
-                  Icons.monetization_on_rounded,
-                  SalesScreen(db: db),
-                  titleKey: 'vente',
-                );
-              },
-            ),
-          if (settings.canViewSales())
-            ListTile(
-              leading: const Icon(
-                Icons.storefront_rounded,
-                color: Colors.deepOrange,
-              ),
-              title: Text(
-                lang == AppLanguage.arabic
-                    ? 'بيع المواد'
-                    : lang == AppLanguage.french
-                    ? 'Vente Matériaux'
-                    : 'Material sales',
-              ),
-              onTap: () {
-                _openScreen(
-                  'material_sales',
-                  Icons.storefront_rounded,
-                  MaterialSalesScreen(db: db),
-                  titleKey: 'material_sales',
-                );
-              },
-            ),
-          if (settings.canAccessDistributionTracking())
-            ListTile(
-              leading: const Icon(
-                Icons.delivery_dining_rounded,
-                color: Colors.blue,
-              ),
-              title: Text(Localization.translate('خطط التوزيع والتتبع', lang)),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('خطط التوزيع والتتبع', lang),
-                  Icons.delivery_dining_rounded,
-                  const DistributionTrackingScreen(),
-                  titleKey: 'خطط التوزيع والتتبع',
-                );
-              },
-            ),
-          if (settings.canRegisterPurchases())
-            ListTile(
-              leading: const Icon(Icons.shopping_bag_rounded),
-              title: Text(Localization.translate('achat', lang)),
-              onTap: () {
-                _openScreen(
-                  'achat',
-                  Icons.shopping_bag_rounded,
-                  AchatScreen(db: SqlDatabase()),
-                  titleKey: 'achat',
-                );
-              },
-            ),
-          if (settings.canViewMyAccreditations())
-            ListTile(
-              leading: const Icon(Icons.production_quantity_limits),
-              title: Text(Localization.translate('produits', lang)),
-              onTap: () {
-                _openScreen(
-                  'produits',
-                  Icons.production_quantity_limits,
-                  ProductsMenuScreen(db: db),
-                  titleKey: 'produits',
-                );
-              },
-            ),
-          if (settings.canAccessInventory())
-            ListTile(
-              leading: const Icon(
-                Icons.warehouse_rounded,
-                color: Color(0xFF8B5CF6),
-              ),
-              title: Text(Localization.translate('المخزون', lang)),
-              onTap: () {
-                _openScreen(
-                  'المخزون',
-                  Icons.warehouse_rounded,
-                  InventoryScreen(db: db),
-                  titleKey: 'المخزون',
-                );
-              },
-            ),
-          if (settings.canAccessInventory())
-            ListTile(
-              leading: const Icon(Icons.recycling_rounded, color: Colors.teal),
-              title: Text(
-                lang == AppLanguage.arabic
-                    ? 'إدارة فضلات الألواح والمقاطع (Chutes)'
-                    : 'Gestion des chutes (Panneaux & Profilés)',
-              ),
-              onTap: () {
-                _openScreen(
-                  'material_remnants',
-                  Icons.recycling_rounded,
-                  const MaterialRemnantsScreen(),
-                  titleKey: 'material_remnants',
-                );
-              },
-            ),
-          if (settings.canAccessTreasury())
-            ListTile(
-              leading: const Icon(Icons.money),
-              title: Text(Localization.translate('caisse', lang)),
-              onTap: () {
-                _openScreen(
-                  'caisse',
-                  Icons.money,
-                  TreasuryScreen(db: SqlDatabase()),
-                  titleKey: 'caisse',
-                );
-              },
-            ),
-          if (settings.canManageWorkers())
-            ListTile(
-              leading: const Icon(Icons.engineering),
-              title: Text(
-                Localization.translate('إدارة صلاحيات المستخدمين', lang),
-              ),
-              onTap: () {
-                _openScreen(
-                  'إدارة صلاحيات المستخدمين',
-                  Icons.engineering,
-                  WorkersManagementScreen(db: SqlDatabase()),
-                  titleKey: 'إدارة صلاحيات المستخدمين',
-                );
-              },
-            ),
-          if (settings.canViewGlobalConsumption())
-            ListTile(
-              leading: const Icon(Icons.inventory_2, color: Colors.indigo),
-              title: Text(
-                Localization.translate('تقرير النواقص الشامل', lang),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.indigo,
-                ),
-              ),
-              onTap: () {
-                _openScreen(
-                  'تقرير النواقص الشامل',
-                  Icons.inventory_2,
-                  GlobalConsumptionReportScreen(db: SqlDatabase()),
-                  titleKey: 'تقرير النواقص الشامل',
-                );
-              },
-            ),
-          if (settings.canViewWorkerFinances())
-            ListTile(
-              leading: const Icon(Icons.people_alt),
-              title: Text(
-                Localization.translate('إدارة شؤون وأجور العمال', lang),
-              ),
-              onTap: () {
-                _openScreen(
-                  'إدارة شؤون وأجور العمال',
-                  Icons.people_alt,
-                  WorkerFinancesScreen(db: SqlDatabase()),
-                  titleKey: 'إدارة شؤون وأجور العمال',
-                );
-              },
-            ),
-
-          if (settings.canViewWorkerWeeklySettlement())
-            ListTile(
-              leading: const Icon(Icons.calculate_rounded),
-              title: Text(
-                Localization.translate('المحاسبة الأسبوعية للعمال', lang),
-              ),
-              onTap: () {
-                _openScreen(
-                  'المحاسبة الأسبوعية للعمال',
-                  Icons.calculate_rounded,
-                  WorkerWeeklySettlementScreen(db: SqlDatabase()),
-                  titleKey: 'المحاسبة الأسبوعية للعمال',
-                );
-              },
-            ),
-
-          if (settings.canChangePrices())
-            ListTile(
-              leading: const Icon(Icons.monetization_on),
-              title: Text(Localization.translate('Manage Prices', lang)),
-              onTap: () {
-                _openScreen(
-                  'Manage Prices',
-                  Icons.monetization_on,
-                  PriceManagementScreen(),
-                  titleKey: 'Manage Prices',
-                );
-              },
-            ),
-          if (settings.canSelectSystems())
-            ListTile(
-              leading: const Icon(
-                Icons.dashboard_customize_rounded,
-                color: Colors.teal,
-              ),
-              title: Text(
-                Localization.translate('تحديد الأنظمة المستعملة', lang),
-              ),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('تحديد الأنظمة المستعملة', lang),
-                  Icons.dashboard_customize_rounded,
-                  const SelectedSystemsScreen(),
-                  titleKey: 'تحديد الأنظمة المستعملة',
-                );
-              },
-            ),
-          if (isAdmin)
-            ListTile(
-              leading: const Icon(
-                Icons.admin_panel_settings,
-                color: Colors.blue,
-              ),
-              title: Text(
-                Localization.translate(
-                  Localization.translate('إدارة المستخدمين والاشتراكات', lang),
-                  lang,
-                ),
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: () {
-                _openScreen(
-                  Localization.translate('إدارة المستخدمين والاشتراكات', lang),
-                  Icons.admin_panel_settings,
-                  const AdminUsersScreen(),
-                  titleKey: 'إدارة المستخدمين والاشتراكات',
-                );
-              },
-            ),
-          if (settings.canAccessSettings())
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: Text(Localization.translate('settings', lang)),
-              onTap: () {
-                _openScreen(
-                  'settings',
-                  Icons.settings,
-                  const SettingsScreen(),
-                  titleKey: 'settings',
-                );
-              },
-            ),
-          ListTile(
-            leading: const Icon(
-              Icons.pie_chart_outline_rounded,
-              color: Color(0xFF0D9488),
-            ),
-            title: Text(
-              _desktopLabel(
-                lang,
-                arabic: 'استهلاك التخزين والذاكرة',
-                french: 'Stockage & Mémoire',
-                english: 'Storage & Memory',
-              ),
-            ),
-            onTap: () {
-              _openScreen(
-                'storage_dashboard',
-                Icons.pie_chart_outline_rounded,
-                StorageDashboardScreen(db: db),
-                titleKey: 'storage_dashboard',
-              );
-            },
+          const Divider(height: 8),
+          ..._buildGroupedMenuItems(
+            context,
+            settings,
+            lang,
+            isDesktop: false,
           ),
-
-          if (settings.canViewSubscription()) ...[
-            const Divider(),
-            ListTile(
-              leading: const Icon(
-                Icons.credit_card_rounded,
-                color: Colors.teal,
-              ),
-              title: Text(
-                Localization.translate(
-                  'الدفع الإلكتروني وتجديد الاشتراك',
-                  lang,
-                ),
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ElectronicPaymentScreen(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.card_membership_rounded,
-                color: Color(0xFF2563EB),
-              ),
-              title: Text(
-                Localization.translate('مراجعة الاشتراك', lang),
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                showSubscriptionReviewDialog(context);
-              },
-            ),
-          ],
-          ListTile(
-            leading: const Icon(Icons.support_agent, color: Colors.green),
-            title: Text(
-              Localization.translate('مراسلة الإدارة وتقييم التطبيق', lang),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              showDialog(context: context, builder: (_) => SupportDialog());
-            },
-          ),
-          if (AppAuthService().currentUser == null)
-            ListTile(
-              leading: const Icon(Icons.login_rounded, color: Colors.green),
-              title: Text(
-                Localization.translate('تسجيل الدخول / فتح الجلسة', lang),
-                style: const TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              },
-            )
-          else
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: Text(
-                Localization.translate('deconnexion', lang),
-                style: const TextStyle(color: Colors.red),
-              ),
-              onTap: () async {
-                // إغلاق القائمة الجانبية أولاً
-                Navigator.pop(context);
-                // تسجيل الخروج من Firebase و Google
-                try {
-                  context.read<WorkspaceController>().resetForSignedOut();
-                  await AppAuthService().signOut();
-                  await AppAuthService().signOutGoogleSession();
-                  CloudSyncService().reset();
-                  SupabaseWorkshopSyncService().stop();
-                  unawaited(CloudSyncService().clearCachedWorkshopContext());
-                  unawaited(SqlDatabase.clearAllLocalData());
-                } catch (e) {
-                  debugPrint('Sign out error: $e');
-                }
-              },
-            ),
+          const SizedBox(height: 24),
         ],
       ),
     );

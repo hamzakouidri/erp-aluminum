@@ -2075,7 +2075,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   List<BomItem> _resolvedFallbackBomItems(Iterable<BomItem> items) {
     return items
         .where((item) {
-          if (!item.isActive || item.requiredQuantity <= 0) return false;
+          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+          final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
+          if (!item.isActive || (!hasPieces && qty <= 0)) return false;
           final category = item.selectorCategory ?? item.category;
           final requiresCatalogueIdentity = const {
             'profile',
@@ -2094,10 +2096,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     BomEngineV2 engine,
   ) async {
     final rawItems = _generateRawBomItems();
-    return engine.filterItemsByAvailableCandidates(
+    final items = await engine.filterItemsByAvailableCandidates(
       window: widget.model,
       items: rawItems,
     );
+    return items.where((item) {
+      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+      final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
+      return hasPieces || qty > 0;
+    }).toList(growable: false);
   }
 
   Future<void> _refreshVisibleBomItems() async {
@@ -3007,8 +3014,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    // جدول الكمية يستعمل نفس مرشحات القواعد التي يستعملها شو دايلوج.
-    final items = _visibleBomItems;
+    final items = _visibleBomItems.where((item) {
+      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+      final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
+      return hasPieces || qty > 0;
+    }).toList(growable: false);
     return Scaffold(
       appBar: AppBar(
         title: Text(Localization.translate('الالكمية والتكلفة', lang)),
@@ -3473,7 +3483,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       listen: false,
     ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final items = _visibleBomItems;
+    final items = _visibleBomItems.where((item) {
+      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+      final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
+      return hasPieces || qty > 0;
+    }).toList(growable: false);
     final totals = _calculateTotals(items);
     final double totalCostNoWaste =
         totals['total']?['cost'] ?? 0.0; // التكلفة الصافية بدون هدر

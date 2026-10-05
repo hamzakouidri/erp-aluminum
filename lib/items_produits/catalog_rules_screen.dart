@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -64,7 +66,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   bool _loadingSeries = false;
   bool _loading = false;
   bool _saving = false;
+  bool _rulesSortedAfterSave = true;
   int? _loadedRulesSeriesId;
+
   bool _isAllowedToManage(BuildContext ctx) {
     final s = ctx.read<AppSettingsProvider>();
     return s.isAdmin || s.isManager;
@@ -217,6 +221,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       _selectedSeries = series;
       _selectedSeriesId = seriesId;
       _loading = true;
+      _rulesSortedAfterSave = true;
       _loadedRulesSeriesId = null;
       _inspectedItemKey = null;
     });
@@ -600,6 +605,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     final rule = _ruleFor(table, itemId);
     final key = _itemKey(table, itemId);
     setState(() {
+      _rulesSortedAfterSave = false;
       rule['is_active'] = enabled;
       if (enabled) {
         if (table == 'Accessories' && _isScrewItem(item)) {
@@ -670,21 +676,6 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     }
     const iconGroups = [
       _CatalogGroup(
-        key: 'screws',
-        ar: 'براغي أخرى',
-        fr: 'Autres vis',
-        icon: Icons.build_outlined,
-        roleKeys: {
-          'kit_screw',
-          'box_screw',
-          'motor_screw',
-          'batmo_screw',
-          'renfort_screw',
-          'manivelle_screw',
-          'assembly_screw',
-        },
-      ),
-      _CatalogGroup(
         key: 'accessory_screws',
         ar: 'براغي الأكسسوارات',
         fr: 'Vis accessoires',
@@ -692,18 +683,67 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         roleKeys: {'accessory_screw'},
       ),
       _CatalogGroup(
-        key: 'installation_screws',
-        ar: 'براغي التركيب',
-        fr: 'Vis de pose',
-        icon: Icons.home_repair_service_outlined,
-        roleKeys: {'installation_screw'},
-      ),
-      _CatalogGroup(
         key: 'bouchon_batmo_screws',
         ar: 'براغي بوشون باتمو',
         fr: 'Vis bouchon Batmo',
         icon: Icons.build_circle_outlined,
         roleKeys: {'bouchon_batmo_screw'},
+      ),
+      _CatalogGroup(
+        key: 'batmo_screws',
+        ar: 'براغي الباتمو',
+        fr: 'Vis Batmo',
+        icon: Icons.build_outlined,
+        roleKeys: {'batmo_screw'},
+      ),
+      _CatalogGroup(
+        key: 'kit_screws',
+        ar: 'براغي الكيت',
+        fr: 'Vis de kit',
+        icon: Icons.build_outlined,
+        roleKeys: {'kit_screw'},
+      ),
+      _CatalogGroup(
+        key: 'box_screws',
+        ar: 'براغي الكيسون',
+        fr: 'Vis de caisson',
+        icon: Icons.build_outlined,
+        roleKeys: {'box_screw'},
+      ),
+      _CatalogGroup(
+        key: 'motor_screws',
+        ar: 'براغي المحرك',
+        fr: 'Vis moteur',
+        icon: Icons.build_outlined,
+        roleKeys: {'motor_screw'},
+      ),
+      _CatalogGroup(
+        key: 'reinforcement_screws',
+        ar: 'براغي التدعيم',
+        fr: 'Vis renfort',
+        icon: Icons.build_outlined,
+        roleKeys: {'renfort_screw'},
+      ),
+      _CatalogGroup(
+        key: 'crank_screws',
+        ar: 'براغي المانيفال',
+        fr: 'Vis manivelle',
+        icon: Icons.build_outlined,
+        roleKeys: {'manivelle_screw'},
+      ),
+      _CatalogGroup(
+        key: 'assembly_screws',
+        ar: 'براغي التجميع',
+        fr: "Vis d'assemblage",
+        icon: Icons.build_outlined,
+        roleKeys: {'assembly_screw'},
+      ),
+      _CatalogGroup(
+        key: 'installation_screws',
+        ar: 'براغي التركيب',
+        fr: 'Vis de pose',
+        icon: Icons.home_repair_service_outlined,
+        roleKeys: {'installation_screw'},
       ),
       _CatalogGroup(
         key: 'gaches',
@@ -855,6 +895,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ? null
         : _rulesByItem[_itemKey(table, itemId)]?['role_key']?.toString();
     if (savedRole != null &&
+        (table != 'Accessories' ||
+            !_isScrewRole(savedRole) ||
+            _isScrewItem(item)) &&
         _rolesForTable(table).any((role) => role.key == savedRole)) {
       return savedRole;
     }
@@ -897,29 +940,27 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   bool _isScrewItem(Map<String, dynamic> item) {
-    final text = '${item['name'] ?? ''} ${item['type'] ?? ''}'.toLowerCase();
-    return _textLooksLikeScrew(text) ||
-        _truthy(item['is_kit_screw']) ||
-        _truthy(item['is_caisson_screw']) ||
-        _truthy(item['is_moteur_screw']) ||
-        _truthy(item['is_batmo_screw']) ||
-        _truthy(item['is_bouchon_batmo_screw']) ||
-        _truthy(item['is_renfort_screw']) ||
-        _truthy(item['is_manivelle_screw']) ||
-        _truthy(item['is_assembly_screw']) ||
-        _truthy(item['is_installation_screw']) ||
-        _truthy(item['is_accessory_screw']);
+    // Screw membership is a catalogue classification, not a name search.
+    // Words such as "vis" in an accessory name must never move that item to
+    // the screw rules. The catalogue editor must explicitly store the screw
+    // family in the `type` field.
+    return _accessoryTypeIsScrew(item['type']) ||
+        _screwRolesFromItem(item).isNotEmpty;
   }
 
-  bool _textLooksLikeScrew(String text) {
-    final normalized = _foldSearchText(text);
-    return normalized.contains('vis') ||
-        normalized.contains('screw') ||
-        normalized.contains('برغ') ||
-        // «فيس» is the common local spelling of the French word
-        // «vis». Catalogue rows often use it in names such as
-        // «فيس بوشون باتمو» and «فيس الاكسسوار».
-        normalized.contains('فيس');
+  bool _accessoryTypeIsScrew(dynamic rawType) {
+    final type = _foldSearchText(rawType?.toString() ?? '');
+    if (type.isEmpty) return false;
+    final tokens = type
+        .split(RegExp(r'[^a-z0-9\u0600-\u06ff]+'))
+        .where((token) => token.isNotEmpty)
+        .toSet();
+    return tokens.contains('vis') ||
+        tokens.contains('screw') ||
+        tokens.contains('screws') ||
+        tokens.contains('فيس') ||
+        tokens.contains('برغي') ||
+        tokens.contains('براغي');
   }
 
   bool _itemBelongsToGroup(
@@ -928,6 +969,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     _CatalogGroup group,
   ) {
     if (table == 'Accessories') {
+      final screwGroup = group.roleKeys.any(_isScrewRole);
+      final isScrew = _isScrewItem(item);
+      if (screwGroup && !isScrew) return false;
       final itemId = _itemId(item);
       final rule = itemId != null
           ? _rulesByItem[_itemKey(table, itemId)]
@@ -937,12 +981,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       final activeRoles = <String>{
         if (mainRole.isNotEmpty) mainRole,
         ...extraRoles,
-        ..._screwRolesFromItem(item),
+        if (isScrew) ..._screwRolesFromItem(item),
       };
       if (activeRoles.any(group.roleKeys.contains)) {
-        return true;
-      }
-      if (_isScrewItem(item) && group.roleKeys.any(_isScrewRole)) {
         return true;
       }
     }
@@ -952,7 +993,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   List<_RuleRole> _rolesForItem(String table, Map<String, dynamic> item) {
     // A catalogue name/type is only a suggestion. Administrators can bind
     // any accessory to its actual construction role.
-    if (table == 'Accessories') return _rolesForTable(table);
+    if (table == 'Accessories') {
+      final isScrew = _isScrewItem(item);
+      return _rolesForTable(table)
+          .where((role) => isScrew == _isScrewRole(role.key))
+          .toList(growable: false);
+    }
     final group = _groupsForTable(table).firstWhere(
       (candidate) => _itemBelongsToGroup(table, item, candidate),
       orElse: () => _groupsForTable(table).last,
@@ -1009,7 +1055,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               text.contains('bochon') ||
               text.contains('بوشون')) &&
           (text.contains('batmo') || text.contains('باتمو'));
-      final isScrew = _textLooksLikeScrew(text);
+      final isScrew = item != null && _isScrewItem(item);
       if (flag('is_kit_screw')) return 'kit_screw';
       if (flag('is_caisson_screw')) return 'box_screw';
       if (flag('is_moteur_screw')) return 'motor_screw';
@@ -1294,10 +1340,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         await _saveAccessoryLinksFor(sourceId, syncCatalog: false);
       }
       localSaveComplete = true;
-      // Use one awaited sync path. The previous direct upload plus an
-      // unawaited notification could race two whole-configuration snapshots
-      // and reported success before Supabase accepted either of them.
-      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+      if (mounted) {
+        setState(() => _rulesSortedAfterSave = true);
+      }
+      unawaited(CloudSyncService().notifyCatalogChange());
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
@@ -1616,10 +1662,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           final statusItems = filteredItems
               .where((item) => _itemRuleEnabled(table, item) == enabled)
               .toList(growable: false);
-          final colorScheme = Theme.of(context).colorScheme;
           final sectionColor = enabled
-              ? colorScheme.primaryContainer
-              : colorScheme.surfaceContainerHighest;
+              ? Colors.green.shade700
+              : Colors.blue.shade700;
           final sectionIcon = enabled
               ? Icons.check_circle_outline_rounded
               : Icons.pause_circle_outline_rounded;
@@ -1629,23 +1674,42 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               margin: const EdgeInsets.only(top: 8, bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
-                color: sectionColor,
+                color: sectionColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: sectionColor.withValues(alpha: 0.45)),
               ),
               child: Row(
                 children: [
-                  Icon(sectionIcon, size: 21),
+                  Icon(sectionIcon, size: 21, color: sectionColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _t(
-                        enabled ? 'القواعد المفعلة' : 'القواعد غير المفعلة',
-                        enabled ? 'Règles activées' : 'Règles désactivées',
+                        enabled
+                            ? table == 'Accessories'
+                                  ? 'الأكسسوارات المفعّلة'
+                                  : 'القواعد المفعلة'
+                            : table == 'Accessories'
+                            ? 'الأكسسوارات غير المفعّلة'
+                            : 'القواعد غير المفعلة',
+                        enabled
+                            ? table == 'Accessories'
+                                  ? 'Accessoires activés'
+                                  : 'Règles activées'
+                            : table == 'Accessories'
+                            ? 'Accessoires non activés'
+                            : 'Règles désactivées',
                       ),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        color: sectionColor,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  Text('${statusItems.length}'),
+                  Text(
+                    '${statusItems.length}',
+                    style: TextStyle(color: sectionColor),
+                  ),
                 ],
               ),
             ),
@@ -1711,6 +1775,53 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                       ),
                     ],
                   ],
+                ),
+              ),
+            );
+          }
+          return widgets;
+        }
+
+        List<Widget> stableAccessoryGroups() {
+          final widgets = <Widget>[];
+          for (final group in originalGroups) {
+            final groupItems = matchingItems
+                .where((item) => _itemBelongsToGroup(table, item, group))
+                .toList(growable: false);
+            if (groupItems.isEmpty) continue;
+            final selectedCount = groupItems
+                .where((item) => _itemRuleEnabled(table, item))
+                .length;
+            widgets.add(
+              Card(
+                key: ValueKey(
+                  'stable-catalog-group:$_selectedSeriesId:$table:${group.key}',
+                ),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ExpansionTile(
+                  key: PageStorageKey(
+                    'stable-role-group:$_selectedSeriesId:$table:${group.key}',
+                  ),
+                  initiallyExpanded: selectedCount > 0,
+                  leading: Icon(group.icon),
+                  title: Text(_t(group.ar, group.fr)),
+                  subtitle: Text(
+                    '$selectedCount / ${groupItems.length} ${_t('محدد', 'sélectionné(s)')}',
+                  ),
+                  children: groupItems
+                      .map((item) {
+                        if (_itemRuleEnabled(table, item)) {
+                          return _activeItemTile(table, item, isWideScreen);
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                          child: Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: _itemToggleChip(table, item, isWideScreen),
+                          ),
+                        );
+                      })
+                      .toList(growable: false),
                 ),
               ),
             );
@@ -1789,9 +1900,26 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   ),
                 )
               else ...[
-                ...ruleStatusSection(enabled: true),
-                const SizedBox(height: 8),
-                ...ruleStatusSection(enabled: false),
+                if (table == 'Accessories' && !_rulesSortedAfterSave)
+                  ...stableAccessoryGroups()
+                else ...[
+                  ...ruleStatusSection(enabled: true),
+                  if (filteredItems.any(
+                        (item) => _itemRuleEnabled(table, item),
+                      ) &&
+                      filteredItems.any(
+                        (item) => !_itemRuleEnabled(table, item),
+                      ))
+                    Container(
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade600,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ...ruleStatusSection(enabled: false),
+                ],
               ],
               const SizedBox(height: 80),
             ],
@@ -2126,6 +2254,28 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             );
           }).toList(),
         ),
+        if (isClamp && selectedSectionIds.isEmpty) ...[
+          const SizedBox(height: 8),
+          TextFormField(
+            initialValue: '${rule['top_corner_qty'] ?? 1}',
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: _t(
+                'عدد الكلام في كل زاوية (افتراضي لكامل الإطار/الظلفة)',
+                'Nombre de clames par angle (par défaut)',
+              ),
+            ),
+            onChanged: readOnly
+                ? null
+                : (value) {
+                    final count = int.tryParse(value);
+                    if (count != null && count >= 0) {
+                      rule['top_corner_qty'] = count;
+                      rule['bottom_corner_qty'] = count;
+                    }
+                  },
+          ),
+        ],
         const SizedBox(height: 8),
         for (final section in _assemblySections.where(
           (candidate) =>
@@ -2510,6 +2660,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         _isInspectorOpen = false;
         return;
       }
+      final inspectorScrollController = ScrollController();
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -2520,30 +2671,37 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         builder: (ctx) => StatefulBuilder(
           builder: (context, modalSetState) {
             _refreshMobileInspector = () => modalSetState(() {});
-            return DraggableScrollableSheet(
-              initialChildSize: 0.85,
-              maxChildSize: 0.95,
-              minChildSize: 0.5,
-              expand: false,
-              builder: (context, scrollController) {
-                return SingleChildScrollView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(16),
-                  child: _buildItemInspector(
-                    table,
-                    item,
-                    onClose: () => Navigator.of(ctx).pop(),
-                    readOnly: !_isAllowedToManage(context),
+            final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+            return FractionallySizedBox(
+              heightFactor: 0.94,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: keyboardInset),
+                child: Scrollbar(
+                  controller: inspectorScrollController,
+                  thumbVisibility: true,
+                  interactive: true,
+                  child: SingleChildScrollView(
+                    controller: inspectorScrollController,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                    child: _buildItemInspector(
+                      table,
+                      item,
+                      onClose: () => Navigator.of(ctx).pop(),
+                      readOnly: !_isAllowedToManage(context),
+                    ),
                   ),
-                );
-              },
+                ),
+              ),
             );
           },
         ),
       ).whenComplete(() {
         _refreshMobileInspector = null;
         _isInspectorOpen = false;
-        if (mounted) setState(() {});
+        inspectorScrollController.dispose();
       });
     });
   }

@@ -2,6 +2,7 @@
 import 'dart:math' as math;
 import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
+import 'package:database_data/Commande/Systeme/selling_price_calculator.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart'
@@ -13,7 +14,8 @@ import 'package:flutter/services.dart'
         LengthLimitingTextInputFormatter,
         HardwareKeyboard,
         KeyEvent,
-        KeyDownEvent;
+        KeyDownEvent,
+        LogicalKeyboardKey;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/Commande/window_painter.dart';
@@ -21,6 +23,8 @@ import 'package:database_data/Commande/decor_panel_designs.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/material_consumption_screen.dart';
+import 'bom_engine_v2.dart';
+import 'calculate_component.dart';
 import 'profile_selector_dialog.dart' hide getComponentSize;
 import 'glass_joint_fit.dart';
 import '../../widgets/section_image.dart';
@@ -80,26 +84,231 @@ class _WindowViewState extends State<WindowView> {
     await prefs.setBool(_hidePresetCardPreferenceKey, value);
   }
 
+  void _showShortcutFeedback(String message, {IconData? icon, Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: color ?? Colors.blueGrey.shade800,
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 60, left: 24, right: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  void _switchToBottomTab(int id) {
+    if (!mounted) return;
+    setState(() {
+      _isBottomPanelExpanded = true;
+      if (id == 6) {
+        _isShutterSelected = true;
+        _activeShutterTab = 0;
+        _previousSelectionKey = _currentSelectionKey();
+        _loadShutterOptions();
+      } else {
+        _isShutterSelected = false;
+        _activeBottomTab = id;
+        _handleCandidates = null;
+        if (id == 1) {
+          if (widget.model.frames.isNotEmpty &&
+              widget.model.selectedFrame == null) {
+            widget.model.selectFrameByIndex(0);
+          }
+        } else if (widget.model.selectedZone == null &&
+            widget.model.zones.isNotEmpty &&
+            id != 3) {
+          widget.model.selection = SelectionInfo.zone(
+            widget.model.zones.first.id,
+          );
+        }
+        _previousSelectionKey = _currentSelectionKey();
+      }
+    });
+  }
+
   bool _drawingShortcut(KeyEvent event) {
     if (!mounted ||
         !_isWindowsDesktop ||
         event is! KeyDownEvent ||
-        ModalRoute.of(context)?.isCurrent != true)
+        ModalRoute.of(context)?.isCurrent != true) {
       return false;
+    }
     final focus = FocusManager.instance.primaryFocus?.context;
-    if (focus == null ||
-        (focus.widget is EditableText) ||
-        focus.findAncestorWidgetOfExactType<EditableText>() != null)
-      return false;
-    var belongsToDrawing = false;
-    focus.visitAncestorElements((element) {
-      if (element == context) belongsToDrawing = true;
-      return !belongsToDrawing;
-    });
-    if (!belongsToDrawing ||
-        !ShortcutBindings.instance.matches('drawing_mode', event))
-      return false;
-    _toggleDrawingInteractionMode();
+    if (focus != null) {
+      if ((focus.widget is EditableText) ||
+          focus.findAncestorWidgetOfExactType<EditableText>() != null) {
+        return false;
+      }
+      var belongsToDrawing = false;
+      focus.visitAncestorElements((element) {
+        if (element == context) belongsToDrawing = true;
+        return !belongsToDrawing;
+      });
+      if (!belongsToDrawing) return false;
+    }
+
+    final isCtrl =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final key = event.logicalKey;
+    final char = event.character?.toLowerCase();
+
+    // 1. Shutter toggle / Right drive (Ctrl + Right / Ctrl + R / Ctrl + S)
+    // "يفعل حرف الرسم الجانبي يعني لليسار و لا يهم نوع المحرك يكون عن ذلك الستر
+    // نضغط على كنترول عفوا لليمين سواء موجود يكون موجودا ثم دائما للجهه من ويلغيه اذا كان موجودا. هو الذي يلغي"
+    if (isCtrl &&
+        (key == LogicalKeyboardKey.arrowRight ||
+            key == LogicalKeyboardKey.keyR ||
+            key == LogicalKeyboardKey.keyS ||
+            char == 'r' ||
+            char == 's')) {
+      if (widget.model.hasShutter) {
+        // إذا كان موجوداً يلغيه
+        widget.model.toggleShutter(false);
+        _showShortcutFeedback(
+          'تم إلغاء الستار (Désactiver Volet)',
+          icon: Icons.layers_clear_rounded,
+          color: Colors.red.shade700,
+        );
+      } else {
+        // يفعله ودائماً للجهة اليمين
+        widget.model.toggleShutter(true);
+        widget.model.setAllShutterDriveSide('right');
+        widget.model.notifyListeners();
+        _showShortcutFeedback(
+          'تم تفعيل الستار - جهة التحكم: اليمين (Volet - Droite)',
+          icon: Icons.layers_rounded,
+          color: Colors.green.shade700,
+        );
+      }
+      return true;
+    }
+
+    // 2. Shutter Left drive (Ctrl + Left / Ctrl + L)
+    // "يعني لليسار و لا يهم نوع المحرك يكون عن ذلك الستر"
+    if (isCtrl &&
+        (key == LogicalKeyboardKey.arrowLeft ||
+            key == LogicalKeyboardKey.keyL ||
+            char == 'l')) {
+      if (!widget.model.hasShutter) {
+        widget.model.toggleShutter(true);
+      }
+      widget.model.setAllShutterDriveSide('left');
+      widget.model.notifyListeners();
+      _showShortcutFeedback(
+        'جهة تحكم الستار: اليسار (Volet - Gauche)',
+        icon: Icons.west_rounded,
+        color: Colors.blue.shade700,
+      );
+      return true;
+    }
+
+    // 3. Side Cover Toggle (الغطاء الجانبي / الرسم الجانبي) (Ctrl + G / Ctrl + J)
+    if (isCtrl &&
+        (key == LogicalKeyboardKey.keyG ||
+            key == LogicalKeyboardKey.keyJ ||
+            char == 'g' ||
+            char == 'j')) {
+      final zone = widget.model.selectedZone;
+      final bool isNestedSlidingFrame =
+          zone != null && widget.model.isSlidingZoneNestedInSingleFrame(zone);
+      if (isNestedSlidingFrame) {
+        final newVal = !widget.model.hasInternalSlidingSideCover;
+        widget.model.toggleInternalSlidingSideCover(newVal);
+        _showShortcutFeedback(
+          newVal
+              ? 'تمت إضافة غطاء الإطار المنزلق'
+              : 'تمت إزالة غطاء الإطار المنزلق',
+          icon: Icons.border_outer_rounded,
+        );
+      } else {
+        final newVal = !widget.model.hasSideCovers;
+        widget.model.toggleSideCovers(newVal);
+        _showShortcutFeedback(
+          newVal
+              ? 'تمت إضافة الغطاء الجانبي (Caches)'
+              : 'تمت إزالة الغطاء الجانبي',
+          icon: Icons.border_outer_rounded,
+        );
+      }
+      return true;
+    }
+
+    final isAlt = HardwareKeyboard.instance.isAltPressed;
+
+    // 4. Open Common/Communs Tab (0) (Alt + C)
+    if ((isAlt || isCtrl) &&
+        (key == LogicalKeyboardKey.keyC || char == 'c' || char == 'ؤ')) {
+      _switchToBottomTab(0);
+      _showShortcutFeedback(
+        'القائمة السفلية: المشترك (Communs)',
+        icon: Icons.tune_rounded,
+      );
+      return true;
+    }
+
+    // 5. Open Frame/Dormant Tab (1) (Alt + D / Alt + F / Alt + E)
+    if ((isAlt || isCtrl) &&
+        (key == LogicalKeyboardKey.keyE ||
+            key == LogicalKeyboardKey.keyF ||
+            key == LogicalKeyboardKey.keyD ||
+            char == 'e' ||
+            char == 'f' ||
+            char == 'd' ||
+            char == 'ث' ||
+            char == 'ب' ||
+            char == 'ي')) {
+      _switchToBottomTab(1);
+      _showShortcutFeedback(
+        'القائمة السفلية: الإطار (Dormant)',
+        icon: Icons.border_outer_rounded,
+      );
+      return true;
+    }
+
+    // 6. Open Sash/Ouvrant Tab (2) (Alt + O / Alt + L)
+    if ((isAlt || isCtrl) &&
+        (key == LogicalKeyboardKey.keyO ||
+            key == LogicalKeyboardKey.keyL ||
+            char == 'o' ||
+            char == 'l' ||
+            char == 'خ' ||
+            char == 'م')) {
+      _switchToBottomTab(2);
+      _showShortcutFeedback(
+        'القائمة السفلية: الظلفة (Ouvrant)',
+        icon: Icons.door_back_door_rounded,
+      );
+      return true;
+    }
+
+    // 7. Toggle drawing mode if matches registered shortcut
+    if (ShortcutBindings.instance.matches('drawing_mode', event)) {
+      _toggleDrawingInteractionMode();
+      return true;
+    }
+
     return false;
   }
 
@@ -469,6 +678,7 @@ class _WindowViewState extends State<WindowView> {
   Offset _userPan = Offset.zero;
   Offset _baseUserPan = Offset.zero;
   Offset _focalPointStart = Offset.zero;
+  bool _isMovementLocked = true;
 
   bool _isDrawerOpen = false;
   bool _isLeftDrawerOpen = false;
@@ -2145,12 +2355,15 @@ class _WindowViewState extends State<WindowView> {
     // Any model opened through the full design workspace must return here
     // when it is edited, including designs that use a tunnel box or wall.
     widget.model.isDesignDrawing = true;
+    widget.model.isMovementLocked = _isMovementLocked;
     _positionCtrl = TextEditingController(text: widget.model.position ?? '');
     widget.model.loadCatalogData(widget.systemMode);
     widget.model.addListener(_onModelChanged);
     _syncDrawerGlassFromDrawing();
-    if (activeSeriesForSystem != null) {
-      _loadAvailableProfiles();
+    // إذا كانت السلسلة محملة بالفعل في الموديل، لا نقوم بإعادة التحميل القسري الذي يصفر القطاعات
+    if (widget.model.activeSeries == null &&
+        widget.model.activeSlidingSeries == null) {
+      widget.model.loadCatalogData(widget.systemMode);
     }
     _loadShutterOptions(); // Preload shutter options from database
     _catalogSubscription = CloudSyncService().dbUpdateStream.listen((update) {
@@ -2210,7 +2423,35 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  void _toggleMovementLock() {
+    setState(() {
+      _isMovementLocked = !_isMovementLocked;
+      widget.model.isMovementLocked = _isMovementLocked;
+      if (!_isMovementLocked) {
+        widget.model.lastLayoutSize = null;
+      }
+    });
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _isMovementLocked
+              ? Localization.translate('تم تثبيت الرسم ومنع حركته', lang)
+              : Localization.translate('تم تحرير حركة الرسم', lang),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _changeDrawingZoom(double factor, Offset focalPoint) {
+    if (_isMovementLocked) return;
     final double nextScale = (_userScale * factor).clamp(
       _minUserScale,
       _maxUserScale,
@@ -2232,6 +2473,7 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _handleDrawingPointerSignal(PointerSignalEvent event) {
+    if (_isMovementLocked) return;
     if (!_isWindowsDesktop || event is! PointerScrollEvent) return;
     final verticalDelta = event.scrollDelta.dy;
     if (verticalDelta == 0) return;
@@ -2246,6 +2488,7 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _resetDrawingZoom() {
+    if (_isMovementLocked) return;
     setState(() {
       _userScale = 1.0;
       _userPan = Offset.zero;
@@ -3366,6 +3609,23 @@ class _WindowViewState extends State<WindowView> {
             ),
           ),
         ),
+      Semantics(
+        button: true,
+        label: _isMovementLocked ? 'تحرير حركة الرسم' : 'تثبيت الرسم',
+        child: IconButton(
+          icon: Icon(
+            _isMovementLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+            color: _isMovementLocked ? Colors.amber.shade700 : null,
+          ),
+          tooltip: _isMovementLocked
+              ? Localization.translate(
+                  'تحرير حركة الرسم (الرسم مثبت حالياً)',
+                  lang,
+                )
+              : Localization.translate('تثبيت الرسم ومنع حركته', lang),
+          onPressed: _toggleMovementLock,
+        ),
+      ),
       iconButton(
         icon: Icons.center_focus_strong_outlined,
         tooltip: Localization.translate('توسيط الرسم', lang),
@@ -3397,6 +3657,17 @@ class _WindowViewState extends State<WindowView> {
     final isFrameSelected =
         widget.model.selection.type == SelectionType.frame &&
         widget.model.getFrameRects().length > 1;
+
+    Widget? activeTopToolbar;
+    if (isInnerDivisionSelected) {
+      activeTopToolbar = _buildInnerDivisionToolbar(context);
+    } else if (isFrameSelected) {
+      activeTopToolbar = _buildFrameToolbar(context);
+    } else if (isMullionSelected) {
+      activeTopToolbar = _buildMullionToolbar(context);
+    } else if (!_isWindowsDesktop) {
+      activeTopToolbar = _buildSplitToolbar(context, hasSelection);
+    }
 
     return PopScope(
       canPop: false,
@@ -3474,15 +3745,8 @@ class _WindowViewState extends State<WindowView> {
                       ],
                     ),
                   ),
-                if (isInnerDivisionSelected)
-                  _buildInnerDivisionToolbar(context)
-                else if (isFrameSelected)
-                  _buildFrameToolbar(context)
-                else ...[
-                  if (!_isWindowsDesktop && !isMullionSelected)
-                    _buildSplitToolbar(context, hasSelection),
-                  if (isMullionSelected) _buildMullionToolbar(context),
-                ],
+                if (!_isMovementLocked && activeTopToolbar != null)
+                  activeTopToolbar,
 
                 Expanded(
                   child: LayoutBuilder(
@@ -5152,6 +5416,7 @@ class _WindowViewState extends State<WindowView> {
                             },
                             onScaleUpdate: (details) {
                               if (details.pointerCount >= 2) {
+                                if (_isMovementLocked) return;
                                 setState(() {
                                   double newScale =
                                       (_baseUserScale * details.scale).clamp(
@@ -5428,6 +5693,7 @@ class _WindowViewState extends State<WindowView> {
                                     widget.model.selectedZone!,
                                   );
                                 } else if (!widget.model.isDrawingMode) {
+                                  if (_isMovementLocked) return;
                                   setState(() {
                                     _userPan =
                                         _baseUserPan +
@@ -5847,6 +6113,82 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               ),
                             ),
+                          if (_isMovementLocked && activeTopToolbar != null)
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: activeTopToolbar,
+                            ),
+                          Positioned(
+                            top: (_isMovementLocked && activeTopToolbar != null)
+                                ? 58
+                                : 12,
+                            left: 12,
+                            child: Material(
+                              elevation: 2,
+                              color: _isMovementLocked
+                                  ? (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? const Color(0xFF5D4037)
+                                        : Colors.amber.shade100)
+                                  : (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? const Color(0xFF2A2A3C)
+                                        : Colors.white),
+                              borderRadius: BorderRadius.circular(20),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: _toggleMovementLock,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _isMovementLocked
+                                            ? Icons.lock_rounded
+                                            : Icons.lock_open_rounded,
+                                        size: 16,
+                                        color: _isMovementLocked
+                                            ? Colors.amber.shade900
+                                            : Colors.blue.shade700,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        _isMovementLocked
+                                            ? Localization.translate(
+                                                'الرسم ثابت',
+                                                lang,
+                                              )
+                                            : Localization.translate(
+                                                'حركة حرة',
+                                                lang,
+                                              ),
+                                        style: TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: _isMovementLocked
+                                              ? (Theme.of(context).brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.amber.shade200
+                                                    : Colors.amber.shade900)
+                                              : (Theme.of(context).brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.white70
+                                                    : Colors.grey.shade800),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       );
                     },
@@ -6165,7 +6507,26 @@ class _WindowViewState extends State<WindowView> {
           GlassSpecification fitDoubleGlassToParclose(
             GlassSpecification candidate,
           ) {
-            return candidate; // Model resolves joints before touching the spacer.
+            if (candidate.structure != GlassStructure.double) {
+              return candidate;
+            }
+            final zone = widget.model.selectedZone;
+            final isSliding = zone != null
+                ? zone.content == ZoneContent.slidingSash
+                : widget.model.usesSlidingPrimaryProfiles;
+            final suggested = widget.model
+                .suggestedIntercallThicknessForDoubleGlass(
+                  thicknessOuter:
+                      candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
+                  thicknessInner:
+                      candidate.thicknessInner ?? kDefaultGlassPaneThickness,
+                  jointTwoSides: candidate.jointTwoSides,
+                  sliding: isSliding,
+                );
+            if (suggested != null) {
+              return candidate.copyWith(intercallThickness: suggested);
+            }
+            return candidate;
           }
 
           Widget? buildParcloseThicknessInfo() {
@@ -6614,6 +6975,11 @@ class _WindowViewState extends State<WindowView> {
                                       thicknessInner: !isOuter
                                           ? defThick
                                           : null,
+                                      intercallThickness:
+                                          newSpec.structure ==
+                                              GlassStructure.double
+                                          ? newSpec.intercallThickness
+                                          : null,
                                     );
                                   } else {
                                     setState(() {
@@ -6693,6 +7059,11 @@ class _WindowViewState extends State<WindowView> {
                                             : null,
                                         thicknessInner: !isOuter
                                             ? resolvedThick
+                                            : null,
+                                        intercallThickness:
+                                            newSpec.structure ==
+                                                GlassStructure.double
+                                            ? newSpec.intercallThickness
                                             : null,
                                       );
                                     } else {
@@ -6792,6 +7163,11 @@ class _WindowViewState extends State<WindowView> {
                                       thicknessOuter: isOuter ? thickVal : null,
                                       thicknessInner: !isOuter
                                           ? thickVal
+                                          : null,
+                                      intercallThickness:
+                                          newSpec.structure ==
+                                              GlassStructure.double
+                                          ? newSpec.intercallThickness
                                           : null,
                                     );
                                   } else {
@@ -7317,6 +7693,11 @@ class _WindowViewState extends State<WindowView> {
                                     colorInner: structureColorInner,
                                     thicknessOuter: defaultThickOuter,
                                     thicknessInner: defaultThickInner,
+                                    intercallThickness:
+                                        newSpec.structure ==
+                                            GlassStructure.double
+                                        ? newSpec.intercallThickness
+                                        : null,
                                   );
                                 } else {
                                   setState(() {
@@ -20515,7 +20896,7 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  void _addDrawingAndCalculate(BuildContext context) {
+  Future<void> _addDrawingAndCalculate(BuildContext context) async {
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
@@ -20543,7 +20924,7 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final hasWindowContent = widget.model.zones.any(
-      (zone) => zone.content != ZoneContent.empty,
+      (z) => z.content != ZoneContent.empty,
     );
     final hasReadyShutterOnly =
         widget.model.isShutterOnly &&
@@ -20564,8 +20945,57 @@ class _WindowViewState extends State<WindowView> {
       return;
     }
 
+    // إظهار مؤشر تحميل احتساب السعر
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final dbInstance = SqlDatabase();
+      final engine = BomEngineV2(database: dbInstance);
+      var bom = ComponentCalculator.generateBom(widget.model, {});
+      await engine.stabilizeSelections(window: widget.model, items: bom);
+      bom = ComponentCalculator.generateBom(widget.model, {});
+      await engine.stabilizeSelections(window: widget.model, items: bom);
+      bom = await engine.filterItemsByAvailableCandidates(
+        window: widget.model,
+        items: bom,
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final method =
+          CostMethod.values[prefs.getInt('app_cost_method') ??
+              CostMethod.percentage.index];
+      final totals = calculateSellingTotals(
+        model: widget.model,
+        items: bom,
+        costMethod: method,
+        profitMargin: prefs.getDouble('app_profit_margin') ?? 0,
+        pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
+        linearMeterPrice: prefs.getDouble('app_price_linear_meter') ?? 0.0,
+        shutterSqmPrice: prefs.getDouble('app_shutter_price_per_sqm') ?? 0.0,
+      );
+
+      final qty = widget.model.quantity <= 0 ? 1 : widget.model.quantity;
+      final unitPrice = (totals['total']?['selling'] ?? 0.0) / qty;
+      if (unitPrice.isFinite && unitPrice > 0) {
+        widget.model.totalCost = unitPrice;
+        widget.model.manualPriceOverride = unitPrice;
+      }
+    } catch (e) {
+      debugPrint('Error calculating price in _addDrawingAndCalculate: $e');
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // إغلاق مؤشر التحميل
+      }
+    }
+
     widget.model.clearSelection();
-    Navigator.pop(context, widget.model);
+    if (context.mounted) {
+      Navigator.pop(context, widget.model);
+    }
   }
 
   void _showParcloseSelectorDialog(BuildContext context) async {
@@ -21709,9 +22139,7 @@ class AppWorkspacePainter extends CustomPainter {
         final double x1 = pos.dx + f.rect.right;
         _drawDimension(
           canvas,
-          hasAngleJunction
-              ? 'إطار ${fi + 1}: ${f.rect.width.toInt()} mm'
-              : '${f.rect.width.toInt()} mm',
+          '${f.rect.width.toInt()} mm',
           Offset(x0, layer1Y),
           Offset(x1, layer1Y),
           isVerticalLine: false,

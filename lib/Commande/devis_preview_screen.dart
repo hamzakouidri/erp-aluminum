@@ -337,7 +337,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           documentTitleKey: widget.data.documentTitleKey,
           overrideLang: _invoiceLanguage,
           chequeNumber: _chequeNumber,
-        ).timeout(const Duration(seconds: 10));
+        ).timeout(const Duration(seconds: 30));
         if (mounted) _currentDevisData = rebuilt;
       }
     } catch (error) {
@@ -393,12 +393,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Future<Uint8List?> _buildPdfBytes({bool showErrors = true}) async {
     try {
-      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 10));
+      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 30));
       return await PdfInvoiceApi.buildPdfBytes(
         _currentDevisData,
         overrideLang: _invoiceLanguage,
         imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 20));
+      ).timeout(const Duration(seconds: 90));
     } catch (e) {
       debugPrint('PDF generation error: $e');
       if (showErrors && mounted) {
@@ -464,7 +464,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         rebuiltData,
         overrideLang: newLang,
         imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 20));
+      ).timeout(const Duration(seconds: 90));
 
       if (mounted) {
         setState(() {
@@ -522,7 +522,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         rebuiltData,
         overrideLang: _invoiceLanguage,
         imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 20));
+      ).timeout(const Duration(seconds: 90));
 
       if (mounted) {
         setState(() {
@@ -2539,7 +2539,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     if (mounted) setState(() => _isActionInProgress = true);
     try {
       final bytes = _pdfBytes ?? await _ensurePdfBytes();
-      if (bytes == null) return;
+      if (bytes == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _pdfError ?? _pdfGenerationErrorMessage,
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
       String filename = confirmedName.toLowerCase().endsWith('.pdf')
           ? confirmedName
           : '$confirmedName.pdf';
@@ -2611,7 +2624,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     if (mounted) setState(() => _isActionInProgress = true);
     try {
       final bytes = _pdfBytes ?? await _ensurePdfBytes();
-      if (bytes == null) return;
+      if (bytes == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _pdfError ?? _pdfGenerationErrorMessage,
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'devis_${data.orderId}.pdf',
@@ -2637,7 +2663,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     if (mounted) setState(() => _isActionInProgress = true);
     try {
       final bytes = _pdfBytes ?? await _ensurePdfBytes();
-      if (bytes == null) return;
+      if (bytes == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _pdfError ?? _pdfGenerationErrorMessage,
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
       final cleanName = data.clientName.trim().replaceAll(
         RegExp(r'[\\/:*?"<>|]'),
         '_',
@@ -2669,8 +2708,15 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           }
         }
       } else {
-        // Mobile: use system share sheet
-        await Printing.sharePdf(bytes: bytes, filename: filename);
+        // Mobile: use system share sheet with safe fallback
+        try {
+          await Printing.sharePdf(bytes: bytes, filename: filename);
+        } catch (_) {
+          await Printing.sharePdf(
+            bytes: bytes,
+            filename: 'devis_${data.orderId}.pdf',
+          );
+        }
       }
     } catch (e) {
       if (context.mounted) {

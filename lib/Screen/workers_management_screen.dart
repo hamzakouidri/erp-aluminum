@@ -594,6 +594,29 @@ class _WorkerCardState extends State<WorkerCard> {
   static const _fullManagerJobRole = 'نائب مدير (صلاحيات كاملة)';
 
   late Map<String, dynamic> perms;
+  int _selectedCategoryIndex = 0;
+  double _splitRatio = 0.35;
+  bool _useSplitView = true;
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedRatio = prefs.getDouble('permissions_split_ratio');
+    final savedMode = prefs.getBool('permissions_use_split_view');
+    if (mounted) {
+      setState(() {
+        if (savedRatio != null) _splitRatio = savedRatio.clamp(0.20, 0.75);
+        if (savedMode != null) _useSplitView = savedMode;
+      });
+    }
+  }
+
+  Future<void> _setUseSplitView(bool value) async {
+    setState(() => _useSplitView = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('permissions_use_split_view', value);
+  }
+
+
 
   String _t(String key) => Localization.translate(
     key,
@@ -616,6 +639,7 @@ class _WorkerCardState extends State<WorkerCard> {
   void initState() {
     super.initState();
     _initPerms();
+    _loadPreferences();
   }
 
   @override
@@ -1422,6 +1446,438 @@ class _WorkerCardState extends State<WorkerCard> {
     }
   }
 
+  int _activeCountForCategory(List<String> keys) {
+    int count = 0;
+    for (final k in keys) {
+      if (perms[k] == true) count++;
+    }
+    return count;
+  }
+
+  List<Map<String, dynamic>> _getCategoriesMetadata(AppLanguage lang) {
+    return [
+      {
+        'index': 0,
+        'title': _tr('صلاحيات الزبائن (Clients)', 'Permissions Clients', 'Client Permissions', lang),
+        'icon': Icons.people_alt_rounded,
+        'color': const Color(0xFF7C3AED),
+        'keys': const [
+          'view_clients',
+          'view_client_ledger',
+          'create_clients',
+          'edit_clients',
+          'delete_clients',
+          'view_client_details',
+        ],
+      },
+      {
+        'index': 1,
+        'title': _tr('صلاحيات الطلبيات والمشاريع (Commandes & Projets)', 'Commandes & Projets', 'Orders & Projects', lang),
+        'icon': Icons.receipt_long_rounded,
+        'color': const Color(0xFF2563EB),
+        'keys': const [
+          'view_orders',
+          'view_projects',
+          'distribution_tracking',
+          'sales',
+          'create_orders',
+          'edit_orders',
+          'change_order_dates',
+          'delete_orders',
+          'access_trash',
+          'view_order_details',
+          'view_order_documents',
+          'fiche_de_coupe',
+          'view_order_materials',
+          'change_order_status',
+          'pass_to_next_stage',
+          'duplicate_orders',
+          'order_allocation',
+          'view_all_worker_tasks',
+        ],
+      },
+      {
+        'index': 2,
+        'title': _tr('رفع القياسات الذكية (الموقع)', 'Prise de Mesures (Site)', 'Smart Site Measurements', lang),
+        'icon': Icons.architecture_rounded,
+        'color': const Color(0xFF0EA5E9),
+        'keys': const [
+          'measurements_card',
+          'confirm_measurements',
+        ],
+      },
+      {
+        'index': 3,
+        'title': _tr('مهامي وتصنيع اعتماداتي والكتالوج', 'Mes Tâches & Catalogue', 'My Tasks & Catalogue', lang),
+        'icon': Icons.assignment_turned_in_rounded,
+        'color': const Color(0xFF14B8A6),
+        'keys': const [
+          'view_my_tasks',
+          'view_my_accreditations',
+          'view_profiles',
+          'view_glass',
+          'view_shutters',
+          'view_colors',
+          'view_accessories',
+          'view_series_accessories',
+          'view_series_requirements_report',
+          'view_joints',
+          'view_kit_bundles',
+          'external_operations',
+        ],
+      },
+      {
+        'index': 4,
+        'title': _tr('إدارة صلاحيات الفريق (نائب المدير)', 'Gestion d\'Équipe (Co-Directeur)', 'Team Management (Co-Manager)', lang),
+        'icon': Icons.admin_panel_settings_rounded,
+        'color': const Color(0xFFD97706),
+        'keys': const [
+          'manage_workers',
+          'edit_worker',
+          'delete_worker',
+          'cloud_backup',
+          'local_json_backup',
+        ],
+      },
+      {
+        'index': 5,
+        'title': _tr('الإعدادات وأنظمة الورشة (Paramètres & Systèmes)', 'Paramètres & Systèmes', 'Settings & Systems', lang),
+        'icon': Icons.settings_rounded,
+        'color': const Color(0xFF64748B),
+        'keys': const [
+          'settings',
+          'view_subscription',
+          'select_systems',
+        ],
+      },
+      {
+        'index': 6,
+        'title': _tr('المالية والصناديق والأسعار والأجور (Trésorerie & Paie)', 'Trésorerie, Prix & Paie', 'Financials & Wages', lang),
+        'icon': Icons.account_balance_wallet_rounded,
+        'color': const Color(0xFF059669),
+        'keys': const [
+          'change_prices',
+          'view_cost_price',
+          'change_payment_dates',
+          'treasury',
+          'manage_caisses',
+          'add_caisses',
+          'edit_payments',
+          'delete_payments',
+          'worker_finances',
+          'worker_settlement',
+        ],
+      },
+      {
+        'index': 7,
+        'title': _tr('المخزون والمشتريات والموردين (Stock, Achats & Fournisseurs)', 'Stock, Achats & Fournisseurs', 'Stock & Suppliers', lang),
+        'icon': Icons.local_shipping_rounded,
+        'color': const Color(0xFFE11D48),
+        'keys': const [
+          'inventory',
+          'inventory_adjustment',
+          'add_warehouses',
+          'view_suppliers',
+          'purchases',
+          'add_purchases',
+          'edit_purchases',
+          'change_purchase_dates',
+          'delete_purchases',
+          'global_consumption',
+        ],
+      },
+      {
+        'index': 8,
+        'title': _tr('الإحصائيات والتقارير (Statistiques & Rapports)', 'Statistiques & Rapports', 'Statistics & Reports', lang),
+        'icon': Icons.bar_chart_rounded,
+        'color': const Color(0xFF06B6D4),
+        'keys': const [
+          'statistics',
+          'accelerate_confirmed_invoices',
+        ],
+      },
+    ];
+  }
+
+  Widget _buildSplitView(
+    BuildContext context,
+    AppLanguage lang,
+    bool isDark,
+    TextStyle titleStyle,
+    List<Map<String, dynamic>> categories,
+    List<Widget> categoryWidgets,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalW = constraints.maxWidth;
+        final minLeft = 240.0;
+        final maxLeft = (totalW - 280.0).clamp(minLeft, totalW);
+        final leftW = (_splitRatio * totalW).clamp(minLeft, maxLeft);
+
+        final safeIndex = _selectedCategoryIndex.clamp(0, categories.length - 1);
+        final currentCat = categories[safeIndex];
+        final currentCatColor = currentCat['color'] as Color;
+
+        return Container(
+          height: 650,
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── الجانب الأول: العنوان (Titles / Categories) ──
+              SizedBox(
+                width: leftW,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(11),
+                        ),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.category_rounded,
+                            size: 18,
+                            color: isDark ? Colors.blue.shade300 : const Color(0xFF2563EB),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _tr('أقسام الصلاحيات (عنوان)', 'Catégories (Titre)', 'Permission Categories (Title)', lang),
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                        itemCount: categories.length,
+                        itemBuilder: (context, i) {
+                          final cat = categories[i];
+                          final isSelected = safeIndex == i;
+                          final catColor = cat['color'] as Color;
+                          final keys = cat['keys'] as List<String>;
+                          final activeCount = _activeCountForCategory(keys);
+                          final totalCount = keys.length;
+
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              if (_selectedCategoryIndex != i) {
+                                setState(() => _selectedCategoryIndex = i);
+                              }
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? catColor.withValues(alpha: isDark ? 0.25 : 0.12)
+                                    : (isDark ? const Color(0xFF1E293B) : Colors.white),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? catColor
+                                      : (isDark ? const Color(0xFF334155) : Colors.grey.shade200),
+                                  width: isSelected ? 1.8 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: catColor.withValues(alpha: 0.15),
+                                    radius: 15,
+                                    child: Icon(cat['icon'] as IconData, color: catColor, size: 16),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      cat['title'] as String,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 12,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                        color: isSelected
+                                            ? (isDark ? Colors.white : catColor)
+                                            : (isDark ? Colors.white70 : Colors.black87),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: activeCount > 0
+                                          ? (activeCount == totalCount ? Colors.green : catColor).withValues(alpha: 0.15)
+                                          : (isDark ? Colors.white10 : Colors.grey.shade100),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '$activeCount/$totalCount',
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: activeCount > 0
+                                            ? (activeCount == totalCount ? Colors.green : catColor)
+                                            : (isDark ? Colors.white38 : Colors.grey.shade500),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── الفاصل القابل للتحريك يميناً وشمالاً ──
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragUpdate: (details) {
+                  final isRtl = Directionality.of(context) == TextDirection.rtl;
+                  final delta = isRtl ? -details.delta.dx : details.delta.dx;
+                  setState(() {
+                    final newPx = (leftW + delta).clamp(minLeft, maxLeft);
+                    _splitRatio = (newPx / totalW).clamp(0.20, 0.75);
+                  });
+                },
+                onHorizontalDragEnd: (_) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setDouble('permissions_split_ratio', _splitRatio);
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeColumn,
+                  child: Container(
+                    width: 12,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                      border: Border.symmetric(
+                        vertical: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+                        ),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Container(
+                      width: 4,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white38 : Colors.black26,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── الجانب الثاني: العرض (Display / Content) ──
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(11),
+                        ),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: currentCatColor.withValues(alpha: 0.15),
+                            radius: 16,
+                            child: Icon(
+                              currentCat['icon'] as IconData,
+                              color: currentCatColor,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              currentCat['title'] as String,
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: currentCatColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${_activeCountForCategory(currentCat['keys'] as List<String>)} / ${(currentCat['keys'] as List<String>).length}',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                color: currentCatColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        child: categoryWidgets[safeIndex],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   bool _expanded = false;
 
   @override
@@ -1732,21 +2188,13 @@ class _WorkerCardState extends State<WorkerCard> {
             ),
             blueDivider,
 
-            // 1️⃣ تصنيف صلاحيات الزبائن
-            ExpansionTile(
-              leading: const Icon(
-                Icons.people_alt_rounded,
-                color: Color(0xFF7C3AED),
-              ),
-              title: Text(
-                _tr(
-                  'صلاحيات الزبائن (Clients)',
-                  'Permissions Clients',
-                  'Client Permissions',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            Builder(
+              builder: (ctx) {
+                final categories = _getCategoriesMetadata(lang);
+
+                // 1️⃣ تصنيف صلاحيات الزبائن
+                final cat0Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -1845,25 +2293,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('view_client_details', val),
                 ),
               ],
-            ),
-            blueDivider,
-
-            // 2️⃣ تصنيف صلاحيات الطلبيات والمشاريع
-            ExpansionTile(
-              leading: const Icon(
-                Icons.receipt_long_rounded,
-                color: Color(0xFF2563EB),
-              ),
-              title: Text(
-                _tr(
-                  'صلاحيات الطلبيات والمشاريع (Commandes & Projets)',
-                  'Commandes & Projets',
-                  'Orders & Projects Permissions',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
-              children: [
+            );
+                // 2️⃣ تصنيف صلاحيات الطلبيات والمشاريع
+                final cat1Content = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 _buildPermissionGroupActions(
                   lang: lang,
                   allKeys: const [
@@ -2185,24 +2619,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('view_all_worker_tasks', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 📐 بطاقة قياسات الموقع الذكية
-            ExpansionTile(
-              leading: const Icon(
-                Icons.architecture_rounded,
-                color: Color(0xFF0EA5E9),
-              ),
-              title: Text(
-                _tr(
-                  'رفع القياسات الذكية (الموقع)',
-                  'Prise de Mesures (Site)',
-                  'Smart Site Measurements',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat2Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -2238,24 +2659,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('confirm_measurements', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 3️⃣ تصنيف مهامي وتصنيع اعتماداتي والمهام الخارجية
-            ExpansionTile(
-              leading: const Icon(
-                Icons.assignment_turned_in_rounded,
-                color: Color(0xFF14B8A6),
-              ),
-              title: Text(
-                _tr(
-                  'مهامي وتصنيع اعتماداتي والمهام الخارجية',
-                  'Mes Tâches & Catalogue',
-                  'My Tasks & Catalogue',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat3Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -2481,24 +2889,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('external_operations', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 🛡️ إدارة صلاحيات الفريق (نائب المدير)
-            ExpansionTile(
-              leading: const Icon(
-                Icons.admin_panel_settings_rounded,
-                color: Color(0xFFD97706),
-              ),
-              title: Text(
-                _tr(
-                  'إدارة صلاحيات الفريق (نائب المدير)',
-                  'Gestion d\'Équipe (Co-Directeur)',
-                  'Team Management (Co-Manager)',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat4Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -2634,24 +3029,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('local_json_backup', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 4️⃣ تصنيف الإعدادات وأنظمة الورشة
-            ExpansionTile(
-              leading: const Icon(
-                Icons.settings_rounded,
-                color: Color(0xFF64748B),
-              ),
-              title: Text(
-                _tr(
-                  'الإعدادات وأنظمة الورشة (Paramètres & Systèmes)',
-                  'Paramètres & Systèmes',
-                  'Settings & Systems',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat5Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -2712,24 +3094,11 @@ class _WorkerCardState extends State<WorkerCard> {
                   onChanged: (val) => _updatePermission('select_systems', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 5️⃣ تصنيف المالية والصناديق والأجور
-            ExpansionTile(
-              leading: const Icon(
-                Icons.account_balance_wallet_rounded,
-                color: Color(0xFF059669),
-              ),
-              title: Text(
-                _tr(
-                  'المالية والصناديق والأسعار والأجور (Trésorerie & Paie)',
-                  'Trésorerie, Prix & Paie',
-                  'Financials, Treasury & Wages',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat6Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -2903,24 +3272,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('worker_settlement', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 6️⃣ تصنيف المخزون والمشتريات والموردين
-            ExpansionTile(
-              leading: const Icon(
-                Icons.local_shipping_rounded,
-                color: Color(0xFFE11D48),
-              ),
-              title: Text(
-                _tr(
-                  'المخزون والمشتريات والموردين (Stock, Achats & Fournisseurs)',
-                  'Stock, Achats & Fournisseurs',
-                  'Inventory, Purchases & Suppliers',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat7Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -3143,24 +3499,11 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('global_consumption', val),
                 ),
               ],
-            ),
-            blueDivider,
+            );
 
             // 7️⃣ تصنيف الإحصائيات والتقارير
-            ExpansionTile(
-              leading: const Icon(
-                Icons.bar_chart_rounded,
-                color: Color(0xFF06B6D4),
-              ),
-              title: Text(
-                _tr(
-                  'الإحصائيات والتقارير (Statistiques & Rapports)',
-                  'Statistiques & Rapports',
-                  'Statistics & Reports',
-                  lang,
-                ),
-                style: titleStyle,
-              ),
+            final cat8Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPermissionGroupActions(
                   lang: lang,
@@ -3198,9 +3541,100 @@ class _WorkerCardState extends State<WorkerCard> {
                       _updatePermission('accelerate_confirmed_invoices', val),
                 ),
               ],
-            ),
-          ],
-        ],
+            );
+
+            final categoryWidgets = [
+              cat0Content,
+              cat1Content,
+              cat2Content,
+              cat3Content,
+              cat4Content,
+              cat5Content,
+              cat6Content,
+              cat7Content,
+              cat8Content,
+            ];
+
+            final isDesktop = MediaQuery.of(ctx).size.width >= 680;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isDesktop)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          _tr(
+                            'طريقة العرض:',
+                            'Mode d\'affichage:',
+                            'View mode:',
+                            lang,
+                          ),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                            fontFamily: 'Cairo',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SegmentedButton<bool>(
+                          segments: [
+                            ButtonSegment<bool>(
+                              value: true,
+                              icon: const Icon(Icons.vertical_split_rounded, size: 16),
+                              label: Text(
+                                _tr('شاشة مقسمة', 'Écran divisé', 'Split screen', lang),
+                                style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
+                              ),
+                            ),
+                            ButtonSegment<bool>(
+                              value: false,
+                              icon: const Icon(Icons.view_agenda_rounded, size: 16),
+                              label: Text(
+                                _tr('قوائم منسدلة', 'Accordéon', 'Accordion', lang),
+                                style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
+                              ),
+                            ),
+                          ],
+                          selected: {_useSplitView},
+                          onSelectionChanged: (Set<bool> newSelection) {
+                            _setUseSplitView(newSelection.first);
+                          },
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_useSplitView && isDesktop)
+                  _buildSplitView(ctx, lang, isDark, titleStyle, categories, categoryWidgets)
+                else
+                  for (int i = 0; i < categories.length; i++) ...[
+                    ExpansionTile(
+                      leading: Icon(
+                        categories[i]['icon'] as IconData,
+                        color: categories[i]['color'] as Color,
+                      ),
+                      title: Text(
+                        categories[i]['title'] as String,
+                        style: titleStyle,
+                      ),
+                      children: [categoryWidgets[i]],
+                    ),
+                    if (i < categories.length - 1) blueDivider,
+                  ],
+              ],
+            );
+          },
+        ),
+      ],
+    ],
       ),
     );
   }

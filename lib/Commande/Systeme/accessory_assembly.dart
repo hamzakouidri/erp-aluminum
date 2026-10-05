@@ -17,13 +17,23 @@ class AssemblyDemand {
     required this.sliding,
     required this.topCorners,
     required this.bottomCorners,
+    this.topMiterCorners,
+    this.bottomMiterCorners,
     this.sectionId,
   });
+
   final String target;
   final bool sliding;
   final int topCorners;
   final int bottomCorners;
+  final int? topMiterCorners;
+  final int? bottomMiterCorners;
   final int? sectionId;
+
+  /// الزوايا المقطوعة بـ 45 درجة فقط المؤهلة لتركيب الكلام (Clam)
+  int get effectiveTopMiterCorners => topMiterCorners ?? topCorners;
+
+  int get effectiveBottomMiterCorners => bottomMiterCorners ?? bottomCorners;
 }
 
 int? assemblyInt(Object? value) =>
@@ -127,17 +137,32 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
         window.usesSlidingPrimaryProfiles ||
         (zones.isNotEmpty &&
             zones.every((z) => z.content == ZoneContent.slidingSash));
+
+    // زوايا الإطار 45° للكلام: إذا كانت هناك زاوية 90° (profileAngleMode) يُلغى الكلام منها
+    int topMiter = 2;
+    int bottomMiter = !window.hasBottomFrameForRect(rect) ? 0 : 2;
+    if (window.profileAngleMode == 1 || window.profileAngleMode == 2) {
+      topMiter = 1;
+      if (bottomMiter > 0) bottomMiter = 1;
+    } else if (window.profileAngleMode == 3) {
+      topMiter = 0;
+      bottomMiter = 0;
+    }
+
     demands.add(
       AssemblyDemand(
         target: 'frame',
         sliding: sliding,
         topCorners: 2,
         bottomCorners: !window.hasBottomFrameForRect(rect) ? 0 : 2,
+        topMiterCorners: topMiter,
+        bottomMiterCorners: bottomMiter,
         sectionId: sectionId(sliding, true),
       ),
     );
   }
-  void addSashes(int count, bool sliding) {
+
+  void addSashes(int count, bool sliding, {int? miterTop, int? miterBottom}) {
     if (count <= 0) return;
     demands.add(
       AssemblyDemand(
@@ -145,6 +170,8 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
         sliding: sliding,
         topCorners: count * 2,
         bottomCorners: count * 2,
+        topMiterCorners: miterTop ?? (count * 2),
+        bottomMiterCorners: miterBottom ?? (count * 2),
         sectionId: sectionId(sliding, false),
       ),
     );
@@ -152,24 +179,58 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
 
   for (final zone in window.zones) {
     final sliding = zone.content == ZoneContent.slidingSash;
-    final count = switch (zone.content) {
-      ZoneContent.singleSash => 1,
-      ZoneContent.doubleSash => 2,
-      ZoneContent.slidingSash =>
-        zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2,
-      _ => 0,
-    };
-    addSashes(count, sliding);
-    final nestedKeys = {...zone.cellIsSash.keys, ...zone.cellIsDoubleSash.keys};
-    for (final key in nestedKeys) {
+    if (sliding) {
+      final sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
+      int slidingTopMiter = 0;
+      int slidingBottomMiter = 0;
+
+      // فحص كل ظلفة: هل تتصل بمونتوسليم (MontoSlim) يلغي الكلام ببراغي التجميع؟
+      for (int s = 0; s < sashes; s++) {
+        final bool leftIsSlim =
+            s > 0 &&
+            (zone.slidingMontantSlim['central_${(s - 1) * 2 + 1}'] ?? false);
+        final bool rightIsSlim =
+            s < (sashes - 1) &&
+            (zone.slidingMontantSlim['central_${s * 2}'] ?? false);
+
+        // الجانب الذي ليس فيه مونتوسليم يكون 45° ويأخذ كلام
+        if (!leftIsSlim) {
+          slidingTopMiter += 1;
+          slidingBottomMiter += 1;
+        }
+        if (!rightIsSlim) {
+          slidingTopMiter += 1;
+          slidingBottomMiter += 1;
+        }
+      }
+
       addSashes(
-        zone.cellIsDoubleSash[key] == true
-            ? 2
-            : zone.cellIsSash[key] == true
-            ? 1
-            : 0,
-        false,
+        sashes,
+        true,
+        miterTop: slidingTopMiter,
+        miterBottom: slidingBottomMiter,
       );
+    } else {
+      final count = switch (zone.content) {
+        ZoneContent.singleSash => 1,
+        ZoneContent.doubleSash => 2,
+        _ => 0,
+      };
+      addSashes(count, false);
+      final nestedKeys = {
+        ...zone.cellIsSash.keys,
+        ...zone.cellIsDoubleSash.keys,
+      };
+      for (final key in nestedKeys) {
+        addSashes(
+          zone.cellIsDoubleSash[key] == true
+              ? 2
+              : zone.cellIsSash[key] == true
+              ? 1
+              : 0,
+          false,
+        );
+      }
     }
   }
   return demands;
@@ -188,6 +249,16 @@ int assemblyQuantity(
   final role = '${rule['role_key'] ?? ''}'.trim().toLowerCase();
   final perCornerClamp =
       assemblyAccessoryRoles.contains(role) && role != 'assembly_screw';
+  final isClam = const {
+    'clam',
+    'clamp',
+    'sliding_clamp',
+    'frame_clamp',
+    'sash_clamp',
+    'frame_clamp_support',
+    'sash_clamp_support',
+  }.contains(role);
+
   final configuredTarget = '${rule['assembly_target'] ?? ''}';
   final target = const {'frame', 'sash', 'both'}.contains(configuredTarget)
       ? configuredTarget
@@ -198,36 +269,39 @@ int assemblyQuantity(
   final bottom = (assemblyInt(rule['bottom_corner_qty']) ?? 1).clamp(0, 100000);
   var quantity = 0;
   for (final demand in demands) {
-    // Clams (corner joints) belong strictly to physical 45-degree frame and sash corners.
-    // Intermediate battements, angle profiles, mullions, and transoms must never receive corner clams.
     if (perCornerClamp && demand.target != 'frame' && demand.target != 'sash') {
       continue;
     }
     if (linkedSections.isNotEmpty) {
-      // An explicit section link is more precise than the generic
-      // frame/sash target. This also allows assembly hardware to follow a
-      // plinthe, mullion or one component of a multi-piece sliding sash.
       if (!linkedSections.contains(demand.sectionId)) continue;
     } else {
       if (target != 'both' && target != demand.target) continue;
     }
+
+    // إذا كان العنصر هو الكلام (Clam)، نستخدم حصراً زوايا الـ 45°
+    // زوايا الـ 90° والمونتوسليم التي بها براغي تجميع تلغي الكلام تماماً
+    final topCorners = isClam
+        ? demand.effectiveTopMiterCorners
+        : demand.topCorners;
+    final bottomCorners = isClam
+        ? demand.effectiveBottomMiterCorners
+        : demand.bottomCorners;
+
     final sectionQuantities = demand.sectionId == null
         ? null
         : sectionSideQuantities[demand.sectionId];
-    // The catalogue exposes one count per corner for rectangular clamps.
-    // Old rows can still contain a hidden second-side value of zero. It is
-    // meaningful for profile ends/screws, not for a frame or sash corner.
+
     if (perCornerClamp &&
         sectionQuantities != null &&
         (demand.target == 'frame' || demand.target == 'sash')) {
       final perCorner = sectionQuantities.$1;
-      quantity += (demand.topCorners + demand.bottomCorners) * perCorner;
+      quantity += (topCorners + bottomCorners) * perCorner;
     } else if (sectionQuantities != null) {
       quantity +=
-          demand.topCorners * sectionQuantities.$1 +
-          demand.bottomCorners * sectionQuantities.$2;
+          topCorners * sectionQuantities.$1 +
+          bottomCorners * sectionQuantities.$2;
     } else {
-      quantity += demand.topCorners * top + demand.bottomCorners * bottom;
+      quantity += topCorners * top + bottomCorners * bottom;
     }
   }
   return quantity;

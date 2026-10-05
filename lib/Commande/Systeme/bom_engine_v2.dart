@@ -14,6 +14,7 @@ class BomEngineV2 {
   BomEngineV2({SqlDatabase? database}) : _db = database ?? SqlDatabase();
 
   final SqlDatabase _db;
+
   String _catalogLabel(String value) => value
       .replaceAll(
         RegExp(
@@ -23,6 +24,7 @@ class BomEngineV2 {
         '',
       )
       .trim();
+
   bool _looksLikeAlignmentSquare(Map<String, dynamic> item) {
     final text =
         '${item['name'] ?? ''} ${item['type'] ?? ''} ${item['code'] ?? ''}'
@@ -138,6 +140,13 @@ class BomEngineV2 {
             !item.isMissing &&
             item.catalogItemId != null &&
             item.catalogItemId! > 0) {
+          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+          final qty = item.requiredQuantity > 0
+              ? item.requiredQuantity
+              : item.quantity;
+          if (!hasPieces && qty <= 0) {
+            return null;
+          }
           return item;
         }
         // A configured Kit is authoritative: its active child rows are the
@@ -167,12 +176,24 @@ class BomEngineV2 {
           'batmo_screw',
           'bouchon_batmo_screw',
         }.contains(role)) {
-          if (await _calculatedMaterialRoleExplicitlyDisabled(window, role)) {
+          if (!calculatedRoles.contains(role)) {
             return null;
           }
-          return item.isActive && (item.requiredQuantity > 0 || item.quantity > 0 || (item.pieces != null && item.pieces!.isNotEmpty)) ? item : null;
+          return item.isActive &&
+                  (item.requiredQuantity > 0 ||
+                      item.quantity > 0 ||
+                      (item.pieces != null && item.pieces!.isNotEmpty))
+              ? item
+              : null;
         }
         if (await _itemHasRuleCandidate(window, item)) {
+          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+          final qty = item.requiredQuantity > 0
+              ? item.requiredQuantity
+              : item.quantity;
+          if (!hasPieces && qty <= 0) {
+            return null;
+          }
           return item;
         }
         // If an item does not exist in the active series rules, it must NOT
@@ -183,13 +204,16 @@ class BomEngineV2 {
     final kept = resolved.whereType<BomItem>().toList();
     final assemblyResult = await _assemblyItems(window, kept);
     kept.addAll(assemblyResult);
-    if (!assemblyResult.any((i) =>
-        i.roleKey == 'assembly_screw' || i.originalName == 'براغي التجميع')) {
-      final rawAssemblyScrews = items.where((i) =>
-          (i.originalName == 'براغي التجميع' ||
-              (i.roleKey ?? '').trim().toLowerCase() == 'assembly_screw') &&
-          i.isActive &&
-          i.quantity > 0);
+    if (!assemblyResult.any(
+      (i) => i.roleKey == 'assembly_screw' || i.originalName == 'براغي التجميع',
+    )) {
+      final rawAssemblyScrews = items.where(
+        (i) =>
+            (i.originalName == 'براغي التجميع' ||
+                (i.roleKey ?? '').trim().toLowerCase() == 'assembly_screw') &&
+            i.isActive &&
+            i.quantity > 0,
+      );
       kept.addAll(rawAssemblyScrews);
     }
     kept.addAll(await _linkedAccessoryItems(window, kept));
@@ -207,15 +231,19 @@ class BomEngineV2 {
         ),
       );
     } else {
-      final rawKits = items.where((i) =>
-          const {
-            'kit',
-            'sliding_kit',
-            'sliding_kit_40000',
-            'sliding_kit_67000',
-          }.contains((i.roleKey ?? i.selectorType ?? '').trim().toLowerCase()) &&
-          i.isActive &&
-          i.quantity > 0);
+      final rawKits = items.where(
+        (i) =>
+            const {
+              'kit',
+              'sliding_kit',
+              'sliding_kit_40000',
+              'sliding_kit_67000',
+            }.contains(
+              (i.roleKey ?? i.selectorType ?? '').trim().toLowerCase(),
+            ) &&
+            i.isActive &&
+            i.quantity > 0,
+      );
       kept.addAll(rawKits);
     }
     kept.addAll(await _frameRoleJoints(kept));
@@ -226,11 +254,14 @@ class BomEngineV2 {
     // to the user, otherwise a hidden duplicate is counted twice.
     final existingAccScrews = visibleItems.where(_isAccessoryScrewRow).toList();
     visibleItems.removeWhere(_isAccessoryScrewRow);
-    final calculatedAccScrews = await _accessoryScrewItems(window, visibleItems);
+    final calculatedAccScrews = await _accessoryScrewItems(
+      window,
+      visibleItems,
+    );
     if (calculatedAccScrews.isNotEmpty) {
       visibleItems.addAll(calculatedAccScrews);
     } else if (existingAccScrews.isNotEmpty &&
-        !await _calculatedMaterialRoleExplicitlyDisabled(window, 'accessory_screw')) {
+        await _calculatedMaterialRoleEnabled(window, 'accessory_screw')) {
       visibleItems.addAll(existingAccScrews);
     }
     // Do not suppress active unlinked placeholders here. They are real
@@ -238,29 +269,6 @@ class BomEngineV2 {
     // (with their warning state) instead of disappearing from a specific
     // series merely because a second rule lookup found no exact match.
     return _mergeIdenticalScrews(visibleItems);
-  }
-
-  Future<bool> _calculatedMaterialRoleExplicitlyDisabled(
-    WindowModel window,
-    String role,
-  ) async {
-    final seriesIds = <int>{
-      if (window.activeSeries?.id != null) window.activeSeries!.id,
-      if (window.activeSlidingSeries?.id != null)
-        window.activeSlidingSeries!.id,
-    };
-    for (final seriesId in seriesIds) {
-      final rules = await _db.getCatalogItemRules(
-        itemTable: 'Accessories',
-        seriesId: seriesId,
-        roleKeys: [role],
-      );
-      if (rules.isNotEmpty &&
-          rules.every((rule) => _catalogInt(rule['show_in_quantity']) == 0)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   Future<bool> _calculatedMaterialRoleEnabled(
@@ -281,33 +289,6 @@ class BomEngineV2 {
       if (rules.any((rule) => _catalogInt(rule['show_in_quantity']) != 0)) {
         return true;
       }
-      final flagColumn = switch (role) {
-        'accessory_screw' => 'is_accessory_screw',
-        'installation_screw' => 'is_installation_screw',
-        'batmo_screw' => 'is_batmo_screw',
-        'bouchon_batmo_screw' => 'is_bouchon_batmo_screw',
-        _ => null,
-      };
-      final database = await _db.db;
-      if (database != null && flagColumn != null) {
-        final flaggedRules = await database.rawQuery(
-          '''
-          SELECT r.show_in_quantity
-          FROM CatalogItemRules r
-          INNER JOIN Accessories a ON a.id = r.item_id
-          WHERE r.item_table = 'Accessories'
-            AND r.is_active = 1
-            AND r.series_id = ?
-            AND a.$flagColumn = 1
-          ''',
-          [seriesId],
-        );
-        if (flaggedRules.any(
-          (rule) => _catalogInt(rule['show_in_quantity']) != 0,
-        )) {
-          return true;
-        }
-      }
     }
     return false;
   }
@@ -317,6 +298,29 @@ class BomEngineV2 {
     return role == 'accessory_screw' ||
         role == 'is_accessory_screw' ||
         (item.overrideKey ?? '').startsWith('linked-accessory:screw:');
+  }
+
+  bool _isAnyScrewRow(BomItem item) {
+    const screwRoles = {
+      'kit_screw',
+      'box_screw',
+      'motor_screw',
+      'batmo_screw',
+      'bouchon_batmo_screw',
+      'renfort_screw',
+      'manivelle_screw',
+      'assembly_screw',
+      'installation_screw',
+      'accessory_screw',
+    };
+    final role = (item.roleKey ?? item.selectorType ?? '').trim().toLowerCase();
+    final normalizedRole = role.startsWith('is_') ? role.substring(3) : role;
+    return screwRoles.contains(normalizedRole) ||
+        (item.overrideKey ?? '').startsWith('linked-accessory:screw:') ||
+        (item.overrideKey ?? '').startsWith(
+          'assembly:combined:assembly_screw:',
+        ) ||
+        (item.overrideKey ?? '').startsWith('screw:combined:');
   }
 
   Future<List<BomItem>> _accessoryScrewItems(
@@ -344,7 +348,7 @@ class BomEngineV2 {
           !item.isActive ||
           item.quantity <= 0 ||
           id == null ||
-          _isAccessoryScrewRow(item)) {
+          _isAnyScrewRow(item)) {
         continue;
       }
       quantitiesByAccessoryId[id] =
@@ -478,14 +482,62 @@ class BomEngineV2 {
           );
     for (final row in sourceRows) {
       final sourceId = _catalogInt(row['id']);
-      final screwId = _catalogInt(row['screw_accessory_id']);
+      int? screwId = _catalogInt(row['screw_accessory_id']);
       final screwCount = _catalogInt(row['screw_count']) ?? 0;
-      if (sourceId == null || screwId == null || screwCount <= 0) continue;
+      if (sourceId == null || screwCount <= 0) continue;
+      if (screwId == null) {
+        final seriesId =
+            sourceSeriesByAccessoryId[sourceId] ?? window.activeSeries?.id;
+        if (seriesId != null) {
+          final candidates = await _resolveCandidates(
+            CatalogCandidateQuery(
+              category: 'accessory',
+              selectorType: 'is_accessory_screw',
+              roleKeys: const ['accessory_screw'],
+              seriesId: seriesId,
+              materialType: materialByAccessoryId[sourceId],
+              requireDialog: false,
+              requireQuantity: true,
+            ),
+          );
+          if (candidates.isNotEmpty) {
+            screwId = _catalogInt(candidates.first['id']);
+          }
+        }
+        if (screwId == null) {
+          final flagged = await database.query(
+            'Accessories',
+            where:
+                'is_accessory_screw = 1 AND (is_active = 1 OR is_active IS NULL)',
+            orderBy: 'id ASC',
+          );
+          final expectedMaterial = (materialByAccessoryId[sourceId] ?? '')
+              .trim()
+              .toLowerCase();
+          final selectedScrew = flagged
+              .map((r) => Map<String, dynamic>.from(r))
+              .where((r) {
+                final material = '${r['material_type'] ?? ''}'
+                    .trim()
+                    .toLowerCase();
+                return expectedMaterial.isEmpty ||
+                    material.isEmpty ||
+                    material == 'both' ||
+                    material == expectedMaterial;
+              })
+              .firstOrNull;
+          if (selectedScrew != null) {
+            screwId = _catalogInt(selectedScrew['id']);
+          }
+        }
+      }
+      if (screwId == null) continue;
       final sourceQuantity = quantitiesByAccessoryId[sourceId] ?? 0.0;
       if (sourceQuantity <= 0) continue;
       totalsByScrewId[screwId] =
           (totalsByScrewId[screwId] ?? 0.0) + (sourceQuantity * screwCount);
-      screwSeries[screwId] = sourceSeriesByAccessoryId[sourceId];
+      screwSeries[screwId] =
+          sourceSeriesByAccessoryId[sourceId] ?? window.activeSeries?.id;
       screwMaterials[screwId] = materialByAccessoryId[sourceId];
     }
     if (totalsByScrewId.isEmpty) return const [];
@@ -593,8 +645,9 @@ class BomEngineV2 {
       'accessory_screw',
     };
     bool isScrew(BomItem item) {
-      final role =
-          (item.roleKey ?? item.selectorType ?? '').toLowerCase().trim();
+      final role = (item.roleKey ?? item.selectorType ?? '')
+          .toLowerCase()
+          .trim();
       if (screwRoles.contains(role)) return true;
       if (role.startsWith('is_') && screwRoles.contains(role.substring(3))) {
         return true;
@@ -618,14 +671,27 @@ class BomEngineV2 {
     final nonScrews = <BomItem>[];
     final screwBuckets = <String, List<BomItem>>{};
 
+    String screwUsage(BomItem item) {
+      final rawRole = (item.roleKey ?? item.selectorType ?? '')
+          .trim()
+          .toLowerCase();
+      final role = rawRole.startsWith('is_') ? rawRole.substring(3) : rawRole;
+      // A single catalogue screw can legitimately be assigned to several
+      // usages. Keep those usages as separate BOM rows: shutter screws belong
+      // to the shutter components section and must never be folded into
+      // window accessory screws merely because both point at the same product.
+      return screwRoles.contains(role) ? role : 'unclassified_screw';
+    }
+
     for (final item in items) {
       if (!isScrew(item)) {
         nonScrews.add(item);
         continue;
       }
+      final usage = screwUsage(item);
       final key = item.catalogItemId != null && item.catalogItemId! > 0
-          ? 'id:${item.catalogItemId}'
-          : 'name:${item.originalName.trim().toLowerCase()}';
+          ? '$usage:id:${item.catalogItemId}'
+          : '$usage:name:${item.originalName.trim().toLowerCase()}';
       screwBuckets.putIfAbsent(key, () => []).add(item);
     }
 
@@ -654,7 +720,14 @@ class BomEngineV2 {
       mergedScrews.add(merged);
     }
 
-    return [...nonScrews, ...mergedScrews];
+    final combined = [...nonScrews, ...mergedScrews];
+    return combined.where((item) {
+      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+      final qty = item.requiredQuantity > 0
+          ? item.requiredQuantity
+          : item.quantity;
+      return hasPieces || qty > 0;
+    }).toList();
   }
 
   Future<List<BomItem>> _linkedAccessoryItems(
@@ -1041,6 +1114,7 @@ class BomEngineV2 {
         final candidateKitCount = isCentralReinforcementKit
             ? context.kitCount * 2
             : context.kitCount;
+        if (candidateKitCount <= 0) continue;
         final selectedCode = candidate['code']?.toString().trim() ?? '';
         // Use the exact catalogue Kit name as the primary title (for example
         // Kit 40000 or Kit 67000).
@@ -1139,32 +1213,58 @@ class BomEngineV2 {
       // plinthes, mullions and the individual members of sliding sashes.
       final pieceCount = (pieces.length / orderQuantity).round();
       if (pieceCount <= 0) continue;
-      final sliding = _drawingModeForItem(window, item) ==
-          AccessoryDrawingMode.sliding;
-      final rectangular = role == 'frame' || role == 'sash' ||
-          role == 'frame_extension' || role == 'sash_extension';
-      // If geometric demands already account for frame corners or sash corners,
-      // individual profile pieces (e.g. customized bottom frame, angle junction,
-      // or replacement stiles) must NOT add duplicate corner demands.
+      final sliding =
+          _drawingModeForItem(window, item) == AccessoryDrawingMode.sliding;
+      final rectangular =
+          role == 'frame' ||
+          role == 'sash' ||
+          role == 'frame_extension' ||
+          role == 'sash_extension';
+
+      // 1. إذا كانت زوايا الإطار الأساسي أو الظلفة محسوبة مسبقاً، لا نكررها
       if ((role == 'frame' || role == 'sash') &&
-          geometricDemands.any((d) => d.sliding == sliding && d.target == role)) {
+          geometricDemands.any(
+            (d) => d.sliding == sliding && d.target == role,
+          )) {
         continue;
       }
-      // A complete rectangular profile has four corner joints, not eight
-      // independent ends. Extensions are physical frames too. If geometric
-      // metadata is missing, the actual resolved cuts still carry demand.
-      final openBottom = (role == 'frame' || role == 'frame_extension') &&
+
+      final openBottom =
+          (role == 'frame' || role == 'frame_extension') &&
           !window.hasBottomFrame;
+
+      // 2. معالجة خاصة للراي الإضافي (frame_extension):
+      // الراي الإضافي يأخذ 2 كلام فقط (وليس 4)
+      if (role == 'frame_extension') {
+        demands.add(
+          AssemblyDemand(
+            target: 'frame',
+            sliding: sliding,
+            topCorners: 2,
+            // 2 كلام فقط للراي الإضافي
+            bottomCorners: 0,
+            // لا يحسب في الأسفل
+            topMiterCorners: 2,
+            bottomMiterCorners: 0,
+            sectionId: sectionId,
+          ),
+        );
+        continue;
+      }
+
       final rectangles = rectangular ? pieceCount ~/ (openBottom ? 3 : 4) : 0;
       demands.add(
         AssemblyDemand(
-          target: role == 'frame_extension' ? 'frame' :
-              role == 'sash_extension' ? 'sash' : rectangular ? role : 'profile',
+          target: role == 'sash_extension'
+              ? 'sash'
+              : rectangular
+              ? role
+              : 'profile',
           sliding: sliding,
-          // A plinthe, traverse or sliding-sash member has two ends. The
-          // catalogue rule independently defines the screw count at each end.
           topCorners: rectangular ? rectangles * 2 : pieceCount,
-          bottomCorners: rectangular ? (openBottom ? 0 : rectangles * 2) : pieceCount,
+          bottomCorners: rectangular
+              ? (openBottom ? 0 : rectangles * 2)
+              : pieceCount,
           sectionId: sectionId,
         ),
       );
@@ -1185,7 +1285,11 @@ class BomEngineV2 {
     );
     final demands = [
       ...geometricDemands,
-      ..._selectedProfileAssemblyDemands(window, selectedProfileList, geometricDemands),
+      ..._selectedProfileAssemblyDemands(
+        window,
+        selectedProfileList,
+        geometricDemands,
+      ),
     ];
     if (demands.isEmpty) return [];
     final database = await _db.db;
@@ -1319,8 +1423,8 @@ class BomEngineV2 {
           .trim()
           .toLowerCase();
       if (sectionId == null || (role != 'frame' && role != 'sash')) continue;
-      final sliding = _drawingModeForItem(window, profile) ==
-          AccessoryDrawingMode.sliding;
+      final sliding =
+          _drawingModeForItem(window, profile) == AccessoryDrawingMode.sliding;
       final target = role == 'frame' ? 'frame' : 'sash';
       for (var index = 0; index < demands.length; index++) {
         final demand = demands[index];
@@ -1338,6 +1442,8 @@ class BomEngineV2 {
           sliding: demand.sliding,
           topCorners: demand.topCorners,
           bottomCorners: demand.bottomCorners,
+          topMiterCorners: demand.topMiterCorners,
+          bottomMiterCorners: demand.bottomMiterCorners,
           sectionId: sectionId,
         );
       }
@@ -1741,7 +1847,13 @@ class BomEngineV2 {
   }
 
   bool _hasLegacyFlaggedScrewRole(Iterable<String> roles) => roles.any(
-    const {'renfort_screw', 'batmo_screw', 'bouchon_batmo_screw'}.contains,
+    const {
+      'renfort_screw',
+      'batmo_screw',
+      'bouchon_batmo_screw',
+      'installation_screw',
+      'assembly_screw',
+    }.contains,
   );
 
   Future<List<Map<String, dynamic>>> _legacyFlaggedAccessoryCandidates(
@@ -1754,6 +1866,8 @@ class BomEngineV2 {
       'renfort_screw': 'is_renfort_screw',
       'batmo_screw': 'is_batmo_screw',
       'bouchon_batmo_screw': 'is_bouchon_batmo_screw',
+      'installation_screw': 'is_installation_screw',
+      'assembly_screw': 'is_assembly_screw',
     };
     final flags = roles
         .map((role) => flagForRole[role.trim().toLowerCase()])
@@ -1839,7 +1953,8 @@ class BomEngineV2 {
       _currentComponentSelection(window, item),
     );
     if ((item.overrideKey ?? '').startsWith('fitted-glass:') &&
-        matchingCurrent != null) return;
+        matchingCurrent != null)
+      return;
     final sortedFirstId = _catalogInt(candidates.first['id']);
     final matchingCurrentId = _catalogInt(matchingCurrent?['id']);
     if (matchingCurrent != null &&

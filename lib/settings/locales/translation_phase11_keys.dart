@@ -1315,6 +1315,11 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'Attribution d\'une nouvelle tâche',
     AppLanguage.english: 'New task assignment',
   },
+  'إضافة وتعديل وحذف الطلبيات': {
+    AppLanguage.arabic: 'إضافة وتعديل وحذف الطلبيات',
+    AppLanguage.french: 'Ajout, modification et suppression des commandes',
+    AppLanguage.english: 'Add, modify, and delete orders',
+  },
   'حركة صندوق الورشة': {
     AppLanguage.arabic: 'حركة صندوق الورشة',
     AppLanguage.french: 'Mouvements de caisse d\'atelier',
@@ -1344,6 +1349,48 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.arabic: 'تلقي التنبيهات الفورية عند حدوث أي نشاط',
     AppLanguage.french: 'Recevoir des alertes instantanées lors de toute activité',
     AppLanguage.english: 'Receive instant alerts for any activity',
+  },
+
+  // ── تثبيت وتحرير حركة رسم النوافذ ──
+  'تثبيت الرسم': {
+    AppLanguage.arabic: 'تثبيت الرسم',
+    AppLanguage.french: 'Fixer le dessin',
+    AppLanguage.english: 'Freeze drawing',
+  },
+  'تثبيت الرسم ومنع حركته': {
+    AppLanguage.arabic: 'تثبيت الرسم ومنع حركته',
+    AppLanguage.french: 'Verrouiller le déplacement du dessin',
+    AppLanguage.english: 'Lock drawing movement',
+  },
+  'تحرير حركة الرسم': {
+    AppLanguage.arabic: 'تحرير حركة الرسم',
+    AppLanguage.french: 'Déverrouiller le déplacement',
+    AppLanguage.english: 'Unlock drawing movement',
+  },
+  'تحرير حركة الرسم (الرسم مثبت حالياً)': {
+    AppLanguage.arabic: 'تحرير حركة الرسم (الرسم مثبت حالياً)',
+    AppLanguage.french: 'Déverrouiller le déplacement (actuellement fixé)',
+    AppLanguage.english: 'Unlock movement (currently frozen)',
+  },
+  'تم تثبيت الرسم ومنع حركته': {
+    AppLanguage.arabic: 'تم تثبيت الرسم ومنع حركته',
+    AppLanguage.french: 'Le dessin est fixé',
+    AppLanguage.english: 'Drawing movement is locked',
+  },
+  'تم تحرير حركة الرسم': {
+    AppLanguage.arabic: 'تم تحرير حركة الرسم',
+    AppLanguage.french: 'Déplacement du dessin déverrouillé',
+    AppLanguage.english: 'Drawing movement unlocked',
+  },
+  'الرسم ثابت': {
+    AppLanguage.arabic: 'الرسم ثابت',
+    AppLanguage.french: 'Dessin fixe',
+    AppLanguage.english: 'Fixed drawing',
+  },
+  'حركة حرة': {
+    AppLanguage.arabic: 'حركة حرة',
+    AppLanguage.french: 'Mouvement libre',
+    AppLanguage.english: 'Free movement',
   },
 };
 

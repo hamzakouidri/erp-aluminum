@@ -127,11 +127,27 @@ class WorkspaceController extends ChangeNotifier {
   bool get isHomeActive =>
       _entries.isNotEmpty && _entries[_activeIndex].id == 'home';
 
+  bool _isSidebarOpen = false;
+  bool get isSidebarOpen => _isSidebarOpen;
+
+  void toggleSidebar() {
+    _isSidebarOpen = !_isSidebarOpen;
+    notifyListeners();
+  }
+
+  void setSidebarOpen(bool open) {
+    if (_isSidebarOpen != open) {
+      _isSidebarOpen = open;
+      notifyListeners();
+    }
+  }
+
   /// Remove authenticated workspace pages when the session ends. Keeping
   /// their widget instances after sign-out can leave stale pages/tabs visible
   /// when the next account is opened on Windows.
   void resetForSignedOut() {
     _navigatorKeys.clear();
+    _isSidebarOpen = false;
     _entries
       ..clear()
       ..add(
@@ -724,7 +740,10 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
       final savedName = (prefs.getString('workshop_name') ?? '').trim();
       final savedUserName =
           (prefs.getString('user_display_name') ?? '').trim();
-      final savedLogo = (prefs.getString('workshop_logo_base64') ?? '').trim();
+      final rawLogo = prefs.getString('workshop_logo_base64') ??
+          prefs.getString('workshop_logo') ??
+          '';
+      final savedLogo = rawLogo.trim();
       var resolvedName = savedName;
       final account = await SupabaseAccountService().loadCurrentAccount();
       final accountName = account?.workshopName.trim() ?? '';
@@ -1077,7 +1096,8 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
       final savedName = rawSavedName.isNotEmpty && rawSavedName != savedCode
           ? rawSavedName
           : null;
-      final savedLogo = prefs.getString('workshop_logo_base64');
+      final savedLogo = prefs.getString('workshop_logo_base64') ??
+          prefs.getString('workshop_logo');
       _workshopCode = savedCode;
       final nextName = savedName != null && savedName.isNotEmpty
           ? savedName
@@ -1246,7 +1266,8 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = prefs.getString('workshop_name');
-      final savedLogo = prefs.getString('workshop_logo_base64');
+      final savedLogo = prefs.getString('workshop_logo_base64') ??
+          prefs.getString('workshop_logo');
       final nextName = savedName != null && savedName.isNotEmpty
           ? savedName
           : Localization.translate(
@@ -1489,7 +1510,6 @@ class _CollapsedDesktopSidebar extends StatelessWidget {
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   // The desktop sidebar is controlled only by the menu button and the
   // collapsed rail buttons. Pointer hover must never change its state.
-  bool _isSidebarOpen = false;
   String? _expandedSidebarGroup;
   final ScrollController _tabsScrollController = ScrollController();
   final Map<String, GlobalKey> _tabKeys = {};
@@ -1520,8 +1540,8 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   }
 
   void _openSidebarGroup(String? group) {
+    context.read<WorkspaceController>().setSidebarOpen(true);
     setState(() {
-      _isSidebarOpen = true;
       _expandedSidebarGroup = group;
     });
   }
@@ -1566,21 +1586,19 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                         Builder(
                           builder: (menuContext) => IconButton(
                             tooltip: Localization.translate(
-                              _isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                              workspace.isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
                               lang,
                             ),
                             onPressed: () {
                               if (isDesktop) {
-                                setState(
-                                  () => _isSidebarOpen = !_isSidebarOpen,
-                                );
+                                workspace.toggleSidebar();
                               } else {
                                 Scaffold.of(menuContext).openDrawer();
                               }
                             },
                             icon: Icon(
                               isDesktop
-                                  ? (_isSidebarOpen
+                                  ? (workspace.isSidebarOpen
                                         ? Icons.menu_open_rounded
                                         : Icons.menu_rounded)
                                   : Icons.menu_rounded,
@@ -1775,15 +1793,13 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
             // forces those pages to relayout on every frame and can make the
             // Windows UI look frozen while the sidebar opens.
             duration: Duration.zero,
-            width: _isSidebarOpen ? 290 : 56,
-            child: _isSidebarOpen
+            width: workspace.isSidebarOpen ? 290 : 56,
+            child: workspace.isSidebarOpen
                 ? Material(
                     elevation: 10,
                     child: AppDrawer(
                       key: ValueKey('desktop-sidebar-$_expandedSidebarGroup'),
-                      onCollapse: () => setState(() {
-                        _isSidebarOpen = false;
-                      }),
+                      onCollapse: () => workspace.setSidebarOpen(false),
                       expandedGroup: _expandedSidebarGroup,
                     ),
                   )

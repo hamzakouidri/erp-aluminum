@@ -44,6 +44,7 @@ class PdfInvoiceApi {
 
   /// Call this once when the invoice screen opens (runs in background).
   static Future<void> preloadFonts() async {
+    if (_cachedFont != null && _cachedFontBold != null) return;
     _preloadFuture ??= _doPreloadFonts().catchError((e) {
       print('PdfInvoiceApi: Font preloading failed: $e');
       _preloadFuture = null; // Clear so we can retry on next attempt
@@ -116,6 +117,10 @@ class PdfInvoiceApi {
           try {
             if (path.startsWith('assets/') || path.startsWith('Icon/')) {
               return (await rootBundle.load(path)).buffer.asUint8List();
+            }
+            if ((Platform.isAndroid || Platform.isIOS) &&
+                (path.contains(':\\') || path.contains(':/'))) {
+              return null;
             }
             final file = File(path);
             if (await file.exists()) return file.readAsBytes();
@@ -390,12 +395,19 @@ class PdfInvoiceApi {
     pw.Widget? logoWidget;
     if (data.workshop.logoBase64.isNotEmpty) {
       try {
-        final imageBytes = base64Decode(data.workshop.logoBase64);
-        logoWidget = pw.Image(
-          pw.MemoryImage(imageBytes),
-          width: 60,
-          height: 60,
-        );
+        final raw = data.workshop.logoBase64.trim();
+        final separator = raw.indexOf(',');
+        final encoded = raw.startsWith('data:image') && separator >= 0
+            ? raw.substring(separator + 1)
+            : raw;
+        final imageBytes = base64Decode(encoded);
+        if (_isPdfCompatibleImage(imageBytes)) {
+          logoWidget = pw.Image(
+            pw.MemoryImage(imageBytes),
+            width: 60,
+            height: 60,
+          );
+        }
       } catch (_) {}
     }
 

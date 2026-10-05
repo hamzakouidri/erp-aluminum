@@ -44,6 +44,7 @@ import 'package:printing/printing.dart';
 import '../services/auth_service.dart';
 import 'order_export_service.dart';
 import 'order_import_dialog.dart';
+import 'order_pinning.dart';
 
 class Commande extends StatefulWidget {
   /// Opens the normal new-order form after the orders page has appeared.
@@ -87,8 +88,7 @@ class _CommandeState extends State<Commande> {
   List<Map<String, dynamic>>? _cachedCommandes;
   String _searchQuery = '';
   bool _showMobileSearch = false;
-  final TextEditingController _mobileSearchController =
-      TextEditingController();
+  final TextEditingController _mobileSearchController = TextEditingController();
   final FocusNode _mobileSearchFocusNode = FocusNode();
   BuildContext? _loadingDialogContext;
   StreamSubscription? _dbUpdateSubscription;
@@ -1137,7 +1137,38 @@ class _CommandeState extends State<Commande> {
       });
     }
 
-    return filtered;
+    // Search and column filters have already been applied. Pinning only
+    // partitions the visible result. Pinned orders keep their own pin-time
+    // order, while the selected sort remains authoritative for regular rows.
+    return putPinnedOrdersFirst(filtered);
+  }
+
+  Future<void> _toggleOrderPin(Map<String, dynamic> order) async {
+    final orderId = (order['id'] as num?)?.toInt();
+    if (orderId == null) return;
+    final pinned = !isOrderPinned(order);
+    final updated = await db.setOrderPinned(orderId: orderId, pinned: pinned);
+    if (!mounted) return;
+    if (!updated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('تعذر تحديث تثبيت الطلبية.')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+    _fetchCommandes();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          pinned
+              ? _t('تم تثبيت الطلبية في الأعلى.')
+              : _t('تم إلغاء تثبيت الطلبية.'),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -1159,9 +1190,7 @@ class _CommandeState extends State<Commande> {
           if (!isDesktop)
             IconButton(
               icon: Icon(
-                _showMobileSearch
-                    ? Icons.close_rounded
-                    : Icons.search_rounded,
+                _showMobileSearch ? Icons.close_rounded : Icons.search_rounded,
                 color: Colors.white,
               ),
               tooltip: Localization.translate(
@@ -1300,121 +1329,215 @@ class _CommandeState extends State<Commande> {
                     ),
                   ),
                 ),
-            Expanded(
-              child: Container(
-                margin: isDesktop
-                    ? const EdgeInsets.all(10)
-                    : const EdgeInsets.fromLTRB(8, 6, 8, 0),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: _data,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      _cachedCommandes = snapshot.data;
-                    }
+              Expanded(
+                child: Container(
+                  margin: isDesktop
+                      ? const EdgeInsets.all(10)
+                      : const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                  ),
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _data,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        _cachedCommandes = snapshot.data;
+                      }
 
-                    if (snapshot.connectionState == ConnectionState.waiting &&
-                        _cachedCommandes == null) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (snapshot.hasError && _cachedCommandes == null) {
-                      // 🟢 التصميم التفاعلي لحالة الخطأ (بدون أكواد SQL مرعبة)
-                      return Center(
-                        child: SingleChildScrollView(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20.0),
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          _cachedCommandes == null) {
+                        return const Center(child: CircularProgressIndicator());
+                      } else if (snapshot.hasError &&
+                          _cachedCommandes == null) {
+                        // 🟢 التصميم التفاعلي لحالة الخطأ (بدون أكواد SQL مرعبة)
+                        return Center(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(25),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.warning_amber_rounded,
+                                      size: 70,
+                                      color: Colors.red.shade400,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 25),
+                                  Text(
+                                    'عذراً، حدث خطأ غير متوقع!',
+                                    style: TextStyle(
+                                      color: Colors.red.shade800,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 15),
+                                  Container(
+                                    padding: const EdgeInsets.all(15),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(15),
+                                      border: Border.all(
+                                        color: Colors.red.shade200,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      // 🟢 الرسالة المفهومة للمستخدم بدلاً من snapshot.error
+                                      'تعذر تحميل البيانات حالياً. يرجى التأكد من استقرار النظام أو تحديث الصفحة للمحاولة مرة أخرى.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.red.shade700,
+                                        fontSize: 15,
+                                        height: 1.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ExpansionTile(
+                                    title: const Text('تفاصيل الخطأ / Détails'),
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: SelectableText(
+                                          snapshot.error.toString(),
+                                          textDirection: TextDirection.ltr,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 30),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.red.shade600,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 30,
+                                        vertical: 12,
+                                      ),
+                                      elevation: 0,
+                                      side: BorderSide(
+                                        color: Colors.red.shade200,
+                                        width: 1.5,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _data = db.readCommandesWithClients();
+                                      });
+                                    },
+                                    icon: const Icon(
+                                      Icons.refresh_rounded,
+                                      size: 22,
+                                    ),
+                                    label: const Text(
+                                      'تحديث الصفحة',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      final rawData = snapshot.hasData
+                          ? snapshot.data!
+                          : (_cachedCommandes ?? <Map<String, dynamic>>[]);
+
+                      // 🟢 التصميم التفاعلي لحالة عدم وجود طلبات
+                      if (rawData.isEmpty) {
+                        return Center(
+                          child: SingleChildScrollView(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(25),
+                                  padding: const EdgeInsets.all(30),
                                   decoration: BoxDecoration(
-                                    color: Colors.red.withValues(alpha: 0.1),
+                                    color: Colors.blue.withValues(alpha: 0.1),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
-                                    Icons.warning_amber_rounded,
-                                    size: 70,
-                                    color: Colors.red.shade400,
+                                    Icons.receipt_long_outlined,
+                                    size: 80,
+                                    color: Colors.blue.shade400,
                                   ),
                                 ),
                                 const SizedBox(height: 25),
                                 Text(
-                                  'عذراً، حدث خطأ غير متوقع!',
+                                  Localization.translate(
+                                    "No Data",
+                                    Provider.of<AppSettingsProvider>(
+                                      context,
+                                    ).language,
+                                  ),
                                   style: TextStyle(
-                                    color: Colors.red.shade800,
+                                    color: Colors.blueGrey.shade800,
                                     fontSize: 22,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const SizedBox(height: 15),
-                                Container(
-                                  padding: const EdgeInsets.all(15),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade50,
-                                    borderRadius: BorderRadius.circular(15),
-                                    border: Border.all(
-                                      color: Colors.red.shade200,
-                                    ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  _t(
+                                    'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
                                   ),
-                                  child: Text(
-                                    // 🟢 الرسالة المفهومة للمستخدم بدلاً من snapshot.error
-                                    'تعذر تحميل البيانات حالياً. يرجى التأكد من استقرار النظام أو تحديث الصفحة للمحاولة مرة أخرى.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.red.shade700,
-                                      fontSize: 15,
-                                      height: 1.5,
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 15,
+                                    height: 1.5,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                ExpansionTile(
-                                  title: const Text('تفاصيل الخطأ / Détails'),
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: SelectableText(
-                                        snapshot.error.toString(),
-                                        textDirection: TextDirection.ltr,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 30),
+                                const SizedBox(height: 35),
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.red.shade600,
+                                    backgroundColor: Colors.blue.shade600,
+                                    foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 30,
-                                      vertical: 12,
+                                      vertical: 15,
                                     ),
-                                    elevation: 0,
-                                    side: BorderSide(
-                                      color: Colors.red.shade200,
-                                      width: 1.5,
+                                    elevation: 4,
+                                    shadowColor: Colors.blue.withValues(
+                                      alpha: 0.4,
                                     ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(30),
                                     ),
                                   ),
                                   onPressed: () {
-                                    setState(() {
-                                      _data = db.readCommandesWithClients();
-                                    });
+                                    openOrderInWorkspaceTab(
+                                      context,
+                                      db: db,
+                                      onSaved: _fetchCommandes,
+                                    );
                                   },
                                   icon: const Icon(
-                                    Icons.refresh_rounded,
-                                    size: 22,
+                                    Icons.add_circle_outline,
+                                    size: 24,
                                   ),
-                                  label: const Text(
-                                    'تحديث الصفحة',
+                                  label: Text(
+                                    _t('إنشاء طلبية جديدة'),
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
@@ -1424,488 +1547,403 @@ class _CommandeState extends State<Commande> {
                               ],
                             ),
                           ),
-                        ),
-                      );
-                    }
+                        );
+                      }
+                      final data = _applyOrderFiltersAndSort(rawData, lang);
 
-                    final rawData = snapshot.hasData
-                        ? snapshot.data!
-                        : (_cachedCommandes ?? <Map<String, dynamic>>[]);
-
-                    // 🟢 التصميم التفاعلي لحالة عدم وجود طلبات
-                    if (rawData.isEmpty) {
-                      return Center(
-                        child: SingleChildScrollView(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(30),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.receipt_long_outlined,
-                                  size: 80,
-                                  color: Colors.blue.shade400,
-                                ),
-                              ),
-                              const SizedBox(height: 25),
-                              Text(
-                                Localization.translate(
-                                  "No Data",
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
-                                style: TextStyle(
-                                  color: Colors.blueGrey.shade800,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                _t(
-                                  'لا توجد أي طلبيات مسجلة حالياً.\nابدأ الآن بإنشاء أول فاتورة أو ورقة تقطيع للعميل.',
-                                ),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 15,
-                                  height: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 35),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade600,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 30,
-                                    vertical: 15,
-                                  ),
-                                  elevation: 4,
-                                  shadowColor: Colors.blue.withValues(
-                                    alpha: 0.4,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                ),
-                                onPressed: () {
-                                  openOrderInWorkspaceTab(
-                                    context,
-                                    db: db,
-                                    onSaved: _fetchCommandes,
-                                  );
-                                },
-                                icon: const Icon(
-                                  Icons.add_circle_outline,
-                                  size: 24,
-                                ),
-                                label: Text(
-                                  _t('إنشاء طلبية جديدة'),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
+                      if (data.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'لا توجد نتائج مطابقة للبحث',
+                            style: TextStyle(fontSize: 16),
                           ),
+                        );
+                      }
+
+                      if (MediaQuery.of(context).size.width >= 900 ||
+                          Platform.isWindows) {
+                        return _buildDesktopOrdersTableView(
+                          context,
+                          rawData,
+                          lang,
+                        );
+                      }
+
+                      return ListView.builder(
+                        controller: _scrollController,
+                        primary: false,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          10,
+                          8,
+                          10,
+                          _showMobileSearch ? 16 : 80,
                         ),
-                      );
-                    }
-                    final data = rawData.where((d) {
-                      final query = _searchQuery.trim();
-                      if (query.isEmpty) return true;
+                        itemCount: data.length,
+                        itemBuilder: (context, index) {
+                          final pinned = isOrderPinned(data[index]);
+                          final clientFirst = data[index]['firstname'] ?? '';
+                          final clientLast = data[index]['lastname'] ?? '';
 
-                      final first = (d['firstname'] ?? '').toString();
-                      final last = (d['lastname'] ?? '').toString();
-                      final phone = (d['phone'] ?? '').toString();
-                      final id = (d['id'] ?? '').toString();
-                      final seq = (d['sequence_number'] ?? '').toString();
-                      final project = (d['project_name'] ?? '').toString();
-                      final location = (d['window_location'] ?? '').toString();
-                      final full = '$first $last $phone $id $seq $project $location';
+                          final clientPhone = data[index]['phone'];
+                          final bool hasPhone =
+                              clientPhone != null &&
+                              clientPhone.toString().trim().isNotEmpty &&
+                              clientPhone.toString() != 'null';
 
-                      final normalizedFull = _normalizeSearch(full);
-                      final normalizedQuery = _normalizeSearch(query);
-                      final terms = normalizedQuery
-                          .split(RegExp(r'\s+'))
-                          .where((term) => term.isNotEmpty);
-                      return terms.every((term) => normalizedFull.contains(term));
-                    }).toList();
+                          final clientName = '$clientFirst $clientLast'.trim();
+                          final clientDisplay = clientName.isEmpty
+                              ? 'زبون غير معروف'
+                              : clientName;
 
-                    if (data.isEmpty) {
-                      return const Center(
-                        child: Text(
-                          'لا توجد نتائج مطابقة للبحث',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      );
-                    }
+                          final netPayable =
+                              (data[index]['net_payable'] as num?)
+                                  ?.toDouble() ??
+                              0.0;
+                          final rawTotal =
+                              (data[index]['total'] as num?)?.toDouble() ?? 0.0;
+                          final total = netPayable > 0.0
+                              ? netPayable
+                              : rawTotal;
+                          final status = data[index]['status'] ?? 'New';
 
-                    if (MediaQuery.of(context).size.width >= 900 ||
-                        Platform.isWindows) {
-                      return _buildDesktopOrdersTableView(
-                        context,
-                        rawData,
-                        lang,
-                      );
-                    }
-
-                    return ListView.builder(
-                      controller: _scrollController,
-                      primary: false,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: EdgeInsets.fromLTRB(
-                        10,
-                        8,
-                        10,
-                        _showMobileSearch ? 16 : 80,
-                      ),
-                      itemCount: data.length,
-                      itemBuilder: (context, index) {
-                        final clientFirst = data[index]['firstname'] ?? '';
-                        final clientLast = data[index]['lastname'] ?? '';
-
-                        final clientPhone = data[index]['phone'];
-                        final bool hasPhone =
-                            clientPhone != null &&
-                            clientPhone.toString().trim().isNotEmpty &&
-                            clientPhone.toString() != 'null';
-
-                        final clientName = '$clientFirst $clientLast'.trim();
-                        final clientDisplay = clientName.isEmpty
-                            ? 'زبون غير معروف'
-                            : clientName;
-
-                        final netPayable =
-                            (data[index]['net_payable'] as num?)?.toDouble() ??
-                            0.0;
-                        final rawTotal =
-                            (data[index]['total'] as num?)?.toDouble() ?? 0.0;
-                        final total = netPayable > 0.0 ? netPayable : rawTotal;
-                        final status = data[index]['status'] ?? 'New';
-
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          elevation: 2,
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          clipBehavior: Clip.antiAlias,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(15),
-                            onTap: settings.canViewOrderDetails()
-                                ? () {
-                                    _showOrderOptions(context, data[index]);
-                                  }
-                                : null,
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 22,
-                                    backgroundColor: Colors.blue.shade100,
-                                    child: const Icon(
-                                      Icons.receipt_long,
-                                      color: Colors.blue,
-                                      size: 22,
+                          return Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 2,
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(15),
+                              onTap: settings.canViewOrderDetails()
+                                  ? () {
+                                      _showOrderOptions(context, data[index]);
+                                    }
+                                  : null,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Colors.blue.shade100,
+                                      child: Icon(
+                                        pinned
+                                            ? Icons.push_pin_rounded
+                                            : Icons.receipt_long,
+                                        color: pinned
+                                            ? Colors.orange.shade800
+                                            : Colors.blue,
+                                        size: 22,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        RichText(
-                                          text: TextSpan(
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                              color: Theme.of(
-                                                context,
-                                              ).textTheme.bodyLarge?.color,
-                                            ),
-                                            children: [
-                                              highlightText(
-                                                clientDisplay,
-                                                _searchQuery,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          formatDate(data[index]),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall?.color,
-                                          ),
-                                        ),
-                                        if (hasPhone) ...[
-                                          const SizedBox(height: 2),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
                                           RichText(
                                             text: TextSpan(
                                               style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
                                                 color: Theme.of(
                                                   context,
-                                                ).textTheme.bodySmall?.color,
-                                                fontSize: 13,
+                                                ).textTheme.bodyLarge?.color,
                                               ),
                                               children: [
                                                 highlightText(
-                                                  clientPhone.toString(),
+                                                  clientDisplay,
                                                   _searchQuery,
                                                 ),
                                               ],
                                             ),
                                           ),
-                                        ],
-                                        if (data[index]['project_name'] !=
-                                                null &&
-                                            data[index]['project_name']
-                                                .toString()
-                                                .isNotEmpty) ...[
                                           const SizedBox(height: 4),
-                                          Row(
-                                            children: [
-                                              Flexible(
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 2,
+                                          Text(
+                                            formatDate(data[index]),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall?.color,
+                                            ),
+                                          ),
+                                          if (hasPhone) ...[
+                                            const SizedBox(height: 2),
+                                            RichText(
+                                              text: TextSpan(
+                                                style: TextStyle(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).textTheme.bodySmall?.color,
+                                                  fontSize: 13,
+                                                ),
+                                                children: [
+                                                  highlightText(
+                                                    clientPhone.toString(),
+                                                    _searchQuery,
                                                   ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.blue.shade50,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      6,
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                          if (data[index]['project_name'] !=
+                                                  null &&
+                                              data[index]['project_name']
+                                                  .toString()
+                                                  .isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 2,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color:
+                                                          Colors.blue.shade50,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            6,
+                                                          ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.folder,
+                                                          size: 12,
+                                                          color: Colors
+                                                              .blue
+                                                              .shade700,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
+                                                        Flexible(
+                                                          child: Text(
+                                                            data[index]['project_name']
+                                                                .toString(),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            maxLines: 1,
+                                                            style: TextStyle(
+                                                              color: Colors
+                                                                  .blue
+                                                                  .shade800,
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        Icons.folder,
-                                                        size: 12,
-                                                        color: Colors
-                                                            .blue.shade700,
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                          const SizedBox(height: 8),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            children: [
+                                              Text(
+                                                '${total.toStringAsFixed(2)} دج',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.green,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: _getStatusColor(
+                                                    status,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                ),
+                                                child: Text(
+                                                  _translateStatus(
+                                                    status,
+                                                    Provider.of<
+                                                          AppSettingsProvider
+                                                        >(
+                                                          context,
+                                                          listen: false,
+                                                        )
+                                                        .language,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                              Builder(
+                                                builder: (ctx) {
+                                                  final currentStatus =
+                                                      (data[index]['status'] ??
+                                                              '')
+                                                          .toString();
+                                                  if (_hasPassedFullManufacturing(
+                                                    currentStatus,
+                                                  )) {
+                                                    return const SizedBox.shrink();
+                                                  }
+                                                  final isStockReserved =
+                                                      (data[index]['is_stock_reserved']
+                                                              as num?)
+                                                          ?.toInt() ==
+                                                      1;
+                                                  final lang =
+                                                      Provider.of<
+                                                            AppSettingsProvider
+                                                          >(ctx, listen: false)
+                                                          .language;
+                                                  return Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 7,
+                                                          vertical: 2.5,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: isStockReserved
+                                                          ? Colors.green
+                                                                .withValues(
+                                                                  alpha: 0.15,
+                                                                )
+                                                          : Colors.grey
+                                                                .withValues(
+                                                                  alpha: 0.12,
+                                                                ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            12,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: isStockReserved
+                                                            ? Colors
+                                                                  .green
+                                                                  .shade600
+                                                            : Colors
+                                                                  .grey
+                                                                  .shade400,
+                                                        width: 0.8,
                                                       ),
-                                                      const SizedBox(width: 4),
-                                                      Flexible(
-                                                        child: Text(
-                                                          data[index]
-                                                                  ['project_name']
-                                                              .toString(),
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          maxLines: 1,
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          isStockReserved
+                                                              ? Icons
+                                                                    .check_circle
+                                                              : Icons
+                                                                    .inventory_2_outlined,
+                                                          size: 11,
+                                                          color: isStockReserved
+                                                              ? Colors
+                                                                    .green
+                                                                    .shade800
+                                                              : Colors
+                                                                    .grey
+                                                                    .shade600,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 3,
+                                                        ),
+                                                        Text(
+                                                          isStockReserved
+                                                              ? Localization.translate(
+                                                                  'تم الحجز',
+                                                                  lang,
+                                                                )
+                                                              : Localization.translate(
+                                                                  'لم يُحجز بعد',
+                                                                  lang,
+                                                                ),
                                                           style: TextStyle(
-                                                            color: Colors
-                                                                .blue.shade800,
-                                                            fontSize: 12,
+                                                            color:
+                                                                isStockReserved
+                                                                ? Colors
+                                                                      .green
+                                                                      .shade900
+                                                                : Colors
+                                                                      .grey
+                                                                      .shade700,
+                                                            fontSize: 10,
                                                             fontWeight:
                                                                 FontWeight.bold,
                                                           ),
                                                         ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                },
                                               ),
                                             ],
                                           ),
                                         ],
-                                        const SizedBox(height: 8),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 6,
-                                          crossAxisAlignment:
-                                              WrapCrossAlignment.center,
-                                          children: [
-                                            Text(
-                                              '${total.toStringAsFixed(2)} دج',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.green,
-                                                fontSize: 15,
-                                              ),
-                                            ),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 3,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: _getStatusColor(status),
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
-                                              ),
-                                              child: Text(
-                                                _translateStatus(
-                                                  status,
-                                                  Provider.of<AppSettingsProvider>(
-                                                    context,
-                                                    listen: false,
-                                                  ).language,
-                                                ),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ),
-                                            Builder(
-                                              builder: (ctx) {
-                                                final currentStatus =
-                                                    (data[index]['status'] ??
-                                                            '')
-                                                        .toString();
-                                                if (_hasPassedFullManufacturing(
-                                                  currentStatus,
-                                                )) {
-                                                  return const SizedBox.shrink();
-                                                }
-                                                final isStockReserved =
-                                                    (data[index][
-                                                                'is_stock_reserved']
-                                                            as num?)
-                                                        ?.toInt() ==
-                                                    1;
-                                                final lang = Provider.of<
-                                                        AppSettingsProvider>(
-                                                      ctx,
-                                                      listen: false,
-                                                    ).language;
-                                                return Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                    horizontal: 7,
-                                                    vertical: 2.5,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: isStockReserved
-                                                        ? Colors.green
-                                                            .withValues(
-                                                            alpha: 0.15,
-                                                          )
-                                                        : Colors.grey
-                                                            .withValues(
-                                                            alpha: 0.12,
-                                                          ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      12,
-                                                    ),
-                                                    border: Border.all(
-                                                      color: isStockReserved
-                                                          ? Colors
-                                                              .green.shade600
-                                                          : Colors
-                                                              .grey.shade400,
-                                                      width: 0.8,
-                                                    ),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        isStockReserved
-                                                            ? Icons
-                                                                .check_circle
-                                                            : Icons
-                                                                .inventory_2_outlined,
-                                                        size: 11,
-                                                        color: isStockReserved
-                                                            ? Colors
-                                                                .green.shade800
-                                                            : Colors
-                                                                .grey.shade600,
-                                                      ),
-                                                      const SizedBox(width: 3),
-                                                      Text(
-                                                        isStockReserved
-                                                            ? Localization
-                                                                .translate(
-                                                                'تم الحجز',
-                                                                lang,
-                                                              )
-                                                            : Localization
-                                                                .translate(
-                                                                'لم يُحجز بعد',
-                                                                lang,
-                                                              ),
-                                                        style: TextStyle(
-                                                          color: isStockReserved
-                                                              ? Colors
-                                                                  .green.shade900
-                                                              : Colors
-                                                                  .grey.shade700,
-                                                          fontSize: 10,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 4),
-                                    child: Icon(
-                                      Icons.arrow_forward_ios_rounded,
-                                      size: 14,
-                                      color: Colors.grey,
+                                    const SizedBox(width: 6),
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 4),
+                                      child: Icon(
+                                        Icons.arrow_forward_ios_rounded,
+                                        size: 14,
+                                        color: Colors.grey,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
-          ],
-        );
-
-        if (isDesktop) {
-          return DesktopScrollFallback(
-            controller: _scrollController,
-            child: bodyColumn,
+            ],
           );
-        }
-        return bodyColumn;
-      },
-    ),
 
-      floatingActionButton: (!isDesktop &&
+          if (isDesktop) {
+            return DesktopScrollFallback(
+              controller: _scrollController,
+              child: bodyColumn,
+            );
+          }
+          return bodyColumn;
+        },
+      ),
+
+      floatingActionButton:
+          (!isDesktop &&
               settings.canCreateOrders() &&
               MediaQuery.of(context).viewInsets.bottom == 0)
           ? FloatingActionButton(
@@ -2005,6 +2043,30 @@ class _CommandeState extends State<Commande> {
                   ),
                 ),
                 const SizedBox(height: 15),
+
+                ListTile(
+                  leading: Icon(
+                    isOrderPinned(orderData)
+                        ? Icons.push_pin_outlined
+                        : Icons.push_pin_rounded,
+                    color: Colors.orange.shade700,
+                  ),
+                  title: Text(
+                    isOrderPinned(orderData)
+                        ? (lang == AppLanguage.french
+                              ? 'Désépingler la commande'
+                              : 'إلغاء تثبيت الطلبية')
+                        : (lang == AppLanguage.french
+                              ? 'Épingler la commande en haut'
+                              : 'تثبيت الطلبية في الأعلى'),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _toggleOrderPin(orderData);
+                  },
+                ),
+                const Divider(),
 
                 // Beautiful Header showing Order details & Status
                 Padding(
@@ -3830,7 +3892,9 @@ class _CommandeState extends State<Commande> {
         try {
           final decoded = partitionsJson is Map
               ? Map<String, dynamic>.from(partitionsJson)
-              : Map<String, dynamic>.from(jsonDecode(partitionsJson.toString()));
+              : Map<String, dynamic>.from(
+                  jsonDecode(partitionsJson.toString()),
+                );
           if (decoded['isGlassWork'] == true ||
               decoded['glassWorkPayload'] != null ||
               (d['window_type']?.toString().contains('Verre Trempé') == true) ||
@@ -4064,6 +4128,21 @@ class _CommandeState extends State<Commande> {
     }
 
     final items = <PopupMenuEntry<String>>[
+      _menuItem(
+        isOrderPinned(orderData) ? 'unpin' : 'pin',
+        isOrderPinned(orderData)
+            ? Icons.push_pin_outlined
+            : Icons.push_pin_rounded,
+        Colors.orange.shade700,
+        isOrderPinned(orderData)
+            ? (lang == AppLanguage.french
+                  ? 'Désépingler la commande'
+                  : 'إلغاء تثبيت الطلبية')
+            : (lang == AppLanguage.french
+                  ? 'Épingler la commande en haut'
+                  : 'تثبيت الطلبية في الأعلى'),
+      ),
+      const PopupMenuDivider(height: 8),
       // تفاصيل الطلبية
       _menuItem(
         'details',
@@ -4243,7 +4322,7 @@ class _CommandeState extends State<Commande> {
             lang,
           ),
         ),
-
+      const PopupMenuDivider(height: 8),
       // 4. نقل إلى المرحلة التالية (Passer à l'étape suivante)
       if (settings.canPassNextStage())
         _menuItem(
@@ -4313,6 +4392,9 @@ class _CommandeState extends State<Commande> {
 
     if (!mounted || selected == null) return;
     switch (selected) {
+      case 'pin':
+      case 'unpin':
+        await _toggleOrderPin(orderData);
       case 'details':
         _openOrderDetails(orderData);
       case 'devis':
@@ -6486,6 +6568,7 @@ class _CommandeState extends State<Commande> {
         order['creation_platform']?.toString(),
       );
       final updatedBy = _formatEditorDisplay(order['updated_by']?.toString());
+      final pinned = isOrderPinned(order);
 
       KeyEventResult handleOrderKey(KeyEvent event) {
         final focusContext = FocusManager.instance.primaryFocus?.context;
@@ -6556,14 +6639,27 @@ class _CommandeState extends State<Commande> {
             _showOrderContextMenu(context, order, position, lang),
         cells: [
           // ID
-          Text(
-            _displayOrderLabel(order),
-            style: const TextStyle(
-              color: Color(0xFF2563EB),
-              fontFamily: 'Cairo',
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (pinned) ...[
+                Icon(
+                  Icons.push_pin_rounded,
+                  size: 14,
+                  color: Colors.orange.shade700,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                _displayOrderLabel(order),
+                style: const TextStyle(
+                  color: Color(0xFF2563EB),
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
           // Client & Project
           Text(

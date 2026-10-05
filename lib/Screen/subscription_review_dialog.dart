@@ -481,7 +481,46 @@ class SubscriptionReviewDialog extends StatelessWidget {
                   const SizedBox(height: 18),
 
                   // ── Renewal Section ─────────────────────────────────
-                  if (details.isLifetime) ...[
+                  if (details.role == 'worker') ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2563EB).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            color: Color(0xFF2563EB),
+                            size: 26,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              lang == AppLanguage.french
+                                  ? 'Votre compte est rattaché à l\'abonnement de l\'atelier. La gestion et le renouvellement de l\'abonnement incombent exclusivement au responsable de l\'atelier.'
+                                  : (lang == AppLanguage.english
+                                      ? 'Your account is linked to the workshop\'s unified subscription. Subscription management and renewals are handled exclusively by the workshop manager.'
+                                      : 'حسابك مسجل كعامل ومرتبط باشتراك الورشة الموحد. تجديد الاشتراك وإدارته من اختصاص مدير الورشة فقط.'),
+                              style: TextStyle(
+                                fontSize: 13,
+                                height: 1.4,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'Cairo',
+                                color: isDark
+                                    ? Colors.grey.shade200
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (details.isLifetime) ...[
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(

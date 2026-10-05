@@ -186,6 +186,50 @@ class _CommandePageState extends State<CommandePage> {
   TextEditingController controller = TextEditingController(); // للملاحظات
   TextEditingController remiseController = TextEditingController();
   TextEditingController taxController = TextEditingController();
+  bool isRemisePercentage = false;
+  bool isTaxPercentage = true;
+
+  void _toggleRemiseType(double currentTotal) {
+    setState(() {
+      final currentVal = double.tryParse(remiseController.text) ?? 0.0;
+      if (isRemisePercentage) {
+        if (currentTotal > 0 && currentVal > 0) {
+          remiseController.text = ((currentTotal * currentVal) / 100)
+              .toStringAsFixed(2)
+              .replaceAll(RegExp(r'\.?0+$'), '');
+        }
+        isRemisePercentage = false;
+      } else {
+        if (currentTotal > 0 && currentVal > 0) {
+          remiseController.text = ((currentVal / currentTotal) * 100)
+              .toStringAsFixed(2)
+              .replaceAll(RegExp(r'\.?0+$'), '');
+        }
+        isRemisePercentage = true;
+      }
+    });
+  }
+
+  void _toggleTaxType(double currentTotal) {
+    setState(() {
+      final currentVal = double.tryParse(taxController.text) ?? 0.0;
+      if (isTaxPercentage) {
+        if (currentTotal > 0 && currentVal > 0) {
+          taxController.text = ((currentTotal * currentVal) / 100)
+              .toStringAsFixed(2)
+              .replaceAll(RegExp(r'\.?0+$'), '');
+        }
+        isTaxPercentage = false;
+      } else {
+        if (currentTotal > 0 && currentVal > 0) {
+          taxController.text = ((currentVal / currentTotal) * 100)
+              .toStringAsFixed(2)
+              .replaceAll(RegExp(r'\.?0+$'), '');
+        }
+        isTaxPercentage = true;
+      }
+    });
+  }
 
   List<WindowModel> addedProducts = [];
   bool _isSaving = false;
@@ -1491,8 +1535,17 @@ class _CommandePageState extends State<CommandePage> {
       // rules). Applying the percentage again at order level doubles it.
       final total = rawTotal;
 
-      double remise = double.tryParse(remiseController.text) ?? 0.0;
-      double tax = double.tryParse(taxController.text) ?? 0.0;
+      final double remiseInput = double.tryParse(remiseController.text) ?? 0.0;
+      final double taxInput = double.tryParse(taxController.text) ?? 0.0;
+      final double calculatedRemise = isRemisePercentage
+          ? ((total * remiseInput) / 100).clamp(0.0, total)
+          : remiseInput.clamp(0.0, total);
+      final double calculatedTax = isTaxPercentage
+          ? ((total * taxInput) / 100)
+          : taxInput;
+      final double effectiveTaxPercent = isTaxPercentage
+          ? taxInput
+          : (total > 0 ? ((taxInput / total) * 100) : 0.0);
 
       final existingDetails = widget.editCommandeId == null
           ? <Map<String, dynamic>>[]
@@ -1621,10 +1674,10 @@ class _CommandePageState extends State<CommandePage> {
         // preserves the production workflow state on every later save.
         status: widget.editCommandeId == null ? 'Nouveau' : _editOrderStatus,
         description: controller.text,
-        remise: remise,
-        tva: tax,
+        remise: calculatedRemise,
+        tva: effectiveTaxPercent,
         total: total,
-        netPayable: total - remise + ((total * tax) / 100),
+        netPayable: total - calculatedRemise + calculatedTax,
         createdAt: _parseQuoteDateForDb(quoteDateController.text),
         projectId: (selectedProject?['id'] as num?)?.toInt(),
         details: preparedDetails,
@@ -3046,10 +3099,15 @@ class _CommandePageState extends State<CommandePage> {
               sum + ((p.manualPriceOverride ?? p.totalCost) * p.quantity),
         );
     final finalTotal = rawTotal;
-    final double remise = double.tryParse(remiseController.text) ?? 0.0;
-    final double taxVal = double.tryParse(taxController.text) ?? 0.0;
-    final double calculatedTax = (finalTotal * taxVal) / 100;
-    final double totalWithRemiseTax = finalTotal - remise + calculatedTax;
+    final double remiseInput = double.tryParse(remiseController.text) ?? 0.0;
+    final double calculatedRemise = isRemisePercentage
+        ? ((finalTotal * remiseInput) / 100).clamp(0.0, finalTotal)
+        : remiseInput.clamp(0.0, finalTotal);
+    final double taxInput = double.tryParse(taxController.text) ?? 0.0;
+    final double calculatedTax = isTaxPercentage
+        ? ((finalTotal * taxInput) / 100)
+        : taxInput;
+    final double totalWithRemiseTax = finalTotal - calculatedRemise + calculatedTax;
     final bool showPaymentSummary = _showEditPaymentSummary;
     final double remainingPayment = showPaymentSummary
         ? (totalWithRemiseTax - _editAdvancePayment)
@@ -3497,12 +3555,53 @@ class _CommandePageState extends State<CommandePage> {
               context,
             ).canChangePrices()) ...[
               _buildField(
-                label: Localization.translate(
-                  'Remise',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
+                label:
+                    '${Localization.translate('Remise', Provider.of<AppSettingsProvider>(context).language)} (${isRemisePercentage ? "%" : "DZD"})',
                 controller: remiseController,
-                icon: Icons.discount,
+                icon: isRemisePercentage
+                    ? Icons.percent
+                    : Icons.payments_outlined,
+                onIconTap: () => _toggleRemiseType(rawTotal),
+                iconTooltip: isRemisePercentage
+                    ? (Provider.of<AppSettingsProvider>(context).language == 'ar'
+                        ? 'نسبة مئوية (%) - اضغط للتحويل لقيمة عادية (DZD)'
+                        : 'Pourcentage (%) - Cliquez pour valeur fixe (DZD)')
+                    : (Provider.of<AppSettingsProvider>(context).language == 'ar'
+                        ? 'قيمة عادية (DZD) - اضغط للتحويل لنسبة مئوية (%)'
+                        : 'Valeur fixe (DZD) - Cliquez pour pourcentage (%)'),
+                suffixWidget: Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 12.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => _toggleRemiseType(rawTotal),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.blueAccent.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            isRemisePercentage ? '%' : 'DZD',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.blueAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 readOnly: false,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -3514,12 +3613,53 @@ class _CommandePageState extends State<CommandePage> {
               ),
               const SizedBox(height: 15),
               _buildField(
-                label: Localization.translate(
-                  'Tax Tva',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
+                label:
+                    '${Localization.translate('Tax Tva', Provider.of<AppSettingsProvider>(context).language)} (${isTaxPercentage ? "%" : "DZD"})',
                 controller: taxController,
-                icon: Icons.percent,
+                icon: isTaxPercentage
+                    ? Icons.percent
+                    : Icons.payments_outlined,
+                onIconTap: () => _toggleTaxType(rawTotal),
+                iconTooltip: isTaxPercentage
+                    ? (Provider.of<AppSettingsProvider>(context).language == 'ar'
+                        ? 'نسبة مئوية (%) - اضغط للتحويل لقيمة عادية (DZD)'
+                        : 'Pourcentage (%) - Cliquez pour valeur fixe (DZD)')
+                    : (Provider.of<AppSettingsProvider>(context).language == 'ar'
+                        ? 'قيمة عادية (DZD) - اضغط للتحويل لنسبة مئوية (%)'
+                        : 'Valeur fixe (DZD) - Cliquez pour pourcentage (%)'),
+                suffixWidget: Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 12.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => _toggleTaxType(rawTotal),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.blueAccent.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            isTaxPercentage ? '%' : 'DZD',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.blueAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 readOnly: false,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -3602,6 +3742,31 @@ class _CommandePageState extends State<CommandePage> {
                       ),
                     ],
                   ),
+                  if (calculatedRemise > 0) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${Localization.translate('Remise', Provider.of<AppSettingsProvider>(context).language)} (${isRemisePercentage ? "${remiseInput.toStringAsFixed(1)}%" : "DZD"}) :',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          "- ${calculatedRemise.toStringAsFixed(2)} DZD",
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orangeAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3631,10 +3796,7 @@ class _CommandePageState extends State<CommandePage> {
                     children: [
                       Expanded(
                         child: Text(
-                          Localization.translate(
-                            'Tax (Tva) :',
-                            Provider.of<AppSettingsProvider>(context).language,
-                          ),
+                          '${Localization.translate('Tax (Tva) :', Provider.of<AppSettingsProvider>(context).language)} (${isTaxPercentage ? "${taxInput.toStringAsFixed(1)}%" : "DZD"})',
                           style: TextStyle(
                             fontSize: 16,
                             color: isDark ? Colors.white70 : Colors.black87,
@@ -3761,7 +3923,11 @@ class _CommandePageState extends State<CommandePage> {
     required String label,
     required TextEditingController controller,
     required IconData icon,
+    VoidCallback? onIconTap,
+    String? iconTooltip,
     IconData? suffix,
+    Widget? suffixWidget,
+    VoidCallback? onSuffixTap,
     VoidCallback? onTap,
     bool readOnly = true,
     TextInputType? keyboardType,
@@ -3795,10 +3961,22 @@ class _CommandePageState extends State<CommandePage> {
             color: isDark ? Colors.white70 : Colors.blueGrey,
             fontWeight: FontWeight.w500,
           ),
-          prefixIcon: Icon(icon, color: Colors.blueAccent),
-          suffixIcon: suffix != null
-              ? Icon(suffix, color: Colors.blueAccent)
-              : null,
+          prefixIcon: onIconTap != null
+              ? IconButton(
+                  icon: Icon(icon, color: Colors.blueAccent),
+                  tooltip: iconTooltip,
+                  onPressed: onIconTap,
+                )
+              : Icon(icon, color: Colors.blueAccent),
+          suffixIcon: suffixWidget ??
+              (suffix != null
+                  ? (onSuffixTap != null
+                      ? IconButton(
+                          icon: Icon(suffix, color: Colors.blueAccent),
+                          onPressed: onSuffixTap,
+                        )
+                      : Icon(suffix, color: Colors.blueAccent))
+                  : null),
           filled: true,
           fillColor: Colors.transparent,
           enabledBorder: OutlineInputBorder(

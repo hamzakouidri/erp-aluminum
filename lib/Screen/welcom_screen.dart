@@ -573,11 +573,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
           : (accountName.isNotEmpty && accountName != accountCode
                 ? accountName
                 : '');
+      final savedLogo = prefs.getString('workshop_logo_base64') ??
+          prefs.getString('workshop_logo');
+      final savedPhone = (prefs.getString('phone') ?? '').trim();
       if (name.isNotEmpty) {
         await prefs.setString('workshop_name', name);
-        if (mounted && name != _workshopName) {
-          setState(() => _workshopName = name);
-        }
+      }
+      if (mounted) {
+        setState(() {
+          if (name.isNotEmpty) _workshopName = name;
+          if (savedPhone.isNotEmpty) _workshopPhone = savedPhone;
+        });
+        _updateLogo(savedLogo);
       }
     } catch (error) {
       debugPrint('Could not load dashboard workshop name: $error');
@@ -591,10 +598,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
       setState(() {
         _userEmail = user.email ?? 'لا يوجد بريد';
       });
-      // Supabase owns the active account and workshop profile. Constructing a
-      // Firestore stream here used to initialize Firebase again on every app
-      // open, even though workshop synchronization had already moved away.
-      if (!AppAuthService().usesSupabase) {
+      // Supabase owns the active account and workshop profile.
+      if (AppAuthService().usesSupabase) {
+        await _loadSupabaseWorkshopName();
+      } else {
         _userSub = FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -2298,6 +2305,56 @@ class _WelcomScreenState extends State<WelcomScreen> {
             style: const ButtonStyle(
               visualDensity: VisualDensity.compact,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () => TreasuryScreen.showQuickTransactionDialog(
+              context,
+              db: db,
+              initialType: 'Encaissement',
+              onSaved: () => _loadStats(),
+            ),
+            icon: const Icon(Icons.arrow_downward_rounded, size: 14, color: Colors.white),
+            label: Text(
+              _desktopText(lang, '+ قبض', '+ Encaissement', '+ Income'),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+              visualDensity: VisualDensity.compact,
+              elevation: 0,
+            ),
+          ),
+          const SizedBox(width: 6),
+          ElevatedButton.icon(
+            onPressed: () => TreasuryScreen.showQuickTransactionDialog(
+              context,
+              db: db,
+              initialType: 'Décaissement',
+              onSaved: () => _loadStats(),
+            ),
+            icon: const Icon(Icons.arrow_upward_rounded, size: 14, color: Colors.white),
+            label: Text(
+              _desktopText(lang, '- دفع', '- Décaissement', '- Expense'),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF59E0B),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+              visualDensity: VisualDensity.compact,
+              elevation: 0,
             ),
           ),
           const SizedBox(width: 8),

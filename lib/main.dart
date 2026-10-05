@@ -174,6 +174,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
           : const WindowOptions(backgroundColor: Color(0xFF0F2027));
       await windowManager.waitUntilReadyToShow(options, () async {
         await windowManager.show();
+        await windowManager.maximize();
         await windowManager.focus();
       });
     } catch (error) {
@@ -541,8 +542,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             if (user != null) {
               const authenticatedContent = SubscriptionChecker();
               if (!kIsWeb && Platform.isWindows) {
+                final workspace = context.read<WorkspaceController>();
                 return DesktopWindowFrame(
                   topBar: const WorkspaceTabStrip(),
+                  onOpen: (title, icon, screen) =>
+                      workspace.open(title: title, icon: icon, content: screen),
                   child: authenticatedContent,
                 );
               }

@@ -1,5 +1,37 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
+import 'package:database_data/Cliente/client.dart';
+import 'package:database_data/Commande/commande.dart';
+import 'package:database_data/Screen/achat_screen.dart';
+import 'package:database_data/Screen/app_workspace_shell.dart';
+import 'package:database_data/Screen/client_chrono_search_screen.dart';
+import 'package:database_data/Screen/distribution_tracking_screen.dart';
+import 'package:database_data/Screen/global_consumption_report_screen.dart';
+import 'package:database_data/Screen/inventory_screen.dart';
+import 'package:database_data/Screen/material_remnants_screen.dart';
+import 'package:database_data/Screen/material_sales_screen.dart';
+import 'package:database_data/Screen/price_management_screen.dart';
+import 'package:database_data/Screen/sales_screen.dart';
+import 'package:database_data/Screen/selected_systems_screen.dart';
+import 'package:database_data/Screen/settings_screen.dart';
+import 'package:database_data/Screen/storage_dashboard_screen.dart';
+import 'package:database_data/Screen/support_dialog.dart';
+import 'package:database_data/Screen/suppliers_screen.dart';
+import 'package:database_data/Screen/treasury_screen.dart';
+import 'package:database_data/Screen/worker_finances_screen.dart';
+import 'package:database_data/Screen/worker_weekly_settlement_screen.dart';
+import 'package:database_data/Screen/worker_tasks_screen.dart';
+import 'package:database_data/Screen/worker_archive_screen.dart';
+import 'package:database_data/Screen/electronic_payment_screen.dart';
+import 'package:database_data/Screen/subscription_review_dialog.dart';
+import 'package:database_data/Screen/workers_management_screen.dart';
+import 'package:database_data/Screen/workshop_profile_screen.dart';
+import 'package:database_data/items_produits/products_menu_screen.dart';
+import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
+import 'package:database_data/sql_database.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
@@ -12,7 +44,16 @@ class DesktopWindowFrame extends StatefulWidget {
   final Widget child;
   final Widget? topBar;
 
-  const DesktopWindowFrame({super.key, required this.child, this.topBar});
+  /// Called when a menu item requests opening a workspace entry.
+  /// Signature matches [WorkspaceController.open].
+  final void Function(String title, IconData icon, Widget screen)? onOpen;
+
+  const DesktopWindowFrame({
+    super.key,
+    required this.child,
+    this.topBar,
+    this.onOpen,
+  });
 
   @override
   State<DesktopWindowFrame> createState() => _DesktopWindowFrameState();
@@ -107,6 +148,22 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     if (mounted) setState(() => _isFullScreen = next);
   }
 
+  Future<void> _signOut() async {
+    try {
+      final workspace = context.read<WorkspaceController>();
+      await AppAuthService().signOut();
+      await WidgetsBinding.instance.endOfFrame;
+      workspace.resetForSignedOut();
+      await AppAuthService().signOutGoogleSession();
+      CloudSyncService().reset();
+      SupabaseWorkshopSyncService().stop();
+      unawaited(CloudSyncService().clearCachedWorkshopContext());
+      unawaited(SqlDatabase.clearAllLocalData());
+    } catch (error) {
+      debugPrint('Sign out error: $error');
+    }
+  }
+
   void _showAbout() {
     showAboutDialog(
       context: context,
@@ -127,13 +184,517 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     );
   }
 
+  /// Safely invoke [widget.onOpen].
+  void _open(String title, IconData icon, Widget screen) {
+    widget.onOpen?.call(title, icon, screen);
+  }
+
+  String _label(
+    AppLanguage language, {
+    required String arabic,
+    required String french,
+    required String english,
+  }) {
+    return switch (language) {
+      AppLanguage.arabic => arabic,
+      AppLanguage.french => french,
+      _ => english,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : const Color(0xFF172033);
     final background = isDark ? const Color(0xFF111827) : Colors.white;
+    final db = SqlDatabase();
 
+    // ── Fichier (ملف) ────────────────────────────────────────────────────────
+    final fichierItems = <_DesktopMenuItem>[
+      _DesktopMenuItem(
+        label: Localization.translate('الصفحة الرئيسية', lang),
+        icon: Icons.home_rounded,
+        onSelected: () {
+          context.read<WorkspaceController>().activateHome();
+        },
+      ),
+      _DesktopMenuItem(
+        label: Localization.translate('deconnexion', lang),
+        icon: Icons.logout_rounded,
+        onSelected: _signOut,
+      ),
+      _DesktopMenuItem(
+        label: _label(
+          lang,
+          arabic: 'إغلاق التطبيق',
+          french: "Quitter l'application",
+          english: 'Exit application',
+        ),
+        icon: Icons.close_rounded,
+        onSelected: _closeApp,
+      ),
+    ];
+
+    // ── Vente (المبيعات والزبائن) ───────────────────────────────────────────
+    final venteItems = <_DesktopMenuItem>[
+      if (settings.canViewOrders())
+        _DesktopMenuItem(
+          label: Localization.translate('commandes', lang),
+          icon: Icons.receipt_long_rounded,
+          onSelected: () => _open(
+            'commandes',
+            Icons.receipt_long_rounded,
+            Commande(),
+          ),
+        ),
+      if (settings.canMaterialSales())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'طلب وبيع المواد',
+            french: 'Commande & Vente Matériaux',
+            english: 'Material orders & sales',
+          ),
+          icon: Icons.storefront_rounded,
+          onSelected: () => _open(
+            'material_sales',
+            Icons.storefront_rounded,
+            MaterialSalesScreen(db: db),
+          ),
+        ),
+      if (settings.canViewSales())
+        _DesktopMenuItem(
+          label: Localization.translate('vente', lang),
+          icon: Icons.point_of_sale_rounded,
+          onSelected: () => _open(
+            Localization.translate('vente', lang),
+            Icons.point_of_sale_rounded,
+            SalesScreen(db: db),
+          ),
+        ),
+      if (settings.canViewClients())
+        _DesktopMenuItem(
+          label: Localization.translate('clients', lang),
+          icon: Icons.groups_rounded,
+          onSelected: () => _open(
+            'clients',
+            Icons.groups_rounded,
+            Customers(),
+          ),
+        ),
+      if (settings.canViewClientLedger())
+        _DesktopMenuItem(
+          label: Localization.translate('كشف حساب الزبائن', lang),
+          icon: Icons.history_edu_rounded,
+          onSelected: () => _open(
+            Localization.translate('كشف حساب الزبائن', lang),
+            Icons.history_edu_rounded,
+            const ClientChronoSearchScreen(),
+          ),
+        ),
+      if (settings.canAccessDistributionTracking())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'التوزيع والتتبع',
+            french: 'Distribution et suivi',
+            english: 'Distribution and tracking',
+          ),
+          icon: Icons.local_shipping_rounded,
+          onSelected: () => _open(
+            'distribution_tracking',
+            Icons.local_shipping_rounded,
+            const DistributionTrackingScreen(),
+          ),
+        ),
+    ];
+
+    // ── Achat (المشتريات والموردون) ─────────────────────────────────────────
+    final achatItems = <_DesktopMenuItem>[
+      if (settings.canRegisterPurchases())
+        _DesktopMenuItem(
+          label: Localization.translate('achat', lang),
+          icon: Icons.shopping_bag_rounded,
+          onSelected: () => _open(
+            'achat',
+            Icons.shopping_bag_rounded,
+            AchatScreen(db: db),
+          ),
+        ),
+      if (settings.canViewSuppliers())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'الموردون',
+            french: 'Fournisseurs',
+            english: 'Suppliers',
+          ),
+          icon: Icons.local_shipping_rounded,
+          onSelected: () => _open(
+            'الموردين',
+            Icons.local_shipping_rounded,
+            SuppliersScreen(db: db),
+          ),
+        ),
+    ];
+
+    // ── Stock (المخزون والمنتجات) ───────────────────────────────────────────
+    final stockItems = <_DesktopMenuItem>[
+      if (settings.canViewMyAccreditations())
+        _DesktopMenuItem(
+          label: Localization.translate('produits', lang),
+          icon: Icons.category_rounded,
+          onSelected: () => _open(
+            'produits',
+            Icons.category_rounded,
+            ProductsMenuScreen(db: db),
+          ),
+        ),
+      if (settings.canAccessInventory())
+        _DesktopMenuItem(
+          label: Localization.translate('المخزون', lang),
+          icon: Icons.warehouse_rounded,
+          onSelected: () => _open(
+            'inventory',
+            Icons.warehouse_rounded,
+            InventoryScreen(db: db),
+          ),
+        ),
+      if (settings.canAccessInventory())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'إدارة فضلات الألواح والمقاطع',
+            french: 'Gestion des chutes (Panneaux & Profilés)',
+            english: 'Remnants management',
+          ),
+          icon: Icons.recycling_rounded,
+          onSelected: () => _open(
+            'material_remnants',
+            Icons.recycling_rounded,
+            const MaterialRemnantsScreen(),
+          ),
+        ),
+      if (settings.canViewGlobalConsumption())
+        _DesktopMenuItem(
+          label: Localization.translate('تقرير النواقص الشامل', lang),
+          icon: Icons.inventory_2_rounded,
+          onSelected: () => _open(
+            'global_consumption',
+            Icons.inventory_2_rounded,
+            GlobalConsumptionReportScreen(db: db),
+          ),
+        ),
+    ];
+
+    // ── Tâche (المهام والتنفيذ) ──────────────────────────────────────────────
+    final tacheItems = <_DesktopMenuItem>[
+      _DesktopMenuItem(
+        label: _label(
+          lang,
+          arabic: 'مهام العمال',
+          french: 'Tâches des ouvriers',
+          english: 'Worker tasks',
+        ),
+        icon: Icons.engineering_rounded,
+        onSelected: () => _open(
+          'worker_tasks',
+          Icons.engineering_rounded,
+          WorkerTasksScreen(db: db),
+        ),
+      ),
+      _DesktopMenuItem(
+        label: _label(
+          lang,
+          arabic: 'أرشيف مهام العمال',
+          french: 'Archive des tâches',
+          english: 'Tasks archive',
+        ),
+        icon: Icons.archive_rounded,
+        onSelected: () => _open(
+          'worker_archive',
+          Icons.archive_rounded,
+          WorkerArchiveScreen(db: db),
+        ),
+      ),
+      if (settings.canAccessDistributionTracking())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'التوزيع والتتبع',
+            french: 'Distribution et suivi',
+            english: 'Distribution and tracking',
+          ),
+          icon: Icons.local_shipping_rounded,
+          onSelected: () => _open(
+            'distribution_tracking',
+            Icons.local_shipping_rounded,
+            const DistributionTrackingScreen(),
+          ),
+        ),
+    ];
+
+    // ── Trésorerie (الخزينة والصناديق والأجور) ────────────────────────────────
+    final tresorerieItems = <_DesktopMenuItem>[
+      if (settings.canAccessTreasury())
+        _DesktopMenuItem(
+          label: Localization.translate('caisse', lang),
+          icon: Icons.account_balance_wallet_rounded,
+          onSelected: () => _open(
+            'caisse',
+            Icons.account_balance_wallet_rounded,
+            TreasuryScreen(db: db),
+          ),
+        ),
+      if (settings.canViewWorkerFinances())
+        _DesktopMenuItem(
+          label: Localization.translate('إدارة شؤون وأجور العمال', lang),
+          icon: Icons.people_alt_rounded,
+          onSelected: () => _open(
+            'worker_finances',
+            Icons.people_alt_rounded,
+            WorkerFinancesScreen(db: db),
+          ),
+        ),
+      if (settings.canViewWorkerWeeklySettlement())
+        _DesktopMenuItem(
+          label: Localization.translate('المحاسبة الأسبوعية للعمال', lang),
+          icon: Icons.calculate_rounded,
+          onSelected: () => _open(
+            'worker_settlement',
+            Icons.calculate_rounded,
+            WorkerWeeklySettlementScreen(db: db),
+          ),
+        ),
+    ];
+
+    // ── Compte (الحسابات والاشتراكات وإدارة الحسابات) ────────────────────────
+    final compteItems = <_DesktopMenuItem>[
+      if (settings.canViewSubscription()) ...[
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'اشتراكي (Mon abonnement)',
+            french: 'Mon abonnement',
+            english: 'My subscription',
+          ),
+          icon: Icons.card_membership_rounded,
+          onSelected: () => showSubscriptionReviewDialog(context),
+        ),
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'الدفع الإلكتروني وتجديد الاشتراك (Payment online)',
+            french: 'Paiement en ligne & abonnements',
+            english: 'Online payment & renewals',
+          ),
+          icon: Icons.credit_card_rounded,
+          onSelected: () => _open(
+            'electronic_payment',
+            Icons.credit_card_rounded,
+            const ElectronicPaymentScreen(),
+          ),
+        ),
+      ],
+      if (settings.canManageWorkers())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'إدارة حسابات وصلاحيات المستخدمين',
+            french: 'Gestion des comptes et utilisateurs',
+            english: 'Manage accounts and users',
+          ),
+          icon: Icons.manage_accounts_rounded,
+          onSelected: () => _open(
+            'worker_management',
+            Icons.manage_accounts_rounded,
+            WorkersManagementScreen(db: db),
+          ),
+        ),
+      if (settings.canViewWorkerFinances())
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'إدارة شؤون وأجور العمال',
+            french: 'Gestion financière des ouvriers',
+            english: 'Worker finances',
+          ),
+          icon: Icons.people_alt_rounded,
+          onSelected: () => _open(
+            'worker_finances',
+            Icons.people_alt_rounded,
+            WorkerFinancesScreen(db: db),
+          ),
+        ),
+      _DesktopMenuItem(
+        label: _label(
+          lang,
+          arabic: 'معلومات وحساب الورشة',
+          french: "Profil et compte de l'atelier",
+          english: 'Workshop profile and account',
+        ),
+        icon: Icons.storefront_rounded,
+        onSelected: () => _open(
+          'workshop_profile',
+          Icons.storefront_rounded,
+          const WorkshopProfileScreen(),
+        ),
+      ),
+    ];
+
+    // ── Affichage (العرض والمظهر والشريط) ────────────────────────────────────
+    final affichageItems = <_DesktopMenuItem>[
+      _DesktopMenuItem(
+        label: isDark
+            ? _label(
+                lang,
+                arabic: 'الوضع الفاتح',
+                french: 'Mode clair',
+                english: 'Light mode',
+              )
+            : _label(
+                lang,
+                arabic: 'الوضع الداكن',
+                french: 'Mode sombre',
+                english: 'Dark mode',
+              ),
+        icon: isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+        onSelected: () => Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).setTheme(isDark ? ThemeMode.light : ThemeMode.dark),
+      ),
+      _DesktopMenuItem(
+        label: _isFullScreen
+            ? _label(
+                lang,
+                arabic: 'إلغاء ملء الشاشة',
+                french: 'Quitter le plein écran',
+                english: 'Exit full screen',
+              )
+            : _label(
+                lang,
+                arabic: 'ملء الشاشة',
+                french: 'Plein écran',
+                english: 'Full screen',
+              ),
+        icon: _isFullScreen
+            ? Icons.fullscreen_exit_rounded
+            : Icons.fullscreen_rounded,
+        onSelected: _toggleFullScreen,
+      ),
+      _DesktopMenuItem(
+        label: context.watch<WorkspaceController>().isSidebarOpen
+            ? _label(
+                lang,
+                arabic: 'إخفاء القائمة الجانبية',
+                french: 'Masquer le menu',
+                english: 'Hide sidebar',
+              )
+            : _label(
+                lang,
+                arabic: 'إظهار القائمة الجانبية',
+                french: 'Afficher le menu',
+                english: 'Show sidebar',
+              ),
+        icon: Icons.view_sidebar_rounded,
+        onSelected: () {
+          context.read<WorkspaceController>().toggleSidebar();
+        },
+      ),
+    ];
+
+    // ── Paramètres (الإعدادات والإدارة) ──────────────────────────────────────
+    final parametresItems = <_DesktopMenuItem>[
+      _DesktopMenuItem(
+        label: Localization.translate('معلومات الورشة', lang),
+        icon: Icons.storefront_rounded,
+        onSelected: () => _open(
+          'workshop_profile',
+          Icons.storefront_rounded,
+          const WorkshopProfileScreen(),
+        ),
+      ),
+      if (settings.canManageWorkers())
+        _DesktopMenuItem(
+          label: Localization.translate('إدارة صلاحيات المستخدمين', lang),
+          icon: Icons.manage_accounts_rounded,
+          onSelected: () => _open(
+            'worker_management',
+            Icons.manage_accounts_rounded,
+            WorkersManagementScreen(db: db),
+          ),
+        ),
+      if (settings.canSelectSystems())
+        _DesktopMenuItem(
+          label: Localization.translate('تحديد الأنظمة المستعملة', lang),
+          icon: Icons.dashboard_customize_rounded,
+          onSelected: () => _open(
+            'selected_systems',
+            Icons.dashboard_customize_rounded,
+            const SelectedSystemsScreen(),
+          ),
+        ),
+      if (settings.canChangePrices())
+        _DesktopMenuItem(
+          label: Localization.translate('Manage Prices', lang),
+          icon: Icons.monetization_on_rounded,
+          onSelected: () => _open(
+            'Manage Prices',
+            Icons.monetization_on_rounded,
+            PriceManagementScreen(),
+          ),
+        ),
+      if (settings.canAccessSettings())
+        _DesktopMenuItem(
+          label: Localization.translate('settings', lang),
+          icon: Icons.settings_rounded,
+          onSelected: () => _open(
+            'settings',
+            Icons.settings_rounded,
+            const SettingsScreen(),
+          ),
+        ),
+      _DesktopMenuItem(
+        label: _label(
+          lang,
+          arabic: 'استهلاك التخزين والذاكرة',
+          french: 'Stockage & Mémoire',
+          english: 'Storage & Memory',
+        ),
+        icon: Icons.pie_chart_outline_rounded,
+        onSelected: () => _open(
+          'storage_dashboard',
+          Icons.pie_chart_outline_rounded,
+          StorageDashboardScreen(db: db),
+        ),
+      ),
+    ];
+
+    // ── Aide (المساعدة والدعم) ────────────────────────────────────────────────
+    final aideItems = <_DesktopMenuItem>[
+      _DesktopMenuItem(
+        label: _label(
+          lang,
+          arabic: 'حول التطبيق',
+          french: 'À propos',
+          english: 'About',
+        ),
+        icon: Icons.info_outline_rounded,
+        onSelected: _showAbout,
+      ),
+      _DesktopMenuItem(
+        label: Localization.translate('مراسلة الإدارة وتقييم التطبيق', lang),
+        icon: Icons.support_agent_rounded,
+        onSelected: () {
+          showDialog(context: context, builder: (_) => SupportDialog());
+        },
+      ),
+    ];
+
+    // ──────────────────────────────────────────────────────────────────────────
     return Column(
       children: [
         Material(
@@ -151,6 +712,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             ),
             child: Row(
               children: [
+                // ── Logo + app name (draggable) ────────────────────────────
                 SizedBox(
                   width: 142,
                   child: DragToMoveArea(
@@ -158,7 +720,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                       behavior: HitTestBehavior.opaque,
                       onDoubleTap: _toggleMaximize,
                       child: Padding(
-                        padding: const EdgeInsetsDirectional.only(start: 14),
+                        padding:
+                            const EdgeInsetsDirectional.only(start: 14),
                         child: Row(
                           children: [
                             Image.asset(
@@ -188,74 +751,27 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                     ),
                   ),
                 ),
-                _DesktopMenu(
-                  label: 'Fichier',
-                  items: [
-                    _DesktopMenuItem(
-                      label: Localization.translate('إغلاق التطبيق', lang),
-                      icon: Icons.logout_rounded,
-                      onSelected: _closeApp,
-                    ),
-                  ],
-                ),
-                _DesktopMenu(
-                  label: 'Modifier',
-                  items: [
-                    _DesktopMenuItem(
-                      label: Localization.translate('تراجع', lang),
-                      icon: Icons.undo_rounded,
-                      onSelected: () => Actions.maybeInvoke(
-                        context,
-                        const UndoTextIntent(SelectionChangedCause.keyboard),
-                      ),
-                    ),
-                    _DesktopMenuItem(
-                      label: Localization.translate('إعادة', lang),
-                      icon: Icons.redo_rounded,
-                      onSelected: () => Actions.maybeInvoke(
-                        context,
-                        const RedoTextIntent(SelectionChangedCause.keyboard),
-                      ),
-                    ),
-                  ],
-                ),
-                _DesktopMenu(
-                  label: 'Affichage',
-                  items: [
-                    _DesktopMenuItem(
-                      label: isDark ? 'Mode clair' : 'Mode sombre',
-                      icon: isDark
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      onSelected: () => Provider.of<AppSettingsProvider>(
-                        context,
-                        listen: false,
-                      ).setTheme(isDark ? ThemeMode.light : ThemeMode.dark),
-                    ),
-                    _DesktopMenuItem(
-                      label: _isFullScreen
-                          ? 'Quitter le plein écran'
-                          : 'Plein écran',
-                      icon: _isFullScreen
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
-                      onSelected: _toggleFullScreen,
-                    ),
-                  ],
-                ),
-                _DesktopMenu(
-                  label: 'Aide',
-                  items: [
-                    _DesktopMenuItem(
-                      label: 'À propos',
-                      icon: Icons.info_outline_rounded,
-                      onSelected: _showAbout,
-                    ),
-                  ],
-                ),
-                // Keep the whole remaining caption area draggable. Interactive
-                // tabs are rendered in their own row below it so a tab click can
-                // never be interpreted as a native window command.
+
+                // ── Menus ─────────────────────────────────────────────────
+                _DesktopMenu(label: 'Fichier', items: fichierItems),
+                if (venteItems.isNotEmpty)
+                  _DesktopMenu(label: 'Vente', items: venteItems),
+                if (achatItems.isNotEmpty)
+                  _DesktopMenu(label: 'Achat', items: achatItems),
+                if (stockItems.isNotEmpty)
+                  _DesktopMenu(label: 'Stock', items: stockItems),
+                if (tacheItems.isNotEmpty)
+                  _DesktopMenu(label: 'Tâche', items: tacheItems),
+                if (tresorerieItems.isNotEmpty)
+                  _DesktopMenu(label: 'Trésorerie', items: tresorerieItems),
+                if (compteItems.isNotEmpty)
+                  _DesktopMenu(label: 'Compte', items: compteItems),
+                _DesktopMenu(label: 'Affichage', items: affichageItems),
+                if (parametresItems.isNotEmpty)
+                  _DesktopMenu(label: 'Paramètres', items: parametresItems),
+                _DesktopMenu(label: 'Aide', items: aideItems),
+
+                // ── Remaining caption area (draggable) ─────────────────────
                 Expanded(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -263,6 +779,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                     child: DragToMoveArea(child: const SizedBox.expand()),
                   ),
                 ),
+
+                // ── Window control buttons ──────────────────────────────────
                 _CaptionButton(
                   tooltip: Localization.translate('تصغير', lang),
                   iconBuilder: (_) =>
@@ -346,6 +864,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   }
 }
 
+// ── Internal data classes ──────────────────────────────────────────────────────
+
 class _DesktopMenuItem {
   const _DesktopMenuItem({
     required this.label,
@@ -357,6 +877,8 @@ class _DesktopMenuItem {
   final IconData icon;
   final VoidCallback onSelected;
 }
+
+// ── Menu button ────────────────────────────────────────────────────────────────
 
 class _DesktopMenu extends StatelessWidget {
   const _DesktopMenu({required this.label, required this.items});
@@ -373,7 +895,7 @@ class _DesktopMenu extends StatelessWidget {
       tooltip: label,
       position: PopupMenuPosition.under,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 190),
+      constraints: const BoxConstraints(minWidth: 220),
       onSelected: (index) => items[index].onSelected(),
       itemBuilder: (context) => List.generate(items.length, (index) {
         final item = items[index];
@@ -392,7 +914,7 @@ class _DesktopMenu extends StatelessWidget {
       child: SizedBox(
         height: 42,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Center(
             child: Text(
               label,
@@ -408,6 +930,8 @@ class _DesktopMenu extends StatelessWidget {
     );
   }
 }
+
+// ── Caption window-control button ──────────────────────────────────────────────
 
 class _CaptionButton extends StatefulWidget {
   final String tooltip;
@@ -445,7 +969,10 @@ class _CaptionButtonState extends State<_CaptionButton> {
             onTap: widget.onPressed,
             hoverColor: widget.closeButton
                 ? const Color(0xFFE81123)
-                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+                : Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.08),
             child: SizedBox(
               width: 46,
               height: double.infinity,

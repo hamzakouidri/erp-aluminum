@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
+import '../widgets/section_image.dart';
 
 class MaterialRemnantsScreen extends StatefulWidget {
   const MaterialRemnantsScreen({super.key});
@@ -20,7 +21,11 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
   // تصنيفات الفلترة العلوية
   static const List<Map<String, String>> _filterButtons = [
     {'key': 'all', 'label_ar': 'الكل', 'label_fr': 'Tous'},
-    {'key': 'panneau_sandwich', 'label_ar': 'بانو ساندويتش', 'label_fr': 'Panneau Sandwich'},
+    {
+      'key': 'panneau_sandwich',
+      'label_ar': 'بانو ساندويتش',
+      'label_fr': 'Panneau Sandwich',
+    },
     {'key': 'resine', 'label_ar': 'ريزين', 'label_fr': 'Résine / HPL'},
     {'key': 'alucobond', 'label_ar': 'أليكوبوند', 'label_fr': 'Alucobond'},
     {'key': 'plexyglass', 'label_ar': 'بيكسي جلاس', 'label_fr': 'Plexiglas'},
@@ -51,21 +56,27 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
       return _remnants.where((r) {
         final width = (r['width_mm'] as num?)?.toDouble() ?? 0.0;
         final type = r['material_type']?.toString().toLowerCase() ?? '';
-        return width <= 0 && (type.isEmpty || type == 'profile' || r['item_type'] == 'Section');
+        return width <= 0 &&
+            (type.isEmpty || type == 'profile' || r['item_type'] == 'Section');
       }).toList();
     }
     return _remnants.where((r) {
       final type = r['material_type']?.toString().toLowerCase() ?? '';
       final itemType = r['item_type']?.toString().toLowerCase() ?? '';
-      return type == _selectedFilter.toLowerCase() || itemType == _selectedFilter.toLowerCase();
+      return type == _selectedFilter.toLowerCase() ||
+          itemType == _selectedFilter.toLowerCase();
     }).toList();
   }
 
   Future<void> _showAddManualRemnantDialog() async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isArabic = lang == AppLanguage.arabic;
 
-    String materialType = _selectedFilter == 'all' || _selectedFilter == 'profile'
+    String materialType =
+        _selectedFilter == 'all' || _selectedFilter == 'profile'
         ? 'resine'
         : _selectedFilter;
     final lengthCtrl = TextEditingController(text: '1200');
@@ -82,13 +93,17 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
           final isProfile = materialType == 'profile';
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             title: Row(
               children: [
                 const Icon(Icons.add_box_outlined, color: Colors.teal),
                 const SizedBox(width: 8),
                 Text(
-                  isArabic ? 'إدخال فضلة جديدة للمخزون' : 'Ajouter une chute au stock',
+                  isArabic
+                      ? 'إدخال فضلة جديدة للمخزون'
+                      : 'Ajouter une chute au stock',
                   style: TextStyle(
                     fontFamily: isArabic ? 'Cairo' : null,
                     fontWeight: FontWeight.bold,
@@ -107,14 +122,20 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                       value: materialType,
                       decoration: InputDecoration(
                         labelText: isArabic ? 'نوع المادة' : 'Type de matériau',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       items: _filterButtons
                           .where((b) => b['key'] != 'all')
-                          .map((b) => DropdownMenuItem(
-                                value: b['key'],
-                                child: Text(isArabic ? b['label_ar']! : b['label_fr']!),
-                              ))
+                          .map(
+                            (b) => DropdownMenuItem(
+                              value: b['key'],
+                              child: Text(
+                                isArabic ? b['label_ar']! : b['label_fr']!,
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setDlgState(() => materialType = val);
@@ -128,8 +149,12 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                             controller: lengthCtrl,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: isArabic ? 'الطول (مم)' : 'Longueur (mm)',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              labelText: isArabic
+                                  ? 'الطول (مم)'
+                                  : 'Longueur (mm)',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               suffixText: 'mm',
                             ),
                           ),
@@ -141,8 +166,12 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                               controller: widthCtrl,
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
-                                labelText: isArabic ? 'العرض (مم)' : 'Largeur (mm)',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                labelText: isArabic
+                                    ? 'العرض (مم)'
+                                    : 'Largeur (mm)',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                                 suffixText: 'mm',
                               ),
                             ),
@@ -158,7 +187,9 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                             controller: colorCtrl,
                             decoration: InputDecoration(
                               labelText: isArabic ? 'اللون' : 'Couleur',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
@@ -167,8 +198,12 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                           child: TextField(
                             controller: rackCtrl,
                             decoration: InputDecoration(
-                              labelText: isArabic ? 'مكان التخزين / الحامل' : 'Râtelier / Emplacement',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              labelText: isArabic
+                                  ? 'مكان التخزين / الحامل'
+                                  : 'Râtelier / Emplacement',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
@@ -182,7 +217,9 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                           side: BorderSide(color: Colors.grey.shade300),
                         ),
                         title: Text(
-                          isArabic ? 'السماح بالتدوير 90°' : 'Autoriser la rotation 90°',
+                          isArabic
+                              ? 'السماح بالتدوير 90°'
+                              : 'Autoriser la rotation 90°',
                           style: TextStyle(
                             fontFamily: isArabic ? 'Cairo' : null,
                             fontSize: 13,
@@ -190,7 +227,8 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                           ),
                         ),
                         value: allowRotation,
-                        onChanged: (val) => setDlgState(() => allowRotation = val),
+                        onChanged: (val) =>
+                            setDlgState(() => allowRotation = val),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -198,7 +236,9 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                       controller: noteCtrl,
                       decoration: InputDecoration(
                         labelText: isArabic ? 'ملاحظة' : 'Note',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ],
@@ -215,14 +255,17 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                 label: Text(isArabic ? 'إضافة للمخزون' : 'Ajouter'),
                 onPressed: () async {
                   final length = double.tryParse(lengthCtrl.text) ?? 0.0;
-                  final width = isProfile ? 0.0 : (double.tryParse(widthCtrl.text) ?? 0.0);
+                  final width = isProfile
+                      ? 0.0
+                      : (double.tryParse(widthCtrl.text) ?? 0.0);
                   if (length <= 0) return;
 
                   final dbInstance = await _db.db;
                   if (dbInstance == null) return;
 
                   final now = DateTime.now().toIso8601String();
-                  final ticket = 'RM-${DateTime.now().millisecondsSinceEpoch % 100000}';
+                  final ticket =
+                      'RM-${DateTime.now().millisecondsSinceEpoch % 100000}';
 
                   await dbInstance.insert('MaterialRemnants', {
                     'ticket_code': ticket,
@@ -254,7 +297,10 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
   }
 
   Future<void> _scrapRemnant(Map<String, dynamic> rem) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isArabic = lang == AppLanguage.arabic;
 
     final confirmed = await showDialog<bool>(
@@ -296,7 +342,9 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isArabic ? 'إدارة فضلات الألواح والمقاطع' : 'Gestion des chutes (Panneaux & Profilés)',
+          isArabic
+              ? 'إدارة فضلات الألواح والمقاطع'
+              : 'Gestion des chutes (Panneaux & Profilés)',
           style: TextStyle(
             fontFamily: isArabic ? 'Cairo' : null,
             fontWeight: FontWeight.bold,
@@ -318,7 +366,9 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
-              border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
+              border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
+              ),
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -332,7 +382,9 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                         isArabic ? btn['label_ar']! : btn['label_fr']!,
                         style: TextStyle(
                           fontFamily: isArabic ? 'Cairo' : null,
-                          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: selected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                       selected: selected,
@@ -351,161 +403,212 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : list.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.recycling_outlined, size: 64, color: Colors.grey.shade400),
-                            const SizedBox(height: 12),
-                            Text(
-                              isArabic
-                                  ? 'لا توجد فضلات متاحة في هذا التصنيف.\nالفضلات الصالحة للاستعمال ستظهر هنا تلقائياً بعد عمليات التقطيع.'
-                                  : 'Aucune chute disponible dans cette catégorie.\nLes chutes réutilisables apparaîtront ici après le débit.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontFamily: isArabic ? 'Cairo' : null,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.recycling_outlined,
+                          size: 64,
+                          color: Colors.grey.shade400,
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: list.length,
-                        itemBuilder: (context, index) {
-                          final rem = list[index];
-                          final length = (rem['length_mm'] as num?)?.toDouble() ?? 0.0;
-                          final width = (rem['width_mm'] as num?)?.toDouble() ?? 0.0;
-                          final isSheet = width > 0;
-                          final areaSqm = isSheet ? (length * width) / 1000000.0 : 0.0;
-                          final ticket = rem['ticket_code']?.toString() ?? '';
-                          final color = rem['color_name']?.toString() ?? '';
-                          final rack = rem['rack_code']?.toString() ?? '';
-                          final canRotate = ((rem['allow_rotation'] as num?)?.toInt() ?? 1) == 1;
+                        const SizedBox(height: 12),
+                        Text(
+                          isArabic
+                              ? 'لا توجد فضلات متاحة في هذا التصنيف.\nالفضلات الصالحة للاستعمال ستظهر هنا تلقائياً بعد عمليات التقطيع.'
+                              : 'Aucune chute disponible dans cette catégorie.\nLes chutes réutilisables apparaîtront ici après le débit.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: isArabic ? 'Cairo' : null,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: list.length,
+                    itemBuilder: (context, index) {
+                      final rem = list[index];
+                      final length =
+                          (rem['length_mm'] as num?)?.toDouble() ?? 0.0;
+                      final width =
+                          (rem['width_mm'] as num?)?.toDouble() ?? 0.0;
+                      final isSheet = width > 0;
+                      final areaSqm = isSheet
+                          ? (length * width) / 1000000.0
+                          : 0.0;
+                      final ticket = rem['ticket_code']?.toString() ?? '';
+                      final color = rem['color_name']?.toString() ?? '';
+                      final rack = rem['rack_code']?.toString() ?? '';
+                      final itemCode = rem['item_code']?.toString() ?? '';
+                      final itemName = rem['item_name']?.toString() ?? '';
+                      final itemImagePath =
+                          rem['item_image_path']?.toString() ?? '';
+                      final canRotate =
+                          ((rem['allow_rotation'] as num?)?.toInt() ?? 1) == 1;
 
-                          return Card(
-                            elevation: 1.5,
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Row(
-                                children: [
-                                  // بطاقة المقاس
-                                  Container(
-                                    width: 72,
-                                    height: 72,
-                                    decoration: BoxDecoration(
-                                      color: isSheet
-                                          ? Colors.teal.withValues(alpha: 0.08)
-                                          : Colors.indigo.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
+                      return Card(
+                        elevation: 1.5,
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              // بطاقة المقاس
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: isSheet
+                                      ? Colors.teal.withValues(alpha: 0.08)
+                                      : Colors.indigo.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSheet
+                                        ? Colors.teal.withValues(alpha: 0.3)
+                                        : Colors.indigo.withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isSheet)
+                                      const Icon(
+                                        Icons.crop_landscape,
+                                        color: Colors.teal,
+                                        size: 24,
+                                      )
+                                    else
+                                      Expanded(
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            5,
+                                            5,
+                                            5,
+                                            1,
+                                          ),
+                                          child: SectionImageWidget(
+                                            code: itemCode,
+                                            name: itemName,
+                                            imagePath: itemImagePath,
+                                            size: 48,
+                                            fallbackIcon:
+                                                Icons.view_in_ar_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    if (isSheet) const SizedBox(height: 4),
+                                    Text(
+                                      isSheet
+                                          ? '${areaSqm.toStringAsFixed(2)} m²'
+                                          : '${length.round()} mm',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
                                         color: isSheet
-                                            ? Colors.teal.withValues(alpha: 0.3)
-                                            : Colors.indigo.withValues(alpha: 0.3),
+                                            ? Colors.teal
+                                            : Colors.indigo,
                                       ),
                                     ),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          isSheet ? Icons.crop_landscape : Icons.straighten,
-                                          color: isSheet ? Colors.teal : Colors.indigo,
-                                          size: 24,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          isSheet
-                                              ? '${areaSqm.toStringAsFixed(2)} m²'
-                                              : '${length.round()} mm',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: isSheet ? Colors.teal : Colors.indigo,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-
-                                  // تفاصيل الفضلة
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.blueGrey.shade50,
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                ticket,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 11,
-                                                  color: Colors.blueGrey,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                rem['item_name']?.toString() ?? (isSheet ? 'لوح' : 'مقطع'),
-                                                style: TextStyle(
-                                                  fontFamily: isArabic ? 'Cairo' : null,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          isSheet
-                                              ? '${isArabic ? 'المقاس:' : 'Dimensions:'} ${length.round()} × ${width.round()} مم'
-                                              : '${isArabic ? 'الطول:' : 'Longueur:'} ${length.round()} مم',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.teal,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          [
-                                            if (color.isNotEmpty) '${isArabic ? 'اللون:' : 'Couleur:'} $color',
-                                            if (rack.isNotEmpty) '${isArabic ? 'الموقع:' : 'Emplacement:'} $rack',
-                                            if (isSheet) (canRotate ? '🔄 90°' : '🔒 Fixe'),
-                                          ].join(' · '),
-                                          style: TextStyle(
-                                            fontFamily: isArabic ? 'Cairo' : null,
-                                            fontSize: 11.5,
-                                            color: Colors.grey.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // زر تسجيل هدر
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                    tooltip: isArabic ? 'تسجيل كهدر' : 'Rebut',
-                                    onPressed: () => _scrapRemnant(rem),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                              const SizedBox(width: 14),
+
+                              // تفاصيل الفضلة
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blueGrey.shade50,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            ticket,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: Colors.blueGrey,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            rem['item_name']?.toString() ??
+                                                (isSheet ? 'لوح' : 'مقطع'),
+                                            style: TextStyle(
+                                              fontFamily: isArabic
+                                                  ? 'Cairo'
+                                                  : null,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      isSheet
+                                          ? '${isArabic ? 'المقاس:' : 'Dimensions:'} ${length.round()} × ${width.round()} مم'
+                                          : '${isArabic ? 'الطول:' : 'Longueur:'} ${length.round()} مم',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.teal,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      [
+                                        if (color.isNotEmpty)
+                                          '${isArabic ? 'اللون:' : 'Couleur:'} $color',
+                                        if (rack.isNotEmpty)
+                                          '${isArabic ? 'الموقع:' : 'Emplacement:'} $rack',
+                                        if (isSheet)
+                                          (canRotate ? '🔄 90°' : '🔒 Fixe'),
+                                      ].join(' · '),
+                                      style: TextStyle(
+                                        fontFamily: isArabic ? 'Cairo' : null,
+                                        fontSize: 11.5,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // زر تسجيل هدر
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                tooltip: isArabic ? 'تسجيل كهدر' : 'Rebut',
+                                onPressed: () => _scrapRemnant(rem),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

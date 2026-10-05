@@ -28,6 +28,7 @@ class _SalesScreenState extends State<SalesScreen> {
   String _selectedTab = 'all';
   double _dividerRatio = 0.35; // نسبة عرض اليسار (المخططات) من الإجمالي
   String _chartType = 'bar'; // 'bar' | 'line'
+  String _mobileViewMode = 'orders'; // 'orders' | 'chart'
 
   @override
   void initState() {
@@ -828,17 +829,131 @@ class _SalesScreenState extends State<SalesScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // لوحة مقسومة: مخططات يسار + طلبات يمين
+                    // لوحة المبيعات: مخططات + طلبات (متجاوبة للهاتف والكمبيوتر)
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final totalW = constraints.maxWidth;
-                          final minW = 180.0;
-                          final leftW = (_dividerRatio * totalW).clamp(
-                            minW,
-                            totalW - minW,
-                          );
-                          final rightW = totalW - leftW - 6.0;
+                          final isDark = Theme.of(context).brightness == Brightness.dark;
+
+                          if (totalW < 700) {
+                            // ── نمط الهاتف: مبدل تبويبات أنيق بين الطلبيات والرسم البياني ──
+                            final ordersCount = _selectedTab == 'partial'
+                                ? _groupedDeliveries.keys.length
+                                : _filteredOrders.length;
+                            return Column(
+                              children: [
+                                Container(
+                                  height: 38,
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isDark ? Colors.white12 : Colors.grey.shade300,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: InkWell(
+                                          onTap: () => setState(() => _mobileViewMode = 'orders'),
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: _mobileViewMode == 'orders'
+                                                  ? const Color(0xFF2563EB)
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.list_alt_rounded,
+                                                  size: 16,
+                                                  color: _mobileViewMode == 'orders'
+                                                      ? Colors.white
+                                                      : (isDark ? Colors.white70 : Colors.black87),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  '${_tr('الطلبيات', 'Commandes', 'Orders', lang)} ($ordersCount)',
+                                                  style: TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                    color: _mobileViewMode == 'orders'
+                                                        ? Colors.white
+                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: InkWell(
+                                          onTap: () => setState(() => _mobileViewMode = 'chart'),
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: _mobileViewMode == 'chart'
+                                                  ? const Color(0xFF2563EB)
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.bar_chart_rounded,
+                                                  size: 16,
+                                                  color: _mobileViewMode == 'chart'
+                                                      ? Colors.white
+                                                      : (isDark ? Colors.white70 : Colors.black87),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  _tr('الرسم البياني', 'Graphique', 'Chart', lang),
+                                                  style: TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                    color: _mobileViewMode == 'chart'
+                                                        ? Colors.white
+                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _mobileViewMode == 'chart'
+                                      ? SingleChildScrollView(child: _buildSalesChart(lang))
+                                      : (_selectedTab == 'partial'
+                                          ? _buildPartialDeliveriesList(lang)
+                                          : _buildOrdersList(lang)),
+                                ),
+                              ],
+                            );
+                          }
+
+                          // ── نمط الشاشات الكبيرة والكمبيوتر ──
+                          final minW = 200.0;
+                          final maxLeft = (totalW - minW).clamp(minW, totalW);
+                          final leftW = (_dividerRatio * totalW).clamp(minW, maxLeft);
+                          final rightW = (totalW - leftW - 6.0).clamp(0.0, totalW);
 
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -854,10 +969,11 @@ class _SalesScreenState extends State<SalesScreen> {
                                 onHorizontalDragUpdate: (details) {
                                   setState(() {
                                     final newLeft = leftW + details.delta.dx;
-                                    _dividerRatio = (newLeft / totalW).clamp(
-                                      minW / totalW,
-                                      (totalW - minW) / totalW,
-                                    );
+                                    final minRatio = minW / totalW;
+                                    final maxRatio = (totalW - minW) / totalW;
+                                    if (minRatio < maxRatio) {
+                                      _dividerRatio = (newLeft / totalW).clamp(minRatio, maxRatio);
+                                    }
                                   });
                                 },
                                 child: MouseRegion(

@@ -847,8 +847,10 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
         });
 
         if (_isActive(account)) {
+          final isGlobalAdmin = account.isApplicationAdminWorkspace ||
+              isApplicationAdminEmail(account.email);
           return SubscriptionDeadline(
-            endsAt: account.role == 'admin'
+            endsAt: isGlobalAdmin
                 ? null
                 : DateTime.tryParse(
                     account.subscription['ends_at']?.toString() ?? '',

@@ -194,6 +194,17 @@ class _NumericFilterSearchFieldState extends State<NumericFilterSearchField> {
   }
 
   @override
+  void didUpdateWidget(covariant NumericFilterSearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialState != oldWidget.initialState) {
+      _currentOperator = widget.initialState.operator;
+      if (_controller.text != widget.initialState.rawQuery) {
+        _controller.text = widget.initialState.rawQuery;
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -492,28 +503,54 @@ class CompactTableFilterField extends StatefulWidget {
 }
 
 class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
-  late final TextEditingController _controller;
+  TextEditingController? _internalController;
+  TextEditingController get _effectiveController =>
+      widget.controller ?? _internalController!;
   late NumericFilterOperator _currentOperator;
 
   @override
   void initState() {
     super.initState();
     _currentOperator = widget.initialNumericState.operator;
-    _controller =
-        widget.controller ??
-        TextEditingController(text: widget.initialNumericState.rawQuery);
+    if (widget.controller == null) {
+      _internalController =
+          TextEditingController(text: widget.initialNumericState.rawQuery);
+    } else if (widget.controller!.text.isEmpty &&
+        widget.initialNumericState.rawQuery.isNotEmpty) {
+      widget.controller!.text = widget.initialNumericState.rawQuery;
+    }
+  }
+
+  @override
+  void didUpdateWidget(CompactTableFilterField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      if (oldWidget.controller == null && widget.controller != null) {
+        _internalController?.dispose();
+        _internalController = null;
+      } else if (oldWidget.controller != null && widget.controller == null) {
+        _internalController =
+            TextEditingController(text: widget.initialNumericState.rawQuery);
+      }
+    }
+    if (widget.initialNumericState != oldWidget.initialNumericState) {
+      _currentOperator = widget.initialNumericState.operator;
+      if (_effectiveController.text != widget.initialNumericState.rawQuery &&
+          widget.initialNumericState.rawQuery.isNotEmpty) {
+        _effectiveController.text = widget.initialNumericState.rawQuery;
+      }
+    }
   }
 
   @override
   void dispose() {
-    if (widget.controller == null) {
-      _controller.dispose();
-    }
+    _internalController?.dispose();
+    _internalController = null;
     super.dispose();
   }
 
   void _notify() {
-    final raw = _controller.text.trim();
+    final raw = _effectiveController.text.trim();
     if (widget.isNumeric) {
       final parsed = double.tryParse(raw.replaceAll(',', '.'));
       final state = NumericFilterState(
@@ -536,7 +573,7 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
 
   void _clear() {
     setState(() {
-      _controller.clear();
+      _effectiveController.clear();
       _currentOperator = NumericFilterOperator.none;
     });
     _notify();
@@ -546,9 +583,9 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
     setState(() {
       // Keep the field readable in the current language while the filter
       // logic still accepts both the translated label and the raw value.
-      _controller.text = option.value.isEmpty ? '' : option.label;
-      _controller.selection = TextSelection.collapsed(
-        offset: _controller.text.length,
+      _effectiveController.text = option.value.isEmpty ? '' : option.label;
+      _effectiveController.selection = TextSelection.collapsed(
+        offset: _effectiveController.text.length,
       );
     });
     _notify();
@@ -557,7 +594,7 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final raw = _controller.text.trim();
+    final raw = _effectiveController.text.trim();
     final hasNumber = double.tryParse(raw.replaceAll(',', '.')) != null;
     final isActive =
         (widget.isNumeric && _currentOperator != NumericFilterOperator.none) ||
@@ -622,8 +659,8 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
                               ),
                             ),
                           ),
-                          if (_controller.text.trim() == option.value ||
-                              _controller.text.trim() == option.label)
+                          if (_effectiveController.text.trim() == option.value ||
+                              _effectiveController.text.trim() == option.label)
                             const Icon(
                               Icons.check_circle_rounded,
                               color: Color(0xFF2563EB),
@@ -755,7 +792,7 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
           // Text Field
           Expanded(
             child: TextField(
-              controller: _controller,
+              controller: _effectiveController,
               onChanged: (_) => _notify(),
               style: TextStyle(
                 fontSize: 11,
@@ -807,7 +844,7 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
     final state = NumericFilterState(
       operator: op,
       targetValue: double.tryParse(
-        _controller.text.trim().replaceAll(',', '.'),
+        _effectiveController.text.trim().replaceAll(',', '.'),
       ),
     );
     final isSelected = _currentOperator == op;

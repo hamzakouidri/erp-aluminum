@@ -2281,14 +2281,14 @@ class WindowPainter extends CustomPainter {
     final l1Text = '${f1.width.toInt()} mm';
     final l1Painter = TextPainter(
       text: TextSpan(
-        text: 'إطار 1: $l1Text',
+        text: l1Text,
         style: const TextStyle(
           color: Color(0xFF334155),
           fontSize: 9,
           fontWeight: FontWeight.bold,
         ),
       ),
-      textDirection: TextDirection.rtl,
+      textDirection: TextDirection.ltr,
     )..layout();
     l1Painter.paint(
       canvas,
@@ -2298,14 +2298,14 @@ class WindowPainter extends CustomPainter {
     final l2Text = '${f2.width.toInt()} mm';
     final l2Painter = TextPainter(
       text: TextSpan(
-        text: 'إطار 2: $l2Text',
+        text: l2Text,
         style: const TextStyle(
           color: Color(0xFF334155),
           fontSize: 9,
           fontWeight: FontWeight.bold,
         ),
       ),
-      textDirection: TextDirection.rtl,
+      textDirection: TextDirection.ltr,
     )..layout();
     l2Painter.paint(
       canvas,

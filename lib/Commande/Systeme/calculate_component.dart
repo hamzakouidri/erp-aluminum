@@ -4714,7 +4714,7 @@ class ComponentCalculator {
                     window.getSlidingSectionByType('face_to_face'))
               : null;
           final bool hasMeetingInCenter =
-              (zone.slidingFaceToFace ||
+              (zone.slidingFaceToFace &&
                   (sashes >= 4 &&
                       (zone.slidingTrackCount == 2 ||
                           zone.slidingTrackCount == 0) &&
@@ -4865,6 +4865,12 @@ class ComponentCalculator {
           // Outer handles always carry their lock hardware.  The first
           // central handle is functional and carries one more set; the
           // optional mirrored central handle is visual-only.
+          // A face-to-face four/six-leaf layout already draws and requires
+          // one functional handle at the central meeting. Older drawings may
+          // still have slidingCentralHandle=false even though the painter
+          // correctly shows that handle. Do not let that stale flag remove
+          // its Entrematique and strike from the BOM. The second central
+          // handle remains decorative and adds a handle only.
           final bool hasCentralMain =
               hasMeetingInCenter && zone.slidingCentralHandle;
           final bool hasCentralSecond =
@@ -6176,10 +6182,10 @@ class ComponentCalculator {
           window.componentOverrides.containsKey('مقبض نافذة (Poignée)') ||
           window.componentOverrides.containsKey('المقبض (Handle)') ||
           window.componentOverrides.containsKey('مقبض نافذة (Poignée Fenêtre)');
-      final effectiveHandles = hasExplicitHandleOverride
-          ? math.max(1, totalHandles)
-          : totalHandles;
-      if (effectiveHandles > 0 &&
+      // لا يُحسب مقبض الفتح إطلاقاً إذا كان عدد ظلفات الفتح صفراً (totalHandles == 0)
+      final effectiveHandles = totalHandles;
+      if (totalHandles > 0 &&
+          effectiveHandles > 0 &&
           (!useCremone || hasExplicitHandleOverride) &&
           window.systemMode != 'sliding') {
         if (window.isPVC) {
@@ -6372,25 +6378,29 @@ class ComponentCalculator {
             sliding: true,
           ),
         );
-        if (!window.isSlidingPVC) {
+        if (!window.isSlidingPVC && slidingTotalKits > 0) {
           final String seriesName =
               window.activeSlidingSeries?.name.toLowerCase() ?? '';
-          String kitKey = 'كيت 67000 (Kit 67000)';
-          if (seriesName.contains('76000')) {
+          String? kitKey;
+          if (seriesName.contains('76000') || seriesName.contains('7600')) {
             kitKey = 'كيت 76000 (Kit 76000)';
-          } else if (seriesName.contains('40000')) {
+          } else if (seriesName.contains('40000') ||
+              seriesName.contains('4000')) {
             kitKey = 'كيت 40000 (Kit 40000)';
-          } else if (seriesName.contains('67000')) {
+          } else if (seriesName.contains('67000') ||
+              seriesName.contains('6700')) {
             kitKey = 'كيت 67000 (Kit 67000)';
           }
-          items.add(
-            createAccessory(
-              kitKey,
-              color: accessoryColorName,
-              qty: slidingTotalKits,
-              sliding: true,
-            ),
-          );
+          if (kitKey != null) {
+            items.add(
+              createAccessory(
+                kitKey,
+                color: accessoryColorName,
+                qty: slidingTotalKits,
+                sliding: true,
+              ),
+            );
+          }
         }
         final bool useEntrematique =
             !window.isSlidingPVC &&
@@ -10759,19 +10769,22 @@ class ComponentCalculator {
         }
 
         if (selectedParclose != null) {
-          // المستخدم اختار — نحتفظ به فقط إذا كان يتحمل سمك الزجاج فعليًا.
+          // المستخدم اختار — نحتفظ به فقط إذا كان يتحمل سمك الزجاج ونوعه فعليًا.
           final double chosenMax =
               (selectedParclose['max_glass_thickness'] as num?)?.toDouble() ??
               0.0;
-          final bool chosenMatchesGlass = chosenMax >= totalT;
+          final bool isDoubleGlass = glass.structure == GlassStructure.double;
+          final bool isDoubleParclose = chosenMax > 10.0;
+          final bool chosenMatchesGlass =
+              chosenMax >= totalT && (!isDoubleParclose || isDoubleGlass);
 
           if (chosenMatchesGlass) {
             matchingParclose = selectedParclose;
           } else {
-            // المختار صغير — ننتقل إلى أقرب سماكة أكبر داخل نفس السلسلة.
+            // المختار غير متوافق مع نوع وسماكة الزجاج — ننتقل إلى الأنسب داخل نفس السلسلة.
             matchingParclose =
                 firstCapacityAtLeast(totalT) ??
-                allParcloseSections.last.toMap();
+                allParcloseSections.first.toMap();
           }
         } else {
           // لم يختر — بحث تلقائي حسب السمك الفعلي.

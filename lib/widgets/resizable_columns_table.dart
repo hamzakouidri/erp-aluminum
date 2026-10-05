@@ -90,6 +90,10 @@ class ResizableColumnsTable extends StatefulWidget {
   final ValueChanged<String?>? onFocusedRowChanged;
   final String? revealRowId;
 
+  /// Optional widget displayed in the table body when [rows] is empty,
+  /// while keeping the table header and filter search rows visible.
+  final Widget? emptyPlaceholder;
+
   const ResizableColumnsTable({
     super.key,
     required this.columns,
@@ -114,6 +118,7 @@ class ResizableColumnsTable extends StatefulWidget {
     this.focusedRowColor,
     this.onFocusedRowChanged,
     this.revealRowId,
+    this.emptyPlaceholder,
   });
 
   @override
@@ -643,7 +648,13 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
               );
 
         Widget tableBody;
-        if (bodyIsBounded) {
+        if (orderedRows.isEmpty && widget.emptyPlaceholder != null) {
+          final placeholder = SizedBox(
+            width: _tableWidth,
+            child: widget.emptyPlaceholder!,
+          );
+          tableBody = bodyIsBounded ? Expanded(child: placeholder) : placeholder;
+        } else if (bodyIsBounded) {
           tableBody = Expanded(
             child: SingleChildScrollView(
               controller: _verticalController,
@@ -871,7 +882,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       );
     }
 
-    return SizedBox(width: _widthFor(column), child: headerContent);
+    return SizedBox(key: ValueKey('header_col_' + column.id), width: _widthFor(column), child: headerContent);
     /*
       Legacy header implementation retained below in source history was
       replaced by the draggable header above.
@@ -959,6 +970,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           children: [
             for (var i = 0; i < columns.length; i++)
               Container(
+                key: ValueKey('filter_col_' + columns[i].id),
                 width: _widthFor(columns[i]),
                 constraints: BoxConstraints(
                   minHeight: widget.filterRowMinHeight,
@@ -971,7 +983,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                   ),
                 ),
                 alignment: columns[i].alignment,
-                child: columns[i].filter ?? const SizedBox.shrink(),
+                child: columns[i].filter != null
+                    ? KeyedSubtree(
+                        key: ValueKey('filter_child_' + columns[i].id),
+                        child: ClipRect(child: columns[i].filter!),
+                      )
+                    : const SizedBox.shrink(),
               ),
           ],
         ),

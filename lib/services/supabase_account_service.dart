@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -466,13 +467,21 @@ class SupabaseAccountService {
       workshopCode: workshopCode,
       storedName: workshop['name']?.toString() ?? '',
     );
-    final subscription = await _client
-        .from('workshop_subscriptions')
-        .select(
-          'status,plan_type,starts_at,ends_at,max_users,max_systems,max_profiles',
-        )
-        .eq('workshop_id', workshopId)
-        .maybeSingle();
+    Map<String, dynamic>? subscription;
+    try {
+      final sub = await _client
+          .from('workshop_subscriptions')
+          .select(
+            'status,plan_type,starts_at,ends_at,max_users,max_systems,max_profiles',
+          )
+          .eq('workshop_id', workshopId)
+          .maybeSingle();
+      if (sub != null) {
+        subscription = Map<String, dynamic>.from(sub);
+      }
+    } catch (e) {
+      debugPrint('Error fetching workshop_subscriptions for $workshopId: $e');
+    }
 
     return SupabaseAccountSnapshot(
       userId: user.id,

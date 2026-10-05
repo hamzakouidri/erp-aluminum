@@ -440,7 +440,7 @@ class SqlDatabase {
         // FFI/web require their own options implementation. SQLCipher's
         // similarly named options fail the factory's runtime type cast.
         options: sqflite_common.OpenDatabaseOptions(
-          version: 70,
+          version: 71,
           onConfigure: (db) async {
             // This PRAGMA returns a row, including when setting its value.
             // Android SQLCipher rejects it through execute/executeSql.
@@ -456,7 +456,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 70,
+      version: 71,
       password: password,
       onConfigure: (db) async {
         // Android SQLCipher requires the query API for row-returning PRAGMAs.
@@ -633,6 +633,7 @@ class SqlDatabase {
     await _ensureClientCodeInfrastructure(db);
     await _ensureOrderCodeInfrastructure(db);
     await _ensureOrderTrashInfrastructure(db);
+    await _ensureOrderPinningInfrastructure(db);
     await _ensureAchatTrashInfrastructure(db);
     await _ensureRemnantInventorySchema(db);
     await _ensureAdvancedKitCompatibilitySchema(db);
@@ -3208,6 +3209,9 @@ class SqlDatabase {
     if (oldVersion < 70) {
       await _ensureRemnantInventorySchema(db);
     }
+    if (oldVersion < 71) {
+      await _ensureOrderPinningInfrastructure(db);
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -3360,6 +3364,8 @@ class SqlDatabase {
     project_id INTEGER,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     deleted_at TEXT
+    ,is_pinned INTEGER NOT NULL DEFAULT 0
+    ,pinned_at TEXT
   )
 ''');
     await _ensureOrderCodeInfrastructure(db);
@@ -4613,6 +4619,46 @@ class SqlDatabase {
 
   static bool _orderCodeInfrastructureReady = false;
   static bool _orderTrashInfrastructureReady = false;
+  static bool _orderPinningInfrastructureReady = false;
+
+  Future<void> _ensureOrderPinningInfrastructure(
+    DatabaseExecutor executor,
+  ) async {
+    if (_orderPinningInfrastructureReady) return;
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN pinned_at TEXT;',
+      );
+    } catch (_) {}
+    _orderPinningInfrastructureReady = true;
+  }
+
+  Future<bool> setOrderPinned({
+    required int orderId,
+    required bool pinned,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return false;
+    await _ensureOrderPinningInfrastructure(myDb);
+    final changed = await myDb.update(
+      'Commandes',
+      {
+        'is_pinned': pinned ? 1 : 0,
+        'pinned_at': pinned ? DateTime.now().toUtc().toIso8601String() : null,
+      },
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+    if (changed > 0) {
+      await CloudSyncService().notifyChangeImmediate();
+    }
+    return changed > 0;
+  }
 
   /// Ensures soft-delete columns (is_deleted, deleted_at) exist on Commandes
   /// to support the recycle bin (سلة المهملات).
@@ -5276,6 +5322,7 @@ class SqlDatabase {
     if (myDb == null) return [];
     await _ensureOrderTrashInfrastructure(myDb);
     await _ensureOrderStockReservationInfrastructure(myDb);
+    await _ensureOrderPinningInfrastructure(myDb);
     await _backfillOrderCodes(myDb);
     return await myDb.rawQuery('''
           SELECT c.*,
@@ -13941,10 +13988,13 @@ class SqlDatabase {
         updated_by TEXT,
         is_deleted INTEGER NOT NULL DEFAULT 0,
         deleted_at TEXT
+        ,is_pinned INTEGER NOT NULL DEFAULT 0
+        ,pinned_at TEXT
       )
     ''');
     await _ensureOrderCodeInfrastructure(db);
     await _ensureOrderTrashInfrastructure(db);
+    await _ensureOrderPinningInfrastructure(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Commandes_details (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15834,7 +15884,9 @@ class SqlDatabase {
       SELECT r.*, l.name AS location_name, c.name AS color_name,
              se.name AS series_name,
              COALESCE(s.name, sc.name, a.name, j.name, g.name) AS item_name,
-             COALESCE(s.code, '') AS item_code
+             COALESCE(s.code, '') AS item_code,
+             COALESCE(s.image_path, sc.image_path, a.image_path,
+                      j.image_path, g.image_path, '') AS item_image_path
       FROM MaterialRemnants r
       LEFT JOIN Locations l ON l.id = r.location_id
       LEFT JOIN Colors c ON c.id = r.color_id

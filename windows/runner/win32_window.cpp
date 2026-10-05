@@ -150,7 +150,10 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // The ERP workspace is designed for the full available desktop area.
+  // Showing maximized here also covers the very first native frame, before
+  // Flutter's window_manager plugin has finished initializing.
+  return ShowWindow(window_handle_, SW_SHOWMAXIMIZED);
 }
 
 // static

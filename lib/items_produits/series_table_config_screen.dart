@@ -326,6 +326,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   bool _loadingSeries = false;
   bool _loadingDefinition = false;
   bool _saving = false;
+  List<String> _displayRoleOrder = const [];
+  Set<String> _displayActiveRoleKeys = const {};
 
   final _sashWidth2Controller = TextEditingController();
   final _sashWidth3Controller = TextEditingController();
@@ -432,19 +434,39 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         .toList(growable: false);
   }
 
-  List<_SeriesRole> get _activeRoles =>
-      _allConfigurableRoles
-          .where((role) => _sectionIdsByRole[role.key]?.isNotEmpty ?? false)
-          .toList(growable: false);
+  List<_SeriesRole> get _activeRoles => _allConfigurableRoles
+      .where((role) => _sectionIdsByRole[role.key]?.isNotEmpty ?? false)
+      .toList(growable: false);
 
-  List<_SeriesRole> get _inactiveRoles =>
-      _allConfigurableRoles
-          .where((role) => !(_sectionIdsByRole[role.key]?.isNotEmpty ?? false))
-          .toList(growable: false);
+  List<_SeriesRole> get _inactiveRoles => _allConfigurableRoles
+      .where((role) => !(_sectionIdsByRole[role.key]?.isNotEmpty ?? false))
+      .toList(growable: false);
+
+  void _refreshDisplayedRoleOrder() {
+    final active = _activeRoles.toList(growable: false);
+    final inactive = _inactiveRoles.toList(growable: false);
+    _displayRoleOrder = [
+      ...active.map((role) => role.key),
+      ...inactive.map((role) => role.key),
+    ];
+    _displayActiveRoleKeys = active.map((role) => role.key).toSet();
+  }
+
+  List<_SeriesRole> get _displayedRoles {
+    final byKey = {for (final role in _allConfigurableRoles) role.key: role};
+    final ordered = _displayRoleOrder
+        .map((key) => byKey.remove(key))
+        .whereType<_SeriesRole>()
+        .toList();
+    ordered.addAll(byKey.values);
+    return ordered;
+  }
 
   /// Keep configured roles at the top of the rules page.
-  List<_SeriesRole> get _orderedAvailableRoles =>
-      [..._activeRoles, ..._inactiveRoles];
+  List<_SeriesRole> get _orderedAvailableRoles => [
+    ..._activeRoles,
+    ..._inactiveRoles,
+  ];
 
   @override
   void initState() {
@@ -537,6 +559,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     _restoreDefinition(roles);
     _restoreFormulaConfig(results[2] as Map<String, dynamic>?);
     _restoreJointLinks(results[4] as List<Map<String, dynamic>>);
+    _refreshDisplayedRoleOrder();
     setState(() {
       _sections = results[0] as List<Map<String, dynamic>>;
       _joints = results[3] as List<Map<String, dynamic>>;
@@ -1080,6 +1103,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       // background instead of awaiting two full cloud uploads in sequence.
       unawaited(CloudSyncService().notifyCatalogChange());
       if (mounted) {
+        setState(_refreshDisplayedRoleOrder);
         _showMessage(
           _t(
             'تم حفظ تعريف مكوّنات السلسلة.',
@@ -1287,85 +1311,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             _slidingFormulaCard(),
             const SizedBox(height: 14),
           ],
-          // ── الأدوار المفعّلة لهذه السلسلة ──
-          if (_activeRoles.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _t(
-                      'الأدوار المفعّلة لهذه السلسلة (${_activeRoles.length})',
-                      'Rôles configurés pour cette série (${_activeRoles.length})',
-                    ),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            for (final role in _activeRoles) _roleCard(role),
-          ],
-
-          // ── الفاصل البارز بين الأدوار النشطة والأدوار غير المحددة بعد ──
-          if (_activeRoles.isNotEmpty && _inactiveRoles.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.blueGrey.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.horizontal_rule_rounded,
-                    color: Colors.blueGrey.shade600,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _t(
-                        'أدوار إضافية غير محددة بعد (${_inactiveRoles.length})',
-                        'Autres rôles non configurés (${_inactiveRoles.length})',
-                      ),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey.shade800,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    _t('اختياري', 'Optionnel'),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.blueGrey.shade500,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            for (final role in _inactiveRoles) _roleCard(role),
-          ] else if (_activeRoles.isEmpty) ...[
-            for (final role in _inactiveRoles) _roleCard(role),
-          ],
+          ..._roleStatusSections(),
           _aluminumJointLinksCard(),
           const SizedBox(height: 90),
         ],
@@ -1381,6 +1327,67 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       return _sections.where(_isBardageSection).toList(growable: false);
     }
     return _sections;
+  }
+
+  List<Widget> _roleStatusSections() {
+    final roles = _displayedRoles;
+    final active = roles
+        .where((role) => _displayActiveRoleKeys.contains(role.key))
+        .toList(growable: false);
+    final inactive = roles
+        .where((role) => !_displayActiveRoleKeys.contains(role.key))
+        .toList(growable: false);
+
+    Widget heading({required bool enabled, required int count}) {
+      final color = enabled ? Colors.green.shade700 : Colors.blue.shade700;
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 8, bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              enabled
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.add_circle_outline_rounded,
+              color: color,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _t(
+                  enabled ? 'البروفيلات المفعّلة' : 'البروفيلات غير المفعّلة',
+                  enabled ? 'Profils activés' : 'Profils non activés',
+                ),
+                style: TextStyle(color: color, fontWeight: FontWeight.w800),
+              ),
+            ),
+            Text('$count', style: TextStyle(color: color)),
+          ],
+        ),
+      );
+    }
+
+    return [
+      heading(enabled: true, count: active.length),
+      for (final role in active) _roleCard(role),
+      if (active.isNotEmpty && inactive.isNotEmpty)
+        Container(
+          height: 4,
+          margin: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.red.shade600,
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+      heading(enabled: false, count: inactive.length),
+      for (final role in inactive) _roleCard(role),
+    ];
   }
 
   Widget _roleCard(_SeriesRole role) {
@@ -2030,7 +2037,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                                   'إطارات متوافقة للالتقاء مع هذا الإطار',
                                   'Dormants compatibles pour jonction',
                                 ),
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
@@ -2127,13 +2136,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                                         ),
                                         title: Text(
                                           (() {
-                                            final code = fs['code']
-                                                    ?.toString()
-                                                    .trim() ??
+                                            final code =
+                                                fs['code']?.toString().trim() ??
                                                 '';
-                                            final name = fs['name']
-                                                    ?.toString()
-                                                    .trim() ??
+                                            final name =
+                                                fs['name']?.toString().trim() ??
                                                 '';
                                             return code.isNotEmpty
                                                 ? '$code — $name'
@@ -2160,9 +2167,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                                           } else {
                                             await widget.db
                                                 .deleteFrameJoinRuleBetween(
-                                              sectionId,
-                                              fsId,
-                                            );
+                                                  sectionId,
+                                                  fsId,
+                                                );
                                           }
                                           await _loadFrameJoinData();
                                           setDialogState(() {});

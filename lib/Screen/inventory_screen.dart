@@ -391,11 +391,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
             _loadLocations(preferredLocationId: _selectedLocationId);
           },
         ),
-        IconButton(
-          icon: const Icon(Icons.recycling, color: Colors.white),
-          tooltip: Localization.translate('الفضلات المتاحة', lang),
-          onPressed: () => _showAvailableRemnantsDialog(lang),
-        ),
         if (canAdjustInventory)
           IconButton(
             icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
@@ -464,7 +459,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
           icon: const Icon(Icons.recycling_rounded, color: Colors.white),
           tooltip: lang == AppLanguage.arabic
               ? 'إدارة فضلات الألواح والمقاطع (Chutes)'
-              : 'Gestion des chutes (Panneaux & Profilés)',
+              : (lang == AppLanguage.french
+                  ? 'Gestion des chutes (Panneaux & Profilés)'
+                  : 'Remnants Management (Panels & Profiles)'),
           onPressed: () {
             Navigator.push(
               context,
@@ -1042,155 +1039,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showAvailableRemnantsDialog(AppLanguage lang) async {
-    final locationId = _selectedLocationId;
-    if (locationId == null) return;
-    final remnants = List<Map<String, dynamic>>.from(
-      await widget.db.readAllAvailableMaterialRemnants(
-      locationId: locationId,
-      ),
-    );
-    if (!mounted) return;
-    await showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.recycling, color: Colors.teal),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  Localization.translate('الفضلات المتاحة', lang),
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: StatefulBuilder(
-            builder: (dialogContext, setDialogState) => SizedBox(
-              width: 560,
-              child: remnants.isEmpty
-                  ? Text(
-                      Localization.translate(
-                        'لا توجد فضلات قابلة للاستعمال في هذا المخزون.',
-                        lang,
-                      ),
-                      style: const TextStyle(fontFamily: 'Cairo'),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: remnants.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final row = remnants[index];
-                        final length =
-                            ((row['length_mm'] as num?)?.toDouble() ?? 0).round();
-                        final name = row['item_name']?.toString() ?? '';
-                        final code = row['item_code']?.toString() ?? '';
-                        final color = row['color_name']?.toString() ?? '';
-                        final series = row['series_name']?.toString() ?? '';
-                        final address =
-                            [row['rack_code'], row['shelf_code'], row['bin_code']]
-                                .map((value) => value?.toString().trim() ?? '')
-                                .where((value) => value.isNotEmpty)
-                                .join(' / ');
-                        return ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.straighten, color: _blue),
-                          title: Text(
-                            '${row['ticket_code']} - ${code.isEmpty ? name : '[$code] $name'}',
-                            style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          subtitle: Text(
-                            [
-                              if (series.isNotEmpty) series,
-                              if (color.isNotEmpty) color,
-                              if (address.isNotEmpty) address,
-                            ].join(' - '),
-                            style: const TextStyle(fontFamily: 'Cairo'),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '$length ${Localization.translate('مم', lang)}',
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.teal,
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: Localization.translate('تسجيل هدر', lang),
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.redAccent,
-                                ),
-                                onPressed: () async {
-                                  final confirmed = await showDialog<bool>(
-                                    context: dialogContext,
-                                    builder: (confirmContext) => AlertDialog(
-                                      title: Text(
-                                        Localization.translate('تسجيل هدر', lang),
-                                      ),
-                                      content: Text(
-                                        Localization.translate(
-                                          'سيتم حفظ الفضلة كسجل هدر مع إبقاء رقمها وأثرها، ولن تُحذف نهائيًا. هل تريد المتابعة؟',
-                                          lang,
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(confirmContext, false),
-                                          child: Text(Localization.translate('إلغاء', lang)),
-                                        ),
-                                        FilledButton(
-                                          onPressed: () => Navigator.pop(confirmContext, true),
-                                          child: Text(Localization.translate('تأكيد', lang)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                  if (confirmed != true) return;
-                                  final result = await widget.db.markMaterialRemnantAsScrap(
-                                    remnantId: (row['id'] as num).toInt(),
-                                    note: 'هدر يدوي من شاشة المخزون',
-                                  );
-                                  if (result['marked'] == true) {
-                                    setDialogState(() => remnants.removeAt(index));
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(Localization.translate('إغلاق', lang)),
-            ),
-          ],
         ),
       ),
     );

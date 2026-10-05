@@ -186,7 +186,6 @@ bool bomUsesOrderLevelCutting(BomItem item) {
   final unit = item.unit.trim().toLowerCase();
   final isStockBar = const {'قطاع', 'بارة', 'bar', 'section'}.contains(unit);
   return isStockBar &&
-      (item.length ?? 0) > 0 &&
       (item.pieces?.any((piece) => piece > 0) ?? false);
 }
 
@@ -265,6 +264,13 @@ String _cleanProfileName(BomItem item) {
         ),
         '',
       )
+      .replaceAll(
+        RegExp(
+          r'^(السكك \(Coulisses\)|السكك|Coulisses|المحور \(Axe\)|المحور|Axe|الصندوق \(Caisson\)|الصندوق|Caisson|أطاش \(Attache\)|أطاش|Attache|أغطية الشفرات \(Bouchons Lames\)|أغطية الشفرات|Bouchons Lames|الشريحة النهائية \(Lame Finale\)|الشريحة النهائية|Lame Finale|الشرائح \(Lames\)|الشرائح|Lames)\s*[-—–:]*\s*',
+          caseSensitive: false,
+        ),
+        '',
+      )
       .trim();
 
   if (candidate.isEmpty) {
@@ -275,6 +281,22 @@ String _cleanProfileName(BomItem item) {
     }
   }
   return candidate;
+}
+
+String _cleanProfileNameFromText(String text) {
+  final lines = text
+      .split('\n')
+      .where((line) => !line.contains('المطلوب الفعلي'))
+      .map((l) => l.trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+  if (lines.length >= 2 && lines[1].isNotEmpty) {
+    return lines[1];
+  }
+  if (lines.isNotEmpty) {
+    return lines[0];
+  }
+  return text.trim();
 }
 
 String _extractCodeFromName(String text) {
@@ -347,21 +369,23 @@ String _normalizeColorKeyForAggregate(AggregatedGoodItem item) {
 }
 
 String requiredGoodsDisplayName(BomItem item) {
-  final normCategory = item.category.trim().toLowerCase();
-  final usesOrderCutting = bomUsesOrderLevelCutting(item);
-  if (normCategory == 'profile' ||
-      normCategory == 'frame' ||
-      normCategory == 'mullion' ||
-      normCategory == 'sash' ||
-      usesOrderCutting) {
-    final clean = _cleanProfileName(item);
-    if (clean.isNotEmpty) return clean;
+  final clean = _cleanProfileName(item);
+  if (clean.isNotEmpty && clean != item.originalName.trim()) {
+    return clean;
   }
-  return item.name
+  final lines = item.name
       .split('\n')
       .where((line) => !line.contains('المطلوب الفعلي'))
-      .join('\n')
-      .trim();
+      .map((l) => l.trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+  if (lines.length >= 2 && lines[1].isNotEmpty) {
+    return lines[1];
+  }
+  if (lines.isNotEmpty) {
+    return lines[0];
+  }
+  return item.originalName.trim();
 }
 
 String requiredGoodsAggregationKey(BomItem item, String category) {
@@ -373,17 +397,18 @@ String requiredGoodsAggregationKey(BomItem item, String category) {
       normCategory == 'sash' ||
       usesOrderCutting;
 
+  final cleanName = requiredGoodsDisplayName(item);
+  final code = (item.profileCode != null && item.profileCode!.trim().isNotEmpty)
+      ? item.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
+      : _extractCodeFromName(cleanName);
+  final colorKey = _normalizeColorKey(item);
+
   if (isProfile) {
-    final cleanName = _cleanProfileName(item);
-    final code = (item.profileCode != null && item.profileCode!.trim().isNotEmpty)
-        ? item.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
-        : _extractCodeFromName(cleanName);
     final idKey = code.isNotEmpty
         ? 'CODE:$code'
         : (item.catalogItemId != null && item.catalogItemId! > 0)
         ? 'CAT:${item.catalogItemId}'
         : 'NAME:${cleanName.toLowerCase()}';
-    final colorKey = _normalizeColorKey(item);
     final lengthKey = (item.length ?? 0) > 0 ? (item.length!).toStringAsFixed(2) : '6.00';
     return 'PROFILE___${idKey}___${colorKey}___${item.unit.trim().toLowerCase()}___$lengthKey';
   }
@@ -394,15 +419,19 @@ String requiredGoodsAggregationKey(BomItem item, String category) {
       : _normalizeHardwareKey(item.name);
   final itemIdentifier = (item.catalogItemId != null && item.catalogItemId! > 0)
       ? '${item.inventoryItemType ?? normCategory}:${item.catalogItemId}'
-      : (item.profileCode != null && item.profileCode!.trim().isNotEmpty)
-      ? 'CODE:${item.profileCode!.trim().toUpperCase()}'
+      : code.isNotEmpty
+      ? 'CODE:$code'
       : hwKey.isNotEmpty
       ? 'HW:$hwKey'
-      : 'NAME:${requiredGoodsDisplayName(item).toLowerCase()}';
+      : 'NAME:${cleanName.toLowerCase()}';
 
-  final colorKey = _normalizeColorKey(item);
-  final lengthKey = (item.length ?? 0) > 0 ? (item.length!).toStringAsFixed(2) : '';
-  final heightKey = (item.glassHeight ?? 0) > 0 ? (item.glassHeight!).toStringAsFixed(2) : '';
+  // Only Glass panes have unique custom dimensions per pane
+  final lengthKey = normCategory == 'glass' && (item.length ?? 0) > 0
+      ? (item.length!).toStringAsFixed(2)
+      : '';
+  final heightKey = normCategory == 'glass' && (item.glassHeight ?? 0) > 0
+      ? (item.glassHeight!).toStringAsFixed(2)
+      : '';
 
   return '${normCategory}___${itemIdentifier}___'
       '${colorKey}___${item.unit.trim().toLowerCase()}___'
@@ -789,8 +818,11 @@ class AggregatedGoodItem {
     if (bom.pieceCount != null && bom.pieceCount! > 0) {
       pieceCount += bom.pieceCount!;
     } else if (unit.trim().toLowerCase() == 'قطعة' ||
-        unit.trim().toLowerCase() == 'piece') {
-      pieceCount += purchaseQty.round();
+        unit.trim().toLowerCase() == 'piece' ||
+        unit.trim().toLowerCase() == 'حبة') {
+      pieceCount += (bom.pieceCount != null && bom.pieceCount! > 0)
+          ? bom.pieceCount!
+          : (purchaseQty > 0 ? purchaseQty.round() : 1);
     } else if (category == 'glass') {
       pieceCount += 1;
     }
@@ -805,12 +837,15 @@ class AggregatedGoodItem {
             z.glass.decorRosetteId != null)) {
       sourceModel = model;
     }
-    if (usesOrderCutting && bom.pieces != null && bom.pieces!.isNotEmpty) {
+    if (bom.pieces != null && bom.pieces!.isNotEmpty) {
       cuttingPieces.addAll(bom.pieces!);
     }
-    if ((stockLength == null || stockLength! <= 0) &&
-        (bom.length != null && bom.length! > 0)) {
-      stockLength = bom.length;
+    if ((stockLength == null || stockLength! <= 0)) {
+      if (bom.length != null && bom.length! > 0) {
+        stockLength = bom.length;
+      } else if (const {'قطاع', 'بارة', 'bar', 'section'}.contains(unit.trim().toLowerCase())) {
+        stockLength = 6.0;
+      }
     }
     if (catalogItemId == null && bom.catalogItemId != null) {
       catalogItemId = bom.catalogItemId;
@@ -1520,12 +1555,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   final Set<String> _expandedCuttingPlans = {};
   bool _isCreatingPurchase = false;
   bool _manufacturingIssueRequested = false;
-  late AppLanguage _currentLang;
-  Future<int>? _shutterGreyColorIdFuture;
-  String _selectedCategory = 'all';
+  late AppLanguage _currentLang;  String _selectedCategory = 'all';
   Map<String, double> _mainWarehouseStock = const {};
   String _mainWarehouseName = 'المستودع الرئيسي';
   bool _isStockReserved = false;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _refreshReservationStatus() async {
     final orderId = _safeInt(widget.orderData['id']);
@@ -1540,11 +1582,35 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     } catch (_) {}
   }
 
-  List<AggregatedGoodItem> get _visibleItems => _selectedCategory == 'all'
-      ? _aggregatedItems
-      : _aggregatedItems
+  List<AggregatedGoodItem> get _visibleItems {
+    var items = _selectedCategory == 'all'
+        ? _aggregatedItems
+        : _aggregatedItems
             .where((item) => item.category == _selectedCategory)
             .toList();
+
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase().trim();
+      items = items.where((item) {
+        final name = item.name.toLowerCase();
+        final orig = item.originalName.toLowerCase();
+        final code = (item.profileCode ?? '').toLowerCase();
+        final color = (item.colorName ?? '').toLowerCase();
+        final kit = (item.kitGroupName ?? '').toLowerCase();
+        final subMatches = item.kitSubItems.any((sub) =>
+            sub.name.toLowerCase().contains(q) ||
+            sub.originalName.toLowerCase().contains(q));
+        return name.contains(q) ||
+            orig.contains(q) ||
+            code.contains(q) ||
+            color.contains(q) ||
+            kit.contains(q) ||
+            subMatches;
+      }).toList();
+    }
+
+    return items;
+  }
 
   Future<(Map<String, double>, String)> _loadMainWarehouseStock() async {
     final locations = await widget.db.readLocations();
@@ -1711,11 +1777,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       metadata: kitBundleMetadata,
       prices: kitBundlePrices,
     );
-  }
-
-  Future<int> _shutterGreyColorId() {
-    return _shutterGreyColorIdFuture ??= widget.db
-        .ensureShutterComponentsUseGreyPrice();
   }
 
   void _applyInstanceSize(WindowModel model, double width, double height) {
@@ -2260,37 +2321,63 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 for (final entry in aggregationMap.entries) {
                   final existing = entry.value;
                   if (existing.kitGroupName != null) continue;
-                  if (existing.category != category) continue;
 
-                  final isProfile = category == 'profile' ||
-                      category == 'frame' ||
-                      category == 'mullion' ||
-                      category == 'sash' ||
-                      usesOrderCutting;
-                  if (isProfile) {
-                    final code = (bom.profileCode != null && bom.profileCode!.trim().isNotEmpty)
-                        ? bom.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
-                        : _extractCodeFromName(_cleanProfileName(bom));
-                    final existingCode = (existing.profileCode != null && existing.profileCode!.trim().isNotEmpty)
-                        ? existing.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
-                        : _extractCodeFromName(existing.name);
-                    final colorMatch = _normalizeColorKey(bom) == _normalizeColorKeyForAggregate(existing);
-                    if (code.isNotEmpty && code == existingCode && colorMatch) {
-                      matchingKey = entry.key;
-                      break;
-                    }
-                  } else {
-                    final hwBom = _normalizeHardwareKey(bom.originalName).isNotEmpty
-                        ? _normalizeHardwareKey(bom.originalName)
-                        : _normalizeHardwareKey(bom.name);
-                    final hwEx = _normalizeHardwareKey(existing.originalName).isNotEmpty
-                        ? _normalizeHardwareKey(existing.originalName)
-                        : _normalizeHardwareKey(existing.name);
-                    final colorMatch = _normalizeColorKey(bom) == _normalizeColorKeyForAggregate(existing);
-                    if (colorMatch && hwBom.isNotEmpty && hwBom == hwEx) {
-                      matchingKey = entry.key;
-                      break;
-                    }
+                  final bool bothProfiles = (category == 'profile' || usesOrderCutting) &&
+                      (existing.category == 'profile' || existing.cuttingPieces.isNotEmpty);
+                  if (existing.category != category && !bothProfiles) continue;
+
+                  final colorMatch = _normalizeColorKey(bom) == _normalizeColorKeyForAggregate(existing);
+                  if (!colorMatch) continue;
+
+                  // 1. Match by Catalogue Item ID
+                  if (bom.catalogItemId != null &&
+                      bom.catalogItemId! > 0 &&
+                      existing.catalogItemId != null &&
+                      bom.catalogItemId == existing.catalogItemId) {
+                    matchingKey = entry.key;
+                    break;
+                  }
+
+                  // 2. Match by Profile / Item Code
+                  final bomCode = (bom.profileCode != null && bom.profileCode!.trim().isNotEmpty)
+                      ? bom.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
+                      : _extractCodeFromName(requiredGoodsDisplayName(bom));
+                  final existingCode = (existing.profileCode != null && existing.profileCode!.trim().isNotEmpty)
+                      ? existing.profileCode!.trim().replaceAll(RegExp(r'[\s_]'), '').toUpperCase()
+                      : _extractCodeFromName(existing.name);
+                  if (bomCode.isNotEmpty && bomCode == existingCode) {
+                    matchingKey = entry.key;
+                    break;
+                  }
+
+                  // 3. Match by normalized hardware key (screws)
+                  final hwBom = _normalizeHardwareKey(bom.originalName).isNotEmpty
+                      ? _normalizeHardwareKey(bom.originalName)
+                      : _normalizeHardwareKey(bom.name);
+                  final hwEx = _normalizeHardwareKey(existing.originalName).isNotEmpty
+                      ? _normalizeHardwareKey(existing.originalName)
+                      : _normalizeHardwareKey(existing.name);
+                  if (hwBom.isNotEmpty && hwBom == hwEx) {
+                    matchingKey = entry.key;
+                    break;
+                  }
+
+                  // 4. Match by Clean Display Name
+                  final cleanBom = requiredGoodsDisplayName(bom).toLowerCase().trim();
+                  final cleanEx = existing.name.toLowerCase().trim();
+                  if (cleanBom.isNotEmpty &&
+                      (cleanBom == cleanEx ||
+                          cleanBom == _cleanProfileNameFromText(existing.name).toLowerCase())) {
+                    matchingKey = entry.key;
+                    break;
+                  }
+
+                  // 5. Match by Original Role Name if same display name
+                  final origBom = _extractRoleLabel(bom.originalName).toLowerCase().trim();
+                  final origEx = existing.originalName.toLowerCase().trim();
+                  if (origBom.isNotEmpty && origBom == origEx && cleanBom == cleanEx) {
+                    matchingKey = entry.key;
+                    break;
                   }
                 }
               }
@@ -2305,17 +2392,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   model: model,
                 );
               } else {
-                final isProfile = category == 'profile' ||
-                    category == 'frame' ||
-                    category == 'mullion' ||
-                    category == 'sash' ||
-                    usesOrderCutting;
-                final cleanName = isProfile
-                    ? _cleanProfileName(bom)
-                    : (usesOrderCutting ? requiredGoodsDisplayName(bom) : bom.name);
-                final displayName = cleanName.isNotEmpty
-                    ? cleanName
-                    : requiredGoodsDisplayName(bom);
+                final displayName = requiredGoodsDisplayName(bom);
+                final stockLen = (bom.length != null && bom.length! > 0)
+                    ? bom.length
+                    : (usesOrderCutting ? 6.0 : null);
 
                 aggregationMap[aggregationKey] = AggregatedGoodItem(
                   name: displayName,
@@ -2328,10 +2408,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   totalCost: bomCost,
                   profileCode: bom.profileCode,
                   colorName: bom.colorName,
-                  stockLength: bom.length,
+                  stockLength: stockLen,
                   glassHeight: bom.glassHeight,
                   pieceCount: bom.pieceCount ??
-                      (bom.unit.trim().toLowerCase() == 'قطعة'
+                      ((bom.unit.trim().toLowerCase() == 'قطعة' ||
+                              bom.unit.trim().toLowerCase() == 'حبة')
                           ? purchaseQty.round()
                           : (category == 'glass' ? 1 : 0)),
                   sourceModel: model,
@@ -2339,7 +2420,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   inventoryItemType: bom.inventoryItemType,
                   colorId: bom.colorId,
                   isMissing: bom.isMissing,
-                  cuttingPieces: usesOrderCutting && bom.pieces != null
+                  cuttingPieces: bom.pieces != null && bom.pieces!.isNotEmpty
                       ? List<double>.from(bom.pieces!)
                       : const [],
                   kitSubItems: const [],
@@ -2368,20 +2449,33 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       // length once. This reuses leftovers between products in the order.
       for (final item in aggregationMap.values) {
         if (item.cuttingPieces.isEmpty) continue;
-        final stockLength = item.stockLength ?? 0;
-        if (stockLength <= 0) continue;
+        final double effStockLength = (item.stockLength != null && item.stockLength! > 0)
+            ? item.stockLength!
+            : 6.0;
         await Future<void>.delayed(Duration.zero);
         final plan = optimizeRequiredGoodsCutting(
           pieces: item.cuttingPieces,
-          stockLength: stockLength,
+          stockLength: effStockLength,
         );
         item.cuttingPlan = plan;
+        item.stockLength = effStockLength;
         item.totalQuantity = plan.barCount.toDouble();
         item.totalCost = item.totalQuantity * item.unitPrice;
         if (plan.oversizedPieces.isNotEmpty) {
-          warnings.add(
-            '${_t(item.originalName)}: ${_t('توجد {count} قطعة قص أطول من القطاع {length} مم وتحتاج طول مخزون أكبر.').replaceAll('{count}', '${plan.oversizedPieces.length}').replaceAll('{length}', '${(stockLength * 1000).round()}')}',
-          );
+          final isReinforcement = item.originalName.contains('حديد الإطار') ||
+              item.originalName.contains('حديد الاطار') ||
+              item.name.contains('حديد الإطار') ||
+              item.name.contains('حديد الاطار') ||
+              item.originalName.toLowerCase().contains('renfort frame') ||
+              item.originalName.toLowerCase().contains('renfort dormant') ||
+              item.originalName.toLowerCase().contains('renfort cadre') ||
+              item.name.toLowerCase().contains('renfort frame') ||
+              item.name.toLowerCase().contains('renfort dormant');
+          if (!isReinforcement) {
+            warnings.add(
+              '${_t(item.originalName)}: ${_t('توجد {count} قطعة قص أطول من القطاع {length} مم وتحتاج طول مخزون أكبر.').replaceAll('{count}', '${plan.oversizedPieces.length}').replaceAll('{length}', '${(effStockLength * 1000).round()}')}',
+            );
+          }
         }
       }
 
@@ -2439,7 +2533,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         _mainWarehouseName = stockSnapshot.$2;
         _productCount = successCount;
         _productBreakdowns = breakdownsTemp;
-        _processingWarnings = warnings;
+        _processingWarnings = warnings.where((w) {
+          final lower = w.toLowerCase();
+          return !w.contains('حديد الإطار') &&
+              !w.contains('حديد الاطار') &&
+              !lower.contains('renfort frame') &&
+              !lower.contains('renfort dormant') &&
+              !lower.contains('renfort cadre');
+        }).toList();
         _isStockReserved = isReserved;
         _isLoading = false;
       });
@@ -2958,35 +3059,75 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           ? const Color(0xFF121212)
           : const Color(0xFFF0F4FF),
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: AlignmentDirectional.centerStart,
-              child: Text(
-                _t('كمية السلع المطلوبة'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Colors.white,
+        title: _isSearching
+            ? SizedBox(
+                height: 42,
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  cursorColor: Colors.white,
+                  decoration: InputDecoration(
+                    hintText: _currentLang == AppLanguage.french
+                        ? 'Rechercher par nom ou référence...'
+                        : (_currentLang == AppLanguage.arabic
+                            ? 'بحث بالاسم أو المرجع (Référence)...'
+                            : 'Search by name or reference...'),
+                    hintStyle: const TextStyle(color: Colors.white60, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 20),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.white70, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.18),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.trim();
+                    });
+                  },
                 ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      _t('كمية السلع المطلوبة'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (clientDisplay.isNotEmpty)
+                    Text(
+                      clientDisplay,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                ],
               ),
-            ),
-            if (clientDisplay.isNotEmpty)
-              Text(
-                clientDisplay,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-          ],
-        ),
         centerTitle: false,
         backgroundColor: isDark
             ? (Theme.of(context).appBarTheme.backgroundColor ??
@@ -2996,51 +3137,91 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         actionsIconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
-        actions: [
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width > 700
-                  ? 550
-                  : MediaQuery.of(context).size.width * 0.62,
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.print),
-                      tooltip: 'طباعة الكمية المطلوبة',
-                      onPressed: _printRequiredGoods,
-                    ),
-                  if (!_isLoading &&
-                      _errorMessage == null &&
-                      _aggregatedItems.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber.shade700,
-                          foregroundColor: Colors.white,
-                          elevation: 1,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+        actions: _isSearching
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  tooltip: _currentLang == AppLanguage.french
+                      ? 'Fermer la recherche'
+                      : (_currentLang == AppLanguage.arabic
+                          ? 'إغلاق البحث'
+                          : 'Close search'),
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = false;
+                      _searchController.clear();
+                      _searchQuery = '';
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+              ]
+            : [
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width > 700
+                        ? 550
+                        : MediaQuery.of(context).size.width * 0.65,
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.search, color: Colors.white),
+                            tooltip: _currentLang == AppLanguage.french
+                                ? 'Recherche par nom ou référence'
+                                : (_currentLang == AppLanguage.arabic
+                                    ? 'بحث بالاسم أو المرجع (Référence)'
+                                    : 'Search by name or reference'),
+                            onPressed: () {
+                              setState(() => _isSearching = true);
+                            },
                           ),
-                        ),
-                        icon: const Icon(Icons.analytics_outlined, size: 18),
-                        label: Text(
-                          _t('تقرير النواقص والمخزون'),
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.bold,
+                        if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.print),
+                            tooltip: 'طباعة الكمية المطلوبة',
+                            onPressed: _printRequiredGoods,
                           ),
-                        ),
-                        onPressed: _showShortageReport,
-                      ),
-                    ),
+                        if (!_isLoading &&
+                            _errorMessage == null &&
+                            _aggregatedItems.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isStockReserved
+                                    ? Colors.green.shade700
+                                    : const Color(0xFF2E7D32),
+                                foregroundColor: Colors.white,
+                                elevation: 1,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              icon: Icon(
+                                _isStockReserved ? Icons.check_circle : Icons.bookmark_add_outlined,
+                                size: 18,
+                              ),
+                              label: Text(
+                                _currentLang == AppLanguage.french
+                                    ? (_isStockReserved ? 'Réservé' : 'Réserver')
+                                    : (_currentLang == AppLanguage.arabic
+                                        ? (_isStockReserved ? 'تم الحجز' : 'حجز')
+                                        : (_isStockReserved ? 'Reserved' : 'Reserve')),
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: _showShortageReport,
+                            ),
+                          ),
                   if (!_isLoading &&
                       _errorMessage == null &&
                       _cuttableCatalogItems.isNotEmpty)
@@ -3201,92 +3382,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     return Column(
       children: [
-        _buildReservationStatusBanner(),
         // شريط معلومات الملخص
         _buildInfoBanner(),
         if (_processingWarnings.isNotEmpty) _buildWarningsBanner(),
         // القائمة
         Expanded(child: _buildGroupedList()),
       ],
-    );
-  }
-
-  Widget _buildReservationStatusBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: _isStockReserved
-            ? Colors.green.shade50
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: _isStockReserved ? Colors.green.shade600 : Colors.grey.shade400,
-          width: 1.2,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            _isStockReserved ? Icons.check_circle : Icons.inventory_2_outlined,
-            color: _isStockReserved ? Colors.green.shade700 : Colors.grey.shade700,
-            size: 22,
-          ),
-          const SizedBox(width: 10),
-          Text(
-            _t('حالة حجز السلع بالمخزون:'),
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: Colors.grey.shade800,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(
-              color: _isStockReserved ? Colors.green.shade700 : Colors.grey.shade500,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _isStockReserved ? Icons.check : Icons.lock_open,
-                  size: 13,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  _isStockReserved ? _t('تم الحجز') : _t('لم يُحجز بعد'),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: _showShortageReport,
-            icon: Icon(
-              _isStockReserved ? Icons.edit_note : Icons.bookmark_add_outlined,
-              size: 16,
-              color: _isStockReserved ? Colors.green.shade800 : const Color(0xFF1A237E),
-            ),
-            label: Text(
-              _isStockReserved ? _t('إدارة الحجز / النواقص') : _t('حجز السلع للطلبية'),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: _isStockReserved ? Colors.green.shade800 : const Color(0xFF1A237E),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -3372,7 +3473,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final summary = Tooltip(
       message: _t('مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة'),
       child: Text(
-        '${_t('إجمالي')} ${_aggregatedItems.length} ${_t('نوع سلعة من')} $_productCount ${_t('منتج')}',
+        _searchQuery.isNotEmpty
+            ? (_currentLang == AppLanguage.french
+                ? 'Résultats: ${_visibleItems.length} / ${_aggregatedItems.length}'
+                : (_currentLang == AppLanguage.arabic
+                    ? 'نتائج البحث: ${_visibleItems.length} من ${_aggregatedItems.length}'
+                    : 'Search: ${_visibleItems.length} / ${_aggregatedItems.length}'))
+            : '${_t('إجمالي')} ${_aggregatedItems.length} ${_t('نوع سلعة من')} $_productCount ${_t('منتج')}',
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
@@ -3444,6 +3551,48 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   Widget _buildGroupedList() {
+    if (_visibleItems.isEmpty && _searchQuery.isNotEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.search_off, size: 54, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(
+                _currentLang == AppLanguage.french
+                    ? 'Aucun élément trouvé pour "$_searchQuery"'
+                    : (_currentLang == AppLanguage.arabic
+                        ? 'لا توجد عناصر مطابقة للبحث "$_searchQuery"'
+                        : 'No items matching "$_searchQuery"'),
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+                icon: const Icon(Icons.clear, size: 16),
+                label: Text(
+                  _currentLang == AppLanguage.french
+                      ? 'Effacer la recherche'
+                      : (_currentLang == AppLanguage.arabic
+                          ? 'مسح البحث'
+                          : 'Clear search'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     // تجميع العناصر حسب الفئة ثم اللون للبروفيلات والإكسسوارات.
     final Map<String, List<AggregatedGoodItem>> grouped = {};
     for (final item in _visibleItems) {

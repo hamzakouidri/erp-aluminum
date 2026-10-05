@@ -618,6 +618,48 @@ void main() {
     },
   );
 
+  test('four-leaf face-to-face keeps three functional handles and strikes', () {
+    final model = RoleWindow()..systemMode = 'sliding';
+    final zone = WindowZone(
+      id: 'four-leaf',
+      content: ZoneContent.slidingSash,
+      slidingSashesCount: 4,
+      slidingTrackCount: 2,
+      slidingFaceToFace: true,
+      // Reproduces older drawings: the functional middle handle is visible
+      // because of face-to-face, but this persisted flag is still false.
+      slidingCentralHandle: false,
+      slidingSecondCentralHandle: false,
+      isSelected: true,
+      boundary: const Rect.fromLTRB(50, 50, 1950, 1150),
+    );
+    model
+      ..zones = [zone]
+      ..selection = SelectionInfo.zone(zone.id);
+
+    var bom = ComponentCalculator.generateBom(model, {});
+    expect(
+      bom.singleWhere((item) => item.roleKey == 'entrematique').quantity,
+      3,
+    );
+    expect(
+      bom.singleWhere((item) => item.roleKey == 'sliding_lock').quantity,
+      3,
+    );
+
+    model.setSelectedZoneSlidingSecondCentralHandle(true);
+    bom = ComponentCalculator.generateBom(model, {});
+    expect(
+      bom.singleWhere((item) => item.roleKey == 'entrematique').quantity,
+      4,
+    );
+    expect(
+      bom.singleWhere((item) => item.roleKey == 'sliding_lock').quantity,
+      3,
+    );
+    model.dispose();
+  });
+
   test('supportedSlidingSashCounts obeys max_sliding_sashes series rule', () {
     final model = RoleWindow();
     model.systemMode = 'sliding';

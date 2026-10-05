@@ -796,6 +796,49 @@ void main() {
     expect(await screwQuantity(8), 56);
     expect(await screwQuantity(8) - await screwQuantity(6), 14);
   });
+  test('same physical screw stays separated by its BOM usage', () async {
+    final database = RuleDatabase()..rules.clear();
+    final window = makeWindow(database);
+    final result = await BomEngineV2(database: database)
+        .filterItemsByAvailableCandidates(
+          window: window,
+          items: [
+            BomItem(
+              category: 'accessory',
+              originalName: 'براغي الكيت',
+              name: '3.5x0.9',
+              quantity: 8,
+              unit: 'حبة',
+              unitPrice: 1,
+              catalogItemId: 70,
+              inventoryItemType: 'Accessory',
+              roleKey: 'kit_screw',
+              selectorType: 'is_kit_screw',
+              sourceSeriesId: 1,
+            ),
+            BomItem(
+              category: 'accessory',
+              originalName: 'براغي الصندوق',
+              name: '3.5x0.9',
+              quantity: 10,
+              unit: 'حبة',
+              unitPrice: 1,
+              catalogItemId: 70,
+              inventoryItemType: 'Accessory',
+              roleKey: 'box_screw',
+              selectorType: 'is_caisson_screw',
+              sourceSeriesId: 1,
+            ),
+          ],
+        );
+
+    expect(result, hasLength(2));
+    expect(
+      {for (final item in result) item.roleKey: item.quantity},
+      {'kit_screw': 8, 'box_screw': 10},
+    );
+    expect(result.every((item) => item.cuttingList == null), isTrue);
+  });
   test('a series kit does not expand a stale linked accessory', () {
     final window = makeWindow(RuleDatabase())..hasBottomFrame = false;
     window
