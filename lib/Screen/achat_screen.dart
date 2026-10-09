@@ -18,7 +18,15 @@ class AchatScreen extends StatefulWidget {
   /// وضع العرض فقط — يخفي FAB وأزرار التعديل/الحذف
   final bool readOnly;
 
-  const AchatScreen({super.key, required this.db, this.readOnly = false});
+  /// true: مشتريات الورشة فقط, false: مشتريات محل المواد فقط, null: تلقائي حسب نوع النشاط
+  final bool? isWorkshop;
+
+  const AchatScreen({
+    super.key,
+    required this.db,
+    this.readOnly = false,
+    this.isWorkshop,
+  });
 
   @override
   State<AchatScreen> createState() => _AchatScreenState();
@@ -32,6 +40,17 @@ class _AchatScreenState extends State<AchatScreen>
   String _selectedStatusFilter = 'الكل';
   int? _expandedAchatId;
   StreamSubscription? _syncSub;
+  bool? _selectedModeIsWorkshop;
+
+  bool get _effectiveIsWorkshop {
+    if (_selectedModeIsWorkshop != null) return _selectedModeIsWorkshop!;
+    if (widget.isWorkshop != null) return widget.isWorkshop!;
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    if (!settings.hasWorkshop && settings.hasMaterialsStore) return false;
+    if (settings.hasWorkshop && !settings.hasMaterialsStore) return true;
+    if (settings.workingSection == WorkingSection.materialsStore) return false;
+    return true;
+  }
 
   // ── Palette ───────────────────────────────────────────────────────────────
   static const _blue = Color(0xFF2563EB);
@@ -60,7 +79,7 @@ class _AchatScreenState extends State<AchatScreen>
 
   void _refreshList() {
     setState(() {
-      _achatsFuture = widget.db.readAchats();
+      _achatsFuture = widget.db.readAchats(isWorkshop: _effectiveIsWorkshop);
       _expandedAchatId = null;
     });
   }
@@ -347,17 +366,61 @@ class _AchatScreenState extends State<AchatScreen>
             ],
           ),
         ),
-        title: Text(
-          Localization.translate(
-            'إدارة المشتريات (Achat)',
-            Provider.of<AppSettingsProvider>(context).language,
-          ),
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-            color: Colors.white,
-          ),
+        title: Row(
+          children: [
+            Text(
+              Localization.translate(
+                _effectiveIsWorkshop ? 'مشتريات الورشة' : 'مشتريات محل المواد',
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.white,
+              ),
+            ),
+            if (widget.isWorkshop == null &&
+                Provider.of<AppSettingsProvider>(context).isDualActivity) ...[
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedModeIsWorkshop = !_effectiveIsWorkshop;
+                    _refreshList();
+                  });
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white30),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.swap_horiz_rounded, size: 16, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        Localization.translate(
+                          _effectiveIsWorkshop ? 'محل المواد' : 'الورشة',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
         titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 16),
         centerTitle: false,
@@ -928,9 +991,13 @@ class _AchatScreenState extends State<AchatScreen>
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           if (!isLoaded) {
+            final isWs = _effectiveIsWorkshop;
+            final settings = Provider.of<AppSettingsProvider>(context, listen: false);
             Future.wait([
               widget.db.readSuppliers(),
-              widget.db.readLocations(),
+              isWs
+                  ? widget.db.readWorkshopLocations()
+                  : widget.db.readStoreLocations(),
               widget.db.getNextAchatInvoiceNumber(),
             ]).then((results) {
               if (mounted) {
@@ -943,8 +1010,15 @@ class _AchatScreenState extends State<AchatScreen>
 
                   locations = results[1] as List<Map<String, dynamic>>;
                   if (locations.isNotEmpty) {
-                    selectedLocationId = locations.first['id'];
-                    selectedLocationName = locations.first['name'];
+                    final defaultLocId = isWs
+                        ? settings.defaultWorkshopLocationId
+                        : settings.defaultStoreLocationId;
+                    final match = locations.firstWhere(
+                      (l) => l['id'] == defaultLocId,
+                      orElse: () => locations.first,
+                    );
+                    selectedLocationId = match['id'];
+                    selectedLocationName = match['name'];
                   }
 
                   invoiceCtrl.text = results[2] as String;
@@ -971,193 +1045,195 @@ class _AchatScreenState extends State<AchatScreen>
                   fontSize: 16,
                 ),
               ),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: invoiceCtrl,
-                        decoration: InputDecoration(
-                          labelText: Localization.translate(
-                            'رقم الفاتورة *',
-                            lang,
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560, minWidth: 420),
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: invoiceCtrl,
+                          decoration: InputDecoration(
+                            labelText: Localization.translate(
+                              'رقم الفاتورة *',
+                              lang,
+                            ),
+                            helperText: invoiceGenerated
+                                ? Localization.translate(
+                                    'يتم إنشاؤه تلقائياً ويمكنك تعديله',
+                                    lang,
+                                  )
+                                : Localization.translate(
+                                    'جارٍ توليد رقم الفاتورة...',
+                                    lang,
+                                  ),
+                            labelStyle: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                            ),
+                            prefixIcon: const Icon(Icons.receipt_long_rounded),
+                            border: const OutlineInputBorder(),
                           ),
-                          helperText: invoiceGenerated
+                          validator: (value) =>
+                              (value == null || value.trim().isEmpty)
                               ? Localization.translate(
-                                  'يتم إنشاؤه تلقائياً ويمكنك تعديله',
+                                  'يرجى إدخال رقم الفاتورة',
                                   lang,
                                 )
-                              : Localization.translate(
-                                  'جارٍ توليد رقم الفاتورة...',
-                                  lang,
-                                ),
-                          labelStyle: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                          ),
-                          prefixIcon: const Icon(Icons.receipt_long_rounded),
-                          border: const OutlineInputBorder(),
+                              : null,
                         ),
-                        validator: (value) =>
-                            (value == null || value.trim().isEmpty)
-                            ? Localization.translate(
-                                'يرجى إدخال رقم الفاتورة',
-                                lang,
-                              )
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      Builder(
-                        builder: (dateContext) {
-                          final canChangeDate =
-                              Provider.of<AppSettingsProvider>(
-                                dateContext,
-                                listen: false,
-                              ).canChangePurchaseDates();
-                          return InkWell(
-                            onTap: canChangeDate
-                                ? () async {
-                                    final picked = await showDatePicker(
-                                      context: dateContext,
-                                      initialDate: selectedDate,
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime(2030),
-                                    );
-                                    if (picked != null) {
-                                      setDialogState(() {
-                                        selectedDate = DateTime(
-                                          picked.year,
-                                          picked.month,
-                                          picked.day,
-                                          selectedDate.hour,
-                                          selectedDate.minute,
-                                        );
-                                      });
+                        const SizedBox(height: 12),
+                        Builder(
+                          builder: (dateContext) {
+                            final canChangeDate =
+                                Provider.of<AppSettingsProvider>(
+                                  dateContext,
+                                  listen: false,
+                                ).canChangePurchaseDates();
+                            return InkWell(
+                              onTap: canChangeDate
+                                  ? () async {
+                                      final picked = await showDatePicker(
+                                        context: dateContext,
+                                        initialDate: selectedDate,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2030),
+                                      );
+                                      if (picked != null) {
+                                        setDialogState(() {
+                                          selectedDate = DateTime(
+                                            picked.year,
+                                            picked.month,
+                                            picked.day,
+                                            selectedDate.hour,
+                                            selectedDate.minute,
+                                          );
+                                        });
+                                      }
                                     }
-                                  }
-                                : null,
-                            child: InputDecorator(
-                              decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  'تاريخ المشتريات',
-                                  lang,
-                                ),
-                                prefixIcon: const Icon(Icons.calendar_today),
-                                suffixIcon: Icon(
-                                  canChangeDate
-                                      ? Icons.edit_calendar_outlined
-                                      : Icons.lock_outline,
-                                  color: canChangeDate ? _blue : _textDim,
-                                ),
-                                border: const OutlineInputBorder(),
-                              ),
-                              child: Text(
-                                DateFormat('dd/MM/yyyy').format(selectedDate),
-                                style: TextStyle(
-                                  color: canChangeDate ? _text : _textDim,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      suppliers.isEmpty
-                          ? Text(
-                              Localization.translate(
-                                'لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.',
-                                lang,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
-                              ),
-                            )
-                          : DropdownButtonFormField<int>(
-                              isExpanded: true,
-                              // 🟢 منع الأوفر فلو لأسماء الموردين الطويلة
-                              initialValue: selectedSupplierId,
-                              decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  'المورد *',
-                                  lang,
-                                ),
-                                prefixIcon: const Icon(Icons.business_rounded),
-                                border: const OutlineInputBorder(),
-                              ),
-                              items: suppliers.map((s) {
-                                return DropdownMenuItem<int>(
-                                  value: s['id'],
-                                  child: Text(
-                                    s['name'],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  selectedSupplierId = val;
-                                  selectedSupplierName = suppliers.firstWhere(
-                                    (s) => s['id'] == val,
-                                  )['name'];
-                                });
-                              },
-                              validator: (value) => value == null
-                                  ? Localization.translate('اختر مورد', lang)
                                   : null,
-                            ),
-                      const SizedBox(height: 12),
-                      locations.isEmpty
-                          ? Text(
-                              Localization.translate(
-                                'لا توجد مستودعات مسجلة.',
-                                lang,
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    'تاريخ المشتريات',
+                                    lang,
+                                  ),
+                                  prefixIcon: const Icon(Icons.calendar_today),
+                                  suffixIcon: Icon(
+                                    canChangeDate
+                                        ? Icons.edit_calendar_outlined
+                                        : Icons.lock_outline,
+                                    color: canChangeDate ? _blue : _textDim,
+                                  ),
+                                  border: const OutlineInputBorder(),
+                                ),
+                                child: Text(
+                                  DateFormat('dd/MM/yyyy').format(selectedDate),
+                                  style: TextStyle(
+                                    color: canChangeDate ? _text : _textDim,
+                                  ),
+                                ),
                               ),
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
-                              ),
-                            )
-                          : DropdownButtonFormField<int>(
-                              isExpanded: true,
-                              initialValue: selectedLocationId,
-                              decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  'مكان التخزين (المستودع) *',
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        suppliers.isEmpty
+                            ? Text(
+                                Localization.translate(
+                                  'لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.',
                                   lang,
                                 ),
-                                prefixIcon: const Icon(
-                                  Icons.storefront_rounded,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
                                 ),
-                                border: const OutlineInputBorder(),
-                              ),
-                              items: locations.map((loc) {
-                                return DropdownMenuItem<int>(
-                                  value: loc['id'],
-                                  child: Text(
-                                    loc['name'],
-                                    overflow: TextOverflow.ellipsis,
+                              )
+                            : DropdownButtonFormField<int>(
+                                isExpanded: true,
+                                initialValue: selectedSupplierId,
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    'المورد *',
+                                    lang,
                                   ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  selectedLocationId = val;
-                                  selectedLocationName = locations.firstWhere(
-                                    (l) => l['id'] == val,
-                                  )['name'];
-                                });
-                              },
-                              validator: (value) => value == null
-                                  ? Localization.translate(
-                                      'اختر مكان التخزين',
-                                      lang,
-                                    )
-                                  : null,
-                            ),
-                    ],
+                                  prefixIcon: const Icon(Icons.business_rounded),
+                                  border: const OutlineInputBorder(),
+                                ),
+                                items: suppliers.map((s) {
+                                  return DropdownMenuItem<int>(
+                                    value: s['id'],
+                                    child: Text(
+                                      s['name'],
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  setDialogState(() {
+                                    selectedSupplierId = val;
+                                    selectedSupplierName = suppliers.firstWhere(
+                                      (s) => s['id'] == val,
+                                    )['name'];
+                                  });
+                                },
+                                validator: (value) => value == null
+                                    ? Localization.translate('اختر مورد', lang)
+                                    : null,
+                              ),
+                        const SizedBox(height: 12),
+                        locations.isEmpty
+                            ? Text(
+                                Localization.translate(
+                                  'لا توجد مستودعات مسجلة.',
+                                  lang,
+                                ),
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                ),
+                              )
+                            : DropdownButtonFormField<int>(
+                                isExpanded: true,
+                                initialValue: selectedLocationId,
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    'مكان التخزين (المستودع) *',
+                                    lang,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.storefront_rounded,
+                                  ),
+                                  border: const OutlineInputBorder(),
+                                ),
+                                items: locations.map((loc) {
+                                  return DropdownMenuItem<int>(
+                                    value: loc['id'],
+                                    child: Text(
+                                      loc['name'],
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  setDialogState(() {
+                                    selectedLocationId = val;
+                                    selectedLocationName = locations.firstWhere(
+                                      (l) => l['id'] == val,
+                                    )['name'];
+                                  });
+                                },
+                                validator: (value) => value == null
+                                    ? Localization.translate(
+                                        'اختر مكان التخزين',
+                                        lang,
+                                      )
+                                    : null,
+                              ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1169,9 +1245,10 @@ class _AchatScreenState extends State<AchatScreen>
                     style: TextStyle(fontFamily: 'Cairo', color: _textDim),
                   ),
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _blue,
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _blue,
+                    side: BorderSide(color: _blue),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -1209,10 +1286,12 @@ class _AchatScreenState extends State<AchatScreen>
                       final newAchatId = await widget.db.insertAchat(
                         invoiceCtrl.text.trim(),
                         selectedSupplierName ?? 'Unknown',
-                        0.0, // Initial total is 0 until items are added
+                        0.0,
                         supplierId: selectedSupplierId,
                         locationId: selectedLocationId,
                         createdAt: selectedDate.toIso8601String(),
+                        isWorkshop: _effectiveIsWorkshop,
+                        activityType: _effectiveIsWorkshop ? 'workshop' : 'store',
                       );
 
                       _refreshList();
@@ -1225,6 +1304,7 @@ class _AchatScreenState extends State<AchatScreen>
                             achatId: newAchatId,
                             invoiceNumber: invoiceCtrl.text.trim(),
                             supplierName: selectedSupplierName!,
+                            autoOpenPicker: false,
                           ),
                         ),
                       );
@@ -1241,15 +1321,95 @@ class _AchatScreenState extends State<AchatScreen>
                     }
                   },
                   child: Text(
-                    Localization.translate(
-                      'حفظ وتسجيل',
-                      Provider.of<AppSettingsProvider>(context).language,
-                    ),
+                    Localization.translate('حفظ وتسجيل', lang),
                     style: const TextStyle(
                       fontFamily: 'Cairo',
-                      color: Colors.white,
                     ),
                   ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                  label: Text(
+                    Localization.translate('حفظ وإضافة عناصر', lang),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () async {
+                    if (!formKey.currentState!.validate()) return;
+                    if (selectedSupplierId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            Localization.translate(
+                              'الرجاء اختيار المورد',
+                              lang,
+                            ),
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    if (selectedLocationId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            Localization.translate(
+                              'الرجاء اختيار مكان التخزين',
+                              lang,
+                            ),
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final newAchatId = await widget.db.insertAchat(
+                        invoiceCtrl.text.trim(),
+                        selectedSupplierName ?? 'Unknown',
+                        0.0,
+                        supplierId: selectedSupplierId,
+                        locationId: selectedLocationId,
+                        createdAt: selectedDate.toIso8601String(),
+                        isWorkshop: _effectiveIsWorkshop,
+                        activityType: _effectiveIsWorkshop ? 'workshop' : 'store',
+                      );
+
+                      _refreshList();
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AchatDetailsScreen(
+                            achatId: newAchatId,
+                            invoiceNumber: invoiceCtrl.text.trim(),
+                            supplierName: selectedSupplierName!,
+                            autoOpenPicker: true,
+                          ),
+                        ),
+                      );
+                      _refreshList();
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${Localization.translate('حدث خطأ أثناء الحفظ: ', lang)}$e',
+                          ),
+                        ),
+                      );
+                    }
+                  },
                 ),
               ],
             ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
@@ -20,6 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'settings/app_settings.dart';
 import 'settings/localization.dart';
+import 'widgets/password_reset_dialog.dart';
 
 // Explicitly provide the OAuth web client used to request the Google ID
 // token. This avoids relying on a generated Android resource, which can be
@@ -87,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen>
     var value = raw.trim().toLowerCase();
     if (value.isEmpty) return null;
     if (!value.contains('@')) value = '$value@gmail.com';
-    if (!RegExp(r'^[^@\s]+@gmail\.com$').hasMatch(value)) return null;
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)) return null;
     return value;
   }
 
@@ -95,23 +97,13 @@ class _LoginScreenState extends State<LoginScreen>
     final normalized = _normalizeGmailAddress(_emailController.text);
     if (normalized == null) {
       setState(() {
-        _errorMessage = 'يرجى استعمال بريد Gmail صحيح ينتهي بـ @gmail.com.';
+        _errorMessage = 'يرجى إدخال بريد إلكتروني صحيح.';
         _isLoading = false;
       });
       return false;
     }
     _emailController.text = normalized;
     return true;
-  }
-
-  void _onGmailLocalPartChanged(String value) {
-    final at = value.indexOf('@');
-    if (at < 0) return;
-    final localPart = value.substring(0, at);
-    _emailController.value = TextEditingValue(
-      text: localPart,
-      selection: TextSelection.collapsed(offset: localPart.length),
-    );
   }
 
   @override
@@ -266,54 +258,21 @@ class _LoginScreenState extends State<LoginScreen>
     return '${_t('حدث خطأ')}: $e';
   }
 
-  Future<void> _resetPassword() async {
-    if (!_requireGmailAddress()) return;
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      setState(() {
-        _errorMessage =
-            'يرجى كتابة البريد الإلكتروني أولاً لإرسال رابط استعادة كلمة المرور.';
-      });
-      return;
-    }
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
-    try {
-      await _auth.sendPasswordResetEmail(email);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              Localization.translate(
-                'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى مراجعة علبة الوارد.',
-                Provider.of<AppSettingsProvider>(
-                  context,
-                  listen: false,
-                ).language,
-              ),
-              style: TextStyle(fontFamily: 'Cairo'),
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = _getFriendlyErrorMessage(e);
-      });
-    } catch (e) {
-      setState(() {
-        _errorMessage = _getFriendlyErrorMessage(e);
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+  void _resetPassword() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PasswordResetDialog(
+        initialEmail: _emailController.text.trim(),
+        onSuccess: (newPassword) {
+          _passwordController.text = newPassword;
+          _confirmPasswordController.text = newPassword;
+          setState(() {
+            _errorMessage = '';
+          });
+        },
+      ),
+    );
   }
 
   Future<void> _syncSupabasePasswordSession() async {
@@ -361,16 +320,20 @@ class _LoginScreenState extends State<LoginScreen>
     }
     await prefs.setString('user_role', account.role);
     await prefs.setString('permissions_json', jsonEncode(account.permissions));
-    await CloudSyncService().init();
-    final workshopSyncReady = await SupabaseWorkshopSyncService().ensureStarted(
-      timeout: const Duration(seconds: 30),
+
+    // Authentication and membership are already valid at this point. Move
+    // the root UI immediately instead of making login wait for database sync;
+    // a slow/failed sync used to leave the login page visible until restart
+    // even though Supabase had persisted a valid session.
+    _auth.publishCurrentSession();
+    unawaited(
+      CloudSyncService()
+          .init()
+          .then((_) => SupabaseWorkshopSyncService().start())
+          .catchError((error) {
+            debugPrint('Post-login synchronization startup failed: $error');
+          }),
     );
-    if (!workshopSyncReady) {
-      throw const AppAuthException(
-        'workshop-sync-not-ready',
-        'تم تسجيل الدخول، لكن تعذر بدء مزامنة بيانات الورشة.',
-      );
-    }
   }
 
   /// Completes the one-time bridge after the old Firebase identity has been
@@ -660,7 +623,6 @@ class _LoginScreenState extends State<LoginScreen>
       if (account == null ||
           _isSyntheticApplicationAdminAccount(user, account)) {
         if (!kIsWeb && defaultTargetPlatform != TargetPlatform.windows) {
-          await _auth.signOut();
           final migrated = await _tryLegacyPasswordMigration();
           if (migrated) return;
           account = await SupabaseAccountService().loadCurrentAccount();
@@ -802,6 +764,7 @@ class _LoginScreenState extends State<LoginScreen>
         jsonEncode(account.permissions),
       );
       SupabaseWorkshopSyncService().start();
+      _auth.publishCurrentSession();
     } catch (error) {
       if (mounted)
         setState(() => _errorMessage = _getFriendlyErrorMessage(error));
@@ -2086,10 +2049,9 @@ class _LoginScreenState extends State<LoginScreen>
                                   onSubmitted: (_) =>
                                       _passwordFocusNode.requestFocus(),
                                   keyboardType: TextInputType.emailAddress,
-                                  onChanged: _onGmailLocalPartChanged,
                                   inputFormatters: [
-                                    FilteringTextInputFormatter.allow(
-                                      RegExp(r'[A-Za-z0-9._%+\-]'),
+                                    FilteringTextInputFormatter.deny(
+                                      RegExp(r'\s'),
                                     ),
                                   ],
                                   style: const TextStyle(
@@ -2101,6 +2063,11 @@ class _LoginScreenState extends State<LoginScreen>
                                       'البريد الإلكتروني',
                                       lang,
                                     ),
+                                    hintText: 'name@gmail.com',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white.withOpacity(0.3),
+                                      fontFamily: 'Cairo',
+                                    ),
                                     labelStyle: const TextStyle(
                                       color: Colors.white70,
                                       fontFamily: 'Cairo',
@@ -2110,11 +2077,6 @@ class _LoginScreenState extends State<LoginScreen>
                                     prefixIcon: const Icon(
                                       Icons.email_outlined,
                                       color: Colors.white60,
-                                    ),
-                                    suffixText: '@gmail.com',
-                                    suffixStyle: const TextStyle(
-                                      color: Colors.white70,
-                                      fontFamily: 'Cairo',
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),

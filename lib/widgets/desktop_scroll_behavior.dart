@@ -341,7 +341,10 @@ class _DesktopScrollableRegistration {
   Rect? get bounds {
     if (!context.mounted) return null;
     final route = ModalRoute.of(context);
-    if (route != null && !route.isActive) return null;
+    // isActive remains true for a page covered by a dialog. isCurrent is the
+    // correct guard: a wheel event over a modal barrier must never scroll the
+    // hidden quantities table behind it.
+    if (route != null && !route.isCurrent) return null;
     var hidden = false;
     try {
       context.visitAncestorElements((element) {

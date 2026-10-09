@@ -1690,7 +1690,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   bool _showSearch = false;
   bool _showFilters = false;
   final ScrollController _desktopTableScrollController = ScrollController();
-  final ScrollController _treasuryVerticalScrollController = ScrollController();
+  final ScrollController _desktopTreasuryScrollController = ScrollController();
+  final ScrollController _mobileTreasuryScrollController = ScrollController();
 
   List<Map<String, dynamic>> _clients = [];
   List<Map<String, dynamic>> _workers = [];
@@ -1715,7 +1716,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   void dispose() {
     _syncSub?.cancel();
     _desktopTableScrollController.dispose();
-    _treasuryVerticalScrollController.dispose();
+    _desktopTreasuryScrollController.dispose();
+    _mobileTreasuryScrollController.dispose();
     for (final controller in _treasuryColumnControllers.values) {
       controller.dispose();
     }
@@ -2864,6 +2866,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     final lang = settingsProvider.language;
     final currency = Localization.translate('د.ج', lang);
     final formatter = NumberFormat('#,##0.00');
+    final treasuryVerticalController = MediaQuery.sizeOf(context).width >= 900
+        ? _desktopTreasuryScrollController
+        : _mobileTreasuryScrollController;
 
     final bool isDark = Theme
         .of(context)
@@ -2925,7 +2930,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : DesktopScrollFallback(
-        controller: _treasuryVerticalScrollController,
+        controller: treasuryVerticalController,
         child: LayoutBuilder(
           builder: (context, viewport) =>
               Column(
@@ -3395,10 +3400,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                         });
                       },
                       verticalScrollController:
-                      _treasuryVerticalScrollController,
+                      _desktopTreasuryScrollController,
                     )
                         : ListView.builder(
-                      controller: _treasuryVerticalScrollController,
+                      controller: _mobileTreasuryScrollController,
                       primary: false,
                       itemCount: _filteredTransactions.length + 1,
                       // +1 for big balance card

@@ -2133,22 +2133,26 @@ class WindowPainter extends CustomPainter {
     final f1 = sortedFrames[0];
     final f2 = sortedFrames[1];
 
-    // Keep the real 90-degree plan large enough to be unmistakable. The old
-    // fixed thumbnail looked like a legend instead of the selected view.
-    final double cardW = (w * 0.44).clamp(210.0, 340.0).toDouble();
-    final double cardH = (h * 0.34).clamp(165.0, 245.0).toDouble();
-    final double cardX = math.max(10.0, w - cardW - 10.0);
+    // A large elevation preview is easier to understand than the former tiny
+    // plan-view legend. It intentionally stays an overlay: the developed 2D
+    // drawing underneath remains the editable/cutting geometry.
+    final double cardW = (w * 0.72).clamp(300.0, 620.0).toDouble();
+    final double cardH = (h * 0.48).clamp(220.0, 410.0).toDouble();
+    final double cardX = math.max(10.0, (w - cardW) / 2);
     final double cardY = math.max(10.0, h - cardH - 10.0);
     final cardRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(cardX, cardY, cardW, cardH),
-      const Radius.circular(8.0),
+      const Radius.circular(12.0),
     );
 
-    // Card background with subtle shadow
+    canvas.drawRRect(
+      cardRect.shift(const Offset(0, 4)),
+      Paint()..color = Colors.black.withValues(alpha: 0.16),
+    );
     canvas.drawRRect(
       cardRect,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.94)
+        ..color = Colors.white.withValues(alpha: 0.97)
         ..style = PaintingStyle.fill,
     );
     canvas.drawRRect(
@@ -2159,13 +2163,12 @@ class WindowPainter extends CustomPainter {
         ..strokeWidth = 1.2,
     );
 
-    // Title: مسقط أفقي 90°
     final titlePainter = TextPainter(
       text: const TextSpan(
-        text: '📐 مسقط أفقي (Plan 90°)',
+        text: 'منظور نافذة زاوية 90°  |  Vue d\'angle',
         style: TextStyle(
           color: Color(0xFF0F172A),
-          fontSize: 10.5,
+          fontSize: 11.5,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -2176,141 +2179,90 @@ class WindowPainter extends CustomPainter {
       Offset(cardX + cardW - titlePainter.width - 10, cardY + 8),
     );
 
-    // Corner vertex in plan view
-    final corner = Offset(cardX + cardW - 55, cardY + 55);
+    final top = cardY + 40.0;
+    final bottom = cardY + cardH - 34.0;
+    final cornerX = cardX + cardW * 0.52;
+    final outerInset = 22.0;
+    final depth = math.min(30.0, cardW * 0.06);
+    final left = Path()
+      ..moveTo(cardX + outerInset, top + depth)
+      ..lineTo(cornerX, top)
+      ..lineTo(cornerX, bottom)
+      ..lineTo(cardX + outerInset, bottom - depth)
+      ..close();
+    final right = Path()
+      ..moveTo(cornerX, top)
+      ..lineTo(cardX + cardW - outerInset, top + depth)
+      ..lineTo(cardX + cardW - outerInset, bottom - depth)
+      ..lineTo(cornerX, bottom)
+      ..close();
 
-    // Leg 1 (Frame 1): extends horizontally to the left
-    final double leg1Len = (cardW - 85.0).clamp(110.0, 230.0).toDouble();
-    const double legThick = 12.0;
-    final leg1Rect = Rect.fromLTRB(
-      corner.dx - leg1Len,
-      corner.dy - legThick / 2,
-      corner.dx,
-      corner.dy + legThick / 2,
-    );
-    canvas.drawRect(leg1Rect, _buildPaint(leg1Rect));
-    canvas.drawRect(
-      leg1Rect,
-      Paint()
-        ..color = _fb
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0,
-    );
-    // Glass line inside leg 1
-    canvas.drawLine(
-      Offset(corner.dx - leg1Len + 4, corner.dy),
-      Offset(corner.dx - 2, corner.dy),
-      Paint()
-        ..color = const Color(0xFF64B5F6)
-        ..strokeWidth = 2.0,
-    );
-
-    // Leg 2 (Frame 2): extends vertically downwards at 90°
-    final double leg2Len = (cardH - 85.0).clamp(75.0, 155.0).toDouble();
-    final leg2Rect = Rect.fromLTRB(
-      corner.dx - legThick / 2,
-      corner.dy,
-      corner.dx + legThick / 2,
-      corner.dy + leg2Len,
-    );
-    canvas.drawRect(leg2Rect, _buildPaint(leg2Rect));
-    canvas.drawRect(
-      leg2Rect,
-      Paint()
-        ..color = _fb
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0,
-    );
-    // Glass line inside leg 2
-    canvas.drawLine(
-      Offset(corner.dx, corner.dy + 2),
-      Offset(corner.dx, corner.dy + leg2Len - 4),
-      Paint()
-        ..color = const Color(0xFF64B5F6)
-        ..strokeWidth = 2.0,
-    );
-
-    // Corner profile: square tube at vertex
-    final tubeRect = Rect.fromCenter(
-      center: corner,
-      width: legThick + 3,
-      height: legThick + 3,
-    );
-    canvas.drawRect(
-      tubeRect,
-      Paint()
-        ..color = const Color(0xFF37474F)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawRect(
-      tubeRect,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.8,
-    );
-
-    // 90° angle arc between leg 1 and leg 2
-    final arcPaint = Paint()
-      ..color = const Color(0xFF1E88E5)
+    final glassPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(cardX, top),
+        Offset(cardX + cardW, bottom),
+        const [Color(0xFFE8F5FF), Color(0xFFBFE3FA)],
+      );
+    final framePaint = Paint()
+      ..color = const Color(0xFFF8FAFC)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawArc(
-      Rect.fromCircle(center: corner, radius: 20),
-      math.pi / 2,
-      math.pi / 2,
-      false,
-      arcPaint,
-    );
+      ..strokeWidth = 10.0;
+    final profilePaint = Paint()
+      ..color = const Color(0xFF475569)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    canvas.drawPath(left, glassPaint);
+    canvas.drawPath(right, glassPaint);
+    canvas.drawPath(left, framePaint);
+    canvas.drawPath(right, framePaint);
+    canvas.drawPath(left, profilePaint);
+    canvas.drawPath(right, profilePaint);
 
-    // Badge 90°
-    final badgePainter = TextPainter(
-      text: const TextSpan(
-        text: '90°',
-        style: TextStyle(
-          color: Color(0xFF1E88E5),
-          fontSize: 9.5,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    badgePainter.paint(canvas, Offset(corner.dx - 18, corner.dy + 7));
+    void drawGrid(Path clip, double x0, double x1, bool risesToCorner) {
+      canvas.save();
+      canvas.clipPath(clip);
+      final mid = (x0 + x1) / 2;
+      canvas.drawLine(Offset(mid, top - 5), Offset(mid, bottom + 5), profilePaint);
+      for (var i = 1; i <= 2; i++) {
+        final ratio = i / 3;
+        final yOuter = top + depth + (bottom - top - depth * 2) * ratio;
+        final yCorner = top + (bottom - top) * ratio;
+        canvas.drawLine(
+          risesToCorner ? Offset(x0, yOuter) : Offset(x0, yCorner),
+          risesToCorner ? Offset(x1, yCorner) : Offset(x1, yOuter),
+          profilePaint,
+        );
+      }
+      canvas.restore();
+    }
 
-    // Dimension labels
-    final l1Text = '${f1.width.toInt()} mm';
-    final l1Painter = TextPainter(
-      text: TextSpan(
-        text: l1Text,
-        style: const TextStyle(
-          color: Color(0xFF334155),
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    l1Painter.paint(
-      canvas,
-      Offset(corner.dx - leg1Len, corner.dy - legThick / 2 - 13),
-    );
+    drawGrid(left, cardX + outerInset, cornerX, true);
+    drawGrid(right, cornerX, cardX + cardW - outerInset, false);
 
-    final l2Text = '${f2.width.toInt()} mm';
-    final l2Painter = TextPainter(
-      text: TextSpan(
-        text: l2Text,
-        style: const TextStyle(
-          color: Color(0xFF334155),
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
+    final cornerPaint = Paint()
+      ..color = const Color(0xFF334155)
+      ..strokeWidth = 7.0;
+    canvas.drawLine(Offset(cornerX, top), Offset(cornerX, bottom), cornerPaint);
+    _draw90DegreeCornerBadge(canvas, Offset(cornerX, top + 8));
+
+    void label(String text, Offset at) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: const TextStyle(
+            color: Color(0xFF1565C0),
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    l2Painter.paint(
-      canvas,
-      Offset(corner.dx - l2Painter.width - 8, corner.dy + leg2Len - 12),
-    );
+        textDirection: TextDirection.ltr,
+      )..layout();
+      painter.paint(canvas, at);
+    }
+
+    label('${f1.width.toInt()} mm', Offset(cardX + 30, cardY + 24));
+    label('${f2.width.toInt()} mm', Offset(cardX + cardW - 90, cardY + 24));
+    label('${math.max(f1.height, f2.height).toInt()} mm', Offset(cardX + 8, bottom - 8));
   }
 
   double _slidingFrameWidth(double fallback) {
@@ -5450,14 +5402,11 @@ class WindowPainter extends CustomPainter {
           zone.slidingMontantReinforced['lateral_right'] ??
           false;
       // Determine whether this side of the sash is an outer or central meeting lateral montant:
-      // - 4 sashes: sash 0 left (outer), sash 1 right (meeting), sash 2 left (meeting), sash 3 right (outer)
-      // - 6 sashes with 3 tracks: sash 0 left (outer), sash 2 right (meeting), sash 3 left (meeting), sash 5 right (outer)
+      final int halfSashes = count ~/ 2;
       final bool isMeetingJunctionRight =
-          hasCentralMeeting &&
-          ((count == 4 && i == 1) || (count == 6 && i == 2));
+          hasCentralMeeting && (i == halfSashes - 1);
       final bool isMeetingJunctionLeft =
-          hasCentralMeeting &&
-          ((count == 4 && i == 2) || (count == 6 && i == 3));
+          hasCentralMeeting && (i == halfSashes);
 
       final bool isLateralLeft = (i == 0) || isMeetingJunctionLeft;
       final bool isLateralRight = (i == count - 1) || isMeetingJunctionRight;
@@ -5470,6 +5419,9 @@ class WindowPainter extends CustomPainter {
           !isLateralRight &&
           (i < count - 1) &&
           (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
+
+      final bool isLeftSquare = isLeftSlim || isMeetingJunctionLeft;
+      final bool isRightSquare = isRightSlim || isMeetingJunctionRight;
 
       final bool leftReinforced = (i == 0)
           ? leftLateralReinforced
@@ -5550,8 +5502,8 @@ class WindowPainter extends CustomPainter {
           zone.selectedDbColor,
           dimmed: (tg < maxTrack),
           isSlidingSash: true,
-          squareLeft: isLeftSlim,
-          squareRight: isRightSlim,
+          squareLeft: isLeftSquare,
+          squareRight: isRightSquare,
           t: t,
           topOffset: topOffset,
           isTopBound: isTopBound,
@@ -7327,15 +7279,16 @@ class WindowPainter extends CustomPainter {
         (zone?.content == ZoneContent.slidingSash) ||
         _isHandleSashProfile(zone);
 
-    // في BBC المنزلق (isSlidingPVC) نستخدم نفس المقبض العادي لا المنزلق
-    final bool isAluminumSliding =
-        isSlidingSash && !model.isPVC && !model.isSlidingPVC;
+    // في PVC المنزلق أو السلاسل التي لا تملك أونتروماتيك، لا نرسم أونتروماتيك أبداً
+    final bool canUseEntrematique =
+        isSlidingSash && model.supportsSlidingEntrematique;
 
     bool isSlidingHandle =
-        isSlidingSash && !model.isPVC && zone?.useClassicHandle != true;
+        canUseEntrematique && zone?.useClassicHandle != true;
 
     bool isClassicSlidingHandle =
-        isSlidingSash && !model.isPVC && zone?.useClassicHandle == true;
+        isSlidingSash && !model.isPVC && !model.isSlidingPVC &&
+        (zone?.useClassicHandle == true || !canUseEntrematique);
 
     final bool isMarechal =
         zone?.lockType == LockType.rouleau ||

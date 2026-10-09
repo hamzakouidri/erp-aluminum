@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/cloud_sync_service.dart';
 import '../widgets/resizable_columns_table.dart';
 import 'achat_item_picker.dart';
 
@@ -19,6 +20,7 @@ class AchatDetailsScreen extends StatefulWidget {
   final String invoiceNumber;
   final String supplierName;
   final SqlDatabase? db;
+  final bool autoOpenPicker;
 
   const AchatDetailsScreen({
     super.key,
@@ -26,6 +28,7 @@ class AchatDetailsScreen extends StatefulWidget {
     required this.invoiceNumber,
     required this.supplierName,
     this.db,
+    this.autoOpenPicker = false,
   });
 
   @override
@@ -56,6 +59,11 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
   String _originalInvoice = '';
   String _originalSupplier = '';
 
+  // حالة النافذة العائمة القابلة للتحريك (نافذة الويندوز)
+  bool _showMovablePicker = false;
+  bool _isPickerMinimized = false;
+  Offset _pickerOffset = const Offset(60, 40);
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +73,13 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     _invoiceController.text = widget.invoiceNumber;
     _supplierController.text = widget.supplierName;
     _loadAchatDetails();
+    if (widget.autoOpenPicker) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openItemPicker();
+        }
+      });
+    }
   }
 
   @override
@@ -84,6 +99,8 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
       final itemType = item['item_type'] as String? ?? 'Other';
       final colorId = item['color_id'] as int?;
 
+      final unitPrice = (item['price'] as num?)?.toDouble() ?? 0.0;
+
       if (quantity > 0 && itemId > 0) {
         await _db.updateInventory(
           itemId: itemId,
@@ -93,6 +110,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           quantityChange: quantity,
           transactionType: 'Purchase',
           referenceId: widget.achatId,
+          unitPrice: unitPrice > 0 ? unitPrice : null,
         );
       }
     }
@@ -138,14 +156,17 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
     if (!wasConfirmed && status == 'Confirmed') {
       await _processInventoryUpdate();
+      CloudSyncService().notifyChange();
     }
 
     if (!mounted) return;
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final achat = await _db.readAchatById(widget.achatId);
     final supplierId = achat?['supplier_id'] as int?;
+    final isInternal = (achat?['is_internal'] as num?)?.toInt() == 1 ||
+        achat?['activity_type'] == 'workshop_internal';
 
-    if (status == 'Confirmed' && paidAmount > 0) {
+    if (!isInternal && status == 'Confirmed' && paidAmount > 0) {
       final desc = 'دفع للمورد: $newSupplier - الفاتورة: $newInvoice';
       final recordedBy = settings.userDisplayName;
 
@@ -661,25 +682,33 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
   Future<void> _confirmAchat() async {
     if (_status == 'Confirmed') return;
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text(
-          'تأكيد الفاتورة',
-          style: TextStyle(fontFamily: 'Cairo'),
+        title: Text(
+          Localization.translate('تأكيد واستلام في المخزون', lang),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
-        content: const Text(
-          'هل تريد تأكيد هذه الفاتورة؟ بعد التأكيد ستصبح الفاتورة في حالة مؤكد.',
-          style: TextStyle(fontFamily: 'Cairo'),
+        content: Text(
+          Localization.translate(
+            'هل تريد تأكيد هذه الفاتورة وإدخال جميع عناصرها إلى المخزون؟ بعد التأكيد ستصبح الفاتورة مؤكدة ويتم تحديث كميات المخزون فوراً.',
+            lang,
+          ),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-          child: Text(_t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
+            child: Text(_t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
             onPressed: () => Navigator.pop(dialogContext, true),
-          child: Text(_t('تأكيد'), style: const TextStyle(fontFamily: 'Cairo')),
+            child: Text(
+              Localization.translate('تأكيد واستلام', lang),
+              style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -688,16 +717,17 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
     await _db.updateAchatStatus(widget.achatId, 'Confirmed');
     await _processInventoryUpdate();
+    CloudSyncService().notifyChange();
 
     if (!mounted) return;
     setState(() {
       _status = 'Confirmed';
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text(
-          'تم تأكيد الفاتورة بنجاح',
-          style: TextStyle(fontFamily: 'Cairo'),
+          Localization.translate('تم تأكيد الفاتورة وإدخال الكميات للمخزون بنجاح', lang),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
       ),
     );
@@ -751,16 +781,11 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     );
   }
 
-  Future<void> _openItemPicker() async {
-    final added = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AchatItemPicker(achatId: widget.achatId),
-      ),
-    );
-    if (added == true) {
-      await _loadAchatDetails();
-    }
+  void _openItemPicker() {
+    setState(() {
+      _showMovablePicker = true;
+      _isPickerMinimized = false;
+    });
   }
 
   Future<void> _returnAchatItem(Map<String, dynamic> item) async {
@@ -1575,6 +1600,31 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(Localization.translate('تفاصيل المشتريات', lang)),
+        actions: [
+          if (_status != 'Confirmed')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: _confirmAchat,
+                icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
+                label: Text(
+                  Localization.translate('تأكيد واستلام', lang),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -1728,6 +1778,39 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
+                                if (_status != 'Confirmed') ...[
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 48,
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF059669),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      onPressed: _confirmAchat,
+                                      icon: const Icon(
+                                        Icons.check_circle_outline,
+                                        color: Colors.white,
+                                      ),
+                                      label: Text(
+                                        Localization.translate(
+                                          'تأكيد واستلام في المخزون',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
                                 if (canEditInvoice)
                                   SizedBox(
                                     width: double.infinity,
@@ -2105,8 +2188,232 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                     ],
                   ),
                 ),
+                if (_showMovablePicker)
+                  _buildMovablePickerOverlay(context, lang),
               ],
             ),
+    );
+  }
+
+  Widget _buildMovablePickerOverlay(BuildContext context, AppLanguage lang) {
+    if (_isPickerMinimized) {
+      return PositionedDirectional(
+        bottom: 20,
+        end: 20,
+        child: Material(
+          elevation: 10,
+          borderRadius: BorderRadius.circular(30),
+          color: const Color(0xFF0F172A),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(30),
+            onTap: () => setState(() => _isPickerMinimized = false),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: const Color(0xFF38BDF8),
+                  width: 1.2,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.inventory_2_rounded,
+                    color: Color(0xFF38BDF8),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    Localization.translate('إضافة عناصر (مصغرة)', lang),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.open_in_full_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    tooltip: Localization.translate('استعادة', lang),
+                    onPressed: () => setState(() => _isPickerMinimized = false),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.redAccent,
+                      size: 16,
+                    ),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    tooltip: Localization.translate('إغلاق', lang),
+                    onPressed: () => setState(() => _showMovablePicker = false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final screenHeight = constraints.maxHeight;
+
+        // أحجام متجاوبة ومناسبة لشاشات الكمبيوتر واللوحي
+        final double winWidth = screenWidth >= 900
+            ? 780
+            : screenWidth >= 600
+                ? 600
+                : (screenWidth * 0.96);
+        final double winHeight = screenHeight >= 800
+            ? 620
+            : screenHeight >= 500
+                ? 500
+                : (screenHeight * 0.85);
+
+        final double maxLeft = (screenWidth - winWidth).clamp(0.0, double.infinity);
+        final double maxTop = (screenHeight - winHeight).clamp(0.0, double.infinity);
+        final double clampedX = _pickerOffset.dx.clamp(0.0, maxLeft);
+        final double clampedY = _pickerOffset.dy.clamp(0.0, maxTop);
+
+        return Positioned(
+          left: clampedX,
+          top: clampedY,
+          child: Material(
+            elevation: 16,
+            borderRadius: BorderRadius.circular(12),
+            shadowColor: Colors.black54,
+            child: Container(
+              width: winWidth,
+              height: winHeight,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFCBD5E1),
+                  width: 1.5,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(11),
+                child: Column(
+                  children: [
+                    // شريط العنوان بإطار يشبه الويندوز وقابل للسحب والتحريك
+                    GestureDetector(
+                      onPanUpdate: (details) {
+                        setState(() {
+                          _pickerOffset = Offset(
+                            _pickerOffset.dx + details.delta.dx,
+                            _pickerOffset.dy + details.delta.dy,
+                          );
+                        });
+                      },
+                      child: Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.drag_indicator_rounded,
+                              color: Colors.white54,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.all_inbox_rounded,
+                              color: Color(0xFF38BDF8),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                Localization.translate(
+                                  'المستودع - إضافة عناصر للفاتورة (اسحب للتحريك)',
+                                  lang,
+                                ),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // زر تصغير
+                            IconButton(
+                              icon: const Icon(
+                                Icons.remove_rounded,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 30,
+                                minHeight: 30,
+                              ),
+                              tooltip: Localization.translate('تصغير', lang),
+                              onPressed: () =>
+                                  setState(() => _isPickerMinimized = true),
+                            ),
+                            // زر إغلاق
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: Colors.redAccent,
+                                size: 18,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 30,
+                                minHeight: 30,
+                              ),
+                              tooltip: Localization.translate('إغلاق', lang),
+                              onPressed: () =>
+                                  setState(() => _showMovablePicker = false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // جسم النافذة: أداة اختيار المواد مع التحديث الفوري للجدول بالأسفل
+                    Expanded(
+                      child: AchatItemPicker(
+                        achatId: widget.achatId,
+                        isEmbedded: true,
+                        onItemAdded: () async {
+                          await _loadAchatDetails();
+                        },
+                        onClose: () =>
+                            setState(() => _showMovablePicker = false),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

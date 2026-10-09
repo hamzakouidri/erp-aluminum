@@ -6,6 +6,7 @@ import '../Commande/order_workspace_screen.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../widgets/order_profitability_dialog.dart';
 
 class SalesScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -1083,13 +1084,38 @@ class _SalesScreenState extends State<SalesScreen> {
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
             ),
-            trailing: Text(
-              '${_currencyFormatter.format(total)} دج',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-                fontSize: 14,
-              ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.analytics_rounded,
+                    color: Color(0xFF10B981),
+                    size: 22,
+                  ),
+                  tooltip: _tr(
+                    'تحليل الربحية والتكلفة',
+                    'Rentabilité & Coût',
+                    'Profitability & Cost',
+                    lang,
+                  ),
+                  onPressed: () {
+                    OrderProfitabilityDialog.show(
+                      context,
+                      orderData: order,
+                      db: widget.db,
+                    );
+                  },
+                ),
+                Text(
+                  '${_currencyFormatter.format(total)} دج',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
             onTap: () {
               openOrderInWorkspaceTab(

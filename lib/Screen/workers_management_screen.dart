@@ -741,6 +741,13 @@ class _WorkerCardState extends State<WorkerCard> {
       'local_json_backup': false,
       'full_manager_permissions': false,
       'co_manager': false,
+      'access_workshop': true,
+      'access_store': true,
+      'access_management': false,
+      'workshop_purchases': true,
+      'store_purchases': true,
+      'store_sales': true,
+      'internal_sales': true,
     };
     defaults.forEach((key, value) {
       if (!perms.containsKey(key)) perms[key] = value;
@@ -1594,6 +1601,21 @@ class _WorkerCardState extends State<WorkerCard> {
         'keys': const [
           'statistics',
           'accelerate_confirmed_invoices',
+        ],
+      },
+      {
+        'index': 9,
+        'title': _tr('محل بيع المواد وفصل الأنشطة (Magasin & Portée)', 'Magasin & Portée d\'activité', 'Materials Store & Scope', lang),
+        'icon': Icons.storefront_rounded,
+        'color': const Color(0xFFEA580C),
+        'keys': const [
+          'access_workshop',
+          'access_store',
+          'access_management',
+          'store_sales',
+          'store_purchases',
+          'workshop_purchases',
+          'internal_sales',
         ],
       },
     ];
@@ -3543,6 +3565,148 @@ class _WorkerCardState extends State<WorkerCard> {
               ],
             );
 
+            // 9️⃣ تصنيف محل بيع المواد ونطاقات العمل
+            final cat9Content = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'access_workshop',
+                    'access_store',
+                    'access_management',
+                    'store_sales',
+                    'store_purchases',
+                    'workshop_purchases',
+                    'internal_sales',
+                  ],
+                  viewOnlyKeys: const [
+                    'access_workshop',
+                    'access_store',
+                  ],
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'الدخول لنطاق الورشة (Atelier)',
+                      'Accès à la section Atelier',
+                      'Access Workshop Section',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'إظهار أو إخفاء عناصر الورشة والتصنيع لهذا المستخدم',
+                      'Afficher ou masquer les éléments de l\'atelier pour cet utilisateur',
+                      'Show or hide workshop elements for this user',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['access_workshop'] ?? true,
+                  onChanged: (val) => _updatePermission('access_workshop', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'الدخول لنطاق محل بيع المواد (Magasin)',
+                      'Accès à la section Magasin de matériaux',
+                      'Access Materials Store Section',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'إظهار أو إخفاء عناصر بيع المواد لهذا المستخدم',
+                      'Afficher ou masquer les éléments du magasin pour cet utilisateur',
+                      'Show or hide store elements for this user',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['access_store'] ?? true,
+                  onChanged: (val) => _updatePermission('access_store', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'الدخول لنطاق الإدارة العامة (Administration)',
+                      'Accès à la section Administration',
+                      'Access General Management Section',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  value: perms['access_management'] ?? false,
+                  onChanged: (val) => _updatePermission('access_management', val),
+                ),
+                const Divider(),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'مبيعات وفواتير محل المواد',
+                      'Ventes et facturation du magasin',
+                      'Store Sales & Invoicing',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  value: perms['store_sales'] ?? true,
+                  onChanged: (val) => _updatePermission('store_sales', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'مشتريات محل المواد المستقلة',
+                      'Achats du magasin de matériaux',
+                      'Materials Store Purchases',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  value: perms['store_purchases'] ?? true,
+                  onChanged: (val) => _updatePermission('store_purchases', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'مشتريات الورشة المستقلة',
+                      'Achats de l\'atelier',
+                      'Workshop Purchases',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  value: perms['workshop_purchases'] ?? true,
+                  onChanged: (val) => _updatePermission('workshop_purchases', val),
+                ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'تنفيذ البيع الداخلي والتحويل للورشة',
+                      'Exécuter les ventes internes vers l\'atelier',
+                      'Execute Internal Sales to Workshop',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _tr(
+                      'السماح بتحويل المواد تلقائياً من مخزن المحل إلى مخزن الورشة',
+                      'Autoriser le transfert automatique du stock magasin vers l\'atelier',
+                      'Allow automatic stock transfer from store to workshop warehouse',
+                      lang,
+                    ),
+                    style: switchSubTitleStyle,
+                  ),
+                  value: perms['internal_sales'] ?? true,
+                  onChanged: (val) => _updatePermission('internal_sales', val),
+                ),
+              ],
+            );
+
             final categoryWidgets = [
               cat0Content,
               cat1Content,
@@ -3553,6 +3717,7 @@ class _WorkerCardState extends State<WorkerCard> {
               cat6Content,
               cat7Content,
               cat8Content,
+              cat9Content,
             ];
 
             final isDesktop = MediaQuery.of(ctx).size.width >= 680;

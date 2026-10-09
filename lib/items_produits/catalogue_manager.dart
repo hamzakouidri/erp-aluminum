@@ -6,6 +6,8 @@ import '../sql_database.dart'; // تأكد من مسار ملف قاعدة ال�
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/widgets/section_image.dart';
+import 'package:database_data/services/supabase_catalog_sync_service.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:provider/provider.dart';
 
 class CatalogManagerScreen extends StatefulWidget {
@@ -26,35 +28,55 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
   Future<void> _confirmDelete(
     String title,
     String content,
-    VoidCallback onConfirm,
+    Future<void> Function() onConfirm,
   ) async {
     return showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
           _tr('تأكيد الحذف'),
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
         ),
         content: Text(
           _tr(
             'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
           ),
-          style: TextStyle(fontSize: 14),
+          style: const TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(_tr('إلغاء'), style: TextStyle(color: Colors.grey)),
+            child: Text(_tr('إلغاء'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              onConfirm();
+              try {
+                await onConfirm();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_tr('تمت العملية بنجاح')),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${_tr("حدث خطأ أثناء الحذف")}: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: Text(
               _tr('موافق، قم بالأرشفة'),
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
             ),
           ),
         ],
@@ -700,11 +722,6 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
         )['name']
         .toString()
         .toUpperCase();
-    bool isSlidingSashSubtypeAllowed =
-        (seriesType == 'Coulissant' ||
-            seriesType == 'منزلق' ||
-            seriesType == 'جرار') &&
-        (seriesName.contains('TPR') || seriesName.contains('HPS'));
     String profileType = _profiles
         .firstWhere(
           (p) => p['id'] == _selectedProfileId,
@@ -715,6 +732,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final codeCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final barLengthCtrl = TextEditingController(text: '5.8');
+    final thicknessCtrl = TextEditingController(text: '45.0');
     final glassDedCtrl = TextEditingController();
     bool hasThreePieceSash =
         (_currentSeries.firstWhere(
@@ -1020,6 +1038,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                     ),
                     SizedBox(height: 12),
+                    TextField(
+                      controller: thicknessCtrl,
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _tr('سماكة / عمق المقطع (mm) / Profile Depth/Thickness'),
+                      ),
+                    ),
+                    SizedBox(height: 12),
                   ],
                   if (selectedType != 'batmo' &&
                       selectedType != 'bouchon_batmo' &&
@@ -1229,18 +1257,33 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 onPressed: () async {
-                  if (codeCtrl.text.isNotEmpty &&
+                  final codeText = codeCtrl.text.trim();
+                  if (codeText.isNotEmpty &&
                       (selectedType == 'parclose' ||
                           selectedType == 'batmo' ||
                           selectedType == 'bouchon_batmo' ||
                           selectedType == 'renfort' ||
                           barLengthCtrl.text.isNotEmpty)) {
+                    final isDuplicate = _currentSections.any((s) =>
+                        s['code'].toString().trim().toUpperCase() ==
+                        codeText.toUpperCase());
+                    if (isDuplicate) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _tr('الكود التجاري موجود مسبقاً في هذه السلسلة! الرجاء استخدام كود مميز.'),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
                     await widget.db.insertSection(
                       seriesId: _selectedSeriesId!,
-                      code: codeCtrl.text,
-                      name: nameCtrl.text,
+                      code: codeText,
+                      name: nameCtrl.text.trim(),
                       type: selectedType,
-                      thickness: double.tryParse(visibleWidthCtrl.text) ?? 45.0,
+                      thickness: double.tryParse(thicknessCtrl.text) ?? 45.0,
                       barLength: double.tryParse(barLengthCtrl.text) ?? 5.8,
                       glassDeduction:
                           (selectedType == 'batmo' ||
@@ -1310,6 +1353,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     );
     final barLengthCtrl = TextEditingController(
       text: section['bar_length']?.toString() ?? '5.8',
+    );
+    final thicknessCtrl = TextEditingController(
+      text: section['thickness']?.toString() ?? '45.0',
     );
     final glassDedCtrl = TextEditingController(
       text: section['glass_deduction']?.toString() ?? '',
@@ -1682,6 +1728,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                     ),
                     SizedBox(height: 12),
+                    TextField(
+                      controller: thicknessCtrl,
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _tr('سماكة / عمق المقطع (mm) / Profile Depth/Thickness'),
+                      ),
+                    ),
+                    SizedBox(height: 12),
                   ],
                   if (selectedType != 'batmo' &&
                       selectedType != 'bouchon_batmo' &&
@@ -1963,22 +2019,38 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
-                  if (codeCtrl.text.isNotEmpty &&
+                  final codeText = codeCtrl.text.trim();
+                  if (codeText.isNotEmpty &&
                       (selectedType == 'parclose' ||
                           selectedType == 'batmo' ||
                           selectedType == 'bouchon_batmo' ||
                           selectedType == 'renfort' ||
                           barLengthCtrl.text.isNotEmpty)) {
+                    final isDuplicate = _currentSections.any((s) =>
+                        s['id'] != section['id'] &&
+                        s['code'].toString().trim().toUpperCase() ==
+                            codeText.toUpperCase());
+                    if (isDuplicate) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _tr('الكود التجاري موجود مسبقاً في هذه السلسلة! الرجاء استخدام كود مميز.'),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
                     try {
                       await widget.db.updateSection(section['id'] as int, {
-                        'code': codeCtrl.text,
-                        'name': nameCtrl.text,
+                        'code': codeText,
+                        'name': nameCtrl.text.trim(),
                         'type': selectedType,
                         'is_frame': isFrameRole ? 1 : 0,
                         'is_sash': isSashRole ? 1 : 0,
                         'is_mullion': isMullionRole ? 1 : 0,
                         'thickness':
-                            double.tryParse(visibleWidthCtrl.text) ?? 45.0,
+                            double.tryParse(thicknessCtrl.text) ?? 45.0,
                         'bar_length':
                             double.tryParse(barLengthCtrl.text) ?? 5.8,
                         'glass_deduction':
@@ -2184,7 +2256,178 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
             : Colors.blue,
         centerTitle: true,
         actions: [
-          if (isUserAdmin)
+          // زر تنزيل وتحديث الكتالوج من السحابة
+          IconButton(
+            icon: Icon(Icons.cloud_download, color: Colors.white),
+            tooltip: Localization.translate('تنزيل الكتالوج وتحديثه من السحابة', lang),
+            onPressed: () async {
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                useRootNavigator: true,
+                builder: (dialogCtx) => const PopScope(
+                  canPop: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 16),
+                        Text(
+                          'جاري تنزيل وتحديث الكتالوج من السحابة...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontFamily: 'Cairo',
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+
+              String? errorMessage;
+              bool success = false;
+              String successMessage = '';
+
+              try {
+                // محاولة التنزيل عبر مزود الكتالوج المركزي في Supabase
+                await SupabaseCatalogSyncService().downloadGlobalCatalog(allowMissing: false);
+                await _loadProfiles();
+                final summary = SupabaseCatalogSyncService().lastCatalogDownloadSummary;
+                if (_profiles.isNotEmpty) {
+                  success = true;
+                  successMessage = summary.isNotEmpty
+                      ? '$summary\nعدد الأنظمة المتوفرة: ${_profiles.length}'
+                      : 'تم تنزيل الكتالوج بنجاح! عدد الأنظمة: ${_profiles.length}';
+                } else {
+                  errorMessage = summary.isNotEmpty
+                      ? '$summary\nتنبيه: الكتالوج في السحابة لا يحتوي على أنظمة (فارغ).'
+                      : 'تنبيه: تم الاتصال بالسحابة ولكن الكتالوج فارغ ولم يتم العثور على أنظمة.';
+                }
+              } catch (e) {
+                // إذا فشل تنزيل Supabase، نحاول التنزيل الاحتياطي عبر CloudSyncService
+                try {
+                  await CloudSyncService().downloadGlobalCatalog();
+                  await _loadProfiles();
+                  if (_profiles.isNotEmpty) {
+                    success = true;
+                    successMessage = 'تم تنزيل الكتالوج عبر المزامنة الاحتياطية بنجاح! الأنظمة: ${_profiles.length}';
+                  } else {
+                    errorMessage = 'تمت المزامنة لكن الكتالوج السحابي فارغ (0 أنظمة).';
+                  }
+                } catch (fallbackErr) {
+                  errorMessage = 'تعذر تنزيل الكتالوج:\n$e';
+                }
+              } finally {
+                if (context.mounted) {
+                  Navigator.of(context, rootNavigator: true).pop();
+                }
+              }
+
+              if (!context.mounted) return;
+
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      successMessage,
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              } else if (errorMessage != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      errorMessage,
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    backgroundColor: errorMessage.contains('فارغ') ? Colors.orange.shade800 : Colors.red,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              }
+            },
+          ),
+          if (isUserAdmin) ...[
+            // زر نشر ورفع الكتالوج إلى السحابة لجميع الهواتف
+            IconButton(
+              icon: Icon(Icons.cloud_upload, color: Colors.white),
+              tooltip: Localization.translate('رفع ونشر الكتالوج إلى السحابة (للمدير)', lang),
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text(Localization.translate('نشر الكتالوج العالمي', lang)),
+                    content: Text(
+                      'هل تريد رفع الكتالوج الحالي ونشره كنسخة رسمية عالمية لجميع أجهزة ورشات العمل والهواتف؟',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: Text(Localization.translate('إلغاء', lang)),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: Text('نعم، انشر الآن', style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm != true || !context.mounted) return;
+
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  useRootNavigator: true,
+                  builder: (_) => const PopScope(
+                    canPop: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                );
+                String? uploadError;
+                String? uploadSummary;
+                try {
+                  await SupabaseCatalogSyncService().uploadGlobalCatalog();
+                  uploadSummary = SupabaseCatalogSyncService().lastCatalogUploadSummary;
+                } catch (e) {
+                  uploadError = '$e';
+                } finally {
+                  if (context.mounted) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                  }
+                }
+
+                if (!context.mounted) return;
+
+                if (uploadError != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('فشل رفع الكتالوج: $uploadError'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        (uploadSummary != null && uploadSummary.isNotEmpty)
+                            ? 'تم نشر الكتالوج بنجاح: $uploadSummary'
+                            : 'تم رفع الكتالوج ونشره بنجاح!',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+            ),
             IconButton(
               icon: Icon(Icons.copy_all, color: Colors.white),
               tooltip: Localization.translate(
@@ -2397,6 +2640,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                 }
               },
             ),
+          ],
         ],
       ),
       // 🟢 تغليف بـ LayoutBuilder و SingleChildScrollView لمنع الانضغاط أفقياً
@@ -2839,19 +3083,79 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                         fallbackIcon: typeIcon,
                                         fallbackColor: typeColor,
                                       ),
-                                      // 🟢 منع تكسر النص
-                                      title: Text(
-                                        '${sec['code']} - ${sec['name']}',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      title: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${sec['code']} - ${sec['name']}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (sec['is_frame'] == 1 || sec['type'] == 'frame')
+                                            Container(
+                                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.blue.withValues(alpha: 0.5), width: 0.5),
+                                              ),
+                                              child: Text('إطار', style: TextStyle(fontSize: 10, color: Colors.blue[800], fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                            ),
+                                          if (sec['is_sash'] == 1 || sec['type'].toString().startsWith('sash'))
+                                            Container(
+                                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.green.withValues(alpha: 0.5), width: 0.5),
+                                              ),
+                                              child: Text(
+                                                sec['type'] == 'sash_central' ? 'ضلفة وسيطة' : (sec['type'] == 'sash_traverse' ? 'عارضة ضلفة' : 'ضلفة'),
+                                                style: TextStyle(fontSize: 10, color: Colors.green[800], fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          if (sec['is_mullion'] == 1 || sec['type'] == 'mullion')
+                                            Container(
+                                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.orange.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 0.5),
+                                              ),
+                                              child: Text('تيار/تقسيم', style: TextStyle(fontSize: 10, color: Colors.orange[900], fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                            ),
+                                          if (sec['type'] == 'parclose')
+                                            Container(
+                                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.purple.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.purple.withValues(alpha: 0.5), width: 0.5),
+                                              ),
+                                              child: Text('باركلوز', style: TextStyle(fontSize: 10, color: Colors.purple[800], fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                            ),
+                                        ],
                                       ),
-                                      subtitle: Text(
-                                        'سماكة: ${sec['thickness']}mm | ركوب: ${sec['glass_deduction']}mm | وزن: ${sec['weight_per_meter']} Kg/m',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      subtitle: Padding(
+                                        padding: const EdgeInsets.only(top: 3.0),
+                                        child: Text(
+                                          'عمق: ${sec['thickness']}mm'
+                                          '${((sec['visible_width'] as num?)?.toDouble() ?? 0.0) > 0 ? " | عرض ظاهر: ${sec['visible_width']}mm" : ""}'
+                                          ' | ركوب: ${sec['glass_deduction']}mm | وزن: ${sec['weight_per_meter']} Kg/m'
+                                          '${((sec['bar_length'] as num?)?.toDouble() ?? 0.0) > 0 ? " | بار: ${sec['bar_length']}m" : ""}',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(fontSize: 11, fontFamily: 'Cairo'),
+                                        ),
                                       ),
                                       trailing: isUserAdmin
                                           ? Row(
@@ -2868,19 +3172,23 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                       ),
                                                 ),
                                                 IconButton(
-                                                  icon: Icon(
+                                                  icon: const Icon(
                                                     Icons.delete,
                                                     color: Colors.red,
                                                   ),
-                                                  onPressed: () async {
-                                                    await widget.db
-                                                        .deleteSection(
-                                                          sec['id'],
-                                                        );
-                                                    _loadSections(
-                                                      _selectedSeriesId!,
-                                                    );
-                                                  },
+                                                  onPressed: () => _confirmDelete(
+                                                    'تأكيد الحذف',
+                                                    'هل أنت متأكد أنك تريد حذف هذا المقطع؟',
+                                                    () async {
+                                                      await widget.db
+                                                          .deleteSection(
+                                                            sec['id'],
+                                                          );
+                                                      _loadSections(
+                                                        _selectedSeriesId!,
+                                                      );
+                                                    },
+                                                  ),
                                                 ),
                                               ],
                                             )

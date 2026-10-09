@@ -711,7 +711,11 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     }
 
     // 2. Series Name (Gam)
-    String gamName = p.activeSeries?.name ?? p.loadedSeriesName ?? '';
+    String gamName = p.isShutterOnly
+        ? (curLang == AppLanguage.french
+            ? 'Volet'
+            : (curLang == AppLanguage.english ? 'Shutter' : 'ستار'))
+        : (p.activeSeries?.name ?? p.loadedSeriesName ?? '');
     if (gamName.isNotEmpty) {
       if (curLang == AppLanguage.french) {
         details.add('Gamme: $gamName');

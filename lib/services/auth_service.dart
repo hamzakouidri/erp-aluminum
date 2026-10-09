@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
@@ -34,7 +36,8 @@ class AppAuthService {
 
   static final AppAuthService _instance = AppAuthService._();
   Stream<AppAuthUser?>? _cachedAuthStateChanges;
-  AppAuthUser? _lastKnownUser;
+  final StreamController<AppAuthUser?> _authStateController =
+      StreamController<AppAuthUser?>.broadcast(sync: true);
 
   factory AppAuthService() => _instance;
 
@@ -51,33 +54,55 @@ class AppAuthService {
   AppAuthUser? get currentUser {
     if (usesSupabase) {
       final user = _fromSupabaseUser(_supabaseAuth.currentUser);
-      if (user != null) {
-        _lastKnownUser = user;
-        return user;
-      }
-      return _lastKnownUser;
+      // Once Supabase has no current session, never expose a stale user to
+      // guards such as SubscriptionChecker. Doing so leaves the signed-out
+      // app on a white "you must log in" page instead of LoginScreen.
+      return user;
     }
     return _fromFirebaseUser(_firebaseAuth.currentUser);
   }
 
   Stream<AppAuthUser?> get authStateChanges {
-    // Keep one stable stream instance. Returning a new mapped stream on every
-    // MyApp rebuild can make StreamBuilder unsubscribe during a Windows
-    // sign-out and miss the signed-out event, leaving the desktop frame stuck.
-    return _cachedAuthStateChanges ??= usesSupabase
-        ? _supabaseAuth.onAuthStateChange.map((state) {
-            if (state.event == supabase.AuthChangeEvent.signedOut) {
-              _lastKnownUser = null;
-              return null;
-            }
-            final user = _fromSupabaseUser(state.session?.user);
-            if (user != null) {
-              _lastKnownUser = user;
-              return user;
-            }
-            return _lastKnownUser;
-          })
-        : _firebaseAuth.authStateChanges().map(_fromFirebaseUser);
+    // Keep one stable broadcast stream and own the bridge to the provider.
+    // This lets signOut emit null synchronously, even if the provider's event
+    // is delayed or a widget resubscribes while the event is in flight.
+    if (_cachedAuthStateChanges != null) return _cachedAuthStateChanges!;
+    if (usesSupabase) {
+      _supabaseAuth.onAuthStateChange.listen((state) {
+        final user = _fromSupabaseUser(state.session?.user);
+        _authStateController.add(user);
+      });
+    } else {
+      _firebaseAuth.authStateChanges().listen((user) {
+        _authStateController.add(_fromFirebaseUser(user));
+      });
+    }
+    // Replay the provider's current value to every new listener. Supabase can
+    // restore (or replace) its local session between reading [currentUser]
+    // above MaterialApp and StreamBuilder attaching to this stream. A plain
+    // broadcast stream loses that event, leaving the login page visible until
+    // the application is restarted.
+    return _cachedAuthStateChanges = Stream<AppAuthUser?>.multi(
+      (controller) {
+        controller.add(currentUser);
+        final subscription = _authStateController.stream.listen(
+          controller.add,
+          onError: controller.addError,
+          onDone: controller.close,
+        );
+        controller.onCancel = subscription.cancel;
+      },
+      isBroadcast: true,
+    );
+  }
+
+  /// Publishes an already validated session to the root authentication gate.
+  ///
+  /// LoginScreen calls this only after the user's workshop membership and
+  /// local context have been loaded, so mobile and desktop transition without
+  /// requiring an application restart.
+  void publishCurrentSession() {
+    _authStateController.add(currentUser);
   }
 
   Future<AppAuthUser> signInWithEmailAndPassword({
@@ -86,16 +111,15 @@ class AppAuthService {
   }) async {
     try {
       if (usesSupabase) {
-        final response = await _supabaseAuth.signInWithPassword(
-          email: email.trim(),
-          password: password,
-        ).timeout(
-          const Duration(seconds: 15),
-          onTimeout: () => throw const AppAuthException(
-            'network-timeout',
-            'انتهت مهلة الاتصال بالخادم. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.',
-          ),
-        );
+        final response = await _supabaseAuth
+            .signInWithPassword(email: email.trim(), password: password)
+            .timeout(
+              const Duration(seconds: 15),
+              onTimeout: () => throw const AppAuthException(
+                'network-timeout',
+                'انتهت مهلة الاتصال بالخادم. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.',
+              ),
+            );
         final user = _fromSupabaseUser(response.user);
         if (user == null) {
           throw const AppAuthException(
@@ -200,11 +224,68 @@ class AppAuthService {
   }
 
   Future<void> sendPasswordResetEmail(String email) async {
+    final cleanEmail = email.trim();
     try {
       if (usesSupabase) {
-        await _supabaseAuth.resetPasswordForEmail(email.trim());
+        try {
+          await _supabaseAuth.resetPasswordForEmail(cleanEmail);
+          return;
+        } catch (supabaseError) {
+          // If Supabase fails (e.g. quota 402 or unconfigured emailer), try Firebase Auth as fallback.
+          try {
+            await _firebaseAuth.sendPasswordResetEmail(email: cleanEmail);
+            return;
+          } catch (_) {
+            throw _normalizeError(supabaseError);
+          }
+        }
       } else {
-        await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
+        await _firebaseAuth.sendPasswordResetEmail(email: cleanEmail);
+      }
+    } catch (error) {
+      throw _normalizeError(error);
+    }
+  }
+
+  /// Verifies an OTP recovery code and sets a new password.
+  Future<void> verifyOtpAndResetPassword({
+    required String email,
+    required String token,
+    required String newPassword,
+  }) async {
+    final cleanEmail = email.trim();
+    final cleanToken = token.trim();
+    try {
+      if (usesSupabase) {
+        try {
+          final res = await _supabaseAuth.verifyOTP(
+            email: cleanEmail,
+            token: cleanToken,
+            type: supabase.OtpType.recovery,
+          );
+          if (res.user != null || _supabaseAuth.currentUser != null) {
+            await _supabaseAuth.updateUser(
+              supabase.UserAttributes(password: newPassword),
+            );
+            return;
+          }
+        } catch (supabaseError) {
+          // Try Firebase confirm if token belongs to Firebase
+          try {
+            await _firebaseAuth.confirmPasswordReset(
+              code: cleanToken,
+              newPassword: newPassword,
+            );
+            return;
+          } catch (_) {
+            throw _normalizeError(supabaseError);
+          }
+        }
+      } else {
+        await _firebaseAuth.confirmPasswordReset(
+          code: cleanToken,
+          newPassword: newPassword,
+        );
       }
     } catch (error) {
       throw _normalizeError(error);
@@ -302,7 +383,10 @@ class AppAuthService {
   }
 
   Future<void> signOut() async {
-    _lastKnownUser = null;
+    // Switch the root auth gate to LoginScreen before network/plugin cleanup.
+    // Supabase will emit the same value again when local sign-out completes;
+    // duplicate null events are harmless and keep this path deterministic.
+    _authStateController.add(null);
     if (usesSupabase) {
       // A global sign-out may wait on the network on Windows. The local
       // session is the one that controls this app's auth gate, so clear it
@@ -340,10 +424,57 @@ class AppAuthService {
 
     // Preserve server status and transport details for accurate UI messages.
     if (error is supabase.AuthException) {
-      return AppAuthException(error.statusCode ?? 'auth-error', error.message);
+      final code = error.statusCode ?? 'auth-error';
+      final msg = error.message.toLowerCase();
+      if (code == '402' ||
+          msg.contains('exceed_egress_quota') ||
+          msg.contains('quota')) {
+        return const AppAuthException(
+          'quota-exceeded',
+          'تم تجاوز حصة نقل البيانات في خادم السحابة (Supabase). يرجى فك الحظر أو ترقية الباقة لاستئناف الخدمة.',
+        );
+      }
+      if (msg.contains('token has expired') ||
+          msg.contains('otp_expired') ||
+          code == 'otp_expired') {
+        return const AppAuthException(
+          'otp-expired',
+          'رمز التحقق منتهي الصلاحية، يرجى طلب رمز جديد.',
+        );
+      }
+      if (msg.contains('invalid token') ||
+          msg.contains('token is invalid') ||
+          code.contains('invalid')) {
+        return const AppAuthException(
+          'invalid-otp',
+          'رمز التحقق غير صحيح، يرجى التأكد من الرمز المدخل والمحاولة مجدداً.',
+        );
+      }
+      return AppAuthException(code, error.message);
     }
     if (error is firebase.FirebaseAuthException) {
+      final code = error.code.toLowerCase().trim();
+      final msg = (error.message ?? '').toLowerCase();
+      if (code == 'expired-action-code' || msg.contains('expired')) {
+        return const AppAuthException(
+          'otp-expired',
+          'انتهت صلاحية رمز أو رابط التحقق، يرجى طلب رمز جديد.',
+        );
+      }
+      if (code == 'invalid-action-code' || msg.contains('invalid')) {
+        return const AppAuthException(
+          'invalid-otp',
+          'رمز أو كود التحقق غير صحيح، يرجى التأكد وإعادة المحاولة.',
+        );
+      }
       return AppAuthException(error.code, error.message ?? error.code);
+    }
+    final errStr = error.toString().toLowerCase();
+    if (errStr.contains('402') || errStr.contains('exceed_egress_quota')) {
+      return const AppAuthException(
+        'quota-exceeded',
+        'تم تجاوز حصة نقل البيانات في خادم السحابة (Supabase). يرجى فك الحظر أو ترقية الباقة لاستئناف الخدمة.',
+      );
     }
     return error;
   }

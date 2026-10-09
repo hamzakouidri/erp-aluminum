@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'Screen/app_workspace_shell.dart';
 import 'settings/shortcut_bindings.dart';
 import 'dart:io' show Platform;
 
@@ -6,18 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
 import 'package:provider/provider.dart';
-import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/app_theme.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/services/supabase_config.dart';
-import 'package:database_data/login_screen.dart';
-import 'package:database_data/widgets/desktop_window_frame.dart';
 import 'package:database_data/widgets/auth_session_view.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
-import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
@@ -81,14 +78,17 @@ class _AppBootstrapState extends State<AppBootstrap> {
     try {
       _configureDatabaseFactory();
 
-      if (!SupabaseConfig.isConfigured) {
-        throw StateError('إعدادات Supabase غير مكتملة.');
+      if (SupabaseConfig.isConfigured) {
+        try {
+          await supabase.Supabase.initialize(
+            url: SupabaseConfig.url,
+            publishableKey: SupabaseConfig.publishableKey,
+          ).timeout(const Duration(seconds: 5));
+        } catch (supabaseError) {
+          debugPrint('Supabase initialization offline/timeout warning: $supabaseError');
+          // التطبيق يواصل العمل بدون اتصال بالاعتماد الكامل على قاعدة بيانات SQLite المحلية
+        }
       }
-      await supabase.Supabase.initialize(
-        url: SupabaseConfig.url,
-        publishableKey: SupabaseConfig.publishableKey,
-      );
-
       // Initialize notification service (non-blocking — errors are swallowed).
       unawaited(
         OrderNotificationService()
@@ -232,6 +232,17 @@ class _AppBootstrapState extends State<AppBootstrap> {
                           icon: const Icon(Icons.refresh),
                           label: const Text('إعادة المحاولة'),
                         ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _ready = true;
+                              _startupError = null;
+                            });
+                          },
+                          icon: const Icon(Icons.offline_pin_outlined),
+                          label: const Text('المتابعة في وضع عدم الاتصال (أوفلاين)'),
+                        ),
                       ],
                     ),
             ),
@@ -239,6 +250,59 @@ class _AppBootstrapState extends State<AppBootstrap> {
         ),
       ),
     );
+  }
+}
+
+class _DialogButtonCandidate {
+  final VoidCallback onPressed;
+  final String text;
+  final bool isPrimaryType;
+
+  const _DialogButtonCandidate({
+    required this.onPressed,
+    required this.text,
+    required this.isPrimaryType,
+  });
+}
+
+class _AppDialogObserver extends NavigatorObserver {
+  final List<Route<dynamic>> _routeStack = [];
+
+  Route<dynamic>? get topRoute =>
+      _routeStack.isNotEmpty ? _routeStack.last : null;
+
+  bool get isDialogOpen {
+    final top = topRoute;
+    if (top == null) return false;
+    return top is PopupRoute;
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routeStack.add(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routeStack.remove(route);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routeStack.remove(route);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (oldRoute != null) {
+      final index = _routeStack.indexOf(oldRoute);
+      if (index != -1 && newRoute != null) {
+        _routeStack[index] = newRoute;
+      } else {
+        _routeStack.remove(oldRoute);
+        if (newRoute != null) _routeStack.add(newRoute);
+      }
+    }
   }
 }
 
@@ -253,6 +317,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  final _AppDialogObserver _dialogObserver = _AppDialogObserver();
 
   /// الوقت الذي دخل فيه التطبيق إلى الخلفية.
   /// يُستخدم لحساب مدة الغياب قبل السماح بالمزامنة عند الرجوع.
@@ -320,25 +385,243 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// Desktop dialogs already expose focusable Material buttons, but a root
-  /// keyboard listener can otherwise leave Enter unhandled after Tab/arrow
-  /// navigation. Invoke the focused dialog button directly so Yes/No always
-  /// performs the action currently highlighted by the keyboard.
-  bool _activateFocusedDialogButton(KeyDownEvent event) {
+  /// Global Dialog Enter Key Handler:
+  /// Confirms any open dialog (delete, confirm, save, add, OK, etc.) upon pressing Enter.
+  bool _handleDialogEnterKey(KeyDownEvent event) {
     if (event.logicalKey != LogicalKeyboardKey.enter &&
         event.logicalKey != LogicalKeyboardKey.numpadEnter) {
       return false;
     }
+
+    // 1. Check if the top route in our navigator is a dialog / popup route:
+    final topRoute = _dialogObserver.topRoute;
+    if (topRoute != null && topRoute is PopupRoute) {
+      if (_confirmDialogRoute(topRoute)) return true;
+    }
+
+    // 2. Fallback check: maybe focused widget's ModalRoute is a dialog / popup route:
     final focusedContext = FocusManager.instance.primaryFocus?.context;
-    if (focusedContext == null) return false;
-    if (focusedContext.widget is EditableText ||
-        focusedContext.findAncestorWidgetOfExactType<EditableText>() != null)
-      return false;
-    const intent = ActivateIntent();
-    final action = Actions.maybeFind<ActivateIntent>(focusedContext);
-    if (action == null || !action.isEnabled(intent)) return false;
-    Actions.of(focusedContext).invokeAction(action, intent, focusedContext);
+    if (focusedContext != null) {
+      final route = ModalRoute.of(focusedContext);
+      if (route != null && route is PopupRoute) {
+        if (_confirmDialogRoute(route)) return true;
+      }
+      // If a button is explicitly focused, activate it even outside popup:
+      if (focusedContext.widget is! EditableText &&
+          focusedContext.findAncestorWidgetOfExactType<EditableText>() ==
+              null) {
+        const intent = ActivateIntent();
+        final action = Actions.maybeFind<ActivateIntent>(focusedContext);
+        if (action != null && action.isEnabled(intent)) {
+          Actions.of(
+            focusedContext,
+          ).invokeAction(action, intent, focusedContext);
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  bool _confirmDialogRoute(Route<dynamic> route) {
+    final dialogContext = route is ModalRoute ? route.subtreeContext : null;
+    if (dialogContext == null) return false;
+
+    // Check if an explicit widget/button inside the dialog is currently focused:
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext != null) {
+      if (focusedContext.widget is EditableText) {
+        final editable = focusedContext.widget as EditableText;
+        if ((editable.maxLines ?? 1) > 1) {
+          // Multiline text input: allow Enter to type a newline
+          return false;
+        }
+        // Single-line text input: pressing Enter confirms the dialog
+      } else {
+        const intent = ActivateIntent();
+        final action = Actions.maybeFind<ActivateIntent>(focusedContext);
+        if (action != null && action.isEnabled(intent)) {
+          Actions.of(
+            focusedContext,
+          ).invokeAction(action, intent, focusedContext);
+          return true;
+        }
+      }
+    }
+
+    // Collect all interactive buttons within the dialog subtree:
+    final candidates = <_DialogButtonCandidate>[];
+
+    void visit(Element element) {
+      final widget = element.widget;
+      if (widget is ButtonStyleButton && widget.onPressed != null) {
+        final text = _extractTextFromElement(element);
+        candidates.add(
+          _DialogButtonCandidate(
+            onPressed: widget.onPressed!,
+            text: text,
+            isPrimaryType: widget is ElevatedButton || widget is FilledButton,
+          ),
+        );
+      } else if (widget is MaterialButton && widget.onPressed != null) {
+        final text = _extractTextFromElement(element);
+        candidates.add(
+          _DialogButtonCandidate(
+            onPressed: widget.onPressed!,
+            text: text,
+            isPrimaryType: true,
+          ),
+        );
+      } else if (widget is InkWell && widget.onTap != null) {
+        final text = _extractTextFromElement(element);
+        if (text.isNotEmpty) {
+          candidates.add(
+            _DialogButtonCandidate(
+              onPressed: widget.onTap!,
+              text: text,
+              isPrimaryType: false,
+            ),
+          );
+        }
+      }
+      element.visitChildren(visit);
+    }
+
+    dialogContext.visitChildElements(visit);
+
+    if (candidates.isEmpty) return false;
+
+    // Pick the best confirmation button
+    _DialogButtonCandidate? best;
+    int bestScore = -100;
+
+    for (int i = 0; i < candidates.length; i++) {
+      final c = candidates[i];
+      final score = _scoreDialogButton(
+        c.text,
+        c.isPrimaryType,
+        index: i,
+        total: candidates.length,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+
+    if (best != null && bestScore > 0) {
+      best.onPressed();
+      return true;
+    }
+
+    // Fallback: trigger the last non-cancel button
+    final nonCancel = candidates.lastWhere(
+      (c) => !_isCancelButtonText(c.text),
+      orElse: () => candidates.last,
+    );
+    nonCancel.onPressed();
     return true;
+  }
+
+  bool _isCancelButtonText(String text) {
+    final lower = text.trim().toLowerCase();
+    const cancelKeywords = [
+      'إلغاء',
+      'الغاء',
+      'تراجع',
+      'لا',
+      'cancel',
+      'annuler',
+      'non',
+      'close',
+      'fermer',
+      'خروج',
+      'إغلاق',
+      'اغلاق',
+    ];
+    return cancelKeywords.any(
+      (k) => lower == k || lower.startsWith('$k ') || lower.endsWith(' $k'),
+    );
+  }
+
+  int _scoreDialogButton(
+    String text,
+    bool isPrimaryType, {
+    required int index,
+    required int total,
+  }) {
+    if (_isCancelButtonText(text)) {
+      return -100;
+    }
+
+    final lower = text.trim().toLowerCase();
+    int score = 10;
+
+    const confirmKeywords = [
+      'تأكيد',
+      'تاكيد',
+      'مسح',
+      'حذف',
+      'حفظ',
+      'نعم',
+      'موافق',
+      'إضافة',
+      'اضافة',
+      'تعديل',
+      'تطبيق',
+      'تم',
+      'قبول',
+      'متابعة',
+      'استمرار',
+      'إنشاء',
+      'انشاء',
+      'confirm',
+      'delete',
+      'supprimer',
+      'effacer',
+      'save',
+      'yes',
+      'oui',
+      'ok',
+      'valider',
+      'enregistrer',
+      'ajouter',
+      'modifier',
+      'appliquer',
+      'creer',
+      'submit',
+      'continuer',
+    ];
+
+    for (final kw in confirmKeywords) {
+      if (lower.contains(kw)) {
+        score += 50;
+        break;
+      }
+    }
+
+    if (isPrimaryType) score += 20;
+
+    // In standard dialogs actions: [cancel, confirm], confirmation is usually the later button
+    score += (index * 5);
+
+    return score;
+  }
+
+  String _extractTextFromElement(Element root) {
+    final buffer = StringBuffer();
+    void findText(Element el) {
+      if (el.widget is Text) {
+        final t = el.widget as Text;
+        if (t.data != null) buffer.write(' ${t.data}');
+        if (t.textSpan != null) buffer.write(' ${t.textSpan!.toPlainText()}');
+      }
+      el.visitChildren(findText);
+    }
+
+    findText(root);
+    return buffer.toString().trim().toLowerCase();
   }
 
   @override
@@ -413,12 +696,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ? 'Cairo'
         : 'Arial';
 
-    return AuthSessionView(
-      authStateChanges: AppAuthService().authStateChanges,
-      initialUser: AppAuthService().currentUser,
-      builder: (context, user) => MaterialApp(
-        navigatorKey: _navigatorKey,
-        scaffoldMessengerKey: _scaffoldMessengerKey,
+    return MaterialApp(
+      navigatorKey: _navigatorKey,
+      navigatorObservers: [_dialogObserver],
+      scaffoldMessengerKey: _scaffoldMessengerKey,
         debugShowCheckedModeBanner: false,
         title: Localization.translate('ورشتي', settings.language),
         themeMode: settings.themeMode,
@@ -483,8 +764,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   );
                 return KeyEventResult.handled;
               }
-              if (event is KeyDownEvent &&
-                  _activateFocusedDialogButton(event)) {
+              if (event is KeyDownEvent && _handleDialogEnterKey(event)) {
                 return KeyEventResult.handled;
               }
 
@@ -537,29 +817,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           );
         },
-        home: Builder(
-          builder: (context) {
-            if (user != null) {
-              const authenticatedContent = SubscriptionChecker();
-              if (!kIsWeb && Platform.isWindows) {
-                final workspace = context.read<WorkspaceController>();
-                return DesktopWindowFrame(
-                  topBar: const WorkspaceTabStrip(),
-                  onOpen: (title, icon, screen) =>
-                      workspace.open(title: title, icon: icon, content: screen),
-                  child: authenticatedContent,
-                );
-              }
-              return authenticatedContent;
-            }
-            final loginContent = const LoginScreen();
-            if (!kIsWeb && Platform.isWindows) {
-              return DesktopWindowFrame(child: loginContent);
-            }
-            return loginContent;
-          },
+
+        home: AuthSessionView(
+          navigatorKey: _navigatorKey,
+          authStateChanges: AppAuthService().authStateChanges,
+          initialUser: AppAuthService().currentUser,
         ),
-      ),
-    );
+      );
   }
 }

@@ -13,7 +13,6 @@ import '../settings/localization.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cloud_sync_service.dart';
 import 'map_picker_screen.dart';
@@ -38,6 +37,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   // Live Tracking state
   bool _isTracking = false;
   bool _isSettingWorkshop = false;
+  bool _isSatellite = false;
   LatLng _launchPosition = const LatLng(
     36.7538,
     3.0588,
@@ -126,12 +126,28 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
             data['routes'].isNotEmpty) {
           final route = data['routes'][0];
           final geometry = route['geometry'];
-          final coordinates = geometry['coordinates'] as List;
+          final coordinates = geometry is Map
+              ? geometry['coordinates']
+              : null;
 
-          List<LatLng> points = coordinates.map((coord) {
-            final l = coord as List;
-            return LatLng(l[1].toDouble(), l[0].toDouble());
-          }).toList();
+          final points = <LatLng>[];
+          if (coordinates is List) {
+            for (final coordinate in coordinates) {
+              if (coordinate is! List || coordinate.length < 2) continue;
+              final longitude = coordinate[0];
+              final latitude = coordinate[1];
+              if (longitude is! num || latitude is! num) continue;
+              final point = LatLng(latitude.toDouble(), longitude.toDouble());
+              if (_isValidMapPoint(point)) points.add(point);
+            }
+          }
+
+          // flutter_map cannot calculate bounds for an empty polyline.
+          // Treat incomplete OSRM responses as a routing failure and use the
+          // local fallback below instead of rendering invalid route data.
+          if (points.length < 2) {
+            throw const FormatException('Route contains fewer than two points');
+          }
 
           double distanceKm = 0.0;
           int durationMin = 0;
@@ -141,6 +157,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
             durationMin = ((leg['duration'] as num).toDouble() / 60.0).round();
           }
 
+          if (!mounted) return;
           setState(() {
             _routePoints = points;
             _distanceRemaining = distanceKm;
@@ -154,11 +171,21 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     }
 
     // Fallback: Generate straight-line path if API fails
+    if (!mounted) return;
     setState(() {
       _routePoints = _generateRoutePoints(start, end);
       _distanceRemaining = _calculateDistance(start, end);
       _etaMinutes = (_distanceRemaining / 0.5).round();
     });
+  }
+
+  bool _isValidMapPoint(LatLng point) {
+    return point.latitude.isFinite &&
+        point.longitude.isFinite &&
+        point.latitude >= -90 &&
+        point.latitude <= 90 &&
+        point.longitude >= -180 &&
+        point.longitude <= 180;
   }
 
   void _selectDelivery(Map<String, dynamic> delivery) {
@@ -1098,34 +1125,93 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                               options: MapOptions(
                                 initialCenter: _driverPosition,
                                 initialZoom: 14.0,
-                                onTap: (tapPosition, point) {
+                                onTap: (tapPosition, point) async {
                                   if (_isSettingWorkshop) {
                                     _saveWorkshopLocation(point);
                                     setState(() {
                                       _isSettingWorkshop = false;
                                     });
-                                  } else {
-                                    _updateClientLocation(point);
+                                  } else if (_selectedDelivery != null &&
+                                      _selectedDelivery!['client_id'] != null) {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        title: Row(
+                                          children: [
+                                            const Icon(Icons.location_on, color: Colors.red),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              Localization.translate('تثبيت موقع العميل', lang),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        content: Text(
+                                          '${Localization.translate('هل تريد تثبيت وتعيين موقع هذا العميل بدقة على الإحداثيات المحددة؟', lang)}\n\n(${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)})',
+                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: Text(
+                                              Localization.translate('إلغاء', lang),
+                                              style: const TextStyle(fontFamily: 'Cairo'),
+                                            ),
+                                          ),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.green,
+                                              foregroundColor: Colors.white,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            icon: const Icon(Icons.check, size: 18),
+                                            label: Text(
+                                              Localization.translate('موافق وتثبيت', lang),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      _updateClientLocation(point);
+                                    }
                                   }
                                 },
                               ),
                               children: [
                                 TileLayer(
-                                  urlTemplate:
-                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName:
-                                      'com.example.database_data',
-                                  maxZoom: 19,
+                                  key: ValueKey('dist_google_tiles_$_isSatellite'),
+                                  urlTemplate: _isSatellite
+                                      ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                                      : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                                  subdomains: const ['mt0', 'mt1', 'mt2', 'mt3'],
+                                  userAgentPackageName: 'com.google.android.apps.maps',
+                                  maxZoom: 20,
                                 ),
-                                PolylineLayer(
-                                  polylines: [
-                                    Polyline(
-                                      points: _routePoints,
-                                      color: Colors.blue.shade600,
-                                      strokeWidth: 4.5,
-                                    ),
-                                  ],
-                                ),
+                                if (_routePoints.length >= 2)
+                                  PolylineLayer(
+                                    polylines: [
+                                      Polyline(
+                                        points: _routePoints,
+                                        color: Colors.blue.shade600,
+                                        strokeWidth: 4.5,
+                                      ),
+                                    ],
+                                  ),
                                 MarkerLayer(
                                   markers: [
                                     // Starting / Launch Point
@@ -1173,7 +1259,8 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                         ),
                                       ),
                                     // Client / Destination Location
-                                    Marker(
+                                    if (_hasClientLocation)
+                                      Marker(
                                       point: _clientPosition,
                                       width: 100,
                                       height: 70,
@@ -1257,6 +1344,55 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                     ? CrossAxisAlignment.start
                                     : CrossAxisAlignment.end,
                                 children: [
+                                  FloatingActionButton.small(
+                                    heroTag: 'map_layer_satellite_btn',
+                                    onPressed: () {
+                                      setState(() {
+                                        _isSatellite = !_isSatellite;
+                                      });
+                                    },
+                                    backgroundColor: Colors.blue.shade900,
+                                    foregroundColor: Colors.white,
+                                    tooltip: _isSatellite
+                                        ? Localization.translate('الخريطة العادية', lang)
+                                        : Localization.translate('صورة القمر الصناعي', lang),
+                                    child: Icon(
+                                      _isSatellite
+                                          ? Icons.map_outlined
+                                          : Icons.satellite_alt_rounded,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (_selectedDelivery != null &&
+                                      _selectedDelivery!['client_id'] != null) ...[
+                                    FloatingActionButton.small(
+                                      heroTag: 'pick_client_location_btn',
+                                      onPressed: () async {
+                                        final clientName =
+                                            '${_selectedDelivery!['firstname'] ?? ''} ${_selectedDelivery!['lastname'] ?? ''}'.trim();
+                                        final point = await Navigator.of(context).push<LatLng>(
+                                          MaterialPageRoute(
+                                            builder: (_) => MapPickerScreen(
+                                              initialLatitude: _clientPosition.latitude,
+                                              initialLongitude: _clientPosition.longitude,
+                                              clientName: clientName.isNotEmpty ? clientName : null,
+                                            ),
+                                          ),
+                                        );
+                                        if (point != null && mounted) {
+                                          _updateClientLocation(point);
+                                        }
+                                      },
+                                      backgroundColor: Colors.red.shade700,
+                                      foregroundColor: Colors.white,
+                                      tooltip: Localization.translate(
+                                        'تحديد موقع العميل والبحث في الخريطة',
+                                        lang,
+                                      ),
+                                      child: const Icon(Icons.pin_drop_rounded),
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
                                   FloatingActionButton.small(
                                     heroTag: 'workshop_gps_btn',
                                     onPressed: () async {
@@ -1600,12 +1736,63 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
                                     ),
                                     const SizedBox(height: 8),
                                     // Row 2: Customer Address and Phone
-                                    Text(
-                                      '${Localization.translate('الهاتف:', lang)} ${_selectedDelivery!['phone1'] ?? 'Non Spécifié'} | ${Localization.translate('العنوان:', lang)} ${_selectedDelivery!['address'] ?? 'Non Spécifié'}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontFamily: 'Cairo',
-                                      ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            '${Localization.translate('الهاتف:', lang)} ${_selectedDelivery!['phone1'] ?? 'Non Spécifié'} | ${Localization.translate('العنوان:', lang)} ${_selectedDelivery!['address'] ?? 'Non Spécifié'}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        ActionChip(
+                                          avatar: Icon(
+                                            _hasClientLocation
+                                                ? Icons.check_circle_rounded
+                                                : Icons.add_location_alt_rounded,
+                                            size: 16,
+                                            color: _hasClientLocation
+                                                ? Colors.green
+                                                : Colors.redAccent,
+                                          ),
+                                          label: Text(
+                                            _hasClientLocation
+                                                ? Localization.translate('الموقع مثبت', lang)
+                                                : Localization.translate('تثبيت موقع العميل', lang),
+                                            style: TextStyle(
+                                              fontFamily: 'Cairo',
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: _hasClientLocation
+                                                  ? Colors.green.shade800
+                                                  : Colors.red.shade800,
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            final clientName =
+                                                '${_selectedDelivery!['firstname'] ?? ''} ${_selectedDelivery!['lastname'] ?? ''}'.trim();
+                                            final point = await Navigator.of(context).push<LatLng>(
+                                              MaterialPageRoute(
+                                                builder: (_) => MapPickerScreen(
+                                                  initialLatitude: _hasClientLocation
+                                                      ? _clientPosition.latitude
+                                                      : null,
+                                                  initialLongitude: _hasClientLocation
+                                                      ? _clientPosition.longitude
+                                                      : null,
+                                                  clientName: clientName.isNotEmpty ? clientName : null,
+                                                ),
+                                              ),
+                                            );
+                                            if (point != null && mounted) {
+                                              _updateClientLocation(point);
+                                            }
+                                          },
+                                        ),
+                                      ],
                                     ),
                                     const Divider(height: 16),
                                     // Row 3: Vehicle & GPS Telemetry Card

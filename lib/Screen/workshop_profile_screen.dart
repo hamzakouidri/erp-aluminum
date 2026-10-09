@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'
+    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:database_data/services/auth_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +22,7 @@ class WorkshopProfileScreen extends StatefulWidget {
 class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
   final _auth = AppAuthService();
   final _db = SqlDatabase();
+  final ScrollController _pageScrollController = ScrollController();
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -281,6 +284,7 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
 
   @override
   void dispose() {
+    _pageScrollController.dispose();
     _workshopNameController.dispose();
     _locationController.dispose();
     _phoneController.dispose();
@@ -293,6 +297,20 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
     _aiController.dispose();
     _ribController.dispose();
     super.dispose();
+  }
+
+  void _handleMouseWheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        event.scrollDelta.dy == 0 ||
+        !_pageScrollController.hasClients) {
+      return;
+    }
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (!mounted || !_pageScrollController.hasClients) return;
+      final position = _pageScrollController.position;
+      if (!position.hasContentDimensions) return;
+      position.pointerScroll(event.scrollDelta.dy);
+    });
   }
 
   Future<void> _editWorker(Map<String, dynamic> data) async {
@@ -364,253 +382,371 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_isLoading) const LinearProgressIndicator(),
-            if (_isLoading) const SizedBox(height: 12),
-            // Logo Section
-            Center(
-              child: GestureDetector(
-                onTap: _pickImage,
-                child: Builder(
-                  builder: (context) {
-                    ImageProvider? logoProvider;
-                    if (_logoBase64 != null && _logoBase64!.isNotEmpty) {
-                      if (_logoBase64!.startsWith('http')) {
-                        logoProvider = NetworkImage(_logoBase64!);
-                      } else {
-                        try {
-                          final bytes = base64Decode(_logoBase64!);
-                          if (bytes.isNotEmpty) {
-                            logoProvider = MemoryImage(bytes);
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerSignal: _handleMouseWheel,
+        child: SingleChildScrollView(
+          controller: _pageScrollController,
+          primary: false,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_isLoading) const LinearProgressIndicator(),
+              if (_isLoading) const SizedBox(height: 12),
+              // Logo Section
+              Center(
+                child: GestureDetector(
+                  onTap: _pickImage,
+                  child: Builder(
+                    builder: (context) {
+                      ImageProvider? logoProvider;
+                      if (_logoBase64 != null && _logoBase64!.isNotEmpty) {
+                        if (_logoBase64!.startsWith('http')) {
+                          logoProvider = NetworkImage(_logoBase64!);
+                        } else {
+                          try {
+                            final bytes = base64Decode(_logoBase64!);
+                            if (bytes.isNotEmpty) {
+                              logoProvider = MemoryImage(bytes);
+                            }
+                          } catch (e) {
+                            debugPrint(
+                              'Error decoding profile logo base64: $e',
+                            );
                           }
-                        } catch (e) {
-                          debugPrint('Error decoding profile logo base64: $e');
                         }
                       }
-                    }
 
-                    return CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.grey.shade300,
-                      backgroundImage: logoProvider,
-                      child: logoProvider == null
-                          ? const Icon(
-                              Icons.add_a_photo,
-                              size: 40,
-                              color: Colors.grey,
-                            )
-                          : null,
+                      return CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.grey.shade300,
+                        backgroundImage: logoProvider,
+                        child: logoProvider == null
+                            ? const Icon(
+                                Icons.add_a_photo,
+                                size: 40,
+                                color: Colors.grey,
+                              )
+                            : null,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Business Activity Selector
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.business_center_rounded, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            _t('نوع النشاط'),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Cairo',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _t('تحديد طبيعة نشاط المؤسسة'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                      const Divider(height: 16),
+                      Consumer<AppSettingsProvider>(
+                        builder: (context, settings, _) {
+                          return Column(
+                            children: [
+                              RadioListTile<BusinessActivityType>(
+                                dense: true,
+                                title: Text(
+                                  _t('ورشة فقط'),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  _t('تصنيع النوافذ والمطابخ والطلبيات مع مستودعات ومشتريات الورشة المباشرة'),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                                ),
+                                value: BusinessActivityType.workshopOnly,
+                                groupValue: settings.businessActivity,
+                                onChanged: (val) {
+                                  if (val != null) settings.setBusinessActivity(val);
+                                },
+                              ),
+                              RadioListTile<BusinessActivityType>(
+                                dense: true,
+                                title: Text(
+                                  _t('محل بيع مواد فقط'),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  _t('بيع وتجارة المقاطع والزجاج والإكسسوارات ومستودعات ومبيعات المحل'),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                                ),
+                                value: BusinessActivityType.materialsStoreOnly,
+                                groupValue: settings.businessActivity,
+                                onChanged: (val) {
+                                  if (val != null) settings.setBusinessActivity(val);
+                                },
+                              ),
+                              RadioListTile<BusinessActivityType>(
+                                dense: true,
+                                title: Text(
+                                  _t('ورشة + محل بيع مواد'),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  _t('كلا النشاطين معاً، مع إمكانية التحويل والبيع الداخلي للورشة'),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                                ),
+                                value: BusinessActivityType.workshopAndStore,
+                                groupValue: settings.businessActivity,
+                                onChanged: (val) {
+                                  if (val != null) settings.setBusinessActivity(val);
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Workshop Info
+              Text(
+                _t('معلومات الورشة'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.blue.shade300
+                      : Colors.blue.shade800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _workshopNameController,
+                decoration: InputDecoration(
+                  labelText: _t('اسم الورشة'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _locationController,
+                decoration: InputDecoration(
+                  labelText: _t('موقع الورشة'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: _t('رقم الهاتف'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _specialtiesController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: _t('تخصصات الورشة'),
+                  border: OutlineInputBorder(),
+                  hintText: _t('مثال: ألمنيوم، زجاج، بي في سي...'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _t('معلومات إضافية'),
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.blue.shade300
+                      : Colors.blue.shade800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _rcController,
+                decoration: InputDecoration(
+                  labelText: _t('رقم السجل التجاري (RC)'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _nifController,
+                decoration: InputDecoration(
+                  labelText: _t('رقم التعريف الجبائي (NIF)'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _nisController,
+                decoration: InputDecoration(
+                  labelText: _t('رقم التعريف الإحصائي (NIS)'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _aiController,
+                decoration: InputDecoration(
+                  labelText: _t('رقم المادة (AI)'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _ribController,
+                decoration: InputDecoration(
+                  labelText: _t('الحساب البنكي (RIB)'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              // Manager Info
+              Text(
+                _t('معلومات المدير'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.blue.shade300
+                      : Colors.blue.shade800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _managerNameController,
+                decoration: InputDecoration(
+                  labelText: _t('اسم مدير الورشة'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _workerCountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _t('عدد مستخدمي الورشة'),
+                  border: OutlineInputBorder(),
+                  hintText: _t('مثال: 5'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _isLoading || _isSaving ? null : _saveManagerData,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save),
+                label: Text(
+                  _isSaving ? _t('حفظ') : _t('حفظ التعديلات الرئيسية'),
+                ),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 45),
+                ),
+              ),
+              const Divider(height: 40, thickness: 2),
+
+              // Workers Section
+              Text(
+                _t('فريق العمل'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.blue.shade300
+                      : Colors.blue.shade800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (_workers.isEmpty)
+                const Text(
+                  'لا يوجد مستخدمون مسجلون في ورشتك بعد.',
+                  style: TextStyle(color: Colors.grey),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _workers.length,
+                  itemBuilder: (context, index) {
+                    final wData = _workers[index];
+                    final wName = (wData['name'] ?? 'بدون اسم').toString();
+                    final wJobTitle = _localizedJobRole(
+                      (wData['job_role'] ?? 'عامل (غير مصنف)').toString(),
+                    );
+
+                    return Card(
+                      child: ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.person)),
+                        title: Text(
+                          wName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          wJobTitle,
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white70
+                                : Colors.blueGrey,
+                          ),
+                        ),
+                        trailing: IconButton(
+                          icon: Icon(
+                            Icons.edit,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.blue.shade300
+                                : Colors.blue,
+                          ),
+                          onPressed: () => _editWorker(_workers[index]),
+                        ),
+                      ),
                     );
                   },
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Workshop Info
-            Text(
-              _t('معلومات الورشة'),
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.blue.shade300
-                    : Colors.blue.shade800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _workshopNameController,
-              decoration: InputDecoration(
-                labelText: _t('اسم الورشة'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _locationController,
-              decoration: InputDecoration(
-                labelText: _t('موقع الورشة'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                labelText: _t('رقم الهاتف'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _specialtiesController,
-              maxLines: 2,
-              decoration: InputDecoration(
-                labelText: _t('تخصصات الورشة'),
-                border: OutlineInputBorder(),
-                hintText: _t('مثال: ألمنيوم، زجاج، بي في سي...'),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _t('معلومات إضافية'),
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.blue.shade300
-                    : Colors.blue.shade800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _rcController,
-              decoration: InputDecoration(
-                labelText: _t('رقم السجل التجاري (RC)'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _nifController,
-              decoration: InputDecoration(
-                labelText: _t('رقم التعريف الجبائي (NIF)'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _nisController,
-              decoration: InputDecoration(
-                labelText: _t('رقم التعريف الإحصائي (NIS)'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _aiController,
-              decoration: InputDecoration(
-                labelText: _t('رقم المادة (AI)'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _ribController,
-              decoration: InputDecoration(
-                labelText: _t('الحساب البنكي (RIB)'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            // Manager Info
-            Text(
-              _t('معلومات المدير'),
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.blue.shade300
-                    : Colors.blue.shade800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _managerNameController,
-              decoration: InputDecoration(
-                labelText: _t('اسم مدير الورشة'),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _workerCountController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: _t('عدد مستخدمي الورشة'),
-                border: OutlineInputBorder(),
-                hintText: _t('مثال: 5'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _isLoading || _isSaving ? null : _saveManagerData,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save),
-              label: Text(_isSaving ? _t('حفظ') : _t('حفظ التعديلات الرئيسية')),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 45),
-              ),
-            ),
-            const Divider(height: 40, thickness: 2),
-
-            // Workers Section
-            Text(
-              _t('فريق العمل'),
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.blue.shade300
-                    : Colors.blue.shade800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (_workers.isEmpty)
-              const Text(
-                'لا يوجد مستخدمون مسجلون في ورشتك بعد.',
-                style: TextStyle(color: Colors.grey),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _workers.length,
-                itemBuilder: (context, index) {
-                  final wData = _workers[index];
-                  final wName = (wData['name'] ?? 'بدون اسم').toString();
-                  final wJobTitle = _localizedJobRole(
-                    (wData['job_role'] ?? 'عامل (غير مصنف)').toString(),
-                  );
-
-                  return Card(
-                    child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person)),
-                      title: Text(
-                        wName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        wJobTitle,
-                        style: TextStyle(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.blueGrey,
-                        ),
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
-                          Icons.edit,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.blue.shade300
-                              : Colors.blue,
-                        ),
-                        onPressed: () => _editWorker(_workers[index]),
-                      ),
-                    ),
-                  );
-                },
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

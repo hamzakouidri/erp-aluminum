@@ -323,6 +323,7 @@ class SqlDatabase {
     'AccessoryColorPrices',
     'MaterialSales',
     'MaterialSaleItems',
+    'AuditLogs',
   ];
 
   // These rows describe how a workshop uses the shared catalogue. The base
@@ -355,6 +356,30 @@ class SqlDatabase {
     _accessoryLinksSchemaTask = null;
   }
 
+  /// Clears only the workshop-specific transactional rows (orders, customers, stock, finances),
+  /// while preserving the global aluminium catalog (profiles, series, sections, colors, accessories).
+  static Future<void> clearWorkshopDataOnly() async {
+    try {
+      final dbInstance = await SqlDatabase().db;
+      if (dbInstance == null) return;
+      await dbInstance.transaction((txn) async {
+        for (final table in workshopTables) {
+          try {
+            await txn.delete(table);
+          } catch (_) {}
+        }
+        for (final table in workshopCatalogConfigurationTables) {
+          try {
+            await txn.delete(table);
+          } catch (_) {}
+        }
+      });
+      debugPrint('Workshop data cleared successfully; catalog preserved.');
+    } catch (e) {
+      debugPrint('Error clearing workshop data: $e');
+    }
+  }
+
   static Future<void> clearAllLocalData() async {
     // Close database
     if (_db != null) {
@@ -377,18 +402,28 @@ class SqlDatabase {
     // Clear SharedPreferences
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Keep only language, theme, and deviceId
+      // Keep settings, device ID, and offline account cache so user can re-log in or work offline
       final lang = prefs.getString('language');
       final theme = prefs.getString('themeMode');
       final deviceId = prefs.getString('device_id');
+      final cachedAccounts = <String, String>{};
+      for (final key in prefs.getKeys()) {
+        if (key.startsWith('supabase_account_cache_v1_')) {
+          final val = prefs.getString(key);
+          if (val != null) cachedAccounts[key] = val;
+        }
+      }
 
       await prefs.clear();
 
       if (lang != null) await prefs.setString('language', lang);
       if (theme != null) await prefs.setString('themeMode', theme);
       if (deviceId != null) await prefs.setString('device_id', deviceId);
+      for (final entry in cachedAccounts.entries) {
+        await prefs.setString(entry.key, entry.value);
+      }
       debugPrint(
-        'SharedPreferences cleared successfully (settings preserved).',
+        'SharedPreferences cleared successfully (settings & offline account cache preserved).',
       );
     } catch (e) {
       debugPrint('Error clearing SharedPreferences: $e');
@@ -552,6 +587,31 @@ class SqlDatabase {
       await db.execute('ALTER TABLE Client ADD COLUMN longitude REAL;');
     } catch (_) {}
 
+    // Migrations for Achats (workshop vs store separation & internal purchases)
+    try {
+      await db.execute("ALTER TABLE Achats ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'workshop';");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Achats ADD COLUMN is_workshop INTEGER NOT NULL DEFAULT 1;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Achats ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Achats ADD COLUMN linked_sale_id INTEGER;");
+    } catch (_) {}
+
+    // Migrations for MaterialSales (internal sales to workshop)
+    try {
+      await db.execute("ALTER TABLE MaterialSales ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE MaterialSales ADD COLUMN dest_location_id INTEGER;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE MaterialSales ADD COLUMN linked_achat_id INTEGER;");
+    } catch (_) {}
+
     try {
       await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerAttendance (
@@ -624,6 +684,41 @@ class SqlDatabase {
     try {
       await db.execute(
         'ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Sections ADD COLUMN visible_width_2 REAL NOT NULL DEFAULT 0.0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Sections ADD COLUMN bar_length REAL NOT NULL DEFAULT 5.8;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Profile ADD COLUMN default_bar_length REAL NOT NULL DEFAULT 5.8;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Series ADD COLUMN price_per_meter REAL NOT NULL DEFAULT 0.0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Series ADD COLUMN has_three_piece_sash INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Series ADD COLUMN has_face_to_face INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Series ADD COLUMN reinforcement_type TEXT DEFAULT 'full_substitution';",
       );
     } catch (_) {}
 
@@ -2253,7 +2348,11 @@ class SqlDatabase {
     final text = error.toString().toLowerCase();
     return text.contains('database image malformed') ||
         text.contains('database disk image is malformed') ||
+        text.contains('file is not a database') ||
         text.contains('sqlite_corrupt') ||
+        text.contains('sqlite_notadb') ||
+        text.contains('sqlite_error: 26') ||
+        text.contains('sqlite error 26') ||
         text.contains('code 11');
   }
 
@@ -3716,7 +3815,9 @@ class SqlDatabase {
 
   Future<List<Map<String, dynamic>>> readAllProfiles() async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('SELECT * FROM Profile ORDER BY name ASC');
+    return await myDb!.rawQuery(
+      'SELECT * FROM Profile WHERE is_active = 1 OR is_active IS NULL ORDER BY name ASC',
+    );
   }
 
   Future<int> insertProfile(
@@ -3752,13 +3853,44 @@ class SqlDatabase {
 
   Future<int> deleteProfile(int id) async {
     Database? myDb = await db;
-    var res = await myDb!.update(
+    if (myDb == null) return 0;
+    var res = await myDb.update(
       'Profile',
       {'is_active': 0},
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    // Cascade archive to child series and sections
+    try {
+      final seriesList = await myDb.query(
+        'Series',
+        columns: ['id'],
+        where: 'profile_id = ?',
+        whereArgs: [id],
+      );
+      for (final s in seriesList) {
+        final sId = s['id'] as int?;
+        if (sId != null) {
+          await myDb.update(
+            'Sections',
+            {'is_active': 0},
+            where: 'series_id = ?',
+            whereArgs: [sId],
+          );
+        }
+      }
+      await myDb.update(
+        'Series',
+        {'is_active': 0},
+        where: 'profile_id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      debugPrint('Error cascading profile deactivation: $e');
+    }
+    try {
+      CloudSyncService().notifyChange();
+    } catch (_) {}
     return res;
   }
 
@@ -3778,7 +3910,7 @@ class SqlDatabase {
     Database? myDb = await db;
     return await myDb!.query(
       'Series',
-      where: 'profile_id = ?',
+      where: 'profile_id = ? AND (is_active = 1 OR is_active IS NULL)',
       whereArgs: [profileId],
     );
   }
@@ -4057,13 +4189,27 @@ class SqlDatabase {
 
   Future<int> deleteSeries(int id) async {
     Database? myDb = await db;
-    var res = await myDb!.update(
+    if (myDb == null) return 0;
+    var res = await myDb.update(
       'Series',
       {'is_active': 0},
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    // Cascade archive to child sections
+    try {
+      await myDb.update(
+        'Sections',
+        {'is_active': 0},
+        where: 'series_id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      debugPrint('Error cascading series deactivation: $e');
+    }
+    try {
+      CloudSyncService().notifyChange();
+    } catch (_) {}
     return res;
   }
 
@@ -4473,13 +4619,16 @@ class SqlDatabase {
 
   Future<int> deleteSection(int id) async {
     Database? myDb = await db;
-    var res = await myDb!.update(
+    if (myDb == null) return 0;
+    var res = await myDb.update(
       'Sections',
       {'is_active': 0},
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    try {
+      CloudSyncService().notifyChange();
+    } catch (_) {}
     return res;
   }
 
@@ -4907,6 +5056,96 @@ class SqlDatabase {
     return await myDb!.rawQuery('SELECT * FROM Client');
   }
 
+  Future<void> _ensureClientBusinessSegment(DatabaseExecutor database) async {
+    try {
+      await database.execute(
+        "ALTER TABLE Client ADD COLUMN business_segment TEXT NOT NULL DEFAULT 'windows'",
+      );
+    } catch (_) {}
+    await database.rawUpdate(
+      "UPDATE Client SET business_segment = 'windows' "
+      "WHERE business_segment IS NULL OR TRIM(business_segment) = ''",
+    );
+  }
+
+  /// Material customers are separated from window customers while still
+  /// sharing one customer record and one financial history.
+  Future<List<Map<String, dynamic>>> readMaterialClients({
+    bool includeWindowClients = false,
+    bool includeInternalWorkshop = false,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureClientBusinessSegment(myDb);
+    final allowedSegments = <String>['materials', 'both'];
+    if (includeInternalWorkshop) {
+      allowedSegments.add('internal_workshop');
+    }
+    final inList = allowedSegments.map((s) => "'$s'").join(', ');
+    return myDb.query(
+      'Client',
+      where: includeWindowClients
+          ? null
+          : "business_segment IN ($inList)",
+      orderBy: 'firstname COLLATE NOCASE, lastname COLLATE NOCASE',
+    );
+  }
+
+  /// Ensures an internal workshop customer exists for workshop+store activity
+  Future<Map<String, dynamic>> ensureInternalWorkshopClient() async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureClientBusinessSegment(myDb);
+    final existing = await myDb.query(
+      'Client',
+      where: "business_segment = 'internal_workshop'",
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      return existing.first;
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    final clientCode = await _reserveNextClientCode(myDb);
+    final newId = await myDb.insert(
+      'Client',
+      _withDistributedId({
+        'client_code': clientCode,
+        'firstname': 'الورشة',
+        'lastname': '(داخلي)',
+        'phone1': '',
+        'phone2': '',
+        'email': '',
+        'address': 'داخلي - ورشة المؤسسة',
+        'business_segment': 'internal_workshop',
+        'created_at': now,
+        'updated_at': now,
+        'creation_platform': 'desktop',
+      }),
+    );
+    CloudSyncService().notifyChangeImmediate();
+    final created = await myDb.query('Client', where: 'id = ?', whereArgs: [newId]);
+    return created.isNotEmpty ? created.first : {};
+  }
+
+  Future<void> setClientBusinessSegment(int clientId, String segment) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureClientBusinessSegment(myDb);
+    final normalized = const {'windows', 'materials', 'both', 'internal_workshop'}.contains(segment)
+        ? segment
+        : 'windows';
+    await myDb.update(
+      'Client',
+      {
+        'business_segment': normalized,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [clientId],
+    );
+    CloudSyncService().notifyChangeImmediate();
+  }
+
   /// Client primary keys are intentionally large distributed IDs so records
   /// created offline on two devices cannot collide.  Screens and documents
   /// must show a short, human-friendly number instead of exposing that key.
@@ -5317,36 +5556,126 @@ class SqlDatabase {
     );
   }
 
-  Future<List<Map<String, dynamic>>> readCommandesWithClients() async {
-    final myDb = await db;
-    if (myDb == null) return [];
+  Future<void> _ensureOrderQueryInfrastructure(DatabaseExecutor myDb) async {
     await _ensureOrderTrashInfrastructure(myDb);
     await _ensureOrderStockReservationInfrastructure(myDb);
     await _ensureOrderPinningInfrastructure(myDb);
     await _backfillOrderCodes(myDb);
-    return await myDb.rawQuery('''
+
+    // Ensure Projects table exists
+    try {
+      await myDb.execute('''
+        CREATE TABLE IF NOT EXISTS Projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          client_id INTEGER NOT NULL,
+          description TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (client_id) REFERENCES Client(id) ON DELETE CASCADE
+        )
+      ''');
+    } catch (_) {}
+
+    // Ensure Commandes columns exist
+    final orderAlters = [
+      'ALTER TABLE Commandes ADD COLUMN project_id INTEGER;',
+      'ALTER TABLE Commandes ADD COLUMN order_code INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE Commandes ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE Commandes ADD COLUMN deleted_at TEXT;',
+      'ALTER TABLE Commandes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE Commandes ADD COLUMN pinned_at TEXT;',
+      'ALTER TABLE Commandes ADD COLUMN is_stock_reserved INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE Commandes ADD COLUMN stock_reserved_at TEXT;',
+      'ALTER TABLE Commandes ADD COLUMN advance_payment REAL NOT NULL DEFAULT 0.0;',
+      "ALTER TABLE Commandes ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'Unpaid';",
+      'ALTER TABLE Commandes ADD COLUMN updated_by TEXT;',
+      "ALTER TABLE Commandes ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'));",
+      "ALTER TABLE Commandes ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'));",
+    ];
+    for (final sql in orderAlters) {
+      try {
+        await myDb.execute(sql);
+      } catch (_) {}
+    }
+
+    // Ensure Client columns exist
+    final clientAlters = [
+      'ALTER TABLE Client ADD COLUMN latitude REAL;',
+      'ALTER TABLE Client ADD COLUMN longitude REAL;',
+      'ALTER TABLE Client ADD COLUMN address TEXT;',
+      'ALTER TABLE Client ADD COLUMN phone1 TEXT;',
+      'ALTER TABLE Client ADD COLUMN phone2 TEXT;',
+      'ALTER TABLE Client ADD COLUMN email TEXT;',
+      "ALTER TABLE Client ADD COLUMN creation_platform TEXT NOT NULL DEFAULT 'unknown';",
+    ];
+    for (final sql in clientAlters) {
+      try {
+        await myDb.execute(sql);
+      } catch (_) {}
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> readCommandesWithClients() async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    try {
+      await _ensureOrderQueryInfrastructure(myDb);
+    } catch (e) {
+      debugPrint('Error preparing order query infrastructure: $e');
+    }
+
+    try {
+      return await myDb.rawQuery('''
+        SELECT c.*,
+          c.order_code AS display_number,
+          COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), '')) as created_at,
+          cl.firstname, cl.lastname, cl.phone1 as phone,
+          cl.address as client_address,
+          cl.latitude as client_latitude,
+          cl.longitude as client_longitude,
+          p.name as project_name,
+          p.description as project_description
+        FROM Commandes c
+        LEFT JOIN Client cl ON (c.client_id = cl.id OR CAST(c.client_id AS TEXT) = CAST(cl.id AS TEXT))
+        LEFT JOIN Projects p ON c.project_id = p.id
+        WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
+        ORDER BY COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), ''), c.id) DESC
+      ''');
+    } catch (e) {
+      debugPrint(
+        'Primary readCommandesWithClients query failed: $e, trying fallback...',
+      );
+      // Resilient fallback query in case of schema discrepancy
+      try {
+        return await myDb.rawQuery('''
           SELECT c.*,
-        c.order_code AS display_number,
-        COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), '')) as created_at,
-        cl.firstname, cl.lastname, cl.phone1 as phone,
-        cl.address as client_address,
-        cl.latitude as client_latitude,
-        cl.longitude as client_longitude,
-        p.name as project_name,
-        p.description as project_description
-      FROM Commandes c
-      LEFT JOIN Client cl ON (c.client_id = cl.id OR CAST(c.client_id AS TEXT) = CAST(cl.id AS TEXT))
-      LEFT JOIN Projects p ON c.project_id = p.id
-      WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
-      ORDER BY COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), ''), c.id) DESC
-    ''');
+            c.id AS display_number,
+            cl.firstname, cl.lastname, cl.phone1 as phone,
+            cl.address as client_address
+          FROM Commandes c
+          LEFT JOIN Client cl ON (c.client_id = cl.id OR CAST(c.client_id AS TEXT) = CAST(cl.id AS TEXT))
+          WHERE (c.is_deleted IS NULL OR c.is_deleted = 0)
+          ORDER BY c.id DESC
+        ''');
+      } catch (fallbackError) {
+        debugPrint('Fallback order query also failed: $fallbackError');
+        // Ultimate fallback: simple query on Commandes
+        try {
+          return await myDb.query('Commandes');
+        } catch (_) {
+          return [];
+        }
+      }
+    }
   }
 
   Future<List<Map<String, dynamic>>> readTrashCommandesWithClients() async {
     final myDb = await db;
     if (myDb == null) return [];
-    await _ensureOrderTrashInfrastructure(myDb);
-    await _backfillOrderCodes(myDb);
+    try {
+      await _ensureOrderQueryInfrastructure(myDb);
+    } catch (_) {}
     return await myDb.rawQuery('''
       SELECT c.*,
         c.order_code AS display_number,
@@ -8981,7 +9310,12 @@ class SqlDatabase {
     final deletedBy = await _currentOrderEditor();
     final res = await myDb.update(
       'Commandes',
-      {'is_deleted': 1, 'deleted_at': nowIso, 'deleted_by': deletedBy},
+      {
+        'is_deleted': 1,
+        'deleted_at': nowIso,
+        'deleted_by': deletedBy,
+        'updated_at': nowIso,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -9076,13 +9410,27 @@ class SqlDatabase {
       whereArgs: [id],
       limit: 1,
     );
+    final nowIso = DateTime.now().toUtc().toIso8601String();
     final res = await myDb.update(
       'Commandes',
-      {'is_deleted': 0, 'deleted_at': null, 'deleted_by': null},
+      {
+        'is_deleted': 0,
+        'deleted_at': null,
+        'deleted_by': null,
+        'updated_at': nowIso,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
     if (res > 0) {
+      try {
+        await myDb.delete(
+          'SyncTombstones',
+          where: 'table_name = ? AND (row_id = ? OR row_id = ?)',
+          whereArgs: ['Commandes', id.toString(), id],
+        );
+      } catch (_) {}
+      unawaited(_removeDeletedOrderTombstoneFromCloud(id));
       unawaited(
         logAuditAction(
           actionType: 'RESTORE',
@@ -9197,6 +9545,24 @@ class SqlDatabase {
           .timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('Failed to write deleted_orders tombstone: $e');
+    }
+  }
+
+  Future<void> _removeDeletedOrderTombstoneFromCloud(int orderId) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code') ?? '';
+      if (workshopId.isEmpty) return;
+      await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(workshopId)
+          .collection('deleted_orders')
+          .doc(orderId.toString())
+          .delete()
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('Failed to remove deleted_orders tombstone: $e');
     }
   }
 
@@ -10185,6 +10551,10 @@ class SqlDatabase {
     String? imagePath,
     String? pdfPath,
     String? createdAt,
+    bool isWorkshop = true,
+    String activityType = 'workshop',
+    bool isInternal = false,
+    int? linkedSaleId,
   }) async {
     Database? myDb = await db;
     try {
@@ -10199,7 +10569,7 @@ class SqlDatabase {
     );
     if (existing.isNotEmpty) {
       throw Exception(
-        'â•ªâ–’â”˜Ã©â”˜Ã  â•ªÂºâ”˜Ã¤â”˜Ã¼â•ªÂºâ•ªÂ¬â”˜Ãªâ•ªâ–’â•ªâŒ ($invoiceNumber) â”˜Ã â•ªâ”‚â•ªÂ¬â•ªÂ«â•ªÂ»â”˜Ã  â”˜Ã â•ªâ”‚â•ªÂ¿â”˜Ã©â•ªÂºâ”˜Ã¯! â•ªÂºâ”˜Ã¤â•ªâ–’â•ªÂ¼â•ªÂºâ•ªÃ­ â•ªÃ‘â•ªÂ»â•ªÂ«â•ªÂºâ”˜Ã¤ â•ªâ–’â”˜Ã©â”˜Ã  â”˜Ã¼â•ªâ–’â”˜Ã¨â•ªÂ».',
+        'رقم الفاتورة ($invoiceNumber) مستخدم بالفعل! يرجى اختيار رقم آخر.',
       );
     }
 
@@ -10215,6 +10585,10 @@ class SqlDatabase {
         'total': total,
         'image_path': imagePath,
         'pdf_path': pdfPath,
+        'activity_type': activityType,
+        'is_workshop': isWorkshop ? 1 : 0,
+        'is_internal': isInternal ? 1 : 0,
+        'linked_sale_id': linkedSaleId,
         'created_at': createdAt ?? now,
         'updated_at': now,
       }),
@@ -10249,6 +10623,77 @@ class SqlDatabase {
       whereArgs: whereArgs,
     );
     return rows.isNotEmpty;
+  }
+
+  /// Returns the most recently entered purchase price for a catalogue item.
+  /// Purchase history is deliberately kept separate from catalogue prices.
+  Future<double?> getLatestPurchasePrice({
+    required int itemId,
+    required String itemType,
+    int? colorId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return null;
+    final typeAliases = <String>{itemType};
+    if (itemType == 'Accessories' || itemType == 'Accessory') {
+      typeAliases.addAll(['Accessories', 'Accessory']);
+    }
+    if (itemType == 'Sections' ||
+        itemType == 'Section' ||
+        itemType == 'Profiles' ||
+        itemType == 'Profile') {
+      typeAliases.addAll(['Sections', 'Section', 'Profiles', 'Profile']);
+    }
+    if (itemType == 'ShutterComponents' || itemType == 'ShutterComponent') {
+      typeAliases.addAll(['ShutterComponents', 'ShutterComponent']);
+    }
+    if (itemType == 'Joints' || itemType == 'Joint') {
+      typeAliases.addAll(['Joints', 'Joint']);
+    }
+    if (itemType == 'Glass') {
+      typeAliases.addAll(['Glass', 'glass']);
+    }
+    final typeMarks = List.filled(typeAliases.length, '?').join(', ');
+    final rows = await myDb.query(
+      'Achat_items',
+      columns: const ['price'],
+      where: colorId == null
+          ? 'item_id = ? AND item_type IN ($typeMarks) AND (color_id IS NULL OR color_id = 0)'
+          : 'item_id = ? AND item_type IN ($typeMarks) AND color_id = ?',
+      whereArgs: colorId == null
+          ? [itemId, ...typeAliases]
+          : [itemId, ...typeAliases, colorId],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final value = rows.first['price'];
+      final parsed = value is num
+          ? value.toDouble()
+          : double.tryParse('$value');
+      if (parsed != null && parsed > 0) return parsed;
+    }
+
+    // Fallback: If no purchase with the exact color was found, get the latest
+    // purchase price of this item regardless of color
+    if (colorId != null) {
+      final fallbackRows = await myDb.query(
+        'Achat_items',
+        columns: const ['price'],
+        where: 'item_id = ? AND item_type IN ($typeMarks)',
+        whereArgs: [itemId, ...typeAliases],
+        orderBy: 'id DESC',
+        limit: 1,
+      );
+      if (fallbackRows.isNotEmpty) {
+        final value = fallbackRows.first['price'];
+        final parsed = value is num
+            ? value.toDouble()
+            : double.tryParse('$value');
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    return null;
   }
 
   Future<int> insertAchatItem({
@@ -10628,11 +11073,16 @@ class SqlDatabase {
     final deletedBy = await _currentOrderEditor();
     final res = await myDb.update(
       'Achats',
-      {'is_deleted': 1, 'deleted_at': now, 'deleted_by': deletedBy},
+      {
+        'is_deleted': 1,
+        'deleted_at': now,
+        'deleted_by': deletedBy,
+        'updated_at': now,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -10640,13 +11090,23 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureAchatTrashInfrastructure(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
     final res = await myDb.update(
       'Achats',
-      {'is_deleted': 0, 'deleted_at': null},
+      {'is_deleted': 0, 'deleted_at': null, 'updated_at': now},
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    if (res > 0) {
+      try {
+        await myDb.delete(
+          'SyncTombstones',
+          where: 'table_name = ? AND (row_id = ? OR row_id = ?)',
+          whereArgs: ['Achats', id.toString(), id],
+        );
+      } catch (_) {}
+      CloudSyncService().notifyChangeImmediate();
+    }
     return res;
   }
 
@@ -10688,16 +11148,39 @@ class SqlDatabase {
     return count;
   }
 
-  Future<List<Map<String, dynamic>>> readAchats() async {
+  Future<List<Map<String, dynamic>>> readAchats({
+    bool? isWorkshop,
+    String? activityType,
+  }) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     await _ensureAchatTrashInfrastructure(myDb);
+    final whereClauses = <String>['is_deleted IS NULL OR is_deleted = 0'];
+    final whereArgs = <dynamic>[];
+    if (isWorkshop != null) {
+      if (isWorkshop) {
+        whereClauses.add('(is_workshop = 1 OR is_workshop IS NULL)');
+      } else {
+        whereClauses.add('is_workshop = 0');
+      }
+    }
+    if (activityType != null && activityType.isNotEmpty) {
+      whereClauses.add('activity_type = ?');
+      whereArgs.add(activityType);
+    }
     return await myDb.query(
       'Achats',
-      where: 'is_deleted IS NULL OR is_deleted = 0',
+      where: whereClauses.join(' AND '),
+      whereArgs: whereArgs.isEmpty ? null : whereArgs,
       orderBy: 'created_at DESC',
     );
   }
+
+  Future<List<Map<String, dynamic>>> readWorkshopAchats() =>
+      readAchats(isWorkshop: true);
+
+  Future<List<Map<String, dynamic>>> readStoreAchats() =>
+      readAchats(isWorkshop: false);
 
   Future<List<Map<String, dynamic>>> readAchatsBySupplierName(
     String supplierName,
@@ -14184,9 +14667,30 @@ class SqlDatabase {
       "ALTER TABLE Accessories ADD COLUMN is_lock_clef INTEGER DEFAULT 0",
       "ALTER TABLE Accessories ADD COLUMN is_lock_condamnation INTEGER DEFAULT 0",
       "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE Profile ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE Profile ADD COLUMN default_bar_length REAL NOT NULL DEFAULT 5.8",
+      "ALTER TABLE Series ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE Series ADD COLUMN price_per_meter REAL NOT NULL DEFAULT 0.0",
       "ALTER TABLE Series ADD COLUMN has_three_piece_sash INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE Series ADD COLUMN has_face_to_face INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE Series ADD COLUMN reinforcement_type TEXT DEFAULT 'full_substitution'",
+      "ALTER TABLE Sections ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE Sections ADD COLUMN bar_length REAL NOT NULL DEFAULT 5.8",
+      "ALTER TABLE Sections ADD COLUMN couvre_joint_width REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN couvre_joint_thickness REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN glass_deduction REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN weight_per_meter REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN cutting_deduction REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN visible_width REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN visible_width_2 REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN sash_overlap REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN max_glass_thickness REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE Sections ADD COLUMN is_frame INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE Sections ADD COLUMN is_sash INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE Sections ADD COLUMN image_path TEXT",
+      "ALTER TABLE Sections ADD COLUMN renfort_deduction REAL NOT NULL DEFAULT 140.0",
 
       "ALTER TABLE WorkerAllocations ADD COLUMN is_transferred_to_dist INTEGER DEFAULT 0",
       "ALTER TABLE WorkerAllocations ADD COLUMN transferred_at TEXT",
@@ -14585,6 +15089,7 @@ class SqlDatabase {
       'OrderInventoryIssueSessions',
       'MaterialRemnants',
       'MaterialScrap',
+      'AuditLogs',
     };
 
     await myDb.transaction((txn) async {
@@ -14650,6 +15155,45 @@ class SqlDatabase {
               if (profileId != null && colorId != null) {
                 sanitized['id'] = _profileColorSyncId(profileId, colorId);
               }
+            }
+            if (table == 'Sections') {
+              sanitized['thickness'] ??= 45.0;
+              sanitized['bar_length'] ??= 5.8;
+              sanitized['glass_deduction'] ??= 0.0;
+              sanitized['weight_per_meter'] ??= 0.0;
+              sanitized['couvre_joint_width'] ??= 0.0;
+              sanitized['couvre_joint_thickness'] ??= 0.0;
+              sanitized['cutting_deduction'] ??= 0.0;
+              sanitized['visible_width'] ??= 0.0;
+              sanitized['visible_width_2'] ??= 0.0;
+              sanitized['sash_overlap'] ??= 0.0;
+              sanitized['max_glass_thickness'] ??= 0.0;
+              sanitized['allows_side_cover'] ??= 1;
+              sanitized['is_frame'] ??= 0;
+              sanitized['is_sash'] ??= 0;
+              sanitized['is_mullion'] ??= 0;
+              sanitized['is_active'] ??= 1;
+              sanitized['type'] ??= 'frame';
+              sanitized['name'] ??= '';
+              sanitized['code'] ??= '';
+            } else if (table == 'Profile') {
+              sanitized['name'] ??= 'Unknown';
+              sanitized['type'] ??= 'Aluminium';
+              sanitized['default_bar_length'] ??= 5.8;
+              sanitized['is_active'] ??= 1;
+            } else if (table == 'Series') {
+              sanitized['name'] ??= 'Unknown';
+              sanitized['type'] ??= 'Aluminium';
+              sanitized['price_per_meter'] ??= 0.0;
+              sanitized['has_three_piece_sash'] ??= 0;
+              sanitized['has_face_to_face'] ??= 0;
+              sanitized['reinforcement_type'] ??= 'full_substitution';
+              sanitized['is_active'] ??= 1;
+            } else if (table == 'Accessories') {
+              sanitized['price'] ??= 0.0;
+              sanitized['is_active'] ??= 1;
+              sanitized['material_type'] ??= 'Aluminium';
+              sanitized['scope'] ??= 'Global';
             }
             if (sanitized.isEmpty) continue;
             final rowId = sanitized['id'];
@@ -14937,11 +15481,26 @@ class SqlDatabase {
         final dbPath = await getDatabaseFilePath();
         if (_db != null) {
           await _db!.close();
-          _db = null;
+        }
+        // Do not keep a completed/opening handle or SQLite WAL files from the
+        // previous database. Reusing either after replacing the main file can
+        // make screens continue to see the pre-import rows.
+        resetDb();
+        for (final suffix in const ['-wal', '-shm', '-journal']) {
+          final sidecar = File('$dbPath$suffix');
+          if (await sidecar.exists()) {
+            try {
+              await sidecar.delete();
+            } catch (_) {}
+          }
         }
         final selectedFile = File(filePath);
         await selectedFile.copy(dbPath);
         _db = await initDb();
+        // Refresh every mounted screen immediately and merge workshop rows
+        // that exist only in the imported backup (for example orders 49-52)
+        // into Supabase before a later cloud refresh can hide them again.
+        await CloudSyncService().notifyDatabaseImported();
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -16266,8 +16825,164 @@ class SqlDatabase {
     );
   }
 
+  Future<void> confirmMaterialRemnant({
+    required int remnantId,
+    required double actualLengthMm,
+    String? rackCode,
+    String? shelfCode,
+    String? binCode,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    await myDb.update(
+      'MaterialRemnants',
+      {
+        'length_mm': actualLengthMm,
+        'status': 'available',
+        'rack_code': rackCode?.trim(),
+        'shelf_code': shelfCode?.trim(),
+        'bin_code': binCode?.trim(),
+        'updated_at': timestamp,
+      },
+      where: 'id = ?',
+      whereArgs: [remnantId],
+    );
+    CloudSyncService().notifyChange();
+  }
+
+  Future<int> insertMaterialRemnant(Map<String, dynamic> data) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureRemnantInventorySchema(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final row = Map<String, dynamic>.from(data);
+    row.putIfAbsent('id', () => _nextDistributedId());
+    row.putIfAbsent(
+      'ticket_code',
+      () => 'RM-${DateTime.now().millisecondsSinceEpoch % 100000}',
+    );
+    row.putIfAbsent('status', () => 'available');
+    row.putIfAbsent('created_at', () => now);
+    row.putIfAbsent('updated_at', () => now);
+    final id = await myDb.insert('MaterialRemnants', row);
+    CloudSyncService().notifyChange();
+    return id;
+  }
+
+  Future<void> scrapMaterialRemnant({
+    required int remnantId,
+    String? reason,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    final rows = await myDb.query(
+      'MaterialRemnants',
+      where: 'id = ?',
+      whereArgs: [remnantId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final r = rows.first;
+    await myDb.transaction((txn) async {
+      await txn.update(
+        'MaterialRemnants',
+        {
+          'status': 'scrapped',
+          'note': reason ?? 'خطأ في القص تم تحويله لهالك',
+          'updated_at': timestamp,
+        },
+        where: 'id = ?',
+        whereArgs: [remnantId],
+      );
+      final scrapId = _nextDistributedId();
+      await txn.insert('MaterialScrap', {
+        'id': scrapId,
+        'ticket_code': 'SCR-ERR-${r['id']}',
+        'item_id': r['item_id'],
+        'item_type': r['item_type'],
+        'series_id': r['series_id'],
+        'color_id': r['color_id'],
+        'length_mm': r['length_mm'],
+        'scrap_kind': 'cutting_error_scrap',
+        'status': 'posted',
+        'source_order_id': r['source_order_id'],
+        'source_bar_index': r['source_bar_index'],
+        'location_id': r['location_id'],
+        'note': reason ?? 'خطأ عامل أثناء القص',
+        'created_at': timestamp,
+        'updated_at': timestamp,
+      });
+    });
+    CloudSyncService().notifyChange();
+  }
+
+  Future<int> registerCuttingErrorExtraBar({
+    required int orderId,
+    required int sectionId,
+    required int locationId,
+    int? colorId,
+    int? seriesId,
+    double? newRemnantLengthMm,
+    String? rackCode,
+    String? shelfCode,
+    String? binCode,
+    String? note,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureRemnantInventorySchema(myDb);
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    var createdRemnantId = 0;
+
+    await myDb.transaction((txn) async {
+      // 1. تسجيل سحب بارة إضافية بسبب الخطأ
+      await txn.insert('InventoryTransactions', {
+        'item_id': sectionId,
+        'item_type': 'Section',
+        'color_id': colorId,
+        'location_id': locationId,
+        'transaction_type': 'cutting_error_extra_bar',
+        'quantity': 1.0,
+        'reference_id': orderId,
+        'notes': note ?? 'سحب بارة إضافية لتعويض خطأ في القص',
+        'created_at': timestamp,
+      });
+
+      // 2. إذا كانت هناك فضلة متبقية من البارة الإضافية، نسجلها كفضلة متاحة
+      if (newRemnantLengthMm != null && newRemnantLengthMm > 50) {
+        createdRemnantId = _nextDistributedId();
+        final ticket = 'REM-ERR-$orderId-$createdRemnantId';
+        await txn.insert('MaterialRemnants', {
+          'id': createdRemnantId,
+          'ticket_code': ticket,
+          'item_id': sectionId,
+          'item_type': 'Section',
+          'series_id': seriesId,
+          'color_id': colorId,
+          'length_mm': newRemnantLengthMm,
+          'source_order_id': orderId,
+          'location_id': locationId,
+          'rack_code': rackCode?.trim(),
+          'shelf_code': shelfCode?.trim(),
+          'bin_code': binCode?.trim(),
+          'status': 'available',
+          'note': 'فضلة من بارة إضافية (تعويض خطأ قص)',
+          'created_at': timestamp,
+          'updated_at': timestamp,
+        });
+      }
+    });
+
+    CloudSyncService().notifyChange();
+    return createdRemnantId;
+  }
+
   // ==================== INVENTORY MANAGEMENT ====================
-  Future<List<Map<String, dynamic>>> readLocations() async {
+  Future<List<Map<String, dynamic>>> readLocations({bool? isWorkshop}) async {
     final myDb = await db;
     if (myDb == null) return [];
     const principalName = 'المستودع الرئيسي';
@@ -16287,20 +17002,33 @@ class SqlDatabase {
           name TEXT NOT NULL,
           type TEXT NOT NULL,
           is_active INTEGER NOT NULL DEFAULT 1,
+          is_workshop INTEGER NOT NULL DEFAULT 0,
+          allow_direct_issue INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
       ''');
     }
 
+    try {
+      await myDb.execute(
+        'ALTER TABLE Locations ADD COLUMN is_workshop INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await myDb.execute(
+        'ALTER TABLE Locations ADD COLUMN allow_direct_issue INTEGER NOT NULL DEFAULT 1;',
+      );
+    } catch (_) {}
+
     if (locations.isEmpty) {
       await myDb.insert(
         'Locations',
         _withDistributedId({
-          'name':
-              'â•ªÂºâ”˜Ã¤â”˜Ã â•ªÂ«â•ªâ–“â”˜Ã¥ â•ªÂºâ”˜Ã¤â•ªâ–’â•ªÂªâ”˜Ã¨â•ªâ”‚â”˜Ã¨',
-          'type':
-              'â”˜Ã â•ªâ”‚â•ªÂ¬â”˜Ãªâ•ªÂ»â•ªâ•£ â•ªâ–’â•ªÂªâ”˜Ã¨â•ªâ”‚â”˜Ã¨',
+          'name': 'المستودع الرئيسي',
+          'type': 'مستودع رئيسي',
           'is_active': 1,
+          'is_workshop': 1,
+          'allow_direct_issue': 1,
         }),
       );
       locations = await myDb.query('Locations', orderBy: 'id ASC');
@@ -16372,13 +17100,42 @@ class SqlDatabase {
     final seenNames = <String>{};
     return locations.where((location) {
       final name = (location['name']?.toString() ?? '').trim();
-      return name.isNotEmpty && seenNames.add(name.toLowerCase());
+      if (name.isEmpty || !seenNames.add(name.toLowerCase())) return false;
+      if (isWorkshop != null) {
+        final locIsWorkshop = (location['is_workshop'] as num?)?.toInt() ?? 0;
+        if (isWorkshop) {
+          return locIsWorkshop == 1;
+        } else {
+          return locIsWorkshop == 0;
+        }
+      }
+      return true;
     }).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> readWorkshopLocations() =>
+      readLocations(isWorkshop: true);
+
+  Future<List<Map<String, dynamic>>> readStoreLocations() async {
+    final list = await readLocations(isWorkshop: false);
+    if (list.isNotEmpty) return list;
+    // Auto-create a default store warehouse if none exists
+    await insertLocation(
+      'المستودع الرئيسي للمحل',
+      type: 'مستودع محل المواد',
+      isWorkshop: false,
+    );
+    return readLocations(isWorkshop: false);
   }
 
   /// Adds a warehouse without imposing a fixed number of warehouses.
   /// Existing names are returned instead of creating another duplicate row.
-  Future<int> insertLocation(String name, {String type = 'مستودع'}) async {
+  Future<int> insertLocation(
+    String name, {
+    String type = 'مستودع',
+    bool isWorkshop = false,
+    bool allowDirectIssue = true,
+  }) async {
     final myDb = await db;
     if (myDb == null) return 0;
 
@@ -16405,10 +17162,31 @@ class SqlDatabase {
         'name': cleanName,
         'type': type.trim().isEmpty ? 'مستودع' : type.trim(),
         'is_active': 1,
+        'is_workshop': isWorkshop ? 1 : 0,
+        'allow_direct_issue': allowDirectIssue ? 1 : 0,
       }),
     );
     CloudSyncService().notifyChange();
     return id;
+  }
+
+  Future<void> updateLocationSettings(
+    int id, {
+    required bool isWorkshop,
+    required bool allowDirectIssue,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.update(
+      'Locations',
+      {
+        'is_workshop': isWorkshop ? 1 : 0,
+        'allow_direct_issue': allowDirectIssue ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    CloudSyncService().notifyChange();
   }
 
   Future<int> updateMinQty({
@@ -16469,6 +17247,7 @@ class SqlDatabase {
     required double quantityChange,
     required String transactionType,
     int? referenceId,
+    double? unitPrice,
   }) async {
     Database? myDb = await db;
     if (myDb == null) return;
@@ -16489,7 +17268,7 @@ class SqlDatabase {
         }),
       );
 
-      // 2. Update current stock
+      // 2. Update current stock and recalculate Weighted Average Cost (WAC / CMP) if incoming purchase
       final String where;
       final List<Object?> whereArgs;
 
@@ -16509,8 +17288,9 @@ class SqlDatabase {
         whereArgs: whereArgs,
       );
 
+      double currentQty = 0.0;
       if (stockRows.isNotEmpty) {
-        double currentQty = (stockRows.first['quantity'] as num).toDouble();
+        currentQty = (stockRows.first['quantity'] as num).toDouble();
         double newQty = currentQty + quantityChange;
         await txn.update(
           'CurrentStock',
@@ -16533,6 +17313,116 @@ class SqlDatabase {
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           }),
         );
+      }
+
+      // 3. Auto-update catalog price using Weighted Average Cost (CMP / WAC)
+      // When incoming quantityChange > 0 and unitPrice is provided
+      if (quantityChange > 0 && unitPrice != null && unitPrice > 0) {
+        double oldPrice = 0.0;
+        final normType = itemType.toLowerCase().trim();
+
+        if (normType == 'section' ||
+            normType == 'sections' ||
+            normType == 'profile') {
+          if (colorId != null) {
+            final pRows = await txn.query(
+              'SectionColorPrices',
+              where: 'section_id = ? AND color_id = ?',
+              whereArgs: [itemId, colorId],
+            );
+            if (pRows.isNotEmpty) {
+              oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
+            }
+          }
+        } else if (normType == 'accessory' || normType == 'accessories') {
+          if (colorId != null) {
+            final pRows = await txn.query(
+              'AccessoryColorPrices',
+              where: 'accessory_id = ? AND color_id = ?',
+              whereArgs: [itemId, colorId],
+            );
+            if (pRows.isNotEmpty) {
+              oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
+            }
+          }
+          if (oldPrice <= 0) {
+            final aRows = await txn.query(
+              'Accessories',
+              columns: ['price'],
+              where: 'id = ?',
+              whereArgs: [itemId],
+            );
+            if (aRows.isNotEmpty) {
+              oldPrice = (aRows.first['price'] as num?)?.toDouble() ?? 0.0;
+            }
+          }
+        }
+
+        // Calculate Weighted Average Price (CMP)
+        // If no prior stock or old price is 0, adopt the new purchase price directly
+        double updatedAvgPrice = unitPrice;
+        if (currentQty > 0 && oldPrice > 0) {
+          final totalUnits = currentQty + quantityChange;
+          if (totalUnits > 0) {
+            updatedAvgPrice =
+                ((currentQty * oldPrice) + (quantityChange * unitPrice)) /
+                totalUnits;
+          }
+        }
+
+        // Apply updated price into the catalog
+        if (updatedAvgPrice > 0) {
+          if (normType == 'section' ||
+              normType == 'sections' ||
+              normType == 'profile') {
+            if (colorId != null) {
+              await txn.execute('''
+                CREATE TABLE IF NOT EXISTS SectionColorPrices (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  section_id INTEGER NOT NULL,
+                  color_id INTEGER NOT NULL,
+                  price REAL NOT NULL DEFAULT 0.0,
+                  UNIQUE(section_id, color_id)
+                )
+              ''');
+              final updated = await txn.update(
+                'SectionColorPrices',
+                {'price': updatedAvgPrice},
+                where: 'section_id = ? AND color_id = ?',
+                whereArgs: [itemId, colorId],
+              );
+              if (updated == 0) {
+                await txn.insert(
+                  'SectionColorPrices',
+                  {
+                    'section_id': itemId,
+                    'color_id': colorId,
+                    'price': updatedAvgPrice,
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+              }
+            }
+          } else if (normType == 'accessory' || normType == 'accessories') {
+            if (colorId != null) {
+              await txn.insert(
+                'AccessoryColorPrices',
+                {
+                  'accessory_id': itemId,
+                  'color_id': colorId,
+                  'price': updatedAvgPrice,
+                },
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+            }
+            await txn.update(
+              'Accessories',
+              {'price': updatedAvgPrice},
+              where: 'id = ?',
+              whereArgs: [itemId],
+            );
+          }
+        }
       }
     });
     CloudSyncService().notifyChange();
@@ -17012,6 +17902,17 @@ class SqlDatabase {
         ..removeWhere((key, value) => !columns.contains(key));
       if (data.isEmpty) return;
 
+      // Some legacy/cloud tombstones contain only the primary key. They are
+      // not complete business rows and must not be inserted into tables with
+      // required columns (notably Treasury), otherwise SQLite rejects the
+      // INSERT with a NOT NULL constraint error.
+      if (table == 'Treasury' &&
+          (!data.containsKey('transaction_type') ||
+              !data.containsKey('amount') ||
+              !data.containsKey('recorded_by'))) {
+        return;
+      }
+
       if (data.containsKey(idColumn) && data[idColumn] != null) {
         final existing = await database.query(
           table,
@@ -17182,16 +18083,22 @@ class SqlDatabase {
     if (_auditLogsInfrastructureReady) return;
     await executor.execute('''
       CREATE TABLE IF NOT EXISTS AuditLogs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         action_type TEXT NOT NULL,
         entity_type TEXT NOT NULL,
         entity_id TEXT NOT NULL,
         entity_title TEXT,
         user_name TEXT,
         details TEXT,
-        timestamp TEXT NOT NULL
+        timestamp TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT ''
       )
     ''');
+    try {
+      await executor.execute(
+        'ALTER TABLE AuditLogs ADD COLUMN updated_at TEXT NOT NULL DEFAULT "";',
+      );
+    } catch (_) {}
     _auditLogsInfrastructureReady = true;
   }
 
@@ -17208,7 +18115,9 @@ class SqlDatabase {
       await _ensureAuditLogsInfrastructure(database);
       final author = await _currentOrderEditor();
       final nowUtc = DateTime.now().toUtc().toIso8601String();
+      final uniqueId = DateTime.now().microsecondsSinceEpoch;
       await database.insert('AuditLogs', {
+        'id': uniqueId,
         'action_type': actionType,
         'entity_type': entityType,
         'entity_id': entityId,
@@ -17216,7 +18125,8 @@ class SqlDatabase {
         'user_name': author,
         'details': details ?? '',
         'timestamp': nowUtc,
-      });
+        'updated_at': nowUtc,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
       debugPrint('Error writing audit log: $e');
     }
@@ -20935,5 +21845,450 @@ class SqlDatabase {
       whereArgs: [saleId],
     );
     CloudSyncService().notifyChange();
+  }
+
+  /// Atomically executes an internal sale transfer from store to workshop warehouse.
+  /// Single-transaction double-entry inventory and document creation.
+  Future<int> executeInternalMaterialSaleTransfer({
+    required int saleId,
+    required int destLocationId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+
+    final createdAchatId = await myDb.transaction<int>((txn) async {
+      final saleRows = await txn.query(
+        'MaterialSales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+      if (saleRows.isEmpty) throw Exception('Material sale not found');
+      final sale = saleRows.first;
+      final storeLocationId = (sale['location_id'] as num?)?.toInt() ?? 1;
+      final saleCode = sale['sale_code']?.toString() ?? 'SALE';
+      final netTotal = (sale['net_total'] as num?)?.toDouble() ?? 0.0;
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      final items = await txn.query(
+        'MaterialSaleItems',
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+      );
+      if (items.isEmpty) throw Exception('No items in sale');
+
+      final linkedInvoice = 'INT-$saleCode';
+      final existingAchat = await txn.query(
+        'Achats',
+        where: 'invoice_number = ?',
+        whereArgs: [linkedInvoice],
+      );
+
+      int achatId;
+      if (existingAchat.isNotEmpty) {
+        achatId = (existingAchat.first['id'] as num).toInt();
+      } else {
+        achatId = await txn.insert(
+          'Achats',
+          _withDistributedId({
+            'invoice_number': linkedInvoice,
+            'supplier_name': 'محل بيع المواد (تحويل داخلي)',
+            'location_id': destLocationId,
+            'status': 'Confirmed',
+            'total': netTotal,
+            'paid_amount': netTotal,
+            'remaining_amount': 0.0,
+            'activity_type': 'workshop_internal',
+            'is_workshop': 1,
+            'is_internal': 1,
+            'linked_sale_id': saleId,
+            'created_at': now,
+            'updated_at': now,
+          }),
+        );
+      }
+
+      for (final item in items) {
+        final itemType = item['item_type'] as String? ?? 'Other';
+        final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+        final colorId = (item['color_id'] as num?)?.toInt();
+        final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+        final itemCode = item['item_code']?.toString() ?? '';
+        final itemName = item['item_name']?.toString() ?? '';
+
+        if (itemId > 0 && qty > 0) {
+          // 1. Deduct from store warehouse
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': storeLocationId,
+              'quantity': -qty,
+              'transaction_type': 'Internal Transfer Out (Store -> Workshop)',
+              'reference_id': saleId,
+              'created_at': now,
+            }),
+          );
+
+          final storeStockWhere = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final storeStockArgs = colorId == null
+              ? [itemId, itemType, storeLocationId]
+              : [itemId, itemType, colorId, storeLocationId];
+          final storeStock = await txn.query(
+            'CurrentStock',
+            where: storeStockWhere,
+            whereArgs: storeStockArgs,
+          );
+          if (storeStock.isNotEmpty) {
+            final curQty = (storeStock.first['quantity'] as num).toDouble();
+            await txn.update(
+              'CurrentStock',
+              {'quantity': curQty - qty, 'updated_at': now},
+              where: storeStockWhere,
+              whereArgs: storeStockArgs,
+            );
+          } else {
+            await txn.insert(
+              'CurrentStock',
+              _withDistributedId({
+                'item_id': itemId,
+                'item_type': itemType,
+                'color_id': colorId,
+                'location_id': storeLocationId,
+                'quantity': -qty,
+                'updated_at': now,
+              }),
+            );
+          }
+
+          // 2. Add to workshop warehouse
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': destLocationId,
+              'quantity': qty,
+              'transaction_type': 'Internal Transfer In (Store -> Workshop)',
+              'reference_id': achatId,
+              'created_at': now,
+            }),
+          );
+
+          final wsStockWhere = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final wsStockArgs = colorId == null
+              ? [itemId, itemType, destLocationId]
+              : [itemId, itemType, colorId, destLocationId];
+          final wsStock = await txn.query(
+            'CurrentStock',
+            where: wsStockWhere,
+            whereArgs: wsStockArgs,
+          );
+          if (wsStock.isNotEmpty) {
+            final curQty = (wsStock.first['quantity'] as num).toDouble();
+            await txn.update(
+              'CurrentStock',
+              {'quantity': curQty + qty, 'updated_at': now},
+              where: wsStockWhere,
+              whereArgs: wsStockArgs,
+            );
+          } else {
+            await txn.insert(
+              'CurrentStock',
+              _withDistributedId({
+                'item_id': itemId,
+                'item_type': itemType,
+                'color_id': colorId,
+                'location_id': destLocationId,
+                'quantity': qty,
+                'updated_at': now,
+              }),
+            );
+          }
+
+          // 3. Insert into Achat_items for workshop
+          await txn.insert(
+            'Achat_items',
+            _withDistributedId({
+              'achat_id': achatId,
+              'item_id': itemId,
+              'item_code': itemCode,
+              'item_name': itemName,
+              'item_type': itemType,
+              'color_id': colorId,
+              'quantity': qty,
+              'price': unitPrice,
+              'total_price': qty * unitPrice,
+              'received_quantity': qty,
+              'created_at': now,
+            }),
+          );
+        }
+      }
+
+      // Update MaterialSales header
+      await txn.update(
+        'MaterialSales',
+        {
+          'status': 'delivered',
+          'dest_location_id': destLocationId,
+          'stock_deducted': 1,
+          'linked_achat_id': achatId,
+          'is_internal': 1,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      return achatId;
+    });
+
+    CloudSyncService().notifyChange();
+    return createdAchatId;
+  }
+
+  /// Reverses an internal sale transfer and documents counter-movements.
+  Future<void> cancelOrReverseInternalMaterialSaleTransfer({
+    required int saleId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+
+    await myDb.transaction((txn) async {
+      final saleRows = await txn.query(
+        'MaterialSales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+      if (saleRows.isEmpty) return;
+      final sale = saleRows.first;
+      final storeLocationId = (sale['location_id'] as num?)?.toInt() ?? 1;
+      final destLocationId = (sale['dest_location_id'] as num?)?.toInt();
+      final linkedAchatId = (sale['linked_achat_id'] as num?)?.toInt();
+      final stockDeducted = (sale['stock_deducted'] as num?)?.toInt() ?? 0;
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      if (stockDeducted == 1 && destLocationId != null) {
+        final items = await txn.query(
+          'MaterialSaleItems',
+          where: 'sale_id = ?',
+          whereArgs: [saleId],
+        );
+        for (final item in items) {
+          final itemType = item['item_type'] as String? ?? 'Other';
+          final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+          final colorId = (item['color_id'] as num?)?.toInt();
+          final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+
+          if (itemId > 0 && qty > 0) {
+            // Return to store warehouse
+            await txn.insert(
+              'InventoryTransactions',
+              _withDistributedId({
+                'item_id': itemId,
+                'item_type': itemType,
+                'color_id': colorId,
+                'location_id': storeLocationId,
+                'quantity': qty,
+                'transaction_type': 'Reversal: Internal Return (Workshop -> Store)',
+                'reference_id': saleId,
+                'created_at': now,
+              }),
+            );
+
+            // Deduct from workshop warehouse
+            await txn.insert(
+              'InventoryTransactions',
+              _withDistributedId({
+                'item_id': itemId,
+                'item_type': itemType,
+                'color_id': colorId,
+                'location_id': destLocationId,
+                'quantity': -qty,
+                'transaction_type': 'Reversal: Internal Return Out of Workshop',
+                'reference_id': linkedAchatId,
+                'created_at': now,
+              }),
+            );
+          }
+        }
+      }
+
+      await txn.update(
+        'MaterialSales',
+        {
+          'status': 'cancelled',
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      if (linkedAchatId != null) {
+        await txn.update(
+          'Achats',
+          {
+            'status': 'Cancelled',
+            'updated_at': now,
+          },
+          where: 'id = ?',
+          whereArgs: [linkedAchatId],
+        );
+      }
+    });
+
+    CloudSyncService().notifyChange();
+  }
+
+  /// Calculates the unified financial and profit margin report for the enterprise.
+  /// Separates Workshop from Materials Store and strictly eliminates inter-unit
+  /// transfer margins from the combined consolidated enterprise total.
+  Future<Map<String, dynamic>> getEnterpriseUnifiedFinancialSummary({
+    String? startDate,
+    String? endDate,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) {
+      return {
+        'store_external_sales': 0.0,
+        'store_external_paid': 0.0,
+        'store_external_unpaid': 0.0,
+        'store_internal_transfers': 0.0,
+        'store_purchases': 0.0,
+        'workshop_orders_revenue': 0.0,
+        'workshop_orders_advances': 0.0,
+        'workshop_orders_unpaid': 0.0,
+        'workshop_external_purchases': 0.0,
+        'workshop_internal_purchases': 0.0,
+        'consolidated_revenue': 0.0,
+        'consolidated_cash_collected': 0.0,
+        'consolidated_external_purchases': 0.0,
+        'consolidated_net_cash_flow': 0.0,
+        'eliminated_internal_margin': 0.0,
+      };
+    }
+
+    String whereOrders = 'is_deleted = 0';
+    String whereMaterialSales = "status != 'cancelled'";
+    String whereAchats = "status != 'Cancelled'";
+    List<dynamic> argsOrders = [];
+    List<dynamic> argsSales = [];
+    List<dynamic> argsAchats = [];
+
+    if (startDate != null && startDate.isNotEmpty) {
+      whereOrders += ' AND created_at >= ?';
+      whereMaterialSales += ' AND sale_date >= ?';
+      whereAchats += ' AND created_at >= ?';
+      argsOrders.add(startDate);
+      argsSales.add(startDate);
+      argsAchats.add(startDate);
+    }
+    if (endDate != null && endDate.isNotEmpty) {
+      whereOrders += ' AND created_at <= ?';
+      whereMaterialSales += ' AND sale_date <= ?';
+      whereAchats += ' AND created_at <= ?';
+      argsOrders.add(endDate);
+      argsSales.add(endDate);
+      argsAchats.add(endDate);
+    }
+
+    // 1. Material Store Sales
+    final salesRows = await myDb.rawQuery(
+      'SELECT is_internal, net_total, paid_amount, remaining_amount FROM MaterialSales WHERE $whereMaterialSales',
+      argsSales,
+    );
+    double storeExternalSales = 0.0;
+    double storeExternalPaid = 0.0;
+    double storeExternalUnpaid = 0.0;
+    double storeInternalTransfers = 0.0;
+
+    for (final row in salesRows) {
+      final isInternal = (row['is_internal'] as num?)?.toInt() == 1;
+      final net = (row['net_total'] as num?)?.toDouble() ?? 0.0;
+      final paid = (row['paid_amount'] as num?)?.toDouble() ?? 0.0;
+      final remaining = (row['remaining_amount'] as num?)?.toDouble() ?? 0.0;
+      if (isInternal) {
+        storeInternalTransfers += net;
+      } else {
+        storeExternalSales += net;
+        storeExternalPaid += paid;
+        storeExternalUnpaid += remaining;
+      }
+    }
+
+    // 2. Workshop Orders (Commandes)
+    final orderRows = await myDb.rawQuery(
+      'SELECT net_payable, total, advance_payment FROM Commandes WHERE $whereOrders',
+      argsOrders,
+    );
+    double workshopOrdersRevenue = 0.0;
+    double workshopOrdersAdvances = 0.0;
+
+    for (final row in orderRows) {
+      final net = (row['net_payable'] as num?)?.toDouble() ??
+          (row['total'] as num?)?.toDouble() ??
+          0.0;
+      final adv = (row['advance_payment'] as num?)?.toDouble() ?? 0.0;
+      workshopOrdersRevenue += net;
+      workshopOrdersAdvances += adv;
+    }
+    final workshopOrdersUnpaid =
+        (workshopOrdersRevenue - workshopOrdersAdvances).clamp(0.0, double.infinity);
+
+    // 3. Purchases (Achats)
+    final achatRows = await myDb.rawQuery(
+      'SELECT is_workshop, is_internal, total, paid_amount FROM Achats WHERE $whereAchats',
+      argsAchats,
+    );
+    double storePurchases = 0.0;
+    double workshopExternalPurchases = 0.0;
+    double workshopInternalPurchases = 0.0;
+
+    for (final row in achatRows) {
+      final isWorkshop = (row['is_workshop'] as num?)?.toInt() == 1;
+      final isInternal = (row['is_internal'] as num?)?.toInt() == 1;
+      final tot = (row['total'] as num?)?.toDouble() ?? 0.0;
+
+      if (isInternal) {
+        workshopInternalPurchases += tot;
+      } else if (isWorkshop) {
+        workshopExternalPurchases += tot;
+      } else {
+        storePurchases += tot;
+      }
+    }
+
+    // 4. Consolidated Enterprise Figures (Eliminating internal transactions)
+    final consolidatedRevenue = storeExternalSales + workshopOrdersRevenue;
+    final consolidatedCashCollected = storeExternalPaid + workshopOrdersAdvances;
+    final consolidatedExternalPurchases = storePurchases + workshopExternalPurchases;
+    final consolidatedNetCashFlow =
+        consolidatedCashCollected - consolidatedExternalPurchases;
+
+    return {
+      'store_external_sales': storeExternalSales,
+      'store_external_paid': storeExternalPaid,
+      'store_external_unpaid': storeExternalUnpaid,
+      'store_internal_transfers': storeInternalTransfers,
+      'store_purchases': storePurchases,
+      'workshop_orders_revenue': workshopOrdersRevenue,
+      'workshop_orders_advances': workshopOrdersAdvances,
+      'workshop_orders_unpaid': workshopOrdersUnpaid,
+      'workshop_external_purchases': workshopExternalPurchases,
+      'workshop_internal_purchases': workshopInternalPurchases,
+      'consolidated_revenue': consolidatedRevenue,
+      'consolidated_cash_collected': consolidatedCashCollected,
+      'consolidated_external_purchases': consolidatedExternalPurchases,
+      'consolidated_net_cash_flow': consolidatedNetCashFlow,
+      'eliminated_internal_margin': storeInternalTransfers,
+    };
   }
 }

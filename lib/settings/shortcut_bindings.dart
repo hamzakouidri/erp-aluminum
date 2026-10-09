@@ -26,6 +26,7 @@ import '../Screen/workers_management_screen.dart';
 import '../Cliente/client.dart';
 import '../Commande/commande.dart';
 import '../Commande/order_workspace_screen.dart';
+import '../Commande/Systeme/show_system_francais.dart';
 import '../items_produits/products_menu_screen.dart';
 import '../sql_database.dart';
 import 'app_settings.dart';
@@ -68,6 +69,8 @@ class ShortcutBindings {
     'delete_order': makeBinding(LogicalKeyboardKey.keyD),
     'devis_order': makeBinding(LogicalKeyboardKey.keyV),
     'details_order': makeBinding(LogicalKeyboardKey.keyI),
+    // Drawing
+    'drawing_mode': makeBinding(LogicalKeyboardKey.keyD, ctrl: true, shift: true),
   };
 
   static const commands = {
@@ -315,6 +318,16 @@ class ShortcutBindings {
         focus.findAncestorWidgetOfExactType<EditableText>() != null) {
       return false;
     }
+
+    // Do not trigger global home/navigation shortcuts while active in WindowView (Drawing Screen)
+    final route = ModalRoute.of(focus);
+    final routeName = route?.settings.name ?? '';
+    final isDrawingRoute = routeName.contains('WindowView') ||
+        focus.findAncestorWidgetOfExactType<WindowView>() != null;
+    if (isDrawingRoute) {
+      return false;
+    }
+
     final settings = context.read<AppSettingsProvider>();
     const contextualRowCommands = {
       'drawing_mode',

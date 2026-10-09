@@ -29,6 +29,7 @@ import 'achat_screen.dart';
 import 'inventory_screen.dart';
 import 'measurements_screen.dart';
 import 'worker_tasks_screen.dart';
+import 'material_sales_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
@@ -436,6 +437,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         db.readEmployees(),
         db.readClientsForDisplay(),
         db.getOrderAssignedWorkersMap(),
+        db.readAllProfiles(),
       ]);
       final profiles = secondaryData[0] as List<Map<String, dynamic>>;
       final desktopOrders = List<Map<String, dynamic>>.from(
@@ -449,6 +451,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final assignedWorkersMap = Map<int, String>.from(
         secondaryData[5] as Map<int, String>,
       );
+      final allProfiles = secondaryData[6] as List<Map<String, dynamic>>;
 
       if (mounted && loadToken == _statsLoadToken) {
         setState(() {
@@ -465,7 +468,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
           );
           _clientsCount = stats['cliCount'] ?? '0';
           _cliTrend = stats['cliTrend'] ?? '—';
-          _produitsCount = profiles.length.toString();
+          // The dashboard card is a catalogue total, not an "active only"
+          // filter. Imported backups can legitimately contain inactive
+          // profiles, which previously made this card show zero.
+          _produitsCount = allProfiles.length.toString();
           _desktopOrders = desktopOrders;
           _desktopClients = clients;
           _desktopProfiles = profiles;
@@ -901,6 +907,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                           ),
                           sliver: SliverList(
                             delegate: SliverChildListDelegate([
+                              // ── محدد قسم العمل (الورشة / المحل / الكل) ───────────────
+                              _buildMobileSectionSelector(context),
+
                               // ── إحصائيات ────────────────────────────────────────
                               _buildStatsRow(context),
                               const SizedBox(height: 24),
@@ -1539,15 +1548,29 @@ class _WelcomScreenState extends State<WelcomScreen> {
                         ),
                       ),
                     );
+                    final sectionSelector = _buildDesktopSectionSelector(context, lang, cardColor, contentColor, mutedColor);
                     if (narrow) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [title, const SizedBox(height: 14), refresh],
+                        children: [
+                          title,
+                          if (sectionSelector != null) ...[
+                            const SizedBox(height: 14),
+                            sectionSelector,
+                          ],
+                          const SizedBox(height: 14),
+                          refresh,
+                        ],
                       );
                     }
                     return Row(
                       children: [
                         Expanded(child: title),
+                        if (sectionSelector != null) ...[
+                          const SizedBox(width: 14),
+                          sectionSelector,
+                        ],
+                        const SizedBox(width: 12),
                         refresh,
                       ],
                     );
@@ -4769,8 +4792,13 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Widget _buildNavGrid(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    final allowWorkshop = settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.workshop;
+    final allowStore = settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.materialsStore;
+
     final items = [
-      if (settings.canViewOrders())
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewOrders())
         _NavItem(
           icon: Icons.receipt_long_rounded,
           label: Localization.translate('commandes', lang),
@@ -4787,7 +4815,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
             }
           },
         ),
-      if (settings.canViewProjects())
+      if (allowStore && settings.hasMaterialsStore && settings.canMaterialSales())
+        _NavItem(
+          icon: Icons.storefront_rounded,
+          label: Localization.translate('بيع المواد', lang),
+          color: const Color(0xFFEA580C), // Orange
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('بيع المواد', lang),
+            icon: Icons.storefront_rounded,
+            screen: MaterialSalesScreen(db: db),
+          ),
+        ),
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewProjects())
         _NavItem(
           icon: Icons.folder_shared_rounded,
           label: Localization.translate('المشاريع', lang),
@@ -4823,7 +4863,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: ProductsMenuScreen(db: db),
           ),
         ),
-      if (settings.canViewMyTasks())
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewMyTasks())
         _NavItem(
           icon: Icons.assignment_turned_in_rounded,
           label: Localization.translate('مهامي وتصنيعاتي', lang),
@@ -4835,7 +4875,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: WorkerTasksScreen(db: db),
           ),
         ),
-      if (settings.canViewMyTasks())
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewMyTasks())
         _NavItem(
           icon: Icons.archive_rounded,
           label: lang == AppLanguage.arabic
@@ -4927,7 +4967,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: TreasuryScreen(db: db),
           ),
         ),
-      if (settings.canAccessExternalOperations())
+      if (allowWorkshop && settings.hasWorkshop && settings.canAccessExternalOperations())
         _NavItem(
           icon: Icons.engineering_rounded,
           label: lang == AppLanguage.arabic
@@ -4979,6 +5019,216 @@ class _WelcomScreenState extends State<WelcomScreen> {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 1.4,
+      ),
+    );
+  }
+
+  Widget? _buildDesktopSectionSelector(
+    BuildContext context,
+    AppLanguage lang,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isDualActivity) return null;
+
+    final current = settings.workingSection;
+
+    Widget buildOption({
+      required WorkingSection section,
+      required String label,
+      required IconData icon,
+    }) {
+      final isSelected = current == section;
+      return InkWell(
+        onTap: () => settings.setWorkingSection(section),
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    )
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? Colors.white : mutedColor,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? Colors.white : contentColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: mutedColor.withValues(alpha: 0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          buildOption(
+            section: WorkingSection.all,
+            label: _desktopText(lang, 'الكل', 'Tout', 'All'),
+            icon: Icons.dashboard_customize_rounded,
+          ),
+          const SizedBox(width: 4),
+          buildOption(
+            section: WorkingSection.workshop,
+            label: _desktopText(lang, 'الورشة', 'Atelier', 'Workshop'),
+            icon: Icons.precision_manufacturing_rounded,
+          ),
+          const SizedBox(width: 4),
+          buildOption(
+            section: WorkingSection.materialsStore,
+            label: _desktopText(lang, 'المحل', 'Magasin', 'Store'),
+            icon: Icons.storefront_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileSectionSelector(BuildContext context) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isDualActivity) return const SizedBox.shrink();
+
+    final lang = settings.language;
+    final current = settings.workingSection;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Widget buildTab({
+      required WorkingSection section,
+      required String title,
+      required IconData icon,
+      required Color activeColor,
+    }) {
+      final isSelected = current == section;
+      return Expanded(
+        child: InkWell(
+          onTap: () => settings.setWorkingSection(section),
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? (isDark ? activeColor.withValues(alpha: 0.28) : activeColor)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: isSelected && isDark
+                  ? Border.all(color: activeColor.withValues(alpha: 0.6), width: 1.2)
+                  : null,
+              boxShadow: isSelected && !isDark
+                  ? [
+                      BoxShadow(
+                        color: activeColor.withValues(alpha: 0.30),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      )
+                    ]
+                  : null,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected
+                      ? (isDark ? activeColor : Colors.white)
+                      : (isDark ? Colors.white60 : Colors.blueGrey.shade600),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected
+                          ? (isDark ? Colors.white : Colors.white)
+                          : (isDark ? Colors.white70 : Colors.blueGrey.shade700),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.blueGrey.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Row(
+        children: [
+          buildTab(
+            section: WorkingSection.all,
+            title: _desktopText(lang, 'الكل', 'Tout', 'All'),
+            icon: Icons.dashboard_customize_rounded,
+            activeColor: const Color(0xFF2563EB),
+          ),
+          const SizedBox(width: 4),
+          buildTab(
+            section: WorkingSection.workshop,
+            title: _desktopText(lang, 'الورشة', 'Atelier', 'Workshop'),
+            icon: Icons.precision_manufacturing_rounded,
+            activeColor: const Color(0xFF1D4ED8),
+          ),
+          const SizedBox(width: 4),
+          buildTab(
+            section: WorkingSection.materialsStore,
+            title: _desktopText(lang, 'المحل', 'Magasin', 'Store'),
+            icon: Icons.storefront_rounded,
+            activeColor: const Color(0xFF0D9488),
+          ),
+        ],
       ),
     );
   }

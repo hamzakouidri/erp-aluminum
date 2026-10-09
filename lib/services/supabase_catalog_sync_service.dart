@@ -392,7 +392,7 @@ class SupabaseCatalogSyncService {
   Future<void> refreshIfChanged() async {
     final manifest = await _client
         .from('catalog_manifest')
-        .select('version_id,status')
+        .select('version_id,status,tables,table_row_counts')
         .eq('id', 'latest')
         .maybeSingle();
     if (manifest == null || manifest['status'] != 'completed') return;
@@ -402,11 +402,41 @@ class SupabaseCatalogSyncService {
       'CREATE TABLE IF NOT EXISTS CatalogDownloadState (id INTEGER PRIMARY KEY, version TEXT NOT NULL)',
     );
     final saved = await local.query('CatalogDownloadState', where: 'id = 1');
-    final sections = await local.query('Sections', columns: ['id'], limit: 1);
-    if (saved.isNotEmpty &&
+    final manifestTables = _readStringList(
+      manifest['tables'],
+    ).where(SqlDatabase.catalogTables.contains).toList(growable: false);
+    final expectedRows = _readIntMap(manifest['table_row_counts']);
+    var localCatalogIsComplete =
+        saved.isNotEmpty &&
         saved.first['version'] == manifest['version_id'] &&
-        sections.isNotEmpty)
-      return;
+        manifestTables.isNotEmpty;
+
+    if (localCatalogIsComplete) {
+      for (final table in manifestTables) {
+        final expected = expectedRows[table];
+        if (expected == null) {
+          localCatalogIsComplete = false;
+          break;
+        }
+        try {
+          final countRows = await local.rawQuery(
+            'SELECT COUNT(*) AS row_count FROM $table',
+          );
+          final count = countRows.isEmpty
+              ? 0
+              : (countRows.first['row_count'] as num?)?.toInt() ?? 0;
+          if (count != expected) {
+            localCatalogIsComplete = false;
+            break;
+          }
+        } catch (_) {
+          localCatalogIsComplete = false;
+          break;
+        }
+      }
+    }
+
+    if (localCatalogIsComplete) return;
     await downloadGlobalCatalog(allowMissing: true);
   }
 

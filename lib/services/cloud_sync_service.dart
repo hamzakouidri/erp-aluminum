@@ -194,6 +194,29 @@ class CloudSyncService {
     _dbUpdateController.add('workshop_profile_updated');
   }
 
+  /// Called after a database file has been replaced through Settings.
+  /// A file import changes many tables without going through the normal CRUD
+  /// methods, so no change event or pending-row marker is produced naturally.
+  Future<void> notifyDatabaseImported() async {
+    _notifyDatabaseUiChanged('database_imported');
+
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      try {
+        // Merge only rows missing from Supabase. Existing, newer remote rows
+        // are deliberately left untouched.
+        await supabaseWorkshopSync
+            .uploadLocalWorkshopDataMerge()
+            .timeout(const Duration(seconds: 45));
+      } catch (error) {
+        debugPrint('Imported database cloud merge deferred: $error');
+        supabaseWorkshopSync.notifyLocalChange(immediate: true);
+      }
+    }
+
+    _notifyDatabaseUiChanged('database_imported');
+  }
+
   final StreamController<CloudSyncFeedback> _syncFeedbackController =
       StreamController<CloudSyncFeedback>.broadcast();
 
@@ -1213,6 +1236,9 @@ class CloudSyncService {
     await prefs.remove('cached_workshop_uuid');
     await prefs.remove('workshop_code');
     await prefs.remove('workshop_name');
+    await prefs.remove('user_role');
+    await prefs.remove('permissions_json');
+    await prefs.remove('user_display_name');
   }
 
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات

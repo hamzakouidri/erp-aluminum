@@ -436,105 +436,105 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           // Workshop Profile Settings
-          if (settings.isManager) ...[
-            Card(
-              elevation: 2,
-              child: ListTile(
-                leading: const Icon(
-                  Icons.storefront_rounded,
-                  color: Colors.blue,
-                ),
-                title: Text(
-                  Localization.translate('معلومات الورشة', lang),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Cairo',
+            if (settings.hasWorkshop) ...[
+              Card(
+                elevation: 2,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.storefront_rounded,
+                    color: Colors.blue,
                   ),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WorkshopProfileScreen(),
+                  title: Text(
+                    Localization.translate('معلومات الورشة', lang),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
                     ),
-                  );
-                },
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const WorkshopProfileScreen(),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              elevation: 2,
-              child: ListTile(
-                leading: const Icon(
-                  Icons.content_cut_rounded,
-                  color: Colors.orange,
-                ),
-                title: Text(
-                  Localization.translate('إعدادات القص والفضلات', lang),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Cairo',
+              const SizedBox(height: 10),
+              Card(
+                elevation: 2,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.content_cut_rounded,
+                    color: Colors.orange,
                   ),
-                ),
-                subtitle: Text(
-                  Localization.translate(
-                    'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
-                    lang,
-                  ),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const CuttingSettingsScreen(),
+                  title: Text(
+                    Localization.translate('إعدادات القص والفضلات', lang),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
                     ),
-                  );
-                },
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
+                      lang,
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CuttingSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
+              const SizedBox(height: 10),
 
-            // Standard Sheets Formats & Prices
-            Card(
-              elevation: 2,
-              child: ListTile(
-                leading: const Icon(
-                  Icons.layers_outlined,
-                  color: Colors.blueAccent,
-                ),
-                title: Text(
-                  lang == AppLanguage.arabic
-                      ? 'أبعاد وأسعار الألواح والصفائح'
-                      : 'Formats et prix des feuilles & panneaux',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
+              // Standard Sheets Formats & Prices
+              Card(
+                elevation: 2,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.layers_outlined,
+                    color: Colors.blueAccent,
                   ),
-                ),
-                subtitle: Text(
-                  lang == AppLanguage.arabic
-                      ? 'مقاسات فايات الريزين، الأليكوبوند، البانو ساندويتش، البيكسي جلاس والزجاج.'
-                      : 'Tailles et prix des panneaux (Résine, Alucobond, Sandwich, Plexi, Verre).',
-                  style: TextStyle(
-                    fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
-                    fontSize: 12,
-                  ),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const StandardSheetsScreen(),
+                  title: Text(
+                    lang == AppLanguage.arabic
+                        ? 'أبعاد وأسعار الألواح والصفائح'
+                        : 'Formats et prix des feuilles & panneaux',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
                     ),
-                  );
-                },
+                  ),
+                  subtitle: Text(
+                    lang == AppLanguage.arabic
+                        ? 'مقاسات فايات الريزين، الأليكوبوند، البانو ساندويتش، البيكسي جلاس والزجاج.'
+                        : 'Tailles et prix des panneaux (Résine, Alucobond, Sandwich, Plexi, Verre).',
+                    style: TextStyle(
+                      fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
+                      fontSize: 12,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StandardSheetsScreen(),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
 
           // Display Settings
           Card(
@@ -2006,6 +2006,104 @@ class DisplaySettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // Business Activity Setting
+          Card(
+            elevation: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.business_center_rounded, color: Colors.blue),
+                      const SizedBox(width: 10),
+                      Text(
+                        Localization.translate('نوع النشاط', lang),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    Localization.translate('تحديد طبيعة نشاط المؤسسة', lang),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade700,
+                      fontFamily: 'Cairo',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                RadioListTile<BusinessActivityType>(
+                  title: Text(
+                    Localization.translate('ورشة فقط', lang),
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'تصنيع النوافذ والمطابخ والطلبيات مع مستودعات ومشتريات الورشة المباشرة',
+                      lang,
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5),
+                  ),
+                  value: BusinessActivityType.workshopOnly,
+                  groupValue: settings.businessActivity,
+                  onChanged: (BusinessActivityType? val) {
+                    if (val != null) settings.setBusinessActivity(val);
+                  },
+                ),
+                RadioListTile<BusinessActivityType>(
+                  title: Text(
+                    Localization.translate('محل بيع مواد فقط', lang),
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'بيع وتجارة المقاطع والزجاج والإكسسوارات ومستودعات ومبيعات المحل',
+                      lang,
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5),
+                  ),
+                  value: BusinessActivityType.materialsStoreOnly,
+                  groupValue: settings.businessActivity,
+                  onChanged: (BusinessActivityType? val) {
+                    if (val != null) settings.setBusinessActivity(val);
+                  },
+                ),
+                RadioListTile<BusinessActivityType>(
+                  title: Text(
+                    Localization.translate('ورشة + محل بيع مواد', lang),
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'كلا النشاطين معاً، مع إمكانية التحويل والبيع الداخلي للورشة',
+                      lang,
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5),
+                  ),
+                  value: BusinessActivityType.workshopAndStore,
+                  groupValue: settings.businessActivity,
+                  onChanged: (BusinessActivityType? val) {
+                    if (val != null) settings.setBusinessActivity(val);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
           // View Mode Setting
           Card(
             elevation: 2,
@@ -2065,6 +2163,27 @@ class DisplaySettingsScreen extends StatelessWidget {
                   },
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          Card(
+            elevation: 2,
+            child: SwitchListTile(
+              secondary: const Icon(Icons.price_check, color: Colors.blue),
+              title: Text(
+                Localization.translate('تطبيق أسعار الشراء على جدول الكمية والتكلفة', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              subtitle: Text(
+                Localization.translate(
+                  'يظهر آخر سعر شراء في الفاتورة دائماً، ويُحتسب في جدول التكلفة عند التفعيل فقط',
+                  lang,
+                ),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              value: settings.applyPurchasePricesToCostTable,
+              onChanged: settings.setApplyPurchasePricesToCostTable,
             ),
           ),
           const SizedBox(height: 10),

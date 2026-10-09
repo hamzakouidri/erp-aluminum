@@ -5,6 +5,7 @@ import 'package:database_data/settings/app_settings.dart';
 import 'dart:math' as math;
 
 import 'app_admin_status_service.dart';
+import 'offline_account_cache.dart';
 
 /// The account/workshop record used by the application gate.
 ///
@@ -58,6 +59,18 @@ class SupabaseAccountSnapshot {
     'email': email,
     'isBlocked': blocked,
     'isApplicationAdminWorkspace': isApplicationAdminWorkspace,
+  };
+
+  Map<String, dynamic> toMap() => {
+    'userId': userId,
+    'email': email,
+    'role': role,
+    'workshopId': workshopId,
+    'workshopCode': workshopCode,
+    'workshopName': workshopName,
+    'permissions': permissions,
+    'blocked': blocked,
+    'subscription': subscription,
   };
 }
 
@@ -280,14 +293,50 @@ class SupabaseAccountService {
         _cachedAccount = account;
         _cachedAccountUserId = user.id;
         _cachedAccountAt = DateTime.now();
+        if (account != null) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await saveOfflineAccount(prefs, account.toMap());
+          } catch (_) {}
+        }
       }
       return account;
+    } catch (e) {
+      // If server request fails (e.g. offline/network timeout), attempt to recover from offline cache
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedMap = readOfflineAccount(prefs, user.id);
+        if (cachedMap != null) {
+          final recovered = _snapshotFromMap(cachedMap);
+          _cachedAccount = recovered;
+          _cachedAccountUserId = user.id;
+          _cachedAccountAt = DateTime.now();
+          return recovered;
+        }
+      } catch (_) {}
+      rethrow;
     } finally {
       if (identical(_accountLoadInFlight, load)) {
         _accountLoadInFlight = null;
         _accountLoadUserId = null;
       }
     }
+  }
+
+  SupabaseAccountSnapshot _snapshotFromMap(Map<String, dynamic> map) {
+    Map<String, dynamic> objectMap(dynamic value) =>
+        value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+    return SupabaseAccountSnapshot(
+      userId: map['userId']?.toString() ?? '',
+      email: map['email']?.toString() ?? '',
+      role: map['role']?.toString() ?? 'worker',
+      workshopId: map['workshopId']?.toString() ?? '',
+      workshopCode: map['workshopCode']?.toString() ?? '',
+      workshopName: map['workshopName']?.toString() ?? '',
+      permissions: objectMap(map['permissions']),
+      blocked: map['blocked'] == true,
+      subscription: objectMap(map['subscription']),
+    );
   }
 
   Future<SupabaseAccountSnapshot?> _loadCurrentAccountFromServer(
@@ -395,6 +444,33 @@ class SupabaseAccountService {
       }
     }
 
+    // If the user owns a workshop (registered as manager or migrated) but does not
+    // have an explicit workshop_members row, resolve their owned workshop.
+    try {
+      final ownedWorkshop = await _client
+          .from('workshops')
+          .select('id,code,name,join_code')
+          .eq('owner_uid', user.id)
+          .limit(1)
+          .maybeSingle();
+      if (ownedWorkshop != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'selected_supabase_workshop_id',
+          ownedWorkshop['id'].toString(),
+        );
+        return _buildWorkshopSnapshot(
+          user: user,
+          workshop: Map<String, dynamic>.from(ownedWorkshop),
+          role: isApplicationAdmin ? 'admin' : 'manager',
+          permissions: const <String, dynamic>{},
+          blocked: false,
+        );
+      }
+    } catch (e) {
+      debugPrint('Owned workshop lookup fallback skipped: $e');
+    }
+
     if (isApplicationAdmin) {
       // The application administrator is global and may not have a
       // workshop_members row. When a workshop was selected explicitly on the
@@ -404,29 +480,6 @@ class SupabaseAccountService {
           await loadSelectedApplicationAdminWorkshop();
       if (selectedAdminWorkshop != null) return selectedAdminWorkshop;
 
-      // Some migrated owners have the real workshop but no corresponding
-      // membership row yet. Resolve the owned workshop before falling back to
-      // the synthetic application-admin account, otherwise its user UUID can
-      // leak into the workshop-code field.
-      try {
-        final ownedWorkshop = await _client
-            .from('workshops')
-            .select('id,code,name,join_code')
-            .eq('owner_uid', user.id)
-            .limit(1)
-            .maybeSingle();
-        if (ownedWorkshop != null) {
-          return _buildWorkshopSnapshot(
-            user: user,
-            workshop: Map<String, dynamic>.from(ownedWorkshop),
-            role: 'admin',
-            permissions: const <String, dynamic>{},
-            blocked: false,
-          );
-        }
-      } catch (_) {
-        // Keep the synthetic admin fallback for older/incomplete schemas.
-      }
       return SupabaseAccountSnapshot(
         userId: user.id,
         email: user.email ?? '',

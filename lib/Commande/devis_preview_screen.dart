@@ -41,8 +41,86 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   int? _activeDeliveryId;
   String? _activeDeliveryDate;
   int _imageMode = 0; // 0=Latérale, 1=Sous-prix, 2=Pleine largeur
+  // 0 = سعر الورشة (Standard), 1 = سعر المقاول (-10%), 2 = سعر المشروع (-18%)
+  int _pricingTier = 0;
   static const _blue = Color(0xFF1565C0);
   static const _headerBlue = Color(0xFF1976D2);
+
+  double get _pricingMultiplier {
+    switch (_pricingTier) {
+      case 1:
+        return 0.90; // سعر المقاول: تخفيض 10%
+      case 2:
+        return 0.82; // سعر المشروع: تخفيض 18%
+      default:
+        return 1.0; // سعر الورشة العادي
+    }
+  }
+
+  DevisData get _effectiveDevisData {
+    if (_pricingTier == 0) return _currentDevisData;
+    final mult = _pricingMultiplier;
+    final adjustedItems = _currentDevisData.items.map((it) {
+      return DevisLineItem(
+        imagePath: it.imagePath,
+        imageBase64: it.imageBase64,
+        title: it.title,
+        details: it.details,
+        unitPrice: (it.unitPrice * mult).roundToDouble(),
+        quantity: it.quantity,
+        isReplaced: it.isReplaced,
+        replacementReason: it.replacementReason,
+        width: it.width,
+        height: it.height,
+        color: it.color,
+        detailId: it.detailId,
+      );
+    }).toList();
+
+    final totalBrut = adjustedItems.fold<double>(
+      0.0,
+      (acc, item) =>
+          acc + (item.isReplaced ? 0.0 : item.unitPrice * item.quantity),
+    );
+    final totalBeforeTax = totalBrut - _currentDevisData.remise;
+    final tvaAmount = (totalBeforeTax * _currentDevisData.tvaPercent) / 100;
+    final totalTTC = totalBeforeTax + tvaAmount;
+
+    return DevisData(
+      orderId: _currentDevisData.orderId,
+      orderDate: _currentDevisData.orderDate,
+      validUntil: _currentDevisData.validUntil,
+      workshop: _currentDevisData.workshop,
+      clientName: _currentDevisData.clientName,
+      clientPhone: _currentDevisData.clientPhone,
+      items: adjustedItems,
+      totalBrut: totalBrut,
+      remise: _currentDevisData.remise,
+      totalBeforeTax: totalBeforeTax,
+      totalHT: totalBeforeTax,
+      tvaPercent: _currentDevisData.tvaPercent,
+      tvaAmount: tvaAmount,
+      totalTTC: totalTTC,
+      amountPaid: _currentDevisData.amountPaid,
+      amountInWords: _currentDevisData.amountInWords,
+      invoiceNote: _currentDevisData.invoiceNote,
+      isPartial: _currentDevisData.isPartial,
+      hidePrices: _currentDevisData.hidePrices,
+      isProForma: _currentDevisData.isProForma,
+      documentTitleKey: _currentDevisData.documentTitleKey,
+      clientNif: _currentDevisData.clientNif,
+      clientNis: _currentDevisData.clientNis,
+      clientRc: _currentDevisData.clientRc,
+      clientAi: _currentDevisData.clientAi,
+      chequeNumber: _currentDevisData.chequeNumber,
+      clientNumber: _currentDevisData.clientNumber,
+      clientId: _currentDevisData.clientId,
+      sequenceNumber: _currentDevisData.sequenceNumber,
+      priorConfirmedWindowsCount: _currentDevisData.priorConfirmedWindowsCount,
+      rawOrder: _currentDevisData.rawOrder,
+      rawItems: _currentDevisData.rawItems,
+    );
+  }
 
   // The visual Devis is already available from DevisData. PDF bytes are
   // prepared in the background and must not block opening the preview.
@@ -63,7 +141,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   AppLanguage get lang => _invoiceLanguage;
 
-  DevisData get data => _currentDevisData;
+  DevisData get data => _effectiveDevisData;
 
   bool get _isOfficial =>
       data.isProForma ||
@@ -130,11 +208,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       context,
       listen: false,
     ).language;
-    // Generate the PDF in the background. The visual preview must remain
-    // usable while PDF bytes are being prepared; putting a full-screen loader
-    // here made partial delivery previews look stuck indefinitely.
+    // Generate the PDF in the background after the screen renders. The visual preview must remain
+    // instant and usable while PDF bytes are being prepared; widget.data is already built.
     unawaited(_checkExistingDelivery());
-    unawaited(_initializePreviewLanguage());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _initPdfGeneration();
+      }
+    });
   }
 
   Future<void> _checkExistingDelivery() async {
@@ -395,7 +476,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     try {
       await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 30));
       return await PdfInvoiceApi.buildPdfBytes(
-        _currentDevisData,
+        _effectiveDevisData,
         overrideLang: _invoiceLanguage,
         imageMode: _imageMode,
       ).timeout(const Duration(seconds: 90));
@@ -690,6 +771,58 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                         _modeButton(1, 'B (Sous prix)', 'B (تحت الأسعار)'),
                         // ── وضع C: صورة تحت كامل الصف ──
                         _modeButton(2, 'C (Pleine)', 'C (تحت الصف)'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (!data.hidePrices) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.price_change_outlined,
+                        color: Colors.teal,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _invoiceLanguage == AppLanguage.french
+                            ? 'Niveau de prix :'
+                            : 'مستوى وفئة السعر :',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 14),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ── 0: سعر الورشة العادي ──
+                        _pricingTierButton(0, 'Atelier (100%)', 'سعر الورشة', _blue),
+                        // ── 1: سعر المقاول ──
+                        _pricingTierButton(1, 'Artisan / Entreprise (-10%)', 'سعر المقاول (-10%)', Colors.orange.shade800),
+                        // ── 2: سعر المشروع ──
+                        _pricingTierButton(2, 'Projet / Promoteur (-18%)', 'سعر المشروع (-18%)', Colors.teal.shade700),
                       ],
                     ),
                   ),
@@ -1788,6 +1921,41 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: active ? _blue : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            fontFamily: 'Cairo',
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// زر تبديل مستوى التسعير (0=ورشة / 1=مقاول / 2=مشروع)
+  Widget _pricingTierButton(int tier, String labelFr, String labelAr, Color activeColor) {
+    final bool active = _pricingTier == tier;
+    final String label = _invoiceLanguage == AppLanguage.french
+        ? labelFr
+        : labelAr;
+    return GestureDetector(
+      onTap: () {
+        if (!active && !_isLoading) {
+          setState(() {
+            _pricingTier = tier;
+            _pdfBytes = null;
+          });
+          unawaited(_initPdfGeneration());
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? activeColor : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
         ),
         child: Text(

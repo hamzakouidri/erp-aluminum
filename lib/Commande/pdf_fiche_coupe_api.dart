@@ -1358,7 +1358,12 @@ class PdfFicheCoupeApi {
           maxSide: 2400,
           showDrawingDimensions: true,
         );
-      } catch (_) {
+      } catch (e, stackTrace) {
+        // Keep the PDF usable with the dimension fallback, but retain the
+        // actual capture error in logs instead of silently producing a blank
+        // drawing page.
+        print('Failed to capture cutting-sheet drawing: $e');
+        print(stackTrace);
       } finally {
         model.shutterPosition = storedShutterPosition;
       }
@@ -1370,11 +1375,12 @@ class PdfFicheCoupeApi {
         model: model,
         lang: lang,
       );
-      final rawGamme =
-          model.activeSeries?.name ??
-          model.activeSlidingSeries?.name ??
-          item['game']?.toString() ??
-          '';
+      final rawGamme = model.isShutterOnly
+          ? 'Volet'
+          : (model.activeSeries?.name ??
+              model.activeSlidingSeries?.name ??
+              item['game']?.toString() ??
+              '');
       var gamme = Localization.translate(rawGamme, lang);
       if (lang != AppLanguage.arabic && _hasArabic(gamme)) {
         gamme = gamme

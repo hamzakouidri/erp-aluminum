@@ -15,3 +15,10 @@ Map<String, dynamic>? readOfflineAccount(SharedPreferences prefs, String userId)
     return null;
   }
 }
+
+Future<void> saveOfflineAccount(SharedPreferences prefs, Map<String, dynamic> data) async {
+  final userId = data['userId']?.toString() ?? '';
+  if (userId.isEmpty) return;
+  await prefs.setString('$accountCachePrefix$userId', jsonEncode(data));
+}
+

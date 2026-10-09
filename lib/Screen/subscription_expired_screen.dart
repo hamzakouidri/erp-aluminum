@@ -1,7 +1,6 @@
 import 'electronic_payment_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -155,7 +154,6 @@ class SubscriptionExpiredScreen extends StatelessWidget {
                   try {
                     await AppAuthService().signOut();
                     await AppAuthService().signOutGoogleSession();
-                    await SqlDatabase.clearAllLocalData();
                   } catch (e) {
                     debugPrint('Sign out error: $e');
                   }

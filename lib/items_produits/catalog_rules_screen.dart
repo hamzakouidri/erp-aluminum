@@ -8,6 +8,7 @@ import '../settings/localization.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/section_image.dart';
+import '../widgets/auto_scroll_expansion_tile.dart';
 import '../Commande/Systeme/accessory_assembly.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
@@ -1743,7 +1744,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   'catalog-group:$_selectedSeriesId:$table:${group.key}:$enabled',
                 ),
                 margin: const EdgeInsets.only(bottom: 8),
-                child: ExpansionTile(
+                child: AutoScrollExpansionTile(
                   key: PageStorageKey(
                     'role-group:$_selectedSeriesId:$table:${group.key}:$enabled',
                   ),
@@ -1798,7 +1799,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   'stable-catalog-group:$_selectedSeriesId:$table:${group.key}',
                 ),
                 margin: const EdgeInsets.only(bottom: 8),
-                child: ExpansionTile(
+                child: AutoScrollExpansionTile(
                   key: PageStorageKey(
                     'stable-role-group:$_selectedSeriesId:$table:${group.key}',
                   ),

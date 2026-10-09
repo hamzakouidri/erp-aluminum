@@ -8,6 +8,7 @@ import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
 import '../widgets/section_image.dart';
+import '../widgets/auto_scroll_expansion_tile.dart';
 
 /// Administrator-only definition of the main profile roles for each series.
 /// This temporary page is intentionally independent from the quantity table.
@@ -1395,7 +1396,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final availableSections = _sectionsForRole(role);
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: ExpansionTile(
+      child: AutoScrollExpansionTile(
         leading: Icon(
           role.required ? Icons.star_rounded : Icons.account_tree_outlined,
         ),
@@ -2783,7 +2784,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: ExpansionTile(
+      child: AutoScrollExpansionTile(
         leading: const Icon(Icons.linear_scale_rounded),
         title: Text(_t('ربط الجوانات بالقطاعات', 'Joints liés aux profilés')),
         subtitle: Text(

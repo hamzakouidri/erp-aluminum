@@ -1,4 +1,3 @@
-import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:database_data/Cliente/client.dart';
@@ -151,14 +150,12 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   Future<void> _signOut() async {
     try {
       final workspace = context.read<WorkspaceController>();
-      await AppAuthService().signOut();
-      await WidgetsBinding.instance.endOfFrame;
       workspace.resetForSignedOut();
+      await AppAuthService().signOut();
       await AppAuthService().signOutGoogleSession();
       CloudSyncService().reset();
       SupabaseWorkshopSyncService().stop();
-      unawaited(CloudSyncService().clearCachedWorkshopContext());
-      unawaited(SqlDatabase.clearAllLocalData());
+      await CloudSyncService().clearCachedWorkshopContext();
     } catch (error) {
       debugPrint('Sign out error: $error');
     }
@@ -243,11 +240,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
         _DesktopMenuItem(
           label: Localization.translate('commandes', lang),
           icon: Icons.receipt_long_rounded,
-          onSelected: () => _open(
-            'commandes',
-            Icons.receipt_long_rounded,
-            Commande(),
-          ),
+          onSelected: () =>
+              _open('commandes', Icons.receipt_long_rounded, Commande()),
         ),
       if (settings.canMaterialSales())
         _DesktopMenuItem(
@@ -278,11 +272,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
         _DesktopMenuItem(
           label: Localization.translate('clients', lang),
           icon: Icons.groups_rounded,
-          onSelected: () => _open(
-            'clients',
-            Icons.groups_rounded,
-            Customers(),
-          ),
+          onSelected: () => _open('clients', Icons.groups_rounded, Customers()),
         ),
       if (settings.canViewClientLedger())
         _DesktopMenuItem(
@@ -317,11 +307,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
         _DesktopMenuItem(
           label: Localization.translate('achat', lang),
           icon: Icons.shopping_bag_rounded,
-          onSelected: () => _open(
-            'achat',
-            Icons.shopping_bag_rounded,
-            AchatScreen(db: db),
-          ),
+          onSelected: () =>
+              _open('achat', Icons.shopping_bag_rounded, AchatScreen(db: db)),
         ),
       if (settings.canViewSuppliers())
         _DesktopMenuItem(
@@ -651,11 +638,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
         _DesktopMenuItem(
           label: Localization.translate('settings', lang),
           icon: Icons.settings_rounded,
-          onSelected: () => _open(
-            'settings',
-            Icons.settings_rounded,
-            const SettingsScreen(),
-          ),
+          onSelected: () =>
+              _open('settings', Icons.settings_rounded, const SettingsScreen()),
         ),
       _DesktopMenuItem(
         label: _label(
@@ -720,8 +704,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                       behavior: HitTestBehavior.opaque,
                       onDoubleTap: _toggleMaximize,
                       child: Padding(
-                        padding:
-                            const EdgeInsetsDirectional.only(start: 14),
+                        padding: const EdgeInsetsDirectional.only(start: 14),
                         child: Row(
                           children: [
                             Image.asset(
@@ -753,32 +736,51 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                 ),
 
                 // ── Menus ─────────────────────────────────────────────────
-                _DesktopMenu(label: 'Fichier', items: fichierItems),
-                if (venteItems.isNotEmpty)
-                  _DesktopMenu(label: 'Vente', items: venteItems),
-                if (achatItems.isNotEmpty)
-                  _DesktopMenu(label: 'Achat', items: achatItems),
-                if (stockItems.isNotEmpty)
-                  _DesktopMenu(label: 'Stock', items: stockItems),
-                if (tacheItems.isNotEmpty)
-                  _DesktopMenu(label: 'Tâche', items: tacheItems),
-                if (tresorerieItems.isNotEmpty)
-                  _DesktopMenu(label: 'Trésorerie', items: tresorerieItems),
-                if (compteItems.isNotEmpty)
-                  _DesktopMenu(label: 'Compte', items: compteItems),
-                _DesktopMenu(label: 'Affichage', items: affichageItems),
-                if (parametresItems.isNotEmpty)
-                  _DesktopMenu(label: 'Paramètres', items: parametresItems),
-                _DesktopMenu(label: 'Aide', items: aideItems),
-
-                // ── Remaining caption area (draggable) ─────────────────────
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onDoubleTap: _toggleMaximize,
-                    child: DragToMoveArea(child: const SizedBox.expand()),
+                // Keep the fixed logo and window controls visible, while
+                // allowing the menu strip to scroll on narrow windows.
+                // ── Menus (Responsive without scrollbars) ─────────────────
+                if (widget.onOpen != null)
+                  Expanded(
+                    child: _DesktopResponsiveMenuBar(
+                      menus: [
+                        _DesktopMenuData(label: 'Fichier', items: fichierItems),
+                        if (venteItems.isNotEmpty)
+                          _DesktopMenuData(label: 'Vente', items: venteItems),
+                        if (achatItems.isNotEmpty)
+                          _DesktopMenuData(label: 'Achat', items: achatItems),
+                        if (stockItems.isNotEmpty)
+                          _DesktopMenuData(label: 'Stock', items: stockItems),
+                        if (tacheItems.isNotEmpty)
+                          _DesktopMenuData(label: 'Tâche', items: tacheItems),
+                        if (tresorerieItems.isNotEmpty)
+                          _DesktopMenuData(
+                            label: 'Trésorerie',
+                            items: tresorerieItems,
+                          ),
+                        if (compteItems.isNotEmpty)
+                          _DesktopMenuData(label: 'Compte', items: compteItems),
+                        _DesktopMenuData(
+                          label: 'Affichage',
+                          items: affichageItems,
+                        ),
+                        if (parametresItems.isNotEmpty)
+                          _DesktopMenuData(
+                            label: 'Paramètres',
+                            items: parametresItems,
+                          ),
+                        _DesktopMenuData(label: 'Aide', items: aideItems),
+                      ],
+                      onDoubleTap: _toggleMaximize,
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onDoubleTap: _toggleMaximize,
+                      child: DragToMoveArea(child: const SizedBox.expand()),
+                    ),
                   ),
-                ),
 
                 // ── Window control buttons ──────────────────────────────────
                 _CaptionButton(
@@ -878,6 +880,155 @@ class _DesktopMenuItem {
   final VoidCallback onSelected;
 }
 
+class _DesktopMenuData {
+  const _DesktopMenuData({required this.label, required this.items});
+
+  final String label;
+  final List<_DesktopMenuItem> items;
+}
+
+// ── Responsive Menu Bar (Zero scrollbar, dynamic overflow) ─────────────────────
+
+class _DesktopResponsiveMenuBar extends StatelessWidget {
+  const _DesktopResponsiveMenuBar({
+    required this.menus,
+    required this.onDoubleTap,
+  });
+
+  final List<_DesktopMenuData> menus;
+  final VoidCallback onDoubleTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        // Average width per top-level menu label + padding is ~74px
+        const double approxItemWidth = 74.0;
+        const double overflowBtnWidth = 42.0;
+
+        int visibleCount = menus.length;
+        if (menus.length * approxItemWidth > availableWidth) {
+          visibleCount =
+              ((availableWidth - overflowBtnWidth) / approxItemWidth).floor();
+          if (visibleCount < 1) visibleCount = 1;
+          if (visibleCount > menus.length) visibleCount = menus.length;
+        }
+
+        final visibleMenus = menus.take(visibleCount).toList();
+        final overflowMenus = menus.skip(visibleCount).toList();
+
+        return Row(
+          children: [
+            ...visibleMenus.map(
+              (m) => _DesktopMenu(label: m.label, items: m.items),
+            ),
+            if (overflowMenus.isNotEmpty)
+              _DesktopOverflowMenu(menus: overflowMenus),
+            // The remainder is fully draggable
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onDoubleTap: onDoubleTap,
+                child: DragToMoveArea(child: const SizedBox.expand()),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ── Overflow Menu Button (•••) ─────────────────────────────────────────────────
+
+class _DesktopOverflowMenu extends StatelessWidget {
+  const _DesktopOverflowMenu({required this.menus});
+
+  final List<_DesktopMenuData> menus;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = isDark ? Colors.white70 : const Color(0xFF475569);
+
+    final entries = <dynamic>[];
+    for (final menu in menus) {
+      entries.add(menu.label); // Header string
+      for (final item in menu.items) {
+        entries.add(item); // _DesktopMenuItem
+      }
+    }
+
+    return PopupMenuButton<int>(
+      tooltip: 'Plus',
+      position: PopupMenuPosition.under,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 240, maxHeight: 460),
+      onSelected: (index) {
+        final entry = entries[index];
+        if (entry is _DesktopMenuItem) {
+          entry.onSelected();
+        }
+      },
+      itemBuilder: (context) => List.generate(entries.length, (index) {
+        final entry = entries[index];
+        if (entry is String) {
+          return PopupMenuItem<int>(
+            enabled: false,
+            height: 32,
+            child: Container(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: isDark ? Colors.white12 : Colors.black12,
+                  ),
+                ),
+              ),
+              child: Text(
+                entry,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white38 : Colors.blueGrey.shade700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final item = entry as _DesktopMenuItem;
+        return PopupMenuItem<int>(
+          value: index,
+          height: 38,
+          child: Row(
+            children: [
+              Icon(item.icon, size: 16),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  item.label,
+                  style: const TextStyle(fontSize: 12.5),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+      child: SizedBox(
+        height: 42,
+        width: 38,
+        child: Center(
+          child: Icon(Icons.more_horiz_rounded, size: 20, color: foreground),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Menu button ────────────────────────────────────────────────────────────────
 
 class _DesktopMenu extends StatelessWidget {
@@ -969,10 +1120,7 @@ class _CaptionButtonState extends State<_CaptionButton> {
             onTap: widget.onPressed,
             hoverColor: widget.closeButton
                 ? const Color(0xFFE81123)
-                : Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.08),
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
             child: SizedBox(
               width: 46,
               height: double.infinity,

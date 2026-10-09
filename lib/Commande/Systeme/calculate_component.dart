@@ -185,14 +185,188 @@ class BomItem {
 
   String getLocalizedName(String lang) {
     // Catalogue labels can contain a quality suffix such as
-    // "(جودة قياسية)".  Use the cleaned value for the primary display too;
+    // "(جودة قياسية)". Use the cleaned value for the primary display too;
     // otherwise non-Kit rows that localize [originalName] would reintroduce
     // the suffix after [name] had already been cleaned.
     final original = _withoutAccessoryQualityLabel(originalName);
-    if (original == 'براغي التجميع') {
+
+    // 1. Screws
+    if (original.contains('براغي الصندوق')) {
+      if (lang == 'fr') return 'Vis de caisson';
+      if (lang == 'en') return 'Box screws';
+      return 'براغي الصندوق (Vis de caisson)';
+    }
+    if (original == 'براغي التجميع' ||
+        original == "براغي التجميع (vis d'assemblage)") {
       if (lang == 'fr') return "vis d'assemblage";
       if (lang == 'en') return 'Assembly screws';
       return "براغي التجميع (vis d'assemblage)";
+    }
+
+    // 2. Stiles: Central and Lateral (Normal and Reinforced)
+    if (original == 'قائم وسطي معزز (Sash Central Renforcé)' ||
+        original == 'قائم وسطي معزز (Central Renforcé)' ||
+        original == 'قائم وسطي معزز' ||
+        original == 'Sash Central Renforcé') {
+      if (lang == 'fr') return 'Central Renforcé';
+      if (lang == 'en') return 'Central Reinforced';
+      return 'قائم وسطي معزز (Central Renforcé)';
+    }
+
+    if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)' ||
+        original == 'قائم جانبي معزز (Latéral Renforcé)' ||
+        original == 'قائم جانبي معزز' ||
+        original == 'Sash Lateral Renforcé') {
+      if (lang == 'fr') return 'Latéral Renforcé';
+      if (lang == 'en') return 'Lateral Reinforced';
+      return 'قائم جانبي معزز (Latéral Renforcé)';
+    }
+
+    if (original == 'قائم وسطي (Sash Central)' ||
+        original == 'قائم وسطي (Central)' ||
+        original == 'قائم وسطي' ||
+        original == 'Sash Central') {
+      if (lang == 'fr') return 'Central';
+      if (lang == 'en') return 'Central';
+      return 'قائم وسطي (Central)';
+    }
+
+    if (original == 'قائم جانبي (Sash Lateral)' ||
+        original == 'قائم جانبي (Lateral)' ||
+        original == 'قائم جانبي (Latéral)' ||
+        original == 'قائم جانبي' ||
+        original == 'Sash Lateral') {
+      if (lang == 'fr') return 'Latéral';
+      if (lang == 'en') return 'Lateral';
+      return 'قائم جانبي (Latéral)';
+    }
+
+    if (original.contains('أغطية القائم الوسطي المعزز') ||
+        original.contains('Bouchons Montant Central Renforcé')) {
+      if (lang == 'fr') return 'Bouchons Central Renforcé';
+      if (lang == 'en') return 'Central Reinforced End Caps';
+      return 'أغطية القائم الوسطي المعزز (Bouchons Central Renforcé)';
+    }
+
+    if (original.contains('أغطية القائم الجانبي المعزز') ||
+        original.contains('Bouchons Montant Latéral Renforcé')) {
+      if (lang == 'fr') return 'Bouchons Latéral Renforcé';
+      if (lang == 'en') return 'Lateral Reinforced End Caps';
+      return 'أغطية القائم الجانبي المعزز (Bouchons Latéral Renforcé)';
+    }
+
+    if (original.contains('كيت العمود الوسطي المعزز') ||
+        original.contains('Kit Central Renforcé')) {
+      if (lang == 'fr') return 'Kit Central Renforcé';
+      if (lang == 'en') return 'Central Reinforced Kit';
+      return 'كيت العمود الوسطي المعزز (Kit Central Renforcé)';
+    }
+
+    if (original.contains('كيت العمود الجانبي المعزز') ||
+        original.contains('Kit Lateral Renforcé')) {
+      if (lang == 'fr') return 'Kit Latéral Renforcé';
+      if (lang == 'en') return 'Lateral Reinforced Kit';
+      return 'كيت العمود الجانبي المعزز (Kit Latéral Renforcé)';
+    }
+
+    // 3. Sliding Frame (Coulissant)
+    if (original == 'إطار منزلق (Cadre Coulissant)' ||
+        original == 'إطار منزلق (Coulissant)' ||
+        original == 'إطار منزلق' ||
+        original == 'منزلق' ||
+        original == 'Cadre Coulissant') {
+      if (lang == 'fr') return 'Coulissant';
+      if (lang == 'en') return 'Sliding Frame';
+      return 'إطار منزلق (Coulissant)';
+    }
+
+    // 4. Corner Angle Frames & Profiles
+    if (original == 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)' ||
+        original.contains('فتح لجهة بروفيل الزاوية')) {
+      if (lang == 'fr') return 'Dormant côté angle';
+      if (lang == 'en') return 'Opening Frame (Corner)';
+      return 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)';
+    }
+
+    if (original == 'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)' ||
+        original.contains('منزلق لجهة بروفيل الزاوية')) {
+      if (lang == 'fr') return 'Cadre coulissant côté angle';
+      if (lang == 'en') return 'Sliding Frame (Corner)';
+      return 'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)';
+    }
+
+    if (original.contains('بروفيل الزاوية 90°') ||
+        original.contains("Profil d'angle / Tube carré")) {
+      if (lang == 'fr') return "Profil d'angle 90°";
+      if (lang == 'en') return 'Corner Profile 90°';
+      return "بروفيل الزاوية 90° (Profil d'angle)";
+    }
+
+    if (original.contains('بروفيل الزاوية') ||
+        original.contains("Profil d'angle")) {
+      if (lang == 'fr') return "Profil d'angle";
+      if (lang == 'en') return 'Corner Profile';
+      return "بروفيل الزاوية (Profil d'angle)";
+    }
+
+    // 5. Custom Frame Sides (إطار جهة ...)
+    if (original.contains('إطار جهة') || original.contains('Frame side')) {
+      final List<String> frSides = [];
+      if (original.contains('علوي')) frSides.add('haut');
+      if (original.contains('يمين')) frSides.add('droit');
+      if (original.contains('سفلي')) frSides.add('bas');
+      if (original.contains('يسار')) frSides.add('gauche');
+      final frLabel = frSides.isEmpty ? '' : ' côté ${frSides.join(' + ')}';
+      if (lang == 'fr') {
+        return 'Dormant$frLabel';
+      }
+      if (lang == 'en') {
+        final List<String> enSides = [];
+        if (original.contains('علوي')) enSides.add('top');
+        if (original.contains('يمين')) enSides.add('right');
+        if (original.contains('سفلي')) enSides.add('bottom');
+        if (original.contains('يسار')) enSides.add('left');
+        final enLabel = enSides.isEmpty ? '' : ' (${enSides.join(' + ')})';
+        return 'Frame side$enLabel';
+      }
+      final arabicSides = original
+          .split('(')
+          .first
+          .replaceFirst('إطار جهة', '')
+          .trim();
+      return 'إطار جهة $arabicSides (Dormant$frLabel)';
+    }
+
+    // 6. Standard Frame (الإطار)
+    if (original == 'الإطار (Frame)' ||
+        original == 'إطار (Frame)' ||
+        original == 'الإطار (Dormant)' ||
+        original == 'إطار (Dormant)' ||
+        original == 'الإطار' ||
+        original == 'إطار') {
+      if (lang == 'fr') return 'Dormant';
+      if (lang == 'en') return 'Frame';
+      return 'الإطار (Dormant)';
+    }
+
+    // 7. Opening Sash (الضلفة / الظلفة)
+    if (original == 'الظلفة (Sash)' ||
+        original == 'الضلفة (Sash)' ||
+        original == 'الظلفة (Ouvrant)' ||
+        original == 'الضلفة (Ouvrant)' ||
+        original == 'الظلفة' ||
+        original == 'الضلفة') {
+      if (lang == 'fr') return 'Ouvrant';
+      if (lang == 'en') return 'Sash';
+      return 'الضلفة (Ouvrant)';
+    }
+
+    if (original == 'الظلفة المنزلقة' ||
+        original == 'الضلفة المنزلقة' ||
+        original.toLowerCase() == 'sliding sash') {
+      if (lang == 'fr') return 'Ouvrant Coulissant';
+      if (lang == 'en') return 'Sliding Sash';
+      return 'الضلفة المنزلقة (Ouvrant Coulissant)';
     }
 
     final lowerOriginal = original.toLowerCase();
@@ -203,14 +377,14 @@ class BomItem {
         original.contains('كاش دورمو') ||
         original.contains('كاش الإطار')) {
       if (lang == 'fr') return 'Cache dormant';
-      if (lang == 'ar') return 'كاش دورمو';
+      if (lang == 'ar') return 'كاش دورمو (Cache dormant)';
       return 'Frame Cover';
     }
     if (lowerOriginal.contains('seuil') ||
         original.contains('سوي') ||
         original.contains('عتبة')) {
       if (lang == 'fr') return 'Seuil';
-      if (lang == 'ar') return 'سوي';
+      if (lang == 'ar') return 'سوي (Seuil)';
       return 'Threshold';
     }
     if (lowerOriginal.contains('cache-rail') ||
@@ -218,7 +392,7 @@ class BomItem {
         lowerOriginal.contains('cache_rail') ||
         original.contains('كاش راي')) {
       if (lang == 'fr') return 'Cache-rail';
-      if (lang == 'ar') return 'كاش راي';
+      if (lang == 'ar') return 'كاش راي (Cache-rail)';
       return 'Rail Cover';
     }
     if (lowerOriginal.contains('chicane') ||
@@ -228,31 +402,31 @@ class BomItem {
           lowerOriginal.contains('renforc') || original.contains('معزز');
       if (isReinforced) {
         if (lang == 'fr') return 'Chicane Renforcée';
-        if (lang == 'ar') return 'شيكان معزز';
+        if (lang == 'ar') return 'شيكان معزز (Chicane Renforcée)';
         return 'Reinforced Chicane';
       }
       if (lang == 'fr') return 'Chicane';
-      if (lang == 'ar') return 'شيكان';
+      if (lang == 'ar') return 'شيكان (Chicane)';
       return 'Chicane';
     }
     if (lowerOriginal.contains('renfort rapport') ||
         original.contains('عمود تدعيم مستقل') ||
         original.contains('عمود مدعم مستقل')) {
       if (lang == 'fr') return 'Profilé Renfort Rapporté';
-      if (lang == 'ar') return 'عمود تدعيم مستقل';
+      if (lang == 'ar') return 'عمود تدعيم مستقل (Profilé Renfort Rapporté)';
       return 'Independent Reinforcement Profile';
     }
     if (original.contains('براغي تثبيت العمود المدعم') ||
         lowerOriginal.contains('vis de renfort')) {
       if (lang == 'fr') return 'Vis Renfort 3.9×38';
-      if (lang == 'ar') return 'براغي تدعيم 3.9×38';
+      if (lang == 'ar') return 'براغي تدعيم 3.9×38 (Vis Renfort)';
       return 'Reinforcement Screws 3.9×38';
     }
     if (original.contains('أغطية العمود المدعم') ||
         lowerOriginal.contains('caches / bouchons de renfort') ||
         lowerOriginal.contains('caches renfort')) {
       if (lang == 'fr') return 'Caches Renfort';
-      if (lang == 'ar') return 'أغطية العمود المدعم';
+      if (lang == 'ar') return 'أغطية العمود المدعم (Caches Renfort)';
       return 'Reinforcement End Caps';
     }
     if (lowerOriginal.contains('sliding frame extension') ||
@@ -265,151 +439,72 @@ class BomItem {
         original.contains('كومبليمو دورمو') ||
         original.contains('دورمو أجوت')) {
       if (lang == 'fr') return 'Complément Dormant';
-      if (lang == 'ar') return 'كومبليمو دورمو';
+      if (lang == 'ar') return 'كومبليمو دورمو (Complément Dormant)';
       return 'Frame Extension';
-    }
-    if (original.contains('الظلفة المنزلقة') ||
-        original.contains('الضلفة المنزلقة') ||
-        lowerOriginal.contains('sliding sash')) {
-      if (lang == 'fr') return 'Ouvrant';
-      if (lang == 'ar') return 'الضلفة';
-      return 'Sliding Sash';
-    }
-    if (original.contains('الظلفة') ||
-        original.contains('الضلفة') ||
-        lowerOriginal == 'sash' ||
-        lowerOriginal == 'ouvrant') {
-      if (lang == 'fr') return 'Ouvrant';
-      if (lang == 'ar') return 'الضلفة';
-      return 'Sash';
     }
     if (lowerOriginal.contains('cache-rainure') ||
         lowerOriginal.contains('cache rainure') ||
         lowerOriginal.contains('cache_rainure') ||
         original.contains('كاش رينور')) {
       if (lang == 'fr') return 'Cache-rainure';
-      if (lang == 'ar') return 'كاش رينور';
+      if (lang == 'ar') return 'كاش رينور (Cache-rainure)';
       return 'Groove Cover';
     }
     if (lowerOriginal.contains('bavette') || original.contains('بافيت')) {
       if (lang == 'fr') return 'Bavette';
-      if (lang == 'ar') return 'بافيت';
+      if (lang == 'ar') return 'بافيت (Bavette)';
       return 'Weatherboard';
     }
     if (lowerOriginal.contains('cache-caniveau') ||
         lowerOriginal.contains('cache caniveau') ||
         original.contains('كاش كانيفو')) {
       if (lang == 'fr') return 'Cache-caniveau';
-      if (lang == 'ar') return 'كاش كانيفو';
+      if (lang == 'ar') return 'كاش كانيفو (Cache-caniveau)';
       return 'Gutter Cover';
     }
     if (lowerOriginal.contains('caniveau') || original.contains('كانيفو')) {
       if (lang == 'fr') return 'Caniveau';
-      if (lang == 'ar') return 'كانيفو';
+      if (lang == 'ar') return 'كانيفو (Caniveau)';
       return 'Gutter';
     }
 
     if (lang == 'fr') {
-      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') {
-        return 'Sash Latéral Renforcé';
+      if (original == 'سكة الظلفة (Sash Traverse)' ||
+          original == 'عرضي الظلفة') {
+        return 'Traverse Ouvrant';
       }
-      if (original == 'قائم وسطي معزز (Sash Central Renforcé)') {
-        return 'Sash Central Renforcé';
-      }
-      if (original == 'حديد التقسيم (Renfort Mullion)') {
-        return 'Renfort Traverse / Montant';
+      if (original == 'بلانت الظلفة (Plinthe Sash)') {
+        return 'Plinthe Ouvrant';
       }
       if (original == 'حديد الباطمو (Renfort Batmo)') {
         return 'Renfort Battement';
       }
-      if (original == 'الزجاج') return 'Vitrage';
-      if (original.contains('إطار') ||
-          original.contains('Frame') ||
-          original.contains('Cadre') ||
-          original.contains('Dormant')) {
-        return original
-            .replaceAll('إطار', 'Dormant')
-            .replaceAll('Frame', 'Dormant')
-            .replaceAll('Cadre', 'Dormant');
+      if (original == 'الباتمو (Batmo)' ||
+          original == 'الباتمو' ||
+          original == 'الباطمو') {
+        return 'Meneau';
       }
-      if (original.contains('الظلفة') ||
-          original.contains('Sash') ||
-          original.contains('Ouvrant')) {
-        return original
-            .replaceAll('الظلفة', 'Ouvrant')
-            .replaceAll('Sash', 'Ouvrant')
-            .replaceAll('المنزلقة', '')
-            .trim();
+      if (original == 'بوشون باتمو (Bouchon Batmo)') {
+        return 'Bouchon Meneau';
       }
-      if (original.contains('عرضي') || original.contains('Traverse')) {
-        return original.replaceAll('عرضي', 'Traverse');
-      }
-      if (original.contains('قائم جانبي') ||
-          original.contains('Sash Lateral') ||
-          original.contains('Lateral')) {
-        return original
-            .replaceAll('قائم جانبي', 'Sash Latéral')
-            .replaceAll('Sash Lateral', 'Sash Latéral');
-      }
-      if (original.contains('قائم وسطي') ||
-          original.contains('Sash Central') ||
-          original.contains('Central')) {
-        return original
-            .replaceAll('قائم وسطي', 'Sash Central')
-            .replaceAll('Sash Central', 'Sash Central');
-      }
-      if (original.contains('الشيكان') || original.contains('Chicane')) {
-        return 'Chicane';
-      }
-      if (original.contains('الري') || original.contains('Rail')) {
-        return original.replaceAll('الري', 'Rail');
-      }
-      if (original.contains('سكة الظلفة') ||
-          original.contains('Sash Traverse')) {
-        return original
-            .replaceAll('سكة الظلفة', 'Traverse Ouvrant')
-            .replaceAll('Sash Traverse', 'Traverse Ouvrant');
-      }
-      if (original.contains('بلانت الظلفة') ||
-          original.contains('Plinthe Sash')) {
-        return original
-            .replaceAll('بلانت الظلفة', 'Plinthe Ouvrant')
-            .replaceAll('Plinthe Sash', 'Plinthe Ouvrant');
-      }
-      if (original.contains('الباتمو') || original.contains('Batmo')) {
-        return original.replaceAll('الباتمو', 'Meneau');
-      }
-      if (original.contains('بوشون باتمو') ||
-          original.contains('Bouchon Batmo')) {
-        return original.replaceAll('بوشون باتمو', 'Bouchon Meneau');
-      }
-      if (original.contains('حديد الإطار') ||
-          original.contains('Renfort Frame')) {
-        return original
-            .replaceAll('حديد الإطار', 'Renfort Dormant')
-            .replaceAll('Renfort Frame', 'Renfort Dormant');
+      if (original == 'حديد الإطار (Renfort Frame)') {
+        return 'Renfort Dormant';
       }
       if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
         return 'Renfort Ouvrant (Paumelles)';
       }
-      if (original.contains('حديد الظلفة') ||
-          original.contains('Renfort Sash')) {
-        return original
-            .replaceAll('حديد الظلفة', 'Renfort Ouvrant')
-            .replaceAll('Renfort Sash', 'Renfort Ouvrant');
+      if (original == 'حديد الظلفة' ||
+          original == 'حديد الظلفة (Renfort Sash)') {
+        return 'Renfort Ouvrant';
       }
-      if (original.contains('براغي حديد الدعم')) {
-        return 'Vis pour Renfort';
+      if (original == 'حديد التقسيم (Renfort Mullion)') {
+        return 'Renfort Traverse / Montant';
       }
-      if (original.contains('براغي الباتمو')) {
-        return 'Vis Meneau 3.9×50';
-      }
-      if (original.contains('براغي بوشون باتمو')) {
-        return 'Vis Bouchon Meneau';
-      }
-      if (original.contains('براغي الإكسسوارات')) {
-        return 'Vis Accessoires';
-      }
+      if (original == 'الزجاج') return 'Vitrage';
+      if (original.contains('براغي حديد الدعم')) return 'Vis pour Renfort';
+      if (original.contains('براغي الباتمو')) return 'Vis Meneau 3.9×50';
+      if (original.contains('براغي بوشون باتمو')) return 'Vis Bouchon Meneau';
+      if (original.contains('براغي الإكسسوارات')) return 'Vis Accessoires';
       if (original == 'الفيرو (Verrou)') return 'Verrou';
       if (original == 'Verrou Central') return 'Verrou Central';
       if (original == 'System OB') return 'Système OB';
@@ -447,91 +542,81 @@ class BomItem {
         return 'Bouchon Parclose';
       }
       if (original == 'قفل نقطة') return 'Serrure à point';
+
+      final open = original.indexOf('(');
+      final close = original.lastIndexOf(')');
+      if (open >= 0 && close > open) {
+        var foreign = original.substring(open + 1, close).trim();
+        foreign = foreign
+            .replaceAll('Sash Central Renforcé', 'Central Renforcé')
+            .replaceAll('Sash Lateral Renforcé', 'Latéral Renforcé')
+            .replaceAll('Sash Central', 'Central')
+            .replaceAll('Sash Lateral', 'Latéral')
+            .replaceAll('Montant Central', 'Central')
+            .replaceAll('Montant Latéral', 'Latéral')
+            .replaceAll('Cadre Coulissant', 'Coulissant')
+            .replaceAll('Frame', 'Dormant')
+            .replaceAll('Sash', 'Ouvrant');
+        if (foreign.isNotEmpty &&
+            !RegExp(r'[\u0600-\u06FF]').hasMatch(foreign)) {
+          return foreign;
+        }
+      }
+
+      var cleaned = original
+          .replaceAll('إطار', 'Dormant')
+          .replaceAll('الإطار', 'Dormant')
+          .replaceAll('منزلق', 'Coulissant')
+          .replaceAll('قائم وسطي معزز', 'Central Renforcé')
+          .replaceAll('قائم جانبي معزز', 'Latéral Renforcé')
+          .replaceAll('قائم وسطي', 'Central')
+          .replaceAll('قائم جانبي', 'Latéral')
+          .replaceAll('الضلفة', 'Ouvrant')
+          .replaceAll('الظلفة', 'Ouvrant')
+          .replaceAll('عرضي', 'Traverse')
+          .replaceAll('الري', 'Rail')
+          .replaceAll('الشيكان', 'Chicane')
+          .replaceAll('شيكان', 'Chicane')
+          .replaceAll('زاوية', 'Angle')
+          .replaceAll('براغي', 'Vis');
+      cleaned = cleaned.replaceAll(RegExp(r'[\u0600-\u06FF]'), '').trim();
+      cleaned = cleaned.replaceAll(RegExp(r'^\(+|\)+$'), '').trim();
+      if (cleaned.isNotEmpty) return cleaned;
     } else if (lang == 'en') {
-      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') {
-        return 'Sash Lateral Reinforced';
-      }
-      if (original == 'قائم وسطي معزز (Sash Central Renforcé)') {
-        return 'Sash Central Reinforced';
-      }
-      if (original == 'حديد التقسيم (Renfort Mullion)') {
-        return 'Renfort Mullion';
-      }
-      if (original == 'حديد الباطمو (Renfort Batmo)') return 'Renfort Batmo';
-      if (original == 'الزجاج') return 'Glass';
-      if (original.contains('إطار') ||
-          original.contains('Frame') ||
-          original.contains('Cadre') ||
-          original.contains('Dormant')) {
-        return original
-            .replaceAll('إطار', 'Frame')
-            .replaceAll('Cadre', 'Frame')
-            .replaceAll('Dormant', 'Frame');
-      }
-      if (original.contains('الظلفة') ||
-          original.contains('Sash') ||
-          original.contains('Ouvrant')) {
-        return original
-            .replaceAll('الظلفة', 'Sash')
-            .replaceAll('Ouvrant', 'Sash');
-      }
-      if (original.contains('عرضي') || original.contains('Traverse')) {
-        return original.replaceAll('عرضي', 'Traverse');
-      }
-      if (original.contains('قائم جانبي') ||
-          original.contains('Sash Lateral') ||
-          original.contains('Lateral')) {
-        return original.replaceAll('قائم جانبي', 'Sash Lateral');
-      }
-      if (original.contains('قائم وسطي') ||
-          original.contains('Sash Central') ||
-          original.contains('Central')) {
-        return original.replaceAll('قائم وسطي', 'Sash Central');
-      }
-      if (original.contains('الشيكان') || original.contains('Chicane')) {
-        return 'Chicane';
-      }
-      if (original.contains('الري') || original.contains('Rail')) {
-        return 'Rail';
-      }
-      if (original.contains('سكة الظلفة') ||
-          original.contains('Sash Traverse')) {
+      if (original == 'سكة الظلفة (Sash Traverse)' ||
+          original == 'عرضي الظلفة') {
         return 'Sash Traverse';
       }
-      if (original.contains('بلانت الظلفة') ||
-          original.contains('Plinthe Sash')) {
+      if (original == 'بلانت الظلفة (Plinthe Sash)') {
         return 'Plinthe Sash';
       }
-      if (original.contains('الباتمو') || original.contains('Batmo')) {
+      if (original == 'حديد الباطمو (Renfort Batmo)') return 'Renfort Batmo';
+      if (original == 'الباتمو (Batmo)' ||
+          original == 'الباتمو' ||
+          original == 'الباطمو') {
         return 'Batmo';
       }
-      if (original.contains('بوشون باتمو') ||
-          original.contains('Bouchon Batmo')) {
+      if (original == 'بوشون باتمو (Bouchon Batmo)') {
         return 'Bouchon Batmo';
       }
-      if (original.contains('حديد الإطار') ||
-          original.contains('Renfort Frame')) {
+      if (original == 'حديد الإطار (Renfort Frame)') {
         return 'Renfort Frame';
       }
       if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
         return 'Renfort Sash (Hinges)';
       }
-      if (original.contains('حديد الظلفة') ||
-          original.contains('Renfort Sash')) {
+      if (original == 'حديد الظلفة' ||
+          original == 'حديد الظلفة (Renfort Sash)') {
         return 'Renfort Sash';
       }
-      if (original.contains('براغي حديد الدعم')) {
-        return 'Renfort Screws';
+      if (original == 'حديد التقسيم (Renfort Mullion)') {
+        return 'Renfort Mullion';
       }
-      if (original.contains('براغي الباتمو')) {
-        return 'Batmo Screws 3.9×50';
-      }
-      if (original.contains('براغي بوشون باتمو')) {
-        return 'Bouchon Batmo Screws';
-      }
-      if (original.contains('براغي الإكسسوارات')) {
-        return 'Accessory Screws';
-      }
+      if (original == 'الزجاج') return 'Vitrage';
+      if (original.contains('براغي حديد الدعم')) return 'Renfort Screws';
+      if (original.contains('براغي الباتمو')) return 'Batmo Screws 3.9×50';
+      if (original.contains('براغي بوشون باتمو')) return 'Bouchon Batmo Screws';
+      if (original.contains('براغي الإكسسوارات')) return 'Accessory Screws';
       if (original == 'الفيرو (Verrou)') return 'Verrou';
       if (original == 'Verrou Central') return 'Verrou Central';
       if (original == 'System OB') return 'System OB';
@@ -565,24 +650,31 @@ class BomItem {
         return 'Bouchon Parclose';
       }
       if (original == 'قفل نقطة') return 'Point lock';
-    }
-    // Fallback labels are commonly stored as "Arabic (Français)". Keep one
-    // language per UI locale instead of displaying both names or parentheses.
-    if (lang == 'ar') {
-      final arabicPart = original.split('(').first.trim();
-      if (arabicPart.isNotEmpty) return arabicPart;
-    }
-    final open = original.indexOf('(');
-    final close = original.lastIndexOf(')');
-    if ((lang == 'fr' || lang == 'en') && open >= 0 && close > open) {
-      final foreign = original.substring(open + 1, close).trim();
-      final lowerForeign = foreign.toLowerCase();
-      if (foreign.isNotEmpty &&
-          lowerForeign != 'coulissant' &&
-          lowerForeign != 'ouvrant') {
-        return foreign;
+
+      final open = original.indexOf('(');
+      final close = original.lastIndexOf(')');
+      if (open >= 0 && close > open) {
+        final foreign = original.substring(open + 1, close).trim();
+        if (foreign.isNotEmpty) return foreign;
       }
     }
+
+    if (lang == 'ar') {
+      // In Arabic mode, display Arabic with French in parentheses: "العربية (Français)"
+      var arText = original;
+      arText = arText
+          .replaceAll('(Frame)', '(Dormant)')
+          .replaceAll('(Sash Central Renforcé)', '(Central Renforcé)')
+          .replaceAll('(Sash Lateral Renforcé)', '(Latéral Renforcé)')
+          .replaceAll('(Sash Central)', '(Central)')
+          .replaceAll('(Sash Lateral)', '(Latéral)')
+          .replaceAll('(Cadre Coulissant)', '(Coulissant)')
+          .replaceAll('(Sash)', '(Ouvrant)')
+          .replaceAll('(Montant Central)', '(Central)')
+          .replaceAll('(Montant Latéral)', '(Latéral)');
+      return arText;
+    }
+
     return original;
   }
 
@@ -667,6 +759,7 @@ class BomItem {
     String? name,
     String? kitGroupName,
     double? qty,
+    double? unitPrice,
     String? profileCode,
     String? imagePath,
     int? catalogItemId,
@@ -694,7 +787,7 @@ class BomItem {
       pieceCount: pieceCount ?? this.pieceCount,
       quantity: qty ?? this.quantity,
       unit: unit,
-      unitPrice: unitPrice,
+      unitPrice: unitPrice ?? this.unitPrice,
       isMissing: isMissing,
       isInteractive: isInteractive,
       isActive: isActive ?? this.isActive,
@@ -4711,19 +4804,18 @@ class ComponentCalculator {
                       'face_to_face',
                       useSlidingSeries: true,
                     ) ??
-                    window.getSlidingSectionByType('face_to_face'))
+                    window.getSlidingSectionByType('face_to_face') ??
+                    window.getConfiguredSectionForRole(
+                      'sash_central',
+                      useSlidingSeries: true,
+                    ) ??
+                    window.getSlidingSectionByType('sash_central'))
               : null;
           final bool hasMeetingInCenter =
-              (zone.slidingFaceToFace &&
-                  (sashes >= 4 &&
-                      (zone.slidingTrackCount == 2 ||
-                          zone.slidingTrackCount == 0) &&
-                      sashes % 2 == 0)) &&
-              sashes >= 4 &&
-              sashes % 2 == 0;
+              zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
           final faceEnabled = hasMeetingInCenter && faceSection != null;
           if (faceEnabled && sashes >= 4) {
-            final faceCount = 1;
+            final faceCount = (sashes == 4 || sashes == 6) ? 2 : 1;
             slidingFaceToFacePieces.addAll(
               List<double>.filled(faceCount, sashH / 1000.0),
             );
@@ -4871,8 +4963,14 @@ class ComponentCalculator {
           // correctly shows that handle. Do not let that stale flag remove
           // its Entrematique and strike from the BOM. The second central
           // handle remains decorative and adds a handle only.
+          // A face-to-face layout physically has a functional handle at the
+          // central meeting. Older saved drawings may still carry
+          // slidingCentralHandle=false although the painter correctly draws
+          // that handle. Counting only the stale flag produced 2
+          // Entrematiques and 2 sliding strikes while 3 were visible.
           final bool hasCentralMain =
-              hasMeetingInCenter && zone.slidingCentralHandle;
+              hasMeetingInCenter &&
+              (zone.slidingCentralHandle || zone.slidingFaceToFace);
           final bool hasCentralSecond =
               hasCentralMain && zone.slidingSecondCentralHandle;
           final functionalCentralHandle = hasCentralMain;
@@ -5388,7 +5486,7 @@ class ComponentCalculator {
             window.getSlidingSlimCandidates().firstOrNull;
         items.add(
           createProfile(
-            'قائم وسطي سليم (Montant Slim)',
+            'قائم وسطي (Montant Slim)',
             colorName,
             pieces: slidingSashCentralSlimPieces,
             pieceCutAngles: uniformAngles(
@@ -6408,7 +6506,15 @@ class ComponentCalculator {
               (z) =>
                   z.content == ZoneContent.slidingSash &&
                   z.useClassicHandle != true,
-            );
+            ) &&
+            // Only add Entrematique to the BOM when the series has a confirmed
+            // catalogue product for it (i.e. the user has selected one, or the
+            // model carries an override).  If the series has no Entrematique
+            // rule at all the BomEngine will silently drop it after filtering
+            // available candidates, but we can avoid emitting a misleading
+            // item altogether by checking the override map first.
+            (window.componentOverrides.containsKey('أونتروماتيك (Entrematique)') ||
+             window.componentOverrides.containsKey('entrematique'));
 
         if (useEntrematique) {
           items.add(

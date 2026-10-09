@@ -126,6 +126,11 @@ class AppTheme {
           color: textPrimary,
           fontWeight: FontWeight.bold,
         ),
+        titleMedium: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 16 * fontScale,
+          color: textPrimary,
+        ),
         labelLarge: TextStyle(
           fontFamily: fontFamily,
           fontSize: 14 * fontScale,
@@ -250,6 +255,11 @@ class AppTheme {
           fontSize: 22 * fontScale,
           color: Colors.white,
           fontWeight: FontWeight.bold,
+        ),
+        titleMedium: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 16 * fontScale,
+          color: Colors.white,
         ),
         labelLarge: TextStyle(
           fontFamily: fontFamily,

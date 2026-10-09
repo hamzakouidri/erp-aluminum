@@ -112,6 +112,54 @@ void main() {
     expect(kit.quantity, 2);
   });
 
+  test(
+    'face-to-face BOM counts the drawn central Entrematique and sliding strike',
+    () {
+      final model = WindowModel(
+        db: FakeSqlDatabase(),
+        width: 2400,
+        height: 1200,
+        systemMode: 'sliding',
+      );
+      model.activeSlidingSeries = AluminumSeries(
+        id: 1,
+        profileId: 1,
+        name: 'TPR 40000',
+        type: 'sliding',
+      );
+      model.componentOverrides['أونتروماتيك (Entrematique)'] = {
+        'id': 501,
+        'name': 'Entrematique',
+        'type': 'Entrematique',
+      };
+      model.zones = [
+        WindowZone(
+          id: 'face-to-face',
+          content: ZoneContent.slidingSash,
+          boundary: const Rect.fromLTWH(0, 0, 2400, 1200),
+          slidingSashesCount: 4,
+          slidingTrackCount: 2,
+          slidingFaceToFace: true,
+          // Reproduces an older saved drawing: the painter still shows the
+          // physical centre handle although this obsolete flag is false.
+          slidingCentralHandle: false,
+          slidingSecondCentralHandle: false,
+        ),
+      ];
+
+      final bom = ComponentCalculator.generateBom(model, const {});
+      final entrematique = bom.firstWhere(
+        (item) => item.originalName == 'أونتروماتيك (Entrematique)',
+      );
+      final strike = bom.firstWhere(
+        (item) => item.originalName == 'كاش كوليسون (Gache coulissant)',
+      );
+
+      expect(entrematique.quantity, 3);
+      expect(strike.quantity, 3);
+    },
+  );
+
   test('sliding BOM counts a kit for each independent two-leaf frame', () {
     final model = WindowModel(
       db: FakeSqlDatabase(),

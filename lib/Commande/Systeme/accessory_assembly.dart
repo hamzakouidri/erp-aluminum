@@ -184,8 +184,15 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
       int slidingTopMiter = 0;
       int slidingBottomMiter = 0;
 
-      // فحص كل ظلفة: هل تتصل بمونتوسليم (MontoSlim) يلغي الكلام ببراغي التجميع؟
+      final bool hasCentralMeeting =
+          zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
+      final int halfSashes = sashes ~/ 2;
+
+      // فحص كل ظلفة: هل تتصل بمونتوسليم (MontoSlim) أو التقاء وسطي (90°) يلغي الكلام ببراغي التجميع؟
       for (int s = 0; s < sashes; s++) {
+        final bool isMeetingRight = hasCentralMeeting && (s == halfSashes - 1);
+        final bool isMeetingLeft = hasCentralMeeting && (s == halfSashes);
+
         final bool leftIsSlim =
             s > 0 &&
             (zone.slidingMontantSlim['central_${(s - 1) * 2 + 1}'] ?? false);
@@ -193,12 +200,15 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
             s < (sashes - 1) &&
             (zone.slidingMontantSlim['central_${s * 2}'] ?? false);
 
-        // الجانب الذي ليس فيه مونتوسليم يكون 45° ويأخذ كلام
-        if (!leftIsSlim) {
+        final bool leftIsSquare = leftIsSlim || isMeetingLeft;
+        final bool rightIsSquare = rightIsSlim || isMeetingRight;
+
+        // الجانب الذي ليس فيه زاوية 90° (سليم أو التقاء وسطي) يكون 45° ويأخذ كلام
+        if (!leftIsSquare) {
           slidingTopMiter += 1;
           slidingBottomMiter += 1;
         }
-        if (!rightIsSlim) {
+        if (!rightIsSquare) {
           slidingTopMiter += 1;
           slidingBottomMiter += 1;
         }

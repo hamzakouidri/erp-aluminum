@@ -30,7 +30,6 @@ import 'package:database_data/sql_database.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/services/auth_service.dart';
 
@@ -673,8 +672,7 @@ class DesktopCommandBar extends StatelessWidget {
                 await AppAuthService().signOutGoogleSession();
                 CloudSyncService().reset();
                 SupabaseWorkshopSyncService().stop();
-                unawaited(CloudSyncService().clearCachedWorkshopContext());
-                unawaited(SqlDatabase.clearAllLocalData());
+                await CloudSyncService().clearCachedWorkshopContext();
               } catch (error) {
                 debugPrint('Sign out error: $error');
               }

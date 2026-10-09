@@ -9,10 +9,13 @@ import 'inventory_item_history_screen.dart';
 import 'inventory_adjustment_screen.dart';
 import 'material_remnants_screen.dart';
 
+enum StockFilterMode { available, all, lowStock }
+
 class InventoryScreen extends StatefulWidget {
   final SqlDatabase db;
+  final bool? isWorkshop;
 
-  const InventoryScreen({super.key, required this.db});
+  const InventoryScreen({super.key, required this.db, this.isWorkshop});
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
@@ -22,13 +25,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
   List<Map<String, dynamic>> _locations = [];
   int? _selectedLocationId;
   String _selectedLocationName = '';
+  bool? _selectedModeIsWorkshop;
+
+  bool get _effectiveIsWorkshop {
+    if (_selectedModeIsWorkshop != null) return _selectedModeIsWorkshop!;
+    if (widget.isWorkshop != null) return widget.isWorkshop!;
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    if (!settings.hasWorkshop && settings.hasMaterialsStore) return false;
+    if (settings.hasWorkshop && !settings.hasMaterialsStore) return true;
+    if (settings.workingSection == WorkingSection.materialsStore) return false;
+    return true;
+  }
 
   List<Map<String, dynamic>> _stockData = [];
   List<Map<String, dynamic>> _filteredStockData = [];
   final TextEditingController _searchCtrl = TextEditingController();
   bool _isLoading = true;
   double _totalValue = 0.0;
-  bool _showAllItems = false;
+  StockFilterMode _filterMode = StockFilterMode.available;
+  int _lowStockCount = 0;
   StreamSubscription? _syncSub;
 
   // Colors
@@ -38,7 +53,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Color get _cardBg => Theme.of(context).cardColor;
   Color get _text => Theme.of(context).colorScheme.onSurface;
   Color get _textDim =>
-      Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
+      Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
   Color get _divider => Theme.of(context).dividerColor;
 
   @override
@@ -73,20 +88,35 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _loadLocations({int? preferredLocationId}) async {
-    final locs = await widget.db.readLocations();
+    final locs = _effectiveIsWorkshop
+        ? await widget.db.readWorkshopLocations()
+        : await widget.db.readStoreLocations();
     if (mounted) {
       setState(() {
         _locations = locs;
         if (_locations.isNotEmpty) {
+          final settings =
+              Provider.of<AppSettingsProvider>(context, listen: false);
+          final defaultLocId = _effectiveIsWorkshop
+              ? settings.defaultWorkshopLocationId
+              : settings.defaultStoreLocationId;
           final preferredExists =
               preferredLocationId != null &&
               _locations.any(
                 (location) =>
                     (location['id'] as num?)?.toInt() == preferredLocationId,
               );
+          final hasDefault =
+              defaultLocId != null &&
+              _locations.any(
+                (location) =>
+                    (location['id'] as num?)?.toInt() == defaultLocId,
+              );
           _selectedLocationId = preferredExists
               ? preferredLocationId
-              : (_locations.first['id'] as num).toInt();
+              : (hasDefault
+                  ? defaultLocId
+                  : (_locations.first['id'] as num).toInt());
           final selectedLocation = _locations.firstWhere(
             (location) =>
                 (location['id'] as num?)?.toInt() == _selectedLocationId,
@@ -150,7 +180,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     final cleanName = name?.trim() ?? '';
     if (!mounted || cleanName.isEmpty) return;
-    final locationId = await widget.db.insertLocation(cleanName);
+    final locationId = await widget.db.insertLocation(
+      cleanName,
+      isWorkshop: _effectiveIsWorkshop,
+    );
     if (!mounted || locationId == 0) return;
     await _loadLocations(preferredLocationId: locationId);
   }
@@ -159,17 +192,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (_selectedLocationId == null) return;
     setState(() => _isLoading = true);
 
-    final data = _showAllItems
+    final data = _filterMode == StockFilterMode.all
         ? await widget.db.readAllPossibleStock(_selectedLocationId!)
         : await widget.db.readCurrentStock(_selectedLocationId!);
 
     double totalValue = 0.0;
+    int lowStockCount = 0;
 
     for (var item in data) {
       final itemType = item['item_type'] as String;
       final itemId = item['item_id'] as int;
       final colorId = item['color_id'] as int?;
       final quantity = (item['quantity'] as num).toDouble();
+      final minQty = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
+      final alertEnabled =
+          ((item['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
+
+      if ((alertEnabled && minQty > 0 && quantity <= minQty) || quantity <= 0) {
+        lowStockCount++;
+      }
 
       double price = 0.0;
       if (itemType == 'Sections' ||
@@ -252,6 +293,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         _stockData = data;
         _filteredStockData = data;
         _totalValue = totalValue;
+        _lowStockCount = lowStockCount;
         _isLoading = false;
       });
       _filterStock();
@@ -299,13 +341,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       children: [
                         Expanded(
                           child: ChoiceChip(
-                            label: Text(
-                              Localization.translate('المتوفر فقط', lang),
+                            label: Center(
+                              child: Text(
+                                Localization.translate('المتوفر', lang),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                            selected: !_showAllItems,
+                            selected: _filterMode == StockFilterMode.available,
                             onSelected: (val) {
                               if (val) {
-                                setState(() => _showAllItems = false);
+                                setState(() => _filterMode = StockFilterMode.available);
                                 _loadStockData();
                               }
                             },
@@ -314,13 +363,64 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: ChoiceChip(
-                            label: Text(
-                              Localization.translate('كل العناصر', lang),
+                            label: Center(
+                              child: Text(
+                                Localization.translate('كل العناصر', lang),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                            selected: _showAllItems,
+                            selected: _filterMode == StockFilterMode.all,
                             onSelected: (val) {
                               if (val) {
-                                setState(() => _showAllItems = true);
+                                setState(() => _filterMode = StockFilterMode.all);
+                                _loadStockData();
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ChoiceChip(
+                            avatar: _lowStockCount > 0
+                                ? Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.redAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$_lowStockCount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                            label: Center(
+                              child: Text(
+                                Localization.translate('النواقص', lang),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _filterMode == StockFilterMode.lowStock
+                                      ? null
+                                      : (_lowStockCount > 0
+                                          ? Colors.orange.shade800
+                                          : null),
+                                ),
+                              ),
+                            ),
+                            selected: _filterMode == StockFilterMode.lowStock,
+                            onSelected: (val) {
+                              if (val) {
+                                setState(() => _filterMode = StockFilterMode.lowStock);
                                 _loadStockData();
                               }
                             },
@@ -1047,18 +1147,31 @@ class _InventoryScreenState extends State<InventoryScreen> {
   void _filterStock() {
     final query = _searchCtrl.text.trim().toLowerCase();
     setState(() {
-      if (query.isEmpty) {
-        _filteredStockData = List.from(_stockData);
-      } else {
-        _filteredStockData = _stockData.where((item) {
+      Iterable<Map<String, dynamic>> items = _stockData;
+
+      if (_filterMode == StockFilterMode.lowStock) {
+        items = items.where((item) {
+          final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+          final minQty = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
+          final alertEnabled =
+              ((item['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
+          return (alertEnabled && minQty > 0 && quantity <= minQty) ||
+              quantity <= 0;
+        });
+      }
+
+      if (query.isNotEmpty) {
+        items = items.where((item) {
           final name = (item['item_name'] ?? '').toString().toLowerCase();
           final type = (item['item_type'] ?? '').toString().toLowerCase();
           final color = (item['color_name'] ?? '').toString().toLowerCase();
           return name.contains(query) ||
               type.contains(query) ||
               color.contains(query);
-        }).toList();
+        });
       }
+
+      _filteredStockData = items.toList();
     });
   }
 }

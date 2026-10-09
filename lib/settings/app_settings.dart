@@ -13,7 +13,10 @@ bool get isAdmin {
 }
 
 bool isApplicationAdminEmail(String? email) {
-  return (email ?? '').trim().toLowerCase() == 'kouidrihamza45@gmail.com';
+  final clean = (email ?? '').trim().toLowerCase();
+  return clean == 'kouidrihamza45@gmail.com' ||
+      clean == 'kouidrihamza046@gmail.com' ||
+      clean == 'kouidrihamza46@gmail.com';
 }
 
 enum AppLanguage { arabic, french, english }
@@ -24,12 +27,31 @@ enum AppViewMode { classic, tabs, windows }
 
 enum AppUpdateMode { automatic, manual }
 
+enum BusinessActivityType {
+  workshopOnly, // ورشة فقط
+  materialsStoreOnly, // محل بيع مواد فقط
+  workshopAndStore, // ورشة + محل بيع مواد
+}
+
+enum WorkingSection {
+  all, // كل الأقسام
+  management, // الإدارة العامة
+  workshop, // تطبيق الورشة
+  materialsStore, // تطبيق محل بيع المواد
+}
+
 class AppSettingsProvider extends ChangeNotifier {
   // Default values
   // French is the default application language.
   AppLanguage _language = AppLanguage.french;
   ThemeMode _themeMode = ThemeMode.light;
   CostMethod _costMethod = CostMethod.linearMeter;
+  bool _applyPurchasePricesToCostTable = false;
+  BusinessActivityType _businessActivity = BusinessActivityType.workshopAndStore;
+  WorkingSection _workingSection = WorkingSection.all;
+  int? _defaultWorkshopLocationId;
+  int? _defaultStoreLocationId;
+
   // Tabs are the default workspace on phones and other non-desktop devices.
   AppViewMode _viewMode = AppViewMode.tabs;
   AppUpdateMode _updateMode = AppUpdateMode.automatic;
@@ -45,6 +67,7 @@ class AppSettingsProvider extends ChangeNotifier {
   StreamSubscription<DocumentSnapshot>? _permSubscription;
   StreamSubscription<Map<String, dynamic>>? _supabasePermSubscription;
   String? _permissionListenerUid;
+
   // Firestore is the authoritative source for the signed-in user's role.
   // Supabase can refresh permissions at the same time, but its first row may
   // briefly be stale while a workshop sync is starting.  Do not let that
@@ -66,9 +89,50 @@ class AppSettingsProvider extends ChangeNotifier {
 
   CostMethod get costMethod => _costMethod;
 
+  bool get applyPurchasePricesToCostTable => _applyPurchasePricesToCostTable;
+
+  BusinessActivityType get businessActivity => _businessActivity;
+
+  bool get hasWorkshop =>
+      _businessActivity == BusinessActivityType.workshopOnly ||
+      _businessActivity == BusinessActivityType.workshopAndStore;
+
+  bool get hasMaterialsStore =>
+      _businessActivity == BusinessActivityType.materialsStoreOnly ||
+      _businessActivity == BusinessActivityType.workshopAndStore;
+
+  bool get isDualActivity =>
+      _businessActivity == BusinessActivityType.workshopAndStore;
+
+  WorkingSection get workingSection {
+    if (!hasWorkshop && hasMaterialsStore) return WorkingSection.materialsStore;
+    if (hasWorkshop && !hasMaterialsStore) return WorkingSection.workshop;
+    return _workingSection;
+  }
+
+  bool get isWorkingInWorkshop =>
+      hasWorkshop &&
+      (workingSection == WorkingSection.all ||
+          workingSection == WorkingSection.workshop);
+
+  bool get isWorkingInStore =>
+      hasMaterialsStore &&
+      (workingSection == WorkingSection.all ||
+          workingSection == WorkingSection.materialsStore);
+
+  bool get isWorkingInManagement =>
+      workingSection == WorkingSection.all ||
+      workingSection == WorkingSection.management;
+
+  int? get defaultWorkshopLocationId => _defaultWorkshopLocationId;
+  int? get defaultStoreLocationId => _defaultStoreLocationId;
+
   AppViewMode get viewMode => _viewMode;
+
   AppUpdateMode get updateMode => _updateMode;
+
   bool get isAutoUpdateEnabled => _updateMode == AppUpdateMode.automatic;
+
   String get appVersion => '1.0.0';
 
   double get profitMargin => _profitMargin;
@@ -95,9 +159,8 @@ class AppSettingsProvider extends ChangeNotifier {
               _isPermissionTrue(_workerPermissions['co_manager']))) ||
       isAdmin;
 
-  bool get isAdmin => isApplicationAdminEmail(
-        AppAuthService().currentUser?.email,
-      );
+  bool get isAdmin =>
+      isApplicationAdminEmail(AppAuthService().currentUser?.email);
 
   bool get isCoManager => _userRole == 'co_manager';
 
@@ -595,6 +658,59 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canAddCaisses() =>
       isManager || _isPermissionTrue(_workerPermissions['add_caisses']);
 
+  // Granular Activity & Scope Permissions
+  bool canAccessWorkshopScope() =>
+      isManager ||
+      _isPermissionTrueOrDefault(
+        _workerPermissions['access_workshop'],
+        defaultValue: true,
+      );
+
+  bool canAccessStoreScope() =>
+      isManager ||
+      _isPermissionTrueOrDefault(
+        _workerPermissions['access_store'],
+        defaultValue: true,
+      );
+
+  bool canAccessManagementScope() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['access_management']);
+
+  bool canAccessWorkshopPurchases() =>
+      hasWorkshop &&
+      (isManager ||
+          _isPermissionTrueOrDefault(
+            _workerPermissions['workshop_purchases'],
+            defaultValue: true,
+          ) ||
+          _isPermissionTrue(_workerPermissions['purchases']));
+
+  bool canAccessStorePurchases() =>
+      hasMaterialsStore &&
+      (isManager ||
+          _isPermissionTrueOrDefault(
+            _workerPermissions['store_purchases'],
+            defaultValue: true,
+          ) ||
+          _isPermissionTrue(_workerPermissions['purchases']));
+
+  bool canAccessStoreSales() =>
+      hasMaterialsStore &&
+      (isManager ||
+          _isPermissionTrueOrDefault(
+            _workerPermissions['store_sales'],
+            defaultValue: true,
+          ));
+
+  bool canExecuteInternalSales() =>
+      isDualActivity &&
+      (isManager ||
+          _isPermissionTrueOrDefault(
+            _workerPermissions['internal_sales'],
+            defaultValue: true,
+          ));
+
   // Load settings from SharedPreferences
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -603,9 +719,9 @@ class AppSettingsProvider extends ChangeNotifier {
     // (without an explicit user choice), so upgrade only that old default to
     // French while preserving a language selected by the user.
     final langIndex = prefs.getInt('app_language');
-    final hasExplicitLanguage =
-        prefs.getBool('app_language_explicit') ?? false;
-    final effectiveLanguageIndex = langIndex == null ||
+    final hasExplicitLanguage = prefs.getBool('app_language_explicit') ?? false;
+    final effectiveLanguageIndex =
+        langIndex == null ||
             (!hasExplicitLanguage && langIndex == AppLanguage.arabic.index)
         ? AppLanguage.french.index
         : (langIndex ?? AppLanguage.french.index);
@@ -620,7 +736,32 @@ class AppSettingsProvider extends ChangeNotifier {
     // Load Cost Method
     final costIndex = prefs.getInt('app_cost_method') ?? 0;
     _costMethod = CostMethod.values[costIndex];
+    _applyPurchasePricesToCostTable =
+        prefs.getBool('app_apply_purchase_prices_to_cost_table') ?? false;
     _profitMargin = prefs.getDouble('app_profit_margin') ?? 20.0; // Default 20%
+
+    // Load Business Activity Type (Default: workshopAndStore)
+    final activityIndex = prefs.getInt('app_business_activity');
+    if (activityIndex != null &&
+        activityIndex >= 0 &&
+        activityIndex < BusinessActivityType.values.length) {
+      _businessActivity = BusinessActivityType.values[activityIndex];
+    } else {
+      _businessActivity = BusinessActivityType.workshopAndStore;
+    }
+
+    // Load Working Section
+    final sectionIndex = prefs.getInt('app_working_section');
+    if (sectionIndex != null &&
+        sectionIndex >= 0 &&
+        sectionIndex < WorkingSection.values.length) {
+      _workingSection = WorkingSection.values[sectionIndex];
+    } else {
+      _workingSection = WorkingSection.all;
+    }
+
+    _defaultWorkshopLocationId = prefs.getInt('app_default_workshop_location_id');
+    _defaultStoreLocationId = prefs.getInt('app_default_store_location_id');
 
     // Load View Mode. A value of classic without the explicit-choice marker
     // belongs to older installations where classic was the old default.
@@ -629,8 +770,9 @@ class AppSettingsProvider extends ChangeNotifier {
     final viewModeIndex = prefs.getInt('app_view_mode');
     final hasExplicitViewMode =
         prefs.getBool('app_view_mode_explicit') ?? false;
-    final effectiveViewModeIndex = viewModeIndex == null ||
-        (!hasExplicitViewMode && viewModeIndex == AppViewMode.classic.index)
+    final effectiveViewModeIndex =
+        viewModeIndex == null ||
+            (!hasExplicitViewMode && viewModeIndex == AppViewMode.classic.index)
         ? AppViewMode.tabs.index
         : (viewModeIndex ?? AppViewMode.tabs.index);
     if (effectiveViewModeIndex < AppViewMode.values.length) {
@@ -690,6 +832,13 @@ class AppSettingsProvider extends ChangeNotifier {
     await prefs.setInt('app_cost_method', method.index);
   }
 
+  Future<void> setApplyPurchasePricesToCostTable(bool value) async {
+    _applyPurchasePricesToCostTable = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('app_apply_purchase_prices_to_cost_table', value);
+  }
+
   Future<void> setViewMode(AppViewMode mode) async {
     _viewMode = mode;
     notifyListeners();
@@ -719,11 +868,46 @@ class AppSettingsProvider extends ChangeNotifier {
     await prefs.setString('app_gemini_api_key', key);
   }
 
+  Future<void> setBusinessActivity(BusinessActivityType activity) async {
+    _businessActivity = activity;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('app_business_activity', activity.index);
+  }
+
   Future<void> setUpdateMode(AppUpdateMode mode) async {
     _updateMode = mode;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('app_update_mode', mode.index);
   }
-}
 
+  Future<void> setWorkingSection(WorkingSection section) async {
+    _workingSection = section;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('app_working_section', section.index);
+  }
+
+  Future<void> setDefaultWorkshopLocationId(int? id) async {
+    _defaultWorkshopLocationId = id;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (id != null) {
+      await prefs.setInt('app_default_workshop_location_id', id);
+    } else {
+      await prefs.remove('app_default_workshop_location_id');
+    }
+  }
+
+  Future<void> setDefaultStoreLocationId(int? id) async {
+    _defaultStoreLocationId = id;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (id != null) {
+      await prefs.setInt('app_default_store_location_id', id);
+    } else {
+      await prefs.remove('app_default_store_location_id');
+    }
+  }
+}

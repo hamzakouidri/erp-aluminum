@@ -1,27 +1,100 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../Screen/app_workspace_shell.dart';
+import '../Screen/subscription_checker.dart';
+import '../login_screen.dart';
 import '../services/auth_service.dart';
+import 'desktop_window_frame.dart';
 
-/// Replaces the entire navigation tree when the signed-in account changes.
-/// Updating only MaterialApp.home leaves pushed workspace routes above login.
-class AuthSessionView extends StatelessWidget {
+/// Manages auth state transitions cleanly.
+/// When user signs out or switches account, pops any pushed modal routes/screens
+/// and transitions between SubscriptionChecker and LoginScreen without tearing down MaterialApp.
+class AuthSessionView extends StatefulWidget {
   const AuthSessionView({
     super.key,
     required this.authStateChanges,
     required this.initialUser,
-    required this.builder,
+    this.navigatorKey,
+    this.builder,
   });
 
   final Stream<AppAuthUser?> authStateChanges;
   final AppAuthUser? initialUser;
-  final Widget Function(BuildContext, AppAuthUser?) builder;
+  final GlobalKey<NavigatorState>? navigatorKey;
+  final Widget Function(BuildContext, AppAuthUser?)? builder;
 
   @override
-  Widget build(BuildContext context) => StreamBuilder<AppAuthUser?>(
-    stream: authStateChanges,
-    initialData: initialUser,
-    builder: (context, snapshot) => KeyedSubtree(
-      key: ValueKey(snapshot.data?.uid),
-      child: builder(context, snapshot.data),
-    ),
-  );
+  State<AuthSessionView> createState() => _AuthSessionViewState();
 }
+
+class _AuthSessionViewState extends State<AuthSessionView> {
+  StreamSubscription<AppAuthUser?>? _subscription;
+  AppAuthUser? _currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUser = widget.initialUser;
+    _subscription = widget.authStateChanges.listen((user) {
+      if (!mounted) return;
+      final previousUser = _currentUser;
+      if (previousUser?.uid != user?.uid) {
+        // Dismiss any modal routes, dialogs or pushed screens back to the root gate
+        widget.navigatorKey?.currentState?.popUntil((route) => route.isFirst);
+        setState(() {
+          _currentUser = user;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.builder != null) {
+      return KeyedSubtree(
+        key: ValueKey(_currentUser?.uid),
+        child: widget.builder!(context, _currentUser),
+      );
+    }
+
+    final user = _currentUser;
+    if (user != null) {
+      const authenticatedContent = SubscriptionChecker();
+      Widget content;
+      if (!kIsWeb && Platform.isWindows) {
+        final workspace = context.read<WorkspaceController>();
+        content = DesktopWindowFrame(
+          topBar: const WorkspaceTabStrip(),
+          onOpen: (title, icon, screen) =>
+              workspace.open(title: title, icon: icon, content: screen),
+          child: authenticatedContent,
+        );
+      } else {
+        content = authenticatedContent;
+      }
+      return KeyedSubtree(
+        key: ValueKey('authenticated_user_${user.uid}'),
+        child: content,
+      );
+    }
+
+    const loginContent = LoginScreen();
+    final content = (!kIsWeb && Platform.isWindows)
+        ? const DesktopWindowFrame(child: loginContent)
+        : loginContent;
+    return KeyedSubtree(
+      key: const ValueKey('unauthenticated_login'),
+      child: content,
+    );
+  }
+}
+

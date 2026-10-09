@@ -516,4 +516,104 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Actif',
     AppLanguage.english: 'Active',
   },
+  'حائط [M]': {
+    AppLanguage.arabic: 'حائط [M]',
+    AppLanguage.french: 'Mur [M]',
+    AppLanguage.english: 'Wall [M]',
+  },
+  'ستار [V]': {
+    AppLanguage.arabic: 'ستار [V]',
+    AppLanguage.french: 'Volet [V]',
+    AppLanguage.english: 'Shutter [V]',
+  },
+  'نفق [T]': {
+    AppLanguage.arabic: 'نفق [T]',
+    AppLanguage.french: 'Tunnel [T]',
+    AppLanguage.english: 'Tunnel [T]',
+  },
+  'غطاء جانبي [C]': {
+    AppLanguage.arabic: 'غطاء جانبي [C]',
+    AppLanguage.french: 'Couvre-joint [C]',
+    AppLanguage.english: 'Side cover [C]',
+  },
+  'وجه داخلي [I]': {
+    AppLanguage.arabic: 'وجه داخلي [I]',
+    AppLanguage.french: 'Face interne [I]',
+    AppLanguage.english: 'Inner face [I]',
+  },
+  'وجه خارجي [I]': {
+    AppLanguage.arabic: 'وجه خارجي [I]',
+    AppLanguage.french: 'Face externe [I]',
+    AppLanguage.english: 'Outer face [I]',
+  },
+  'إطار سفلي [B]': {
+    AppLanguage.arabic: 'إطار سفلي [B]',
+    AppLanguage.french: 'Cadre bas [B]',
+    AppLanguage.english: 'Bottom frame [B]',
+  },
+  'الخصائص [D]': {
+    AppLanguage.arabic: 'الخصائص [D]',
+    AppLanguage.french: 'Propriétés [D]',
+    AppLanguage.english: 'Properties [D]',
+  },
+  'تفعيل أو إلغاء الحائط (M)': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الحائط (M)',
+    AppLanguage.french: 'Activer / désactiver le mur (M)',
+    AppLanguage.english: 'Toggle wall (M)',
+  },
+  'تفعيل أو إلغاء الستار على النافذة (V)': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الستار على النافذة (V)',
+    AppLanguage.french: 'Activer / désactiver le volet (V)',
+    AppLanguage.english: 'Toggle window shutter (V)',
+  },
+  'تفعيل أو إلغاء صندوق النفق (T)': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء صندوق النفق (T)',
+    AppLanguage.french: 'Activer / désactiver le caisson tunnel (T)',
+    AppLanguage.english: 'Toggle tunnel box (T)',
+  },
+  'تفعيل أو إلغاء الغطاء الجانبي (C)': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الغطاء الجانبي (C)',
+    AppLanguage.french: 'Activer / désactiver le couvre-joint (C)',
+    AppLanguage.english: 'Toggle side cover (C)',
+  },
+  'تبديل جهة عرض النافذة (I)': {
+    AppLanguage.arabic: 'تبديل جهة عرض النافذة (I)',
+    AppLanguage.french: 'Basculer la vue interne / externe (I)',
+    AppLanguage.english: 'Toggle inner / outer view (I)',
+  },
+  'تفعيل أو إلغاء الإطار السفلي (B)': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الإطار السفلي (B)',
+    AppLanguage.french: 'Activer / désactiver le cadre bas (B)',
+    AppLanguage.english: 'Toggle bottom frame (B)',
+  },
+  'فتح لوحة الخصائص (D)': {
+    AppLanguage.arabic: 'فتح لوحة الخصائص (D)',
+    AppLanguage.french: 'Ouvrir les propriétés (D)',
+    AppLanguage.english: 'Open properties panel (D)',
+  },
+  'محرك [K]': {
+    AppLanguage.arabic: 'محرك [K]',
+    AppLanguage.french: 'Moteur [K]',
+    AppLanguage.english: 'Motor [K]',
+  },
+  'منايفال [K]': {
+    AppLanguage.arabic: 'منايفال [K]',
+    AppLanguage.french: 'Manivelle [K]',
+    AppLanguage.english: 'Crank [K]',
+  },
+  'حزام [K]': {
+    AppLanguage.arabic: 'حزام [K]',
+    AppLanguage.french: 'Sangle [K]',
+    AppLanguage.english: 'Strap [K]',
+  },
+  'يمين [→]': {
+    AppLanguage.arabic: 'يمين [→]',
+    AppLanguage.french: 'Droite [→]',
+    AppLanguage.english: 'Right [→]',
+  },
+  'يسار [←]': {
+    AppLanguage.arabic: 'يسار [←]',
+    AppLanguage.french: 'Gauche [←]',
+    AppLanguage.english: 'Left [←]',
+  },
 };

@@ -16,6 +16,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/pdf_font_cache.dart';
+import '../Commande/order_measurements_confirm_screen.dart';
+import '../widgets/auto_scroll_expansion_tile.dart';
 
 enum OptimizationMode {
   singleOrder, // 1. طلبية كاملة
@@ -539,12 +541,45 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               )
             : null,
         actions: [
-          if (_report != null && _report!.groups.isNotEmpty)
+          if (_report != null && _report!.groups.isNotEmpty) ...[
             IconButton(
               icon: const Icon(Icons.picture_as_pdf_rounded),
               tooltip: Localization.translate('طباعة وحفظ كـ PDF', lang),
               onPressed: _exportPdfReport,
             ),
+            IconButton(
+              icon: const Icon(Icons.qr_code_2_rounded),
+              tooltip: Localization.translate('طباعة ملصقات الباركود للقطع', lang),
+              onPressed: () {
+                final targetOrderId = _selectedOrderId ?? widget.initialOrderId;
+                if (targetOrderId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        lang == AppLanguage.french
+                            ? 'Veuillez sélectionner une commande spécifique pour imprimer ses étiquettes'
+                            : 'يرجى اختيار طلبية محددة لطباعة ملصقات الباركود الخاصة بها',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                final matchedOrder = _allOrders.firstWhere(
+                  (o) => o['id'] == targetOrderId,
+                  orElse: () => {'id': targetOrderId},
+                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OrderMeasurementsConfirmScreen(
+                      orderData: matchedOrder,
+                      db: widget.db,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: Localization.translate('إعادة الحساب والتحسين', lang),
@@ -925,7 +960,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
                       builder: (context, snap) {
                         final items = snap.data ?? [];
                         if (items.isEmpty) return const SizedBox.shrink();
-                        return ExpansionTile(
+                        return AutoScrollExpansionTile(
                           dense: true,
                           title: Text(_getOrderName(id), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                           children: items.map((d) {

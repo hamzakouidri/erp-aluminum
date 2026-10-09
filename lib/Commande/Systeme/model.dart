@@ -3785,7 +3785,20 @@ class WindowModel extends ChangeNotifier {
         const <int>{};
     if (configuredIds.isEmpty) {
       if (roleKey.trim() == 'face_to_face') {
-        return getSlidingSectionByType('face_to_face');
+        // Do not call getSlidingSectionByType here: that resolver asks this
+        // method first and the two functions recurse until Windows terminates
+        // the process with a stack overflow. Legacy catalogues without an
+        // explicit design-role row may still use the section's own type/name.
+        for (final section in series.sections) {
+          final type = section.type.trim().toLowerCase();
+          final name = section.name.trim().toLowerCase();
+          if (type == 'face_to_face' ||
+              type == 'face to face' ||
+              name.contains('face to face') ||
+              name.contains('face-to-face')) {
+            return section;
+          }
+        }
       }
       return null;
     }
@@ -3818,8 +3831,14 @@ class WindowModel extends ChangeNotifier {
         const <int>{};
     if (configuredIds.isEmpty) {
       if (roleKey.trim() == 'face_to_face') {
-        final sec = getSlidingSectionByType('face_to_face');
-        return sec != null ? [sec] : const <AluminumSection>[];
+        return series.sections.where((section) {
+          final type = section.type.trim().toLowerCase();
+          final name = section.name.trim().toLowerCase();
+          return type == 'face_to_face' ||
+              type == 'face to face' ||
+              name.contains('face to face') ||
+              name.contains('face-to-face');
+        }).toList(growable: false);
       }
       return const <AluminumSection>[];
     }
@@ -19451,6 +19470,27 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     selectedZone!.useClassicHandle = value;
     notifyListeners();
+  }
+
+  /// Whether the active sliding series supports Entrematique.
+  /// PVC sliding never supports Entrematique.
+  /// For aluminium sliding, it requires having an Entrematique override or candidate rule.
+  bool get supportsSlidingEntrematique {
+    if (isPVC || isSlidingPVC) return false;
+    final series = effectiveSlidingSeries;
+    if (series == null) return false;
+    if (_isPvcSeries(series)) return false;
+    if (componentOverrides.containsKey('أونتروماتيك (Entrematique)') ||
+        componentOverrides.containsKey('entrematique')) {
+      return true;
+    }
+    final rawRoles = _seriesDesignRoleSectionIds[series.id];
+    if (rawRoles != null &&
+        (rawRoles.containsKey('entrematique') ||
+            rawRoles.containsKey('أونتروماتيك'))) {
+      return true;
+    }
+    return false;
   }
 
   /// Whether the active sliding series has explicitly assigned the

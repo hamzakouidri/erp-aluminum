@@ -29,6 +29,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription<String>? _syncSubscription;
+  Timer? _syncDebounceTimer;
 
   @override
   void initState() {
@@ -45,21 +46,29 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     _loadTrashData();
     _syncSubscription = CloudSyncService().dbUpdateStream.listen((event) {
       if (mounted) {
-        _loadTrashOrders();
+        _syncDebounceTimer?.cancel();
+        _syncDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _loadTrashOrders();
+          }
+        });
       }
     });
   }
 
   @override
   void dispose() {
+    _syncDebounceTimer?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     _syncSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadTrashData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadTrashData({bool isUserInitiated = true}) async {
+    if (isUserInitiated && (_trashOrders.isEmpty && _trashAchats.isEmpty && _auditLogs.isEmpty)) {
+      setState(() => _isLoading = true);
+    }
     try {
       final orders = await _db.readTrashCommandesWithClients();
       final achats = await _db.readTrashAchats();
@@ -79,7 +88,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     }
   }
 
-  Future<void> _loadTrashOrders() => _loadTrashData();
+  Future<void> _loadTrashOrders() => _loadTrashData(isUserInitiated: false);
 
   List<Map<String, dynamic>> get _filteredAchats {
     if (_searchQuery.trim().isEmpty) return _trashAchats;

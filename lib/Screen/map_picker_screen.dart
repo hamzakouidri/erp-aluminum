@@ -1,22 +1,28 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLatitude;
   final double? initialLongitude;
+  final String? clientName;
+  final String? title;
 
   const MapPickerScreen({
     super.key,
     this.initialLatitude,
     this.initialLongitude,
+    this.clientName,
+    this.title,
   });
 
   @override
@@ -74,11 +80,49 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     });
 
     final results = <Map<String, dynamic>>[];
+    final searchCenter = _selectedPoint;
+    final latitudeSpan = 1.25;
+    final longitudeSpan =
+        1.25 / math.cos(searchCenter.latitude * math.pi / 180).abs().clamp(0.25, 1.0);
+    final viewbox = [
+      searchCenter.longitude - longitudeSpan,
+      searchCenter.latitude + latitudeSpan,
+      searchCenter.longitude + longitudeSpan,
+      searchCenter.latitude - latitudeSpan,
+    ].join(',');
+
+    double distanceFromSearchCenter(double lat, double lon) {
+      final dLat = (lat - searchCenter.latitude) * 111.0;
+      final dLon =
+          (lon - searchCenter.longitude) *
+          111.0 *
+          math.cos(searchCenter.latitude * math.pi / 180);
+      return math.sqrt(dLat * dLat + dLon * dLon);
+    }
+
+    void addResult({required String name, required double lat, required double lon}) {
+      if (results.any((item) =>
+          (item['lat'] as double).toStringAsFixed(5) == lat.toStringAsFixed(5) &&
+          (item['lon'] as double).toStringAsFixed(5) == lon.toStringAsFixed(5))) {
+        return;
+      }
+      results.add({
+        'name': name,
+        'lat': lat,
+        'lon': lon,
+        'distanceKm': distanceFromSearchCenter(lat, lon),
+      });
+    }
 
     try {
-      // 1. Try Nominatim with priority for Algeria and Arabic/French localization
+      // Restrict results to Algeria and bias them toward the current map area.
+      // This gives Google-like nearby suggestions without returning worldwide
+      // matches for common street/city names.
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(cleanQuery)}&limit=6&accept-language=ar,fr',
+        'https://nominatim.openstreetmap.org/search?format=json'
+        '&q=${Uri.encodeComponent(cleanQuery)}'
+        '&countrycodes=dz&viewbox=$viewbox&bounded=0&limit=8'
+        '&addressdetails=1&accept-language=ar,fr',
       );
       final response = await http.get(
         url,
@@ -94,11 +138,11 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             final lat = double.tryParse(item['lat']?.toString() ?? '');
             final lon = double.tryParse(item['lon']?.toString() ?? '');
             if (lat != null && lon != null) {
-              results.add({
-                'name': item['display_name'] ?? item['name'] ?? '',
-                'lat': lat,
-                'lon': lon,
-              });
+              addResult(
+                name: item['display_name'] ?? item['name'] ?? '',
+                lat: lat,
+                lon: lon,
+              );
             }
           }
         }
@@ -107,7 +151,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       // Fallback to Photon geocoding if Nominatim fails or times out
       try {
         final photonUrl = Uri.parse(
-          'https://photon.komoot.io/api/?q=${Uri.encodeComponent(cleanQuery)}&limit=6&lang=fr',
+          'https://photon.komoot.io/api/?q=${Uri.encodeComponent(cleanQuery)}'
+          '&limit=8&lang=fr&bbox=${searchCenter.longitude - longitudeSpan},'
+          '${searchCenter.latitude - latitudeSpan},${searchCenter.longitude + longitudeSpan},'
+          '${searchCenter.latitude + latitudeSpan}',
         );
         final response = await http.get(photonUrl).timeout(const Duration(seconds: 4));
         if (response.statusCode == 200) {
@@ -127,11 +174,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   props['state']?.toString() ?? '',
                   props['country']?.toString() ?? '',
                 ].where((s) => s.isNotEmpty).toList();
-                results.add({
-                  'name': parts.join('، '),
-                  'lat': lat,
-                  'lon': lon,
-                });
+                final country = props['country']?.toString().toLowerCase() ?? '';
+                if (country.contains('alger') || country.contains('الجزائر')) {
+                  addResult(name: parts.join('، '), lat: lat, lon: lon);
+                }
               }
             }
           }
@@ -140,6 +186,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     }
 
     if (mounted) {
+      results.sort(
+        (a, b) => (a['distanceKm'] as double).compareTo(b['distanceKm'] as double),
+      );
       setState(() {
         _searchResults = results;
         _isSearching = false;
@@ -216,11 +265,17 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
         : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
 
+    final screenTitle = widget.title ??
+        (widget.clientName != null && widget.clientName!.trim().isNotEmpty
+            ? '${Localization.translate('تحديد موقع:', lang)} ${widget.clientName}'
+            : Localization.translate('خرائط جوجل - تحديد موقع العميل', lang));
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          Localization.translate('خرائط جوجل - تحديد موقع العميل', lang),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+          screenTitle,
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15),
+          overflow: TextOverflow.ellipsis,
         ),
         backgroundColor: const Color(0xFF1E3A8A),
         foregroundColor: Colors.white,
@@ -233,6 +288,25 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
               setState(() {
                 _isSatellite = !_isSatellite;
               });
+            },
+          ),
+          // Open in Google Maps app / browser
+          IconButton(
+            tooltip: Localization.translate('فتح في تطبيق خرائط Google', lang),
+            icon: const Icon(Icons.open_in_new_rounded, color: Colors.amberAccent),
+            onPressed: () async {
+              final lat = _selectedPoint.latitude;
+              final lng = _selectedPoint.longitude;
+              final googleNav = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+              final googleWeb = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+              try {
+                final opened = await launchUrl(googleNav, mode: LaunchMode.externalApplication);
+                if (!opened) {
+                  await launchUrl(googleWeb, mode: LaunchMode.externalApplication);
+                }
+              } catch (_) {
+                await launchUrl(googleWeb, mode: LaunchMode.externalApplication);
+              }
             },
           ),
           IconButton(

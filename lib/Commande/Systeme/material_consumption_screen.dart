@@ -9,6 +9,8 @@ import 'dart:math' as math; // لاستخدام math.max عند حساب سعر 
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'
+    show PointerScrollEvent, PointerSignalEvent;
 import 'package:database_data/sql_database.dart'; // كائن الوصول لقاعدة بيانات SQLite
 import 'package:database_data/Commande/Systeme/model.dart'; // نموذج بيانات النافذة (WindowModel)
 import 'package:database_data/Commande/Systeme/calculate_component.dart'; // منطق توليد قائمة المكونات (BOM)
@@ -76,6 +78,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   bool _isRefreshingVisibleBom = false;
   Timer? _modelRefreshDebounce;
   final List<Timer> _initialPriceRetryTimers = <Timer>[];
+  StreamSubscription<String>? _dbUpdateSubscription;
   String _lastPriceContextSignature = '';
   final Map<String, double> _accessoryPriceCache = {};
   Map<String, double> _mainWarehouseStock = const {};
@@ -141,38 +144,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
   Future<Map<String, double>> _loadMainWarehouseStock() async {
     final database = SqlDatabase();
-    final locations = await database.readLocations();
-    if (locations.isEmpty) return const {};
-    final mainLocations = locations.where((row) {
-      final name = '${row['name'] ?? ''}'.trim();
-      final type = '${row['type'] ?? ''}'.trim();
-      return name == 'المستودع الرئيسي' || type == 'مستودع رئيسي';
-    }).toList();
-    // Old/cloud-restored databases may have several rows for the same main
-    // warehouse. They are one physical stock scope and must be summed here.
-    final sourceLocations = mainLocations.isNotEmpty
-        ? mainLocations
-        : <Map<String, dynamic>>[locations.first];
-    final locationIds = sourceLocations
-        .map((row) {
-          final rawId = row['id'];
-          return rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
-        })
-        .whereType<int>()
-        .toSet()
-        .toList();
-    if (locationIds.isEmpty) return const {};
-    // Read the actual ledger rows, not only catalogue/color combinations.
-    // Older inventory entries use aliases such as `Sections` or `Profile`,
-    // which made a valid quantity look like zero in the material table.
     final sqlite = await database.db;
     if (sqlite == null) return const {};
-    final rows = await sqlite.query(
-      'CurrentStock',
-      where:
-          'location_id IN (${List.filled(locationIds.length, '?').join(',')})',
-      whereArgs: locationIds,
-    );
+    final rows = await sqlite.query('CurrentStock');
     final result = <String, double>{};
     for (final row in rows) {
       final rawItemId = row['item_id'];
@@ -190,6 +164,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           : double.tryParse('${rawQuantity ?? ''}') ?? 0.0;
       final key = _stockKey(row['item_type']?.toString(), itemId, colorId);
       result[key] = (result[key] ?? 0.0) + quantity;
+      // Also accumulate to general key (null color) so items with or without
+      // explicit colors match seamlessly in consumption view.
+      if (colorId != null && colorId != 0) {
+        final totalKey = _stockKey(row['item_type']?.toString(), itemId, null);
+        result[totalKey] = (result[totalKey] ?? 0.0) + quantity;
+      }
     }
     return result;
   }
@@ -1173,7 +1153,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
     }
 
-    final price = _safeDouble(accessory['price_dzd'] ?? accessory['price']);
+    var price = _safeDouble(accessory['price_dzd'] ?? accessory['price']);
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    if (settings.applyPurchasePricesToCostTable && accessoryId != null) {
+      final purchasePrice = await SqlDatabase().getLatestPurchasePrice(
+            itemId: accessoryId,
+            itemType: 'Accessories',
+            colorId: colorId,
+          );
+      if (purchasePrice != null && purchasePrice >= 0) {
+        price = purchasePrice;
+      }
+    }
     if (canCachePrice) _accessoryPriceCache[cacheKey] = price;
     return price;
   }
@@ -1210,6 +1201,21 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   final Map<String, List<String>> _manualTableOrder = {};
 
   bool get _desktopTableMode => MediaQuery.sizeOf(context).width >= 900;
+
+  void _handleTablePageWheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        event.scrollDelta.dy == 0 ||
+        !_pageScrollController.hasClients) {
+      return;
+    }
+    final position = _pageScrollController.position;
+    if (!position.hasContentDimensions) return;
+    final newOffset = (position.pixels + event.scrollDelta.dy)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((newOffset - position.pixels).abs() >= 0.5) {
+      position.jumpTo(newOffset);
+    }
+  }
 
   bool _isBouchonLameBomItem(BomItem item) =>
       item.originalName.contains('أغطية الشفرات') ||
@@ -2092,6 +2098,59 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         .toList(growable: false);
   }
 
+  Future<List<BomItem>> _applyPurchasePricesIfEnabled(
+    List<BomItem> items,
+  ) async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    if (!settings.applyPurchasePricesToCostTable) return items;
+
+    final sqlDb = SqlDatabase();
+    final updatedList = <BomItem>[];
+
+    for (final item in items) {
+      final itemId = item.catalogItemId;
+      if (itemId == null || itemId <= 0) {
+        updatedList.add(item);
+        continue;
+      }
+
+      String itemType;
+      if (item.category == 'profile') {
+        itemType = 'Sections';
+      } else if (item.category == 'accessory') {
+        itemType = 'Accessories';
+      } else if (item.category == 'shutter') {
+        itemType = 'ShutterComponents';
+      } else if (item.category == 'joint') {
+        itemType = 'Joints';
+      } else if (item.category == 'glass') {
+        itemType = 'Glass';
+      } else {
+        itemType = item.inventoryItemType ?? 'Accessories';
+      }
+
+      final rawColorId = item.category == 'accessory'
+          ? _selectedAccessoryColorId()
+          : (item.colorId ?? widget.model.selectedDbColor?['id']);
+      final colorId = rawColorId is num
+          ? rawColorId.toInt()
+          : int.tryParse('${rawColorId ?? ''}');
+
+      final purchasePrice = await sqlDb.getLatestPurchasePrice(
+        itemId: itemId,
+        itemType: itemType,
+        colorId: colorId,
+      );
+
+      if (purchasePrice != null && purchasePrice > 0) {
+        updatedList.add(item.copyWith(unitPrice: purchasePrice));
+      } else {
+        updatedList.add(item);
+      }
+    }
+    return updatedList;
+  }
+
   Future<List<BomItem>> _generateStrictVisibleBomItems(
     BomEngineV2 engine,
   ) async {
@@ -2130,18 +2189,27 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             visibleBomItems = strictItems;
           }
         }
+        visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
       } catch (error, stackTrace) {
         // Keep resolved rows visible without restoring unlinked placeholders.
         visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
+        visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
         debugPrint(
           'Material BOM refresh failed; showing resolved rows: $error',
         );
         debugPrintStack(stackTrace: stackTrace);
       }
+      final refreshedStock = await _loadMainWarehouseStock();
       if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
-      if (_bomItemsSignature(_visibleBomItems) !=
-          _bomItemsSignature(visibleBomItems)) {
-        setState(() => _visibleBomItems = visibleBomItems);
+      final stockChanged = refreshedStock.length != _mainWarehouseStock.length ||
+          refreshedStock.entries.any((e) => _mainWarehouseStock[e.key] != e.value);
+      if (stockChanged ||
+          _bomItemsSignature(_visibleBomItems) !=
+              _bomItemsSignature(visibleBomItems)) {
+        setState(() {
+          _mainWarehouseStock = refreshedStock;
+          _visibleBomItems = visibleBomItems;
+        });
       }
     } finally {
       _isRefreshingVisibleBom = false;
@@ -2228,6 +2296,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       // The strict BOM is ready at this point. Publish it immediately instead
       // of keeping the table hidden while secondary price caches finish.
       // Price loading may continue with the progress strip still visible.
+      visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
       if (mounted) {
         setState(() => _visibleBomItems = visibleBomItems);
       }
@@ -2245,6 +2314,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             pricedStrictItems.isEmpty && pricedResolvedItems.isNotEmpty
             ? pricedResolvedItems
             : pricedStrictItems;
+        visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
         if (mounted) setState(() => _visibleBomItems = visibleBomItems);
       }
       _setFetchProgress(0.96);
@@ -2450,6 +2520,19 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _scheduleInitialPriceRetries();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
     widget.model.addListener(_onModelChanged);
+    _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        unawaited(_refreshFromDatabaseUpdate());
+      }
+    });
+  }
+
+  Future<void> _refreshFromDatabaseUpdate() async {
+    final newStock = await _loadMainWarehouseStock();
+    if (mounted) {
+      setState(() => _mainWarehouseStock = newStock);
+      await _refreshVisibleBomItems();
+    }
   }
 
   // دالة تُستدعى عند تغيّر النموذج من خارج هذه الشاشة، فقط تعيد بناء الواجهة
@@ -2497,6 +2580,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   void dispose() {
     widget.model.removeListener(_onModelChanged);
+    _dbUpdateSubscription?.cancel();
     _modelRefreshDebounce?.cancel();
     for (final timer in _initialPriceRetryTimers) {
       timer.cancel();
@@ -3027,7 +3111,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         controller: _pageScrollController,
         primary: false,
         scrollDirection: Axis.vertical, // تمرير رأسي لكامل محتوى الشاشة
-        child: Column(
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerSignal: _handleTablePageWheel,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Keep refreshes invisible once a valid table is already shown.
@@ -3442,6 +3529,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               height: 100,
             ), // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
           ],
+          ),
         ),
       ),
       bottomNavigationBar: _buildBottomBar(
@@ -4444,7 +4532,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         border: Border.all(color: Colors.grey.shade300),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: SingleChildScrollView(
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerSignal: _handleTablePageWheel,
+        child: SingleChildScrollView(
         controller:
             _scrollController, // نفس الكونترولر المستخدم لمراقبة موضع التمرير
         scrollDirection:
@@ -4524,6 +4615,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -5666,9 +5758,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         // لغير عناصر الكيت: عرض الاسم الأصلي (الثانوي) إن اختلف عن الاسم المترجم
                         else ...[
                           (() {
+                            final localizedTitle = item.getLocalizedName(_lang);
                             final parts = item.name.split('\n');
                             final namePart = parts[0];
-                            final subparts = parts.length > 1
+                            final rawSubparts = parts.length > 1
                                 ? parts.sublist(1)
                                 : <String>[
                                     if (item.profileCode != null &&
@@ -5676,6 +5769,29 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                         item.profileCode!.trim() != namePart)
                                       item.profileCode!.trim(),
                                   ];
+                            final subparts = rawSubparts.where((subText) {
+                              final trimmed = subText.trim();
+                              if (trimmed.isEmpty) return false;
+                              final lower = trimmed.toLowerCase();
+                              // Don't show standalone redundant labels that match or repeat part of the title
+                              if (lower == 'renforcé' ||
+                                  lower == 'renforce' ||
+                                  lower == '- renforcé' ||
+                                  lower == '- renforce' ||
+                                  lower == 'central' ||
+                                  lower == 'latéral' ||
+                                  lower == 'lateral' ||
+                                  lower == 'coulissant' ||
+                                  lower == 'dormant') {
+                                return false;
+                              }
+                              if (lower == localizedTitle.toLowerCase()) return false;
+                              // If French language, hide pure Arabic subparts
+                              if (_lang == 'fr' && _hasArabic(trimmed)) {
+                                return false;
+                              }
+                              return true;
+                            }).toList();
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -6469,11 +6585,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         double price = 0.0;
         final db = SqlDatabase();
         // حساب السعر: بروفيل حسب اللون، وإلا السعر العام المباشر
+        final settings =
+            Provider.of<AppSettingsProvider>(context, listen: false);
         if (pCategory == 'profile' && widget.model.selectedDbColor != null) {
           int colorId = widget.model.selectedDbColor!['id'];
           price = await db.getSectionPrice(selected['id'], colorId);
           if (price <= 0) {
             price = _safeDouble(selected['price_dzd'] ?? selected['price']);
+          }
+          if (settings.applyPurchasePricesToCostTable) {
+            final purchasePrice = await db.getLatestPurchasePrice(
+              itemId: (selected['id'] as num).toInt(),
+              itemType: 'Sections',
+              colorId: colorId,
+            );
+            if (purchasePrice != null && purchasePrice > 0) {
+              price = purchasePrice;
+            }
           }
         } else if (pCategory == 'accessory') {
           final dbInstance = await db.db;
@@ -6482,6 +6610,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               : await _resolveSelectedAccessoryPrice(dbInstance, selected);
         } else {
           price = _safeDouble(selected['price_dzd'] ?? selected['price']);
+          if (settings.applyPurchasePricesToCostTable && selected['id'] != null) {
+            final purchasePrice = await db.getLatestPurchasePrice(
+              itemId: (selected['id'] as num).toInt(),
+              itemType:
+                  pCategory == 'shutter' ? 'ShutterComponents' : pCategory,
+              colorId: widget.model.selectedDbColor?['id'],
+            );
+            if (purchasePrice != null && purchasePrice > 0) {
+              price = purchasePrice;
+            }
+          }
         }
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['manual_selection'] = true;

@@ -17,6 +17,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import '../widgets/subscription_deadline.dart';
 import '../services/offline_account_cache.dart';
+import '../login_screen.dart';
 
 class SubscriptionChecker extends StatefulWidget {
   const SubscriptionChecker({super.key});
@@ -70,9 +71,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
   Widget build(BuildContext context) {
     final user = AppAuthService().currentUser;
     if (user == null) {
-      return Scaffold(
-        body: Center(child: Text(_t('عذراً، يجب تسجيل الدخول.'))),
-      );
+      // Defensive fallback while the root auth gate processes its sign-out
+      // event. Never leave the user on a white "must sign in/offline" page.
+      return const LoginScreen();
     }
 
     // Supabase is the only active gate. The legacy Firestore branch below is
@@ -184,7 +185,6 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                               .resetForSignedOut();
                           await AppAuthService().signOut();
                           await AppAuthService().signOutGoogleSession();
-                          await SqlDatabase.clearAllLocalData();
                         } catch (e) {
                           debugPrint('Sign out error: $e');
                         }
@@ -327,7 +327,6 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                               .resetForSignedOut();
                           await AppAuthService().signOut();
                           await AppAuthService().signOutGoogleSession();
-                          await SqlDatabase.clearAllLocalData();
                         } catch (e) {
                           debugPrint('Sign out error: $e');
                         }
@@ -427,7 +426,6 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                                     .resetForSignedOut();
                                 await AppAuthService().signOut();
                                 await AppAuthService().signOutGoogleSession();
-                                await SqlDatabase.clearAllLocalData();
                               } catch (e) {
                                 debugPrint('Sign out error: $e');
                               }
@@ -500,7 +498,6 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                               try {
                                 await AppAuthService().signOut();
                                 await AppAuthService().signOutGoogleSession();
-                                await SqlDatabase.clearAllLocalData();
                               } catch (e) {
                                 debugPrint('Sign out error: $e');
                               }
@@ -638,7 +635,12 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
         await prefs.remove('$_accountCachePrefix$userId');
       }
       if (!mounted) return;
-      setState(() => _accountFuture = Future.value(account));
+      // Use a block so the callback returns void. The assignment expression
+      // itself evaluates to Future and Flutter rejects an async-valued
+      // setState callback in debug builds.
+      setState(() {
+        _accountFuture = Future.value(account);
+      });
       if (account != null) _scheduleSubscriptionExpiry(account);
       await _bindSubscriptionRealtime();
     } catch (error) {
@@ -901,7 +903,6 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
                   context.read<WorkspaceController>().resetForSignedOut();
                   await CloudSyncService().clearCachedWorkshopContext();
                   await AppAuthService().signOut();
-                  await SqlDatabase.clearAllLocalData();
                 },
                 icon: const Icon(Icons.logout),
                 label: Text(_t(context, 'تسجيل الخروج')),
@@ -968,10 +969,11 @@ class _SyncGatewayState extends State<SyncGateway> {
       final hasLocalBusinessData = await _hasLocalBusinessData(myDb);
       final sameUser =
           currentUid.isNotEmpty &&
-          (activeUid.isEmpty || activeUid == currentUid);
+          activeUid.isNotEmpty &&
+          activeUid == currentUid;
       final sameWorkshop =
-          activeWorkshop.isEmpty ||
-          requestedWorkshop.isEmpty ||
+          activeWorkshop.isNotEmpty &&
+          requestedWorkshop.isNotEmpty &&
           activeWorkshop.trim().toLowerCase() ==
               requestedWorkshop.trim().toLowerCase();
 
@@ -1109,17 +1111,26 @@ class _SyncGatewayState extends State<SyncGateway> {
   }
 
   Future<bool> _hasLocalBusinessData(dynamic myDb) async {
-    // الإعدادات الأساسية (Profile وSeries) تُنشأ محلياً حتى بعد تثبيت
-    // التطبيق من جديد، لذلك لا يصح اعتبارها دليلاً على أن بيانات الورشة
-    // قد استُعيدت. نعتمد فقط على بيانات العمل الفعلية هنا.
+    // Catalogue tables are seeded locally on a fresh install and must never
+    // be treated as restored workshop data. Otherwise a phone/PC containing
+    // only default Sections skips the protected full Supabase restore.
     try {
-      final clients = await myDb.query('Client', limit: 1);
-      final orders = await myDb.query('Commandes', limit: 1);
-      if (clients.isNotEmpty || orders.isNotEmpty) return true;
-      // A workshop can have its catalogue ready before its first customer.
-      // Profile/Series defaults alone are not evidence of a restored cache.
-      final sections = await myDb.query('Sections', limit: 1);
-      return sections.isNotEmpty;
+      for (final table in const [
+        'Client',
+        'Projects',
+        'Measurements',
+        'Commandes',
+        'Achats',
+        'Suppliers',
+        'Employees',
+        'Treasury',
+        'CurrentStock',
+        'MaterialSales',
+      ]) {
+        final rows = await myDb.query(table, columns: const ['rowid'], limit: 1);
+        if (rows.isNotEmpty) return true;
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -1147,14 +1158,29 @@ class _SyncGatewayState extends State<SyncGateway> {
 
   Future<bool> _clearLocalDataIfWorkshopChanged() async {
     final prefs = await SharedPreferences.getInstance();
-    final previousWorkshop = _storedActiveWorkshop(prefs);
-    final currentWorkshop = await _currentWorkshopKey();
-    if (previousWorkshop.isEmpty || previousWorkshop == currentWorkshop) {
+    final previousWorkshop = _storedActiveWorkshop(prefs).trim().toLowerCase();
+    if (previousWorkshop.isEmpty) return false;
+
+    final currentWorkshop = (await _currentWorkshopKey()).trim().toLowerCase();
+    final workshopCode = (prefs.getString('workshop_code') ?? '').trim().toLowerCase();
+    final selectedId = (prefs.getString('selected_supabase_workshop_id') ?? '').trim().toLowerCase();
+    final cloudId = (CloudSyncService().workshopId ?? '').trim().toLowerCase();
+
+    final isSameWorkshop = previousWorkshop == currentWorkshop ||
+        (workshopCode.isNotEmpty && previousWorkshop == workshopCode) ||
+        (selectedId.isNotEmpty && previousWorkshop == selectedId) ||
+        (cloudId.isNotEmpty && previousWorkshop == cloudId);
+
+    if (isSameWorkshop) {
       return false;
     }
 
+    debugPrint(
+      'Workshop changed from "$previousWorkshop" to "$currentWorkshop". '
+      'Clearing previous workshop business data while keeping aluminum catalog.',
+    );
     CloudSyncService().reset();
-    await SqlDatabase.clearAllLocalData();
+    await SqlDatabase.clearWorkshopDataOnly();
     await CloudSyncService().init();
     return true;
   }

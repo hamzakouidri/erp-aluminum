@@ -868,7 +868,7 @@ class DevisBuilder {
         }
       }
     }
-    final displaySeries = resolvedSeries;
+    final displaySeries = isShutterOnly ? 'Volet' : resolvedSeries;
 
     final bool isCaissonTunnel =
         map['isCaissonTunnel'] == true ||
@@ -2179,6 +2179,9 @@ class DevisBuilder {
     Map<String, dynamic> map,
     String fallback,
   ) {
+    if (map['isShutterOnly'] == true) {
+      return const ['Volet'];
+    }
     final labels = <String>[];
     final normalized = <String>{};
 

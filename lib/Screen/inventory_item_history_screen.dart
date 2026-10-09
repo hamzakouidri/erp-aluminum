@@ -276,6 +276,16 @@ class _InventoryItemHistoryScreenState
                         title = "${Localization.translate('إلغاء مشتريات رقم ', lang)}$ref";
                       } else if (type == 'Order') {
                         title = "${Localization.translate('استهلاك في طلبية رقم ', lang)}$ref";
+                      } else if (type == 'Internal Transfer to Workshop') {
+                        title = "${Localization.translate('تحويل داخلي إلى الورشة (مبيعات رقم ', lang)}$ref)";
+                      } else if (type == 'Internal Receipt from Store') {
+                        title = "${Localization.translate('استلام داخلي من المحل (مشتريات رقم ', lang)}$ref)";
+                      } else if (type == 'Reversal: Internal Return (Workshop -> Store)') {
+                        title = "${Localization.translate('مرتجع داخلي ملغى إلى المحل (مبيعات رقم ', lang)}$ref)";
+                      } else if (type == 'Reversal: Internal Return Out of Workshop') {
+                        title = "${Localization.translate('إلغاء استلام من الورشة (مشتريات رقم ', lang)}$ref)";
+                      } else if (type == 'Material Sale') {
+                        title = "${Localization.translate('بيع مواد مباشر رقم ', lang)}$ref";
                       } else {
                         title = type;
                       }

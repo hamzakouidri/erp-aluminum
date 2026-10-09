@@ -35,7 +35,8 @@ class _CustomersState extends State<Customers> {
   final SqlDatabase db = SqlDatabase();
   // Explicitly bind the page/table scroll position so the desktop wheel can
   // target this list as soon as the page is opened.
-  final ScrollController _clientsScrollController = ScrollController();
+  final ScrollController _mobileClientsScrollController = ScrollController();
+  final ScrollController _desktopClientsScrollController = ScrollController();
   final TextEditingController searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSearching = false;
@@ -62,7 +63,8 @@ class _CustomersState extends State<Customers> {
   void dispose() {
     _syncRefreshDebounce?.cancel();
     _dbUpdateSubscription?.cancel();
-    _clientsScrollController.dispose();
+    _mobileClientsScrollController.dispose();
+    _desktopClientsScrollController.dispose();
     searchController.dispose();
     for (final controller in _clientColumnControllers.values) {
       controller.dispose();
@@ -519,7 +521,9 @@ class _CustomersState extends State<Customers> {
         ],
       ),
       body: DesktopScrollFallback(
-        controller: _clientsScrollController,
+        controller: isDesktop
+            ? _desktopClientsScrollController
+            : _mobileClientsScrollController,
         child: Column(
           children: [
 
@@ -746,7 +750,7 @@ class _CustomersState extends State<Customers> {
                   }
 
                   return ListView.builder(
-                    controller: _clientsScrollController,
+                    controller: _mobileClientsScrollController,
                     primary: false,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -1612,7 +1616,7 @@ class _CustomersState extends State<Customers> {
                         filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
                         borderColor: borderColor,
                         rowColor: cardColor,
-                        verticalController: _clientsScrollController,
+                        verticalController: _desktopClientsScrollController,
                         headerMinHeight: 38,
                         filterRowMinHeight: 34,
                         rowMinHeight: 46,

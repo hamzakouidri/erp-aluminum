@@ -8,6 +8,7 @@ import 'achat_screen.dart';
 import 'suppliers_screen.dart';
 import 'treasury_screen.dart';
 import 'worker_weekly_settlement_screen.dart';
+import 'unified_financial_report_screen.dart';
 import '../settings/localization.dart';
 
 class ReportsHubScreen extends StatelessWidget {
@@ -110,6 +111,22 @@ class ReportsHubScreen extends StatelessWidget {
           context,
           MaterialPageRoute(
             builder: (_) => TreasuryScreen(db: db, readOnly: true),
+          ),
+        ),
+      });
+    }
+
+    // 7. Unified Financial & Profit Margin Report (التقرير المالي الموحد للمؤسسة)
+    if (settings.isDualActivity && (settings.isManager || settings.canViewStatistics())) {
+      reports.add({
+        'title': Localization.translate('التقرير المالي الموحد للمؤسسة', lang),
+        'subtitle': Localization.translate('فصل أرباح المحل والورشة واستبعاد الهامش الداخلي', lang),
+        'icon': Icons.pie_chart_rounded,
+        'color': Colors.deepPurple,
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UnifiedFinancialReportScreen(db: db),
           ),
         ),
       });

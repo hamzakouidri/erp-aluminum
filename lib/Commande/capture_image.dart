@@ -145,8 +145,10 @@ Future<Uint8List> captureWindowImage(
   );
 
   canvas.save();
-  // Translate down by padding + the scaled boxSize so the top box fits in the image
-  canvas.translate(padding, padding + (boxSize * scale));
+  // WindowPainter already includes the shutter box in its coordinate system.
+  // Translating by boxSize here moves the box down a second time and creates
+  // the detached grey rectangle seen in the cutting-sheet preview.
+  canvas.translate(padding, padding);
   canvas.scale(scale);
   WindowPainter(
     model: model,

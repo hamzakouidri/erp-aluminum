@@ -10,6 +10,7 @@ import '../Commande/order_workspace_screen.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/lazy_window_image.dart';
 import 'worker_archive_screen.dart';
+import 'worker_remnants_review_dialog.dart';
 import 'package:database_data/services/auth_service.dart';
 
 class WorkerTasksScreen extends StatefulWidget {
@@ -314,8 +315,35 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       debugPrint('Error toggling manufactured status: $e');
     }
 
+    // ⚡ 3. عند ضغط "تم الصنع" (newVal == 1)، نفتح نافذة مراجعة وتأكيد الفضلات للعامل
+    if (newVal == 1 && mounted) {
+      final task = _allTasks.firstWhere(
+        (element) => element['id'] == allocationId,
+        orElse: () => const {},
+      );
+      final rawOrderId = task['id_commandes'];
+      final orderId = rawOrderId is num ? rawOrderId.toInt() : int.tryParse('$rawOrderId');
+
+      if (orderId != null && orderId > 0) {
+        // التحقق أولاً مما إذا كانت هناك فضلات مسجلة للطلبية
+        final remnants = await widget.db.readMaterialRemnantsForOrder(orderId);
+        if (remnants.isNotEmpty && mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => WorkerRemnantsReviewDialog(
+              orderId: orderId,
+              orderCode: task['display_number']?.toString() ?? task['id_commandes']?.toString() ?? '$orderId',
+              windowType: task['window_type']?.toString() ?? 'عنصر',
+              db: widget.db,
+            ),
+          );
+        }
+      }
+    }
+
     // الحفاظ على الحماية لمدة ثانيتين لمنع تضارب أحداث البث السحابية
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 1));
     _isLocalChangePending = false;
   }
 

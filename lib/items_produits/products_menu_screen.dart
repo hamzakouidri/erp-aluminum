@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'
+    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +30,7 @@ class ProductsMenuScreen extends StatefulWidget {
 }
 
 class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
+  final ScrollController _pageScrollController = ScrollController();
   bool _isSyncing = false;
   bool _hasLoadedCloudCatalog = false;
   Future<void>? _catalogSyncFuture;
@@ -88,6 +91,26 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
         ),
       );
     }
+  }
+
+  void _handleMouseWheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        event.scrollDelta.dy == 0 ||
+        !_pageScrollController.hasClients) {
+      return;
+    }
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (!mounted || !_pageScrollController.hasClients) return;
+      final position = _pageScrollController.position;
+      if (!position.hasContentDimensions) return;
+      position.pointerScroll(event.scrollDelta.dy);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageScrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -156,260 +179,273 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                   ),
         ],
       ),
-      body: SingleChildScrollView(
-        key: const PageStorageKey<String>('products-menu-scroll'),
-        child: Container(
-          padding: const EdgeInsets.all(24.0),
-          color: Theme.of(context).scaffoldBackgroundColor,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                Localization.translate(
-                  "حدد فئة المنتجات التي تريد إدارتها",
-                  lang,
-                ),
-                style: TextStyle(
-                  fontFamily: GoogleFonts.cairo().fontFamily,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : Theme.of(context).primaryColor,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              // \u0627\u0644\u0628\u0631\u0648\u0641\u064a\u0644\u0627\u062a \u0648\u0627\u0644\u0633\u064a\u0633\u062a\u0645\u0627\u062a
-              if (settings.canViewProfiles()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0627\u0644\u0628\u0631\u0648\u0641\u064a\u0644\u0627\u062a \u0648\u0627\u0644\u0627\u0646\u0638\u0645\u0629",
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerSignal: _handleMouseWheel,
+        child: SingleChildScrollView(
+          key: const PageStorageKey<String>('products-menu-scroll'),
+          controller: _pageScrollController,
+          primary: false,
+          child: Container(
+            padding: const EdgeInsets.all(24.0),
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  Localization.translate(
+                    "حدد فئة المنتجات التي تريد إدارتها",
                     lang,
                   ),
-                  icon: Icons.format_shapes_rounded,
-                  color: Colors.blue,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            CatalogManagerScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              // Keep this administrator setup close to the catalogue entry so
-              // it is visible immediately in the desktop products screen.
-              if (settings.isAdmin) ...[
-                _buildMenuCard(
-                  context,
-                  title: _seriesDesignTitle(lang),
-                  icon: Icons.architecture_rounded,
-                  color: Colors.green,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            SeriesTableConfigScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.isAdmin || settings.canViewAccessories()) ...[
-                _buildMenuCard(
-                  context,
-                  title: _catalogRulesTitle(lang),
-                  icon: Icons.rule_rounded,
-                  color: Colors.blueGrey,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CatalogRulesScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewGlass()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0632\u062c\u0627\u062c",
-                    lang,
+                  style: TextStyle(
+                    fontFamily: GoogleFonts.cairo().fontFamily,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Theme.of(context).primaryColor,
                   ),
-                  icon: Icons.window_rounded,
-                  color: Colors.lightBlue,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GlassScreen(db: widget.db),
-                      ),
-                    );
-                  },
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewGlass()) ...[
-                _buildMenuCard(
-                  context,
-                  title: switch (lang) {
-                    AppLanguage.french => 'Accessoires et profilés verre trempé',
-                    AppLanguage.english => 'Tempered Glass Accessories & Profiles',
-                    _ => 'إكسسوارات وقطاعات الزجاج المقسّى',
-                  },
-                  icon: Icons.grid_view_rounded,
-                  color: Colors.teal,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TemperedGlassItemsScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildMenuCard(
-                  context,
-                  title: switch (lang) {
-                    AppLanguage.french => 'Systèmes & Règles de kits verre',
-                    AppLanguage.english => 'Glass Systems & Kit Rules',
-                    _ => 'أنظمة وقواعد كيت الزجاج المقسّى',
-                  },
-                  icon: Icons.architecture_rounded,
-                  color: Colors.cyan.shade800,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GlassSystemsRulesScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewShutters()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0633\u062a\u0627\u0631",
-                    lang,
+                const SizedBox(height: 32),
+                // \u0627\u0644\u0628\u0631\u0648\u0641\u064a\u0644\u0627\u062a \u0648\u0627\u0644\u0633\u064a\u0633\u062a\u0645\u0627\u062a
+                if (settings.canViewProfiles()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0627\u0644\u0628\u0631\u0648\u0641\u064a\u0644\u0627\u062a \u0648\u0627\u0644\u0627\u0646\u0638\u0645\u0629",
+                      lang,
+                    ),
+                    icon: Icons.format_shapes_rounded,
+                    color: Colors.blue,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              CatalogManagerScreen(db: widget.db),
+                        ),
+                      );
+                    },
                   ),
-                  icon: Icons.view_sidebar_rounded,
-                  color: Colors.indigo,
-                  onTap: () => _openCloudCatalogPage(
-                    () => ShuttersScreen(db: widget.db),
+                  const SizedBox(height: 16),
+                ],
+                // Keep this administrator setup close to the catalogue entry so
+                // it is visible immediately in the desktop products screen.
+                if (settings.isAdmin) ...[
+                  _buildMenuCard(
+                    context,
+                    title: _seriesDesignTitle(lang),
+                    icon: Icons.architecture_rounded,
+                    color: Colors.green,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              SeriesTableConfigScreen(db: widget.db),
+                        ),
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewColors()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0627\u0644\u0623\u0644\u0648\u0627\u0646",
-                    lang,
+                  const SizedBox(height: 16),
+                ],
+                if (settings.isAdmin || settings.canViewAccessories()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: _catalogRulesTitle(lang),
+                    icon: Icons.rule_rounded,
+                    color: Colors.blueGrey,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              CatalogRulesScreen(db: widget.db),
+                        ),
+                      );
+                    },
                   ),
-                  icon: Icons.color_lens_rounded,
-                  color: Colors.purple,
-                  onTap: () =>
-                      _openCloudCatalogPage(() => ColorsScreen(db: widget.db)),
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewAccessories()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0627\u0644\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a",
-                    lang,
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewGlass()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0632\u062c\u0627\u062c",
+                      lang,
+                    ),
+                    icon: Icons.window_rounded,
+                    color: Colors.lightBlue,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => GlassScreen(db: widget.db),
+                        ),
+                      );
+                    },
                   ),
-                  icon: Icons.construction_rounded,
-                  color: Colors.orange,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AccessoriesScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewSeriesAccessories()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a \u0627\u0644\u0633\u0644\u0627\u0633\u0644",
-                    lang,
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewGlass()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: switch (lang) {
+                      AppLanguage.french =>
+                        'Accessoires et profilés verre trempé',
+                      AppLanguage.english =>
+                        'Tempered Glass Accessories & Profiles',
+                      _ => 'إكسسوارات وقطاعات الزجاج المقسّى',
+                    },
+                    icon: Icons.grid_view_rounded,
+                    color: Colors.teal,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              TemperedGlassItemsScreen(db: widget.db),
+                        ),
+                      );
+                    },
                   ),
-                  icon: Icons.account_tree_rounded,
-                  color: Colors.deepOrange,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            SeriesAccessoriesScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewJoints()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0627\u0644\u062c\u0648\u0627\u0646\u0627\u062a",
-                    lang,
+                  const SizedBox(height: 16),
+                  _buildMenuCard(
+                    context,
+                    title: switch (lang) {
+                      AppLanguage.french => 'Systèmes & Règles de kits verre',
+                      AppLanguage.english => 'Glass Systems & Kit Rules',
+                      _ => 'أنظمة وقواعد كيت الزجاج المقسّى',
+                    },
+                    icon: Icons.architecture_rounded,
+                    color: Colors.cyan.shade800,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              GlassSystemsRulesScreen(db: widget.db),
+                        ),
+                      );
+                    },
                   ),
-                  icon: Icons.line_weight_rounded,
-                  color: Colors.teal,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => JointsScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (settings.canViewKitBundles()) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate(
-                    "\u0645\u062c\u0645\u0648\u0639\u0627\u062a \u0627\u0644\u0643\u064a\u062a (Kit)",
-                    lang,
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewShutters()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0633\u062a\u0627\u0631",
+                      lang,
+                    ),
+                    icon: Icons.view_sidebar_rounded,
+                    color: Colors.indigo,
+                    onTap: () => _openCloudCatalogPage(
+                      () => ShuttersScreen(db: widget.db),
+                    ),
                   ),
-                  icon: Icons.inventory_2_rounded,
-                  color: Colors.deepPurple,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => KitBundlesScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewColors()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0627\u0644\u0623\u0644\u0648\u0627\u0646",
+                      lang,
+                    ),
+                    icon: Icons.color_lens_rounded,
+                    color: Colors.purple,
+                    onTap: () => _openCloudCatalogPage(
+                      () => ColorsScreen(db: widget.db),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewAccessories()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0627\u0644\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a",
+                      lang,
+                    ),
+                    icon: Icons.construction_rounded,
+                    color: Colors.orange,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              AccessoriesScreen(db: widget.db),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewSeriesAccessories()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a \u0627\u0644\u0633\u0644\u0627\u0633\u0644",
+                      lang,
+                    ),
+                    icon: Icons.account_tree_rounded,
+                    color: Colors.deepOrange,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              SeriesAccessoriesScreen(db: widget.db),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewJoints()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0627\u0644\u062c\u0648\u0627\u0646\u0627\u062a",
+                      lang,
+                    ),
+                    icon: Icons.line_weight_rounded,
+                    color: Colors.teal,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => JointsScreen(db: widget.db),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (settings.canViewKitBundles()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      "\u0645\u062c\u0645\u0648\u0639\u0627\u062a \u0627\u0644\u0643\u064a\u062a (Kit)",
+                      lang,
+                    ),
+                    icon: Icons.inventory_2_rounded,
+                    color: Colors.deepPurple,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => KitBundlesScreen(db: widget.db),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

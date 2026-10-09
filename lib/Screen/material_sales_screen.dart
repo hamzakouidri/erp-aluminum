@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
+import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import 'material_sale_editor_screen.dart';
 import '../services/material_sale_pdf_service.dart';
 import 'inventory_screen.dart';
@@ -134,9 +137,12 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     return rows.toList();
   }
 
-  double _sumField(String field) => _visibleSales.fold(
+  double _sumField(String field, {bool? externalOnly}) => _visibleSales.fold(
     0.0,
-    (s, r) => s + ((r[field] as num?) ?? 0).toDouble(),
+    (s, r) {
+      if (externalOnly == true && r['is_internal'] == 1) return s;
+      return s + ((r[field] as num?) ?? 0).toDouble();
+    },
   );
 
   // ─── Actions ─────────────────────────────────────────────────────────────
@@ -205,28 +211,28 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'تأكيد الحذف',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+        title: Text(
+          _t('تأكيد الحذف'),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'هل أنت متأكد من حذف الوثيقة ${sale['sale_code']}؟',
+          '${_t('هل أنت متأكد من حذف الوثيقة')} ${sale['sale_code']}؟',
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
-              'إلغاء',
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+            child: Text(
+              _t('إلغاء'),
+              style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
             ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'حذف',
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+            child: Text(
+              _t('حذف'),
+              style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
             ),
           ),
         ],
@@ -252,19 +258,24 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     }
   }
 
+  String _t(String key) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    return Localization.translate(key, lang);
+  }
+
   // ─── Label/color helpers ──────────────────────────────────────────────────
   String _docTypeLabel(String? type) {
     switch (type) {
       case 'bon_livraison':
-        return 'Bon de livraison Matériaux';
+        return _t('وصل تسليم مواد');
       case 'facture':
-        return 'Facture Matériaux';
+        return _t('فاتورة مواد');
       case 'bon_commande':
-        return 'Commande Matériaux';
+        return _t('طلب مواد');
       case 'bon_route':
-        return 'Bon de route Matériaux';
+        return _t('وصل مسار مواد');
       case 'devis':
-        return 'Proforma Matériaux';
+        return _t('فاتورة أولية مواد');
       default:
         return type ?? '—';
     }
@@ -290,17 +301,17 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   String _statusLabel(String? status) {
     switch (status) {
       case 'draft':
-        return 'مسودة';
+        return _t('مسودة');
       case 'reserved':
-        return 'محجوز';
+        return _t('محجوز');
       case 'confirmed':
-        return 'مؤكد';
+        return _t('مؤكد');
       case 'delivered':
-        return 'تم التسليم';
+        return _t('تم التسليم');
       case 'paid':
-        return 'مدفوع';
+        return _t('مدفوع');
       case 'cancelled':
-        return 'ملغى';
+        return _t('ملغى');
       default:
         return status ?? '—';
     }
@@ -368,22 +379,32 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
           : FloatingActionButton(
               backgroundColor: _cyan,
               onPressed: _createNew,
-              tooltip: 'إنشاء وثيقة',
+              tooltip: _t('إنشاء وثيقة'),
               child: const Icon(Icons.add, color: Colors.white),
             ),
     );
   }
 
-  static const _sectionLabels = <_SalesSection, String>{
-    _SalesSection.dashboard: 'لوحة المتابعة',
-    _SalesSection.orders: 'Commandes',
-    _SalesSection.reservations: 'Réservations',
-    _SalesSection.deliveries: 'Livraisons',
-    _SalesSection.invoices: 'Factures',
-    _SalesSection.proformas: 'Proformas',
-    _SalesSection.journal: 'Journal des ventes',
-    _SalesSection.stock: 'Stock disponible',
-  };
+  String _sectionLabel(_SalesSection section) {
+    switch (section) {
+      case _SalesSection.dashboard:
+        return _t('لوحة المتابعة');
+      case _SalesSection.orders:
+        return _t('الطلبات');
+      case _SalesSection.reservations:
+        return _t('الحجوزات');
+      case _SalesSection.deliveries:
+        return _t('التسليمات');
+      case _SalesSection.invoices:
+        return _t('الفواتير');
+      case _SalesSection.proformas:
+        return _t('عروض الأسعار');
+      case _SalesSection.journal:
+        return _t('سجل المبيعات');
+      case _SalesSection.stock:
+        return _t('المخزون المتاح');
+    }
+  }
 
   static const _sectionIcons = <_SalesSection, IconData>{
     _SalesSection.dashboard: Icons.dashboard_rounded,
@@ -413,7 +434,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               color: selected ? _blue : colors.onSurfaceVariant,
             ),
             title: Text(
-              _sectionLabels[section]!,
+              _sectionLabel(section),
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 13,
@@ -449,7 +470,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
                 color: selected ? Colors.white : _blue,
               ),
               label: Text(
-                _sectionLabels[section]!,
+                _sectionLabel(section),
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 11,
@@ -491,7 +512,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               Icon(Icons.inventory_2_rounded, size: 58, color: _cyan),
               const SizedBox(height: 14),
               Text(
-                'Stock disponible à la vente',
+                _t('المخزون المتاح للبيع'),
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 20,
@@ -502,7 +523,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.',
+                _t('يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.'),
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   color: colors.onSurfaceVariant,
@@ -515,9 +536,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
                   MaterialPageRoute(builder: (_) => InventoryScreen(db: _db)),
                 ),
                 icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text(
-                  'فتح المخزون',
-                  style: TextStyle(fontFamily: 'Cairo'),
+                label: Text(
+                  _t('فتح المخزون'),
+                  style: const TextStyle(fontFamily: 'Cairo'),
                 ),
               ),
             ],
@@ -538,9 +559,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               autofocus: true,
               style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
               cursorColor: _cyan,
-              decoration: const InputDecoration(
-                hintText: 'بحث...',
-                hintStyle: TextStyle(
+              decoration: InputDecoration(
+                hintText: _t('بحث...'),
+                hintStyle: const TextStyle(
                   fontFamily: 'Cairo',
                   color: Colors.white54,
                 ),
@@ -550,9 +571,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
                 setState(() => _searchQuery = v.trim());
               },
             )
-          : const Text(
-              'بيع المواد والمستلزمات',
-              style: TextStyle(
+          : Text(
+              _t('بيع المواد والمستلزمات'),
+              style: const TextStyle(
                 fontFamily: 'Cairo',
                 color: Colors.white,
                 fontSize: 18,
@@ -582,9 +603,12 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   // ─── Stats row ────────────────────────────────────────────────────────────
   Widget _buildStatsRow() {
     final count = _visibleSales.length;
-    final revenue = _sumField('net_total');
-    final paid = _sumField('paid_amount');
-    final remaining = _sumField('remaining_amount');
+    final externalRevenue = _sumField('net_total', externalOnly: true);
+    final paid = _sumField('paid_amount', externalOnly: true);
+    final remaining = _sumField('remaining_amount', externalOnly: true);
+    final internalTransfers = _visibleSales
+        .where((r) => r['is_internal'] == 1)
+        .fold(0.0, (s, r) => s + ((r['net_total'] as num?) ?? 0).toDouble());
 
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -594,29 +618,36 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
         child: Row(
           children: [
             _statCard(
-              'الوثائق',
+              _t('الوثائق'),
               count.toString(),
               Icons.description_rounded,
               _blue,
             ),
             _statCard(
-              'الإيرادات',
-              _fmtAmount(revenue),
+              _t('الإيرادات'),
+              _fmtAmount(externalRevenue),
               Icons.attach_money_rounded,
               _green,
             ),
             _statCard(
-              'المدفوع',
+              _t('المدفوع'),
               _fmtAmount(paid),
               Icons.check_circle_rounded,
               _cyan,
             ),
             _statCard(
-              'المتبقي',
+              _t('المتبقي'),
               _fmtAmount(remaining),
               Icons.pending_rounded,
               _orange,
             ),
+            if (internalTransfers > 0)
+              _statCard(
+                _t('تحويلات داخلية للورشة'),
+                _fmtAmount(internalTransfers),
+                Icons.swap_horiz_rounded,
+                Colors.purple,
+              ),
           ],
         ),
       ),
@@ -686,7 +717,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
             Icon(Icons.inbox_rounded, size: 64, color: Colors.grey.shade300),
             const SizedBox(height: 12),
             Text(
-              'لا توجد وثائق',
+              _t('لا توجد وثائق'),
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 16,
@@ -788,21 +819,21 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               children: [
                 _actionBtn(
                   icon: Icons.print_rounded,
-                  label: 'طباعة',
+                  label: _t('طباعة'),
                   color: _blue,
                   onTap: () => _printPdf(sale),
                 ),
                 const SizedBox(width: 6),
                 _actionBtn(
                   icon: Icons.edit_rounded,
-                  label: 'تعديل',
+                  label: _t('تعديل'),
                   color: _cyan,
                   onTap: () => _openEditor(sale),
                 ),
                 const SizedBox(width: 6),
                 _actionBtn(
                   icon: Icons.delete_rounded,
-                  label: 'حذف',
+                  label: _t('حذف'),
                   color: _red,
                   onTap: () => _confirmDelete(sale),
                 ),
@@ -879,7 +910,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
           const Icon(Icons.error_outline_rounded, size: 48, color: _red),
           const SizedBox(height: 12),
           Text(
-            'حدث خطأ أثناء التحميل',
+            _t('حدث خطأ أثناء التحميل'),
             style: const TextStyle(
               fontFamily: 'Cairo',
               fontSize: 16,
@@ -901,9 +932,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
             style: ElevatedButton.styleFrom(backgroundColor: _blue),
             onPressed: _refresh,
             icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-            label: const Text(
-              'إعادة المحاولة',
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+            label: Text(
+              _t('إعادة المحاولة'),
+              style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
             ),
           ),
         ],

@@ -23,11 +23,11 @@ import 'package:database_data/Commande/decor_panel_designs.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/material_consumption_screen.dart';
-import 'bom_engine_v2.dart';
-import 'calculate_component.dart';
-import 'profile_selector_dialog.dart' hide getComponentSize;
-import 'glass_joint_fit.dart';
-import '../../widgets/section_image.dart';
+import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
+import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart' hide getComponentSize;
+import 'package:database_data/Commande/Systeme/glass_joint_fit.dart';
+import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -147,6 +147,442 @@ class _WindowViewState extends State<WindowView> {
     });
   }
 
+  void _toggleWallFeature() {
+    final newVal = !widget.model.showWall;
+    widget.model.toggleShowWall(newVal);
+    _showShortcutFeedback(
+      newVal ? 'تم تفعيل الحائط (Mur)' : 'تم إلغاء الحائط',
+      icon: Icons.wallpaper_rounded,
+      color: newVal ? Colors.teal.shade700 : Colors.red.shade700,
+    );
+    setState(() {});
+  }
+
+  void _toggleShutterFeature() {
+    final newVal = !widget.model.hasShutter;
+    widget.model.toggleShutter(newVal);
+    if (newVal &&
+        (widget.model.shutterDriveSide == null ||
+            widget.model.shutterDriveSide!.isEmpty)) {
+      widget.model.setAllShutterDriveSide('right');
+    }
+    widget.model.notifyListeners();
+    _showShortcutFeedback(
+      newVal ? 'تم تفعيل الستار (Volet)' : 'تم إلغاء الستار',
+      icon: newVal ? Icons.layers_rounded : Icons.layers_clear_rounded,
+      color: newVal ? Colors.green.shade700 : Colors.red.shade700,
+    );
+    setState(() {});
+  }
+
+  Future<void> _toggleSideCoversFeature() async {
+    final zone = widget.model.selectedZone;
+    final bool isNestedSlidingFrame =
+        zone != null && widget.model.isSlidingZoneNestedInSingleFrame(zone);
+    if (isNestedSlidingFrame) {
+      final newVal = !widget.model.hasInternalSlidingSideCover;
+      widget.model.toggleInternalSlidingSideCover(newVal);
+      _showShortcutFeedback(
+        newVal
+            ? 'تمت إضافة غطاء الإطار المنزلق'
+            : 'تمت إزالة غطاء الإطار المنزلق',
+        icon: Icons.border_outer_rounded,
+        color: newVal ? Colors.amber.shade800 : Colors.red.shade700,
+      );
+    } else {
+      final newVal = !widget.model.hasSideCovers;
+      await widget.model.toggleSideCovers(newVal);
+      _showShortcutFeedback(
+        newVal
+            ? 'تمت إضافة الغطاء الجانبي (Caches)'
+            : 'تمت إزالة الغطاء الجانبي',
+        icon: Icons.border_outer_rounded,
+        color: newVal ? Colors.amber.shade800 : Colors.red.shade700,
+      );
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _toggleCaissonTunnelFeature() {
+    final newVal = !widget.model.isCaissonTunnel;
+    widget.model.toggleCaissonTunnel(newVal);
+    widget.model.refreshUI();
+    _showShortcutFeedback(
+      newVal ? 'تم تفعيل صندوق النفق (Caisson Tunnel)' : 'تم إلغاء صندوق النفق',
+      icon: Icons.horizontal_rule_rounded,
+      color: newVal ? Colors.deepPurple.shade700 : Colors.red.shade700,
+    );
+    setState(() {});
+  }
+
+  void _cycleShutterMechanismFeature() {
+    if (!widget.model.hasShutter) {
+      widget.model.toggleShutter(true);
+    }
+    final current = widget.model.shutterMechanism;
+    String next;
+    if (current == 'محرك') {
+      next = 'منايفال';
+    } else if (current == 'منايفال') {
+      next = 'حزام';
+    } else {
+      next = 'محرك';
+    }
+    widget.model.shutterMechanism = next;
+    if (next == 'حزام') {
+      widget.model.shutterDriveSide = 'left';
+      widget.model.setAllShutterDriveSide('left');
+    }
+    widget.model.refreshUI();
+    unawaited(widget.model.updateShutterDefaultsIfNeeded());
+    String label;
+    IconData icon;
+    switch (next) {
+      case 'محرك':
+        label = 'آلية الستار: محرك (Moteur)';
+        icon = Icons.electrical_services_rounded;
+        break;
+      case 'منايفال':
+        label = 'آلية الستار: منايفال (Manivelle)';
+        icon = Icons.rotate_right_rounded;
+        break;
+      default:
+        label = 'آلية الستار: حزام (Sangle)';
+        icon = Icons.line_weight_rounded;
+        break;
+    }
+    _showShortcutFeedback(
+      label,
+      icon: icon,
+      color: Colors.indigo.shade700,
+    );
+    setState(() {});
+  }
+
+  void _toggleShutterDriveSideFeature([String? targetSide]) {
+    if (!widget.model.hasShutter) {
+      widget.model.toggleShutter(true);
+    }
+    final newSide = targetSide ??
+        (widget.model.shutterDriveSide == 'right' ? 'left' : 'right');
+    widget.model.shutterDriveSide = newSide;
+    widget.model.setAllShutterDriveSide(newSide);
+    widget.model.notifyListeners();
+    _showShortcutFeedback(
+      newSide == 'right'
+          ? 'جهة تحكم الستار: اليمين (Droite)'
+          : 'جهة تحكم الستار: اليسار (Gauche)',
+      icon: newSide == 'right'
+          ? Icons.keyboard_double_arrow_right_rounded
+          : Icons.keyboard_double_arrow_left_rounded,
+      color: Colors.blue.shade700,
+    );
+    setState(() {});
+  }
+
+  void _toggleViewModeFeature() {
+    widget.model.toggleViewMode();
+    final isInternal = widget.model.isInternalView;
+    _showShortcutFeedback(
+      isInternal
+          ? 'مشاهدة: وجه داخلي (Face interne)'
+          : 'مشاهدة: وجه خارجي (Face externe)',
+      icon: isInternal ? Icons.visibility : Icons.flip_camera_android,
+      color: isInternal ? Colors.blue.shade700 : Colors.orange.shade800,
+    );
+    setState(() {});
+  }
+
+  void _toggleBottomFrameFeature() {
+    if (!widget.model.canEditSelectedBottomFrame) return;
+    final newVal = !widget.model.selectedFrameHasBottom;
+    widget.model.toggleBottomFrame(newVal);
+    _showShortcutFeedback(
+      newVal ? 'تم تفعيل الإطار السفلي (Cadre bas)' : 'تم إلغاء الإطار السفلي',
+      icon: Icons.border_bottom_rounded,
+      color: newVal ? Colors.teal.shade700 : Colors.red.shade700,
+    );
+    setState(() {});
+  }
+
+  void _toggleRightDrawerFeature() {
+    setState(() => _isDrawerOpen = !_isDrawerOpen);
+    _showShortcutFeedback(
+      _isDrawerOpen ? 'تم فتح لوحة الخصائص' : 'تم إغلاق لوحة الخصائص',
+      icon: Icons.tune_rounded,
+      color: Colors.blue.shade700,
+    );
+  }
+
+  Widget _buildQuickCanvasPill({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required bool isActive,
+    required Color activeColor,
+    required VoidCallback onTap,
+    String? tooltip,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isActive
+        ? (isDark
+            ? activeColor.withValues(alpha: 0.3)
+            : activeColor.withValues(alpha: 0.12))
+        : (isDark ? const Color(0xFF2A2A3C) : Colors.white);
+    final borderColor = isActive
+        ? activeColor
+        : (isDark ? Colors.white12 : Colors.grey.shade300);
+    final fg = isActive
+        ? activeColor
+        : (isDark ? Colors.white70 : Colors.grey.shade800);
+
+    final pill = Material(
+      elevation: 2,
+      color: bg,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor, width: isActive ? 1.5 : 1.0),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (tooltip != null) {
+      return Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 300),
+        child: pill,
+      );
+    }
+    return pill;
+  }
+
+  Widget _buildQuickActionsBar(BuildContext context, {required bool isVertical}) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isTabletOrDesktop = _isWindowsDesktop || MediaQuery.sizeOf(context).width >= 600;
+
+    final items = <Widget>[
+      // قفل / تحرير حركة الرسم
+      Material(
+        elevation: 2,
+        color: _isMovementLocked
+            ? (isDark ? const Color(0xFF5D4037) : Colors.amber.shade100)
+            : (isDark ? const Color(0xFF2A2A3C) : Colors.white),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: _toggleMovementLock,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _isMovementLocked
+                      ? Icons.lock_rounded
+                      : Icons.lock_open_rounded,
+                  size: 16,
+                  color: _isMovementLocked
+                      ? Colors.amber.shade900
+                      : Colors.blue.shade700,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  _isMovementLocked
+                      ? Localization.translate('الرسم ثابت', lang)
+                      : Localization.translate('حركة حرة', lang),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _isMovementLocked
+                        ? (isDark ? Colors.amber.shade200 : Colors.amber.shade900)
+                        : (isDark ? Colors.white70 : Colors.grey.shade800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      if (isTabletOrDesktop) ...[
+        // زر الحائط [M]
+        _buildQuickCanvasPill(
+          context: context,
+          label: Localization.translate('حائط [M]', lang),
+          icon: Icons.wallpaper_rounded,
+          isActive: widget.model.showWall,
+          activeColor: Colors.teal.shade700,
+          tooltip: Localization.translate('تفعيل أو إلغاء الحائط (M)', lang),
+          onTap: _toggleWallFeature,
+        ),
+        // زر الستار [V]
+        _buildQuickCanvasPill(
+          context: context,
+          label: Localization.translate('ستار [V]', lang),
+          icon: widget.model.hasShutter
+              ? Icons.layers_rounded
+              : Icons.layers_outlined,
+          isActive: widget.model.hasShutter,
+          activeColor: Colors.blue.shade700,
+          tooltip: Localization.translate('تفعيل أو إلغاء الستار على النافذة (V)', lang),
+          onTap: _toggleShutterFeature,
+        ),
+        // زر صندوق النفق [T]
+        _buildQuickCanvasPill(
+          context: context,
+          label: Localization.translate('نفق [T]', lang),
+          icon: Icons.horizontal_rule_rounded,
+          isActive: widget.model.isCaissonTunnel,
+          activeColor: Colors.deepPurple.shade700,
+          tooltip: Localization.translate('تفعيل أو إلغاء صندوق النفق (T)', lang),
+          onTap: _toggleCaissonTunnelFeature,
+        ),
+        // زر الغطاء الجانبي [C]
+        _buildQuickCanvasPill(
+          context: context,
+          label: Localization.translate('غطاء جانبي [C]', lang),
+          icon: Icons.border_outer_rounded,
+          isActive: widget.model.hasSideCovers ||
+              widget.model.hasInternalSlidingSideCover,
+          activeColor: Colors.amber.shade800,
+          tooltip: Localization.translate('تفعيل أو إلغاء الغطاء الجانبي (C)', lang),
+          onTap: () => unawaited(_toggleSideCoversFeature()),
+        ),
+        // زر جهة العرض: داخلي / خارجي [I]
+        _buildQuickCanvasPill(
+          context: context,
+          label: widget.model.isInternalView
+              ? Localization.translate('وجه داخلي [I]', lang)
+              : Localization.translate('وجه خارجي [I]', lang),
+          icon: widget.model.isInternalView
+              ? Icons.visibility
+              : Icons.flip_camera_android,
+          isActive: true,
+          activeColor: widget.model.isInternalView
+              ? Colors.blue.shade700
+              : Colors.orange.shade800,
+          tooltip: Localization.translate('تبديل جهة عرض النافذة (I)', lang),
+          onTap: _toggleViewModeFeature,
+        ),
+        // زر إطار سفلي [B]
+        if (widget.model.systemMode != 'sliding')
+          _buildQuickCanvasPill(
+            context: context,
+            label: Localization.translate('إطار سفلي [B]', lang),
+            icon: Icons.border_bottom_rounded,
+            isActive: widget.model.selectedFrameHasBottom,
+            activeColor: Colors.teal.shade700,
+            tooltip: Localization.translate('تفعيل أو إلغاء الإطار السفلي (B)', lang),
+            onTap: _toggleBottomFrameFeature,
+          ),
+        if (widget.model.hasShutter) ...[
+          // آلية الستار (محرك / مانيفيل / حزام) [K]
+          _buildQuickCanvasPill(
+            context: context,
+            label: switch (widget.model.shutterMechanism) {
+              'محرك' => Localization.translate('محرك [K]', lang),
+              'منايفال' => Localization.translate('منايفال [K]', lang),
+              _ => Localization.translate('حزام [K]', lang),
+            },
+            icon: widget.model.shutterMechanism == 'محرك'
+                ? Icons.electrical_services_rounded
+                : (widget.model.shutterMechanism == 'منايفال'
+                    ? Icons.rotate_right_rounded
+                    : Icons.line_weight_rounded),
+            isActive: true,
+            activeColor: Colors.indigo.shade600,
+            tooltip: Localization.translate(
+              'تبديل آلية الستار: محرك / منايفال / حزام (K)',
+              lang,
+            ),
+            onTap: _cycleShutterMechanismFeature,
+          ),
+          // جهة الستار (يمين / يسار)
+          _buildQuickCanvasPill(
+            context: context,
+            label: widget.model.shutterDriveSide == 'right'
+                ? Localization.translate('يمين [→]', lang)
+                : Localization.translate('يسار [←]', lang),
+            icon: widget.model.shutterDriveSide == 'right'
+                ? Icons.keyboard_double_arrow_right_rounded
+                : Icons.keyboard_double_arrow_left_rounded,
+            isActive: true,
+            activeColor: Colors.blueGrey.shade700,
+            tooltip: Localization.translate(
+              'تبديل جهة الستار: يمين / يسار (الأسهم أو R / L)',
+              lang,
+            ),
+            onTap: () => _toggleShutterDriveSideFeature(),
+          ),
+        ],
+      ],
+      // زر الخصائص (فتح لوحة الدرج الأيمن) [D]
+      _buildQuickCanvasPill(
+        context: context,
+        label: Localization.translate('الخصائص [D]', lang),
+        icon: Icons.tune_rounded,
+        isActive: _isDrawerOpen,
+        activeColor: Colors.indigo.shade700,
+        tooltip: Localization.translate('فتح لوحة الخصائص (D)', lang),
+        onTap: _toggleRightDrawerFeature,
+      ),
+    ];
+
+    if (isVertical) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.vertical,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              items[i],
+            ],
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            items[i],
+          ],
+        ],
+      ),
+    );
+  }
+
   bool _drawingShortcut(KeyEvent event) {
     if (!mounted ||
         !_isWindowsDesktop ||
@@ -160,105 +596,18 @@ class _WindowViewState extends State<WindowView> {
           focus.findAncestorWidgetOfExactType<EditableText>() != null) {
         return false;
       }
-      var belongsToDrawing = false;
-      focus.visitAncestorElements((element) {
-        if (element == context) belongsToDrawing = true;
-        return !belongsToDrawing;
-      });
-      if (!belongsToDrawing) return false;
     }
 
     final isCtrl =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
+    final isAlt = HardwareKeyboard.instance.isAltPressed;
     final key = event.logicalKey;
     final char = event.character?.toLowerCase();
 
-    // 1. Shutter toggle / Right drive (Ctrl + Right / Ctrl + R / Ctrl + S)
-    // "يفعل حرف الرسم الجانبي يعني لليسار و لا يهم نوع المحرك يكون عن ذلك الستر
-    // نضغط على كنترول عفوا لليمين سواء موجود يكون موجودا ثم دائما للجهه من ويلغيه اذا كان موجودا. هو الذي يلغي"
-    if (isCtrl &&
-        (key == LogicalKeyboardKey.arrowRight ||
-            key == LogicalKeyboardKey.keyR ||
-            key == LogicalKeyboardKey.keyS ||
-            char == 'r' ||
-            char == 's')) {
-      if (widget.model.hasShutter) {
-        // إذا كان موجوداً يلغيه
-        widget.model.toggleShutter(false);
-        _showShortcutFeedback(
-          'تم إلغاء الستار (Désactiver Volet)',
-          icon: Icons.layers_clear_rounded,
-          color: Colors.red.shade700,
-        );
-      } else {
-        // يفعله ودائماً للجهة اليمين
-        widget.model.toggleShutter(true);
-        widget.model.setAllShutterDriveSide('right');
-        widget.model.notifyListeners();
-        _showShortcutFeedback(
-          'تم تفعيل الستار - جهة التحكم: اليمين (Volet - Droite)',
-          icon: Icons.layers_rounded,
-          color: Colors.green.shade700,
-        );
-      }
-      return true;
-    }
-
-    // 2. Shutter Left drive (Ctrl + Left / Ctrl + L)
-    // "يعني لليسار و لا يهم نوع المحرك يكون عن ذلك الستر"
-    if (isCtrl &&
-        (key == LogicalKeyboardKey.arrowLeft ||
-            key == LogicalKeyboardKey.keyL ||
-            char == 'l')) {
-      if (!widget.model.hasShutter) {
-        widget.model.toggleShutter(true);
-      }
-      widget.model.setAllShutterDriveSide('left');
-      widget.model.notifyListeners();
-      _showShortcutFeedback(
-        'جهة تحكم الستار: اليسار (Volet - Gauche)',
-        icon: Icons.west_rounded,
-        color: Colors.blue.shade700,
-      );
-      return true;
-    }
-
-    // 3. Side Cover Toggle (الغطاء الجانبي / الرسم الجانبي) (Ctrl + G / Ctrl + J)
-    if (isCtrl &&
-        (key == LogicalKeyboardKey.keyG ||
-            key == LogicalKeyboardKey.keyJ ||
-            char == 'g' ||
-            char == 'j')) {
-      final zone = widget.model.selectedZone;
-      final bool isNestedSlidingFrame =
-          zone != null && widget.model.isSlidingZoneNestedInSingleFrame(zone);
-      if (isNestedSlidingFrame) {
-        final newVal = !widget.model.hasInternalSlidingSideCover;
-        widget.model.toggleInternalSlidingSideCover(newVal);
-        _showShortcutFeedback(
-          newVal
-              ? 'تمت إضافة غطاء الإطار المنزلق'
-              : 'تمت إزالة غطاء الإطار المنزلق',
-          icon: Icons.border_outer_rounded,
-        );
-      } else {
-        final newVal = !widget.model.hasSideCovers;
-        widget.model.toggleSideCovers(newVal);
-        _showShortcutFeedback(
-          newVal
-              ? 'تمت إضافة الغطاء الجانبي (Caches)'
-              : 'تمت إزالة الغطاء الجانبي',
-          icon: Icons.border_outer_rounded,
-        );
-      }
-      return true;
-    }
-
-    final isAlt = HardwareKeyboard.instance.isAltPressed;
-
-    // 4. Open Common/Communs Tab (0) (Alt + C)
-    if ((isAlt || isCtrl) &&
+    // 1. Tab switches with Alt modifier:
+    // Alt + C: Communs tab (0)
+    if (isAlt &&
         (key == LogicalKeyboardKey.keyC || char == 'c' || char == 'ؤ')) {
       _switchToBottomTab(0);
       _showShortcutFeedback(
@@ -268,8 +617,8 @@ class _WindowViewState extends State<WindowView> {
       return true;
     }
 
-    // 5. Open Frame/Dormant Tab (1) (Alt + D / Alt + F / Alt + E)
-    if ((isAlt || isCtrl) &&
+    // Alt + D / F / E: Dormant tab (1)
+    if (isAlt &&
         (key == LogicalKeyboardKey.keyE ||
             key == LogicalKeyboardKey.keyF ||
             key == LogicalKeyboardKey.keyD ||
@@ -287,8 +636,8 @@ class _WindowViewState extends State<WindowView> {
       return true;
     }
 
-    // 6. Open Sash/Ouvrant Tab (2) (Alt + O / Alt + L)
-    if ((isAlt || isCtrl) &&
+    // Alt + O / L: Ouvrant tab (2)
+    if (isAlt &&
         (key == LogicalKeyboardKey.keyO ||
             key == LogicalKeyboardKey.keyL ||
             char == 'o' ||
@@ -303,7 +652,98 @@ class _WindowViewState extends State<WindowView> {
       return true;
     }
 
-    // 7. Toggle drawing mode if matches registered shortcut
+    // 2. M for Wall (الحائط): toggle on/off
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyM ||
+            char == 'm' ||
+            char == 'ة' ||
+            char == 'م')) {
+      _toggleWallFeature();
+      return true;
+    }
+
+    // 3. V for Shutter (الستار): toggle on/off
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyV || char == 'v' || char == 'ر')) {
+      _toggleShutterFeature();
+      return true;
+    }
+
+    // 4. C for Side Covers (الغطاء الجانبي Caches): toggle on/off
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyC ||
+            char == 'c' ||
+            char == 'ؤ' ||
+            (isCtrl &&
+                (key == LogicalKeyboardKey.keyG ||
+                    key == LogicalKeyboardKey.keyJ ||
+                    char == 'g' ||
+                    char == 'j')))) {
+      unawaited(_toggleSideCoversFeature());
+      return true;
+    }
+
+    // 5. T for Tunnel Box (صندوق النفق Caisson Tunnel): toggle on/off
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyT || char == 't' || char == 'ف')) {
+      _toggleCaissonTunnelFeature();
+      return true;
+    }
+
+    // 6. I for View Mode (الوجه الداخلي / الخارجي): toggle
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyI || char == 'i' || char == 'ه')) {
+      _toggleViewModeFeature();
+      return true;
+    }
+
+    // 7. B for Bottom Frame (الإطار السفلي Dormant bas): toggle on/off
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyB || char == 'b' || char == 'لا')) {
+      _toggleBottomFrameFeature();
+      return true;
+    }
+
+    // 8. D for Drawer (لوحة الخصائص): toggle
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyD || char == 'd' || char == 'ي')) {
+      _toggleRightDrawerFeature();
+      return true;
+    }
+
+    // 9. Shutter Mechanism (محرك / مانيفيل / حزام):
+    // مفتاح K (أو ن في لوحة المفاتيح العربية)
+    if (!isAlt &&
+        (key == LogicalKeyboardKey.keyK ||
+            char == 'k' ||
+            char == 'ن' ||
+            (isCtrl && key == LogicalKeyboardKey.keyK))) {
+      _cycleShutterMechanismFeature();
+      return true;
+    }
+
+    // 10. Shutter Drive Side (جهة الستار: يمين / يسار)
+    // يمين: السهم الأيمن أو R أو Ctrl+Right أو Ctrl+R
+    if (key == LogicalKeyboardKey.arrowRight ||
+        (isCtrl &&
+            (key == LogicalKeyboardKey.keyR ||
+                key == LogicalKeyboardKey.keyS ||
+                char == 'r' ||
+                char == 's')) ||
+        (!isAlt && !isCtrl && (key == LogicalKeyboardKey.keyR || char == 'r' || char == 'ق'))) {
+      _toggleShutterDriveSideFeature('right');
+      return true;
+    }
+
+    // يسار: السهم الأيسر أو Ctrl+Left أو Ctrl+L
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        (isCtrl &&
+            (key == LogicalKeyboardKey.keyL || char == 'l'))) {
+      _toggleShutterDriveSideFeature('left');
+      return true;
+    }
+
+    // 11. Toggle drawing mode if matches registered shortcut
     if (ShortcutBindings.instance.matches('drawing_mode', event)) {
       _toggleDrawingInteractionMode();
       return true;
@@ -668,6 +1108,7 @@ class _WindowViewState extends State<WindowView> {
   bool _frameResizeHistorySaved = false;
   final ScrollController _glassScrollController = ScrollController();
   final ScrollController _leftDrawerScrollController = ScrollController();
+  final ScrollController _rightDrawerScrollController = ScrollController();
   final TextEditingController _leftSashWidthController =
       TextEditingController();
   final FocusNode _leftSashFocusNode = FocusNode();
@@ -1243,31 +1684,37 @@ class _WindowViewState extends State<WindowView> {
     return DecorationImage(image: AssetImage(assetPath), fit: BoxFit.cover);
   }
 
-  /// Reveals only the next part of the glass form, and only if the user is
-  /// already at the end of the visible form. In particular, picking the glass
-  /// structure at the top must never throw the drawer to its bottom.
-  void _autoScrollDrawer() {
-    if (!_leftDrawerScrollController.hasClients) return;
-
-    final position = _leftDrawerScrollController.position;
-    const revealThreshold = 72.0;
-    if (position.maxScrollExtent <= 0 ||
-        position.extentAfter > revealThreshold) {
+  /// Automatically scrolls the drawer downwards so newly opened items or expanded
+  /// options are smoothly revealed and fully visible to the user.
+  void _autoScrollDrawer({BuildContext? targetContext, double? additionalDelta}) {
+    if (targetContext != null && targetContext.mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !targetContext.mounted) return;
+        Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          alignment: 0.95,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        );
+      });
       return;
     }
 
+    if (!_leftDrawerScrollController.hasClients) return;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_leftDrawerScrollController.hasClients) return;
-      final updatedPosition = _leftDrawerScrollController.position;
-      final amountToReveal = updatedPosition.extentAfter
-          .clamp(0.0, 96.0)
-          .toDouble();
-      if (amountToReveal <= 0) return;
-      _leftDrawerScrollController.animateTo(
-        updatedPosition.pixels + amountToReveal,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      );
+      final position = _leftDrawerScrollController.position;
+      final double delta = additionalDelta ?? 280.0;
+      final target = (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+      if (target > position.pixels) {
+        _leftDrawerScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
     });
   }
 
@@ -1945,6 +2392,7 @@ class _WindowViewState extends State<WindowView> {
     widget.model.removeListener(_onModelChanged);
     _glassScrollController.dispose();
     _leftDrawerScrollController.dispose();
+    _rightDrawerScrollController.dispose();
     _leftSashWidthController.dispose();
     _leftSashFocusNode.dispose();
     _positionCtrl.dispose();
@@ -3517,29 +3965,6 @@ class _WindowViewState extends State<WindowView> {
 
     return [
       const SizedBox(width: 8),
-      TextButton.icon(
-        style: buttonStyle.copyWith(
-          backgroundColor: WidgetStatePropertyAll(
-            isDark
-                ? Colors.blue.shade900.withValues(alpha: 0.4)
-                : Colors.blue.shade50,
-          ),
-        ),
-        onPressed: () => _showPresetSystemsDialog(context),
-        icon: Icon(
-          Icons.auto_awesome_mosaic_rounded,
-          size: 18,
-          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
-        ),
-        label: Text(
-          Localization.translate('الأنظمة الجاهزة', lang),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
-          ),
-        ),
-      ),
       TextButton.icon(
         style: buttonStyle,
         onPressed: () => _showResizeDialog(context, focusWidth: true),
@@ -5975,7 +6400,8 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               ),
                             ),
-                          if (!_hidePresetCard &&
+                          if (_isWindowsDesktop &&
+                              !_hidePresetCard &&
                               widget.model.zones.isEmpty &&
                               !widget.model.isShutterOnly &&
                               widget.model.drawingStart == null)
@@ -6120,75 +6546,29 @@ class _WindowViewState extends State<WindowView> {
                               right: 0,
                               child: activeTopToolbar,
                             ),
-                          Positioned(
-                            top: (_isMovementLocked && activeTopToolbar != null)
-                                ? 58
-                                : 12,
-                            left: 12,
-                            child: Material(
-                              elevation: 2,
-                              color: _isMovementLocked
-                                  ? (Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? const Color(0xFF5D4037)
-                                        : Colors.amber.shade100)
-                                  : (Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? const Color(0xFF2A2A3C)
-                                        : Colors.white),
-                              borderRadius: BorderRadius.circular(20),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(20),
-                                onTap: _toggleMovementLock,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _isMovementLocked
-                                            ? Icons.lock_rounded
-                                            : Icons.lock_open_rounded,
-                                        size: 16,
-                                        color: _isMovementLocked
-                                            ? Colors.amber.shade900
-                                            : Colors.blue.shade700,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Text(
-                                        _isMovementLocked
-                                            ? Localization.translate(
-                                                'الرسم ثابت',
-                                                lang,
-                                              )
-                                            : Localization.translate(
-                                                'حركة حرة',
-                                                lang,
-                                              ),
-                                        style: TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: _isMovementLocked
-                                              ? (Theme.of(context).brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.amber.shade200
-                                                    : Colors.amber.shade900)
-                                              : (Theme.of(context).brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.white70
-                                                    : Colors.grey.shade800),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                          if (_isWindowsDesktop)
+                            AnimatedPositioned(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeOutCubic,
+                              top: (_isMovementLocked && activeTopToolbar != null)
+                                  ? 62
+                                  : 14,
+                              left: _isLeftDrawerOpen ? 342 : 12,
+                              bottom: 120,
+                              child: _buildQuickActionsBar(context, isVertical: true),
+                            )
+                          else
+                            Positioned(
+                              top: (_isMovementLocked && activeTopToolbar != null)
+                                  ? 58
+                                  : 12,
+                              left: 12,
+                              right: 12,
+                              child: Align(
+                                alignment: AlignmentDirectional.topStart,
+                                child: _buildQuickActionsBar(context, isVertical: false),
                               ),
                             ),
-                          ),
                         ],
                       );
                     },
@@ -7949,6 +8329,7 @@ class _WindowViewState extends State<WindowView> {
                                     });
                                   }
                                   _startPaintbrushMode(glassSpec: newSpec);
+                                  _autoScrollDrawer();
                                 },
                               ),
                             );
@@ -9502,6 +9883,7 @@ class _WindowViewState extends State<WindowView> {
           }
 
           return ListView(
+            controller: _rightDrawerScrollController,
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
             children: [
               // 🟢 1. الخصائص العامة
@@ -13786,13 +14168,18 @@ class _WindowViewState extends State<WindowView> {
           children: [
             if (isShutterContext && shutterColorItems.isNotEmpty) ...[
               Container(
-                constraints: const BoxConstraints(maxWidth: 170),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                constraints: BoxConstraints(
+                  maxWidth: _isWindowsDesktop ? 170 : 110,
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: _isWindowsDesktop ? 8 : 4,
+                  vertical: 0,
+                ),
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.orange.shade900.withValues(alpha: 0.3)
                       : Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                   border: Border.all(
                     color: isDark
                         ? Colors.orange.shade800
@@ -13811,17 +14198,21 @@ class _WindowViewState extends State<WindowView> {
                       color: isDark
                           ? Colors.orange.shade300
                           : Colors.orange.shade800,
-                      fontSize: 12,
+                      fontSize: _isWindowsDesktop ? 12 : 11,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                   underline: const SizedBox(),
-                  icon: Icon(
-                    Icons.keyboard_arrow_down,
-                    color: isDark
-                        ? Colors.orange.shade300
-                        : Colors.orange.shade800,
-                    size: 18,
-                  ),
+                  icon: _isWindowsDesktop
+                      ? Icon(
+                          Icons.keyboard_arrow_down,
+                          color: isDark
+                              ? Colors.orange.shade300
+                              : Colors.orange.shade800,
+                          size: 18,
+                        )
+                      : const SizedBox.shrink(),
+                  iconSize: _isWindowsDesktop ? 24 : 0,
                   items: shutterColorItems.map((colorData) {
                     final colorName =
                         (colorData['name'] ?? colorData['color_name'] ?? '')
@@ -13882,16 +14273,18 @@ class _WindowViewState extends State<WindowView> {
               // 🔵 قائمة سلسلة الفتح (تظهر باللون الأزرق دائماً - وتختفي عند رسم منزلق فقط)
               if (showOpeningSelector && openingItemsList.isNotEmpty) ...[
                 Container(
-                  constraints: const BoxConstraints(maxWidth: 160),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                  constraints: BoxConstraints(
+                    maxWidth: _isWindowsDesktop ? 160 : 110,
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: _isWindowsDesktop ? 8 : 4,
                     vertical: 0,
                   ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? Colors.blue.shade900.withValues(alpha: 0.3)
                         : Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: isDark
                           ? Colors.blue.shade800
@@ -13910,18 +14303,22 @@ class _WindowViewState extends State<WindowView> {
                         color: isDark
                             ? Colors.blue.shade300
                             : Colors.blue.shade800,
-                        fontSize: 12,
+                        fontSize: _isWindowsDesktop ? 12 : 11,
                         fontFamily: 'Cairo',
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     underline: const SizedBox(),
-                    icon: Icon(
-                      Icons.keyboard_arrow_down,
-                      color: isDark
-                          ? Colors.blue.shade300
-                          : Colors.blue.shade800,
-                      size: 18,
-                    ),
+                    icon: _isWindowsDesktop
+                        ? Icon(
+                            Icons.keyboard_arrow_down,
+                            color: isDark
+                                ? Colors.blue.shade300
+                                : Colors.blue.shade800,
+                            size: 18,
+                          )
+                        : const SizedBox.shrink(),
+                    iconSize: _isWindowsDesktop ? 24 : 0,
                     items: openingItemsList.map((series) {
                       return DropdownMenuItem<AluminumSeries>(
                         value: series,
@@ -13977,16 +14374,18 @@ class _WindowViewState extends State<WindowView> {
               // 🟢 قائمة سلسلة المنزلق (تظهر باللون الأخضر دائماً - وتختفي عند رسم فتح فقط)
               if (showSlidingSelector && slidingItemsList.isNotEmpty) ...[
                 Container(
-                  constraints: const BoxConstraints(maxWidth: 160),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                  constraints: BoxConstraints(
+                    maxWidth: _isWindowsDesktop ? 160 : 110,
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: _isWindowsDesktop ? 8 : 4,
                     vertical: 0,
                   ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? Colors.green.shade900.withValues(alpha: 0.3)
                         : Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: isDark
                           ? Colors.green.shade800
@@ -14002,21 +14401,25 @@ class _WindowViewState extends State<WindowView> {
                         color: isDark
                             ? Colors.green.shade300
                             : Colors.green.shade800,
-                        fontSize: 12,
+                        fontSize: _isWindowsDesktop ? 12 : 11,
                         fontFamily: 'Cairo',
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     dropdownColor: isDark
                         ? const Color(0xFF1E1E2C)
                         : Colors.white,
                     underline: const SizedBox(),
-                    icon: Icon(
-                      Icons.keyboard_arrow_down,
-                      color: isDark
-                          ? Colors.green.shade300
-                          : Colors.green.shade800,
-                      size: 18,
-                    ),
+                    icon: _isWindowsDesktop
+                        ? Icon(
+                            Icons.keyboard_arrow_down,
+                            color: isDark
+                                ? Colors.green.shade300
+                                : Colors.green.shade800,
+                            size: 18,
+                          )
+                        : const SizedBox.shrink(),
+                    iconSize: _isWindowsDesktop ? 24 : 0,
                     items: slidingItemsList.map((series) {
                       return DropdownMenuItem<AluminumSeries>(
                         value: series,
@@ -14235,48 +14638,52 @@ class _WindowViewState extends State<WindowView> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            InkWell(
-              onTap: () => _showPresetSystemsDialog(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.blue.shade900.withValues(alpha: 0.4)
-                      : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: isDark ? Colors.blue.shade700 : Colors.blue.shade300,
+            if (widget.model.zones.isEmpty &&
+                !widget.model.isShutterOnly &&
+                widget.model.drawingStart == null) ...[
+              InkWell(
+                onTap: () => _showPresetSystemsDialog(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.blue.shade900.withValues(alpha: 0.4)
+                        : Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isDark ? Colors.blue.shade700 : Colors.blue.shade300,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_mosaic_rounded,
+                        size: 15,
+                        color: isDark
+                            ? Colors.blue.shade300
+                            : Colors.blue.shade700,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        Localization.translate('الأنظمة الجاهزة', lang),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? Colors.blue.shade200
+                              : Colors.blue.shade900,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.auto_awesome_mosaic_rounded,
-                      size: 15,
-                      color: isDark
-                          ? Colors.blue.shade300
-                          : Colors.blue.shade700,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      Localization.translate('الأنظمة الجاهزة', lang),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isDark
-                            ? Colors.blue.shade200
-                            : Colors.blue.shade900,
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 8),
+            ],
             InkWell(
               onTap: () {
                 _showResizeDialog(context, focusWidth: true);
@@ -20965,17 +21372,147 @@ class _WindowViewState extends State<WindowView> {
       );
 
       final prefs = await SharedPreferences.getInstance();
-      final method =
+      final applyPurchasePrices =
+          prefs.getBool('app_apply_purchase_prices_to_cost_table') ?? false;
+      if (applyPurchasePrices) {
+        final updatedBom = <BomItem>[];
+        for (final item in bom) {
+          final itemId = item.catalogItemId;
+          if (itemId == null || itemId <= 0) {
+            updatedBom.add(item);
+            continue;
+          }
+          String itemType;
+          if (item.category == 'profile') {
+            itemType = 'Sections';
+          } else if (item.category == 'accessory') {
+            itemType = 'Accessories';
+          } else if (item.category == 'shutter') {
+            itemType = 'ShutterComponents';
+          } else if (item.category == 'joint') {
+            itemType = 'Joints';
+          } else if (item.category == 'glass') {
+            itemType = 'Glass';
+          } else {
+            itemType = item.inventoryItemType ?? 'Accessories';
+          }
+          final purchasePrice = await dbInstance.getLatestPurchasePrice(
+            itemId: itemId,
+            itemType: itemType,
+            colorId: item.colorId,
+          );
+          if (purchasePrice != null && purchasePrice > 0) {
+            updatedBom.add(item.copyWith(unitPrice: purchasePrice));
+          } else {
+            updatedBom.add(item);
+          }
+        }
+        bom = updatedBom;
+      }
+      var method =
           CostMethod.values[prefs.getInt('app_cost_method') ??
               CostMethod.percentage.index];
+      if (widget.model.isShutterOnly && method == CostMethod.linearMeter) {
+        method = CostMethod.percentage;
+      }
+
+      final pricingRules = await dbInstance.getProfileCalculationRules();
+      final database = await dbInstance.db;
+
+      Future<double> installationFee(String type) async {
+        final rows =
+            await database?.query(
+              'ShutterSqmPrices',
+              columns: ['price_per_sqm'],
+              where: 'blade_type = ? AND color_id = ?',
+              whereArgs: [type, 0],
+              limit: 1,
+            ) ??
+            [];
+        return rows.isEmpty
+            ? 0.0
+            : (rows.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
+      }
+
+      // Linear meter price from series/color or DB
+      double linearMeterPrice = 0.0;
+      final seriesId =
+          widget.model.activeFrameSeries?.id ??
+          widget.model.effectiveSlidingSeries?.id ??
+          widget.model.activeSeries?.id;
+      final rawColorId = widget.model.selectedDbColor?['id'];
+      final colorId = rawColorId is num
+          ? rawColorId.toInt()
+          : int.tryParse('${rawColorId ?? ''}');
+
+      if (seriesId != null) {
+        if (colorId != null) {
+          linearMeterPrice = await dbInstance.getSeriesColorPrice(
+            seriesId,
+            colorId,
+          );
+        }
+        if (linearMeterPrice <= 0.0) {
+          final seriesRows = await database?.query(
+            'Series',
+            columns: ['price_per_meter'],
+            where: 'id = ?',
+            whereArgs: [seriesId],
+            limit: 1,
+          ) ?? [];
+          if (seriesRows.isNotEmpty) {
+            linearMeterPrice =
+                (seriesRows.first['price_per_meter'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      }
+      if (linearMeterPrice <= 0.0) {
+        linearMeterPrice = prefs.getDouble('app_price_linear_meter') ?? 0.0;
+      }
+
+      // Shutter sqm price from DB
+      double shutterSqmPrice = 0.0;
+      String actualBladeName = '';
+      String bladeSubtype = 'normal';
+      final lamesOverride =
+          widget.model.componentOverrides['الشرائح (Lames)'];
+      if (lamesOverride != null) {
+        actualBladeName = (lamesOverride['name'] ?? '').toString();
+        bladeSubtype =
+            (lamesOverride['shutter_subtype'] ?? 'normal').toString();
+      } else if (widget.model.shutterLame.isNotEmpty) {
+        actualBladeName = widget.model.shutterLame;
+      }
+      if (actualBladeName.isNotEmpty || bladeSubtype.isNotEmpty) {
+        final allSqmPrices = await database?.query('ShutterSqmPrices') ?? [];
+        shutterSqmPrice = WindowModel.resolveShutterSqmPrice(
+          bladeName: actualBladeName,
+          bladeSubtype: bladeSubtype,
+          colorId: colorId,
+          prices: allSqmPrices,
+        );
+      }
+      if (shutterSqmPrice <= 0.0) {
+        shutterSqmPrice = prefs.getDouble('app_shutter_price_per_sqm') ?? 0.0;
+      }
+
       final totals = calculateSellingTotals(
         model: widget.model,
         items: bom,
         costMethod: method,
         profitMargin: prefs.getDouble('app_profit_margin') ?? 0,
         pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
-        linearMeterPrice: prefs.getDouble('app_price_linear_meter') ?? 0.0,
-        shutterSqmPrice: prefs.getDouble('app_shutter_price_per_sqm') ?? 0.0,
+        linearMeterPrice: linearMeterPrice,
+        shutterSqmPrice: shutterSqmPrice,
+        profileRules: {
+          for (final rule in pricingRules)
+            if (rule['section_id'] is num)
+              (rule['section_id'] as num).toInt(): rule,
+        },
+        obInstallFee: await installationFee('OB_Install'),
+        demiObInstallFee: await installationFee('DemiOB_Install'),
+        verrouInstallFee: await installationFee('Verrou_Install'),
+        moteurInstallFee: await installationFee('Moteur_Install'),
       );
 
       final qty = widget.model.quantity <= 0 ? 1 : widget.model.quantity;

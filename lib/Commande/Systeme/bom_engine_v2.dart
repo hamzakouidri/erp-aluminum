@@ -1,9 +1,9 @@
-import 'calculate_component.dart';
-import 'model.dart';
-import 'profile_selector_dialog.dart';
-import '../../sql_database.dart';
+import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart';
+import 'package:database_data/sql_database.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
-import 'accessory_assembly.dart';
+import 'package:database_data/Commande/Systeme/accessory_assembly.dart';
 
 /// Rule-first resolver for the material table.
 ///
@@ -288,6 +288,29 @@ class BomEngineV2 {
       );
       if (rules.any((rule) => _catalogInt(rule['show_in_quantity']) != 0)) {
         return true;
+      }
+    }
+    // Legacy fallback: if no CatalogItemRule exists for this series+role, check
+    // whether any accessory carries the corresponding boolean flag directly on
+    // the Accessories table (e.g. is_installation_screw = 1).  This keeps
+    // vis de pose visible for series that were configured before the rule
+    // system was introduced, preventing it from appearing unlinked/orange.
+    const legacyFlagForRole = <String, String>{
+      'installation_screw': 'is_installation_screw',
+      'batmo_screw': 'is_batmo_screw',
+      'bouchon_batmo_screw': 'is_bouchon_batmo_screw',
+    };
+    final legacyFlag = legacyFlagForRole[role.trim().toLowerCase()];
+    if (legacyFlag != null) {
+      final database = await _db.db;
+      if (database != null) {
+        final legacyRows = await database.query(
+          'Accessories',
+          columns: ['id'],
+          where: '$legacyFlag = 1 AND (is_active = 1 OR is_active IS NULL)',
+          limit: 1,
+        );
+        if (legacyRows.isNotEmpty) return true;
       }
     }
     return false;
@@ -1233,19 +1256,27 @@ class BomEngineV2 {
           (role == 'frame' || role == 'frame_extension') &&
           !window.hasBottomFrame;
 
-      // 2. معالجة خاصة للراي الإضافي (frame_extension):
-      // الراي الإضافي يأخذ 2 كلام فقط (وليس 4)
+      // 2. معالجة إطار الإضافة (frame_extension):
+      // يحسب زوايا الإطار الإضافي حسب قواعد الزاوية 45° وعدد الزوايا
       if (role == 'frame_extension') {
+        int extTopMiter = 2;
+        int extBottomMiter = openBottom ? 0 : 2;
+        if (window.profileAngleMode == 1 || window.profileAngleMode == 2) {
+          extTopMiter = 1;
+          if (extBottomMiter > 0) extBottomMiter = 1;
+        } else if (window.profileAngleMode == 3) {
+          extTopMiter = 0;
+          extBottomMiter = 0;
+        }
+        final extRectangles = (pieceCount ~/ (openBottom ? 3 : 4)).clamp(1, 100);
         demands.add(
           AssemblyDemand(
             target: 'frame',
             sliding: sliding,
-            topCorners: 2,
-            // 2 كلام فقط للراي الإضافي
-            bottomCorners: 0,
-            // لا يحسب في الأسفل
-            topMiterCorners: 2,
-            bottomMiterCorners: 0,
+            topCorners: extRectangles * 2,
+            bottomCorners: openBottom ? 0 : extRectangles * 2,
+            topMiterCorners: extRectangles * extTopMiter,
+            bottomMiterCorners: extRectangles * extBottomMiter,
             sectionId: sectionId,
           ),
         );
@@ -1760,6 +1791,20 @@ class BomEngineV2 {
         seriesId: seriesId,
         materialType: materialType,
       );
+      // Legacy catalogues sometimes classified universal screws by the
+      // material of the device on which they were entered (for example the
+      // 3.9×50 Batmo screw as PVC). If there is no strict same-material
+      // candidate, an explicitly flagged screw with no series restriction is
+      // still an authoritative catalogue link and must not remain orange.
+      if (resolvedCandidates.isEmpty &&
+          _hasLegacyFlaggedScrewRole(ruleKeys)) {
+        resolvedCandidates = await _legacyFlaggedAccessoryCandidates(
+          database,
+          ruleKeys,
+          seriesId: seriesId,
+          materialType: null,
+        );
+      }
     }
     final candidates = resolvedCandidates
         .where(

@@ -34,6 +34,9 @@ import 'package:database_data/Commande/partial_proforma_screen.dart';
 import 'package:database_data/Screen/order_allocation_screen.dart';
 import '../Screen/cutting_optimization_screen.dart';
 import '../Screen/sheet_optimization_screen.dart';
+import '../Screen/map_picker_screen.dart';
+import '../Screen/distribution_tracking_screen.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/widgets/desktop_context_menu.dart';
 import 'package:database_data/widgets/numeric_filter_search_field.dart';
@@ -83,7 +86,8 @@ class _CommandeState extends State<Commande> {
     'creator',
   };
   final SqlDatabase db = SqlDatabase();
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _mobileOrdersScrollController = ScrollController();
+  final ScrollController _desktopOrdersScrollController = ScrollController();
   late Future<List<Map<String, dynamic>>> _data;
   List<Map<String, dynamic>>? _cachedCommandes;
   String _searchQuery = '';
@@ -96,6 +100,31 @@ class _CommandeState extends State<Commande> {
   bool _permissionRedirectScheduled = false;
   String _workshopNameForIdentity = '';
   bool _isImportPicking = false;
+  Set<int> _seenOrderIds = {};
+
+  Future<void> _loadSeenOrderIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seenList = prefs.getStringList('seen_order_ids') ?? [];
+      final seen = seenList.map((e) => int.tryParse(e)).whereType<int>().toSet();
+      if (mounted) {
+        setState(() => _seenOrderIds = seen);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _markOrderSeen(int orderId) async {
+    if (_seenOrderIds.contains(orderId)) return;
+    try {
+      _seenOrderIds.add(orderId);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'seen_order_ids',
+        _seenOrderIds.take(500).map((e) => e.toString()).toList(),
+      );
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
 
   @override
   void didChangeDependencies() {
@@ -511,6 +540,7 @@ class _CommandeState extends State<Commande> {
   void initState() {
     super.initState();
     unawaited(_loadOrderSortPreference());
+    unawaited(_loadSeenOrderIds());
     _loadWorkshopNameForIdentity();
     _fetchCommandes();
     _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
@@ -651,7 +681,8 @@ class _CommandeState extends State<Commande> {
   void dispose() {
     _syncRefreshDebounce?.cancel();
     _dbUpdateSubscription?.cancel();
-    _scrollController.dispose();
+    _mobileOrdersScrollController.dispose();
+    _desktopOrdersScrollController.dispose();
     _mobileSearchController.dispose();
     _mobileSearchFocusNode.dispose();
     for (final controller in _orderColumnControllers.values) {
@@ -1293,8 +1324,11 @@ class _CommandeState extends State<Commande> {
                     onSubmitted: (_) => _mobileSearchFocusNode.unfocus(),
                     onChanged: (value) {
                       setState(() => _searchQuery = value);
-                      if (_scrollController.hasClients) {
-                        _scrollController.jumpTo(0);
+                      if (_mobileOrdersScrollController.hasClients) {
+                        _mobileOrdersScrollController.jumpTo(0);
+                      }
+                      if (_desktopOrdersScrollController.hasClients) {
+                        _desktopOrdersScrollController.jumpTo(0);
                       }
                     },
                     decoration: InputDecoration(
@@ -1311,8 +1345,11 @@ class _CommandeState extends State<Commande> {
                               onPressed: () {
                                 _mobileSearchController.clear();
                                 setState(() => _searchQuery = '');
-                                if (_scrollController.hasClients) {
-                                  _scrollController.jumpTo(0);
+                                if (_mobileOrdersScrollController.hasClients) {
+                                  _mobileOrdersScrollController.jumpTo(0);
+                                }
+                                if (_desktopOrdersScrollController.hasClients) {
+                                  _desktopOrdersScrollController.jumpTo(0);
                                 }
                                 _mobileSearchFocusNode.requestFocus();
                               },
@@ -1436,9 +1473,7 @@ class _CommandeState extends State<Commande> {
                                       ),
                                     ),
                                     onPressed: () {
-                                      setState(() {
-                                        _data = db.readCommandesWithClients();
-                                      });
+                                      _fetchCommandes();
                                     },
                                     icon: const Icon(
                                       Icons.refresh_rounded,
@@ -1570,7 +1605,7 @@ class _CommandeState extends State<Commande> {
                       }
 
                       return ListView.builder(
-                        controller: _scrollController,
+                        controller: _mobileOrdersScrollController,
                         primary: false,
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1608,17 +1643,29 @@ class _CommandeState extends State<Commande> {
                               : rawTotal;
                           final status = data[index]['status'] ?? 'New';
 
+                          final orderId = (data[index]['id'] as num?)?.toInt() ?? 0;
+                          final isUnseen = orderId > 0 && !_seenOrderIds.contains(orderId);
+
                           return Card(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(15),
+                              side: isUnseen
+                                  ? const BorderSide(color: Color(0xFF10B981), width: 1.6)
+                                  : BorderSide.none,
                             ),
-                            elevation: 2,
+                            elevation: isUnseen ? 3 : 2,
+                            color: isUnseen
+                                ? (Theme.of(context).brightness == Brightness.dark
+                                      ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+                                      : const Color(0xFFF0FDF4))
+                                : null,
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(15),
                               onTap: settings.canViewOrderDetails()
                                   ? () {
+                                      if (orderId > 0) _markOrderSeen(orderId);
                                       _showOrderOptions(context, data[index]);
                                     }
                                   : null,
@@ -1934,7 +1981,7 @@ class _CommandeState extends State<Commande> {
 
           if (isDesktop) {
             return DesktopScrollFallback(
-              controller: _scrollController,
+              controller: _desktopOrdersScrollController,
               child: bodyColumn,
             );
           }
@@ -3430,6 +3477,107 @@ class _CommandeState extends State<Commande> {
                       );
                     },
                   ),
+
+                // 3.8.1 طباعة ملصقات الباركود للعمال مسبقاً (مباشرة للورشة)
+                ListTile(
+                  leading: const Icon(
+                    Icons.qr_code_2_rounded,
+                    color: Colors.teal,
+                  ),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Imprimer les étiquettes code-barres (Atelier)'
+                        : 'طباعة ملصقات الباركود مسبقاً (عمال الورشة)',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    lang == AppLanguage.french
+                        ? 'Générer les étiquettes pour les ouvriers avant la découpe'
+                        : 'طباعة ملصقات الباركود ولصقها على القطع قبل بداية القص والتجميع',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    final ordId = orderData['id']?.toString() ?? '';
+                    _openInWorkspaceTab(
+                      entryId: 'stickers_' + ordId,
+                      title:
+                          ' #' + ordId,
+                      icon: Icons.qr_code_2_rounded,
+                      content: OrderMeasurementsConfirmScreen(
+                        orderData: orderData,
+                        db: db,
+                      ),
+                    );
+                  },
+                ),
+
+                // 3.8.2 تثبيت موقع العميل على الخريطة وفتح خطة التوزيع
+                ListTile(
+                  leading: const Icon(
+                    Icons.location_on_rounded,
+                    color: Colors.redAccent,
+                  ),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Localisation du client sur la carte (GPS)'
+                        : 'تثبيت موقع العميل على الخريطة وتوزيع الطلبية',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    lang == AppLanguage.french
+                        ? 'Pointer la position exacte du client et lancer l\'itinéraire'
+                        : 'فتح الخريطة داخل التطبيق لتثبيت مكان العميل وتأكيد الموقع أو فتح Google Maps',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final clientName = _orderClientName(orderData);
+                    final clientId = int.tryParse(orderData['client_id']?.toString() ?? '');
+                    double? initialLat = double.tryParse(orderData['latitude']?.toString() ?? '');
+                    double? initialLng = double.tryParse(orderData['longitude']?.toString() ?? '');
+
+                    final point = await Navigator.push<LatLng>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MapPickerScreen(
+                          initialLatitude: initialLat,
+                          initialLongitude: initialLng,
+                          clientName: clientName.isNotEmpty ? clientName : null,
+                          title: lang == AppLanguage.french
+                              ? 'Position client : ' + clientName
+                              : 'تثبيت موقع الزبون : ' + clientName,
+                        ),
+                      ),
+                    );
+
+                    if (point != null && mounted) {
+                      if (clientId != null && clientId > 0) {
+                        await db.updateClientCoordinates(
+                          clientId,
+                          point.latitude,
+                          point.longitude,
+                        );
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              lang == AppLanguage.french
+                                  ? 'Position du client enregistrée avec succès !'
+                                  : 'تم حفظ وتثبيت موقع العميل بنجاح!',
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        setState(() {
+                          _data = db.readCommandesWithClients();
+                        });
+                      }
+                    }
+                  },
+                ),
 
                 // 3.9 توزيع المهام وإسناد العمل للعمال
                 if (settings.canAllocateTasks() && !isDistributedOrBeyond)
@@ -6610,22 +6758,31 @@ class _CommandeState extends State<Commande> {
         return KeyEventResult.ignored;
       }
 
-      return ResizableTableRow(
-        reorderId: order['id'].toString(),
-        color:
-            _notificationHighlightedOrderId?.toString() ==
-                order['id'].toString()
+        final orderId = (order['id'] as num?)?.toInt() ?? 0;
+        final isUnseen = orderId > 0 && !_seenOrderIds.contains(orderId);
+        final isHighlighted = _notificationHighlightedOrderId?.toString() == order['id'].toString();
+
+        final rowBgColor = isHighlighted
             ? (Theme.of(context).brightness == Brightness.dark
                   ? const Color(0xFF594B16)
                   : const Color(0xFFFFF1A8))
-            : null,
-        onTap: () {
-          if (_notificationHighlightedOrderId?.toString() ==
-              order['id'].toString()) {
-            setState(() => _notificationHighlightedOrderId = null);
-          }
-          _openOrderDetails(order);
-        },
+            : (isUnseen
+                  ? (Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF064E3B).withValues(alpha: 0.45)
+                        : const Color(0xFFECFDF5))
+                  : null);
+
+        return ResizableTableRow(
+          reorderId: order['id'].toString(),
+          color: rowBgColor,
+          onTap: () {
+            if (orderId > 0) _markOrderSeen(orderId);
+            if (_notificationHighlightedOrderId?.toString() ==
+                order['id'].toString()) {
+              setState(() => _notificationHighlightedOrderId = null);
+            }
+            _openOrderDetails(order);
+          },
         onKeyEvent: handleOrderKey,
         onDoubleTap: context.read<AppSettingsProvider>().canEditOrders()
             ? () => openOrderInWorkspaceTab(
@@ -6659,6 +6816,25 @@ class _CommandeState extends State<Commande> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              if (isUnseen) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    Localization.translate('جديد', lang),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'Cairo',
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           // Client & Project
@@ -6983,7 +7159,7 @@ class _CommandeState extends State<Commande> {
                             : const Color(0xFFF8FAFC),
                         borderColor: borderColor,
                         rowColor: cardColor,
-                        verticalController: _scrollController,
+                        verticalController: _desktopOrdersScrollController,
                         headerMinHeight: 38,
                         filterRowMinHeight: 34,
                         rowMinHeight: 46,
